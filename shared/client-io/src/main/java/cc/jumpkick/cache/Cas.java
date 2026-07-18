@@ -14,7 +14,7 @@ import java.util.Objects;
 
 /**
  * SHA-256-keyed content-addressed store ({@code <root>/sha256/AB/CD/<rest>}). Atomic writes;
- * reads verify the hash.
+ * reads verify the hash. Puts never hard-link external paths into the store (see {@link #putFile}).
  */
 public final class Cas {
 
@@ -143,25 +143,9 @@ public final class Cas {
     public record Stored(Path path, String sha256, long size) {}
 
     /**
-     * Materialise a CAS entry as a hard link to {@code source} when the filesystem supports it; falls
-     * back to a byte copy otherwise.
-     *
-     * <p>This is the right primitive when an action has just produced a file in its own output tree
-     * (e.g. {@code build/classes/main/Hello.class} fresh out of javac) and we want the CAS to also
-     * reference it: one inode, two paths. No double-write, no double-storage. The caller supplies the
-     * hex hash so the file isn't re-read just to verify the key — the caller already had to hash it
-     * to build the action record.
-     *
-     * <p>Idempotent. If a CAS entry for {@code hex} already exists the source is left untouched.
-     */
-    /**
-     * Store {@code source}'s bytes under {@code hex} by COPY (temp file + atomic move). The CAS
-     * never shares an inode with a file outside it: hard-linking was "free" caching, but any
-     * in-place rewrite of the other name (a compiler truncating a class file, a packager
-     * rewriting a jar, gradle overwriting a SNAPSHOT) silently mutated the "immutable" blob and
-     * poisoned every record referencing it — a verification sweep found 76 such blobs from
-     * ordinary edit-and-rebuild cycles. Read-side consumers may still hand out CAS paths
-     * directly (classpaths): reads don't mutate.
+     * Store {@code source}'s bytes under {@code hex} by COPY (temp + atomic move). Never hard-links:
+     * compilers rewrite class files in place and must not mutate CAS blobs. Idempotent if {@code
+     * hex} is already present.
      */
     public Path putFile(Path source, String hex) throws IOException {
         Path target = pathFor(hex);

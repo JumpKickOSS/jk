@@ -133,4 +133,69 @@ class ActionCacheTest {
         assertThat(record.units()).isEmpty();
         assertThat(record.outputs()).containsEntry("a.class", "sha-a");
     }
+
+    @Test
+    void restore_never_shares_inode_with_cas_blob(@TempDir Path tempDir) throws IOException {
+        // Invariant: restored class trees must not hard-link CAS blobs (ticket-1004).
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("a.class"), "alpha-content");
+        cache.store("compile-main", "key1", Map.of(), outputs);
+
+        Path restored = tempDir.resolve("restored");
+        cache.restore(cache.lookup("key1").orElseThrow(), restored);
+
+        Path casBlob = cas.pathFor(cache.lookup("key1").orElseThrow().outputs().get("a.class"));
+        Path live = restored.resolve("a.class");
+        assertThat(Files.isSameFile(casBlob, live)).isFalse();
+
+        Files.writeString(live, "mutated-in-place");
+        assertThat(Files.readString(casBlob)).isEqualTo("alpha-content");
+    }
+
+    @Test
+    void store_skips_empty_outputs_when_sources_were_present(@TempDir Path tempDir) throws IOException {
+        // Invariant: zero-output "success" with source inputs is never action-cached.
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path emptyOut = tempDir.resolve("empty-out");
+        Files.createDirectories(emptyOut);
+        Map<String, String> sourceInputs = Map.of("/work/src/Foo.java", "abc123");
+
+        cache.store("compile-main", "empty-key", sourceInputs, emptyOut);
+
+        assertThat(cache.lookup("empty-key")).isEmpty();
+        assertThat(cache.lastFor("compile-main")).isEmpty();
+    }
+
+    @Test
+    void restore_after_smaller_source_set_does_not_leave_stale_classes(@TempDir Path tempDir)
+            throws IOException {
+        // Invariant: variant / shrink source set — stale classes from prior output are wiped.
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("Keep.class"), "keep");
+        Files.writeString(outputs.resolve("Stale.class"), "stale");
+        cache.store("compile-main", "full", Map.of(), outputs);
+
+        // Next variant only produces Keep.class
+        Files.delete(outputs.resolve("Stale.class"));
+        Files.writeString(outputs.resolve("Keep.class"), "keep-v2");
+        cache.store("compile-main", "slim", Map.of(), outputs);
+
+        // Pollute the live tree with a leftover from the prior variant.
+        Files.writeString(outputs.resolve("Stale.class"), "should-not-survive");
+        cache.restore(cache.lookup("slim").orElseThrow(), outputs);
+
+        assertThat(outputs.resolve("Keep.class")).exists();
+        assertThat(Files.readString(outputs.resolve("Keep.class"))).isEqualTo("keep-v2");
+        assertThat(outputs.resolve("Stale.class")).doesNotExist();
+    }
 }

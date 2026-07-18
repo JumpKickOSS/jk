@@ -73,6 +73,24 @@ class CasTest {
     }
 
     @Test
+    void putFile_never_shares_inode_with_source(@TempDir Path tempDir) throws IOException {
+        // Invariant: CAS blobs must not hard-link workspace/target outputs (ticket-1004).
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path buildOut = tempDir.resolve("target/classes/Hello.class");
+        Files.createDirectories(buildOut.getParent());
+        Files.writeString(buildOut, "class-bytes-v1");
+        String hex = cc.jumpkick.util.Hashing.sha256Hex(buildOut);
+
+        Path casBlob = cas.putFile(buildOut, hex);
+        assertThat(casBlob).exists();
+        assertThat(Files.isSameFile(casBlob, buildOut)).isFalse();
+
+        // In-place rewrite of the build tree must not mutate the CAS blob.
+        Files.writeString(buildOut, "class-bytes-MUTATED");
+        assertThat(Files.readString(casBlob)).isEqualTo("class-bytes-v1");
+    }
+
+    @Test
     void read_detects_corruption(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir);
         byte[] payload = "trust me".getBytes(StandardCharsets.UTF_8);

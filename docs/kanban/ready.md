@@ -9,4 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-1. [ticket-1004](ticket-1004-cas-invariant-tests.md) — Permanent CAS/action-cache invariant tests
+_(empty)_

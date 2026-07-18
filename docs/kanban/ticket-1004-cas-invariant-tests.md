@@ -1,44 +1,29 @@
 # ticket-1004 — Permanent CAS / action-cache invariant tests
 
 **Priority:** P0 (correctness)  
-**Status:** ready  
+**Status:** done  
 **Branch:** `ticket-1004-cas-invariants`  
-**Refs:** [architecture.md](../architecture.md) (build execution / CAS),
-`shared/client-io/.../cache/Cas.java`, `Linking.java`,
-`server/engine/.../task/ActionCache.java`, existing `ActionCacheTest`, `CasPrewriterTest`
+**Refs:** `Cas.putFile`, `ActionCache.store`/`restore`, `ActionKey.forKotlinc`,
+`JavaIncrementalCompile.store`
 
 ## Problem
 
-Compilers rewrite outputs in place. Shared inodes between CAS blobs and build trees once
-poisoned the immutable store. Production code moved to **copy-not-link** for CAS puts and
-several restore paths, but the class of bug needs **permanent automated guards** so it
+Shared inodes between CAS blobs and build trees once poisoned the immutable store. Production
+code copies instead of hard-linking; this ticket adds permanent guards so that class of bug
 cannot regress silently.
 
-This ticket is **tests + minimal hardening**, not a new cache design.
+## Invariants covered
 
-## Invariants (must have automated coverage)
-
-| # | Invariant | Suggested home |
+| # | Invariant | Test |
 |---|---|---|
-| 1 | `Cas.put*` never leaves a hardlink from a CAS blob path to `target/` / workspace outputs | `:client-io` or `:engine` Cas tests — assert `!Files.isSameFile(casBlob, buildOut)` after put-from-output |
-| 2 | Action-cache restore of class trees does not share inode with live compile out | `ActionCacheTest` restore path |
-| 3 | Zero-output “success” for a non-empty source set is never recorded as an action-cache hit for later builds | Compile/action-cache tests |
-| 4 | Variant switch + smaller source set does not leave stale classes from the prior variant | Focused engine/compile test or existing variant suite |
-| 5 | Plugin worker jar content (or equivalent) is part of the action key — upgrading the worker invalidates | `ActionKeyTest` / plugin key builder |
+| 1 | `Cas.putFile` never hard-links workspace → CAS | `CasTest.putFile_never_shares_inode_with_source` |
+| 2 | Action-cache restore does not share inode with CAS | `ActionCacheTest.restore_never_shares_inode_with_cas_blob` |
+| 3 | Zero-output success with sources is not cached | `ActionCacheTest.store_skips_empty_outputs_when_sources_were_present` + guard in `ActionCache.store` / `JavaIncrementalCompile.store` |
+| 4 | Smaller output set does not leave stale classes | `ActionCacheTest.restore_after_smaller_source_set_does_not_leave_stale_classes` |
+| 5 | Plugin/worker jar content in action key | `ActionKeyTest.kotlin_plugin_jar_content_is_part_of_action_key` + `artifact_input_tokens_include_worker_identity` |
 
 ## Acceptance
 
-- [ ] Each invariant above has a named test that **fails** if the invariant is violated
-      (prefer `Files.isSameFile` / content checks over timing)
-- [ ] Tests run on the default CI path (`./gradlew test` modules already in `.github/workflows`)
-- [ ] No new public product doc; optional one-line class Javadoc on `Cas` / `ActionCache` pointing at the invariant
-
-## Out of scope
-
-- Remote / shared cache protocol (ticket-1012)
-- Changing GC / sweep policy beyond what tests need
-- Full property-based filesystem fuzzer (nice-to-have later)
-
-## Depends on
-
-None. Small surface; good parallel worktree next to 1001/1002.
+- [x] Named tests fail if invariants break (`Files.isSameFile` / content / key inequality)
+- [x] `:client-io:test` + `:engine:test` (default CI path)
+- [x] Short invariant notes on `Cas` / `ActionCache` class Javadoc

@@ -602,6 +602,11 @@ public final class JavaIncrementalCompile {
                 outputs.put(out.relativize(file).toString().replace(File.separatorChar, '/'), hex);
             }
         }
+        // Never cache a zero-class "success" when sources were present — next build would
+        // restore an empty tree and skip a real compile.
+        if (outputs.isEmpty() && !request.sources().isEmpty()) {
+            return;
+        }
         actionCache.storeWithOutputs(taskId, key, ActionKey.snapshotInputs(request), outputs, units);
     }
 

@@ -19,7 +19,8 @@ import java.util.stream.Stream;
 
 /**
  * Persistent action cache: {@code action_key → CAS outputs} plus a project-qualified {@code task
- * → action_key} pointer. Layout: {@code keys/<actionKey>}, {@code tasks/<taskId>}.
+ * → action_key} pointer. Layout: {@code keys/<actionKey>}, {@code tasks/<taskId>}. Store/restore
+ * always copy (never hard-link) so compile trees cannot poison CAS blobs.
  */
 public final class ActionCache {
 
@@ -60,13 +61,7 @@ public final class ActionCache {
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
                     if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
-                    // Hash once (streamed — a large output never has to fit in
-                    // the heap), then COPY the file into the CAS (never link — see Cas.putFile) rather
-                    // than re-reading + writing the bytes. On POSIX same-fs
-                    // the output file in target/ and the CAS object share an
-                    // inode from this point on; the storage cost of caching
-                    // is zero. Cross-fs falls back to a byte copy via
-                    // Cas.putFile → Linking.linkOrCopy.
+                    // Hash once, then COPY into the CAS (never link — see Cas.putFile).
                     String hex = Hashing.sha256Hex(file);
                     cas.putFile(file, hex);
                     String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
@@ -74,7 +69,23 @@ public final class ActionCache {
                 }
             }
         }
+        // Refuse empty success records: a non-empty source set that produced zero classes
+        // must not become a cache hit that restores an empty tree on the next build.
+        if (outputs.isEmpty() && hasSourceInputs(inputs)) {
+            return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
+        }
         return storeWithOutputs(taskId, actionKey, inputs, outputs);
+    }
+
+    /** True when {@code inputs} includes at least one source-file fingerprint (not only flags/cp). */
+    static boolean hasSourceInputs(Map<String, String> inputs) {
+        if (inputs == null || inputs.isEmpty()) return false;
+        for (String k : inputs.keySet()) {
+            if (k.startsWith("cp:") || k.startsWith("pp:")) continue;
+            if (k.equals("release") || k.equals("options")) continue;
+            return true; // absolute source path keys from ActionKey.snapshotInputs
+        }
+        return false;
     }
 
     /**
