@@ -9,4 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-1. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE engine client facade (sync/build events)
+_(empty)_

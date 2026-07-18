@@ -18,14 +18,15 @@ when work begins; to [blocked.md](blocked.md) if stuck; to [done.md](done.md) wh
 
 ## Backlog Items
 
-_(empty)_
+1. [ticket-1018](ticket-1018-self-host-phase2.md) — Self-host phase 2: plugins on workspace + full dist path
+2. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — Marketplace IDE plugins (IntelliJ / VS Code)
+3. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Plugin cosign/signing beyond sha256 pins
 
 ---
 
 ## Notes
 
 - **Out of scope for this board:** infinite ecosystem long tail (every AGP parity gap, full KMP
-  multiplatform, marketplace plugins, RBE). Track those in feature plans when they become north stars.
+  multiplatform, marketplace plugins packaging details until 1017, RBE). Track those in feature
+  plans when they become north stars.
 - **Ready queue:** see [ready.md](ready.md). Prefer separate worktrees per ticket; keep WIP small.
-- **Phase-2 follow-ups** (not tickets yet): full `dist` via jk only (after 1007), IDE marketplace
-  plugins (after 1014), plugin cosign (after 1010).

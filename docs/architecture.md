@@ -140,8 +140,25 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 ## Extension surface
 
 - **Today:** CLI + engine HTTP dashboard; IDE project file generation (`jk ide` / export).
-- **Intended:** additional front-ends over the engine API (IDE plugins, agents) after the wire
-  protocol is frozen for 1.0.
+- **IDE engine client (ticket-1014):** Java facade `cc.jumpkick.cli.ide.IdeEngineClient` for IDE
+  hosts and agents. Sequence: open project → `connect()` → `projectInfo()` →
+  `sync(ProgressListener)` → `ideModel()` / optional `build(BuildListener)`. Reuses frozen wire
+  verbs (project-info, sync, build, ide-model); does not load the engine into the IDE JVM. File
+  generation remains the offline export path.
+
+### IDE integration sequence
+
+1. Resolve `EnginePaths` / install layout (same as the CLI — user has a local JumpKick).
+2. `IdeEngineClient.open(projectDir)` — requires `jk.toml`.
+3. `connect()` — ensures a version-matched resident engine (UDS; TCP+auth on Windows).
+4. `projectInfo()` — modules, coord, workspace root without client-side TOML parsing.
+5. `sync(listener)` — materialize lock artifacts; map `onStep*` to a progress bar.
+6. `ideModel()` — absolute classpath jars + source/classes roots for the open workspace.
+7. Optional `build(listener)` — module/step events for a Build tool window.
+8. Keep `jk ide` / export for writing `.idea` / `.vscode` files when desired.
+
+- **Intended later:** marketplace IntelliJ/VS Code plugins (run configs, debug, test gutter) on
+  top of this facade — see ticket-1017.
 
 ## Status
 
