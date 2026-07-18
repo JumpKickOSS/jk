@@ -84,6 +84,12 @@ class ThirdPartyPluginTest {
         Path stateDir = Files.createDirectories(tmp.resolve("state"));
         System.setProperty("jk.trust.state.dir", stateDir.toString());
 
+        Path jar = repo.resolve(GROUP.replace('.', '/'))
+                .resolve(ARTIFACT)
+                .resolve(VERSION)
+                .resolve(ARTIFACT + "-" + VERSION + ".jar");
+        String hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+
         Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name = "demo"
@@ -94,21 +100,23 @@ class ThirdPartyPluginTest {
                 local = "%s"
 
                 [plugins]
-                hello = { group = "%s", name = "%s", version = "%s" }
+                hello = { group = "%s", name = "%s", version = "%s", sha256 = "%s" }
 
                 [hello]
                 greeting = "yo"
-                """.formatted(repo.toUri(), GROUP, ARTIFACT, VERSION));
+                """.formatted(repo.toUri(), GROUP, ARTIFACT, VERSION, hex));
 
         // 1. Pre-lock: the declaration is unresolved — the parse stays soft, no config yet.
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("hello")).isEmpty();
+        assertThat(build.plugins().getFirst().sha256()).isEqualTo(hex);
 
         // 2. Lock: resolve the coordinate exactly as lock-plugins does — fetch, SHA-pin, extract.
         Cas cas = new Cas(cache);
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         var fetched =
                 repos.tryFetchArtifact(Coordinate.of(GROUP, ARTIFACT, VERSION)).orElseThrow();
+        assertThat(fetched.fetched().sha256()).isEqualTo(hex);
         var entry = new Lockfile.PluginEntry(
                 GROUP + ":" + ARTIFACT, VERSION, "sha256:" + fetched.fetched().sha256());
         LockfileWriter.write(

@@ -1446,7 +1446,8 @@ public final class JkBuildParser {
         return out;
     }
 
-    private static final java.util.Set<String> PLUGIN_RESERVED = java.util.Set.of("group", "name", "version");
+    private static final java.util.Set<String> PLUGIN_RESERVED =
+            java.util.Set.of("group", "name", "version", "path", "sha256", "coordinate");
 
     private static List<PluginDeclaration> parsePlugins(TomlTable root) {
         TomlTable plugins = root.getTable("plugins");
@@ -1457,15 +1458,45 @@ public final class JkBuildParser {
             if (!(val instanceof TomlTable entry)) {
                 throw new JkBuildParseException("plugins." + alias + " must be a table");
             }
+            String shaRaw = entry.getString("sha256");
+            if (shaRaw == null || shaRaw.isBlank()) {
+                throw new JkBuildParseException("plugins." + alias
+                        + " must declare `sha256` (content pin — refuse unpinned plugin jars)."
+                        + " Compute with: sha256sum vendor/your-plugin.jar");
+            }
+            String path = entry.getString("path");
             String group = entry.getString("group");
             String name = entry.getString("name");
             String version = entry.getString("version");
-            if (group == null || group.isBlank())
-                throw new JkBuildParseException("plugins." + alias + " must declare `group`");
-            if (name == null || name.isBlank())
-                throw new JkBuildParseException("plugins." + alias + " must declare `name`");
-            if (version == null || version.isBlank())
-                throw new JkBuildParseException("plugins." + alias + " must declare `version`");
+            // coordinate = "g:a:v" shorthand for group/name/version.
+            String coordinate = entry.getString("coordinate");
+            if (coordinate != null && !coordinate.isBlank()) {
+                String[] parts = coordinate.split(":", -1);
+                if (parts.length != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
+                    throw new JkBuildParseException(
+                            "plugins." + alias + ".coordinate must be group:artifact:version");
+                }
+                if (group == null || group.isBlank()) group = parts[0];
+                if (name == null || name.isBlank()) name = parts[1];
+                if (version == null || version.isBlank()) version = parts[2];
+            }
+            boolean pathPin = path != null && !path.isBlank();
+            if (pathPin) {
+                // Path pin: identity for the lock is path:<alias>:local unless group/name/version given.
+                if (group == null || group.isBlank()) group = PluginDeclaration.PATH_GROUP;
+                if (name == null || name.isBlank()) name = alias;
+                if (version == null || version.isBlank()) version = "local";
+            } else {
+                if (group == null || group.isBlank())
+                    throw new JkBuildParseException(
+                            "plugins." + alias + " must declare `group` (or `path` / `coordinate`)");
+                if (name == null || name.isBlank())
+                    throw new JkBuildParseException(
+                            "plugins." + alias + " must declare `name` (or `path` / `coordinate`)");
+                if (version == null || version.isBlank())
+                    throw new JkBuildParseException(
+                            "plugins." + alias + " must declare `version` (or `path` / `coordinate`)");
+            }
             // Every key other than the reserved identity fields becomes plugin config.
             java.util.Map<String, Object> config = new java.util.LinkedHashMap<>();
             for (String key : entry.keySet()) {
@@ -1473,8 +1504,18 @@ public final class JkBuildParser {
                     config.put(key, tomlToJava(entry.get(key)));
                 }
             }
-            result.add(
-                    new PluginDeclaration(alias, group, name, version, java.util.Collections.unmodifiableMap(config)));
+            try {
+                result.add(new PluginDeclaration(
+                        alias,
+                        group,
+                        name,
+                        version,
+                        pathPin ? path : null,
+                        shaRaw,
+                        java.util.Collections.unmodifiableMap(config)));
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("plugins." + alias + ": " + e.getMessage());
+            }
         }
         return List.copyOf(result);
     }

@@ -9,5 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-1. [ticket-1010](ticket-1010-private-plugins.md) — Private plugin jars (path/coord + sha256 pin)
-2. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE engine client facade (sync/build events)
+1. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE engine client facade (sync/build events)

@@ -124,8 +124,45 @@ after compile, custom packagers). Important SPI notes:
 ## Distribution (today)
 
 First-party plugins ship inside the jk distribution and version with jk. A public marketplace
-is intentionally deferred. Private / vendor jars (path or coord + content hash) are on the
-project board for enterprise use before any registry.
+is intentionally deferred.
+
+### Private plugins (path or Maven pin)
+
+Enterprises can vendor a plugin jar without a registry. Declare it under `[plugins]` with a
+**required** content pin (`sha256`). Unpinned plugins are refused at parse time.
+
+```toml
+# Path pin (air-gapped / monorepo vendor dir) — path relative to the project jk.toml
+[plugins]
+acme-rules = { path = "vendor/acme-rules-1.0.0.jar",
+               sha256 = "…" }   # 64 hex chars; optional sha256: prefix
+
+# Maven coordinate pin (fetch at lock; must match the pin)
+[plugins]
+acme-rules = { group = "com.acme", name = "acme-rules", version = "1.0.0",
+               sha256 = "…" }
+# or: coordinate = "com.acme:acme-rules:1.0.0", sha256 = "…"
+```
+
+**Trust model (fail closed)**
+
+| Situation | Behavior |
+|---|---|
+| Missing `sha256` | Parse error |
+| Path pin, file hash ≠ declared | `jk lock` error naming both digests |
+| Coord pin, resolved jar ≠ declared | `jk lock` error naming both digests |
+| Worker code not trusted | Fork refused (`jk trust plugin <group:name>`) — manifest contributions still apply |
+
+**Packaging checklist** (mirror `plugins/spring-boot/`):
+
+1. Jar root must contain `jk-plugin.toml` (`[plugin]` id/table/version + `[schema]` + optional
+   `[[contribute.*]]` + optional `[code]` for a worker main).
+2. Compile against `jk-plugin-sdk`; never require engine classes on the plugin classpath.
+3. Pin: `sha256sum vendor/your-plugin.jar` → paste into `sha256`.
+4. `jk lock` materializes the manifest under `target/plugin-manifests/<sha>.jk-plugin.toml`.
+5. Code layer: trust once, then worker forks use the locked CAS jar (action keys include jar hash).
+
+Private plugins **error** if they claim a table or id already owned by a built-in plugin.
 
 ## Further reading
 

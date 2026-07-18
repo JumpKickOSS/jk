@@ -60,7 +60,7 @@ class UnownedTableTest {
                 version = "1.0.0"
 
                 [plugins]
-                acme = { group = "com.example", name = "acme-jk-plugin", version = "1.0.0" }
+                acme = { group = "com.example", name = "acme-jk-plugin", version = "1.0.0", sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
 
                 [acme]
                 widgets = true

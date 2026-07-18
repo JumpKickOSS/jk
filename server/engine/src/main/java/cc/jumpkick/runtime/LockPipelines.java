@@ -209,20 +209,42 @@ public final class LockPipelines {
                     var entries = new ArrayList<Lockfile.PluginEntry>();
                     for (var pd : decls) {
                         ctx.label("lock " + pd.coordinate());
-                        var coord = Coordinate.of(pd.group(), pd.name(), pd.version());
                         try {
-                            var fetched = repos.tryFetchArtifact(coord)
-                                    .orElseThrow(() -> new RuntimeException(
-                                            pd.coordinateWithVersion() + " not found in any repo"));
+                            String hex;
+                            Path jarPath;
+                            if (pd.isPathPin()) {
+                                Path jar = resolvePluginPath(dir, pd.path());
+                                if (!Files.isRegularFile(jar)) {
+                                    throw new RuntimeException(
+                                            "plugins." + pd.alias() + " path `" + pd.path()
+                                                    + "` is not a readable file (" + jar + ")");
+                                }
+                                hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
+                                if (!hex.equals(pd.sha256())) {
+                                    throw new RuntimeException("plugins." + pd.alias()
+                                            + " sha256 mismatch: declared " + pd.sha256()
+                                            + " but file is " + hex
+                                            + " (`" + jar + "`)");
+                                }
+                                jarPath = cas.putFile(jar, hex);
+                            } else {
+                                var coord = Coordinate.of(pd.group(), pd.name(), pd.version());
+                                var fetched = repos.tryFetchArtifact(coord)
+                                        .orElseThrow(() -> new RuntimeException(
+                                                pd.coordinateWithVersion() + " not found in any repo"));
+                                hex = fetched.fetched().sha256();
+                                if (!hex.equals(pd.sha256())) {
+                                    throw new RuntimeException("plugins." + pd.alias()
+                                            + " sha256 mismatch: declared " + pd.sha256()
+                                            + " but resolved jar is " + hex
+                                            + " (" + pd.coordinateWithVersion() + ")");
+                                }
+                                jarPath = fetched.fetched().cachePath();
+                            }
                             entries.add(new Lockfile.PluginEntry(
-                                    pd.coordinate(),
-                                    pd.version(),
-                                    "sha256:" + fetched.fetched().sha256()));
+                                    pd.coordinate(), pd.version(), "sha256:" + hex));
                             try {
-                                PluginDescriptorOps.materialize(
-                                        dir,
-                                        fetched.fetched().sha256(),
-                                        fetched.fetched().cachePath());
+                                PluginDescriptorOps.materialize(dir, hex, jarPath);
                             } catch (java.io.IOException e) {
                                 ctx.output("note: " + pd.coordinate() + " has no jk-plugin.toml — locked, but"
                                         + " it will not own a jk.toml table");
@@ -643,5 +665,12 @@ public final class LockPipelines {
                         + " is locked but its artifact isn't cached; run `jk sync` online first");
             }
         }
+    }
+
+    /** Resolve a plugin path relative to the project dir (or absolute). */
+    private static Path resolvePluginPath(Path projectDir, String raw) {
+        Path p = Path.of(raw);
+        if (p.isAbsolute()) return p.normalize();
+        return projectDir.resolve(p).normalize();
     }
 }
