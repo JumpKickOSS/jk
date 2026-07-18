@@ -24,7 +24,14 @@ effort.
 - [ ] Sync progress visible in the IDE UI
 - [ ] Docs link from guide → architecture IDE sequence
 
+## Post-1020 note
+
+Client is wire-only (`IdeEngineClient` → `EngineClient`). Marketplace plugins must spawn/connect
+a real engine (or use a versioned `jk-engine.jar`), never link server modules. Prefer process
+lifecycle owned by the IDE plugin (start on project open, stop on close) with UDS/TCP as today.
+
 ## Out of scope
 
 - Language server / semantic highlighting
 - Replacing `jk ide` file export entirely
+- Bundling the engine into the IDE plugin classpath (anti-goal; ticket-1020)

@@ -20,6 +20,7 @@ when work begins; to [blocked.md](blocked.md) if stuck; to [done.md](done.md) wh
 
 1. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — Marketplace IDE plugins (IntelliJ / VS Code)
 2. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Plugin cosign/signing beyond sha256 pins
+3. [ticket-1022](ticket-1022-tempdir-engine-cas-cleanup.md) — @TempDir cleanup under wire-based CLI tests
 
 ---
 
