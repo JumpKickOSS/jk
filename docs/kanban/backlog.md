@@ -18,8 +18,9 @@ when work begins; to [blocked.md](blocked.md) if stuck; to [done.md](done.md) wh
 
 ## Backlog Items
 
-1. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — Marketplace IDE plugins (IntelliJ / VS Code)
-2. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Plugin cosign/signing beyond sha256 pins
+1. [ticket-1020](ticket-1020-eliminate-cli-engine.md) — Eliminate `:cli-engine`; strict client↔server wire separation
+2. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — Marketplace IDE plugins (IntelliJ / VS Code)
+3. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Plugin cosign/signing beyond sha256 pins
 
 ---
 
