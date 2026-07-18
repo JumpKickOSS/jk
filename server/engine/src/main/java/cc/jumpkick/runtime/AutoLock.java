@@ -88,7 +88,16 @@ public final class AutoLock {
     private static boolean lockSatisfiesDeps(JkBuild build, Lockfile lock) {
         Map<String, String> lockedVersions = new HashMap<>();
         for (Lockfile.Artifact a : lock.artifacts()) {
-            lockedVersions.put(a.name(), a.version()); // "group:artifact" → "1.2.3"
+            // Index by package key and GA — declared deps use GA; lock rows use g:a:type:classifier.
+            lockedVersions.put(a.name(), a.version());
+            lockedVersions.put(a.packageKey(), a.version());
+            try {
+                if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
+                    lockedVersions.put(cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
+                }
+            } catch (RuntimeException ignored) {
+                // non-Maven lock name
+            }
         }
         for (Scope scope : Scope.values()) {
             for (Dependency dep : build.dependencies().of(scope)) {

@@ -481,7 +481,9 @@ class EngineServerTest {
             // The engine (not the client) wrote the lockfile.
             assertThat(Files.isRegularFile(project.resolve("jk.lock"))).isTrue();
             var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk.lock"));
-            assertThat(lock.artifacts().stream().map(a -> a.name())).contains("com.foo:leaf");
+            assertThat(lock.artifacts().stream().anyMatch(a -> a.matchesModule("com.foo:leaf")))
+                    .as("lock contains com.foo:leaf")
+                    .isTrue();
 
             server.close();
             serverThread.join(5_000);

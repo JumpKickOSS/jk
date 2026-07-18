@@ -796,9 +796,23 @@ public final class DependencyTree {
 
     /** {@code group:artifact:version} when a version is known, else {@code group:artifact}. */
     private static String coordVersioned(String module, String version, Styling styling) {
-        int colon = module.indexOf(':');
-        String groupId = colon > 0 ? module.substring(0, colon) : module;
-        String artifactId = colon > 0 ? module.substring(colon + 1) : "";
+        String groupId;
+        String artifactId;
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(module)) {
+            try {
+                var id = cc.jumpkick.model.PackageId.parse(module);
+                groupId = id.group();
+                artifactId = id.artifact();
+            } catch (RuntimeException e) {
+                int colon = module.indexOf(':');
+                groupId = colon > 0 ? module.substring(0, colon) : module;
+                artifactId = colon > 0 ? module.substring(colon + 1) : "";
+            }
+        } else {
+            int colon = module.indexOf(':');
+            groupId = colon > 0 ? module.substring(0, colon) : module;
+            artifactId = colon > 0 ? module.substring(colon + 1) : "";
+        }
         return version == null
                 ? styling.group().apply(groupId) + ":" + styling.artifact().apply(artifactId)
                 : formatCoord(groupId, artifactId, version, styling);
@@ -868,10 +882,24 @@ public final class DependencyTree {
             StringBuilder out) {
 
         Lockfile.Artifact pkg = byModule.get(module);
-        // module is "group:artifact"; split for per-segment styling.
-        int colon = module.indexOf(':');
-        String groupId = colon > 0 ? module.substring(0, colon) : module;
-        String artifactId = colon > 0 ? module.substring(colon + 1) : "";
+        // module may be GA or full package key (g:a:type:classifier); display as GA.
+        String groupId;
+        String artifactId;
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(module)) {
+            try {
+                var id = cc.jumpkick.model.PackageId.parse(module);
+                groupId = id.group();
+                artifactId = id.artifact();
+            } catch (RuntimeException e) {
+                int colon = module.indexOf(':');
+                groupId = colon > 0 ? module.substring(0, colon) : module;
+                artifactId = colon > 0 ? module.substring(colon + 1) : "";
+            }
+        } else {
+            int colon = module.indexOf(':');
+            groupId = colon > 0 ? module.substring(0, colon) : module;
+            artifactId = colon > 0 ? module.substring(colon + 1) : "";
+        }
 
         // ╰─ for the last child (rounded arc); ├─ for the rest.
         // Standard "rounded tree" convention used by eza, tre, etc.

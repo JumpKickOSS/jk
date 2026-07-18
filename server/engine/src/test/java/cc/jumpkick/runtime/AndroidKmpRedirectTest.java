@@ -53,7 +53,8 @@ class AndroidKmpRedirectTest {
         // POM-only alias: no artifact bytes, classpath-inert, sync-skipped.
         assertThat(root.checksum()).isNull();
         assertThat(root.path()).isNull();
-        assertThat(root.deps()).anyMatch(d -> d.startsWith("androidx.compose.runtime:runtime-annotation-android@"));
+        assertThat(root.deps()).anyMatch(d -> d.startsWith("androidx.compose.runtime:runtime-annotation-android@")
+                || d.startsWith("androidx.compose.runtime:runtime-annotation-android:jar:@"));
 
         Lockfile.Artifact android = artifact(lockfile, "androidx.compose.runtime:runtime-annotation-android");
         assertThat(android.checksum()).startsWith("sha256:");
@@ -61,7 +62,7 @@ class AndroidKmpRedirectTest {
 
         // The POM's -jvm fallback must NOT ride alongside the selected -android variant.
         assertThat(lockfile.artifacts())
-                .noneMatch(a -> a.name().equals("androidx.compose.runtime:runtime-annotation-jvm"));
+                .noneMatch(a -> a.matchesModule("androidx.compose.runtime:runtime-annotation-jvm"));
     }
 
     @Test
@@ -84,12 +85,13 @@ class AndroidKmpRedirectTest {
 
         Lockfile.Artifact root = artifact(lockfile, "androidx.compose.runtime:runtime-annotation");
         assertThat(root.checksum()).isNull();
-        assertThat(root.deps()).anyMatch(d -> d.startsWith("androidx.compose.runtime:runtime-annotation-jvm@"));
+        assertThat(root.deps()).anyMatch(d -> d.startsWith("androidx.compose.runtime:runtime-annotation-jvm@")
+                || d.startsWith("androidx.compose.runtime:runtime-annotation-jvm:jar:@"));
         assertThat(artifact(lockfile, "androidx.compose.runtime:runtime-annotation-jvm")
                         .checksum())
                 .startsWith("sha256:");
         assertThat(lockfile.artifacts())
-                .noneMatch(a -> a.name().equals("androidx.compose.runtime:runtime-annotation-android"));
+                .noneMatch(a -> a.matchesModule("androidx.compose.runtime:runtime-annotation-android"));
     }
 
     private static Lockfile lockProject(Path tmp, String jkToml) throws Exception {
@@ -108,7 +110,7 @@ class AndroidKmpRedirectTest {
 
     private static Lockfile.Artifact artifact(Lockfile lockfile, String name) {
         return lockfile.artifacts().stream()
-                .filter(a -> a.name().equals(name))
+                .filter(a -> a.matchesModule(name))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("not locked: " + name));
     }

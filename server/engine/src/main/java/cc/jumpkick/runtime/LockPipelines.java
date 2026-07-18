@@ -610,7 +610,16 @@ public final class LockPipelines {
     private static void requireOfflineSatisfiable(JkBuild effective, Lockfile lock, Cas cas) {
         java.util.Set<String> locked = new java.util.HashSet<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
+            // Index package key and GA — declared deps use GA; lock rows use g:a:type:classifier.
             locked.add(pkg.name());
+            locked.add(pkg.packageKey());
+            try {
+                if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
+                    locked.add(cc.jumpkick.model.PackageId.parse(pkg.name()).ga());
+                }
+            } catch (RuntimeException ignored) {
+                // non-Maven lock name
+            }
         }
         for (var entry : effective.dependencies().byScope().entrySet()) {
             if (entry.getKey() == Scope.PLATFORM) continue;

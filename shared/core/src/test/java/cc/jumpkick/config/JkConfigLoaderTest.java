@@ -106,11 +106,14 @@ class JkConfigLoaderTest {
     @Test
     void no_config_short_circuits_files_but_keeps_env(@TempDir Path tempDir) throws IOException {
         Path projectToml = tempDir.resolve("jk.toml");
-        Files.writeString(projectToml, "[config]\ncolor = \"always\"\n");
+        // offline is file-only here; ambient NO_COLOR (CI/agents) may still set color via env.
+        Files.writeString(projectToml, "[config]\ncolor = \"always\"\noffline = true\n");
 
         JkConfig loaded = JkConfigLoader.load(tempDir, /* noConfig= */ true, Optional.empty());
-        // Project config was IGNORED.
-        assertThat(loaded.color()).isEmpty();
+        // Project file was ignored: file-only offline must not appear.
+        assertThat(loaded.offline()).isEmpty();
+        // File said ALWAYS; must not leak. Env may still set color (NO_COLOR → NEVER).
+        assertThat(loaded.color()).isNotEqualTo(Optional.of(JkConfig.ColorChoice.ALWAYS));
     }
     /**
      * Optional.or short-circuits on PRESENCE: with force present-and-false (every wire decode),

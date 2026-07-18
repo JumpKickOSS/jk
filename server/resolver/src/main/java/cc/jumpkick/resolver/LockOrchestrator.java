@@ -548,7 +548,8 @@ public final class LockOrchestrator {
             ResolveObserver observer)
             throws IOException, InterruptedException {
         Coordinate coord = mod.coordinate();
-        observer.onPackage(mod.module(), mod.version());
+        // Stream GA to lock-package events for human-readable UI; lock row name stays package key.
+        observer.onPackage(displayModule(mod.module()), mod.version());
 
         boolean kmpAlias = kmp.selectionFor(mod.module(), mod.version()).isPresent();
 
@@ -606,6 +607,19 @@ public final class LockOrchestrator {
 
     /** Filled during {@link #lock}; read by {@link #toArtifact}. */
     private Map<String, List<String>> crossPackageActivatedFeatures;
+
+    /** Human-facing module id: {@code group:artifact} for Maven package keys. */
+    private static String displayModule(String moduleOrKey) {
+        if (moduleOrKey == null) return "";
+        if (PackageId.isMavenPackageKey(moduleOrKey)) {
+            try {
+                return PackageId.parse(moduleOrKey).ga();
+            } catch (RuntimeException ignored) {
+                return moduleOrKey;
+            }
+        }
+        return moduleOrKey;
+    }
 
     /**
      * Extract a concrete version literal from a platform-dep's selector. Platform BOMs must be pinned

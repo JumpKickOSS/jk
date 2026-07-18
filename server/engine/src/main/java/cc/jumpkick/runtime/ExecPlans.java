@@ -282,8 +282,14 @@ public final class ExecPlans {
             Lockfile lock = LockfileReader.read(lockFile);
             classpath.addAll(new ClasspathResolver(new Cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
             if (dev) {
-                hotReload = lock.artifacts().stream()
-                        .anyMatch(a -> "org.springframework.boot:spring-boot-devtools".equals(a.name()));
+                hotReload = lock.artifacts().stream().anyMatch(a -> {
+                    String n = a.name();
+                    return "org.springframework.boot:spring-boot-devtools".equals(n)
+                            || "org.springframework.boot:spring-boot-devtools:jar:".equals(a.packageKey())
+                            || (cc.jumpkick.model.PackageId.isMavenPackageKey(n)
+                                    && "org.springframework.boot:spring-boot-devtools"
+                                            .equals(cc.jumpkick.model.PackageId.parse(n).ga()));
+                });
             }
         }
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(dir, project, ClasspathResolver.RUN);

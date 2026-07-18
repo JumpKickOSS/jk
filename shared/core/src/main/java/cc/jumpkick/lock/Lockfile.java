@@ -244,6 +244,28 @@ public record Lockfile(
             return PackageId.parse(name).key();
         }
 
+        /**
+         * True when {@code moduleOrKey} refers to this row — exact name/key match, or the same
+         * {@code group:artifact} as a full package key ({@code g:a:jar:}). Used by {@code jk why},
+         * tests, and lookups that still speak GA after package identity gained type/classifier.
+         */
+        public boolean matchesModule(String moduleOrKey) {
+            if (moduleOrKey == null || moduleOrKey.isBlank()) return false;
+            if (name.equals(moduleOrKey) || packageKey().equals(moduleOrKey)) return true;
+            String thisGa = gaOf(name);
+            String thatGa = gaOf(moduleOrKey);
+            return thisGa != null && thisGa.equals(thatGa);
+        }
+
+        private static String gaOf(String nameOrKey) {
+            if (!PackageId.isMavenPackageKey(nameOrKey)) return nameOrKey;
+            try {
+                return PackageId.parse(nameOrKey).ga();
+            } catch (RuntimeException e) {
+                return nameOrKey;
+            }
+        }
+
         /** This artifact as a {@link Coordinate} at its {@link #version}. */
         public Coordinate coordinate() {
             // The optional `path` field carries the artifact's real file name when the packaging

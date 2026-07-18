@@ -47,7 +47,7 @@ class AndroidRemoteAarTest {
 
         var lockfile = LockfileReader.read(project.resolve("jk.lock"));
         var annotationAar = lockfile.artifacts().stream()
-                .filter(a -> a.name().equals("androidx.core:core"))
+                .filter(a -> a.matchesModule("androidx.core:core"))
                 .findFirst()
                 .orElseThrow();
         assertThat(annotationAar.isAar()).isTrue();

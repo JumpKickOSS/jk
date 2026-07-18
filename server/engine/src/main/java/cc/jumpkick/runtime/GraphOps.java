@@ -50,12 +50,13 @@ public final class GraphOps {
             List<String> paths = new ArrayList<>();
             for (int i = 0; i < matches.size(); i++) {
                 Lockfile.Artifact target = matches.get(i);
-                names.add(target.name());
+                // Display GA form to users (not g:a:jar:).
+                names.add(ga(target.packageKey()));
                 versions.add(target.version());
-                for (Provenance.Path path : Provenance.pathsTo(project, lock, target.name())) {
+                for (Provenance.Path path : Provenance.pathsTo(project, lock, target.packageKey())) {
                     owners.add(Integer.toString(i));
                     paths.add(path.steps().stream()
-                            .map(s -> s.module() + "@" + s.version())
+                            .map(s -> ga(s.module()) + "@" + s.version())
                             .collect(Collectors.joining(">")));
                 }
             }
@@ -66,15 +67,32 @@ public final class GraphOps {
     }
 
     /**
-     * Match a lockfile {@code group:artifact} name against a user query. Exact match, artifact-only
-     * match (query has no colon), or substring — the contract {@code jk why} has always had.
+     * Match a lockfile package name/key against a user query. Exact match, GA match (query
+     * {@code g:a} vs lock {@code g:a:jar:}), artifact-only match, or substring.
      */
     private static boolean matchesQuery(String name, String query) {
         if (name.equals(query)) return true;
+        String nameGa = ga(name);
+        String queryGa = ga(query);
+        if (nameGa.equals(queryGa)) return true;
         if (!query.contains(":")) {
-            if (name.endsWith(":" + query)) return true;
-            return name.contains(query);
+            // artifact-only: match last GA segment or full package key tail
+            if (nameGa.endsWith(":" + query)) return true;
+            if (name.endsWith(":" + query) || name.contains(query)) return true;
+            return nameGa.contains(query);
         }
-        return false;
+        return name.contains(query) || nameGa.contains(query);
+    }
+
+    private static String ga(String nameOrKey) {
+        if (nameOrKey == null) return "";
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(nameOrKey)) {
+            try {
+                return cc.jumpkick.model.PackageId.parse(nameOrKey).ga();
+            } catch (RuntimeException ignored) {
+                return nameOrKey;
+            }
+        }
+        return nameOrKey;
     }
 }

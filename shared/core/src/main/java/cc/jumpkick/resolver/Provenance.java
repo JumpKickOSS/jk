@@ -30,8 +30,13 @@ public final class Provenance {
         Objects.requireNonNull(targetModule, "targetModule");
 
         Map<String, Lockfile.Artifact> byModule = DependencyTree.indexByModule(lock);
-        if (!byModule.containsKey(targetModule)) {
-            return List.of();
+        String resolvedTarget = targetModule;
+        if (!byModule.containsKey(resolvedTarget)) {
+            // User / CLI often passes GA; lock rows are package keys (g:a:jar:).
+            resolvedTarget = ga(targetModule);
+            if (!byModule.containsKey(resolvedTarget)) {
+                return List.of();
+            }
         }
 
         // Reverse adjacency: dep → list of (parent, parent-version)
@@ -40,13 +45,18 @@ public final class Provenance {
             for (String depRef : pkg.deps()) {
                 String depModule = DependencyTree.stripVersion(depRef);
                 reverseDeps.computeIfAbsent(depModule, k -> new TreeSet<>()).add(pkg.name());
+                // also index by GA so walks that start from a GA query still find parents
+                String depGa = ga(depModule);
+                if (!depGa.equals(depModule)) {
+                    reverseDeps.computeIfAbsent(depGa, k -> new TreeSet<>()).add(pkg.name());
+                }
             }
         }
 
         Set<String> declaredRoots = new LinkedHashSet<>(DependencyTree.collectRoots(project));
 
         List<Path> paths = new ArrayList<>();
-        walkUp(targetModule, byModule, reverseDeps, declaredRoots, new ArrayList<>(), paths);
+        walkUp(resolvedTarget, byModule, reverseDeps, declaredRoots, new ArrayList<>(), paths);
         return paths;
     }
 
@@ -63,7 +73,7 @@ public final class Provenance {
         stack.addLast(new Step(current, version));
 
         try {
-            if (declaredRoots.contains(current)) {
+            if (isDeclaredRoot(current, declaredRoots)) {
                 // Reverse for display: declared root first, target last.
                 List<Step> path = new ArrayList<>(stack);
                 Collections.reverse(path);
@@ -71,6 +81,10 @@ public final class Provenance {
                 return;
             }
             Set<String> parents = reverseDeps.get(current);
+            if (parents == null || parents.isEmpty()) {
+                // also try GA form of package key
+                parents = reverseDeps.get(ga(current));
+            }
             if (parents == null || parents.isEmpty()) return;
             for (String parent : parents) {
                 // Avoid cycles in the lockfile.
@@ -81,6 +95,30 @@ public final class Provenance {
         } finally {
             stack.removeLast();
         }
+    }
+
+    /** True when {@code module} is a declared root, matching either package key or GA form. */
+    private static boolean isDeclaredRoot(String module, Set<String> declaredRoots) {
+        if (declaredRoots.contains(module)) return true;
+        String moduleGa = ga(module);
+        if (declaredRoots.contains(moduleGa)) return true;
+        for (String root : declaredRoots) {
+            if (ga(root).equals(moduleGa)) return true;
+        }
+        return false;
+    }
+
+    /** {@code group:artifact} for Maven package keys; identity otherwise. */
+    private static String ga(String nameOrKey) {
+        if (nameOrKey == null || nameOrKey.isBlank()) return nameOrKey;
+        if (cc.jumpkick.model.PackageId.isMavenPackageKey(nameOrKey)) {
+            try {
+                return cc.jumpkick.model.PackageId.parse(nameOrKey).ga();
+            } catch (RuntimeException ignored) {
+                return nameOrKey;
+            }
+        }
+        return nameOrKey;
     }
 
     /** A path from a declared root (first) down to the target (last). */

@@ -8,6 +8,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitRefSpec;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.MavenRepo;
@@ -132,7 +133,11 @@ public final class GitSourceResolution {
         if (gitInfoByKey.isEmpty()) return lock;
         List<Lockfile.Artifact> out = new ArrayList<>(lock.artifacts().size());
         for (Lockfile.Artifact p : lock.artifacts()) {
+            // Keys are group:artifact@version from materialize; lock rows use package keys (g:a:jar:).
             Lockfile.Artifact.GitInfo gi = gitInfoByKey.get(provenanceKey(p.name(), p.version()));
+            if (gi == null) {
+                gi = gitInfoByKey.get(provenanceKey(ga(p.name()), p.version()));
+            }
             if (gi != null && p.git() == null) {
                 out.add(new Lockfile.Artifact(
                         p.name(),
@@ -150,6 +155,18 @@ public final class GitSourceResolution {
         }
         return new Lockfile(
                 lock.version(), lock.generatedBy(), lock.resolutionAlgorithm(), lock.jdk(), lock.kotlin(), out);
+    }
+
+    private static String ga(String nameOrKey) {
+        if (nameOrKey == null) return "";
+        if (PackageId.isMavenPackageKey(nameOrKey)) {
+            try {
+                return PackageId.parse(nameOrKey).ga();
+            } catch (RuntimeException ignored) {
+                return nameOrKey;
+            }
+        }
+        return nameOrKey;
     }
 
     /**

@@ -99,7 +99,7 @@ class GitSourceResolutionTest {
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
 
         Lockfile.Artifact widgets = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.acme:widgets"))
+                .filter(p -> p.matchesModule("com.acme:widgets"))
                 .findFirst()
                 .orElseThrow();
         assertThat(widgets.version()).isEqualTo("1.0.0");

@@ -221,12 +221,24 @@ public final class OutdatedPipelines {
         return reverse;
     }
 
+    /**
+     * Locked versions keyed by package key and by GA so declared deps ({@code group:artifact}) still
+     * match lock rows written as {@code group:artifact:type:classifier}.
+     */
     private static Map<String, String> lockedVersions(Path lockFile) {
         Map<String, String> out = new LinkedHashMap<>();
         if (!Files.isRegularFile(lockFile)) return out;
         try {
             for (Lockfile.Artifact a : LockfileReader.read(lockFile).artifacts()) {
                 out.putIfAbsent(a.name(), a.version());
+                out.putIfAbsent(a.packageKey(), a.version());
+                try {
+                    if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
+                        out.putIfAbsent(cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
+                    }
+                } catch (RuntimeException ignored) {
+                    // non-Maven lock name
+                }
             }
         } catch (Exception ignored) {
             // unreadable lock — treat as no locked versions

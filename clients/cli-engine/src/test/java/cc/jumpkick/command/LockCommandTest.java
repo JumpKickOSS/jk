@@ -105,15 +105,16 @@ class LockCommandTest {
         assertThat(DefaultTestDepsFixture.projectCoords(lock))
                 .containsExactly("com.foo:leaf", "com.foo:root"); // writer sorts by name
 
-        Lockfile.Artifact leaf = pkg(lock, "com.foo:leaf");
-        Lockfile.Artifact root = pkg(lock, "com.foo:root");
+        Lockfile.Artifact leaf = DefaultTestDepsFixture.pkg(lock, "com.foo:leaf");
+        Lockfile.Artifact root = DefaultTestDepsFixture.pkg(lock, "com.foo:root");
 
         assertThat(leaf.version()).isEqualTo("1.0");
         assertThat(leaf.checksum()).isEqualTo("sha256:" + Hashing.sha256Hex(leafJar));
         assertThat(leaf.source()).startsWith("central+").endsWith("/");
         assertThat(leaf.deps()).isEmpty();
 
-        assertThat(root.deps()).containsExactly("com.foo:leaf@1.0");
+        // dependsOn uses package keys (g:a:type:classifier@version).
+        assertThat(root.deps()).containsExactly("com.foo:leaf:jar:@1.0");
         assertThat(root.checksum()).isEqualTo("sha256:" + Hashing.sha256Hex(rootJar));
     }
 
@@ -493,13 +494,6 @@ class LockCommandTest {
                 [dependencies]
                 root = { group = "com.foo", name = "root", version = "1.0" }
                 """);
-    }
-
-    private static Lockfile.Artifact pkg(Lockfile lock, String module) {
-        return lock.artifacts().stream()
-                .filter(p -> p.name().equals(module))
-                .findFirst()
-                .orElseThrow();
     }
 
     private void registerPom(String group, String artifact, String version, String body) {

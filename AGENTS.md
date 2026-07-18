@@ -86,11 +86,14 @@ Board lives under [`docs/kanban/`](docs/kanban/). **Only the kanban files on `ma
 
 ### Done criteria
 
-**Docs-only / non-Java** tickets (markdown, kanban, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required.
+**Docs-only / non-Java** tickets (markdown, kanban, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
 **Any ticket that changes Java (or other runtime) code** must **not** move to `done` until all of the following pass:
 
-1. **Tests** — relevant suite green (`./gradlew test` or the modules you touched; full `test` preferred when the change is wide).
+1. **Tests (required, non-negotiable)** — prove the change did not break the build:
+   - Prefer full `./gradlew test` before merging to `main`.
+   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli-engine:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** moving the ticket to `done` / merging to `main`.
+   - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
 2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).

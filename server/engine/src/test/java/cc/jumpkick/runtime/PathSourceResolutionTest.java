@@ -76,7 +76,7 @@ class PathSourceResolutionTest {
         // The real solver resolves the pin from the local file:// repo (offline).
         Lockfile lock = new LockOrchestrator(prep.repos()).lock(prep.project(), "test", List.of(), true);
         Lockfile.Artifact widgets = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.acme:widgets"))
+                .filter(p -> p.matchesModule("com.acme:widgets"))
                 .findFirst()
                 .orElseThrow();
         assertThat(widgets.version()).isEqualTo("0.1.0");
