@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli;
+package cc.jumpkick.engine;
+
+import cc.jumpkick.model.JkVersion;
 
 /**
- * Engine JVM entrypoint ({@code :cli-engine}). Plain Java — never a native image. Same loop as
- * {@code jk --engine-server} (JVM dist path via {@link Jk#main} / {@code InProcessEngine}).
+ * Engine JVM entrypoint ({@code :engine}). Plain Java — never a native image. Spawned by the slim
+ * client as {@code java -cp jk-engine.jar cc.jumpkick.engine.EngineMain}. Not a client: no CLI
+ * command tree, no TUI.
  */
 public final class EngineMain {
 
     private EngineMain() {}
 
     /**
-     * {@code args} are deliberately ignored: on the {@code java -cp} spawn line every option is a
-     * real JVM flag consumed before {@code main()} runs, and a {@code JK_ENGINE_EXE} wrapper that
-     * fails to consume the {@code -Xms}/{@code -Xmx} the spawner appends leaves them harmlessly
-     * inert here — better an unsized engine than a dead one.
+     * {@code args} other than known role flags are deliberately ignored: on the {@code java -cp}
+     * spawn line every option is a real JVM flag consumed before {@code main()} runs, and a {@code
+     * JK_ENGINE_EXE} wrapper that fails to consume the {@code -Xms}/{@code -Xmx} the spawner
+     * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
         // --job: one-shot child — serve exactly one request over stdio, then exit.
@@ -32,11 +35,11 @@ public final class EngineMain {
     /** One request over stdin/stdout; engine-lifecycle logging stays on stderr. */
     static int runJob() {
         try {
-            cc.jumpkick.engine.EngineServer server = new cc.jumpkick.engine.EngineServer(
-                    cc.jumpkick.engine.EnginePaths.current(),
+            EngineServer server = new EngineServer(
+                    EnginePaths.current(),
                     cc.jumpkick.config.JkEngineConfig.resolve(),
                     null,
-                    Jk.VERSION,
+                    JkVersion.VERSION,
                     System.err::println);
             server.serveJob(
                     new java.io.BufferedReader(
@@ -57,21 +60,17 @@ public final class EngineMain {
      * the engine's log file, so nothing here writes to a real terminal.
      */
     public static int run() {
-        // The engine must survive its spawner's terminal: first detach into our own POSIX session
-        // (setsid(2) via FFM — see PosixDetach; no-op on Windows), then ignore terminal-generated
-        // SIGINT/SIGHUP as belt-and-suspenders for the platforms/windows-of-time detach can't
-        // cover. Cancelling an individual build is a wire-level concern (BUILD_CANCEL), never a
-        // signal; SIGTERM stays lethal on purpose so `kill <pid>` still works.
-        cc.jumpkick.cli.engine.PosixDetach.intoOwnSession();
-        org.jline.utils.Signals.register("INT", () -> {});
-        org.jline.utils.Signals.register("HUP", () -> {});
+        // Survive the spawner's terminal: detach into our own POSIX session, then ignore
+        // terminal-generated SIGINT/SIGHUP. Cancelling a build is BUILD_CANCEL on the wire.
+        PosixDetach.intoOwnSession();
+        TerminalSignals.ignoreInterruptAndHangup();
         try {
-            cc.jumpkick.engine.EnginePaths.Paths paths = cc.jumpkick.engine.EnginePaths.current();
+            EnginePaths.Paths paths = EnginePaths.current();
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);
-            cc.jumpkick.engine.EngineServer server =
-                    new cc.jumpkick.engine.EngineServer(paths, config, httpConfig, Jk.VERSION, System.err::println);
+            EngineServer server =
+                    new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
             // election — a losing redundant spawn never trains — and owns the child end-to-end.
@@ -91,8 +90,7 @@ public final class EngineMain {
      * Launch the sidecar AOT trainer: this engine's own JVM and classpath, re-entered at {@code
      * --aot-training}, with {@code -XX:AOTCacheOutput} so the recording assembles at its clean
      * exit. {@code -XX:+UseSerialGC} matches the serving spawn line (EngineClient.spawn) — the
-     * assembled cache must be recorded under the same GC it will later be mapped under. Output
-     * inherits this engine's stdout/stderr, which the spawner already pointed at the engine log.
+     * assembled cache must be recorded under the same GC it will later be mapped under.
      */
     private static Process spawnAotTrainer(String aotOut) {
         try {
@@ -124,19 +122,17 @@ public final class EngineMain {
     private static final long AOT_TRAINING_UPTIME_MS = 3_000;
 
     /**
-     * The sidecar trainer's whole life: bring up a REAL engine server — full startup class-loading
-     * fidelity, that's the profile worth recording — against a private temp state dir (its socket,
-     * lock, generations, and endpoint pointer all live and die there; it can never win, lose, or
-     * even see the real engine's election), idle briefly, then stop cleanly so the JVM assembles
-     * the {@code .aot} at exit. The temp dir is removed on the way out.
+     * The sidecar trainer's whole life: bring up a REAL engine server against a private temp state
+     * dir (it can never win, lose, or see the real engine's election), idle briefly, then stop
+     * cleanly so the JVM assembles the {@code .aot} at exit.
      */
     static int runAotTraining() {
         java.nio.file.Path tmp = null;
         try {
             tmp = java.nio.file.Files.createTempDirectory("jk-aot-train-");
-            cc.jumpkick.engine.EnginePaths.Paths paths = cc.jumpkick.engine.EnginePaths.resolve(tmp);
-            cc.jumpkick.engine.EngineServer server = new cc.jumpkick.engine.EngineServer(
-                    paths, cc.jumpkick.config.JkEngineConfig.resolve(), null, Jk.VERSION, System.err::println);
+            EnginePaths.Paths paths = EnginePaths.resolve(tmp);
+            EngineServer server = new EngineServer(
+                    paths, cc.jumpkick.config.JkEngineConfig.resolve(), null, JkVersion.VERSION, System.err::println);
             Thread serving = new Thread(
                     () -> {
                         try {
@@ -147,8 +143,7 @@ public final class EngineMain {
                     },
                     "jk-aot-training");
             serving.start();
-            // Serving is observable as the endpoint pointer appearing in OUR temp dir.
-            java.nio.file.Path endpoint = cc.jumpkick.engine.EnginePaths.endpoint(paths);
+            java.nio.file.Path endpoint = EnginePaths.endpoint(paths);
             long deadline = System.nanoTime() + java.time.Duration.ofSeconds(60).toNanos();
             while (!java.nio.file.Files.exists(endpoint) && serving.isAlive() && System.nanoTime() < deadline) {
                 Thread.sleep(20);
@@ -171,7 +166,7 @@ public final class EngineMain {
                 try {
                     java.nio.file.Files.deleteIfExists(p);
                 } catch (java.io.IOException ignored) {
-                    // best-effort cleanup; the OS reaps temp dirs eventually
+                    // best-effort cleanup
                 }
             });
         } catch (java.io.IOException ignored) {

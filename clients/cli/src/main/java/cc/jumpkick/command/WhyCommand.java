@@ -48,9 +48,7 @@ public final class WhyCommand implements CliCommand {
 
         String query = moduleOnly(in.positionals().get(0));
         // The graph reasoning is engine-side (thin client): matching + provenance ride WHY_ACK.
-        WhyReport report = engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require().why(dir, query)
-                : cc.jumpkick.cli.engine.EngineClient.why(cc.jumpkick.engine.EnginePaths.current(), dir, query);
+        WhyReport report = cc.jumpkick.cli.engine.EngineClient.why(cc.jumpkick.engine.EnginePaths.current(), dir, query);
         if (report.error() != null) {
             CliOutput.err("jk why: " + report.error());
             return Exit.CONFIG;
@@ -87,11 +85,6 @@ public final class WhyCommand implements CliCommand {
                 })
                 .collect(
                         Collectors.joining(Theme.colorize(" -> ", Theme.active().darkGray())));
-    }
-
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     /** Strip the version component if present; return arg unchanged when no colon. */

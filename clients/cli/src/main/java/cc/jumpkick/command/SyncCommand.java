@@ -57,16 +57,6 @@ public final class SyncCommand implements CliCommand {
                 Opt.flag("Also download sources JARs when available.", "--sources"));
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk sync} invocation always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws Exception {
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
@@ -82,11 +72,6 @@ public final class SyncCommand implements CliCommand {
 
         String targetLabel = dir.getFileName() != null ? dir.getFileName().toString() : dir.toString();
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-
-        if (engineDisabledForTests()) {
-            return cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .syncInProcess(dir, cache, jdksDir, repoUrl, sources, mode, targetLabel);
-        }
 
         // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
         // the request — never silently inside the engine (docs/architecture.md keeps installs, and any

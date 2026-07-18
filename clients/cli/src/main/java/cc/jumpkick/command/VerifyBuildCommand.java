@@ -201,14 +201,12 @@ public final class VerifyBuildCommand implements CliCommand {
     /**
      * Rebuild {@code scratch} via the resident engine with {@code rerun} pinned (never an
      * action-cache hit of the jars under comparison). Tests are skipped; production is always
-     * engine-hosted ({@link #engineDisabledForTests()} is the unit-test escape hatch only).
+     * engine-hosted over the wire.
      */
     private static void buildScratch(Path scratch, Path cache, ErrorSink errors) throws Exception {
         // The parse feeds only the in-process test path; the hosted engine re-parses entryDir
         // itself (the build request serializes entryDir, not the model — thin client).
-        JkBuild scratchBuild = engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require().parseBuild(scratch.resolve("jk.toml"))
-                : null;
+        JkBuild scratchBuild = null;
         var request = new WorkspaceRequest(
                 scratch,
                 scratchBuild,
@@ -240,9 +238,7 @@ public final class VerifyBuildCommand implements CliCommand {
         };
         WorkspaceResult result = SessionContext.where(
                 session,
-                () -> engineDisabledForTests()
-                        ? cc.jumpkick.cli.engine.InProcessEngine.require().buildWorkspace(request, listener)
-                        : cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                () -> cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                                 cc.jumpkick.engine.EnginePaths.current(), request, listener));
         if (!result.errors().isEmpty()) {
             errors.error("build", String.join("; ", result.errors()));
@@ -253,15 +249,6 @@ public final class VerifyBuildCommand implements CliCommand {
             errors.error("build", "scratch rebuild failed: " + detail);
             throw new RuntimeException("scratch rebuild failed");
         }
-    }
-
-    /** Test-only in-process bypass ({@code -Djk.test.noEngine}); never user-facing. */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner): under the
-        // self-hosted build, in-process dispatches would otherwise recurse into the very
-        // engine hosting the test run and deadlock — see BuildCommand's javadoc.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     /** A config layer that sets only {@code rerun} — laid over the invocation's config. */
@@ -308,9 +295,7 @@ public final class VerifyBuildCommand implements CliCommand {
     /** The engine's project summary for {@code dir}; throws with the engine's message on error. */
     private static ProjectInfo projectInfo(Path dir) throws IOException {
         try {
-            ProjectInfo info = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().projectInfo(dir)
-                    : cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
             if (info.error() != null) throw new IOException(info.error());
             return info;
         } catch (IOException e) {

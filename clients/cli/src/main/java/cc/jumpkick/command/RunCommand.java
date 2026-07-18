@@ -30,17 +30,6 @@ public final class RunCommand {
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. Real {@code jk run} hosts the build on the engine;
-     * user-program exec stays here (owns the terminal).
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner) — see BuildCommand.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
     int runProject(Path projectDir, List<String> appArgs) throws IOException, InterruptedException {
         // No client-side jk.toml parse: the engine computes the exec plan (artifact
@@ -80,40 +69,33 @@ public final class RunCommand {
 
         PipelineResult result;
         cc.jumpkick.run.TestSummary testResult;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .runBuildPipeline(
-                            projectDir, cache, jdksDir, buildOpts.skipTests, global.verbose, mode, spec, coord);
-            result = o.result();
-            testResult = o.testResult();
-        } else {
-            // Engine-hosted build half (SINGLE_BUILD_REQUEST, skipTests); exec below owns the TTY.
-            var session = cc.jumpkick.config.SessionContext.current();
-            cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
-                                projectDir,
-                                cache,
-                                jdksDir,
-                                1,
-                                null,
-                                buildOpts.skipTests,
-                                global.verbose,
-                                session.offline(),
-                                session.force(),
-                                session.variant(),
-                                session.clientEnv()),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, coord),
-                        testResultHolder,
-                        new String[1]);
-            } catch (IOException e) {
-                CliOutput.err("jk run: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            testResult = testResultHolder[0];
+                // Engine-hosted build half (SINGLE_BUILD_REQUEST, skipTests); exec below owns the TTY.
+        var session = cc.jumpkick.config.SessionContext.current();
+        cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                            projectDir,
+                            cache,
+                            jdksDir,
+                            1,
+                            null,
+                            buildOpts.skipTests,
+                            global.verbose,
+                            session.offline(),
+                            session.force(),
+                            session.variant(),
+                            session.clientEnv()),
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, coord),
+                    testResultHolder,
+                    new String[1]);
+        } catch (IOException e) {
+            CliOutput.err("jk run: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        testResult = testResultHolder[0];
+
         if (!result.success()) {
             if (testResult != null && !testResult.allPassed()) return 4;
             return 1;
@@ -169,10 +151,7 @@ public final class RunCommand {
         }
         cc.jumpkick.engine.protocol.PluginCommandReport report;
         try {
-            report = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                            .pluginCommand(projectDir, cache, command, appArgs)
-                    : cc.jumpkick.cli.engine.EngineClient.pluginCommand(
+            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
                             cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
             CliOutput.err("jk run: " + e.getMessage());
@@ -197,10 +176,7 @@ public final class RunCommand {
      */
     private cc.jumpkick.engine.protocol.ExecPlan execPlan(Path projectDir) throws IOException {
         if (cachedPlan == null) {
-            cachedPlan = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                            .execPlan(projectDir, cacheDir(), "run", null, null)
-                    : cc.jumpkick.cli.engine.EngineClient.execPlan(
+            cachedPlan = cc.jumpkick.cli.engine.EngineClient.execPlan(
                             cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
         }
         // Checked on every access: the memoized plan may be an error plan (the console's

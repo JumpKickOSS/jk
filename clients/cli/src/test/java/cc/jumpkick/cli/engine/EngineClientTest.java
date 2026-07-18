@@ -208,46 +208,36 @@ class EngineClientTest {
 
     /**
      * The spawn path's artifact resolution: JK_ENGINE_EXE override, then the side-by-side layout
-     * ({@code ~/.jk/versions/<v>/lib/jk-engine.jar} — the only installed layout), then the client
-     * binary itself re-invoked with {@code --engine-server}. The actual OS-process spawn stays
-     * manual-verification territory (see class javadoc); this pins the decision logic.
+     * ({@code ~/.jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK (ticket-1020).
      */
     @Test
-    void engine_artifact_resolution_prefers_override_then_versions_layout_then_fallback() throws IOException {
+    void engine_artifact_resolution_prefers_override_then_versions_layout() throws IOException {
         Path dir = shortTempDir();
-        Path client = dir.resolve("jk");
-        Files.createFile(client);
         // Isolated store: the machine-global ~/.jk/versions must not leak into this contract.
         cc.jumpkick.cache.VersionStore store = new cc.jumpkick.cache.VersionStore(dir.resolve("versions"));
 
-        // (c) no override, nothing materialized: the client binary itself, needing --engine-server
-        EngineClient.EngineArtifact fallback =
-                EngineClient.resolveEngineArtifact(null, client.toString(), "1.2.3", store);
-        assertThat(fallback.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.FALLBACK);
-        assertThat(fallback.path()).isEqualTo(client.toString());
+        // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)
+        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", store)).isEmpty();
 
         // a version-skewed materialization never launches — the version match is the contract
         materialize(store, dir, "9.9.9");
-        assertThat(EngineClient.resolveEngineArtifact(null, client.toString(), "1.2.3", store)
-                        .kind())
-                .isEqualTo(EngineClient.EngineArtifact.Kind.FALLBACK);
+        assertThat(EngineClient.resolveEngineArtifact(null, "1.2.3", store)).isEmpty();
 
-        // (b) versions/<client version>/lib/jk-engine.jar: the JVM-hosted engine's fat jar
+        // versions/<client version>/lib/jk-engine.jar: the JVM-hosted engine's fat jar
         Path engineJar = materialize(store, dir, "1.2.3");
         EngineClient.EngineArtifact viaVersions =
-                EngineClient.resolveEngineArtifact(null, client.toString(), "1.2.3", store);
+                EngineClient.resolveEngineArtifact(null, "1.2.3", store).orElseThrow();
         assertThat(viaVersions.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.JAR);
         assertThat(viaVersions.path()).isEqualTo(engineJar.toString());
 
-        // (a) JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
+        // JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
         EngineClient.EngineArtifact viaEnv =
-                EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", client.toString(), "1.2.3", store);
+                EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store).orElseThrow();
         assertThat(viaEnv.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.EXE);
         assertThat(viaEnv.path()).isEqualTo("/opt/jk/jk-engine");
 
         // a blank override is ignored, not obeyed
-        assertThat(EngineClient.resolveEngineArtifact("  ", client.toString(), "1.2.3", store)
-                        .path())
+        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", store).orElseThrow().path())
                 .isEqualTo(viaVersions.path());
     }
 

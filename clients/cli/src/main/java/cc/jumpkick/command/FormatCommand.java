@@ -55,17 +55,6 @@ public final class FormatCommand implements CliCommand {
     /** A format run's summary — the same fields whichever transport ran the pipeline. */
     private record Outcome(PipelineResult result, int changed, int clean, int errors, int total, int workerExit) {}
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk format} invocation always
-     * engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         long startMs = System.currentTimeMillis();
@@ -254,7 +243,7 @@ public final class FormatCommand implements CliCommand {
 
     /**
      * Run the shared {@code FormatPipelines} pipeline — engine-hosted normally, in-process under {@link
-     * #engineDisabledForTests()} — driving the same {@code observer} either way. {@code listener}
+     * Engine-hosted format — driving the same {@code observer}. {@code listener}
      * receives the standard pipeline events (only worker passthrough chatter is rendered from it).
      */
     private static Outcome runFormatPipeline(
@@ -268,20 +257,7 @@ public final class FormatCommand implements CliCommand {
             HostedEvents.FileObserver observer,
             PipelineListener listener)
             throws IOException {
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .formatPipeline(
-                            projectDir,
-                            cache,
-                            check,
-                            styles.java(),
-                            styles.kotlin(),
-                            optimizeImports,
-                            rewriteConfig,
-                            observer,
-                            listener);
-            return new Outcome(o.result(), o.changed(), o.clean(), o.errors(), o.total(), o.workerExit());
-        }
+
         var session = cc.jumpkick.config.SessionContext.current();
         var outcome = cc.jumpkick.cli.engine.EngineClient.runFormat(
                 cc.jumpkick.engine.EnginePaths.current(),

@@ -469,11 +469,6 @@ public final class CacheCommand extends GroupCommand {
                             .hide());
         }
 
-        private static boolean engineDisabledForTests() {
-            return Boolean.getBoolean("jk.test.noEngine")
-                    || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-        }
-
         @Override
         public int run(Invocation in) throws IOException {
             GlobalOptions global = GlobalOptions.from(in);
@@ -505,9 +500,6 @@ public final class CacheCommand extends GroupCommand {
 
             PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
-            if (engineDisabledForTests()) {
-                return cc.jumpkick.cli.engine.InProcessEngine.require().clearInProcess(root, projectDir, dryRun, mode);
-            }
             // Counts settle from the terminal pipeline-finish before the console listener renders.
             var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
             ConsoleSpec spec = clearSpec(
@@ -597,11 +589,6 @@ public final class CacheCommand extends GroupCommand {
                     Opt.flag("Internal: opportunistic prune.", "--background").hide());
         }
 
-        private static boolean engineDisabledForTests() {
-            return Boolean.getBoolean("jk.test.noEngine")
-                    || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-        }
-
         @Override
         public int run(Invocation in) throws IOException {
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
@@ -618,19 +605,7 @@ public final class CacheCommand extends GroupCommand {
                 return 0;
             }
 
-            if (!background && !engineDisabledForTests()) {
-                return runHosted(root, cacheDir == null, olderThanDays, dryRun, sweep, maxSize, global);
-            }
-
-            // In-process prune: the test-only bypass and the legacy `--background` detached child.
-            // On the slim client binary there is no in-process engine at all — delegate a stray
-            // `--background` to the resident engine instead (same idle-boundary semantics).
-            var inProcess = cc.jumpkick.cli.engine.InProcessEngine.find().orElse(null);
-            if (inProcess == null) {
-                return runHosted(root, cacheDir == null, olderThanDays, dryRun, sweep, maxSize, global);
-            }
-            return inProcess.pruneInProcess(
-                    root, cacheDir == null, olderThanDays, dryRun, sweep, maxSize, background, global);
+            return runHosted(root, cacheDir == null, olderThanDays, dryRun, sweep, maxSize, global);
         }
 
         /** The engine-hosted foreground path: send the request, explain any wait, render the stream. */
@@ -760,9 +735,7 @@ public final class CacheCommand extends GroupCommand {
                     r -> "Failed to purge cache.",
                     true);
             PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-            if (engineDisabledForTests()) {
-                return cc.jumpkick.cli.engine.InProcessEngine.require().purgeInProcess(root, mode, spec);
-            }
+
             cc.jumpkick.run.PipelineResult pipelineResult;
             try {
                 pipelineResult = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
@@ -777,11 +750,6 @@ public final class CacheCommand extends GroupCommand {
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             return pipelineResult.success() ? 0 : 1;
-        }
-
-        private static boolean engineDisabledForTests() {
-            return Boolean.getBoolean("jk.test.noEngine")
-                    || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
         }
 
         /** Stern, default-to-no confirmation before wiping the whole cache. */

@@ -9,7 +9,8 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1018](ticket-1018-self-host-phase2.md) — Self-host phase 2: plugins on workspace + installDist path
+1. [ticket-1020](ticket-1020-eliminate-cli-engine.md) — Eliminate `:cli-engine`; strict client↔server wire separation
+2. [ticket-1018](ticket-1018-self-host-phase2.md) — Self-host phase 2: plugins on workspace + installDist path
 2. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE engine client facade (sync/build events)
 2. [ticket-1010](ticket-1010-private-plugins.md) — Private plugin jars (path/coord + sha256 pin)
 3. [ticket-1007](ticket-1007-bootstrap-jk-on-jk.md) — CI/bootstrap builds jk with jk (phase 1 workspace + CI)

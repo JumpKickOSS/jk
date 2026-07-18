@@ -90,16 +90,6 @@ public final class ToolInstallCommand implements CliCommand {
     URI repoUrl;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()} for the full rationale. A real {@code jk tool install}
-     * hosts its resolve+fetch on the engine; the launcher write always runs here.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.coord = in.positionals().isEmpty() ? "." : in.positionals().get(0);
@@ -211,36 +201,19 @@ public final class ToolInstallCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
         ToolEnv env;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .toolResolvePipeline(
-                            cc.jumpkick.model.ToolCoordSpec.parse(resolved.coordSpec()),
-                            with.stream()
-                                    .map(cc.jumpkick.model.ToolCoordSpec::parse)
-                                    .toList(),
-                            bin,
-                            mainClass,
-                            repoUrl,
-                            cacheDir,
-                            resolved.coordSpec(),
-                            mode);
-            if (o.env() == null) return 1;
-            env = o.env();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
-                                resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                        steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, mode));
-            } catch (IOException e) {
-                CliOutput.err("jk tool install: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
-            env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
+                cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                            resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
+                    steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, mode));
+        } catch (IOException e) {
+            CliOutput.err("jk tool install: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
+        env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
 
         // The "make install" half stays client-side: the launcher into the user-owned bin dir.
         Path javaHome = JavaHomes.runningJavaHome();
@@ -341,21 +314,17 @@ public final class ToolInstallCommand implements CliCommand {
         PipelineConsole.Mode consoleMode = PipelineConsole.modeFor(global);
 
         cc.jumpkick.cli.engine.EngineClient.ScriptPrepareOutcome prep;
-        if (engineDisabledForTests()) {
-            prep = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .scriptPrepare(mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with, consoleMode);
-        } else {
-            try {
-                prep = cc.jumpkick.cli.engine.EngineClient.runScriptPrepare(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ScriptPrepareRequest(
-                                mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
-                        steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, consoleMode));
-            } catch (IOException e) {
-                CliOutput.err("jk tool install: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
+                try {
+            prep = cc.jumpkick.cli.engine.EngineClient.runScriptPrepare(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ScriptPrepareRequest(
+                            mode, file.toAbsolutePath(), cacheDir, stateDir, repoUrl, false, with),
+                    steps -> PipelineConsole.chooseConsoleListener("tool-install", steps, consoleMode));
+        } catch (IOException e) {
+            CliOutput.err("jk tool install: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+
         if (!prep.result().success() || (prep.mainClass() == null && !"kts".equals(mode))) return 1;
 
         // Snapshot into the env dir so the launcher survives the source moving/vanishing.

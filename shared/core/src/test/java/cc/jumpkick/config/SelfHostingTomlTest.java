@@ -94,7 +94,6 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "server/engine",
                         "clients/cli",
-                        "clients/cli-engine",
                         "plugins/test-runner",
                         "plugins/java-compiler");
     }
@@ -139,7 +138,7 @@ class SelfHostingTomlTest {
         // to apply WorkspaceMerge.
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
-        // The slim client (Stage 5): the wire contract, never the engine itself.
+        // The slim client (Stage 5 / ticket-1020): the wire contract, never the engine itself.
         assertThat(mainModules).contains("cc.jumpkick:jk-core", "cc.jumpkick:jk-engine-api");
         assertThat(mainModules)
                 .doesNotContain(
@@ -148,12 +147,13 @@ class SelfHostingTomlTest {
                         "cc.jumpkick:jk-resolver",
                         "cc.jumpkick:jk-toolchain");
 
-        // The engine application is the one module that links both halves.
-        JkBuild cliEngine = JkBuildParser.parse(REPO.resolve("clients/cli-engine/jk.toml"));
-        List<String> cliEngineMain = cliEngine.dependencies().of(Scope.MAIN).stream()
+        // Engine module hosts EngineMain / shadow jar — never links :cli.
+        JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
+        List<String> engineMain = engine.dependencies().of(Scope.MAIN).stream()
                 .map(d -> d.module())
                 .toList();
-        assertThat(cliEngineMain).contains("cc.jumpkick:jk-cli", "cc.jumpkick:jk-engine");
+        assertThat(engineMain).doesNotContain("cc.jumpkick:jk-cli");
+        assertThat(engine.mainClass()).isEqualTo("cc.jumpkick.engine.EngineMain");
 
         // Confirm the workspace-root merge still rewrites/dedupes the
         // module coords cleanly when invoked from the root.

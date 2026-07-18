@@ -33,8 +33,8 @@ rootProject.name = "jk"
 // Gradle happily lets several daemons execute builds in this checkout at the
 // same time — nothing locks task *output* directories across processes. That
 // happens routinely here (multiple terminal/agent sessions building the same
-// tree), and the usual casualty is :cli-engine:test, the longest task: a
-// second build's test task wipes cli-engine/build/test-results/test/binary/
+// tree), and the usual casualty is a long test task (e.g. :cli:test): a
+// second build's test task wipes that module's build/test-results/test/binary/
 // while the first is still writing it, and the first build dies at
 // result-collection time with an opaque `java.io.EOFException` (or
 // NoSuchFileException on in-progress-results-generic.bin) and zero failing
@@ -101,7 +101,6 @@ include(
     ":engine",          // the Pipeline/Step scheduler + build pipeline
     // clients/
     ":cli",             // the slim native GraalVM client
-    ":cli-engine",      // engine JVM entrypoint + JVM dist + in-process seam + CLI test suite
     ":web",             // the web dashboard SPA (resources-only; bundled into the engine jar)
     // plugins/ — first-party, shipped with jk (one module per plugin)
     ":test-runner",
@@ -134,7 +133,6 @@ project(":engine").projectDir    = file("server/engine")
 
 // clients/
 project(":cli").projectDir        = file("clients/cli")
-project(":cli-engine").projectDir = file("clients/cli-engine")
 project(":web").projectDir        = file("clients/web")
 
 // Plugin modules live under plugins/

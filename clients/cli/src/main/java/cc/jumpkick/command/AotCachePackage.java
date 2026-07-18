@@ -42,10 +42,7 @@ final class AotCachePackage {
         // Thin client: the engine computes the layout inputs (boot-ness, tier, main jar,
         // coordinate-named libs, main class); this process does the file assembly + the
         // training fork it owns.
-        cc.jumpkick.engine.protocol.ExecPlan plan = Boolean.getBoolean("jk.test.noEngine")
-                ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                        .execPlan(projectDir, cacheDir, "aot-cache", null, null)
-                : cc.jumpkick.cli.engine.EngineClient.execPlan(
+        cc.jumpkick.engine.protocol.ExecPlan plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
                         cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir, "aot-cache", null, null);
         if (plan.error() != null) {
             CliOutput.err("jk build --aot-cache: " + plan.error());

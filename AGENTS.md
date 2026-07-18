@@ -31,7 +31,7 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 | Language | Java 25 |
 | Build of jk itself | Gradle (multi-module Kotlin DSL) |
 | Native CLI | GraalVM native-image (`clients/cli`) |
-| Engine | JVM fat jar (`clients/cli-engine` + `server/*`) — never native |
+| Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
 | Config / lock | TOML (`jk.toml`), canonical `jk.lock` |
 | Resolve | PubGrub (`server/resolver`) |
 | Cache | Content-addressed store + action cache |
@@ -92,7 +92,7 @@ Board lives under [`docs/kanban/`](docs/kanban/). **Only the kanban files on `ma
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - Prefer full `./gradlew test` before merging to `main`.
-   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli-engine:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** moving the ticket to `done` / merging to `main`.
+   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** moving the ticket to `done` / merging to `main`.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
 2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).

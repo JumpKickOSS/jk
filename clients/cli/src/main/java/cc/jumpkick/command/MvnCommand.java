@@ -60,17 +60,6 @@ public final class MvnCommand implements CliCommand {
     boolean noDiscover;
     List<String> args = new ArrayList<>();
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; real {@code jk mvn}/{@code gradle} provisioning
-     * always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.directory = in.value("directory").map(Path::of).orElse(null);
@@ -109,18 +98,14 @@ public final class MvnCommand implements CliCommand {
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
-        if (engineDisabledForTests()) {
-            p = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .provision(cache, projectDir, toolsRoot, noDiscover, isGradle);
-        } else {
-            try {
-                p = cc.jumpkick.cli.engine.EngineClient.provision(
-                        cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
-            } catch (IOException e) {
-                CliOutput.err("jk " + tool + ": " + e.getMessage());
-                return null;
-            }
+                try {
+            p = cc.jumpkick.cli.engine.EngineClient.provision(
+                    cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
+        } catch (IOException e) {
+            CliOutput.err("jk " + tool + ": " + e.getMessage());
+            return null;
         }
+
         if (p.error() != null) CliOutput.err("jk " + tool + ": " + p.error());
         if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "

@@ -13,7 +13,6 @@ import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
-import cc.jumpkick.task.CachePruneScheduler;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -1339,20 +1338,24 @@ public final class EngineClient {
 
     /** Resolve everything the spawn/mode decision needs, self-healing a missing/skewed engine jar. */
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
-        String jkExe = CachePruneScheduler.resolveJkExe()
-                .orElseThrow(() -> new IOException("could not resolve the running jk binary's path"));
-        EngineArtifact engine = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), jkExe, clientVersion);
-        // Self-heal a missing/version-skewed engine jar before falling back: the released native
-        // client can't host the engine itself, but it can download the matching jar.
-        if (engine.kind() == EngineArtifact.Kind.FALLBACK
+        // Engine spawn is java -cp jk-engine.jar EngineMain (or JK_ENGINE_EXE). The client binary
+        // path is only needed for cache-prune re-invocation elsewhere — not for the daemon spawn.
+        Optional<EngineArtifact> resolved =
+                resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
+        // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
+        if (resolved.isEmpty()
                 && EngineJarFetcher.applicable(
                         clientVersion,
                         isNativeImage(),
                         cc.jumpkick.config.SessionContext.current().offline())) {
             System.err.println("jk: downloading the build engine (jk-engine-" + clientVersion + ".jar) ...");
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
-            engine = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), jkExe, clientVersion);
+            resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
+        EngineArtifact engine = resolved.orElseThrow(() -> new IOException(
+                "no build engine for jk " + clientVersion
+                        + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
+                        + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null, false, null, false);
         }
@@ -1480,43 +1483,41 @@ public final class EngineClient {
 
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
-     * main()} IS the engine loop (no {@code --engine-server} flag). {@code JAR}: {@code path} is
-     * the engine's fat jar ({@code ~/.jk/versions/<v>/lib/jk-engine.jar}), launched as {@code
-     * <managed-jdk>/bin/java … -cp <path> cc.jumpkick.cli.EngineMain} — the engine is a plain JVM
-     * app, never a native image. {@code FALLBACK}: {@code path} is the client binary itself,
-     * re-invoked with the flag. {@code how} is the one-word provenance for the log header.
+     * main()} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
+     * ~/.jk/versions/<v>/lib/jk-engine.jar}), launched as {@code <managed-jdk>/bin/java … -cp <path>
+     * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
+     * no client-binary FALLBACK (ticket-1020): the slim client never hosts the engine.
      */
     record EngineArtifact(Kind kind, String path, String how) {
         enum Kind {
             EXE,
-            JAR,
-            FALLBACK
+            JAR
         }
     }
 
     /**
      * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) {@code
-     * ~/.jk/versions/<v>/lib/jk-engine.jar} on the jk-managed JDK; (c) the client binary with {@code
-     * --engine-server} (JVM dist / dev).
+     * ~/.jk/versions/<v>/lib/jk-engine.jar}. Empty when neither is available (caller may download /
+     * materialize, then retry).
      */
-    static EngineArtifact resolveEngineArtifact(String envOverride, String jkExe, String version) {
-        return resolveEngineArtifact(envOverride, jkExe, version, cc.jumpkick.cache.VersionStore.current());
+    static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
+        return resolveEngineArtifact(envOverride, version, cc.jumpkick.cache.VersionStore.current());
     }
 
     /** Root-injected variant — the testable seam. */
-    static EngineArtifact resolveEngineArtifact(
-            String envOverride, String jkExe, String version, cc.jumpkick.cache.VersionStore store) {
+    static Optional<EngineArtifact> resolveEngineArtifact(
+            String envOverride, String version, cc.jumpkick.cache.VersionStore store) {
         if (envOverride != null && !envOverride.isBlank()) {
-            return new EngineArtifact(EngineArtifact.Kind.EXE, envOverride, "JK_ENGINE_EXE");
+            return Optional.of(new EngineArtifact(EngineArtifact.Kind.EXE, envOverride, "JK_ENGINE_EXE"));
         }
         var materialized = store.resolve(version);
         if (materialized.isPresent()) {
             cc.jumpkick.task.AccessLedger.atDefaultPath()
                     .touch(cc.jumpkick.cache.VersionStore.ledgerKey(version)); // version-GC input
-            return new EngineArtifact(
-                    EngineArtifact.Kind.JAR, materialized.get().engineJar().toString(), "versions");
+            return Optional.of(new EngineArtifact(
+                    EngineArtifact.Kind.JAR, materialized.get().engineJar().toString(), "versions"));
         }
-        return new EngineArtifact(EngineArtifact.Kind.FALLBACK, jkExe, "fallback");
+        return Optional.empty();
     }
 
     /**
@@ -1653,10 +1654,19 @@ public final class EngineClient {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
+                // Forward plugin-jar location overrides (e.g. -Djk.test.runner.jar=… from Gradle
+                // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
+                for (var e : System.getProperties().entrySet()) {
+                    String key = String.valueOf(e.getKey());
+                    if (!key.startsWith("jk.") || !key.endsWith(".jar")) continue;
+                    String val = String.valueOf(e.getValue());
+                    if (val == null || val.isBlank()) continue;
+                    command.add("-D" + key + "=" + val);
+                }
                 command.add("--enable-native-access=ALL-UNNAMED");
                 command.add("-cp");
                 command.add(engine.path());
-                command.add("cc.jumpkick.cli.EngineMain");
+                command.add("cc.jumpkick.engine.EngineMain");
             }
             case EXE -> {
                 // A dedicated engine executable (JK_ENGINE_EXE): its main() IS the engine loop, no
@@ -1664,18 +1674,6 @@ public final class EngineClient {
                 // doesn't consume them degrades to an unsized engine, never a dead one.
                 command.add(engine.path());
                 if (config.heapCapped()) {
-                    command.add("-Xms" + config.minHeapMb() + "m");
-                    command.add("-Xmx" + config.maxHeapMb() + "m");
-                }
-            }
-            case FALLBACK -> {
-                // This same binary re-invoked with --engine-server. On the JVM dist the flag finds
-                // EngineMain through the InProcessEngine seam; on the slim native client (which
-                // links no engine code) the child reports plainly that the engine jar is missing
-                // and exits — the ensure-running timeout then surfaces that log line.
-                command.add(engine.path());
-                command.add("--engine-server");
-                if (config.heapCapped() && isNativeImage()) {
                     command.add("-Xms" + config.minHeapMb() + "m");
                     command.add("-Xmx" + config.maxHeapMb() + "m");
                 }
@@ -1689,14 +1687,6 @@ public final class EngineClient {
         // dies at JVM init with "Could not determine current working directory". The state dir is
         // stable for the engine's whole life and is never removed by cache maintenance.
         pb.directory(paths.dir().toFile());
-        // On the JVM dist the sizing knob is the start script's JVM-options env var — appended
-        // last so it wins over any blanket JK_OPTS the user exported. SerialGC for the same
-        // reasons as the JAR spawn line.
-        if (config.heapCapped() && engine.kind() == EngineArtifact.Kind.FALLBACK && !isNativeImage()) {
-            String opts = System.getenv("JK_OPTS");
-            String sizing = "-XX:+UseSerialGC -Xms" + config.minHeapMb() + "m -Xmx" + config.maxHeapMb() + "m";
-            pb.environment().put("JK_OPTS", (opts == null || opts.isBlank() ? "" : opts + " ") + sizing);
-        }
         // Merge stderr into stdout inside the child (one fd, no interleaving risk from two
         // independently-opened streams onto the same file), then route that to the log — a fresh
         // file every start, per docs/architecture.md. The spawner writes the log's first line itself

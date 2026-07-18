@@ -203,10 +203,7 @@ public final class DevCommand implements CliCommand {
     private int deploy(Path projectDir, Path cache, String command, List<String> appArgs) {
         cc.jumpkick.engine.protocol.PluginCommandReport report;
         try {
-            report = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                            .pluginCommand(projectDir, cache, command, appArgs)
-                    : cc.jumpkick.cli.engine.EngineClient.pluginCommand(
+            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
                             cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
             CliOutput.err("jk dev: " + e.getMessage());
@@ -233,30 +230,25 @@ public final class DevCommand implements CliCommand {
                 "Dev", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
-        if (engineDisabledForTests()) {
-            result = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .runBuildPipeline(projectDir, cache, jdksDir, true, global.verbose, mode, spec, target)
-                    .result();
-        } else {
-            var session = cc.jumpkick.config.SessionContext.current();
-            result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
-                            projectDir,
-                            cache,
-                            jdksDir,
-                            1,
-                            null,
-                            true,
-                            global.verbose,
-                            session.offline(),
-                            session.force(),
-                            session.variant(),
-                            session.clientEnv()),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target),
-                    new cc.jumpkick.run.TestSummary[1],
-                    new String[1]);
-        }
+                var session = cc.jumpkick.config.SessionContext.current();
+        result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
+                cc.jumpkick.engine.EnginePaths.current(),
+                new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                        projectDir,
+                        cache,
+                        jdksDir,
+                        1,
+                        null,
+                        true,
+                        global.verbose,
+                        session.offline(),
+                        session.force(),
+                        session.variant(),
+                        session.clientEnv()),
+                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target),
+                new cc.jumpkick.run.TestSummary[1],
+                new String[1]);
+
         return result.success();
     }
 
@@ -266,32 +258,21 @@ public final class DevCommand implements CliCommand {
                 "Dev", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
-        if (engineDisabledForTests()) {
-            result = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .compilePipeline(projectDir, cache, null, global.verbose, mode, spec, target);
-        } else {
-            var session = cc.jumpkick.config.SessionContext.current();
-            result = cc.jumpkick.cli.engine.EngineClient.runCompile(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
-                            projectDir, cache, null, session.offline(), session.force(), global.verbose),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
-        }
-        return result.success();
-    }
+                var session = cc.jumpkick.config.SessionContext.current();
+        result = cc.jumpkick.cli.engine.EngineClient.runCompile(
+                cc.jumpkick.engine.EnginePaths.current(),
+                new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
+                        projectDir, cache, null, session.offline(), session.force(), global.verbose),
+                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
 
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
+        return result.success();
     }
 
     // --- app process --------------------------------------------------------
 
-    /** Fetch the dev exec plan (engine-hosted; in-process twin under jk.test.noEngine). */
+    /** Fetch the dev exec plan (engine-hosted;test.noEngine). */
     private cc.jumpkick.engine.protocol.ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
-        return engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require().execPlan(projectDir, cache, "dev", null, null)
-                : cc.jumpkick.cli.engine.EngineClient.execPlan(
+        return cc.jumpkick.cli.engine.EngineClient.execPlan(
                         cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, "dev", null, null);
     }
 

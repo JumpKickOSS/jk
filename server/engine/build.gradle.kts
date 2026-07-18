@@ -3,10 +3,16 @@
 
 plugins {
     id("jk.java-conventions")
+    application
+    id("com.gradleup.shadow") version "9.2.2"
 }
 
-description = "jk build engine: the Pipeline/Step scheduler and the build pipeline, " +
-        "run in-process by the CLI. Absorbs the former :engine and :runtime modules."
+// Must match cc.jumpkick.model.JkVersion.VERSION: the client only spawns an engine jar whose
+// filename version equals its own baked-in version.
+version = "0.10.0-SNAPSHOT"
+
+description = "jk build engine: EngineMain, Pipeline/Step scheduler, and build pipeline. " +
+        "Server-only — never links the CLI. Ships as jk-engine-<version>.jar."
 
 dependencies {
     // The client<->engine wire contract (protocol codec, EnginePaths, build DTOs) — api so a
@@ -28,8 +34,28 @@ dependencies {
 
     // JGit is the in-process fallback git backend (used when no `git` command is found) and also
     // builds the git fixtures in tests. The native CLI (:cli) does not depend on :engine, so this
-    // never enters a native image — only the :cli-engine JVM daemon jar.
+    // never enters a native image — only the engine fat jar.
     implementation(libs.jgit)
+}
+
+application {
+    mainClass.set("cc.jumpkick.engine.EngineMain")
+    applicationName = "jk-engine"
+    // PosixDetach setsid(2) FFM; heap/GC for a long-lived engine are set on the spawn line by the
+    // client (EngineClient) for the resident daemon — installDist/run defaults stay modest.
+    applicationDefaultJvmArgs =
+            listOf("-XX:+UseSerialGC", "-Xms32m", "-Xmx256m", "--enable-native-access=ALL-UNNAMED")
+}
+
+// The engine artifact of the native dist (docs/architecture.md "Two artifacts"): this module's
+// runtime classpath rolled up into a single fat jar, jk-engine-<version>.jar. Never a native image.
+tasks.shadowJar {
+    archiveBaseName.set("jk-engine")
+    archiveClassifier.set("")
+    manifest {
+        attributes("Main-Class" to "cc.jumpkick.engine.EngineMain")
+    }
+    mergeServiceFiles()
 }
 
 // ---------------------------------------------------------------------------

@@ -66,17 +66,6 @@ public final class UpdateCommand implements CliCommand {
                         .hide());
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk update} invocation always
-     * engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws Exception {
         this.features = in.values("features");
@@ -99,11 +88,6 @@ public final class UpdateCommand implements CliCommand {
             gitTarget = "*".equals(target) ? null : target;
         }
 
-        if (engineDisabledForTests()) {
-            return cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .updateInProcess(
-                            dir, cache, in.has("git"), gitTarget, features, noDefaultFeatures, repoUrl, global);
-        }
         return in.has("git") ? runHostedGitOnly(dir, cache, gitTarget) : runHosted(dir, cache);
     }
 

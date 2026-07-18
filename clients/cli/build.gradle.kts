@@ -2,18 +2,18 @@
 
 plugins {
     id("jk.java-conventions")
+    application
     alias(libs.plugins.graalvm.native)
 }
 
-description = "jk command-line entrypoint"
+description = "jk command-line entrypoint (slim wire-only client)"
 
 dependencies {
     // The slim client's whole kernel surface (Stage 5): the jk-api model, the build-file/lockfile
     // readers, the thin client I/O slice (http, forge auth, credential files, CAS read/link), the
     // client-resident JDK/toolchain flow, and the engine wire contract. NO :engine, :io, :resolver,
-    // or :toolchain — the compiler now enforces that everything heavy reaches the engine over the
-    // wire (EngineClient) or through the ServiceLoader-discovered in-process seam (:cli-engine,
-    // test/JVM-dist classpaths only).
+    // or :toolchain — the compiler enforces that everything heavy reaches the engine over the wire
+    // (EngineClient). ticket-1020: no in-process engine seam on the production classpath.
     implementation(project(":jk-api"))
     implementation(project(":core"))
     implementation(project(":client-io"))
@@ -33,8 +33,97 @@ dependencies {
     // on a JVM every use is gated behind the imagecode property so the class never loads.
     compileOnly(libs.graalvm.nativeimage)
 
+    // Test-only: EngineClientTest hosts an in-process EngineServer for protocol coverage
+    // (not production dual-path). Command tests spawn the real shadow jar over the wire.
+    testImplementation(project(":engine"))
+    // GpgTestFixture (publish command tests).
+    testImplementation(libs.bouncycastle.bcpg)
 }
 
+// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
+// / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
+application {
+    mainClass.set("cc.jumpkick.cli.Jk")
+    applicationName = "jk"
+    applicationDefaultJvmArgs =
+            listOf("-XX:+UseSerialGC", "-Xms24m", "-Xmx128m", "--enable-native-access=ALL-UNNAMED")
+}
+
+// Worker jars for integration tests that fork plugin JVMs (same wiring former :cli-engine used).
+val kotlinWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val testRunnerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val auditorWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val publisherWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val imageBuilderWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val compatBridgeWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val springBootWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val androidWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies {
+    kotlinWorkerJar(project(":kotlin-compiler"))
+    testRunnerJar(project(":test-runner"))
+    auditorWorkerJar(project(":auditor"))
+    publisherWorkerJar(project(":publisher"))
+    imageBuilderWorkerJar(project(":image-builder"))
+    compatBridgeWorkerJar(project(":compat-bridge"))
+    springBootWorkerJar(project(":spring-boot"))
+    androidWorkerJar(project(":android"))
+}
+
+tasks.withType<Test>().configureEach {
+    // Engine spawn (PosixDetach setsid) + MemoryProbe FFM.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    dependsOn(
+            ":engine:shadowJar",
+            kotlinWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
+            imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar)
+    // Deterministic TUI ANSI assertions (CI runners otherwise force TERM=dumb / NO_COLOR).
+    environment("TERM", "xterm-256color")
+    environment("CI", "false")
+    environment("NO_COLOR", "")
+    // UDS sun_path is ~108 bytes. Worktree paths like
+    // …/jk-worktrees/ticket-1020/clients/cli/build/test-jk-home/state/engine/<key>.gen1.sock
+    // overflow; pin a short state dir under /tmp (JK_HOME still isolates versions/cache).
+    environment("JK_STATE_DIR", "/tmp/jk-cli-test-state")
+    // Shared dep cache across tests (Kotlin compiler, JUnit, …).
+    systemProperty(
+            "jk.test.cache.dir",
+            layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
+    // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
+    // Resident engine may still hold open CAS/cache files under a test's @TempDir when the
+    // method ends; don't fail the suite on TempDirDeletionStrategy (ticket-1021 if we add
+    // suite-scoped engine shutdown).
+    systemProperty("junit.jupiter.tempdir.cleanup.mode.default", "never")
+    doFirst {
+        val engineJar = project(":engine").tasks.named("shadowJar", org.gradle.jvm.tasks.Jar::class.java)
+                .get().archiveFile.get().asFile
+        systemProperty("jk.engine.jar", engineJar.absolutePath)
+        systemProperty("jk.kotlin.plugin.jar", kotlinWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.test.runner.jar", testRunnerJar.singleFile.absolutePath)
+        systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.image-builder.plugin.jar", imageBuilderWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.compat-bridge.plugin.jar", compatBridgeWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
+    }
+}
 
 graalvmNative {
     binaries.named("main") {
@@ -44,9 +133,7 @@ graalvmNative {
         // but the 0.10.4 / GraalVM 25 combination defaults to shared library
         // on this host. Force the executable mode explicitly.
         sharedLibrary.set(false)
-        // No application plugin here anymore (the JVM dist ships from :cli-engine, which links the
-        // engine) — wire the image classpath explicitly: the SLIM classpath is the whole point of
-        // this module (Stage 5), and the compiler + this wiring keep it honest.
+        // Slim classpath only (Stage 5 / ticket-1020) — never link :engine.
         classpath(tasks.named("jar"), configurations.runtimeClasspath)
 
         // Size-first build args. The jk binary's primary UX budget is its download +
@@ -57,8 +144,8 @@ graalvmNative {
         // -Os       Optimize for size. (History: was -O3 + -march=x86-64-v3, tuned when
         //           the CLI process itself did the CAS/ClasspathFingerprint SHA-256
         //           work — the SIMD -march bought ≈1.5x on no-op builds then. Since the
-        //           Stage 5 split that hashing lives in the jk-engine image, which
-        //           re-tunes for speed independently — see cli-engine/build.gradle.kts.)
+        //           Stage 5 split that hashing lives in the jk-engine jar, which
+        //           re-tunes for speed independently — see :engine shadowJar.)
         // --gc=serial
         //           Generational serial GC. Small/fast for short verbs and a ≤256 MiB
         //           engine heap alike, and — unlike epsilon — it actually reclaims, so
@@ -85,8 +172,8 @@ graalvmNative {
         // Silence the FFM "restricted method" runtime warning. Without this,
         // every wizard invocation prints a 4-line WARNING block before the UI.
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
-        // (No engine code in this image since Stage 5: the engine role — and its setsid(2)
-        // downcall — lives in the JVM-hosted engine, shipped as jars by :cli-engine.)
+        // (No engine code in this image: the engine role — and its setsid(2)
+        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
         // Push heavy deps to lazy init. Build-time <clinit> is faster at
         // runtime but blows up .svm_heap with cached objects we may never
         // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,

@@ -22,7 +22,6 @@ modules = [
   "shared/wire",
   "server/engine",
   "clients/cli",
-  "clients/cli-engine",
   "plugins/test-runner",
   "plugins/java-compiler",
 ]

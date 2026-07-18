@@ -160,26 +160,20 @@ public final class ToolRunCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
         Path checkout;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .gitFetchPipeline(expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false, mode);
-            if (!o.result().success() || o.checkout() == null) return 1;
-            checkout = o.checkout();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
-                                expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
-                        steps -> PipelineConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
-            } catch (IOException e) {
-                CliOutput.err("jk tool run: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            if (!outcome.result().success() || outcome.checkout() == null) return 1;
-            checkout = outcome.checkout();
+                cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
+                            expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
+                    steps -> PipelineConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
+        } catch (IOException e) {
+            CliOutput.err("jk tool run: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!outcome.result().success() || outcome.checkout() == null) return 1;
+        checkout = outcome.checkout();
+
         if (subdir != null) {
             Path sub = checkout.resolve(subdir).normalize();
             if (!sub.startsWith(checkout) || !Files.isDirectory(sub)) {
@@ -242,17 +236,6 @@ public final class ToolRunCommand implements CliCommand {
                         r.dependencies(),
                         r.javaOptions())
                 .run(fetched, merged);
-    }
-
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()} for the full rationale. A real {@code jk tool run} of
-     * a coordinate hosts its resolve+fetch on the engine; the exec always runs here (it inherits
-     * this terminal's stdio).
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     @Override
@@ -332,37 +315,20 @@ public final class ToolRunCommand implements CliCommand {
         Files.createDirectories(cacheDir);
 
         ToolEnv env;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .toolResolvePipeline(
-                            cc.jumpkick.model.ToolCoordSpec.parse(resolved.coordSpec()),
-                            with.stream()
-                                    .map(cc.jumpkick.model.ToolCoordSpec::parse)
-                                    .toList(),
-                            bin,
-                            mainClass,
-                            repoUrl,
-                            cacheDir,
-                            resolved.coordSpec(),
-                            PipelineConsole.modeFor(global));
-            if (o.env() == null) return 1;
-            env = o.env();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
-                                resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                        steps -> PipelineConsole.chooseConsoleListener(
-                                "tool-run", steps, PipelineConsole.modeFor(global)));
-            } catch (IOException e) {
-                CliOutput.err("jk tool run: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
-            env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
+                cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                            resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
+                    steps -> PipelineConsole.chooseConsoleListener(
+                            "tool-run", steps, PipelineConsole.modeFor(global)));
+        } catch (IOException e) {
+            CliOutput.err("jk tool run: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;
+        env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
 
         // The exec deliberately stays client-side: the tool inherits this terminal's stdio.
         Path javaHome = JavaHomes.runningJavaHome();

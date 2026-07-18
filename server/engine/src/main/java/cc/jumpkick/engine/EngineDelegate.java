@@ -71,7 +71,7 @@ public final class EngineDelegate {
         cc.jumpkick.task.AccessLedger.atDefaultPath().touch(VersionStore.ledgerKey(version)); // GC input
         Path java = cc.jumpkick.jdk.JavaHomes.runningJavaHome().resolve("bin").resolve("java");
         List<String> cmd =
-                List.of(java.toString(), "-cp", m.engineJar().toString(), "cc.jumpkick.cli.EngineMain", "--job");
+                List.of(java.toString(), "-cp", m.engineJar().toString(), "cc.jumpkick.engine.EngineMain", "--job");
         log.accept("jk engine: delegating to pinned jk " + version + " (job child)");
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectError(

@@ -183,17 +183,12 @@ public final class CommandDispatch {
         if (!java.nio.file.Files.isRegularFile(dir.resolve("jk.toml"))) return null;
         try {
             cc.jumpkick.engine.protocol.PluginCommandReport report;
-            if (Boolean.getBoolean("jk.test.noEngine")
-                    || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"))) {
-                report = cc.jumpkick.cli.engine.InProcessEngine.require()
-                        .pluginCommand(dir, cc.jumpkick.util.JkDirs.cache(), command, args);
-            } else {
-                var paths = cc.jumpkick.engine.EnginePaths.current();
-                if (!cc.jumpkick.cli.engine.EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
-                    return null;
-                report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                        paths, dir, cc.jumpkick.util.JkDirs.cache(), command, args);
-            }
+                        var paths = cc.jumpkick.engine.EnginePaths.current();
+            if (!cc.jumpkick.cli.engine.EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
+                return null;
+            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
+                    paths, dir, cc.jumpkick.util.JkDirs.cache(), command, args);
+
             if (!report.found()) return null;
             if (report.error() != null) {
                 CliOutput.err("jk " + command + ": " + report.error());

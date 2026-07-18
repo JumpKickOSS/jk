@@ -18,6 +18,6 @@ val dist by tasks.registering(Sync::class) {
     group = "distribution"
     dependsOn(":cli:nativeCompile")
     from(project(":cli").layout.buildDirectory.dir("native/nativeCompile")) { include("jk", "jk.exe") }
-    from(project(":cli-engine").tasks.named("shadowJar")) { into("lib") }
+    from(project(":engine").tasks.named("shadowJar")) { into("lib") }
     into(layout.buildDirectory.dir("dist"))
 }

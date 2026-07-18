@@ -4,7 +4,6 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.InProcessEngine;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.engine.EnginePaths;
@@ -61,9 +60,7 @@ public final class DenyCommand implements CliCommand {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("check policy against lock");
-                    DenyReport report = engineDisabledForTests()
-                            ? InProcessEngine.require().denyCheck(projectDir)
-                            : EngineClient.denyCheck(EnginePaths.current(), projectDir);
+                    DenyReport report = EngineClient.denyCheck(EnginePaths.current(), projectDir);
                     if (report.error() != null) throw new IOException(report.error());
                     ctx.put(REPORT, report);
                     ctx.progress(1);
@@ -89,8 +86,4 @@ public final class DenyCommand implements CliCommand {
         return 1;
     }
 
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
-}

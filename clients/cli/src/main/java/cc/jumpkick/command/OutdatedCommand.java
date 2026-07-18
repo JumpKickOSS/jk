@@ -58,16 +58,6 @@ public final class OutdatedCommand implements CliCommand {
                         .hide());
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. A real {@code jk outdated} invocation always
-     * engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws Exception {
         this.showTip = in.isSet("show-tip");
@@ -85,14 +75,10 @@ public final class OutdatedCommand implements CliCommand {
         Files.createDirectories(cache);
 
         OutdatedReport report;
-        if (engineDisabledForTests()) {
-            report = cc.jumpkick.cli.engine.InProcessEngine.require().outdatedInProcess(dir, cache, repoUrl);
-        } else {
-            report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.OutdatedRequest(
-                            dir, cache, repoUrl, global.offline, global.force));
-        }
+                report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
+                cc.jumpkick.engine.EnginePaths.current(),
+                new cc.jumpkick.cli.engine.EngineClient.OutdatedRequest(
+                        dir, cache, repoUrl, global.offline, global.force));
 
         if (report.error() != null) {
             CliOutput.err("jk outdated: " + report.error());

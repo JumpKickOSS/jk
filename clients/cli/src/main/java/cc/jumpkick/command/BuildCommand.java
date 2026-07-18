@@ -123,12 +123,7 @@ public final class BuildCommand implements CliCommand {
 
         // Workspace root or module → full workspace build in topological order.
         cc.jumpkick.engine.protocol.ProjectInfo peek = projectInfoOrNull(startDir);
-        if (peek == null && engineDisabledForTests()) {
-            // In-process summary failed → surface the parse error like the old direct parse.
-            var raw = cc.jumpkick.cli.engine.InProcessEngine.require().projectInfo(startDir);
-            CliOutput.err("jk build: " + raw.error());
-            return Exit.CONFIG;
-        }
+
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
                 CliOutput.err("jk build: --aot-cache packages a single application project;"
@@ -170,19 +165,8 @@ public final class BuildCommand implements CliCommand {
         // Thin client: entryBuild never crosses the wire (EngineProtocol.buildRequest serializes
         // only entryDir + flags; the engine re-parses). The parsed model is needed ONLY by the
         // in-process test seam, so parse lazily on that branch alone.
-        JkBuild rootBuild = engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require().parseBuild(root.resolve("jk.toml"))
-                : null;
+        JkBuild rootBuild = null;
         return runGraphParallel(root, rootBuild);
-    }
-
-    /**
-     * Test-only in-process build bypass ({@code -Djk.test.noEngine} or TestRunner plugin class) —
-     * never a production path; avoids engine spawn/recursion under unit tests.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     private static final Object OUT_LOCK = new Object();
@@ -221,16 +205,13 @@ public final class BuildCommand implements CliCommand {
         // Optimize/start the engine before the first engine touch (the forecast) and before the Build
         // pipeline console, so a one-time AOT training shows the "Engine — optimizing…" wedge first and the
         // Build TUI then takes over (never interleaved). A running engine makes this a fast no-op.
-        if (!engineDisabledForTests()) cc.jumpkick.cli.engine.EnginePrewarm.ensure();
+        cc.jumpkick.cli.engine.EnginePrewarm.ensure();
 
         long buildStart = System.nanoTime();
         // Pre-flight forecast (engine-hosted; test bypass uses the in-process seam).
         cc.jumpkick.runtime.BuildForecast forecast;
         try {
-            forecast = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                            .forecast(entryDir, entryBuild, cache, buildOpts.skipTests)
-                    : cc.jumpkick.cli.engine.EngineClient.forecast(
+            forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                             cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
         } catch (java.io.IOException e) {
             CliOutput.err("jk build: " + e.getMessage());
@@ -443,9 +424,7 @@ public final class BuildCommand implements CliCommand {
                             }
                         }
                     };
-            result = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().buildWorkspace(request, headlessListener)
-                    : cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                             cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
         } catch (java.io.IOException e) {
             CliOutput.err("jk build: " + e.getMessage());
@@ -562,9 +541,7 @@ public final class BuildCommand implements CliCommand {
                     }
                 }
             };
-            result = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().buildWorkspace(request, liveListener)
-                    : cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+            result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                             cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
         } catch (java.io.IOException e) {
             // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName(),
@@ -645,7 +622,7 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * Build one (non-workspace) project directory. Engine-hosted forecast + streamed build; test
-     * bypass uses {@link cc.jumpkick.cli.engine.InProcessEngine}.
+     * is engine-hosted over the wire.
      */
     private int runForDir(Path dir) throws Exception {
         long startNanos = System.nanoTime(); // captured before the forecast so timing includes it
@@ -655,18 +632,7 @@ public final class BuildCommand implements CliCommand {
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        if (engineDisabledForTests()) {
-            return cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .buildProjectInProcess(
-                            dir,
-                            cache,
-                            jdksDir,
-                            workers != null ? workers : 1,
-                            profileName,
-                            buildOpts.skipTests,
-                            global,
-                            startNanos);
-        }
+
         try {
             dir = dir.toRealPath();
         } catch (java.io.IOException ignored) {
@@ -752,9 +718,7 @@ public final class BuildCommand implements CliCommand {
     /** Engine project summary, or null when unavailable / errored. */
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir) {
         try {
-            cc.jumpkick.engine.protocol.ProjectInfo info = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().projectInfo(dir)
-                    : cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            cc.jumpkick.engine.protocol.ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
             return info.error() != null ? null : info;
         } catch (Exception e) {
             return null;

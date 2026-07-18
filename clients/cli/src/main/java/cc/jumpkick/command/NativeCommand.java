@@ -4,7 +4,6 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.InProcessEngine;
 import cc.jumpkick.cli.run.CompositePipelineListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.EventLogListener;
@@ -75,16 +74,6 @@ public final class NativeCommand implements CliCommand {
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
     cc.jumpkick.cli.GraalResolver graal;
-
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. Real {@code jk native} goes through the engine.
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner) — see BuildCommand.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -163,52 +152,6 @@ public final class NativeCommand implements CliCommand {
     private int runWorkspaceNative(Path wsRoot, Path cache) throws Exception {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         long buildStart = System.nanoTime();
-
-        if (engineDisabledForTests()) {
-            // In-process seam: the JVM test dist links the parser; load the full workspace
-            // model exactly as before. The native client never reaches this branch.
-            Map<Path, JkBuild> modulesByDir;
-            try {
-                // Behind the reflective seam: a direct WorkspaceLoader call would keep tomlj
-                // statically reachable in the native image even though this branch never runs there.
-                modulesByDir = InProcessEngine.require().loadWorkspaceModules(wsRoot);
-            } catch (RuntimeException e) {
-                CliOutput.err("jk native: " + e.getMessage());
-                return Exit.CONFIG;
-            }
-            if (modulesByDir.isEmpty()) {
-                CliOutput.out("(workspace declares no modules)");
-                return 0;
-            }
-            List<Path> sorted = ModuleOrder.orderModules(modulesByDir);
-            Map<Path, Path> graalHomes = new java.util.HashMap<>();
-            for (Path moduleDir : sorted) {
-                JkBuild module = modulesByDir.get(moduleDir);
-                if (!nativeEligible(module)) continue;
-                Optional<Path> home = graal.resolve(moduleDir, module.graal());
-                if (home.isEmpty()) return Exit.CONFIG;
-                graalHomes.put(moduleDir, home.get());
-            }
-            long nativeCount = sorted.stream()
-                    .map(modulesByDir::get)
-                    .filter(NativeCommand::nativeEligible)
-                    .count();
-            return InProcessEngine.require()
-                    .nativeWorkspaceInProcess(
-                            wsRoot,
-                            modulesByDir,
-                            sorted,
-                            cache,
-                            graalHomes,
-                            mode,
-                            buildStart,
-                            nativeCount,
-                            jdksDir,
-                            mainClass,
-                            extra,
-                            buildOpts.skipTests,
-                            global.verbose);
-        }
 
         // Thin client: per-module native-mode + graal spec ride ProjectInfo summaries; the
         // engine owns ordering/scheduling. The GraalVM pre-resolve stays HERE — a prompt or
@@ -385,24 +328,6 @@ public final class NativeCommand implements CliCommand {
 
         String coord = BuildCommand.buildTarget(buildFile, projectDir);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-
-        if (engineDisabledForTests()) {
-            // The in-process seam still takes the parsed model — acceptable in the JVM test
-            // dist, which links the parser anyway; the native client never reaches this.
-            var inProc = InProcessEngine.require();
-            return inProc.nativeSingleInProcess(
-                    projectDir,
-                    inProc.parseBuild(buildFile),
-                    cache,
-                    graalHome.get(),
-                    coord,
-                    mode,
-                    jdksDir,
-                    mainClass,
-                    extra,
-                    buildOpts.skipTests,
-                    global.verbose);
-        }
 
         // Engine-hosted (a cascade of one): the success tail names the built artifact from
         // the engine summary's candidate paths (thin client — no local layout derivation).

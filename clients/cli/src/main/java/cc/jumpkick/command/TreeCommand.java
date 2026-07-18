@@ -118,9 +118,7 @@ public final class TreeCommand implements CliCommand {
                         .toList();
         String tagged;
         try {
-            tagged = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().treeRender(dir, max, flatten, stack, scopeNames)
-                    : cc.jumpkick.cli.engine.EngineClient.treeRender(
+            tagged = cc.jumpkick.cli.engine.EngineClient.treeRender(
                             cc.jumpkick.engine.EnginePaths.current(), dir, max, flatten, stack, scopeNames);
         } catch (IOException | RuntimeException e) {
             CliOutput.err("jk tree: " + e.getMessage());
@@ -145,11 +143,6 @@ public final class TreeCommand implements CliCommand {
                             : "Some dependencies are missing from your local cache. Run `jk lock`");
         }
         return 0;
-    }
-
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     /**

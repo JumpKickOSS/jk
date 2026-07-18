@@ -62,19 +62,6 @@ public final class TestCommand implements CliCommand {
     Path jdksDir;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk test} invocation always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner): under the
-        // self-hosted build, in-process dispatches would otherwise recurse into the very
-        // engine hosting the test run and deadlock — see BuildCommand's javadoc.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.profileName = in.value("profile").orElse(null);
@@ -96,47 +83,38 @@ public final class TestCommand implements CliCommand {
 
         PipelineResult result;
         TestSummary testResult;
-        if (engineDisabledForTests()) {
-            // The in-process pipeline assembly lives behind the ServiceLoader seam (:cli-engine) since
-            // Same pipeline code as the engine host, via the in-process test seam.
-            var outcome = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .testPipeline(dir, cache, buildFile, lockFile, workerCount, profileName, jdksDir, global);
-            result = outcome.result();
-            testResult = outcome.testResult();
-        } else {
-            // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
-            // ahead of time, so the listener is chosen once the step list arrives over the socket —
-            // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
-            // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
-            // mirroring how pipeline.get(TEST_RESULT) is already populated by the in-process path above.
-            TestSummary[] testResultHolder = new TestSummary[1];
-            ConsoleSpec spec = new ConsoleSpec(
-                    "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
-            String module = BuildCommand.buildTarget(buildFile, dir);
-            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runTest(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.TestRequest(
-                                dir,
-                                cache,
-                                jdksDir,
-                                workerCount,
-                                profileName,
-                                global.verbose,
-                                // Global flags are consumed into the session before dispatch —
-                                // the session (not the Invocation) is their authority, exactly as
-                                // BuildCommand's request wiring reads them.
-                                cc.jumpkick.config.SessionContext.current().offline(),
-                                cc.jumpkick.config.SessionContext.current().force()),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
-                        testResultHolder);
-            } catch (IOException e) {
-                CliOutput.err("jk test: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            testResult = testResultHolder[0];
+                // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
+        // ahead of time, so the listener is chosen once the step list arrives over the socket —
+        // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
+        // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
+        // mirroring how pipeline.get(TEST_RESULT) is already populated by the in-process path above.
+        TestSummary[] testResultHolder = new TestSummary[1];
+        ConsoleSpec spec = new ConsoleSpec(
+                "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
+        String module = BuildCommand.buildTarget(buildFile, dir);
+        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runTest(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.TestRequest(
+                            dir,
+                            cache,
+                            jdksDir,
+                            workerCount,
+                            profileName,
+                            global.verbose,
+                            // Global flags are consumed into the session before dispatch —
+                            // the session (not the Invocation) is their authority, exactly as
+                            // BuildCommand's request wiring reads them.
+                            cc.jumpkick.config.SessionContext.current().offline(),
+                            cc.jumpkick.config.SessionContext.current().force()),
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    testResultHolder);
+        } catch (IOException e) {
+            CliOutput.err("jk test: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        testResult = testResultHolder[0];
 
         if (result.success()) return 0;
         // Test failures get exit 4; compile / launcher errors are exit 1.

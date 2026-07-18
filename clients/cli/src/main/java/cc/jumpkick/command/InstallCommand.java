@@ -47,17 +47,6 @@ public final class InstallCommand {
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. Production paths host build/resolve on the engine;
-     * launcher writing always runs here.
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner) — see BuildCommand.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     // --- mode 1: current project -----------------------------------------
 
     private int installCurrentProject() throws IOException {
@@ -154,36 +143,21 @@ public final class InstallCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
         ToolEnv env;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .toolResolvePipeline(
-                            cc.jumpkick.model.ToolCoordSpec.parse(resolved.coordSpec()),
-                            java.util.List.of(),
-                            bin,
-                            mainClass,
-                            repoUrl,
-                            cacheDir,
-                            resolved.coordSpec(),
-                            mode);
-            if (o.env() == null) return failureExit(o.result(), "jk install", cacheDir);
-            env = o.env();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
-                                resolved.coordSpec(), java.util.List.of(), bin, mainClass, repoUrl, cacheDir),
-                        steps -> PipelineConsole.chooseConsoleListener("install-maven", steps, mode));
-            } catch (IOException e) {
-                CliOutput.err("jk install: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) {
-                return failureExit(outcome.result(), "jk install", cacheDir);
-            }
-            env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
+                cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
+                            resolved.coordSpec(), java.util.List.of(), bin, mainClass, repoUrl, cacheDir),
+                    steps -> PipelineConsole.chooseConsoleListener("install-maven", steps, mode));
+        } catch (IOException e) {
+            CliOutput.err("jk install: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) {
+            return failureExit(outcome.result(), "jk install", cacheDir);
+        }
+        env = new ToolEnv(bin, Coordinate.parse(outcome.coord()), outcome.mainClass(), outcome.classpath());
 
         Path launcher = ToolLauncher.install(
                 envsRoot,
@@ -212,29 +186,22 @@ public final class InstallCommand {
         PipelineResult fetchResult;
         Path checkout;
         String sha;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .gitFetchPipeline(expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ true, mode);
-            fetchResult = o.result();
-            checkout = o.checkout();
-            sha = o.sha();
-        } else {
-            // Engine-hosted clone: checkout path + sha ride the terminal pipeline-finish.
-            cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
-                                expanded, canonical, refStr, cacheDir, refresh),
-                        steps -> PipelineConsole.chooseConsoleListener("install-git-fetch", steps, mode));
-            } catch (IOException e) {
-                CliOutput.err("jk install: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            fetchResult = outcome.result();
-            checkout = outcome.checkout();
-            sha = outcome.sha();
+                // Engine-hosted clone: checkout path + sha ride the terminal pipeline-finish.
+        cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.GitFetchRequest(
+                            expanded, canonical, refStr, cacheDir, refresh),
+                    steps -> PipelineConsole.chooseConsoleListener("install-git-fetch", steps, mode));
+        } catch (IOException e) {
+            CliOutput.err("jk install: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        fetchResult = outcome.result();
+        checkout = outcome.checkout();
+        sha = outcome.sha();
+
         if (!fetchResult.success() || checkout == null || sha == null) {
             for (PipelineResult.Diagnostic d : fetchResult.errors()) {
                 if ("no-jk-toml".equals(d.code())) return Exit.SOFTWARE;
@@ -301,35 +268,28 @@ public final class InstallCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
         TestSummary testResult;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .installProjectPipeline(
-                            projectDir, cacheDir, m2Dir(), buildOpts.skipTests, global.verbose, graalHome, mode);
-            result = o.result();
-            testResult = o.testResult();
-        } else {
-            var session = cc.jumpkick.config.SessionContext.current();
-            TestSummary[] testResultHolder = new TestSummary[1];
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runInstall(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.InstallRequest(
-                                projectDir,
-                                cacheDir,
-                                m2Dir(),
-                                graalHome,
-                                buildOpts.skipTests,
-                                session.offline(),
-                                session.force(),
-                                global.verbose),
-                        steps -> PipelineConsole.chooseConsoleListener(pipelineName, steps, mode),
-                        testResultHolder);
-            } catch (IOException e) {
-                CliOutput.err("jk install: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            testResult = testResultHolder[0];
+                var session = cc.jumpkick.config.SessionContext.current();
+        TestSummary[] testResultHolder = new TestSummary[1];
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runInstall(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.InstallRequest(
+                            projectDir,
+                            cacheDir,
+                            m2Dir(),
+                            graalHome,
+                            buildOpts.skipTests,
+                            session.offline(),
+                            session.force(),
+                            global.verbose),
+                    steps -> PipelineConsole.chooseConsoleListener(pipelineName, steps, mode),
+                    testResultHolder);
+        } catch (IOException e) {
+            CliOutput.err("jk install: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        testResult = testResultHolder[0];
+
         if (!result.success()) {
             if (testResult != null && !testResult.allPassed()) return 4;
             return failureExit(result, "jk install", cacheDir);
@@ -352,11 +312,9 @@ public final class InstallCommand {
         return 0;
     }
 
-    /** The engine's parsed-project summary (in-process twin under jk.test.noEngine). */
+    /** The engine's parsed-project summarytest.noEngine). */
     private cc.jumpkick.engine.protocol.ProjectInfo projectInfo(Path projectDir) throws IOException {
-        return engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require().projectInfo(projectDir)
-                : cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), projectDir);
+        return cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), projectDir);
     }
 
     /**
@@ -365,10 +323,7 @@ public final class InstallCommand {
      * hard-link/copy each pair, write the launcher, mark executables. Returns the launcher path.
      */
     private Path applyInstallPlan(Path projectDir, Path cacheDir) throws IOException {
-        cc.jumpkick.engine.protocol.ExecPlan plan = engineDisabledForTests()
-                ? cc.jumpkick.cli.engine.InProcessEngine.require()
-                        .execPlan(projectDir, cacheDir, "install", mainClass, binName, binDirOverride, libDirOverride)
-                : cc.jumpkick.cli.engine.EngineClient.execPlan(
+        cc.jumpkick.engine.protocol.ExecPlan plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
                         cc.jumpkick.engine.EnginePaths.current(),
                         projectDir,
                         cacheDir,

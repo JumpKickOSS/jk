@@ -67,7 +67,8 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 |---|---|---|
 | `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build pipeline |
-| `clients/` | `cli`, `cli-engine`, `web` | Native client, engine fat jar + JVM dist, dashboard SPA |
+| `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
+| `server/` | includes `engine` packaging | `EngineMain` + `jk-engine-*.jar` (never links CLI) |
 | `plugins/` | `java-compiler`, `kotlin-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
 
 **Layering:** `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk`, not on engine internals.
@@ -164,6 +165,6 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 
 Pre-1.0 alpha. **Self-host phase 2:** root workspace covers library/client modules plus thin
 workers (`plugins/test-runner`, `plugins/java-compiler`); `jk lock` + `jk build --skip-tests`
-dogfoods after a Gradle `dist`/`installLocal` or `:cli-engine:installDist` bootstrap. Full
-`dist`, remaining plugins, and nested engine integration tests remain Gradle-heavy. Breaking
-changes remain acceptable until 1.0.
+dogfoods after a Gradle `dist`/`installLocal` or thin `:cli:installDist` + `:engine:shadowJar`
+bootstrap. Full `dist`, remaining plugins, and nested engine integration tests remain
+Gradle-heavy. Breaking changes remain acceptable until 1.0.

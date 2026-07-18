@@ -10,8 +10,8 @@ java     = 25
 main = "cc.jumpkick.cli.Jk"
 
 # The slim client's whole kernel surface — NO jk-io, jk-resolver, jk-toolchain, or jk-engine
-# (slim-client Stage 5): heavy verbs reach the engine over the wire; the test suite (which needs
-# the full kernel for its in-process dispatch) lives in cli-engine.
+# (slim-client Stage 5 / ticket-1020): heavy verbs reach the engine over the wire.
+# Integration tests under src/test spawn the real :engine shadow jar.
 [dependencies]
 jk-core            = { group = "cc.jumpkick", name = "jk-core",            version = "0.10.0-SNAPSHOT" }
 jk-client-io       = { group = "cc.jumpkick", name = "jk-client-io",       version = "0.10.0-SNAPSHOT" }
@@ -29,6 +29,7 @@ graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version
 assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+bcpg-jdk18on            = { group = "org.bouncycastle",   name = "bcpg-jdk18on",            version = "1.84" }
 
 [image]
 main-class = "cc.jumpkick.cli.Jk"

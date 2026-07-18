@@ -3,7 +3,6 @@ package cc.jumpkick.cli.ide;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
-import cc.jumpkick.cli.engine.InProcessEngine;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.IdeWireModel;
@@ -81,37 +80,14 @@ public final class IdeEngineClient {
         return cacheDir;
     }
 
-    /**
-     * Ensure a live engine (spawn/replace on version skew). Under {@code jk.test.noEngine} this is
-     * a no-op — the in-process test seam answers subsequent calls.
-     */
+    /** Ensure a live engine (spawn/replace on version skew). */
     public EngineClient.Handshake connect() throws IOException {
-        if (engineDisabledForTests()) {
-            InProcessEngine.require();
-            return new EngineClient.Handshake(
-                    Jk.VERSION, ProcessHandle.current().pid(), System.currentTimeMillis(), false, "in-process");
-        }
         return EngineClient.ensureRunning(EnginePaths.current(), Jk.VERSION);
     }
 
     /** Engine status (heap, active requests, …). */
     public EngineClient.Status status() throws IOException {
-        if (engineDisabledForTests()) {
-            return new EngineClient.Status(
-                    Jk.VERSION,
-                    ProcessHandle.current().pid(),
-                    System.currentTimeMillis(),
-                    0,
-                    0,
-                    false,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    -1,
-                    null,
-                    null);
-        }
+
         return EngineClient.status(EnginePaths.activeSocket(EnginePaths.current()))
                 .orElseThrow(() -> new IOException("engine not reachable — call connect() first"));
     }
@@ -121,9 +97,7 @@ public final class IdeEngineClient {
      * Prefer this over parsing {@code jk.toml} in the IDE process.
      */
     public ProjectInfo projectInfo() throws IOException {
-        if (engineDisabledForTests()) {
-            return InProcessEngine.require().projectInfo(projectDir);
-        }
+
         return EngineClient.projectInfo(EnginePaths.current(), projectDir);
     }
 
@@ -132,9 +106,7 @@ public final class IdeEngineClient {
      * generators and by IDE plugins that want classpath truth from the engine.
      */
     public IdeWireModel ideModel() throws IOException {
-        if (engineDisabledForTests()) {
-            return InProcessEngine.require().ideModel(projectDir, cacheDir, jdksDir);
-        }
+
         return EngineClient.ideModel(EnginePaths.current(), projectDir, cacheDir, jdksDir);
     }
 
@@ -150,32 +122,24 @@ public final class IdeEngineClient {
         var session = SessionContext.current();
         List<String> errors = new ArrayList<>();
         boolean success;
-        if (engineDisabledForTests()) {
-            progress.onStepStart("sync", "IN_PROCESS");
-            // ideModel path materializes classpath data for the in-process twin.
-            IdeWireModel model = InProcessEngine.require().ideModel(projectDir, cacheDir, jdksDir);
-            success = model.error() == null;
-            if (!success) errors.add(model.error());
-            progress.onStepFinish("sync", success, success ? "OK" : "ERROR");
-        } else {
-            PipelineResult result = EngineClient.runSync(
-                    EnginePaths.current(),
-                    new EngineClient.SyncRequest(
-                            syncRoot,
-                            cacheDir,
-                            jdksDir,
-                            null,
-                            false,
-                            session.offline(),
-                            session.force(),
-                            false,
-                            session.config().verboseOr(false)),
-                    steps -> progressListener(progress, steps),
-                    fetched,
-                    upToDate);
-            success = result.success();
-            for (var d : result.errors()) errors.add(d.message());
-        }
+                PipelineResult result = EngineClient.runSync(
+                EnginePaths.current(),
+                new EngineClient.SyncRequest(
+                        syncRoot,
+                        cacheDir,
+                        jdksDir,
+                        null,
+                        false,
+                        session.offline(),
+                        session.force(),
+                        false,
+                        session.config().verboseOr(false)),
+                steps -> progressListener(progress, steps),
+                fetched,
+                upToDate);
+        success = result.success();
+        for (var d : result.errors()) errors.add(d.message());
+
         return new SyncOutcome(success, fetched[0], upToDate[0], List.copyOf(errors));
     }
 
@@ -185,14 +149,7 @@ public final class IdeEngineClient {
      */
     public BuildOutcome build(BuildListener listener) throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
-        if (engineDisabledForTests()) {
-            ProjectInfo info = projectInfo();
-            progress.onModuleStart(info.coord(), projectDir);
-            progress.onStepStart("build", "IN_PROCESS");
-            progress.onStepFinish("build", true, "OK");
-            progress.onModuleFinish(info.coord(), true);
-            return new BuildOutcome(true, 1, 0, List.of());
-        }
+
         ProjectInfo info = projectInfo();
         if (info.error() != null && !info.error().isBlank()) {
             return new BuildOutcome(false, 0, 0, List.of(info.error()));
@@ -243,6 +200,11 @@ public final class IdeEngineClient {
             WorkspaceResult ws = EngineClient.buildWorkspace(EnginePaths.current(), req, wbl);
             return new BuildOutcome(ws.success(), modules[0], failed[0], List.copyOf(errors));
         }
+        // Single-module projects: surface the same module boundary callbacks workspaces get.
+        String coord = info.coord() != null && !info.coord().isBlank()
+                ? info.coord()
+                : info.group() + ":" + info.name();
+        progress.onModuleStart(coord, projectDir);
         PipelineResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
                 new EngineClient.SingleBuildRequest(
@@ -251,6 +213,7 @@ public final class IdeEngineClient {
                 null,
                 null);
         for (var d : r.errors()) errors.add(d.message());
+        progress.onModuleFinish(coord, r.success());
         return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
     }
 
@@ -299,11 +262,6 @@ public final class IdeEngineClient {
                 progress.onStepFinish(step, ok, status == null ? "" : status.name());
             }
         };
-    }
-
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
 
     // --- callbacks / outcomes -----------------------------------------------------------------

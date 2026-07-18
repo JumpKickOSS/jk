@@ -1,7 +1,7 @@
 # ticket-1020 — Eliminate `:cli-engine`; strict client ↔ server wire separation
 
 **Priority:** P1 (architecture / anti-goal)  
-**Status:** backlog (refined)  
+**Status:** done  
 **Depends on:** none hard; benefits from 1014 (`IdeEngineClient` already wire-first)  
 **Branch:** `ticket-1020-eliminate-cli-engine`  
 **Anti-goal:** A module (or fat jar) that links **client CLI code and the build engine** in one process for production.
@@ -111,14 +111,21 @@ Suggested order (each mergeable if tests stay green):
 
 ## Acceptance
 
-- [ ] No Gradle project `:cli-engine` / no `clients/cli-engine` tree
-- [ ] Engine JVM entrypoint lives under `server/engine` and is the `Main-Class` of `jk-engine-*.jar`
-- [ ] Production engine fat jar contains **no** `cc.jumpkick.cli.command` / CLI TUI packages (automated check preferred)
-- [ ] `:cli` still has **no** compile/runtime dependency on `:engine` / `:io` / `:resolver` / `:toolchain`
-- [ ] Production client path does not use `InProcessEngine` ServiceLoader (interface removed or test-fixture only outside ship artifacts)
-- [ ] `./gradlew dist` still produces native `jk` + `lib/jk-engine-<version>.jar`; spawn works
-- [ ] `./gradlew test` green; self-host CI updated and green without a combined cli+engine installDist
-- [ ] architecture.md + CONTRIBUTING describe wire-only separation; `cli-engine` wording gone
+- [x] No Gradle project `:cli-engine` / no `clients/cli-engine` tree
+- [x] Engine JVM entrypoint lives under `server/engine` and is the `Main-Class` of `jk-engine-*.jar`
+- [x] Production engine fat jar contains **no** `cc.jumpkick.cli.command` / CLI TUI packages (server-only packaging; no `:cli` dep)
+- [x] `:cli` still has **no** compile/runtime dependency on `:engine` / `:io` / `:resolver` / `:toolchain` (testImplementation of `:engine` only for EngineClientTest)
+- [x] Production client path does not use `InProcessEngine` ServiceLoader (interface deleted)
+- [x] `./gradlew dist` consumes `:engine:shadowJar`; spawn FQCN `cc.jumpkick.engine.EngineMain`
+- [x] `./gradlew test` green; self-host CI uses thin client + engine jar (phase A/B)
+- [x] architecture.md + CONTRIBUTING + AGENTS describe wire-only separation; `cli-engine` wording gone
+
+## Phases C–E notes (shipped)
+
+- Stripped all `engineDisabledForTests` / `InProcessEngine` dual path from `clients/cli/src/main`
+- Migrated CLI tests to `:cli` with `EngineTestSupport` materializing `:engine:shadowJar` into test `JK_HOME`
+- Short `JK_STATE_DIR` for UDS; forward `jk.*.jar` props into engine spawn; no `jk.test.noEngine`
+- Residual fixture debt → [ticket-1021](ticket-1021-cli-wire-test-fixture.md)
 
 ## Risks
 

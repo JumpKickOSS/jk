@@ -50,16 +50,6 @@ public final class ImportCommand implements CliCommand {
         return List.of(Param.of("file", Arity.ZERO_OR_ONE, "The build file to import (auto-detected if omitted)."));
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk import} invocation always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         Path source =
@@ -116,57 +106,34 @@ public final class ImportCommand implements CliCommand {
         int warnings;
         String error;
         String diag;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .importPipeline(
+                cc.jumpkick.cli.engine.EngineClient.ImportOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runImport(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ImportRequest(
                             source.toAbsolutePath(),
                             target.toAbsolutePath(),
                             projectDir,
                             JkDirs.tmp(),
                             force,
                             reportPath,
-                            cache,
-                            observer);
-            if (!o.result().success()) {
-                for (PipelineResult.Diagnostic d : o.result().errors()) {
-                    CliOutput.err("jk import: " + d.message());
-                }
-                return 1;
-            }
-            exit = o.exitCode();
-            warnings = o.warnings();
-            error = o.error();
-            diag = o.diag();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.ImportOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runImport(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ImportRequest(
-                                source.toAbsolutePath(),
-                                target.toAbsolutePath(),
-                                projectDir,
-                                JkDirs.tmp(),
-                                force,
-                                reportPath,
-                                cache),
-                        steps -> new cc.jumpkick.run.PipelineListener() {},
-                        observer);
-            } catch (IOException e) {
-                CliOutput.err("jk import: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            if (!outcome.result().success()) {
-                for (PipelineResult.Diagnostic d : outcome.result().errors()) {
-                    CliOutput.err("jk import: " + d.message());
-                }
-                return 1;
-            }
-            exit = outcome.exitCode();
-            warnings = outcome.warnings();
-            error = outcome.error();
-            diag = outcome.diag();
+                            cache),
+                    steps -> new cc.jumpkick.run.PipelineListener() {},
+                    observer);
+        } catch (IOException e) {
+            CliOutput.err("jk import: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        if (!outcome.result().success()) {
+            for (PipelineResult.Diagnostic d : outcome.result().errors()) {
+                CliOutput.err("jk import: " + d.message());
+            }
+            return 1;
+        }
+        exit = outcome.exitCode();
+        warnings = outcome.warnings();
+        error = outcome.error();
+        diag = outcome.diag();
 
         if (error != null) CliOutput.err("jk import: " + error);
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");

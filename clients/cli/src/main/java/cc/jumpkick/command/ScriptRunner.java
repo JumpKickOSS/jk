@@ -60,16 +60,6 @@ final class ScriptRunner {
     }
 
     /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale; a real script run
-     * always engine-hosts its preparation.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
-    /**
      * Run {@code file} (dispatched by extension) with {@code args} forwarded to the program. The
      * caller guarantees the target classified as {@link cc.jumpkick.tool.ToolTarget.RunnableFile}.
      */
@@ -204,23 +194,11 @@ final class ScriptRunner {
 
     /**
      * Run one mode's preparation pipeline — engine-hosted normally, in-process through the {@link
-     * cc.jumpkick.cli.engine.InProcessEngine} seam under the test-only bypass — rendering the
      * standard single-pipeline progress either way.
      */
     private EngineClient.ScriptPrepareOutcome prepare(String mode, Path file) throws IOException, InterruptedException {
         PipelineConsole.Mode consoleMode = PipelineConsole.modeFor(global);
-        if (engineDisabledForTests()) {
-            return cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .scriptPrepare(
-                            mode,
-                            file.toAbsolutePath(),
-                            cacheDir(),
-                            stateDir(),
-                            repoUrl,
-                            forceRecompile,
-                            extraDeps,
-                            consoleMode);
-        }
+
         return EngineClient.runScriptPrepare(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new EngineClient.ScriptPrepareRequest(

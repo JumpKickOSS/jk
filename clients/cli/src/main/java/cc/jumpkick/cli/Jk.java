@@ -33,37 +33,18 @@ public final class Jk {
             Map.entry("verify-target", List.of("verify")), // Maven's `verify` step output naming
             Map.entry("why-rebuilt", List.of("explain"))); // early-roadmap name for the cache-diff report
 
-    /**
-     * Hidden flag that re-invokes this binary as the engine server (JVM dist / fallback). Native
-     * dist spawns {@code jk-engine.jar} on the jk-managed JDK instead. Reached via {@link
-     * cc.jumpkick.cli.engine.InProcessEngine} on the JVM classpath only.
-     */
-    private static final String ENGINE_SERVER_FLAG = "--engine-server";
-
     public static void main(String[] args) {
-        // The internal --engine-server re-invocation is checked BEFORE the jkx
-        // argv[0] dispatch: the engine spawn re-execs this same binary, and when
-        // the user's command was `jkx …` that child can inherit the jkx identity
-        // (hardlinked argv[0], propagated JAVA_OPTS). Rewriting it to `tool run
-        // --engine-server` would kill the engine before it starts.
-        if (args.length == 0 || !ENGINE_SERVER_FLAG.equals(args[0])) {
-            // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
-            // `jk tool run …` in every case — including --help — so the alias has
-            // one mental model.
-            args = rewriteForProgramName(args, Argv0.programName());
-        }
-        if (args.length > 0 && ENGINE_SERVER_FLAG.equals(args[0])) {
-            // Engine role: deliberately NOT GlobalCancel — its SIGINT handler halts the process,
-            // and a Ctrl-C aimed at the client that spawned us lands on the whole foreground
-            // process group. EngineMain.run installs the engine's own signal policy instead.
-            var engine = cc.jumpkick.cli.engine.InProcessEngine.find().orElse(null);
-            if (engine == null) {
-                System.err.println("jk: this binary does not include the engine; " + "materialize jk " + VERSION
-                        + " (`jk self update` or the project wrapper), or set JK_ENGINE_EXE");
-                System.exit(70);
-                return;
-            }
-            System.exit(engine.engineServerMain());
+        // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
+        // `jk tool run …` in every case — including --help — so the alias has
+        // one mental model.
+        args = rewriteForProgramName(args, Argv0.programName());
+        // ticket-1020: the slim client never hosts the engine. Spawning uses
+        // jk-engine.jar / JK_ENGINE_EXE only — no --engine-server monolyth path.
+        if (args.length > 0 && "--engine-server".equals(args[0])) {
+            System.err.println("jk: this binary does not include the engine (wire-only client)."
+                    + " Materialize jk-engine.jar (`./install.sh`, `jk self materialize`,"
+                    + " or `jk self update`), or set JK_ENGINE_EXE.");
+            System.exit(70);
             return;
         }
         cc.jumpkick.cli.tui.GlobalCancel.install();

@@ -6,6 +6,9 @@ description = "jk build engine: BuildPipelines, plugin dispatch, action cache, c
 jdk         = 25
 java        = 25
 
+[application]
+main = "cc.jumpkick.engine.EngineMain"
+
 [dependencies]
 jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.0-SNAPSHOT" }
 jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.0-SNAPSHOT" }

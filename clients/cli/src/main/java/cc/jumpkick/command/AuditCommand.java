@@ -48,16 +48,6 @@ public final class AuditCommand implements CliCommand {
     URI osvBatchUrl;
     URI osvVulnsUrl;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk audit} invocation always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         GlobalOptions global = GlobalOptions.from(in);
@@ -91,22 +81,18 @@ public final class AuditCommand implements CliCommand {
         };
 
         PipelineResult result;
-        if (engineDisabledForTests()) {
-            result = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .auditPipeline(lockPath, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl, observer, mode);
-        } else {
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runAudit(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.AuditRequest(
-                                projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl),
-                        steps -> PipelineConsole.chooseConsoleListener("audit", steps, mode),
-                        observer);
-            } catch (IOException e) {
-                CliOutput.err("jk audit: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
+                try {
+            result = cc.jumpkick.cli.engine.EngineClient.runAudit(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.AuditRequest(
+                            projectDir, cache, threshold.toString(), osvBatchUrl, osvVulnsUrl),
+                    steps -> PipelineConsole.chooseConsoleListener("audit", steps, mode),
+                    observer);
+        } catch (IOException e) {
+            CliOutput.err("jk audit: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+
         if (!result.success()) return 1;
 
         AuditReport report = new AuditReport(findings);

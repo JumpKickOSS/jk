@@ -62,17 +62,6 @@ public final class ImageCommand implements CliCommand {
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk image} invocation always
-     * engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.mainClass = in.value("main").orElse(null);
@@ -98,67 +87,48 @@ public final class ImageCommand implements CliCommand {
 
         PipelineResult result;
         cc.jumpkick.run.TestSummary testResult;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .imagePipeline(
+                // The wire has no real Pipeline, so the success tail renders from the structured fields the
+        // terminal pipeline-finish carries — the summary holder is populated before the console
+        // listener's own pipelineFinish fires, same holder pattern as TestCommand's hosted path.
+        var session = cc.jumpkick.config.SessionContext.current();
+        cc.jumpkick.cli.engine.EngineClient.ImageSummary[] summary =
+                new cc.jumpkick.cli.engine.EngineClient.ImageSummary[1];
+        ConsoleSpec spec = new ConsoleSpec(
+                "Image",
+                r -> summary[0] != null
+                        ? imageSuccessTail(
+                                summary[0].tarball(),
+                                summary[0].name(),
+                                summary[0].version(),
+                                summary[0].daemonExe(),
+                                summary[0].ref())
+                        : "",
+                r -> "Image build failed",
+                true);
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runImage(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ImageRequest(
                             projectDir,
                             cache,
                             jdksDir,
-                            buildOpts.skipTests,
-                            global.verbose,
                             mainClass,
                             registry,
                             tag,
                             tarballArg,
                             dockerExecutableArg,
-                            mode,
-                            module);
-            result = o.result();
-            testResult = o.testResult();
-        } else {
-            // The wire has no real Pipeline, so the success tail renders from the structured fields the
-            // terminal pipeline-finish carries — the summary holder is populated before the console
-            // listener's own pipelineFinish fires, same holder pattern as TestCommand's hosted path.
-            var session = cc.jumpkick.config.SessionContext.current();
-            cc.jumpkick.cli.engine.EngineClient.ImageSummary[] summary =
-                    new cc.jumpkick.cli.engine.EngineClient.ImageSummary[1];
-            ConsoleSpec spec = new ConsoleSpec(
-                    "Image",
-                    r -> summary[0] != null
-                            ? imageSuccessTail(
-                                    summary[0].tarball(),
-                                    summary[0].name(),
-                                    summary[0].version(),
-                                    summary[0].daemonExe(),
-                                    summary[0].ref())
-                            : "",
-                    r -> "Image build failed",
-                    true);
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runImage(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ImageRequest(
-                                projectDir,
-                                cache,
-                                jdksDir,
-                                mainClass,
-                                registry,
-                                tag,
-                                tarballArg,
-                                dockerExecutableArg,
-                                buildOpts.skipTests,
-                                session.offline(),
-                                session.force(),
-                                session.config().rebuildOr(false),
-                                global.verbose),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
-                        summary);
-            } catch (IOException e) {
-                CliOutput.err("jk image: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            testResult = summary[0] != null ? summary[0].testResult() : null;
+                            buildOpts.skipTests,
+                            session.offline(),
+                            session.force(),
+                            session.config().rebuildOr(false),
+                            global.verbose),
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    summary);
+        } catch (IOException e) {
+            CliOutput.err("jk image: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        testResult = summary[0] != null ? summary[0].testResult() : null;
 
         if (!result.success()) {
             for (PipelineResult.Diagnostic d : result.errors()) {

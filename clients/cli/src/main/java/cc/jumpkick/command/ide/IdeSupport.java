@@ -21,22 +21,11 @@ import java.util.Map;
  * hosted best-effort sync first (client-rendered), fetches the wire model, and reconstructs the
  * {@link IdeModel} the generators consume. File generation and all TTY output stay client-side.
  *
- * <p>The test-only in-process path answers through the {@code InProcessEngine} twin, which keeps
  * the pre-Wave-4 in-line jar fetch so it builds the exact same model with no engine.
  */
 public final class IdeSupport {
 
     private IdeSupport() {}
-
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@code
-     * BuildCommand.engineDisabledForTests()} for the full rationale. A real {@code jk ide}/{@code
-     * idea}/{@code vscode} pre-syncs through the engine; file generation always runs here.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
 
     /** A build failure carrying the process exit code the command should return. */
     public static final class IdeException extends RuntimeException {
@@ -74,21 +63,15 @@ public final class IdeSupport {
             throw new IdeException(2, "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir));
         }
 
-        // Bring the CAS in line with the lockfiles up front. Hosted on the engine for a real
-        // invocation (one sync-request covers the workspace cascade, rendered here); the
-        // test-only in-process twin fetches in-line while collecting libs, exactly as before.
-        boolean hosted = !engineDisabledForTests();
+        // Bring the CAS in line with the lockfiles up front (one sync-request covers the workspace
+        // cascade, rendered here), then fetch the wire model from the engine.
+        hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global);
         IdeWireModel wire;
-        if (hosted) {
-            hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global);
-            try {
-                wire = cc.jumpkick.cli.engine.EngineClient.ideModel(
-                        cc.jumpkick.engine.EnginePaths.current(), startDir, cache, jdksDir);
-            } catch (IOException e) {
-                throw new IdeException(2, String.valueOf(e.getMessage()));
-            }
-        } else {
-            wire = cc.jumpkick.cli.engine.InProcessEngine.require().ideModel(startDir, cache, jdksDir);
+        try {
+            wire = cc.jumpkick.cli.engine.EngineClient.ideModel(
+                    cc.jumpkick.engine.EnginePaths.current(), startDir, cache, jdksDir);
+        } catch (IOException e) {
+            throw new IdeException(2, String.valueOf(e.getMessage()));
         }
         if (wire.error() != null) {
             throw new IdeException(2, wire.error());

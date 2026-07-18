@@ -48,18 +48,6 @@ public final class CompileCommand implements CliCommand {
         return opts;
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. Real {@code jk compile} goes through the engine.
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner): under the
-        // self-hosted build, in-process dispatches would otherwise recurse into the very
-        // engine hosting the test run and deadlock — see BuildCommand's javadoc.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         String profileName = in.value("profile").orElse(null);
@@ -77,24 +65,20 @@ public final class CompileCommand implements CliCommand {
         String target = BuildCommand.buildTarget(buildFile, dir);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
-        if (engineDisabledForTests()) {
-            result = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .compilePipeline(dir, cache, profileName, global.verbose, mode, spec, target);
-        } else {
-            // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
-            // arrives over the socket.
-            var session = cc.jumpkick.config.SessionContext.current();
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runCompile(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
-                                dir, cache, profileName, session.offline(), session.force(), global.verbose),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
-            } catch (IOException e) {
-                CliOutput.err("jk compile: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
+                // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
+        // arrives over the socket.
+        var session = cc.jumpkick.config.SessionContext.current();
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runCompile(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
+                            dir, cache, profileName, session.offline(), session.force(), global.verbose),
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
+        } catch (IOException e) {
+            CliOutput.err("jk compile: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+
         return result.success() ? 0 : 1;
     }
 }

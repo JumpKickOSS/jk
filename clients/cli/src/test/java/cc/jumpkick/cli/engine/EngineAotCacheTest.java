@@ -88,9 +88,9 @@ class EngineAotCacheTest {
         Path aot = dir.resolve("engine-x.aot");
         Files.writeString(aot, "cache");
         EngineArtifact jar = new EngineArtifact(EngineArtifact.Kind.JAR, "j", "lib");
-        EngineArtifact fallback = new EngineArtifact(EngineArtifact.Kind.FALLBACK, "jk", "fallback");
+        EngineArtifact exe = new EngineArtifact(EngineArtifact.Kind.EXE, "jk-engine", "JK_ENGINE_EXE");
 
-        assertThat(EngineClient.chooseAotMode(new EngineTarget(fallback, null, false, null, false)))
+        assertThat(EngineClient.chooseAotMode(new EngineTarget(exe, null, false, null, false)))
                 .isEqualTo(AotMode.NONE); // non-JAR
         assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, false, aot, false)))
                 .isEqualTo(AotMode.NONE); // GraalVM host

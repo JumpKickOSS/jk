@@ -77,17 +77,6 @@ public final class PublishCommand implements CliCommand {
     boolean sbom;
     GlobalOptions global;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk publish} invocation always
-     * engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
@@ -151,9 +140,11 @@ public final class PublishCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
         int files;
-        if (engineDisabledForTests()) {
-            var o = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .publishPipeline(
+                cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
+        try {
+            outcome = cc.jumpkick.cli.engine.EngineClient.runPublish(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.PublishRequest(
                             projectDir,
                             cache,
                             repoUrl,
@@ -168,38 +159,14 @@ public final class PublishCommand implements CliCommand {
                             slsa,
                             sbom,
                             cred,
-                            mode);
-            result = o.result();
-            files = o.files();
-        } else {
-            cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
-            try {
-                outcome = cc.jumpkick.cli.engine.EngineClient.runPublish(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.PublishRequest(
-                                projectDir,
-                                cache,
-                                repoUrl,
-                                region,
-                                endpoint,
-                                jarPath,
-                                allowSnapshot,
-                                dryRun,
-                                sign ? keyFile : null,
-                                gpgPass,
-                                sigstore,
-                                slsa,
-                                sbom,
-                                cred,
-                                global.verbose),
-                        steps -> PipelineConsole.chooseConsoleListener("publish", steps, mode));
-            } catch (IOException e) {
-                CliOutput.err("jk publish: " + e.getMessage());
-                return Exit.SOFTWARE;
-            }
-            result = outcome.result();
-            files = outcome.files();
+                            global.verbose),
+                    steps -> PipelineConsole.chooseConsoleListener("publish", steps, mode));
+        } catch (IOException e) {
+            CliOutput.err("jk publish: " + e.getMessage());
+            return Exit.SOFTWARE;
         }
+        result = outcome.result();
+        files = outcome.files();
 
         if (!result.success()) {
             for (PipelineResult.Diagnostic d : result.errors()) {
@@ -239,9 +206,7 @@ public final class PublishCommand implements CliCommand {
 
     private static ProjectInfo projectInfo(Path dir) {
         try {
-            return engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().projectInfo(dir)
-                    : cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            return cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
         } catch (Exception e) {
             return ProjectInfo.error(String.valueOf(e.getMessage()));
         }

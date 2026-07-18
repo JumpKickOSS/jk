@@ -80,7 +80,7 @@ class CachePruneSchedulerTest {
         Path bin = home.resolve("bin");
         Files.createDirectories(lib);
         Files.createDirectories(bin);
-        Path jar = lib.resolve("cli-engine-0.10.0-SNAPSHOT.jar");
+        Path jar = lib.resolve("jk-engine-0.10.0-SNAPSHOT.jar");
         Files.writeString(jar, "fake");
         Path script = bin.resolve("jk");
         Files.writeString(script, "#!/bin/sh\n");

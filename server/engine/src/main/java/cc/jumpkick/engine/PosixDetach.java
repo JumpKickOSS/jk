@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.engine;
+package cc.jumpkick.engine;
 
-import cc.jumpkick.engine.EngineTransport;
 import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.Linker;
 import java.lang.foreign.MemorySegment;
@@ -15,11 +14,10 @@ import java.lang.invoke.MethodHandle;
  * the spawning client's process group can never reach the engine.
  *
  * <p>Best-effort by design: a spawned {@link java.lang.ProcessBuilder} child is never a process
- * group leader, so the call succeeds in the lazy-spawn path; someone running {@code jk
- * --engine-server} from an interactive shell IS a group leader (job control), gets {@code EPERM},
- * and keeps their foreground semantics — which is what they asked for. Any failure leaves the
- * process exactly where it was, no worse than the pre-detach behavior; the engine's
- * SIGINT/SIGHUP-ignore policy still applies either way.
+ * group leader, so the call succeeds in the lazy-spawn path; someone running the engine main from
+ * an interactive shell IS a group leader (job control), gets {@code EPERM}, and keeps their
+ * foreground semantics — which is what they asked for. Any failure leaves the process exactly
+ * where it was; the engine's SIGINT/SIGHUP-ignore policy still applies either way.
  */
 public final class PosixDetach {
 

@@ -3,6 +3,7 @@ package cc.jumpkick.cli.ide;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.engine.EngineTestSupport;
 import cc.jumpkick.engine.protocol.ProjectInfo;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,13 +15,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ticket-1014: IdeEngineClient facade against the in-process engine seam ({@code jk.test.noEngine}).
+ * ticket-1014 / ticket-1020: IdeEngineClient facade over the real engine wire path.
  */
 class IdeEngineClientTest {
 
     @BeforeAll
-    static void useInProcessEngine() {
-        System.setProperty("jk.test.noEngine", "true");
+    static void materializeEngine() {
+        EngineTestSupport.ensureEngineMaterialized();
     }
 
     @Test

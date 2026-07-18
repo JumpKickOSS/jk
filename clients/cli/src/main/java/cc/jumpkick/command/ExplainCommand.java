@@ -55,19 +55,6 @@ public final class ExplainCommand implements CliCommand {
                         .hide());
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()} for why this exists; every real {@code jk explain}
-     * invocation goes through the engine.
-     */
-    private static boolean engineDisabledForTests() {
-        // Also bypass inside a jk-forked test worker (jk.plugin.class=TestRunner): under the
-        // self-hosted build, in-process dispatches would otherwise recurse into the very
-        // engine hosting the test run and deadlock — see BuildCommand's javadoc.
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws Exception {
         if (in.isSet("run")) {
@@ -95,44 +82,26 @@ public final class ExplainCommand implements CliCommand {
         // Forecast the build through the engine facade — resolve the graph and run the truthful
         // per-step plan, returning a front-end-safe view (modules + edges + concurrency width).
         // Engine-hosted like `jk build`/`jk test`, except in the fast unit-test suite (no real jk
-        // binary/engine available there — see BuildCommand.engineDisabledForTests()). The
         // schedule-aware build-time estimate is computed engine-side alongside the plan
         // (BuildService.estimateEtaMillis) and rides back as an `eta` event; 0 = unknown.
         ExplainPlan plan;
         long etaMillis;
-        if (engineDisabledForTests()) {
-            long[] etaOut = new long[1];
-            plan = cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .explain(
-                            startDir,
-                            cc.jumpkick.cli.engine.InProcessEngine.require().parseBuild(buildFile),
-                            cache,
-                            workers,
-                            jdksDir,
-                            profile,
-                            skipTests,
-                            global.verbose,
-                            serial,
-                            parallelTests,
-                            etaOut);
-            etaMillis = etaOut[0];
-        } else {
-            long[] etaOut = new long[1];
-            plan = cc.jumpkick.cli.engine.EngineClient.explain(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
-                            startDir,
-                            cache,
-                            workers,
-                            skipTests,
-                            profile,
-                            jdksDir,
-                            serial,
-                            parallelTests,
-                            global.verbose),
-                    etaOut);
-            etaMillis = etaOut[0];
-        }
+                long[] etaOut = new long[1];
+        plan = cc.jumpkick.cli.engine.EngineClient.explain(
+                cc.jumpkick.engine.EnginePaths.current(),
+                new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
+                        startDir,
+                        cache,
+                        workers,
+                        skipTests,
+                        profile,
+                        jdksDir,
+                        serial,
+                        parallelTests,
+                        global.verbose),
+                etaOut);
+        etaMillis = etaOut[0];
+
         if (plan.hasErrors()) {
             for (String err : plan.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             return Exit.CONFIG;

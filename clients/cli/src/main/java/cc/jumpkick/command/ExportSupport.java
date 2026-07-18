@@ -29,9 +29,7 @@ final class ExportSupport {
     /** As above with generator parameters (scaffold inputs etc.). */
     static GeneratedFiles generate(Path dir, String kind, java.util.Map<String, String> params, String cmd) {
         try {
-            GeneratedFiles files = engineDisabledForTests()
-                    ? cc.jumpkick.cli.engine.InProcessEngine.require().generate(dir, kind, params)
-                    : cc.jumpkick.cli.engine.EngineClient.generate(
+            GeneratedFiles files = cc.jumpkick.cli.engine.EngineClient.generate(
                             cc.jumpkick.engine.EnginePaths.current(), dir, kind, params);
             if (files.error() != null) {
                 CliOutput.err(cmd + ": " + files.error());
@@ -92,8 +90,4 @@ final class ExportSupport {
         CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " Wrote " + PathDisplay.styled(path));
     }
 
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
     }
-}

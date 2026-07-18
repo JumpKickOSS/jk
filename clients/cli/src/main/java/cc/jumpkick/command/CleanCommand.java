@@ -105,50 +105,31 @@ public final class CleanCommand implements CliCommand {
         return 0;
     }
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}. Real {@code jk clean --cache} hosts GC on the engine
-     * (idle-boundary job).
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     /** Run the cache GC (engine-hosted for a real invocation) and print a one-line summary. */
     private static void gcCache() throws IOException {
         long purgedBlobs;
         long freedBytes;
         long repoLinksRemoved;
-        if (engineDisabledForTests()) {
-            cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary summary;
-            try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
-                summary = cc.jumpkick.cli.engine.InProcessEngine.require().cacheGc(JkDirs.cache());
+                // Hosted: the spinner stays client-side (the pipeline has no per-file progress worth a
+        // bar); the counts ride the terminal pipeline-finish.
+        var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
+        try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
+            cc.jumpkick.run.PipelineResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                            "gc", JkDirs.cache(), 0, false, false, null, false),
+                    steps -> new cc.jumpkick.run.PipelineListener() {},
+                    (external, pipelines) -> {},
+                    summary);
+            if (!result.success() || summary[0] == null) {
+                CliOutput.err("jk clean: cache GC failed — run `jk engine status` for details");
+                return;
             }
-            purgedBlobs = Math.max(0, summary.files());
-            freedBytes = Math.max(0, summary.bytes());
-            repoLinksRemoved = Math.max(0, summary.repoLinks());
-        } else {
-            // Hosted: the spinner stays client-side (the pipeline has no per-file progress worth a
-            // bar); the counts ride the terminal pipeline-finish.
-            var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
-            try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
-                cc.jumpkick.run.PipelineResult result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
-                                "gc", JkDirs.cache(), 0, false, false, null, false),
-                        steps -> new cc.jumpkick.run.PipelineListener() {},
-                        (external, pipelines) -> {},
-                        summary);
-                if (!result.success() || summary[0] == null) {
-                    CliOutput.err("jk clean: cache GC failed — run `jk engine status` for details");
-                    return;
-                }
-            }
-            purgedBlobs = Math.max(0, summary[0].files());
-            freedBytes = Math.max(0, summary[0].bytes());
-            repoLinksRemoved = Math.max(0, summary[0].repoLinks());
         }
+        purgedBlobs = Math.max(0, summary[0].files());
+        freedBytes = Math.max(0, summary[0].bytes());
+        repoLinksRemoved = Math.max(0, summary[0].repoLinks());
+
         boolean nerdfont = GlobalConfig.nerdfont();
         if (purgedBlobs == 0) {
             CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Cache GC", nerdfont, "nothing idle past 90 days"));
@@ -195,15 +176,7 @@ public final class CleanCommand implements CliCommand {
         }
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(new GlobalOptions());
-        if (Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"))) {
-            try {
-                return cc.jumpkick.cli.engine.InProcessEngine.require().clearInProcess(root, projectDir, false, mode);
-            } catch (IOException e) {
-                CliOutput.err("jk clean --force: " + e.getMessage());
-                return cc.jumpkick.model.command.Exit.SOFTWARE;
-            }
-        }
+
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
         ConsoleSpec spec = CacheCommand.CacheClearCommand.clearSpec(
                 false,

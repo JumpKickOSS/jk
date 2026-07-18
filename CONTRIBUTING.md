@@ -26,9 +26,9 @@ foojay resolver on first use.
 
 ```bash
 ./gradlew classes
-./gradlew :cli-engine:installDist   # JVM dist → cli-engine/build/install/
-./gradlew dist                      # native client + engine jar → build/dist/
-./install.sh build/dist/jk          # optional local install
+./gradlew :cli:installDist :engine:shadowJar   # thin JVM client + engine fat jar
+./gradlew dist                                  # native client + engine jar → build/dist/
+./install.sh build/dist/jk                      # optional local install
 ```
 
 `dist` builds the slim GraalVM native `jk` client and the engine fat jar
@@ -60,22 +60,23 @@ jk lock
 jk build --skip-tests
 ```
 
-#### B) JVM installDist bootstrap (no Graal; dogfood without native-image)
+#### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
 
 ```bash
-# 1) JVM dist under clients/cli-engine/build/install/jk/ + worker jars
-./gradlew :cli-engine:installDist installLocal --no-daemon
-export PATH="$PWD/clients/cli-engine/build/install/jk/bin:$PATH"
-# Optional: export JK_EXE="$PWD/clients/cli-engine/build/install/jk/bin/jk"
-# (resolveJkExe also recovers bin/jk from the installDist lib/ classpath)
+# 1) Slim client installDist + server-only engine fat jar + worker jars
+./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 
 # 2) Same dogfood as (A)
 jk lock
 jk build --skip-tests
 ```
 
-installDist is a monolythic JVM app: the `jk` script re-invokes itself with
-`--engine-server` when no versioned engine jar is installed (FALLBACK path).
+The client never embeds the engine (ticket-1020). Spawning uses
+`~/.jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|
@@ -84,15 +85,18 @@ installDist is a monolythic JVM app: the `jk` script re-invokes itself with
 | `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` (PluginJar.locate) |
 | Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
 
-#### Engine / cli-engine tests under self-host
+#### Engine / CLI tests under self-host
 
-`server/engine` and `clients/cli-engine` declare `[build].test-plugin-jars`. When those
-names are **workspace siblings** (today: `test-runner`, `java-compiler`), the test JVM
-gets `-Djk.<worker>.plugin.jar` pointing at the **built shadow jar** under
+`server/engine` declares `[build].test-plugin-jars`. When those names are **workspace
+siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
+`-Djk.<worker>.plugin.jar` pointing at the **built shadow jar** under
 `plugins/<name>/target/`. Other workers still resolve from `installLocal` / CAS.
 
+CLI integration tests (`:cli:test`) spawn a real engine from `:engine:shadowJar` (materialized
+into the test `JK_HOME`) — no in-process dual path (ticket-1020).
+
 Prefer `jk build --skip-tests` for the documented dogfood path; keep
-`./gradlew :engine:test` / `:cli-engine:test` for the full nested suites (Gradle wires
+`./gradlew :engine:test` / `:cli:test` for the full nested suites (Gradle wires
 worker jars via configurations).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
@@ -109,7 +113,7 @@ with a clear message. Use a separate worktree for true parallel builds.
 |---|---|
 | `shared/` | Client-safe modules (`jk-api`, `core`, `plugin-sdk`, `wire`, …) |
 | `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
-| `clients/` | `cli` (native), `cli-engine` (engine jar + tests), `web` |
+| `clients/` | `cli` (native/thin JVM client + CLI tests), `web` |
 | `plugins/` | First-party build/worker plugins |
 
 See [docs/architecture.md](docs/architecture.md) for layering and process model, and

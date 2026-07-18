@@ -85,16 +85,6 @@ public final class LockCommand implements CliCommand {
     private URI libraryRegistryUrl;
     private Path libraryCacheFile;
 
-    /**
-     * Escape hatch for the fast JVM unit-test suite ONLY — see {@link
-     * BuildCommand#engineDisabledForTests()}'s javadoc for the full rationale. Same system property,
-     * same "never a user-facing flag" contract; a real {@code jk lock} invocation always engine-hosts.
-     */
-    private static boolean engineDisabledForTests() {
-        return Boolean.getBoolean("jk.test.noEngine")
-                || "cc.jumpkick.testrunner.TestRunner".equals(System.getProperty("jk.plugin.class"));
-    }
-
     @Override
     public int run(Invocation in) throws Exception {
         this.features = in.values("features");
@@ -123,10 +113,6 @@ public final class LockCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         boolean live = mode == PipelineConsole.Mode.AUTO || mode == PipelineConsole.Mode.QUIET;
 
-        if (engineDisabledForTests()) {
-            return cc.jumpkick.cli.engine.InProcessEngine.require()
-                    .lockInProcess(dir, cache, mode, live, features, noDefaultFeatures, sources, repoUrl);
-        }
         // Optimize/start the engine before the Lock pipeline console so a one-time AOT training shows the
         // "Engine — optimizing…" wedge first, then the Lock TUI takes over (never interleaved).
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
