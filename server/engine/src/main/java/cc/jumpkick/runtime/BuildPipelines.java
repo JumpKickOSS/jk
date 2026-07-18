@@ -1666,6 +1666,16 @@ public final class BuildPipelines {
                         Files.createDirectories(testClasses);
                         copyResources(ktTestOut, testClasses);
                     }
+                    // Test resources ride the test classpath next to compiled tests (Gradle's
+                    // processTestResources). Without this, getResourceAsStream fixtures NPE under
+                    // self-host.
+                    Path resTest = compact
+                            ? in.dir().resolve("test-resources")
+                            : in.dir().resolve("src/test/resources");
+                    if (Files.isDirectory(resTest)) {
+                        Files.createDirectories(testClasses);
+                        copyResources(resTest, testClasses);
+                    }
                     ctx.progress(1);
                 })
                 .build();

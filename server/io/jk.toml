@@ -1,0 +1,16 @@
+[project]
+group    = "cc.jumpkick"
+name     = "jk-io"
+version  = "0.10.0-SNAPSHOT"
+description = "jk I/O foundations: HTTP client, CAS, repo/Maven access, forge credentials."
+jdk      = 25
+java     = 25
+
+[dependencies]
+jk-core      = { group = "cc.jumpkick", name = "jk-core",      version = "0.10.0-SNAPSHOT" }
+jk-client-io = { group = "cc.jumpkick", name = "jk-client-io", version = "0.10.0-SNAPSHOT" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

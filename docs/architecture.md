@@ -145,5 +145,7 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 
 ## Status
 
-Pre-1.0 alpha. Self-hosting is partially real (workspace `jk.toml` exists; bootstrap/CI still
-uses Gradle for the shippable dist). Breaking changes remain acceptable until 1.0.
+Pre-1.0 alpha. **Self-host phase 1:** root workspace `jk.toml` covers the 12 library/client
+modules; `jk lock` + `jk build --skip-tests` dogfoods compile/package after a Gradle
+`dist`/`installLocal` bootstrap. Full `dist`, plugins, and engine integration tests remain
+Gradle. Breaking changes remain acceptable until 1.0.

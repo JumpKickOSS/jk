@@ -1,0 +1,53 @@
+[project]
+group    = "cc.jumpkick"
+name     = "jk-cli-engine"
+version  = "0.10.0-SNAPSHOT"
+description = "jk engine application: EngineMain, POSIX self-detach, and the in-process engine seam."
+jdk      = 25
+java     = 25
+
+[application]
+main = "cc.jumpkick.cli.Jk"
+
+[dependencies]
+jk-cli             = { group = "cc.jumpkick", name = "jk-cli",    version = "0.10.0-SNAPSHOT" }
+jk-engine          = { group = "cc.jumpkick", name = "jk-engine", version = "0.10.0-SNAPSHOT" }
+jk-model           = { group = "cc.jumpkick", name = "jk-model",           version = "0.10.0-SNAPSHOT" }
+jk-core            = { group = "cc.jumpkick", name = "jk-core",            version = "0.10.0-SNAPSHOT" }
+jk-client-io       = { group = "cc.jumpkick", name = "jk-client-io",       version = "0.10.0-SNAPSHOT" }
+jk-io              = { group = "cc.jumpkick", name = "jk-io",              version = "0.10.0-SNAPSHOT" }
+jk-resolver        = { group = "cc.jumpkick", name = "jk-resolver",        version = "0.10.0-SNAPSHOT" }
+jk-toolchain       = { group = "cc.jumpkick", name = "jk-toolchain",       version = "0.10.0-SNAPSHOT" }
+jk-toolchain-jdk   = { group = "cc.jumpkick", name = "jk-toolchain-jdk",   version = "0.10.0-SNAPSHOT" }
+jk-engine-api      = { group = "cc.jumpkick", name = "jk-engine-api",      version = "0.10.0-SNAPSHOT" }
+jk-plugin-api      = { group = "cc.jumpkick", name = "jk-plugin-api",      version = "0.10.0-SNAPSHOT" }
+jline-terminal-ffm = { group = "org.jline",   name = "jline-terminal-ffm", version = "4.1.2" }
+
+[test-dependencies]
+bouncycastle-bcpg       = { group = "org.bouncycastle",   name = "bcpg-jdk18on",            version = "1.84" }
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+
+# Self-host: the CLI test suite lives HERE (not in jk-cli) since the Stage 5 dependency cut — the
+# tests exercise engine-backed paths in-process (jk.test.noEngine) and so need the full kernel,
+# which only this module links. They run real `jk` commands that fork nested `jk` builds spawning
+# worker JVMs; under self-host the jk-built test classpath carries neither a -D override nor the
+# Gradle-generated /META-INF/jk-<worker>-sha256.txt resource, so a nested build can't locate its
+# workers. Inject the RUNNING jk's workers as absolute -Djk.<worker>.plugin.jar overrides (located
+# from the real ~/.jk CAS), which PluginJar.locate checks first — see the pre-split cli/jk.toml
+# history for the per-worker rationale.
+[build]
+test-plugin-jars = [
+    "test-runner",
+    "java-compiler",
+    "kotlin-compiler",
+    "auditor",
+    "publisher",
+    "image-builder",
+    "compat-bridge",
+    "git-client",
+]
+
+[image]
+main-class = "cc.jumpkick.cli.EngineMain"

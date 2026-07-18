@@ -20,10 +20,11 @@ dependencies {
     implementation(libs.maven.artifact)
 }
 
-// The spring-boot plugin manifest's single source of truth is plugins/spring-boot/jk-plugin.toml
-// (the blueprint file third parties copy). Bake it in as the built-in registry resource so the
-// engine ships it without a second, drift-prone copy in this module's resources.
+// Built-in plugin manifests also live under src/main/resources (self-host / ticket-1007 — jk
+// has no Gradle processResources step). Keep baking from plugins/* so Gradle overwrites the
+// resource tree with the plugin module's current blueprint (no silent drift).
 tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
     from(rootProject.file("plugins/spring-boot/jk-plugin.toml")) {
         into("cc/jumpkick/plugin/manifest")
         rename { "spring-boot.jk-plugin.toml" }

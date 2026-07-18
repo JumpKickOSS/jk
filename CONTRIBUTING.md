@@ -39,6 +39,38 @@ JDK (the pin above qualifies).
 Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
 full suite.
 
+### Self-host (phase 1) — build workspace modules with jk
+
+The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
+`server/`, `clients/`). First-party **plugins** stay Gradle-only for now (worker packaging).
+
+**Bootstrap once with Gradle** (needs GraalVM for the native client), then dogfood:
+
+```bash
+# 1) Produce a local JumpKick + side-load worker jars
+./gradlew dist installLocal
+./install.sh build/dist/jk
+export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install layout
+
+# 2) Lock + compile/package the 12 workspace modules (no Gradle for javac)
+jk lock
+jk build --skip-tests
+```
+
+| Still Gradle | Why |
+|---|---|
+| `./gradlew test` (full suite) | CI source of truth until phase 2 |
+| `./gradlew dist` / `nativeCompile` | Native-image + fat engine jar packaging |
+| `./gradlew installLocal` | Plugin/worker jars into local Maven layout |
+| `plugins/*` modules | No workspace `jk.toml` yet |
+
+`jk build` (with tests) works for most library modules; `server/engine` and
+`clients/cli-engine` integration tests need worker jars resolved into isolated test
+caches (`[build].test-plugin-jars` + `installLocal`). Prefer `--skip-tests` for the
+documented dogfood path; keep `./gradlew :engine:test` for those suites.
+
+Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
+
 ### One build at a time per checkout
 
 `settings.gradle.kts` takes an OS file lock (`.gradle/cross-daemon-build.lock`) so

@@ -31,11 +31,10 @@ class SelfHostingTomlTest {
 
     @BeforeAll
     static void requireSelfHostingWorkspace() {
-        // Open-source cutover / bootstrap (ticket-1007) may ship without a root workspace
-        // jk.toml. Skip rather than fail when this checkout is not self-hosting yet.
+        // ticket-1007 restored the workspace root; fail hard if it disappears.
         Assumptions.assumeTrue(
                 REPO != null && Files.isRegularFile(REPO.resolve("jk.toml")),
-                "no workspace root jk.toml — self-hosting manifests not present in this checkout");
+                "workspace root jk.toml missing — self-hosting manifests are required");
         try {
             Assumptions.assumeTrue(
                     JkBuildParser.parse(REPO.resolve("jk.toml")).isWorkspaceRoot(),
@@ -80,10 +79,11 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
+        // plugin-sdk is listed before jk-api: model depends on the SPI leaf (Gradle :jk-api → :plugin-sdk).
         assertThat(root.workspace().modules())
                 .containsExactly(
-                        "shared/jk-api",
                         "shared/plugin-sdk",
+                        "shared/jk-api",
                         "shared/core",
                         "shared/client-io",
                         "server/io",

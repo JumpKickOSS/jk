@@ -1,0 +1,34 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-engine"
+version     = "0.10.0-SNAPSHOT"
+description = "jk build engine: BuildPipelines, plugin dispatch, action cache, compile/test machinery."
+jdk         = 25
+java        = 25
+
+[dependencies]
+jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.0-SNAPSHOT" }
+jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.0-SNAPSHOT" }
+jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.0-SNAPSHOT" }
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
+jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.0-SNAPSHOT" }
+jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.0-SNAPSHOT" }
+asm           = { group = "org.ow2.asm", name = "asm",            version = "9.10.1" }
+asm-tree      = { group = "org.ow2.asm", name = "asm-tree",       version = "9.10.1" }
+asm-commons   = { group = "org.ow2.asm", name = "asm-commons",    version = "9.10.1" }
+jgit          = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.6.0.202603022253-r" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+
+# Self-host: engine's tests fork jk's own worker jars. These workers are
+# Gradle-only (no jk.toml), so jk build can't build them as modules — it reuses
+# the running jk's worker identity instead.
+#  - test-plugin-jars: the EngineServerTest hosted-audit round-trip forks the
+#    auditor, injected as -Djk.auditor.plugin.jar (located from the running jk's
+#    repos/local/ store; requires `./gradlew :auditor:installLocal`). Git work now
+#    runs in-process (git CLI or bundled JGit), so no git worker jar is needed.
+[build]
+test-plugin-jars = ["auditor"]
