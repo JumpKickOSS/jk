@@ -87,8 +87,9 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
   stay out until features activate them.
 - **Budgets:** `JK_RESOLVE_MAX_DECISIONS` (default 100 000), `JK_RESOLVE_TIMEOUT_MS` (default 120 s).
 
-Package identity in the solver is currently `group:artifact` (classifier/type expansion is
-tracked on the project board).
+Package identity in the solver is `group:artifact:type:classifier` (defaults: type `jar`,
+classifier empty → `g:a:jar:`). Legacy lock rows with bare `g:a` still load. BOM management
+and exclusions stay GA-scoped.
 
 ## Build execution
 

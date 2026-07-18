@@ -2,6 +2,7 @@
 package cc.jumpkick.lock;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -216,19 +217,34 @@ public record Lockfile(
             return false;
         }
 
-        /** The {@code group} segment of {@link #name} ({@code group:artifact}). */
+        /** The {@code group} segment of {@link #name}. */
         public String moduleGroup() {
-            int c = name.indexOf(':');
-            return c < 0 ? name : name.substring(0, c);
+            if (!PackageId.isMavenPackageKey(name)) {
+                int c = name.indexOf(':');
+                return c < 0 ? name : name.substring(0, c);
+            }
+            return PackageId.parse(name).group();
         }
 
-        /** The {@code artifact} segment of {@link #name}. */
+        /** The {@code artifact} segment of {@link #name} (not type/classifier). */
         public String moduleArtifact() {
-            int c = name.indexOf(':');
-            return c < 0 ? "" : name.substring(c + 1);
+            if (!PackageId.isMavenPackageKey(name)) {
+                int c = name.indexOf(':');
+                return c < 0 ? "" : name.substring(c + 1);
+            }
+            return PackageId.parse(name).artifact();
         }
 
-        /** This artifact as a jar {@link Coordinate} at its {@link #version} — the single currency. */
+        /**
+         * Canonical package key for this row. Bare legacy {@code g:a} names normalize to
+         * {@code g:a:jar:}.
+         */
+        public String packageKey() {
+            if (!PackageId.isMavenPackageKey(name)) return name;
+            return PackageId.parse(name).key();
+        }
+
+        /** This artifact as a {@link Coordinate} at its {@link #version}. */
         public Coordinate coordinate() {
             // The optional `path` field carries the artifact's real file name when the packaging
             // is not a plain jar (an androidx AAR) — the coordinate's type follows it, so every
@@ -236,12 +252,16 @@ public record Lockfile(
             if (isAar()) {
                 return new Coordinate(moduleGroup(), moduleArtifact(), version, null, "aar");
             }
-            return Coordinate.of(moduleGroup(), moduleArtifact(), version);
+            if (!PackageId.isMavenPackageKey(name)) {
+                return Coordinate.of(moduleGroup(), moduleArtifact(), version);
+            }
+            return PackageId.parse(name).withVersion(version);
         }
 
-        /** True when the locked artifact is an Android AAR (its {@code path} names one). */
+        /** True when the locked artifact is an Android AAR (path or package type). */
         public boolean isAar() {
-            return path != null && path.endsWith(".aar");
+            if (path != null && path.endsWith(".aar")) return true;
+            return PackageId.isMavenPackageKey(name) && "aar".equals(PackageId.parse(name).type());
         }
 
         /** Raw hex SHA-256 of the jar (strips a {@code "sha256:"} prefix), or {@code null}. */

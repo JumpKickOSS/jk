@@ -97,7 +97,7 @@ class MavenPackageSourceTest {
         MavenPackageSource src = newSource(tempDir);
         assertThat(src.dependencies("com.foo:widget", "1.0"))
                 .extracting(Term::pkg)
-                .containsExactlyInAnyOrder("com.foo:a", "com.foo:b");
+                .containsExactlyInAnyOrder("com.foo:a:jar:", "com.foo:b:jar:");
     }
 
     private MavenPackageSource newSource(Path tempDir) {

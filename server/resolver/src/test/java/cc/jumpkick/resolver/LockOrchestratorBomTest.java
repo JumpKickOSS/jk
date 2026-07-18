@@ -191,7 +191,7 @@ class LockOrchestratorBomTest {
         Lockfile lock = orchestrator.lock(project, "test");
 
         Lockfile.Artifact widget = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.foo:widget"))
+                .filter(p -> p.packageKey().equals("com.foo:widget:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(widget.version()).isEqualTo("1.0");
@@ -243,7 +243,7 @@ class LockOrchestratorBomTest {
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact leafArt = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.foo:leaf"))
+                .filter(p -> p.packageKey().equals("com.foo:leaf:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(leafArt.version()).isEqualTo("2.0");
@@ -285,7 +285,7 @@ class LockOrchestratorBomTest {
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact widget = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.foo:widget"))
+                .filter(p -> p.packageKey().equals("com.foo:widget:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(widget.version()).isEqualTo("1.0");
@@ -318,7 +318,7 @@ class LockOrchestratorBomTest {
         Lockfile lock = orchestrator.lock(project, "test");
 
         Lockfile.Artifact proc = lock.artifacts().stream()
-                .filter(p -> p.name().equals("com.foo:proc"))
+                .filter(p -> p.packageKey().equals("com.foo:proc:jar:"))
                 .findFirst()
                 .orElseThrow(); // would be absent if PROCESSOR were dropped in resolution
         assertThat(proc.scopes()).contains(Scope.PROCESSOR);
@@ -344,11 +344,11 @@ class LockOrchestratorBomTest {
 
         // No features, no defaults → the optional dep stays out of the lock.
         Lockfile withoutFeature = orchestrator.lock(project, "test", List.of(), false);
-        assertThat(modules(withoutFeature)).contains("com.foo:core").doesNotContain("com.foo:extra");
+        assertThat(modules(withoutFeature)).contains("com.foo:core:jar:").doesNotContain("com.foo:extra:jar:");
 
         // Defaults on → the feature pulls the optional dep in.
         Lockfile withFeature = orchestrator.lock(project, "test");
-        assertThat(modules(withFeature)).contains("com.foo:core", "com.foo:extra");
+        assertThat(modules(withFeature)).contains("com.foo:core:jar:", "com.foo:extra:jar:");
     }
 
     @Test
@@ -374,7 +374,7 @@ class LockOrchestratorBomTest {
     }
 
     private static List<String> modules(Lockfile lock) {
-        return lock.artifacts().stream().map(Lockfile.Artifact::name).toList();
+        return lock.artifacts().stream().map(Lockfile.Artifact::packageKey).toList();
     }
 
     @Test
@@ -384,12 +384,12 @@ class LockOrchestratorBomTest {
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
         Lockfile.Artifact jupiter = lock.artifacts().stream()
-                .filter(p -> p.name().equals("org.junit.jupiter:junit-jupiter"))
+                .filter(p -> p.packageKey().equals("org.junit.jupiter:junit-jupiter:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(jupiter.version()).isEqualTo("6.1.0"); // latest stable the repo offers
         assertThat(jupiter.scopes()).contains(Scope.TEST);
-        assertThat(lock.artifacts()).anyMatch(p -> p.name().equals("org.junit.platform:junit-platform-launcher"));
+        assertThat(lock.artifacts()).anyMatch(p -> p.packageKey().equals("org.junit.platform:junit-platform-launcher:jar:"));
     }
 
     @Test
@@ -413,7 +413,7 @@ class LockOrchestratorBomTest {
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
         Lockfile.Artifact jupiter = lock.artifacts().stream()
-                .filter(p -> p.name().equals("org.junit.jupiter:junit-jupiter"))
+                .filter(p -> p.packageKey().equals("org.junit.jupiter:junit-jupiter:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(jupiter.version()).isEqualTo("5.10.0");

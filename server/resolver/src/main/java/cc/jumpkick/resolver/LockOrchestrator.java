@@ -5,6 +5,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
@@ -186,10 +187,14 @@ public final class LockOrchestrator {
             boolean specializedOnly = pkg.scopes().stream()
                             .allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
                     && pkg.scopes().stream().noneMatch(MAIN_SCOPES::contains);
+            String key = pkg.packageKey();
+            String ga = PackageId.isMavenPackageKey(pkg.name()) ? PackageId.parse(pkg.name()).ga() : pkg.name();
             if (specializedOnly) {
-                prefs.putIfAbsent(pkg.name(), pkg.version());
+                prefs.putIfAbsent(key, pkg.version());
+                prefs.putIfAbsent(ga, pkg.version());
             } else {
-                prefs.put(pkg.name(), pkg.version());
+                prefs.put(key, pkg.version());
+                prefs.put(ga, pkg.version());
             }
         }
         return lock(project, jkVersion, featuresRequested, withDefaults, observer, prefs);
@@ -498,12 +503,13 @@ public final class LockOrchestrator {
         for (Scope scope : scopes) {
             Set<String> rootModules = new HashSet<>();
             for (Dependency d : project.dependencies().of(scope)) {
-                rootModules.add(d.module());
+                // Resolution keys are package ids (g:a:type:classifier); declared modules are GA.
+                rootModules.add(PackageId.ofGa(d.module()).key());
             }
             if (includeJunitSeeds && scope == Scope.TEST) {
-                rootModules.add(JUNIT_LAUNCHER.module());
+                rootModules.add(PackageId.ofGa(JUNIT_LAUNCHER.module()).key());
                 if (project.dependencies().of(Scope.TEST).isEmpty()) {
-                    rootModules.add(JUNIT_JUPITER.module());
+                    rootModules.add(PackageId.ofGa(JUNIT_JUPITER.module()).key());
                 }
             }
             if (rootModules.isEmpty()) continue;
@@ -529,10 +535,12 @@ public final class LockOrchestrator {
 
         boolean kmpAlias = kmp.selectionFor(mod.module(), mod.version()).isPresent();
 
+        String packageName = mod.module();
         String artifactFile = null;
         try {
             if (!kmpAlias && "aar".equals(pomBuilder.build(coord).packaging())) {
                 coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
+                packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
                 artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
             }
         } catch (Exception ignored) {
@@ -550,13 +558,14 @@ public final class LockOrchestrator {
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);
 
         String pinnedBy = null;
-        String constrained = bomConstraints.get(mod.module());
+        String ga = PackageId.parse(mod.module()).ga();
+        String constrained = bomConstraints.get(ga);
         if (constrained != null && constrained.equals(mod.version())) {
-            pinnedBy = constraintProvenance.get(mod.module());
+            pinnedBy = constraintProvenance.get(ga);
         }
 
         return new Lockfile.Artifact(
-                mod.module(),
+                packageName, // full package key (g:a:type:classifier)
                 mod.version(),
                 source,
                 checksum,

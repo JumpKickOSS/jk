@@ -88,8 +88,8 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules()).containsKey("com.foo:leaf");
-        assertThat(result.modules().get("com.foo:leaf").version()).isEqualTo("1.5");
+        assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.5");
     }
 
     @Test
@@ -121,7 +121,7 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf").version()).isEqualTo("2.0");
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("2.0");
     }
 
     @Test
@@ -140,7 +140,7 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:leaf", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf").version()).isEqualTo("1.0");
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
     }
 
     @Test
@@ -158,7 +158,7 @@ class PubGrubResolverTest {
 
         Resolution result =
                 resolver.resolve(List.of(new Dependency("com.foo:other", VersionSelector.parseFloating("1.5"))));
-        assertThat(result.modules().get("com.foo:other").version()).isEqualTo("1.5");
+        assertThat(result.modules().get("com.foo:other:jar:").version()).isEqualTo("1.5");
     }
 
     private RepoGroup repoGroup(Path tempDir) {

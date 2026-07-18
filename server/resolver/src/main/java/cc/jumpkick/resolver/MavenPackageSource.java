@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -105,8 +106,12 @@ public final class MavenPackageSource implements PackageSource {
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 
+        // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
+        String ga = PackageId.parse(pkg).ga();
+        preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
         preferFirst(sorted, lockedVersionPrefs.get(pkg));
+        preferFirst(sorted, lockedVersionPrefs.get(ga));
 
         List<String> result = List.copyOf(sorted);
         versionCache.put(pkg, result);
@@ -155,11 +160,11 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> kmpDropped = Set.of();
         if (kmpSelection.isPresent()) {
             var target = kmpSelection.get().target();
-            String targetModule = target.group() + ":" + target.module();
-            if (!isExcluded(targetModule, excl)) {
-                out.add(Term.positive(targetModule, VersionSet.exact(target.version())));
+            String targetPkg = PackageId.ofGa(target.group() + ":" + target.module()).key();
+            if (!isExcluded(targetPkg, excl)) {
+                out.add(Term.positive(targetPkg, VersionSet.exact(target.version())));
                 // Cascade parent exclusions onto the redirect target.
-                registerExclusions(targetModule, excl);
+                registerExclusions(targetPkg, excl);
             }
             kmpDropped = kmpSelection.get().allTargets();
         }
@@ -169,7 +174,8 @@ public final class MavenPackageSource implements PackageSource {
             String scope = dep.scope();
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
             if (dep.version() == null || dep.version().isBlank()) continue;
-            if (isExcluded(dep.module(), excl)) continue;
+            String depPkg = packageKey(dep);
+            if (isExcluded(depPkg, excl)) continue;
 
             // Register this edge's exclusions for when the child is expanded, and cascade
             // exclusions inherited from our own parents (Maven subtree exclusion).
@@ -177,10 +183,10 @@ public final class MavenPackageSource implements PackageSource {
             if (!excl.isEmpty() || !childExcl.isEmpty()) {
                 Set<String> merged = new LinkedHashSet<>(excl);
                 merged.addAll(childExcl);
-                registerExclusions(dep.module(), merged);
+                registerExclusions(depPkg, merged);
             }
 
-            out.add(Term.positive(dep.module(), VersionSelectors.constraintFromPomVersion(dep.version())));
+            out.add(Term.positive(depPkg, VersionSelectors.constraintFromPomVersion(dep.version())));
         }
         List<Term> immutable = List.copyOf(out);
         depsCache.put(key, immutable);
@@ -201,16 +207,27 @@ public final class MavenPackageSource implements PackageSource {
         });
     }
 
-    /** Whether {@code module} ({@code group:artifact}) is covered by any exclusion entry. */
-    static boolean isExcluded(String module, Set<String> exclusions) {
+    /**
+     * Whether {@code packageKey} is covered by any exclusion entry. Exclusions are GA-scoped
+     * ({@code group:artifact} / wildcards); type/classifier do not escape an exclusion.
+     */
+    static boolean isExcluded(String packageKey, Set<String> exclusions) {
         if (exclusions == null || exclusions.isEmpty()) return false;
-        if (exclusions.contains(module)) return true;
+        String ga = PackageId.isMavenPackageKey(packageKey) ? PackageId.parse(packageKey).ga() : packageKey;
+        if (exclusions.contains(ga) || exclusions.contains(packageKey)) return true;
         // Wildcard forms stored as "group:*", "*:artifact", "*:*"
-        int colon = module.indexOf(':');
+        int colon = ga.indexOf(':');
         if (colon < 0) return exclusions.contains("*:*");
-        String g = module.substring(0, colon);
-        String a = module.substring(colon + 1);
+        String g = ga.substring(0, colon);
+        String a = ga.substring(colon + 1);
         return exclusions.contains(g + ":*") || exclusions.contains("*:" + a) || exclusions.contains("*:*");
+    }
+
+    /** Solver package key for a POM dependency ({@code g:a:type:classifier}). */
+    static String packageKey(Pom.Dep dep) {
+        String type = dep.type() == null || dep.type().isBlank() ? PackageId.DEFAULT_TYPE : dep.type();
+        String classifier = dep.classifier() == null ? "" : dep.classifier();
+        return PackageId.of(dep.groupId(), dep.artifactId(), type, classifier).key();
     }
 
     static Set<String> modulesOf(List<Pom.Dep.Exclusion> exclusions) {
@@ -249,6 +266,6 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     private static Coordinate withVersion(String pkg, String version) {
-        return Coordinate.ofModule(pkg, version);
+        return PackageId.parse(pkg).withVersion(version);
     }
 }

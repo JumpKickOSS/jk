@@ -2,12 +2,13 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.PackageId;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
-/** Resolution result: module → picked version (and direct deps). */
+/** Resolution result: package key → picked version (and direct deps). */
 public record Resolution(Map<String, ResolvedModule> modules) {
 
     public Resolution {
@@ -24,14 +25,14 @@ public record Resolution(Map<String, ResolvedModule> modules) {
             deps = List.copyOf(deps);
         }
 
-        /** Lockfile-style key: {@code group:artifact@version}. */
+        /** Lockfile-style key: {@code packageId@version}. */
         public String coord() {
             return module + "@" + version;
         }
 
-        /** This module's {@code group:artifact} plus its picked version as a {@link Coordinate}. */
+        /** This package's identity plus its picked version as a {@link Coordinate}. */
         public Coordinate coordinate() {
-            return Coordinate.ofModule(module, version);
+            return PackageId.parse(module).withVersion(version);
         }
     }
 }

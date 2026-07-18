@@ -2,6 +2,7 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.GradleModuleMetadata;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
@@ -60,7 +61,8 @@ public final class KmpRedirects {
 
     private Optional<Selection> lookup(String module, String version) {
         try {
-            Coordinate coord = Coordinate.ofModule(module, version);
+            PackageId id = PackageId.parse(module);
+            Coordinate coord = id.withVersion(version);
             // The POM is already disk-cached by the dependency walk; the marker comment is the
             // cheap gate that keeps non-KMP modules to zero extra fetches.
             var pomHit = repos.tryFetchPom(coord);
@@ -75,9 +77,10 @@ public final class KmpRedirects {
             GradleModuleMetadata gmm =
                     GradleModuleMetadata.parse(moduleHit.get().fetched().cachePath());
             return gmm.runtimeRedirect(jvmEnvironment).map(target -> {
-                String selected = target.group() + ":" + target.module();
+                String selected = PackageId.ofGa(target.group() + ":" + target.module()).key();
                 for (String sibling : gmm.redirectTargetModules()) {
-                    if (!sibling.equals(selected)) droppedSiblings.put(sibling, selected);
+                    String siblingKey = PackageId.ofGa(sibling).key();
+                    if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);
                 }
                 return new Selection(target, gmm.redirectTargetModules());
             });

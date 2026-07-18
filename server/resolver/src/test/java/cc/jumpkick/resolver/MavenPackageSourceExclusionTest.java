@@ -102,7 +102,7 @@ class MavenPackageSourceExclusionTest {
         Resolution result =
                 resolver.resolve(List.of(new Dependency("com.foo:parent", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules()).containsKeys("com.foo:parent", "com.foo:child");
+        assertThat(result.modules()).containsKeys("com.foo:parent:jar:", "com.foo:child:jar:");
         assertThat(result.modules()).doesNotContainKey("com.foo:leaf");
     }
 
@@ -167,7 +167,7 @@ class MavenPackageSourceExclusionTest {
                 new Dependency("com.foo:parent", VersionSelector.parse("=1.0")),
                 new Dependency("com.foo:other", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules()).containsKey("com.foo:leaf");
+        assertThat(result.modules()).containsKey("com.foo:leaf:jar:");
     }
 
     @Test
@@ -206,7 +206,7 @@ class MavenPackageSourceExclusionTest {
         Resolution result = new PubGrubResolver(repoGroup(tempDir))
                 .resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf").version()).isEqualTo("1.5");
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.5");
     }
 
     private RepoGroup repoGroup(Path tempDir) {

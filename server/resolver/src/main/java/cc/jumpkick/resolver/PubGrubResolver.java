@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -84,11 +85,13 @@ public final class PubGrubResolver implements Resolver {
         List<Term> rootTerms = new ArrayList<>(roots.size());
         Map<String, String> rootDepNames = new HashMap<>();
         for (Dependency dep : roots) {
-            rootTerms.add(Term.positive(dep.module(), VersionSelectors.toVersionSet(dep.version())));
+            // Declared modules are GA; solver keys are g:a:type:classifier (default jar).
+            String pkg = PackageId.ofGa(dep.module()).key();
+            rootTerms.add(Term.positive(pkg, VersionSelectors.toVersionSet(dep.version())));
             // Skip workspace placeholders — they never hit the network so
             // the artifact-defaulting hint would be misleading there.
             if (!dep.isWorkspace()) {
-                rootDepNames.put(dep.module(), dep.library());
+                rootDepNames.put(pkg, dep.library());
             }
         }
 
@@ -133,7 +136,7 @@ public final class PubGrubResolver implements Resolver {
                 for (Pom.Dep d : pom.dependencies()) {
                     Set<String> edgeExcl = MavenPackageSource.modulesOf(d.exclusions());
                     if (edgeExcl.isEmpty()) continue;
-                    exclWhenListing.merge(d.module(), edgeExcl, PubGrubResolver::unionSets);
+                    exclWhenListing.merge(MavenPackageSource.packageKey(d), edgeExcl, PubGrubResolver::unionSets);
                 }
             }
             // Cascade: if A has exclusions E and A→B, B also filters by E.
@@ -145,11 +148,12 @@ public final class PubGrubResolver implements Resolver {
                     if (parentExcl == null || parentExcl.isEmpty()) continue;
                     EffectivePom pom = pomBuilder.build(toCoord(e.getKey(), e.getValue()));
                     for (Pom.Dep d : pom.dependencies()) {
-                        if (!decisions.containsKey(d.module())) continue;
-                        Set<String> before = exclWhenListing.getOrDefault(d.module(), Set.of());
+                        String childPkg = MavenPackageSource.packageKey(d);
+                        if (!decisions.containsKey(childPkg)) continue;
+                        Set<String> before = exclWhenListing.getOrDefault(childPkg, Set.of());
                         Set<String> merged = unionSets(before, parentExcl);
                         if (merged.size() != before.size()) {
-                            exclWhenListing.put(d.module(), merged);
+                            exclWhenListing.put(childPkg, merged);
                             changed = true;
                         }
                     }
@@ -168,9 +172,9 @@ public final class PubGrubResolver implements Resolver {
                 Set<String> kmpDropped = Set.of();
                 if (kmpSelection.isPresent()) {
                     var target = kmpSelection.get().target();
-                    String targetModule = target.group() + ":" + target.module();
-                    if (decisions.containsKey(targetModule) && !MavenPackageSource.isExcluded(targetModule, excl)) {
-                        deps.add(targetModule + "@" + decisions.get(targetModule));
+                    String targetPkg = PackageId.ofGa(target.group() + ":" + target.module()).key();
+                    if (decisions.containsKey(targetPkg) && !MavenPackageSource.isExcluded(targetPkg, excl)) {
+                        deps.add(targetPkg + "@" + decisions.get(targetPkg));
                     }
                     kmpDropped = kmpSelection.get().allTargets();
                 }
@@ -182,9 +186,10 @@ public final class PubGrubResolver implements Resolver {
                     if (scope != null && !scope.isEmpty() && !scope.equals("compile") && !scope.equals("runtime"))
                         continue;
                     if (d.version() == null || d.version().isBlank()) continue;
-                    if (MavenPackageSource.isExcluded(d.module(), excl)) continue;
-                    if (!decisions.containsKey(d.module())) continue;
-                    deps.add(d.module() + "@" + decisions.get(d.module()));
+                    String childPkg = MavenPackageSource.packageKey(d);
+                    if (MavenPackageSource.isExcluded(childPkg, excl)) continue;
+                    if (!decisions.containsKey(childPkg)) continue;
+                    deps.add(childPkg + "@" + decisions.get(childPkg));
                 }
             }
             dependsOn.put(e.getKey(), deps);
@@ -200,8 +205,8 @@ public final class PubGrubResolver implements Resolver {
         return new Resolution(out);
     }
 
-    private static Coordinate toCoord(String module, String version) {
-        return Coordinate.ofModule(module, version);
+    private static Coordinate toCoord(String packageKey, String version) {
+        return PackageId.parse(packageKey).withVersion(version);
     }
 
     private static Set<String> unionSets(Set<String> a, Set<String> b) {

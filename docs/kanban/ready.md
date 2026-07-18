@@ -9,5 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-1. [ticket-1002](ticket-1002-classifier-package-identity.md) — Solver package identity includes type/classifier
-2. [ticket-1004](ticket-1004-cas-invariant-tests.md) — Permanent CAS/action-cache invariant tests
+1. [ticket-1004](ticket-1004-cas-invariant-tests.md) — Permanent CAS/action-cache invariant tests

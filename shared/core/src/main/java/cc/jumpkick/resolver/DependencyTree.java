@@ -927,6 +927,16 @@ public final class DependencyTree {
         Map<String, Lockfile.Artifact> result = new HashMap<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             result.put(pkg.name(), pkg);
+            result.put(pkg.packageKey(), pkg);
+            // Bare GA lookups (declared roots) resolve to the default-jar row when present.
+            if (cc.jumpkick.model.PackageId.isMavenPackageKey(pkg.name())) {
+                var id = cc.jumpkick.model.PackageId.parse(pkg.name());
+                if (id.isDefaultJar()) {
+                    result.put(id.ga(), pkg);
+                } else {
+                    result.putIfAbsent(id.ga(), pkg);
+                }
+            }
         }
         return result;
     }

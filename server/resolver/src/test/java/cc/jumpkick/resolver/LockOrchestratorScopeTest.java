@@ -111,7 +111,7 @@ class LockOrchestratorScopeTest {
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
         List<Lockfile.Artifact> sharedRows = lock.artifacts().stream()
-                .filter(a -> a.name().equals("com.foo:shared"))
+                .filter(a -> a.packageKey().equals("com.foo:shared:jar:"))
                 .toList();
         assertThat(sharedRows).hasSize(2);
 
@@ -159,7 +159,7 @@ class LockOrchestratorScopeTest {
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         List<Lockfile.Artifact> shared = lock.artifacts().stream()
-                .filter(a -> a.name().equals("com.foo:shared"))
+                .filter(a -> a.packageKey().equals("com.foo:shared:jar:"))
                 .toList();
         assertThat(shared).hasSize(1);
         assertThat(shared.getFirst().scopes()).contains(Scope.MAIN, Scope.PROCESSOR);
@@ -208,7 +208,7 @@ class LockOrchestratorScopeTest {
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         List<Lockfile.Artifact> sharedRows = lock.artifacts().stream()
-                .filter(a -> a.name().equals("com.foo:shared"))
+                .filter(a -> a.packageKey().equals("com.foo:shared:jar:"))
                 .toList();
         assertThat(sharedRows).hasSize(2);
         assertThat(sharedRows.stream().map(Lockfile.Artifact::version)).containsExactlyInAnyOrder("1.0", "2.0");
@@ -224,7 +224,7 @@ class LockOrchestratorScopeTest {
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact proc = lock.artifacts().stream()
-                .filter(a -> a.name().equals("com.foo:proc"))
+                .filter(a -> a.packageKey().equals("com.foo:proc:jar:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(proc.scopes()).contains(Scope.PROCESSOR);
