@@ -18,9 +18,7 @@ when work begins; to [blocked.md](blocked.md) if stuck; to [done.md](done.md) wh
 
 ## Backlog Items
 
-1. [ticket-1007](ticket-1007-bootstrap-jk-on-jk.md) — CI/bootstrap builds jk with jk
-2. [ticket-1010](ticket-1010-private-plugins.md) — Private plugin jars (pin + trust) without a marketplace
-3. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE clients over engine wire protocol
+_(empty)_
 
 ---
 
@@ -29,3 +27,5 @@ when work begins; to [blocked.md](blocked.md) if stuck; to [done.md](done.md) wh
 - **Out of scope for this board:** infinite ecosystem long tail (every AGP parity gap, full KMP
   multiplatform, marketplace plugins, RBE). Track those in feature plans when they become north stars.
 - **Ready queue:** see [ready.md](ready.md). Prefer separate worktrees per ticket; keep WIP small.
+- **Phase-2 follow-ups** (not tickets yet): full `dist` via jk only (after 1007), IDE marketplace
+  plugins (after 1014), plugin cosign (after 1010).
