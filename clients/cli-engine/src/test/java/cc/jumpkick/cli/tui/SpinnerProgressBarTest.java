@@ -68,22 +68,22 @@ class SpinnerProgressBarTest {
 
     @Test
     void rightmost_filled_glyph_is_always_the_gradient_end() {
-        // The frontier glyph is pinned to the gradient end (bright-magenta)
-        // at every fill level; the band trails leftward toward the indigo start.
-        assertThat(frontierColor(5)).isEqualTo("38;2;224;64;251");
-        assertThat(frontierColor(50)).isEqualTo("38;2;224;64;251");
-        assertThat(frontierColor(100)).isEqualTo("38;2;224;64;251");
+        // The frontier glyph is pinned to the gradient end (neon violet)
+        // at every fill level; the band trails leftward toward the blue start.
+        assertThat(frontierColor(5)).isEqualTo("38;2;221;89;255");
+        assertThat(frontierColor(50)).isEqualTo("38;2;221;89;255");
+        assertThat(frontierColor(100)).isEqualTo("38;2;221;89;255");
     }
 
     @Test
     void single_filled_glyph_uses_only_the_gradient_end() {
-        // 2.5% → 1 filled glyph: it must be the bright-magenta end, not the indigo start.
+        // 2.5% → 1 filled glyph: it must be the neon violet end, not the blue start.
         var buf = new ByteArrayOutputStream();
         try (var pb = SpinnerProgressBar.show(stream(buf))) {
             pb.update(2, "x"); // round(2 * 40 / 100) = 1 filled
         }
         var colors = filledGlyphColors(buf.toString(StandardCharsets.UTF_8));
-        assertThat(colors).containsExactly("38;2;224;64;251");
+        assertThat(colors).containsExactly("38;2;221;89;255");
     }
 
     @Test
@@ -179,8 +179,8 @@ class SpinnerProgressBarTest {
         // Jk Dark indigo #3F51B5 → bright-magenta #E040FB.
         String first = colors[0].toAnsi();
         String last = colors[19].toAnsi();
-        assertThat(first).isEqualTo("38;2;63;81;181"); // indigo start
-        assertThat(last).isEqualTo("38;2;224;64;251"); // bright-magenta end
+        assertThat(first).isEqualTo("38;2;61;155;255"); // blue start
+        assertThat(last).isEqualTo("38;2;221;89;255"); // neon violet end
     }
 
     private static PrintStream stream(ByteArrayOutputStream buf) {

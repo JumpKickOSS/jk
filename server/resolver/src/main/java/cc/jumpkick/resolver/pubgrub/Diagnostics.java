@@ -36,10 +36,10 @@ public final class Diagnostics {
 
         /** Default palette — hardcoded to match {@code JkDarkTheme}. Used when no palette is injected. */
         public static final Palette DEFAULT = fromRgb(
-                0x00, 0xBC, 0xD4, // NORMAL_CYAN  — coordGroup
-                0x18, 0xFF, 0xFF, // BRIGHT_CYAN  — coordName
+                0x00, 0xD4, 0xE0, // NORMAL_CYAN  — coordGroup
+                0x00, 0xF0, 0xFF, // BRIGHT_CYAN  — coordName
                 0xC1, 0xFB, 0xFC, // COORD_VERSION — coordVersion (#C1FBFC)
-                0xE9, 0x1E, 0x63, // NORMAL_RED   — ‼ header
+                0xFF, 0x33, 0x66, // NORMAL_RED   — ‼ header
                 0x54, 0x6E, 0x7A); // BRIGHT_BLACK — │ rail
 
         /** Plain palette — no colors. */

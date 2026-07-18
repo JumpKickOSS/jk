@@ -46,8 +46,8 @@ class ProgressBarTest {
         // 0% → 40 underlined spaces in the gradient's brightest (right-most) color.
         String line = new ProgressBar().render(0, 100);
         // attribute-leading SGR: underline (4) before the truecolor group; the
-        // gradient's right-most end is now bright-magenta #E040FB → 224;64;251.
-        assertThat(line).contains("\033[4;38;2;224;64;251m ");
+        // gradient's right-most end is now neon violet #DD59FF → 221;89;255.
+        assertThat(line).contains("\033[4;38;2;221;89;255m ");
     }
 
     @Test
@@ -64,10 +64,10 @@ class ProgressBarTest {
         // The right-most filled block is pinned to the gradient end at every fill,
         // and at 100% the left-most block sits at the gradient start.
         assertThat(blockColors(new ProgressBar().render(50, 100)).getLast())
-                .isEqualTo("38;2;224;64;251"); // bright-magenta end
+                .isEqualTo("38;2;221;89;255"); // neon violet end
         List<String> full = blockColors(new ProgressBar().render(100, 100));
-        assertThat(full.getLast()).isEqualTo("38;2;224;64;251"); // bright-magenta end on the right
-        assertThat(full.getFirst()).isEqualTo("38;2;63;81;181"); // indigo start on the left
+        assertThat(full.getLast()).isEqualTo("38;2;221;89;255"); // neon violet end on the right
+        assertThat(full.getFirst()).isEqualTo("38;2;61;155;255"); // blue start on the left
     }
 
     /** In-order truecolor SGRs of each whole-cell (█) glyph in {@code raw}. */

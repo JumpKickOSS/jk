@@ -53,9 +53,9 @@ class GradientTest {
 
     @Test
     void rgb_darker_and_brighter_scale_and_clamp() {
-        // #4CAF50 (76,175,80) × 0.70 ; #69F0AE (105,240,174) × 1.10 (G clamps).
-        assertThat(JkDarkTheme.NORMAL_GREEN.darker(0.30)).isEqualTo(new Rgb(53, 122, 56));
-        assertThat(JkDarkTheme.BRIGHT_GREEN.brighter(0.10)).isEqualTo(new Rgb(116, 255, 191));
+        // #00B368 (0,179,104) × 0.70 ; #00FF87 (0,255,135) × 1.10 (G clamps).
+        assertThat(JkDarkTheme.NORMAL_GREEN.darker(0.30)).isEqualTo(new Rgb(0, 125, 73));
+        assertThat(JkDarkTheme.BRIGHT_GREEN.brighter(0.10)).isEqualTo(new Rgb(0, 255, 149));
     }
 
     @Test

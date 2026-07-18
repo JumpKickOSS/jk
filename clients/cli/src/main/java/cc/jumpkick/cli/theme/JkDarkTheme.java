@@ -8,7 +8,7 @@ import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 
 /**
- * The "Jk Dark" color scheme — a Material Indigo/Pink dark palette, and the default {@link Theme}
+ * The "Jk Dark" color scheme — a neon dark palette synced from the jk web dashboard, and the default {@link Theme}
  * implementation. The palette constants map jk's semantic roles (error, success, active accent, …)
  * onto named colors; the instance methods turn those roles into {@link AttributedStyle}s. jk emits
  * foreground colors only, so {@link #BACKGROUND}, {@link #CURSOR}, and the selection colors are
@@ -22,10 +22,10 @@ public final class JkDarkTheme implements Theme {
     public static final String NAME = "Jk Dark";
     public static final String VARIANT = "dark";
 
-    public static final Rgb PRIMARY = Rgb.hex(0x3F51B5); // Indigo 500
-    public static final Rgb PRIMARY_DARK = Rgb.hex(0x303F9F); // Indigo 700
-    public static final Rgb PRIMARY_LIGHT = Rgb.hex(0xC5CAE9); // Indigo 100
-    public static final Rgb ACCENT = Rgb.hex(0xFF4081); // Pink A200
+    public static final Rgb PRIMARY = Rgb.hex(0x3D9BFF); // web --run (neon electric blue) — matches NORMAL_BLUE
+    public static final Rgb PRIMARY_DARK = Rgb.hex(0x124A8C); // web --runc (deep neon blue)
+    public static final Rgb PRIMARY_LIGHT = Rgb.hex(0xC5CAE9); // light periwinkle (normalGray; no web token)
+    public static final Rgb ACCENT = Rgb.hex(0xC04DFF); // web --prog-b (neon violet) — the gradient terminator
 
     public static final Rgb BACKGROUND = Rgb.hex(0x000000);
     public static final Rgb FOREGROUND = Rgb.hex(0xCFD8DC);
@@ -33,18 +33,18 @@ public final class JkDarkTheme implements Theme {
     public static final Rgb CURSOR = Rgb.hex(0xECEFF1);
     public static final Rgb CURSOR_TEXT = Rgb.hex(0x000000);
 
-    public static final Rgb SELECTION_BG = Rgb.hex(0x303F9F);
+    public static final Rgb SELECTION_BG = Rgb.hex(0x124A8C); // web --runc (deep neon blue)
     public static final Rgb SELECTION_TEXT = Rgb.hex(0xFFFFFF);
 
     // Normal (the 8 base ANSI colors).
     public static final Rgb NORMAL_BLACK = Rgb.hex(0x263238); // Blue Grey 900
-    public static final Rgb NORMAL_RED = Rgb.hex(0xE91E63); // Pink 500
-    public static final Rgb NORMAL_GREEN = Rgb.hex(0x4CAF50); // Green 500
-    public static final Rgb PIPELINE_GREEN = Rgb.hex(0x357B38); // Green 500 × 0.7 — build wedge background
-    public static final Rgb NORMAL_YELLOW = Rgb.hex(0xFFC107); // Amber 500
-    public static final Rgb NORMAL_BLUE = Rgb.hex(0x3F51B5); // Indigo 500
-    public static final Rgb NORMAL_MAGENTA = Rgb.hex(0x9C27B0); // Purple 500
-    public static final Rgb NORMAL_CYAN = Rgb.hex(0x00BCD4); // Cyan 500
+    public static final Rgb NORMAL_RED = Rgb.hex(0xFF3366); // web --err (neon red)
+    public static final Rgb NORMAL_GREEN = Rgb.hex(0x00B368); // web --okc (deep neon green)
+    public static final Rgb PIPELINE_GREEN = NORMAL_GREEN.darker(0.30); // deep green × 0.7 — build wedge background
+    public static final Rgb NORMAL_YELLOW = Rgb.hex(0xFFB800); // web --warn (neon amber)
+    public static final Rgb NORMAL_BLUE = Rgb.hex(0x3D9BFF); // web --run (neon electric blue)
+    public static final Rgb NORMAL_MAGENTA = Rgb.hex(0xC04DFF); // web --prog-b (neon violet)
+    public static final Rgb NORMAL_CYAN = Rgb.hex(0x00D4E0); // web --cg (neon cyan, secondary)
     public static final Rgb HEADER_BLUE = Rgb.hex(0x0F4786); // dark royal blue (#1565C0 × 0.7)
     public static final Rgb NORMAL_WHITE = Rgb.hex(0xCFD8DC); // Blue Grey 100
     public static final Rgb GRAY = Rgb.hex(0x90A4AE); // Blue Grey 300 — badge chips
@@ -64,36 +64,36 @@ public final class JkDarkTheme implements Theme {
     // Bright (the 8 bright ANSI colors).
     public static final Rgb BRIGHT_BLACK = Rgb.hex(0x546E7A); // Blue Grey 600
     public static final Rgb DARK_BLACK = BRIGHT_BLACK.darker(0.40); // bright black × 0.6 — the dimmest gray
-    public static final Rgb BRIGHT_RED = Rgb.hex(0xFF4081); // Pink A200
-    public static final Rgb BRIGHT_GREEN = Rgb.hex(0x69F0AE); // Green A200
-    public static final Rgb BRIGHT_YELLOW = Rgb.hex(0xFFD54F); // Amber 300
-    public static final Rgb BRIGHT_BLUE = Rgb.hex(0x536DFE); // Indigo A200
-    public static final Rgb BRIGHT_MAGENTA = Rgb.hex(0xE040FB); // Purple A200
-    public static final Rgb BRIGHT_CYAN = Rgb.hex(0x18FFFF); // Cyan A200
+    public static final Rgb BRIGHT_RED = NORMAL_RED.brighter(0.25); // web --err lifted (web has no separate bright red)
+    public static final Rgb BRIGHT_GREEN = Rgb.hex(0x00FF87); // web --ok (neon green)
+    public static final Rgb BRIGHT_YELLOW = NORMAL_YELLOW.brighter(0.20); // web --warn lifted (web has no separate bright amber)
+    public static final Rgb BRIGHT_BLUE = Rgb.hex(0x5AB0FF); // web --run-line (brighter running blue)
+    public static final Rgb BRIGHT_MAGENTA = NORMAL_MAGENTA.brighter(0.15); // web --prog-b lifted (web has no separate bright violet)
+    public static final Rgb BRIGHT_CYAN = Rgb.hex(0x00F0FF); // web --cn (neon cyan, accent)
     public static final Rgb BRIGHT_WHITE = Rgb.hex(0xECEFF1); // Blue Grey 50
     /** {@code coordVersion()} — 75% between {@link #BRIGHT_CYAN} and {@link #BRIGHT_WHITE} (50% brighter than the midpoint). */
     public static final Rgb COORD_VERSION = Rgb.hex(0xC1FBFC);
 
     // --- gradients --------------------------------------------------------
-    // Named gradients, each independently tunable (all from the Jk Dark scheme):
-    // title bright-blue → accent; spinner primary → accent; progress green
-    // 50% darker → 50% brighter.
-    /** Gradient for {@code jk init}/wizard titles — Jk Dark bright-blue → accent. */
+    // Named gradients, each independently tunable — all now read electric-blue → neon-violet, the
+    // web dashboard's single blue→violet gradient (--prog-a → --prog-b). ACCENT and BRIGHT_MAGENTA
+    // both resolve to the web violet, so the endpoints track the palette with no special-casing.
+    /** Gradient for {@code jk init}/wizard titles — bright blue → violet. */
     private static final Gradient TITLE_GRADIENT = new Gradient(BRIGHT_BLUE, ACCENT);
 
     /**
-     * Gradient for the progress-bar fill — indigo → bright-magenta, so the fill starts deep indigo
-     * and warms toward magenta; the empty track reads bright-magenta.
+     * Gradient for the progress-bar fill — blue → violet, so the fill starts electric blue and warms
+     * toward neon violet; the empty track reads bright violet.
      */
     private static final Gradient PROGRESS_GRADIENT = new Gradient(PRIMARY, BRIGHT_MAGENTA);
 
-    /** Gradient for the spinner frames — Jk Dark primary → accent. */
+    /** Gradient for the spinner frames — blue → violet. */
     private static final Gradient SPINNER_GRADIENT = new Gradient(PRIMARY, ACCENT);
 
-    private static final Rgb FAILURE_GRADIENT_START = Rgb.hex(0x7F1D1D);
-    private static final Rgb FAILURE_GRADIENT_END = Rgb.hex(0xEF4444);
+    private static final Rgb FAILURE_GRADIENT_START = NORMAL_RED.darker(0.55);
+    private static final Rgb FAILURE_GRADIENT_END = NORMAL_RED;
 
-    /** Gradient a failed progress bar repaints in: dark red #7f1d1d → bright red #ef4444. */
+    /** Gradient a failed progress bar repaints in: deep red → neon red (both from the web --err red). */
     private static final Gradient FAILURE_GRADIENT = new Gradient(FAILURE_GRADIENT_START, FAILURE_GRADIENT_END);
 
     /** Apply a foreground color unless the resolved {@code --color} choice disables it. */
@@ -273,12 +273,12 @@ public final class JkDarkTheme implements Theme {
 
     @Override
     public AttributedStyle indigoBadge() {
-        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), PRIMARY);
+        return withBg(withColor(AttributedStyle.DEFAULT, CHIP_FG), PRIMARY_DARK);
     }
 
     @Override
     public Rgb indigoBadgeColor() {
-        return PRIMARY;
+        return PRIMARY_DARK;
     }
 
     /** Pure black (#000000) — the text color for every chip/badge that sets a background. */
@@ -359,12 +359,12 @@ public final class JkDarkTheme implements Theme {
         return withColor(AttributedStyle.DEFAULT, PATH);
     }
 
-    /** Material Orange 500 — used for inline shell commands. */
-    public static final Rgb SHELL_ORANGE = Rgb.hex(0xFF9800);
+    /** Neon orange for inline shell commands — web --warn amber warmed toward --err red (the web has no orange). */
+    public static final Rgb SHELL_ORANGE = Rgb.hex(0xFF8329);
 
     @Override
     public AttributedStyle shell() {
-        return withColor(AttributedStyle.DEFAULT, SHELL_ORANGE); // Material Orange 500
+        return withColor(AttributedStyle.DEFAULT, SHELL_ORANGE); // neon orange
     }
 
     // --- syntax-highlight styles -----------------------------------------

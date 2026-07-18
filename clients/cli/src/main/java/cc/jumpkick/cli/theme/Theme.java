@@ -72,7 +72,7 @@ public interface Theme {
     /** Blue — used elsewhere; no longer a gradient endpoint. */
     AttributedStyle blue();
 
-    /** Indigo primary — the brand base color (Jk Dark primary). */
+    /** Brand primary — neon electric blue, the brand base color (Jk Dark primary, {@code #3D9BFF}). */
     AttributedStyle primary();
 
     /** Cyan — used to label structural keys like scopes (Jk Dark cyan). */
@@ -93,10 +93,10 @@ public interface Theme {
     // --- coordinate-segment styles ---------------------------------------
     // The three roles of a printed group:artifact:version coordinate.
 
-    /** Coordinate group segment — cyan (Jk Dark cyan {@code #00BCD4}). */
+    /** Coordinate group segment — cyan (Jk Dark cyan {@code #00D4E0}). */
     AttributedStyle coordGroup();
 
-    /** Coordinate artifact/name segment — bright cyan (Jk Dark bright cyan {@code #18FFFF}). */
+    /** Coordinate artifact/name segment — bright cyan (Jk Dark bright cyan {@code #00F0FF}). */
     AttributedStyle coordName();
 
     /** Coordinate version segment — midpoint between bright-cyan and white ({@code #82F7F8}). */
@@ -117,10 +117,10 @@ public interface Theme {
     /** The dark royal blue behind {@link #planBadge()} — for the powerline cap. */
     Rgb planBadgeColor();
 
-    /** Wizard title chip — white on indigo ({@code #3F51B5}). */
+    /** Wizard title chip — white on the deep brand blue ({@code #124A8C}), for AA contrast. */
     AttributedStyle indigoBadge();
 
-    /** The indigo behind {@link #indigoBadge()} — for the powerline cap. */
+    /** The deep blue behind {@link #indigoBadge()} — for the powerline cap. */
     Rgb indigoBadgeColor();
 
     /** The live build pipeline chip (spinner + command) — white on dark royal blue ({@code #0F4786}). */
@@ -171,7 +171,7 @@ public interface Theme {
     /** Filesystem paths (relative or absolute) shown to the user — periwinkle. */
     AttributedStyle path();
 
-    /** Shell commands and command-lines shown to the user — orange ({@code #FF9800}). */
+    /** Shell commands and command-lines shown to the user — neon orange ({@code #FF8329}). */
     AttributedStyle shell();
 
     // --- syntax-highlight styles (compiler-diagnostic source snippets) ----
