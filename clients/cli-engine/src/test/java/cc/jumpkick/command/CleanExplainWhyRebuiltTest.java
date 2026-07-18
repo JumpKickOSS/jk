@@ -59,6 +59,24 @@ class CleanExplainWhyRebuiltTest {
     // --- explain -----------------------------------------------------------
 
     @Test
+    void why_rebuilt_alias_dispatches_to_explain(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        ScaffoldTestSupport.writeEmptyLock(tempDir);
+        Path src = tempDir.resolve("src/main/java/example/Hello.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package example; public class Hello {}");
+
+        String stdout = captureStdout(() -> run(
+                "why-rebuilt",
+                "-C",
+                tempDir.toString(),
+                "--cache-dir",
+                tempDir.resolve("cache").toString()));
+        assertThat(stdout).contains("Build Plan").contains("widget");
+        assertThat(stdout).contains("compile-main");
+    }
+
+    @Test
     void explain_lists_compile_tasks_with_cache_status(@TempDir Path tempDir) throws Exception {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         ScaffoldTestSupport.writeEmptyLock(tempDir); // jk new no longer locks; explain needs a lock

@@ -101,6 +101,34 @@ and exclusions stay GA-scoped.
 Local cache roots under `~/.jk/cache/` (content-addressed blobs + action mappings). CAS writes
 are copy/atomic; build trees must not share inodes with immutable blobs.
 
+### Action keys and future remote cache (design)
+
+Local action keys already hash the ingredients a remote cache would need. **Do not rewrite
+keys** when adding a read-only remote later — only add an optional remote lookup layer.
+
+| Ingredient | Local today | Remote note |
+|---|---|---|
+| Task type / id | `task:` line (e.g. `compile-main`) | Keep stable names |
+| jk version | `jk:` in key material | Pin engine version for cross-machine hits |
+| Toolchain / release | `--release`, Kotlin target | Include JDK major when outputs are version-sensitive |
+| Sources | path + content SHA-256 | Prefer content-only relative paths for portability later |
+| Classpath / processors | CAS path (content-addressed) | Same hex blobs work remote |
+| Plugin / worker jar | worker hash in artifact keys | Must stay part of the key (upgrade invalidates) |
+| OS/arch | only when outputs are platform-specific | Omit for pure class jars |
+
+**CAS addressing:** blobs are `sha256` content-addressed; a remote store can use the same hex
+keys. Local restore remains copy-not-link (see CAS invariant tests).
+
+**Read-only remote client (post-GA sketch):** lookup action key → download missing blobs →
+restore into local CAS/action cache → proceed as a local hit. No write-back, ACLs, or REAPI
+execution in 1.0.
+
+**Non-goals for 1.0:** remote write-back, multi-tenant trust, full Bazel REAPI execution,
+cross-org sharing.
+
+**Compatibility:** if key material gains fields, version the action-key schema (prefix or
+schema byte) so old local entries are not silently reinterpreted.
+
 ## Plugins
 
 Build plugins own a `jk.toml` table (`[spring-boot]`, `[android]`, …) via a jar containing

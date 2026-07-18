@@ -10,7 +10,9 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.config.AffectedModules;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
@@ -56,7 +58,11 @@ public final class BuildCommand implements CliCommand {
                 Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"),
                 Opt.flag("Build modules in parallel (default; --no-parallel for the rich serial view).", "--parallel")
                         .negate(),
-                Opt.flag("Run modules' tests concurrently too. Default: off.", "--parallel-tests")));
+                Opt.flag("Run modules' tests concurrently too. Default: off.", "--parallel-tests"),
+                Opt.value(
+                        "<git-ref>",
+                        "Build only modules (and dependents) changed since this git ref.",
+                        "--affected-since")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -71,6 +77,7 @@ public final class BuildCommand implements CliCommand {
     boolean parallelTests;
     boolean aotCache;
     String variant;
+    String affectedSince;
     java.util.Map<String, String> clientEnv = java.util.Map.of();
     // ---- PipelineKeys -------------------------------------------------------
     //
@@ -99,6 +106,7 @@ public final class BuildCommand implements CliCommand {
         // Opt-in: run modules' tests concurrently. Default serializes them
         // (shared ports/locks/fixtures) — see BuildPipelines's test gate.
         this.parallelTests = in.isSet("parallel-tests");
+        this.affectedSince = in.value("affected-since").orElse(null);
         cc.jumpkick.config.SessionContext.install(
                 cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
         Path startDir = global.workingDir();
@@ -244,13 +252,37 @@ public final class BuildCommand implements CliCommand {
             System.err.println("[jk-perf] client-forecast " + (System.nanoTime() - buildStart) / 1_000_000 + "ms dirty="
                     + dirtyDirs.size());
         }
+        // Optional: restrict to modules changed since a git ref (+ reverse-dep dependents).
+        if (affectedSince != null && !affectedSince.isBlank()) {
+            var affected = resolveAffectedSince(entryDir, entryBuild, affectedSince);
+            if (affected.errorMessage() != null) {
+                CliOutput.err("jk build: " + affected.errorMessage());
+                return Exit.CONFIG;
+            }
+            if (affected.moduleDirs().isEmpty()) {
+                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                        cc.jumpkick.cli.tui.Glyphs.CHECK,
+                        "Build",
+                        nerdfont,
+                        "nothing affected since " + affectedSince));
+                return 0;
+            }
+            Set<Path> restricted = new java.util.LinkedHashSet<>();
+            for (Path d : dirtyDirs) {
+                if (affected.moduleDirs().contains(d.toAbsolutePath().normalize())) restricted.add(d);
+            }
+            // Force-include affected modules even if forecast thinks they are cached (user asked
+            // for the subset; engine still hits cache per-step). Prefer intersection when dirty
+            // is non-empty; otherwise build the affected set.
+            dirtyDirs = restricted.isEmpty() ? affected.moduleDirs() : restricted;
+        }
         // The forecast runs against the per-module locks; when the merged workspace lock is stale
         // the engine will re-lock (freshenLock on the request) and the forecast may be wrong — so a
         // stale lock disables the fully-cached shortcut AND the dirty hint (the engine re-forecasts
         // after freshening).
         boolean lockStale = forecast.lockStale();
         // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
-        if (forecast.fullyCached() && !global.force && !global.rebuild) {
+        if (forecast.fullyCached() && !global.force && !global.rebuild && affectedSince == null) {
             // Fully cached — print chip line directly with no spinner ever created.
             CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, upToDateTail("all modules", buildStart)));
@@ -261,6 +293,79 @@ public final class BuildCommand implements CliCommand {
         // runGraphLive) sizes the memory plan and drives the build; we pass the forecast as a hint.
         CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
         return runGraphLive(view, entryDir, entryBuild, cache, buildStart, dirtyDirs, lockStale);
+    }
+
+    /**
+     * Resolve {@code --affected-since} to absolute module dirs. Pure mapping is tested via {@link
+     * cc.jumpkick.config.AffectedModules}; this shells out to git for the changed-path list.
+     */
+    private static AffectedResult resolveAffectedSince(Path entryDir, JkBuild entryBuild, String ref) {
+        try {
+            Path root = entryDir.toAbsolutePath().normalize();
+            if (!entryBuild.isWorkspaceRoot()) {
+                // Module-level: treat the single project as the only candidate.
+                // Still need git for "did anything under this dir change?"
+                List<String> paths = gitDiffNameOnly(root, ref);
+                if (paths == null) {
+                    return AffectedResult.fail("git ref `" + ref + "` could not be resolved");
+                }
+                boolean hit = false;
+                for (String p : paths) {
+                    Path abs = root.resolve(p).normalize();
+                    if (abs.startsWith(root)) {
+                        hit = true;
+                        break;
+                    }
+                }
+                return hit
+                        ? AffectedResult.ok(Set.of(root))
+                        : AffectedResult.ok(Set.of());
+            }
+            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entryBuild);
+            Map<Path, Set<Path>> edges = AffectedModules.edgesFor(modules);
+            List<String> paths = gitDiffNameOnly(root, ref);
+            if (paths == null) {
+                return AffectedResult.fail(
+                        "git ref `" + ref + "` could not be resolved (not a git repo or bad ref)");
+            }
+            Set<Path> affected =
+                    AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths);
+            return AffectedResult.ok(affected);
+        } catch (Exception e) {
+            return AffectedResult.fail(e.getMessage() != null ? e.getMessage() : e.toString());
+        }
+    }
+
+    private record AffectedResult(Set<Path> moduleDirs, String errorMessage) {
+        static AffectedResult ok(Set<Path> dirs) {
+            return new AffectedResult(Set.copyOf(dirs), null);
+        }
+
+        static AffectedResult fail(String msg) {
+            return new AffectedResult(Set.of(), msg);
+        }
+    }
+
+    /** {@code null} on git failure. Paths relative to the process cwd (repo root). */
+    private static List<String> gitDiffNameOnly(Path root, String ref) {
+        try {
+            Process p = new ProcessBuilder("git", "diff", "--name-only", ref + "...HEAD")
+                    .directory(root.toFile())
+                    .redirectErrorStream(true)
+                    .start();
+            List<String> lines = new ArrayList<>();
+            try (var r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.isBlank()) lines.add(line.trim());
+                }
+            }
+            if (p.waitFor() != 0) return null;
+            return lines;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /**

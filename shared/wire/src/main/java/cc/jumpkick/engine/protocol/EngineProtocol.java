@@ -472,6 +472,67 @@ public final class EngineProtocol {
                 + Jsonl.quote(httpUrl)
                 + ",\"httpError\":"
                 + Jsonl.quote(httpError)
+                + ",\"peakActiveRequests\":"
+                + activeRequests
+                + ",\"peakActivePipelines\":"
+                + activePipelines
+                + "}";
+    }
+
+    /**
+     * Status ack with high-water concurrency marks (instrumentation for concurrent memory
+     * decisions). Peaks are non-decreasing for the engine process lifetime.
+     */
+    public static String statusAck(
+            String version,
+            long pid,
+            long startedAtMillis,
+            int activeRequests,
+            int activePipelines,
+            boolean draining,
+            long heapUsedBytes,
+            long heapCommittedBytes,
+            long heapMaxBytes,
+            long rssBytes,
+            long aotTrainingPid,
+            String httpUrl,
+            String httpError,
+            int peakActiveRequests,
+            int peakActivePipelines) {
+        return "{\"t\":\""
+                + STATUS_ACK
+                + "\",\"version\":"
+                + Jsonl.quote(version)
+                + ",\"pid\":"
+                + pid
+                + ",\"startedAt\":"
+                + startedAtMillis
+                + ",\"proto\":"
+                + PROTOCOL
+                + ",\"activeRequests\":"
+                + activeRequests
+                + ",\"activePipelines\":"
+                + activePipelines
+                + ",\"draining\":"
+                + draining
+                + ",\"heapUsedBytes\":"
+                + heapUsedBytes
+                + ",\"heapCommittedBytes\":"
+                + heapCommittedBytes
+                + ",\"heapMaxBytes\":"
+                + heapMaxBytes
+                + ",\"rssBytes\":"
+                + rssBytes
+                + ",\"aotTrainingPid\":"
+                + aotTrainingPid
+                + ",\"httpUrl\":"
+                + Jsonl.quote(httpUrl)
+                + ",\"httpError\":"
+                + Jsonl.quote(httpError)
+                + ",\"peakActiveRequests\":"
+                + peakActiveRequests
+                + ",\"peakActivePipelines\":"
+                + peakActivePipelines
                 + "}";
     }
 

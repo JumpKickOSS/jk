@@ -18,8 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@code jk explain} — forecast the build (cache hit/miss per module/step). {@code --verbose}
- * expands all; {@code --run} executes the plan.
+ * {@code jk explain} — offline forecast of what a build would run (cache hit/miss per module/step).
+ * Prefer this over Gradle build scans for "why will this rebuild?" questions. Alias: {@code
+ * why-rebuilt}. {@code --verbose} expands all; {@code --run} executes the plan.
  */
 public final class ExplainCommand implements CliCommand {
 
@@ -30,7 +31,7 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Print the planned build (units, order, cache hit/miss)";
+        return "Forecast rebuilds (cache hit/miss per step) — use instead of build scans for \"why rebuild?\"";
     }
 
     @Override

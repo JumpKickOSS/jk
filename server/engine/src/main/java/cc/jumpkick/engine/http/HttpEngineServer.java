@@ -325,6 +325,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("uptimeSeconds", Math.max(0, (System.currentTimeMillis() - s.startedAtMillis()) / 1000))
                 .put("activeRequests", s.activeRequests())
                 .put("activePipelines", s.activePipelines())
+                .put("peakActiveRequests", s.peakActiveRequests())
+                .put("peakActivePipelines", s.peakActivePipelines())
                 .put("heapUsedBytes", s.heapUsedBytes())
                 .put("heapCommittedBytes", s.heapCommittedBytes())
                 .put("heapMaxBytes", s.heapMaxBytes())

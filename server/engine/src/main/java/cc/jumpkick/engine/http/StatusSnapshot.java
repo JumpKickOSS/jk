@@ -21,4 +21,40 @@ public record StatusSnapshot(
         long rssBytes,
         long aotTrainingPid,
         int cores,
-        long totalMemoryBytes) {}
+        long totalMemoryBytes,
+        /** High-water mark of concurrent client connections since engine start. */
+        int peakActiveRequests,
+        /** High-water mark of concurrent pipelines since engine start. */
+        int peakActivePipelines) {
+
+    /** Back-compat constructor without peak counters (tests). */
+    public StatusSnapshot(
+            String version,
+            long pid,
+            long startedAtMillis,
+            int activeRequests,
+            int activePipelines,
+            long heapUsedBytes,
+            long heapCommittedBytes,
+            long heapMaxBytes,
+            long rssBytes,
+            long aotTrainingPid,
+            int cores,
+            long totalMemoryBytes) {
+        this(
+                version,
+                pid,
+                startedAtMillis,
+                activeRequests,
+                activePipelines,
+                heapUsedBytes,
+                heapCommittedBytes,
+                heapMaxBytes,
+                rssBytes,
+                aotTrainingPid,
+                cores,
+                totalMemoryBytes,
+                activeRequests,
+                activePipelines);
+    }
+}

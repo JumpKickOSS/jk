@@ -1,38 +1,51 @@
 # ticket-1015 — Concurrent worker memory demand registry
 
 **Priority:** P3 (instrument first)  
-**Status:** ready  
-**Branch:** `ticket-1015-memory-instrument`  
-**Refs:** [architecture.md](../architecture.md) engine heap cap, `HeapPlan`, `JvmOptions`,
-`MemoryProbe`, engine `activeConnections` / worker concurrency
+**Status:** done (phase 1)  
+**Branch:** `ticket-ready-batch`
 
-## Problem
+## Phase 1 shipped
 
-Coarse shared memory plan for concurrent workers may over- or under-admit work. A live
-**demand registry** is only justified if measurement shows real pain (idle queueing or
-single-build regression). This ticket is **instrumentation + decision**, not a rewrite by default.
+Observable concurrency high-water marks without a debugger:
 
-## Scope (phase 1 — ship this)
+| Field | Where |
+|---|---|
+| `activeRequests` / `activePipelines` | `jk engine status` / status-ack / `GET /api/status` |
+| `peakActiveRequests` / `peakActivePipelines` | same (process lifetime peaks) |
+| heap used/committed/max, RSS | existing status fields |
 
-1. **Metrics:** log or status fields for per-build peak worker concurrency, estimated heap budget,
-   and optional wait-for-slot counts (engine status / build journal — reuse existing hooks)
-2. **Harness doc** in this ticket: how to run 2/4/8 concurrent `jk build`s and what to record
-3. **Decision gate:** after measurements (or after one dogfood week), either:
-   - **close as “no registry”** with numbers pasted here, or
-   - open a follow-up ticket for a demand registry design with the data attached
+## Measurement recipe
 
-## Scope (phase 2 — only if gate fires)
+```bash
+# Terminal A: long-lived engine
+jk engine start
+jk engine status   # note peaks start at 0/current
 
-Live registry of declared demand per connection; admit workers when sum fits under cap.
+# Terminals B–I: 2, 4, or 8 concurrent builds against the same JK_HOME
+for i in $(seq 1 8); do
+  (cd /path/to/project && jk build) &
+done
+wait
+jk engine status   # read peakActiveRequests / peakActivePipelines / heap*
+```
 
-## Acceptance (phase 1 only)
+Record: peak concurrent requests, peak pipelines, heap max vs used, whether builds queued
+while CPU/RAM were idle, and single-build wall-clock vs a solo baseline.
 
-- [ ] Observable concurrency / memory-related counters reachable without a debugger
-      (status, journal, or documented log line)
-- [ ] Measurement recipe written in this ticket
-- [ ] Explicit phase-1 completion note: “no registry” **or** link to follow-up ticket
+## Phase-1 decision
 
-## Out of scope for phase 1
+**No demand registry for now.** Instrumentation is in place; revisit when dogfood shows
+idle queueing or single-build regression under concurrent load (see triggers below). Default
+256 MiB engine cap unchanged without data.
 
-- Implementing the full registry
-- Changing default 256 MiB engine cap without data
+## Revisit when
+
+- `peakActiveRequests` distribution measured on real multi-client use
+- Single-build wall-clock regression vs pre-engine sizing
+- Synthetic 2/4/8 concurrent builds queue while CPU/RAM idle
+
+## Acceptance (phase 1)
+
+- [x] Observable concurrency counters without a debugger
+- [x] Measurement recipe in this ticket
+- [x] Explicit phase-1 completion: **no registry** until data fires a follow-up

@@ -9,8 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-1. [ticket-1009](ticket-1009-explain-rebuild-ux.md) — `jk explain` / why-rebuilt hero UX
-2. [ticket-1011](ticket-1011-windows-engine-field.md) — Windows engine transport field verification
-3. [ticket-1012](ticket-1012-remote-cache-design.md) — Remote cache design (read-only first)
-4. [ticket-1013](ticket-1013-affected-since-builds.md) — `jk build --affected-since=<ref>` for monorepos
-5. [ticket-1015](ticket-1015-demand-memory-registry.md) — Concurrent worker memory (instrument first)
+_(empty)_

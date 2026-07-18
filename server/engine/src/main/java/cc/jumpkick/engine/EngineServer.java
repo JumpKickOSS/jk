@@ -88,6 +88,8 @@ public final class EngineServer implements AutoCloseable {
 
     private final Object lifecycleLock = new Object();
     private final AtomicInteger activeConnections = new AtomicInteger();
+    /** High-water marks for concurrent load instrumentation (ticket-1015). */
+    private final AtomicInteger peakActiveConnections = new AtomicInteger();
 
     /**
      * Sidecar AOT trainer spawner/process. Spawned only after winning election; reaped on exit.
@@ -97,6 +99,17 @@ public final class EngineServer implements AutoCloseable {
 
     private volatile Process aotTrainer;
     private final AtomicInteger activePipelines = new AtomicInteger();
+    private final AtomicInteger peakActivePipelines = new AtomicInteger();
+
+    private void noteConnectionOpened() {
+        int n = activeConnections.incrementAndGet();
+        peakActiveConnections.accumulateAndGet(n, Math::max);
+    }
+
+    private void notePipelineStarted() {
+        int n = activePipelines.incrementAndGet();
+        peakActivePipelines.accumulateAndGet(n, Math::max);
+    }
 
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
     private final cc.jumpkick.engine.http.HttpEvents httpEvents;
@@ -463,7 +476,7 @@ public final class EngineServer implements AutoCloseable {
                     closeQuietly(ch);
                     continue;
                 }
-                activeConnections.incrementAndGet();
+                noteConnectionOpened();
             }
             connectionExecutor.execute(() -> handleConnection(ch));
         }
@@ -507,7 +520,7 @@ public final class EngineServer implements AutoCloseable {
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-job-", 0).factory());
         planSharedWorkerMemoryOnce();
-        activeConnections.incrementAndGet();
+        noteConnectionOpened();
         try {
             serveConnection(reader, writer);
         } catch (IOException ignored) {
@@ -569,7 +582,9 @@ public final class EngineServer implements AutoCloseable {
                                         s.rssBytes(),
                                         s.aotTrainingPid(),
                                         httpServer != null ? httpServer.url() : null,
-                                        httpError));
+                                        httpError,
+                                        s.peakActiveRequests(),
+                                        s.peakActivePipelines()));
                     }
                     case EngineProtocol.SHUTDOWN -> {
                         boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
@@ -801,7 +816,7 @@ public final class EngineServer implements AutoCloseable {
         long eventStartMillis = clockMillis.getAsLong();
         publishRequestStart(eventRequestId, eventKind, eventDir);
         registerAccumulator(eventRequestId, eventKind, eventDir, "cli");
-        if (pipeline) activePipelines.incrementAndGet();
+        if (pipeline) notePipelineStarted();
         try {
             Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
@@ -3493,7 +3508,7 @@ public final class EngineServer implements AutoCloseable {
         long startMillis = clockMillis.getAsLong();
         publishRequestStart(eventRequestId, "build", entryDir.toString());
         registerAccumulator(eventRequestId, "build", entryDir.toString(), "web");
-        activePipelines.incrementAndGet();
+        notePipelineStarted();
         Thread.ofVirtual().name("jk-engine-http-build-", 0).start(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
@@ -3666,7 +3681,9 @@ public final class EngineServer implements AutoCloseable {
                 MemoryProbe.ownRssBytes(),
                 aotTrainingPid(),
                 rt.availableProcessors(),
-                systemMemoryBytes());
+                systemMemoryBytes(),
+                peakActiveConnections.get(),
+                peakActivePipelines.get());
     }
 
     /** Total physical memory the OS reports, or {@code -1} if the platform bean can't answer. */

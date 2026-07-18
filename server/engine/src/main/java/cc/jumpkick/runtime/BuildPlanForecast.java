@@ -361,10 +361,17 @@ public final class BuildPlanForecast {
                         : new BuildPlan.Step(name, BuildPlan.Status.CACHED, "", key8(pred.actionKey()));
             case INCREMENTAL ->
                 new BuildPlan.Step(
-                        name, BuildPlan.Status.PARTIAL, "compile · " + count(pred.sourceCount(), "source"), null);
+                        name,
+                        BuildPlan.Status.PARTIAL,
+                        "compile · " + count(pred.sourceCount(), "source") + " changed",
+                        null);
             case FULL ->
                 new BuildPlan.Step(
-                        name, BuildPlan.Status.FULL, "full compile · " + count(pred.sourceCount(), "source"), null);
+                        name,
+                        BuildPlan.Status.FULL,
+                        "full compile · " + count(pred.sourceCount(), "source")
+                                + " (sources / options / classpath)",
+                        null);
         };
     }
 

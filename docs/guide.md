@@ -91,7 +91,7 @@ jk build                     # package
 jk test
 jk run -- args…
 jk clean
-jk explain                   # forecast / cache status
+jk explain                   # forecast / cache status (why will this rebuild?)
 jk format
 jk audit                     # OSV
 jk deny                      # license / source / yanked policy
@@ -103,10 +103,22 @@ jk verify                    # rebuild in a scratch dir and compare hashes
 
 Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
 
+### Why did this rebuild?
+
+Use **`jk explain`** (alias **`why-rebuilt`**) — offline, no network. It forecasts cache
+hit/miss per module and step (sources changed, dependency changed, options/classpath, lock
+stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
+
+```bash
+jk explain                   # full plan: cached vs rebuild sections
+jk why-rebuilt               # same command (migration alias)
+jk explain --verbose         # expand every step
+```
+
 ### Migration aliases
 
-Hidden shortcuts map familiar verbs (`package` → `build`, etc.). See `jk --help` for the
-canonical set; aliases are for muscle memory only.
+Hidden shortcuts map familiar verbs (`package` → `build`, `why-rebuilt` → `explain`, etc.).
+See `jk --help` for the canonical set; aliases are for muscle memory only.
 
 ## Workspaces
 
@@ -118,6 +130,15 @@ modules = ["libs/*", "services/*"]
 [workspace.dependencies]
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
 ```
+
+Monorepo tip: rebuild only what git changed (plus reverse dependents):
+
+```bash
+jk build --affected-since=origin/main
+```
+
+Outside a git repo or with an invalid ref, jk prints a clear error. If nothing under the
+workspace changed, it exits 0 with “nothing affected”.
 
 ```toml
 # services/api/jk.toml
