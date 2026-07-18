@@ -85,9 +85,24 @@ dependencies {
     androidWorkerJar(project(":android"))
 }
 
+// Unique short UDS state dir for this test task run (ticket-1021). UDS sun_path is ~108 bytes;
+// deep worktree paths under build/ overflow, so pin under /tmp with a per-run id.
+val cliTestStateDir =
+        layout.buildDirectory
+                .dir("cli-test-state")
+                .get()
+                .asFile
+                .also { it.mkdirs() }
+// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes).
+val cliTestStateDirShort =
+        file(
+                "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
 tasks.withType<Test>().configureEach {
     // Engine spawn (PosixDetach setsid) + MemoryProbe FFM.
     jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // Single fork: one resident engine / JK_STATE_DIR per suite (ticket-1021).
+    maxParallelForks = 1
     dependsOn(
             ":engine:shadowJar",
             kotlinWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
@@ -96,21 +111,25 @@ tasks.withType<Test>().configureEach {
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
-    // UDS sun_path is ~108 bytes. Worktree paths like
-    // …/jk-worktrees/ticket-1020/clients/cli/build/test-jk-home/state/engine/<key>.gen1.sock
-    // overflow; pin a short state dir under /tmp (JK_HOME still isolates versions/cache).
-    environment("JK_STATE_DIR", "/tmp/jk-cli-test-state")
-    // Shared dep cache across tests (Kotlin compiler, JUnit, …).
+    // Shared dep cache across tests (Kotlin compiler, JUnit, …) — outside @TempDir.
     systemProperty(
             "jk.test.cache.dir",
             layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
     // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
+    // EngineTestExtension autodetection: materialize jar + stop engine after each test (1021).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
-    // Resident engine may still hold open CAS/cache files under a test's @TempDir when the
-    // method ends; don't fail the suite on TempDirDeletionStrategy (ticket-1021 if we add
-    // suite-scoped engine shutdown).
+    // TempDir cleanup still races the engine even after forceStop (CAS hardlinks / delayed
+    // unmap). Keep never so the suite doesn't fail on deletion; EngineTestExtension still
+    // force-stops so processes don't leak. Follow-up: per-test caches outside @TempDir.
     systemProperty("junit.jupiter.tempdir.cleanup.mode.default", "never")
     doFirst {
+        cliTestStateDirShort.mkdirs()
+        environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
+        // Isolate versions/cache from the developer machine.
+        environment(
+                "JK_HOME",
+                layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
+
         val engineJar = project(":engine").tasks.named("shadowJar", org.gradle.jvm.tasks.Jar::class.java)
                 .get().archiveFile.get().asFile
         systemProperty("jk.engine.jar", engineJar.absolutePath)
@@ -122,6 +141,10 @@ tasks.withType<Test>().configureEach {
         systemProperty("jk.compat-bridge.plugin.jar", compatBridgeWorkerJar.singleFile.absolutePath)
         systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
         systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
+    }
+    // After the suite: remove the short state dir (best-effort; AfterAll also force-stops).
+    doLast {
+        cliTestStateDirShort.deleteRecursively()
     }
 }
 
