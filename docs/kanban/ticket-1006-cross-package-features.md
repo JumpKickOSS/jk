@@ -1,34 +1,55 @@
 # ticket-1006 — Cross-package feature selection
 
 **Priority:** P1 (library author UX)  
-**Status:** open  
-**Refs:** [guide.md](../guide.md) §7.8 (explicitly “planned; not yet implemented”),
-[features](../guide.md) (local features vs profiles)
+**Status:** ready  
+**Branch:** `ticket-1006-cross-package-features`  
+**Refs:** [guide.md](../guide.md) features section (today: **local** features only),
+`shared/jk-api/.../Features.java`, `Feature.java`, `Dependency`, `LockOrchestrator` optional-dep
+activation, lock schema under `shared/core/.../lock/`
 
 ## Problem
 
-Features today are **local** to the consuming project. A dependency cannot request
-`features = ["mysql"]` of a library the way Cargo does. Library authors cannot express optional
-capability sets for consumers.
-
-## Direction (PRD sketch)
+Features today only activate **optional deps declared in the consuming project**. A library
+cannot publish Cargo-style feature sets that consumers enable with:
 
 ```toml
 [dependencies]
 widget = { group = "com.example", name = "widget", version = "0.3.1",
-           features = ["mysql", "gson"], default-features = false }
+           features = ["mysql"], default-features = false }
 ```
 
-- Publish feature metadata (jk.lock / POM extensions or `jk-features` sidecar — **decide in design**)
-- Resolver activates optional deps of the **dependency’s** graph when features selected
-- Lock records activated feature set for reproducibility
+## Design decision (record in this ticket when implemented)
+
+Pick **one** metadata carrier for published features (do not invent two):
+
+| Option | Pros | Cons |
+|---|---|---|
+| A. Sidecar `META-INF/jk-features.toml` in the jar | Clear, jk-native | Needs publish + resolve fetch |
+| B. POM `<properties>` / custom XML | Travels with Maven | Ugly, fragile |
+| C. Lock-only for path/git deps first | Ships faster | No Central story |
+
+**MVP recommendation:** path + git deps + local workspace modules (feature table in their
+`jk.toml`), then Central via sidecar if time. Consumer syntax lands either way.
+
+## Implementation slices
+
+1. **Consumer syntax** in `jk.toml` parser: `features = […]`, `default-features = bool` on a dep
+2. **Library declaration** in library `jk.toml` (`[features]` already exists for local — extend
+   so published/workspace modules expose the same shape to dependents)
+3. **Resolve**: when expanding a package, activate its optional deps per selected feature set;
+   record activated set on the lock row (or adjacent field) for reproducibility
+4. **Tests**: library fixture with optional `mysql` dep; consumer enables feature → lock gains
+   the optional coord; `default-features = false` withholds defaults
 
 ## Acceptance
 
-- [ ] Design note linked from this ticket (short ADR in `docs/` or expand this file)
-- [ ] One library + consumer fixture: consumer enables feature → optional dep appears in lock
+- [ ] Short design choice recorded at top of this ticket (A/B/C or hybrid)
+- [ ] Consumer fixture: enable feature → optional dep appears in `jk.lock`
 - [ ] `default-features = false` honored
+- [ ] No silent ignore of unknown feature names (error with library package id)
+- [ ] Local-only features (consumer project) still work unchanged
 
-## Non-goals
+## Out of scope
 
-- Feature flags that change source sets / variants (that is variants/profiles)
+- Features that change source sets / variants (use variants/profiles)
+- Feature unification across diamonds beyond “union of requested features” (document if simpler)
