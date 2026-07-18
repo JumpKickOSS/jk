@@ -23,8 +23,8 @@ import java.util.stream.Stream;
  *
  * <h3>Full store, every repo</h3>
  * Both the artifact and its {@code .sha256} sidecar live under {@code <cache>/repos/<name>/} —
- * jk's own tree, never {@code ~/.m2}. Fetched artifacts are hard-linked in from the CAS via {@link
- * #materialize}; nothing outside jk writes here, so there's no external mutation to guard against.
+ * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>copied</em> in from the CAS via
+ * {@link #materialize} (never hard-linked — repo overwrites must not mutate CAS blobs).
  * (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2} for Maven/Gradle
  * interop — see {@code project.m2install} — but that mirror is not this store.)
  *

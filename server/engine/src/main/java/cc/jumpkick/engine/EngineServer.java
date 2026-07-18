@@ -2204,7 +2204,7 @@ public final class EngineServer implements AutoCloseable {
         try {
             var outcome = cc.jumpkick.runtime.CompatPipelines.provision(
                     Path.of(Jsonl.str(requestLine, "cache")),
-                    Path.of(Jsonl.str(requestLine, "projectDir")),
+                    Path.of(Jsonl.str(requestLine, "dir")),
                     Path.of(Jsonl.str(requestLine, "toolsRoot")),
                     Jsonl.bool(requestLine, "noDiscover", false),
                     Jsonl.bool(requestLine, "gradle", false));

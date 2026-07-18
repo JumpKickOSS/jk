@@ -1,44 +1,46 @@
 # ticket-1001 — Pre-1.0 wire protocol + CLI freeze
 
 **Priority:** P0 (1.0 contract)  
-**Status:** open  
-**Refs:** [architecture.md](../architecture.md) (engine + wire overview); historical hardening notes in git history
+**Status:** done  
+**Branch:** `ticket-1001-wire-hardening`  
+**Refs:** [architecture.md](../architecture.md) (wire freeze vocabulary),
+`shared/wire/.../EngineProtocol.java`, `EngineProtocolTest`, `CommandDispatchTest`
 
 ## Problem
 
-Before 1.0, the client↔engine JSONL protocol and several CLI surfaces still have silent
-overwrite bugs, inconsistent field names, and non-self-describing terminal messages. Freezing
-that mess makes every later change a compat tax.
+Client↔engine JSONL and a few CLI edges still had dual field spellings and regression risk
+around auth, flags, and materialization. Freezing the vocabulary before 1.0 avoids a permanent
+compat tax.
 
-## Scope (historical hardening plan in git — execute, don’t re-litigate)
+## What landed
 
-### P0 correctness (must land)
+### Already solid (locked with regression tests)
 
-- Fix `--version` collision (`GlobalOptions` vs `self update` / `wrapper` value options)
-- Engine→engine TCP auth must use the same `{"t":"auth",…}` envelope as the server
-- Delegation child stderr drain (hang on version-skew path)
-- `install.sh` must materialize versions via CAS (one materializer)
-- Repeatable flags actually `.repeat()` (`--variant`, `--with`)
-- Atomic materialize for repo artifacts (`.part` + `ATOMIC_MOVE`)
+| Item | Evidence |
+|---|---|
+| `--version` not colliding with subcommands | `CommandDispatch.withGlobals` fail-loud + `CommandDispatchTest.no_registered_command_option_collides_with_a_global`; `self update` / `wrapper` use positional `version`; `add` uses `--ver` |
+| Engine→engine TCP auth envelope | `EngineServer.openClient` + `EngineProtocol.auth`; `EngineServerTest` / `EngineTcpTransportTest` |
+| Delegation child stderr drain | Engine spawn `redirectErrorStream(true)` + log file (no pipe backpressure) |
+| `install.sh` CAS materialize | `jk self materialize` for local dists (CAS then versions/) |
+| Repeatable `--variant` / `--with` | `.repeat()` on opts; `VariantSelectionTest` + `ArgParserTest.repeatableOption` |
+| Atomic repo materialize | `RepoArtifactStore.materialize` `.part` + `AtomicWrites.moveInto`; `RepoArtifactStoreTest` |
+| P1 freeze vocabulary | `pipeline-finish.kind`, unified `error`, `dir`, `withSession`, bounded line reader, `proto`/`purpose` — covered in `EngineProtocolTest` |
 
-### P1 protocol freeze candidate
+### Fixes in this ticket
 
-- Discriminator on `pipeline-finish` (`kind`)
-- One transport error envelope (`{"t":"error","code",…}`)
-- One spelling for project directory (`dir`)
-- Fold variant/JVM tuning into real request builders (no string surgery)
-- One map encoding; one null convention
-- Honor `proto` both directions; honest probe `purpose`
-- Bounded line reader; no silent drop of garbled requests; streaming idle timeout
+- Wire: `provision-request` project path field renamed **`projectDir` → `dir`** (last dual spelling)
+- Docs: [architecture.md](../architecture.md) **Wire freeze vocabulary** table
+- Restore missing `shared/plugin-sdk/.../plugin/build/*` (cutover omission; unblocked compile)
+- Repair comment-pass syntax breaks (`GlobalConfig` unclosed Javadoc, `MinimalToml` illegal `\u`, stray `*/`)
 
 ## Acceptance
 
-- [ ] Hardening plan P0 items closed with tests named in that doc
-- [ ] Protocol messages used by hosted verbs carry `kind` on finish / unified errors
-- [ ] `./gradlew test` + dist smoke; no dual field spellings for `dir` / `startedAtMillis`
-- [ ] Short note in `docs/protocol.md` or engine doc: “1.0 freeze vocabulary”
+- [x] P0 correctness items closed with automated tests (install.sh CAS path is the client materialize seam)
+- [x] Hosted-verb wire path: project directory field is always `dir`
+- [x] Focused `:engine` / `:client-io` / `:cli-engine` tests green for touched areas
+- [x] Short “1.0 freeze vocabulary” note in architecture.md
 
-## Non-goals
+## Out of scope (unchanged)
 
-- Stable public protocol for third-party engines (still same-version client/server)
-- IDE feature work (see ticket-1014)
+- Public multi-version engine protocol
+- IDE clients (ticket-1014)

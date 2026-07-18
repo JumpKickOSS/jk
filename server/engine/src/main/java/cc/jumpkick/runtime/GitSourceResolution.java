@@ -26,7 +26,6 @@ import java.util.Map;
  * file://} repo, rewrite to an exact coordinate pin. {@link #stamp} restores git provenance after
  * lock. No-op when the project has no git deps.
  */
- */
 public final class GitSourceResolution {
 
     private GitSourceResolution() {}

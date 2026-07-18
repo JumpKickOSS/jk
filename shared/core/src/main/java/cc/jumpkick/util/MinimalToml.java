@@ -2,8 +2,8 @@
 package cc.jumpkick.util;
 
 /**
- * TOML basic-string quoting ({@code \"}, {@code \\}, {@code \n}/{@code \r}/{@code \t},
- * {@code \uXXXX} for other controls).
+ * TOML basic-string quoting ({@code \"} {@code \\} {@code \n}/{@code \r}/{@code \t},
+ * and {@code \\uXXXX} for other controls).
  */
 public final class MinimalToml {
 

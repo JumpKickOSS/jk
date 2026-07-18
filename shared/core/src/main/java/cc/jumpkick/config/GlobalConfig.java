@@ -18,6 +18,7 @@ import org.tomlj.TomlTable;
  * Machine-scoped preferences from {@code ~/.jk/config.toml}: {@code [global]} UI flags (e.g.
  * {@code nerdfont}) and global {@code [repositories]}. Not project-overridable; env overrides
  * apply. Project {@code [repositories]} win on name collision; global fills gaps.
+ */
 public final class GlobalConfig {
 
     private GlobalConfig() {}

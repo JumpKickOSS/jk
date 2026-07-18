@@ -389,7 +389,9 @@ class EngineProtocolTest {
     void provision_request_and_result_round_trip() {
         String req = EngineProtocol.provisionRequest("/cache", "/proj", "/cache/tools", true, true);
         assertThat(EngineProtocol.typeOf(req)).isEqualTo(EngineProtocol.PROVISION_REQUEST);
-        assertThat(Jsonl.str(req, "projectDir")).isEqualTo("/proj");
+        // Project directory is always "dir" (never projectDir) — freeze invariant.
+        assertThat(Jsonl.str(req, "dir")).isEqualTo("/proj");
+        assertThat(req).doesNotContain("projectDir");
         assertThat(Jsonl.str(req, "toolsRoot")).isEqualTo("/cache/tools");
         assertThat(Jsonl.bool(req, "noDiscover", false)).isTrue();
         assertThat(Jsonl.bool(req, "gradle", false)).isTrue();
@@ -402,6 +404,36 @@ class EngineProtocolTest {
         assertThat(Jsonl.str(result, "source")).isEqualTo("DOWNLOADED");
         assertThat(Jsonl.str(result, "error")).isNull();
         assertThat(Jsonl.intValue(result, "exit", -1)).isEqualTo(0);
+    }
+
+    @Test
+    void auth_envelope_is_typed_token_not_a_raw_line() {
+        String line = EngineProtocol.auth("secret-token");
+        assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.AUTH);
+        assertThat(Jsonl.str(line, "token")).isEqualTo("secret-token");
+        assertThat(line).startsWith("{\"t\":");
+    }
+
+    @Test
+    void hello_purpose_is_connect_or_probe() {
+        assertThat(Jsonl.str(EngineProtocol.hello("1.0.0"), "purpose")).isEqualTo("connect");
+        assertThat(Jsonl.str(EngineProtocol.hello("1.0.0", "probe"), "purpose")).isEqualTo("probe");
+        assertThat(Jsonl.intValue(EngineProtocol.hello("1.0.0"), "proto", -1)).isEqualTo(EngineProtocol.PROTOCOL);
+    }
+
+    @Test
+    void hosted_request_project_directory_field_is_always_dir() {
+        // Sample of hosted builders — none may invent a second spelling for the project path.
+        assertThat(Jsonl.str(EngineProtocol.compileRequest("/w", "/c", null, false, false, false), "dir"))
+                .isEqualTo("/w");
+        assertThat(Jsonl.str(
+                        EngineProtocol.buildRequest(
+                                "/w", "/c", null, 1, null, false, false, 0, false, false, false, false),
+                        "dir"))
+                .isEqualTo("/w");
+        assertThat(Jsonl.str(EngineProtocol.provisionRequest("/c", "/w", "/t", false, false), "dir"))
+                .isEqualTo("/w");
+        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "dir")).isEqualTo("/w");
     }
 
     @Test

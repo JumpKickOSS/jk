@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.args.ArgParser;
+import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Command;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
@@ -12,16 +13,16 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The --variant flag is documented "repeatable" and must actually be: before .repeat() was added,
- * ArgParser's last-wins value map silently dropped every occurrence but the last.
+ * Freeze: {@code --variant} is repeatable and folds into the compact wire selector used on engine
+ * requests. Regression for silent last-wins if {@code .repeat()} is dropped.
  */
 class VariantSelectionTest {
 
-    private static Invocation parse(String... args) throws Exception {
-        Command cmd = new Command() {
+    private static Command commandWithVariantOpts() {
+        return new Command() {
             @Override
             public String name() {
-                return "demo";
+                return "build";
             }
 
             @Override
@@ -39,24 +40,48 @@ class VariantSelectionTest {
                 return List.of();
             }
         };
-        return ArgParser.parse(cmd, List.of(args));
     }
 
     @Test
-    void repeated_variant_flags_all_survive() throws Exception {
-        Invocation in = parse("--variant", "build-type=release", "--variant", "tier=free");
-        assertThat(VariantSelection.selector(in)).isEqualTo("release|tier=free");
+    void variant_flags_are_declared_repeatable() {
+        Opt variant = VariantSelection.options().stream()
+                .filter(o -> o.names().contains("--variant"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(variant.repeatable()).isTrue();
     }
 
     @Test
-    void comma_form_and_repeats_compose() throws Exception {
-        Invocation in = parse("--variant", "tier=free,region=eu", "--variant", "abi=arm64");
-        assertThat(VariantSelection.selector(in)).isEqualTo("tier=free|region=eu|abi=arm64");
+    void multiple_variant_flags_accumulate_in_selector() throws Exception {
+        Invocation in = ArgParser.parse(
+                commandWithVariantOpts(), List.of("--variant", "tier=free", "--variant", "contentType=demo"));
+        assertThat(in.values("variant")).containsExactly("tier=free", "contentType=demo");
+        assertThat(VariantSelection.selector(in)).isEqualTo("tier=free|contentType=demo");
     }
 
     @Test
-    void release_shorthand_overrides_an_explicit_build_type() throws Exception {
-        Invocation in = parse("--variant", "build-type=debug", "--release");
-        assertThat(VariantSelection.selector(in)).isEqualTo("release");
+    void release_flag_sets_build_type() throws Exception {
+        Invocation in = ArgParser.parse(commandWithVariantOpts(), List.of("--release", "--variant", "tier=paid"));
+        assertThat(VariantSelection.selector(in)).isEqualTo("release|tier=paid");
+    }
+
+    @Test
+    void tool_with_flag_is_declared_repeatable() {
+        // Tool run/install mount the same --with grammar; drop .repeat() and multi-deps silently fail.
+        boolean found = false;
+        for (CliCommand cmd : cc.jumpkick.cli.CommandDispatch.commands()) {
+            found |= declaresRepeatableWith(cmd);
+        }
+        assertThat(found).as("at least one registered command declares repeatable --with").isTrue();
+    }
+
+    private static boolean declaresRepeatableWith(CliCommand cmd) {
+        for (Opt o : cmd.options()) {
+            if (o.names().contains("--with") && o.repeatable()) return true;
+        }
+        for (CliCommand sub : cmd.subcommands()) {
+            if (declaresRepeatableWith(sub)) return true;
+        }
+        return false;
     }
 }

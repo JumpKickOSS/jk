@@ -930,15 +930,18 @@ public final class EngineProtocol {
                 + "}";
     }
 
-    /** Provision a Maven/Gradle distribution (see {@link #PROVISION_REQUEST}). */
+    /**
+     * Provision a Maven/Gradle distribution (see {@link #PROVISION_REQUEST}). Project directory
+     * field is {@code dir} — same spelling as every other hosted request.
+     */
     public static String provisionRequest(
-            String cache, String projectDir, String toolsRoot, boolean noDiscover, boolean gradle) {
+            String cache, String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
         return "{\"t\":\""
                 + PROVISION_REQUEST
                 + "\",\"cache\":"
                 + Jsonl.quote(cache)
-                + ",\"projectDir\":"
-                + Jsonl.quote(projectDir)
+                + ",\"dir\":"
+                + Jsonl.quote(dir)
                 + ",\"toolsRoot\":"
                 + Jsonl.quote(toolsRoot)
                 + ",\"noDiscover\":"

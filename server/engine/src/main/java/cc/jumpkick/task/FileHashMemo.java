@@ -13,7 +13,6 @@ import java.nio.file.Path;
  * Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after settle.
  * Fail open (re-hash) on any I/O error.
  */
- */
 public final class FileHashMemo {
 
     /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
