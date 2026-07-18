@@ -669,7 +669,17 @@ public final class JkBuildParser {
         // (coord / git / path / workspace / sha256) since it's applied to the
         // parsed result regardless of source.
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
-        return parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        Dependency dep = parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        // Cross-package features (ticket-1006): only when the consumer set `features` and/or
+        // `default-features` — absent keys leave prior resolve behavior unchanged.
+        boolean hasFeaturesKey = entry.contains("features");
+        boolean hasDefaultFeaturesKey = entry.contains("default-features");
+        if (!hasFeaturesKey && !hasDefaultFeaturesKey) return dep;
+        List<String> features = hasFeaturesKey
+                ? optionalStringList(entry, "features", scope.tomlSection() + "." + name + ".features")
+                : List.of();
+        boolean defaultFeatures = !hasDefaultFeaturesKey || !Boolean.FALSE.equals(entry.getBoolean("default-features"));
+        return dep.withFeatures(features, defaultFeatures);
     }
 
     private static Dependency parseDepEntryForm(

@@ -71,6 +71,7 @@ public final class LocalProjectBuilder {
 
         // 1. Resolve the project's own dependencies and the compile classpath.
         Lockfile lock = new LockOrchestrator(repos)
+                .withProjectDir(projectDir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(project, projectDir))
                 .lock(project, jkVersion);
         List<Path> classpath =

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver.pubgrub;
 
+import cc.jumpkick.model.PackageId;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -115,8 +117,78 @@ public final class Diagnostics {
         String rail = ansi ? palette.rail() + "  │" + palette.reset() + " " : "  │ ";
         renderInco(rootCause, out, rail, emitted, numbered, palette);
         out.append('\n');
-
+        appendSuggestions(rootCause, out, palette);
         return out.toString();
+    }
+
+    /**
+     * Best-effort actionable next steps (pin / relax). Offline; only uses info already on the
+     * incompatibility DAG (e.g. NoVersions.available samples). At most three lines.
+     */
+    static void appendSuggestions(Incompatibility rootCause, StringBuilder out, Palette palette) {
+        LinkedHashSet<String> lines = new LinkedHashSet<>();
+        collectSuggestions(rootCause, lines, new HashSet<>());
+        if (lines.isEmpty()) return;
+        out.append("Suggestions:\n");
+        int n = 0;
+        for (String line : lines) {
+            if (n++ >= 3) break;
+            out.append("  • ").append(line).append('\n');
+        }
+    }
+
+    private static void collectSuggestions(
+            Incompatibility inco, LinkedHashSet<String> lines, Set<Incompatibility> visited) {
+        if (inco == null || !visited.add(inco)) return;
+        switch (inco.cause()) {
+            case Incompatibility.Cause.NoVersions nv -> {
+                if (nv.unknownPackage()) {
+                    // Honest: do not invent a pin for a package that does not exist.
+                    return;
+                }
+                if (nv.available().isEmpty()) return;
+                String display = displayPkg(nv.pkg());
+                String candidate = nv.available().getFirst();
+                // Highest-first sample from the solver — first entry is the best advertised pin.
+                lines.add("Pin " + display + " to " + candidate + " (e.g. `" + pinExample(display, candidate) + "`)");
+                int n = Math.min(3, nv.available().size());
+                lines.add("Or relax the version constraint on "
+                        + display
+                        + " so one of ["
+                        + String.join(", ", nv.available().subList(0, n))
+                        + "] is allowed");
+            }
+            case Incompatibility.Cause.Dependency dep -> {
+                if (ROOT_PKG.equals(dep.from().pkg()) && !ROOT_PKG.equals(dep.to().pkg())) {
+                    lines.add("Relax or remove the project constraint on " + displayPkg(dep.to().pkg()));
+                }
+            }
+            case Incompatibility.Cause.Derived d -> {
+                collectSuggestions(d.a(), lines, visited);
+                collectSuggestions(d.b(), lines, visited);
+            }
+            default -> {}
+        }
+    }
+
+    private static String displayPkg(String pkg) {
+        if (pkg == null || pkg.isBlank() || ROOT_PKG.equals(pkg)) return pkg;
+        if (PackageId.isMavenPackageKey(pkg)) {
+            try {
+                return PackageId.parse(pkg).display();
+            } catch (RuntimeException ignored) {
+                return pkg;
+            }
+        }
+        return pkg;
+    }
+
+    private static String pinExample(String display, String version) {
+        // Prefer a coord-shaped example when display is g:a or g:a:classifier.
+        if (display.contains(":")) {
+            return display + ":" + version;
+        }
+        return display + " = \"" + version + "\"";
     }
 
     private static void countIncomingEdges(
@@ -268,11 +340,18 @@ public final class Diagnostics {
      */
     private static String colorPkg(String pkg, Palette palette) {
         boolean ansi = !palette.reset().isEmpty();
-        if (!ansi) return pkg;
-        int colon = pkg.indexOf(':');
-        if (colon < 0) return palette.name() + pkg + palette.reset();
-        return palette.group() + pkg.substring(0, colon) + palette.reset() + ":" + palette.name()
-                + pkg.substring(colon + 1) + palette.reset();
+        String shown = displayPkg(pkg);
+        if (!ansi) return shown;
+        int colon = shown.indexOf(':');
+        if (colon < 0) return palette.name() + shown + palette.reset();
+        // group:artifact — color first segment only (classifier/@type stay with name color)
+        return palette.group()
+                + shown.substring(0, colon)
+                + palette.reset()
+                + ":"
+                + palette.name()
+                + shown.substring(colon + 1)
+                + palette.reset();
     }
 
     private static String colorVersion(String version, Palette palette) {

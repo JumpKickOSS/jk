@@ -104,6 +104,7 @@ public final class LockFlow {
             return new Result(6, e.getMessage(), null, effective, moduleCount);
         }
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
+                .withProjectDir(dir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(effective, dir));
 
         Lockfile lock;

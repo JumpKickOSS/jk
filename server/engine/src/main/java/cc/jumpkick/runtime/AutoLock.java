@@ -217,8 +217,9 @@ public final class AutoLock {
 
             Cas cas = new Cas(cache);
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
-            LockOrchestrator orchestrator =
-                    new LockOrchestrator(repos).withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir));
+            LockOrchestrator orchestrator = new LockOrchestrator(repos)
+                    .withProjectDir(dir)
+                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir));
 
             Lockfile updated = orchestrator.lockConservative(
                     effective, existing, jkVersion, features == null ? List.of() : features, withDefaults, observer);

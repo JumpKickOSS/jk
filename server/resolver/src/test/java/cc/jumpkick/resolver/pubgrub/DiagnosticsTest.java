@@ -51,6 +51,9 @@ class DiagnosticsTest {
             // R6a: near-miss sample of advertised versions.
             assertThat(rendered).contains("available:");
             assertThat(rendered).contains("1.0");
+            // ticket-1005: actionable suggestions from available samples
+            assertThat(rendered).contains("Suggestions:");
+            assertThat(rendered).contains("Pin widget to 1.0");
         } catch (Exception e) {
             fail("expected UnsatisfiableException, got: " + e);
         }
@@ -67,6 +70,9 @@ class DiagnosticsTest {
             String rendered = Diagnostics.render(e.rootCause());
             assertThat(rendered).contains("was not found in any repository");
             assertThat(rendered).contains("missing:lib");
+            // Honest: no fabricated pin for a package that was not found.
+            assertThat(rendered).doesNotContain("Suggestions:");
+            assertThat(rendered).doesNotContain("Pin missing");
         } catch (Exception e) {
             fail("expected UnsatisfiableException, got: " + e);
         }

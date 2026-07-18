@@ -14,6 +14,7 @@ import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -87,7 +88,16 @@ public final class LockOrchestrator {
      */
     private String jvmEnvironment = "standard-jvm";
 
+    /** Consuming project directory — resolves path= deps for cross-package features. */
+    private Path projectDir;
+
     private cc.jumpkick.resolver.pubgrub.Diagnostics.Palette diagnosticPalette;
+
+    /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
+    public LockOrchestrator withProjectDir(Path projectDir) {
+        this.projectDir = projectDir;
+        return this;
+    }
 
     public LockOrchestrator(MavenRepo repo) {
         this(RepoGroup.of(repo));
@@ -246,6 +256,13 @@ public final class LockOrchestrator {
                 case TEST -> testDeduped.putIfAbsent(opt.module(), opt);
                 case MAIN -> mainDeduped.putIfAbsent(opt.module(), opt);
             }
+        }
+        // Cross-package features on path= libraries (ticket-1006): pull their optional deps.
+        CrossPackageFeatures.Result cross =
+                CrossPackageFeatures.expand(projectDir, mainDeduped.values());
+        this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
+        for (Dependency extra : cross.extrasList()) {
+            mainDeduped.putIfAbsent(extra.module(), extra);
         }
         // junit infrastructure rides the test graph only.
         testDeduped.putIfAbsent(JUNIT_LAUNCHER.module(), JUNIT_LAUNCHER);
@@ -558,10 +575,22 @@ public final class LockOrchestrator {
         if (tags.isEmpty()) tags = EnumSet.of(Scope.MAIN);
 
         String pinnedBy = null;
-        String ga = PackageId.parse(mod.module()).ga();
+        String ga = PackageId.isMavenPackageKey(mod.module())
+                ? PackageId.parse(mod.module()).ga()
+                : mod.module();
         String constrained = bomConstraints.get(ga);
         if (constrained != null && constrained.equals(mod.version())) {
             pinnedBy = constraintProvenance.get(ga);
+        }
+        // Record activated cross-package features on the library row when present.
+        List<String> feat = crossPackageActivatedFeatures == null
+                ? null
+                : crossPackageActivatedFeatures.get(ga);
+        if (feat == null && crossPackageActivatedFeatures != null) {
+            feat = crossPackageActivatedFeatures.get(mod.module());
+        }
+        if (feat != null && !feat.isEmpty() && pinnedBy == null) {
+            pinnedBy = "features:" + String.join(",", feat);
         }
 
         return new Lockfile.Artifact(
@@ -574,6 +603,9 @@ public final class LockOrchestrator {
                 mod.deps(),
                 pinnedBy);
     }
+
+    /** Filled during {@link #lock}; read by {@link #toArtifact}. */
+    private Map<String, List<String>> crossPackageActivatedFeatures;
 
     /**
      * Extract a concrete version literal from a platform-dep's selector. Platform BOMs must be pinned
