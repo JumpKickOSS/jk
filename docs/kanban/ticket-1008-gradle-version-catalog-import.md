@@ -3,8 +3,8 @@
 **Priority:** P1 (migration)  
 **Status:** ready  
 **Branch:** `ticket-1008-version-catalog-import`  
-**Refs:** [guide.md](../guide.md) import, `server/toolchain/.../gradle/GradleVersionCatalog.java`,
-`GradleImporter.java` (already locates/parses `gradle/libs.versions.toml` and resolves aliases)
+**Refs:** [libraries-boms-starters PRD](../features/libraries-boms-starters.md) (§9–10 import +
+catalog layers), [guide.md](../guide.md) import, `GradleVersionCatalog.java`, `GradleImporter.java`
 
 ## Problem
 
@@ -29,10 +29,15 @@ string-level `build.gradle.kts` import. Gaps remain for:
 
 - [ ] Fixture catalog → produced `jk.toml` contains expected library coords/versions
 - [ ] Unresolved catalog ref appears in import report (not silent)
+- [ ] Version-less catalog libs under an imported BOM become platform-managed roots when possible
+      (PRD R5) — not silent drops
+- [ ] Prefer reverse-map of GAV → jk catalog short name when unique (PRD S1)
 - [ ] Unit tests under `:toolchain` (or importer test module) for parse + map
-- [ ] [guide.md](../guide.md) import section mentions version catalogs honestly
+- [ ] [guide.md](../guide.md) import section mentions version catalogs honestly; no versions written
+      into any library catalog layer (PRD §10)
 
 ## Out of scope
 
 - Evaluating `build.gradle.kts` / plugins DSL
 - Version catalogs in arbitrary included builds beyond walk-up locate
+- Putting versions into project/local/global library catalogs
