@@ -169,7 +169,11 @@ jk export idea | vscode
 ```
 
 POM import is the high-fidelity path. Gradle import is honest about limits: it does not
-execute build scripts. Keep `jk gradle` for modules that still need full Gradle.
+execute build scripts (no Groovy/Kotlin evaluation). It does read on-disk
+`gradle/libs.versions.toml` version catalogs (libraries, bundles, `version.ref`) and maps
+type-safe accessors like `libs.guava` into `[dependencies]`. Unresolved catalog refs show up
+in the import report rather than vanishing. Versions stay on deps/BOMs — they are not written
+into jk library catalog layers. Keep `jk gradle` for modules that still need full Gradle.
 
 Single-file scripts (JBang-compatible headers): `jk tool run script.java` / `jkx`.
 

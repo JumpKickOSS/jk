@@ -152,6 +152,12 @@ public final class GradleImporter {
     public static Result importFromString(String text, String defaultArtifact, GradleVersionCatalog catalog) {
         String stripped = stripComments(text);
         ImportReport.Builder report = ImportReport.builder();
+        // Surface catalog parse notes (unresolved version.ref, …) before mapping deps.
+        if (catalog != null) {
+            for (String note : catalog.parseNotes()) {
+                report.warning(note);
+            }
+        }
 
         String group = firstString(GROUP_ASSIGN, stripped).orElse("com.example");
         String version = firstString(VERSION_ASSIGN, stripped).orElse("0.1.0");
@@ -450,7 +456,9 @@ public final class GradleImporter {
             // Versionless `g:a` -- normal in Boot builds, where the plugin's BOM manages the
             // version. jk models it as platform-managed; [spring-boot] (or an explicit
             // [platform-dependencies] BOM) supplies the pin at resolve time.
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(parts[1], coord));
+            String shortName = shortNameFor(coord).orElse(parts[1]);
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>())
+                    .add(Dependency.platformManaged(shortName, coord));
             return;
         }
         if (parts.length < 3) {
@@ -472,8 +480,31 @@ public final class GradleImporter {
                     + "` verbatim — resolve the variable manually.");
         }
         VersionSelector selector = VersionSelector.parse(versionToken);
-        // Default the v0.7 short `name` to the Gradle dep's artifactId.
-        byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.of(artifactId, module, selector));
+        // Prefer a unique jk library-catalog short name when the GA matches (PRD S1).
+        String shortName = shortNameFor(module).orElse(artifactId);
+        byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.of(shortName, module, selector));
+    }
+
+    /**
+     * Reverse-map {@code group:artifact} to a unique short name in the layered library catalog.
+     * Empty when zero or multiple catalog names share the GA (never invent a name).
+     */
+    private static Optional<String> shortNameFor(String groupArtifact) {
+        if (groupArtifact == null || groupArtifact.isBlank()) return Optional.empty();
+        try {
+            cc.jumpkick.library.LibraryCatalog catalog = cc.jumpkick.library.LibraryCatalog.layered();
+            List<String> hits = new ArrayList<>();
+            for (String name : catalog.names()) {
+                var mod = catalog.lookup(name);
+                if (mod.isPresent() && groupArtifact.equals(mod.get().moduleKey())) {
+                    hits.add(name);
+                    if (hits.size() > 1) return Optional.empty();
+                }
+            }
+            return hits.size() == 1 ? Optional.of(hits.get(0)) : Optional.empty();
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     /**
@@ -502,15 +533,28 @@ public final class GradleImporter {
 
         if (rest.startsWith("bundles.")) {
             String bundle = rest.substring("bundles.".length());
-            Optional<List<String>> coords = catalog.resolveBundle(bundle);
-            if (coords.isEmpty() || coords.get().isEmpty()) {
+            Optional<GradleVersionCatalog.BundleResolution> resolved = catalog.resolveBundle(bundle);
+            if (resolved.isEmpty()) {
                 report.error("bundle `"
                         + accessor
-                        + "` was not found in the version catalog"
-                        + " (or none of its libraries resolved); dropped.");
+                        + "` was not found in the version catalog; dropped.");
                 return;
             }
-            for (String coord : coords.get()) {
+            GradleVersionCatalog.BundleResolution br = resolved.get();
+            for (String missing : br.missingMembers()) {
+                report.warning("bundle `"
+                        + accessor
+                        + "` member `"
+                        + missing
+                        + "` was not found in [libraries] (or had no resolvable module); skipped.");
+            }
+            if (br.isEmpty()) {
+                report.error("bundle `"
+                        + accessor
+                        + "` expanded to no libraries; dropped.");
+                return;
+            }
+            for (String coord : br.coordinates()) {
                 addDependency(byScope, scope, coord, report);
             }
             return;
@@ -528,7 +572,7 @@ public final class GradleImporter {
             report.error("library `"
                     + accessor
                     + "` was not found in the version catalog"
-                    + " (or has no resolvable version); dropped. Declare it directly in jk.toml.");
+                    + "; dropped. Declare it directly in jk.toml.");
             return;
         }
         addDependency(byScope, scope, coord.get(), report);

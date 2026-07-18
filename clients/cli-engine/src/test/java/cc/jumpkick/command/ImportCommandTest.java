@@ -115,8 +115,10 @@ class ImportCommandTest {
         assertThat(jkBuild).contains("group    = \"com.example\"");
         assertThat(jkBuild).contains("jdk      = \"21\"");
         assertThat(jkBuild).contains("[dependencies]");
-        assertThat(jkBuild)
-                .contains("jackson-databind = { group = \"com.fasterxml.jackson.core\", version = \"=2.18.2\" }");
+        // Prefer unique library-catalog short name (jackson2-databind) when reverse-map hits.
+        assertThat(jkBuild).contains("group = \"com.fasterxml.jackson.core\"");
+        assertThat(jkBuild).contains("version = \"=2.18.2\"");
+        assertThat(jkBuild).containsAnyOf("jackson-databind", "jackson2-databind");
 
         assertThat(Files.readString(tempDir.resolve("jk-import-report.md"))).contains("# jk import report");
     }

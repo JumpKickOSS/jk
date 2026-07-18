@@ -17,8 +17,8 @@ import org.tomlj.TomlTable;
 /**
  * Reads a Gradle version catalog ({@code gradle/libs.versions.toml}) and resolves type-safe
  * accessors — {@code libs.junit.platform.launcher}, {@code libs.bundles.testing} — back to concrete
- * {@code group:artifact:version} coordinates so {@link GradleImporter} can turn catalog-based
- * dependency declarations into jk.toml entries.
+ * coordinates so {@link GradleImporter} can turn catalog-based dependency declarations into
+ * jk.toml entries.
  *
  * <p>Accessor mapping mirrors Gradle: an alias's {@code -}, {@code _} and {@code .} separators are
  * all folded to {@code .}, so the alias {@code junit-platform-launcher} is reached as {@code
@@ -26,18 +26,26 @@ import org.tomlj.TomlTable;
  * version.ref = "x" }} or {@code { group, name, version }}) or the string form ({@code "g:a:v"});
  * versions resolve through the {@code [versions]} table, including rich {@code strictly}/{@code
  * require}/ {@code prefer} forms.
+ *
+ * <p>Version-less libraries (BOM-managed) resolve to bare {@code group:artifact}. Unresolved
+ * {@code version.ref} values are recorded in {@link #parseNotes()} rather than silently dropped.
  */
 public final class GradleVersionCatalog {
 
-    /** accessor (dot-folded) → {@code group:artifact:version}. */
+    /** accessor (dot-folded) → {@code group:artifact:version} or version-less {@code group:artifact}. */
     private final Map<String, String> coordinates;
 
     /** bundle accessor (dot-folded) → module library accessors. */
     private final Map<String, List<String>> bundles;
 
-    private GradleVersionCatalog(Map<String, String> coordinates, Map<String, List<String>> bundles) {
+    /** Non-fatal parse notes (unresolved version.ref, malformed entries). */
+    private final List<String> parseNotes;
+
+    private GradleVersionCatalog(
+            Map<String, String> coordinates, Map<String, List<String>> bundles, List<String> parseNotes) {
         this.coordinates = coordinates;
         this.bundles = bundles;
+        this.parseNotes = List.copyOf(parseNotes);
     }
 
     /**
@@ -75,7 +83,13 @@ public final class GradleVersionCatalog {
         return fromToml(Toml.parse(catalogFile));
     }
 
+    /** Parse from a TOML string (tests and in-memory fixtures). */
+    public static GradleVersionCatalog parseToml(String toml) {
+        return fromToml(Toml.parse(toml));
+    }
+
     static GradleVersionCatalog fromToml(TomlParseResult toml) {
+        List<String> notes = new ArrayList<>();
         Map<String, String> versions = new LinkedHashMap<>();
         TomlTable versionsTable = toml.getTable("versions");
         if (versionsTable != null) {
@@ -88,7 +102,7 @@ public final class GradleVersionCatalog {
         Map<String, String> coordinates = new LinkedHashMap<>();
         TomlTable libraries = toml.getTable("libraries");
         if (libraries != null) {
-            flattenLibraries(libraries, "", versions, coordinates);
+            flattenLibraries(libraries, "", versions, coordinates, notes);
         }
 
         Map<String, List<String>> bundles = new LinkedHashMap<>();
@@ -104,30 +118,62 @@ public final class GradleVersionCatalog {
                 bundles.put(accessor(key), modules);
             }
         }
-        return new GradleVersionCatalog(coordinates, bundles);
+        return new GradleVersionCatalog(coordinates, bundles, notes);
     }
 
-    /** Resolve a library accessor (catalog name already stripped) to {@code g:a:v}. */
+    /** Notes from parse (unresolved version.ref, …). Never null. */
+    public List<String> parseNotes() {
+        return parseNotes;
+    }
+
+    /**
+     * Resolve a library accessor (catalog name already stripped) to {@code g:a:v} or version-less
+     * {@code g:a}.
+     */
     public Optional<String> resolveLibrary(String accessorPath) {
         return Optional.ofNullable(coordinates.get(accessorPath));
     }
 
-    /** Resolve a bundle accessor (catalog name already stripped) to its module coordinates. */
-    public Optional<List<String>> resolveBundle(String accessorPath) {
+    /**
+     * Resolve a bundle accessor to module coordinates. Missing library members are listed in
+     * {@link BundleResolution#missingMembers()} — never silently omitted without a record.
+     */
+    public Optional<BundleResolution> resolveBundle(String accessorPath) {
         List<String> modules = bundles.get(accessorPath);
         if (modules == null) return Optional.empty();
         List<String> coords = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
         for (String module : modules) {
             String coord = coordinates.get(module);
-            if (coord != null) coords.add(coord);
+            if (coord != null) {
+                coords.add(coord);
+            } else {
+                missing.add(module);
+            }
         }
-        return Optional.of(coords);
+        return Optional.of(new BundleResolution(coords, missing));
+    }
+
+    /** Result of expanding a catalog bundle. */
+    public record BundleResolution(List<String> coordinates, List<String> missingMembers) {
+        public BundleResolution {
+            coordinates = List.copyOf(coordinates);
+            missingMembers = List.copyOf(missingMembers);
+        }
+
+        public boolean isEmpty() {
+            return coordinates.isEmpty();
+        }
     }
 
     // --- parsing helpers ----------------------------------------------------
 
     private static void flattenLibraries(
-            TomlTable table, String prefix, Map<String, String> versions, Map<String, String> out) {
+            TomlTable table,
+            String prefix,
+            Map<String, String> versions,
+            Map<String, String> out,
+            List<String> notes) {
         for (String key : table.keySet()) {
             String path = prefix.isEmpty() ? accessor(key) : prefix + "." + accessor(key);
             Object value = table.get(key);
@@ -135,42 +181,58 @@ public final class GradleVersionCatalog {
                 if (!s.isBlank()) out.put(path, s.trim());
             } else if (value instanceof TomlTable lib) {
                 if (lib.contains("module") || lib.contains("group") || lib.contains("name")) {
-                    String coord = coordFromTable(lib, versions);
+                    String coord = coordFromTable(lib, versions, path, notes);
                     if (coord != null) out.put(path, coord);
                 } else {
                     // A namespace table produced by a dotted alias (e.g. junit.jupiter).
-                    flattenLibraries(lib, path, versions, out);
+                    flattenLibraries(lib, path, versions, out, notes);
                 }
             }
         }
     }
 
-    private static String coordFromTable(TomlTable lib, Map<String, String> versions) {
+    private static String coordFromTable(
+            TomlTable lib, Map<String, String> versions, String accessorPath, List<String> notes) {
         String group;
         String name;
         String module = lib.getString("module");
         if (module != null) {
             int sep = module.indexOf(':');
-            if (sep < 0) return null;
+            if (sep < 0) {
+                notes.add("library `" + accessorPath + "` has malformed module `" + module + "` (want group:artifact)");
+                return null;
+            }
             group = module.substring(0, sep);
             name = module.substring(sep + 1);
         } else {
             group = lib.getString("group");
             name = lib.getString("name");
         }
-        if (group == null || group.isBlank() || name == null || name.isBlank()) return null;
+        if (group == null || group.isBlank() || name == null || name.isBlank()) {
+            notes.add("library `" + accessorPath + "` is missing group/name (or module)");
+            return null;
+        }
         String ga = group.trim() + ":" + name.trim();
-        String version = resolveLibraryVersion(lib, versions);
-        // A version-less entry (BOM-managed) can't become a jk.toml dep on its own.
-        return version == null ? null : ga + ":" + version;
-    }
-
-    private static String resolveLibraryVersion(TomlTable lib, Map<String, String> versions) {
         if (lib.contains("version.ref")) {
             String ref = lib.getString("version.ref");
-            return ref == null ? null : versions.get(ref);
+            if (ref == null || ref.isBlank()) {
+                notes.add("library `" + accessorPath + "` has empty version.ref");
+                return ga; // version-less; BOM may manage
+            }
+            String v = versions.get(ref);
+            if (v == null) {
+                notes.add("library `"
+                        + accessorPath
+                        + "` version.ref `"
+                        + ref
+                        + "` is not defined in [versions]; imported as version-less (platform-managed if a BOM is present)");
+                return ga;
+            }
+            return ga + ":" + v;
         }
-        return readVersion(lib.get("version"));
+        String version = readVersion(lib.get("version"));
+        // Version-less entry (BOM-managed) — keep as g:a so import can emit platform-managed deps.
+        return version == null ? ga : ga + ":" + version;
     }
 
     /** A version value: a plain string, or a rich {@code {strictly|require|prefer}} table. */
@@ -190,7 +252,7 @@ public final class GradleVersionCatalog {
     }
 
     /** Fold an alias segment to its accessor form: {@code - _ .} all become {@code .}. */
-    private static String accessor(String alias) {
+    static String accessor(String alias) {
         return alias.replace('-', '.').replace('_', '.');
     }
 }
