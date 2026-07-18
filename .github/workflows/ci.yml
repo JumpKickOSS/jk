@@ -27,9 +27,9 @@ jobs:
       - name: Test
         run: ./gradlew test --no-daemon
 
-  # ticket-1007: dogfood workspace lock + build with a freshly built jk.
+  # ticket-1007/1018: dogfood workspace lock + build with a freshly built jk.
   self-host:
-    name: Self-host workspace (jk)
+    name: Self-host workspace (jk, native)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +47,30 @@ jobs:
           ./gradlew dist installLocal --no-daemon
           ./install.sh build/dist/jk
           echo "$HOME/.jk/versions/0.10.0-SNAPSHOT/bin" >> "$GITHUB_PATH"
+
+      - name: jk lock + build --skip-tests
+        run: |
+          jk --version
+          jk lock
+          jk build --skip-tests
+
+  # ticket-1018: same dogfood via JVM installDist (no Graal native-image).
+  self-host-jvm:
+    name: Self-host workspace (jk, installDist)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Bootstrap installDist + workers
+        run: |
+          ./gradlew :cli-engine:installDist installLocal --no-daemon
+          echo "$PWD/clients/cli-engine/build/install/jk/bin" >> "$GITHUB_PATH"
 
       - name: jk lock + build --skip-tests
         run: |

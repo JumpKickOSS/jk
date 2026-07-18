@@ -23,12 +23,9 @@ assertj-core            = { group = "org.assertj",        name = "assertj-core",
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
 
-# Self-host: engine's tests fork jk's own worker jars. These workers are
-# Gradle-only (no jk.toml), so jk build can't build them as modules — it reuses
-# the running jk's worker identity instead.
-#  - test-plugin-jars: the EngineServerTest hosted-audit round-trip forks the
-#    auditor, injected as -Djk.auditor.plugin.jar (located from the running jk's
-#    repos/local/ store; requires `./gradlew :auditor:installLocal`). Git work now
-#    runs in-process (git CLI or bundled JGit), so no git worker jar is needed.
+# Self-host: engine's tests fork jk's own worker jars via -Djk.<worker>.plugin.jar.
+#  - test-runner / java-compiler: workspace modules (phase 2) — sibling shadow jars preferred.
+#  - auditor: still Gradle-only fat worker; falls back to installLocal / CAS
+#    (`./gradlew :auditor:installLocal`). Git work runs in-process (CLI or JGit).
 [build]
-test-plugin-jars = ["auditor"]
+test-plugin-jars = ["test-runner", "java-compiler", "auditor"]

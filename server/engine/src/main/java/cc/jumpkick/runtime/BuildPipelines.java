@@ -3167,8 +3167,19 @@ public final class BuildPipelines {
             // that bundles plugin-api/PluginMain and the plugin's deps; a
             // plain module ships only its main jar.
             Path jar = sib.shadowJar() ? layout.shadowJar() : layout.mainJar();
-            out.put(sib.project().name(), jar);
-            out.put(sib.project().group() + ":" + sib.project().name(), jar);
+            String name = sib.project().name();
+            out.put(name, jar);
+            out.put(sib.project().group() + ":" + name, jar);
+            // test-plugin-jars uses short names ("test-runner"); first-party
+            // workers publish as jk-<short> — alias so sibling lookup works.
+            if (name.startsWith("jk-") && name.length() > 3) {
+                out.put(name.substring(3), jar);
+            }
+            // Also key by the module directory basename (plugins/test-runner → test-runner).
+            Path base = dir.getFileName();
+            if (base != null) {
+                out.putIfAbsent(base.toString(), jar);
+            }
         }
         return out;
     }
@@ -3199,9 +3210,13 @@ public final class BuildPipelines {
         if (modules.isEmpty()) return props;
         Map<String, Path> jarByModule = siblingMainJars(moduleDir);
         for (String module : modules) {
-            var wj = cc.jumpkick.engine.plugin.PluginJar.byArtifactId("jk-" + module);
+            // Accept short names (test-runner), artifact ids (jk-test-runner), or either already.
+            var wj = cc.jumpkick.engine.plugin.PluginJar.byArtifactId(module);
+            if (wj.isEmpty()) wj = cc.jumpkick.engine.plugin.PluginJar.byArtifactId("jk-" + module);
             if (wj.isEmpty()) continue;
             Path jar = jarByModule.get(module);
+            if (jar == null) jar = jarByModule.get(wj.get().artifactId());
+            if (jar == null && module.startsWith("jk-")) jar = jarByModule.get(module.substring(3));
             if (jar != null && Files.exists(jar)) {
                 props.put(wj.get().jarProperty(), jar.toAbsolutePath().toString());
             } else {

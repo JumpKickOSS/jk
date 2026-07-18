@@ -1,0 +1,25 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-test-runner"
+version     = "0.10.0-SNAPSHOT"
+description = "jk-test-runner: child-JVM entry that drives JUnit Platform and streams JSONL events."
+jdk         = 25
+# Rides the user's test JVM (project floor is JDK 17+); keep bytecode at 17.
+java        = 17
+
+# Fat jar with PluginMain — plugin-sdk is shaded in; JUnit stays provided (forked test CP).
+[application]
+main       = "cc.jumpkick.plugin.process.PluginMain"
+shadow-jar = true
+
+[dependencies]
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
+
+# Compile against the platform engine API; do not shade — the forked test JVM supplies engines.
+[provided-dependencies]
+junit-platform-engine = { group = "org.junit.platform", name = "junit-platform-engine", version = "6.1.0" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

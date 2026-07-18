@@ -1,7 +1,7 @@
 # ticket-1018 — Self-host phase 2 (plugins + full dist on jk)
 
 **Priority:** P1 (dogfood)  
-**Status:** backlog  
+**Status:** done  
 **Depends on:** ticket-1007 phase 1 (**done**)  
 **Branch:** `ticket-1018-self-host-phase2`
 
@@ -28,6 +28,13 @@ after a Gradle `dist`/`installLocal` bootstrap. Remaining friction:
 
 ## Acceptance (draft)
 
-- [ ] At least one first-party plugin built as a workspace module via `jk build`
-- [ ] Documented path for engine tests under self-host (or green `jk test` on engine)
-- [ ] CONTRIBUTING updated; phase-1 CI job still green
+- [x] At least one first-party plugin built as a workspace module via `jk build`
+- [x] Documented path for engine tests under self-host (or green `jk test` on engine)
+- [x] CONTRIBUTING updated; phase-1 CI job still green
+
+## Done
+
+- `plugins/test-runner` + `plugins/java-compiler` workspace modules (`shadow-jar` + `PluginMain`)
+- `CachePruneScheduler.resolveJkExe` recovers `bin/jk` from installDist `lib/` classpath
+- `test-plugin-jars` resolves short names to sibling shadow jars (`jk-*` alias)
+- CI: native self-host + installDist self-host jobs; CONTRIBUTING phase-2 docs

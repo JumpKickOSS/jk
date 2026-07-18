@@ -80,6 +80,7 @@ class SelfHostingTomlTest {
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
         // plugin-sdk is listed before jk-api: model depends on the SPI leaf (Gradle :jk-api → :plugin-sdk).
+        // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
                         "shared/plugin-sdk",
@@ -93,7 +94,9 @@ class SelfHostingTomlTest {
                         "shared/wire",
                         "server/engine",
                         "clients/cli",
-                        "clients/cli-engine");
+                        "clients/cli-engine",
+                        "plugins/test-runner",
+                        "plugins/java-compiler");
     }
 
     @Test
@@ -107,6 +110,21 @@ class SelfHostingTomlTest {
             assertThat(parsed.project().name()).startsWith("jk-");
             assertThat(parsed.project().jdk()).isEqualTo("25");
         }
+    }
+
+    @Test
+    void thin_worker_plugins_are_shadow_apps_with_plugin_main() throws Exception {
+        for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
+            JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
+            assertThat(p.shadowJar()).as(module).isTrue();
+            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+                    .as(module)
+                    .contains("cc.jumpkick:jk-plugin-api");
+        }
+        // test-runner keeps the JDK-17 floor for the user's forked test JVM.
+        JkBuild runner = JkBuildParser.parse(REPO.resolve("plugins/test-runner/jk.toml"));
+        assertThat(runner.project().javaRelease()).isEqualTo(17);
     }
 
     @Test

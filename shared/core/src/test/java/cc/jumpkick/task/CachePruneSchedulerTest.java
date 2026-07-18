@@ -73,4 +73,41 @@ class CachePruneSchedulerTest {
         // raising under the disabled-config path.
         CachePruneScheduler.maybeRun(off, cacheRoot, "/usr/local/bin/jk");
     }
+
+    @Test
+    void jvm_install_layout_resolves_bin_jk_from_lib_classpath(@TempDir Path home) throws IOException {
+        Path lib = home.resolve("lib");
+        Path bin = home.resolve("bin");
+        Files.createDirectories(lib);
+        Files.createDirectories(bin);
+        Path jar = lib.resolve("cli-engine-0.10.0-SNAPSHOT.jar");
+        Files.writeString(jar, "fake");
+        Path script = bin.resolve("jk");
+        Files.writeString(script, "#!/bin/sh\n");
+
+        String cp = jar.toAbsolutePath() + System.getProperty("path.separator") + "/other/classes";
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(cp))
+                .contains(script.toAbsolutePath().toString());
+    }
+
+    @Test
+    void jvm_install_layout_empty_when_no_lib_sibling() {
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout("/tmp/classes:/tmp/other.jar"))
+                .isEmpty();
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout("")).isEmpty();
+    }
+
+    @Test
+    void jvm_install_layout_prefers_jk_bat_on_windows_style(@TempDir Path home) throws IOException {
+        Path lib = home.resolve("lib");
+        Path bin = home.resolve("bin");
+        Files.createDirectories(lib);
+        Files.createDirectories(bin);
+        Files.writeString(lib.resolve("app.jar"), "x");
+        Path bat = bin.resolve("jk.bat");
+        Files.writeString(bat, "@echo off\n");
+
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(lib.resolve("app.jar").toString()))
+                .contains(bat.toAbsolutePath().toString());
+    }
 }

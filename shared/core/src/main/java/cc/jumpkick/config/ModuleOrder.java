@@ -71,10 +71,14 @@ public final class ModuleOrder {
             }
         }
         // [build].order-after: build-order-only edges (no classpath/lock). Each entry names a
-        // sibling by project name or group:artifact coord.
+        // sibling by project name or group:artifact coord. Short worker names (test-runner) also
+        // match first-party artifacts published as jk-<short>.
         for (String ref : m.build().allOrderAfter()) {
             Path depDir = dirByCoord.get(ref);
             if (depDir == null) depDir = dirByName.get(ref);
+            if (depDir == null && !ref.contains(":") && !ref.startsWith("jk-")) {
+                depDir = dirByName.get("jk-" + ref);
+            }
             if (depDir != null && !depDir.equals(moduleDir)) prereqs.add(depDir);
         }
         return prereqs;

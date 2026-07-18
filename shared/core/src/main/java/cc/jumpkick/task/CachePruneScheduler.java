@@ -89,11 +89,11 @@ public final class CachePruneScheduler {
      * Best-effort resolution of the absolute path to the running {@code jk} binary. Lives here so
      * engine doesn't depend on cli.
      *
-     * <p>The running executable IS jk (whatever it's named) unless the process is a JVM launcher —
-     * a JVM-dist run's command is {@code .../bin/java}, which can't be re-invoked as jk, so it
-     * resolves empty and {@code JK_EXE} is the override. (A filename heuristic like
-     * {@code contains("jk")} is wrong in both directions: it rejects a renamed native binary and
-     * accepts a java launcher installed under a path that happens to contain "jk".)
+     * <p>Order: {@code JK_EXE} override → {@code /proc/self/exe} / {@link ProcessHandle} when that
+     * path is not a bare JVM launcher → Gradle/JVM installDist layout ({@code <app>/lib/*.jar} with
+     * sibling {@code <app>/bin/jk}). A filename heuristic like {@code contains("jk")} is wrong in
+     * both directions: it rejects a renamed native binary and accepts a java launcher installed
+     * under a path that happens to contain "jk".
      */
     public static Optional<String> resolveJkExe() {
         String envOverride = System.getenv("JK_EXE");
@@ -118,11 +118,56 @@ public final class CachePruneScheduler {
         if (candidate != null && !isJavaLauncher(candidate)) {
             return Optional.of(candidate.toAbsolutePath().toString());
         }
+        // JVM dist (installDist / application plugin): process is `java` with classpath under
+        // <app>/lib/; the re-invokable launcher is <app>/bin/jk.
+        return resolveFromJvmInstallLayout(System.getProperty("java.class.path", ""));
+    }
+
+    /**
+     * When the process is a JVM launcher, recover the installDist/application script path from the
+     * classpath: any {@code …/lib/<jar-or-dir>} entry implies {@code …/bin/jk} (or {@code jk.bat}).
+     * Package-visible for tests.
+     */
+    static Optional<String> resolveFromJvmInstallLayout(String classPath) {
+        if (classPath == null || classPath.isBlank()) return Optional.empty();
+        String sep = System.getProperty("path.separator", ":");
+        for (String entry : classPath.split(java.util.regex.Pattern.quote(sep))) {
+            if (entry.isBlank()) continue;
+            Path p;
+            try {
+                p = Path.of(entry).toAbsolutePath().normalize();
+            } catch (RuntimeException ignored) {
+                continue;
+            }
+            Path lib = libDirOf(p);
+            if (lib == null) continue;
+            Path home = lib.getParent();
+            if (home == null) continue;
+            for (String name : List.of("jk", "jk.bat", "jk.cmd")) {
+                Path script = home.resolve("bin").resolve(name);
+                if (Files.isRegularFile(script)) {
+                    return Optional.of(script.toAbsolutePath().toString());
+                }
+            }
+        }
         return Optional.empty();
     }
 
+    /** {@code path} is a {@code lib/} directory, or a file directly under one. */
+    private static Path libDirOf(Path path) {
+        if (Files.isDirectory(path) && "lib".equals(fileName(path))) return path;
+        Path parent = path.getParent();
+        if (parent != null && "lib".equals(fileName(parent))) return parent;
+        return null;
+    }
+
+    private static String fileName(Path p) {
+        Path name = p.getFileName();
+        return name == null ? "" : name.toString();
+    }
+
     private static boolean isJavaLauncher(Path p) {
-        String name = p.getFileName() == null ? "" : p.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        String name = fileName(p).toLowerCase(java.util.Locale.ROOT);
         return name.equals("java") || name.equals("java.exe") || name.equals("javaw.exe");
     }
 }
