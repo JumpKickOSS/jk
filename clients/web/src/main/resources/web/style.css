@@ -1,0 +1,1090 @@
+/* SPDX-License-Identifier: Apache-2.0
+ * jk engine dashboard. Surface/state tokens adopted from the jk.dc design exploration, which in
+ * turn derives from docs/tui-style.md (Jk Dark) — dashboard and terminal read as one product:
+ * color means state, never decoration. Dark-only, deliberately (the TUI is Jk Dark; so is this).
+ * Mono type is JetBrainsMono Nerd Font Mono when installed locally (the TUI wants it anyway),
+ * falling back to Google's JetBrains Mono webfont, then the system mono stack. */
+
+:root {
+  --bg: #090c11;          /* near-black canvas so the neon accents pop (mission-control feel) */
+  --s1: #161d25;
+  --s2: #1c2630;
+  --s3: #232f3a;
+  --bd: #2a3742;
+  --bd2: #1e2830;
+  --tx: #cfd8dc;
+  --bright: #eceff1;
+  --mu: #90a4ae;
+  --dim: #5c6d78;
+  --ok: #00ff87;         /* WSLUI neon green */
+  --okc: #00b368;        /* deep neon green (badge/fill companion) */
+  --err: #ff3366;        /* WSLUI neon red */
+  --run: #3d9bff;        /* neon electric blue (running) */
+  --runc: #124a8c;       /* deep neon blue */
+  --warn: #ffb800;       /* WSLUI neon amber */
+  --cg: #00d4e0;         /* neon cyan (secondary) */
+  --cn: #00f0ff;         /* WSLUI neon cyan (accent) */
+  --path: #969dd4;
+  --console-bg: #0b1116;
+
+  /* RGB triplets, one per state/identity hue above. Kept in lock-step with the hex tokens so a
+   * single colour can drive a fill, a border, and a glow at different alphas — rgba(var(--x-rgb), a).
+   * (CSS can't derive these from the hex at runtime, so they're maintained by hand.) */
+  --run-rgb: 61, 155, 255;
+  --runc-rgb: 18, 74, 140;
+  --ok-rgb: 0, 255, 135;
+  --okc-rgb: 0, 179, 104;
+  --err-rgb: 255, 51, 102;
+  --warn-rgb: 255, 184, 0;
+  --cg-rgb: 0, 212, 224;
+  --cn-rgb: 0, 240, 255;   /* the neon accent (bright cyan) — drives chrome glows/outlines */
+  --bright-rgb: 236, 239, 241;
+  --mu-rgb: 144, 164, 174;
+
+  /* Named chrome/state values that used to be inlined as raw hex — centralised so the palette has
+   * one home (color still means state, never decoration). */
+  --header-bg: #0a0d11;             /* sticky nav: a touch darker than the page */
+  --header-bd: #1c2833;
+  --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */
+  --run-fg: #d6ecff;                /* running step-node text */
+  --on-warn: #1d2026;               /* dark text that stays legible on the amber (--warn) fills */
+  --prog-a: #4d8bff;                /* neon progress gradient: electric blue … */
+  --prog-b: #c04dff;                /* … → neon violet */
+  --modal-scrim: rgba(4, 8, 11, 0.66);
+  --modal-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7);
+
+  /* Radius scale (each value already in use across the sheet — now named). */
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+  --r-pill: 999px;
+
+  /* Motion: shared durations + easings so hover/entrance timing is consistent and easy to damp in
+   * the reduced-motion block (see bottom of file). */
+  --dur-fast: 0.12s;
+  --dur: 0.2s;
+  --dur-slow: 0.5s;
+  --ease: ease-out;
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* The one type family for the whole dashboard: JetBrains Mono (Nerd Font locally, Google webfont
+   * otherwise, system mono last). The terminal is Jk Dark in JetBrains Mono; the web reads the same. */
+  --mono: "JetBrainsMono Nerd Font Mono", "JetBrains Mono Nerd Font Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+
+
+[v-cloak] { display: none; }
+
+/* Text-selection highlight: the browser default is a glaring solid block on this dark
+ * theme — pin it to the theme's bright tone (--bright #eceff1) at 20% opacity so
+ * selected text stays readable without the white flash. */
+::selection { background: rgba(var(--bright-rgb), 0.2); }
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  /* A near-invisible mission-control grid over the page background — texture, not a state colour,
+   * so it stays clear of "colour means state". 2.5%-alpha neutral lines on a 44px grid; content
+   * surfaces (cards/tiles) are opaque and sit on top, so it only shows in the gutters. */
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(var(--cn-rgb), 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--cn-rgb), 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  color: var(--tx);
+  font: 13.5px/1.5 var(--mono);
+  -webkit-font-smoothing: antialiased;
+  /* room for the fixed footer status bar (see .statusbar) */
+  padding-bottom: 34px;
+}
+
+.spacer { flex: 1; }
+.dim { color: var(--dim); }
+.small { font-size: 11.5px; }
+.warn { color: var(--warn); }
+.accent { color: var(--cg); }
+.error { color: var(--err); }
+.empty { color: var(--mu); }
+
+/* ---- header (mission-control bar; shown on every view) ---- */
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 64px;
+  padding: 0 20px;
+  background: var(--header-bg);
+  border-bottom: 1px solid rgba(var(--cn-rgb), 0.18);
+  box-shadow: 0 8px 24px -14px rgba(0, 0, 0, 0.9);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+/* Square "jk" CRT mark, sized to the taller bar with a soft cyan halo. */
+.logo {
+  height: 40px;
+  width: 40px;
+  display: block;
+  flex: none;
+  border-radius: var(--r-md);
+  box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.22);
+}
+
+/* brand: JumpKick + version pill, over a "Build Engine" subtitle */
+.brand { display: flex; flex-direction: column; gap: 3px; line-height: 1.1; }
+.brand-top { display: flex; align-items: center; gap: 8px; }
+.brand-name {
+  font: 700 17px var(--mono);
+  color: var(--bright);
+  text-shadow: 0 0 12px rgba(var(--cn-rgb), 0.25);
+}
+.ver-pill {
+  font: 600 10.5px/1 var(--mono);
+  color: var(--cn);
+  background: rgba(var(--cn-rgb), 0.10);
+  border: 1px solid rgba(var(--cn-rgb), 0.45);
+  border-radius: var(--r-pill);
+  padding: 3px 8px;
+  box-shadow: 0 0 10px rgba(var(--cn-rgb), 0.18);
+}
+.brand-sub {
+  font: 600 9.5px var(--mono);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* faint vertical divider between header groups */
+.hdiv { width: 1px; align-self: stretch; margin: 15px 2px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
+
+/* outlined system box: CORES / RAM (engine host resources) */
+.sysbox {
+  display: grid;
+  grid-template-columns: auto auto;   /* labels | values */
+  gap: 2px 10px;
+  padding: 5px 12px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  background: rgba(var(--cn-rgb), 0.03);
+}
+.sysrow { display: contents; }
+.sk { font: 600 9px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); text-align: right; align-self: center; }
+.sv { font: 600 11.5px var(--mono); color: var(--bright); text-align: left; align-self: center; }
+
+nav { display: flex; gap: 4px; }
+
+nav button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  color: var(--mu);
+  padding: 7px 14px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+nav button:hover:not(.active) { background: rgba(var(--cn-rgb), 0.15); border-color: rgba(var(--cn-rgb), 0.45); color: var(--cn); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.22); }
+nav button.active {
+  color: var(--cn);
+  background: rgba(var(--cn-rgb), 0.12);
+  border-color: rgba(var(--cn-rgb), 0.4);
+  box-shadow: 0 0 12px rgba(var(--cn-rgb), 0.15);
+}
+
+.hdr-actions { display: flex; gap: 8px; }
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-md);
+  border: 1px solid var(--bd);
+  background: var(--s1);
+  color: var(--mu);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.icon-btn:hover {
+  color: var(--cn);
+  border-color: rgba(var(--cn-rgb), 0.6);
+  background: rgba(var(--cn-rgb), 0.16);
+  box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.3);
+}
+.icon-btn .ico { width: 17px; height: 17px; }
+
+/* Header Help/Settings — a deliberate special case vs every other button: borderless at rest, and
+ * on hover ONLY the border appears (its highlight). The icon keeps its colour — no cyan fill/glow,
+ * and no light-sweep shimmer. Scoped to .hdr-actions so the modal Close (also .icon-btn) is
+ * unaffected. */
+.hdr-actions .icon-btn { border-color: transparent; }
+.hdr-actions .icon-btn:hover {
+  color: var(--mu);
+  border-color: var(--mu);
+  background: var(--s1);
+  box-shadow: none;
+}
+.hdr-actions .icon-btn::before { display: none; }
+
+/* narrow screens: shed the sys box + dividers before the bar crowds */
+@media (max-width: 760px) {
+  .sysbox,
+  .hdiv,
+  .brand-sub {
+    display: none;
+  }
+}
+
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+.spin {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid rgba(128, 160, 190, 0.35);
+  border-top-color: var(--run);
+  animation: sp 0.7s linear infinite;
+  flex: none;
+}
+
+.spin.small { width: 10px; height: 10px; border-width: 2px; }
+
+@keyframes sp { to { transform: rotate(360deg); } }
+
+/* ---- icons ----
+ * <jk-icon> renders an inline SVG (see app.js) sized to the surrounding text (1em) and painted with
+ * currentColor, so it inherits the state/utility colour of its context. Baseline-nudged for inline
+ * runs of text; flex parents (buttons, step-nodes, badges) centre it via align-items instead. */
+.ico {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.125em;
+}
+.chain-nav .ico { width: 14px; height: 14px; }
+
+/* ---- layout ---- */
+
+main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
+
+.feed-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.feed-head h2 { font: 700 15px var(--mono); color: var(--bright); margin: 0; }
+
+.retention {
+  font-size: 11px;
+  color: var(--mu);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+}
+
+.trigger { display: flex; gap: 7px; }
+
+.trigger input {
+  width: 260px;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-md);
+  color: var(--tx);
+  padding: 7px 10px;
+  font: 12px var(--mono);
+}
+
+.trigger button.ghost {
+  background: var(--s1);
+  color: var(--mu);
+  border: 1px solid var(--bd);
+}
+
+.trigger button.ghost:hover { color: var(--tx); }
+
+.trigger button, .rebuild {
+  background: var(--okc);
+  border: none;
+  border-radius: var(--r-md);
+  color: #fff;
+  padding: 7px 13px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+}
+
+.rebuild {
+  background: var(--s2);
+  color: var(--mu);
+  border: 1px solid var(--bd);
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.rebuild:hover { color: var(--tx); }
+
+/* Icon-only card actions (rebuild / delete on a finished card): a Material Icon sized to the
+ * small card type, the .rebuild surface tightened to a square and centred in the baseline row.
+ * The delete button flags danger — red glyph + border — on hover. */
+.rebuild.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  padding: 4px 6px;
+}
+.rebuild.icon .ico { width: 16px; height: 16px; }
+.rebuild.icon.danger:hover { color: var(--err); border-color: rgba(var(--err-rgb), 0.5); }
+
+/* ---- activity cards ---- */
+
+.card {
+  --glow-rgb: var(--mu-rgb);
+  background: linear-gradient(135deg, var(--s1), var(--s2));
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-lg);
+  /* extra left padding so the content clears the left-edge inward glow */
+  padding: 14px 16px 14px 22px;
+  margin-bottom: 10px;
+  /* the state "tip": an inward glow bleeding from the left edge (not an opaque bar), keyed to state */
+  box-shadow: inset 8px 0 18px -8px rgba(var(--glow-rgb), 0.7);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+/* --glow-rgb carries the card's build state — it drives both the left inward glow and the hover
+ * halo, so "colour still means state" (success green, failed red, …). */
+.card.running { --glow-rgb: var(--run-rgb); }
+.card.success { --glow-rgb: var(--ok-rgb); }
+.card.failed { --glow-rgb: var(--err-rgb); }
+.card.cancelled, .card.finished { --glow-rgb: var(--warn-rgb); }
+
+/* Hover = a neon state-coloured OUTLINE + glow, NO motion (lights up like WSLUI's cards); the left
+ * inward glow intensifies too. */
+.card:hover {
+  border-color: rgba(var(--glow-rgb), 0.55);
+  box-shadow: inset 8px 0 18px -8px rgba(var(--glow-rgb), 0.9),
+              0 0 20px rgba(var(--glow-rgb), 0.16),
+              inset 0 0 22px rgba(var(--glow-rgb), 0.05);
+}
+
+.card-head { display: flex; align-items: baseline; gap: 10px; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font: 600 11px/1 var(--mono);
+  border-radius: var(--r-sm);
+  padding: 3px 9px;
+  color: #fff;
+  background: var(--runc);
+  white-space: nowrap;
+}
+
+.badge.success { background: var(--okc); }
+.badge.failed { background: var(--err); }
+.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-warn); }
+
+.coord { font-size: 12.5px; font-weight: 500; }
+.coord .cg { color: var(--cg); }
+.coord .cn { color: var(--cn); font-size: 16px; }
+.coord .csep { color: var(--tx); }
+
+.kind { color: var(--mu); font-size: 12px; }
+.summary { color: var(--mu); font-size: 12px; }
+.millis { color: var(--mu); font-size: 12px; }
+.ago { color: var(--dim); font-size: 11.5px; }
+/* ETA countdown on a running card — dim mono, sits just before the elapsed timer. */
+.eta { color: var(--dim); font-size: 11.5px; font-family: var(--mono); }
+.dir { color: var(--path); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* step chain — the design's DAG strip */
+
+/* Running-card progress bar: same indigo→magenta gradient as the CLI progress bars
+ * (Theme PROGRESS_GRADIENT: PRIMARY #3F51B5 → BRIGHT_MAGENTA #E040FB). The width transition
+ * glides smoothly as the engine's weight numerator/denominator advance (app.js progress()). */
+.cardbar {
+  height: 8px;
+  margin: 10px 0 2px;
+  border-radius: 4px;
+  background: var(--s2);
+  overflow: hidden;
+}
+.cardbar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--prog-a), var(--prog-b));
+  transition: width var(--dur-slow) var(--ease-smooth);
+}
+
+/* The step strip never wraps: it's one horizontal chain that scrolls under ◂ / ▸ nav buttons.
+ * overflow:hidden (not auto/scroll) means no scrollbar — the buttons are the only way to page,
+ * and the track is moved programmatically via scrollLeft (see app.js StepChain). */
+.step-chain-wrap { position: relative; margin-top: 11px; }
+.step-chain {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+/* Edge nav buttons — shown only when steps are hidden on that side. */
+.chain-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--bd);
+  border-radius: var(--r-sm);
+  background: var(--s2);
+  color: var(--mu);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.chain-nav { transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.chain-nav:hover { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.6); background: rgba(var(--cn-rgb), 0.16); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.3); }
+.chain-nav.left { left: 0; }
+.chain-nav.right { right: 0; }
+
+/* A soft fade under each active nav button so a partially-hidden step reads as "cut off". */
+.chain-fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  z-index: 2;
+  pointer-events: none;
+}
+.chain-fade.left { left: 0; background: linear-gradient(to right, var(--s1), transparent); }
+.chain-fade.right { right: 0; background: linear-gradient(to left, var(--s1), transparent); }
+
+.step-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--bd);
+  background: var(--s2);
+  font: 600 11px/1 var(--mono);
+  color: var(--mu);
+  white-space: nowrap;
+}
+
+.step-node.running { border-color: var(--run-line); color: var(--run-fg); background: var(--runc); }
+.step-node.success { border-color: rgba(var(--ok-rgb), 0.4); color: var(--ok); background: rgba(var(--okc-rgb), 0.14); }
+.step-node.failed { border-color: rgba(var(--err-rgb), 0.5); color: var(--err); background: rgba(var(--err-rgb), 0.12); }
+.step-node.skipped, .step-node.cancelled { opacity: 0.55; }
+.step-glyph.ok { color: var(--ok); }
+.step-glyph.err { color: var(--err); }
+
+.step-edge { height: 2px; width: 18px; background: var(--bd); flex: none; }
+.step-edge.success { background: rgba(var(--ok-rgb), 0.45); }
+
+/* ---- phase-chain: coarse phases with click-to-expand step detail ----
+ * Phase nodes reuse .step-node styling but are <button> toggles; the open phase's steps render as a
+ * secondary sub-chain beneath. Single-open accordion; the failed phase auto-opens. */
+.phase-node { cursor: pointer; }
+.phase-node.open { border-color: var(--mu); color: var(--bright); }
+.phase-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 0;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--console-bg);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-md);
+}
+
+/* console tail (in-flight output + engine log) */
+
+.console {
+  font: 11.5px/1.8 var(--mono);
+  color: var(--mu);
+  background: var(--console-bg);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-md);
+  padding: 9px 12px;
+  margin-top: 11px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-dir { color: var(--cn); }
+.console-phase { color: var(--mu); }
+.console-sep { color: var(--dim); }
+
+.log-tail { max-height: 260px; overflow-y: auto; margin: 0; }
+
+/* per-module sections (multi-module workspace): a bullet+name+duration row, then that module's chain */
+
+.module { margin-top: 12px; }
+.module-row { display: flex; align-items: center; gap: 8px; }
+.mname { color: var(--path); font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the module's step-chain sits just beneath its row, slightly tightened */
+.module .step-chain-wrap { margin-top: 6px; }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
+.dot.running { background: var(--run); }
+.dot.success { background: var(--ok); }
+.dot.failed { background: var(--err); }
+.dot.cancelled, .dot.skipped { background: var(--warn); }
+
+/* ---- projects view ----
+ * One row per project: {orb}{coords} left · {ECharts spark} centre · {pill #NNN}{reliability} right.
+ * Same surface + state-coloured left border as an activity card, so the two tabs read as one system. */
+
+.project {
+  --glow-rgb: var(--mu-rgb);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: linear-gradient(135deg, var(--s1), var(--s2));
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-lg);
+  /* extra left padding so the orb/coords clear the left-edge inward glow */
+  padding: 14px 18px 14px 24px;
+  margin-bottom: 10px;
+  box-shadow: inset 8px 0 18px -8px rgba(var(--glow-rgb), 0.7);
+}
+.project.running { --glow-rgb: var(--run-rgb); }
+.project.success { --glow-rgb: var(--ok-rgb); }
+.project.failed { --glow-rgb: var(--err-rgb); }
+.project.cancelled, .project.issue { --glow-rgb: var(--warn-rgb); }
+
+/* left group: the state orb + the coord (name at 16px) over a muted meta line */
+.proj-id { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-width: 210px; max-width: 34%; }
+
+.orb {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--dim);
+}
+.orb.running { background: var(--run); box-shadow: 0 0 8px 0 rgba(var(--run-rgb), 0.75); }
+.orb.success { background: var(--ok); box-shadow: 0 0 8px 0 rgba(var(--ok-rgb), 0.45); }
+.orb.failed { background: var(--err); box-shadow: 0 0 8px 0 rgba(var(--err-rgb), 0.5); }
+.orb.cancelled, .orb.issue { background: var(--warn); box-shadow: 0 0 8px 0 rgba(var(--warn-rgb), 0.5); }
+
+/* ---- pulsing status ring ----
+ * The "live" signal: a running dot emits a soft ring that expands and fades, forever. Only the
+ * active state pulses — terminal states (success/failed/cancelled) keep their static glow above.
+ * The footer's live dot gets a calmer, slower ring (steady heartbeat, not urgency). The
+ * dot stays solid; the ring is the motion. Damped by the reduced-motion block (leaves a static
+ * ring, which still reads as "active"). */
+@keyframes pulseRing {
+  0%   { transform: scale(0.7); opacity: 0.6; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.orb.running, .dot.running, .conn.live .live-dot { position: relative; }
+.orb.running::after, .dot.running::after, .conn.live .live-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid var(--run);
+  animation: pulseRing 1.8s var(--ease) infinite;
+  pointer-events: none;
+}
+.conn.live .live-dot::after { border-color: var(--ok); animation-duration: 2.4s; }
+
+.proj-label { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.project .coord .cn { font-size: 16px; }
+.proj-meta { display: flex; align-items: baseline; gap: 7px; color: var(--dim); font-size: 11.5px; white-space: nowrap; }
+.proj-meta .dir { color: var(--path); overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.proj-sep { color: var(--bd); }
+
+/* centre: the ECharts spark takes the slack between the two fixed side groups */
+.proj-chart { flex: 1 1 auto; min-width: 90px; }
+.build-bars { width: 100%; height: 46px; }
+
+/* right group: the outcome pill (#buildNumber) and the reliability readout */
+.proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
+.badge.running { background: var(--runc); }
+.badge.issue { background: var(--warn); color: var(--on-warn); }
+
+.reliability {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.1;
+  min-width: 64px;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--mu);
+}
+.reliability.ok { color: var(--ok); }
+.reliability.warn { color: var(--warn); }
+.reliability.err { color: var(--err); }
+.rel-lbl { font-size: 9.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+
+/* a project row is a link to its detail page */
+/* A project row links to its detail page — neon state outline + glow on hover, NO motion (matches
+ * the activity card). */
+.project { cursor: pointer; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.project:hover {
+  border-color: rgba(var(--glow-rgb), 0.55);
+  box-shadow: inset 8px 0 18px -8px rgba(var(--glow-rgb), 0.9),
+              0 0 20px rgba(var(--glow-rgb), 0.16),
+              inset 0 0 22px rgba(var(--glow-rgb), 0.05);
+}
+
+/* ---- project detail ---- */
+
+.detail-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  color: var(--mu);
+  cursor: pointer;
+  font: 600 12.5px var(--mono);
+  padding: 2px 0;
+}
+.back:hover { color: var(--cn); }
+.coord.detail { font-weight: 600; }
+.coord.detail .cn { font-size: 22px; }
+.coord.detail .cg { font-size: 15px; }
+.detail-actions { display: flex; gap: 8px; align-self: center; }
+.detail-actions button {
+  background: var(--okc);
+  border: none;
+  border-radius: var(--r-md);
+  color: #fff;
+  padding: 7px 13px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+}
+.detail-actions button.ghost { background: var(--s1); color: var(--mu); border: 1px solid var(--bd); }
+.detail-actions button.ghost:hover:not(:disabled) { color: var(--cn); }
+.detail-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+.proj-desc { color: var(--tx); margin: 2px 0 16px; max-width: 74ch; }
+
+/* min/max and last-built carry longer strings than a single KPI number */
+.kpi-sm { font: 700 13.5px/1.3 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
+
+/* build-history table — reuses table.stats; left-align the text columns and shrink the pill */
+table.stats.history td, table.stats.history th { text-align: left; padding: 4px 16px 4px 0; }
+table.stats.history td .badge { font-size: 10.5px; padding: 2px 7px; }
+table.stats.history td.ok { color: var(--ok); }
+
+/* ---- status view ---- */
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 14px; }
+
+.tile {
+  background: linear-gradient(135deg, var(--s1), var(--s2));
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-lg);
+  padding: 12px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+/* Tiles are neutral readouts — a faint neon (cyan) outline on hover, no motion. */
+.tile:hover { border-color: rgba(var(--cn-rgb), 0.35); box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.10); }
+
+.lbl {
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.kpi { font: 700 17px/1.2 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
+.kpi.ok { color: var(--ok); }
+
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+@media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--s1);
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.panel-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 11px; }
+.panel-head .mono { font-size: 11px; }
+
+.meter {
+  display: block;
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--s3);
+  overflow: hidden;
+}
+
+.meter-fill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 5px; }
+.meter-fill.committed { background: var(--runc); opacity: 0.55; }
+.meter-fill.used { background: var(--cg); }
+
+.panel dl { display: grid; grid-template-columns: max-content 1fr; gap: 7px 18px; margin: 0; font-size: 12.5px; }
+.panel dt { color: var(--mu); }
+.panel dd { margin: 0; overflow-wrap: anywhere; }
+
+/* A panel that spans the whole .panels grid (the build-stats step table, the engine log). */
+.panel.wide { grid-column: 1 / -1; }
+
+/* The Cache panel's utilization meter sits above its breakdown list. */
+.panel .meter + dl { margin-top: 11px; }
+
+/* ---- the Status view's build-stats table (running aggregates) ---- */
+table.stats { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.stats th {
+  text-align: right;
+  font-weight: 500;
+  color: var(--mu);
+  padding: 2px 0 6px 14px;
+}
+table.stats th:first-child, table.stats td:first-child { text-align: left; padding-left: 0; }
+table.stats td { text-align: right; padding: 3px 0 3px 14px; border-top: 1px solid var(--bd2); }
+table.stats td.err { color: var(--err); }
+
+/* ---- per-module roll-ups (multi-module cards) ---- */
+
+/* Successful modules collapse into a "success details" accordion (open while running); failed
+   modules live in a peer "failure details" accordion that stays open. */
+.module-group { margin-top: 12px; }
+
+.module-group > summary {
+  cursor: pointer;
+  font: 600 10.5px/1 var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  user-select: none;
+}
+
+.module-group.fail > summary { color: var(--err); }
+/* the first module row sits snug under the summary; the shared .module top-margin spaces the rest */
+.module-group[open] > .module:first-of-type { margin-top: 8px; }
+
+/* ---- failure output (never collapsed; nested under its failed module) ---- */
+
+.diag { margin-top: 6px; }
+.diag .console { margin-top: 0; }
+.diag-line { padding: 1px 0; }
+.console-err { color: var(--err); }
+
+/* ---- workspace picker (Browse…) ---- */
+
+.modal-bg {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-scrim);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 78px;
+  z-index: 60;
+}
+
+.modal {
+  position: relative;
+  width: 560px;
+  max-width: 92vw;
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-xl);
+  box-shadow: var(--modal-shadow);
+  overflow: hidden;
+  animation: fadeSlideIn var(--dur) var(--ease) backwards;
+}
+
+/* A thin accent line across the top edge — the "framed console" cue from the wsl-ui modals. */
+.modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(var(--cg-rgb), 0.5), transparent);
+}
+
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--bd2); }
+
+.modal-path {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--path);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bd2);
+  overflow-wrap: anywhere;
+}
+
+.modal-list { max-height: 320px; overflow-y: auto; }
+
+.fs-entry {
+  padding: 8px 16px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--tx);
+  cursor: pointer;
+  border-bottom: 1px solid var(--bd2);
+}
+
+.fs-entry:hover { background: var(--s2); }
+.fs-entry.up { color: var(--mu); }
+.fs-entry.none { color: var(--dim); cursor: default; }
+.fs-entry.none:hover { background: none; }
+.fs-arrow { color: var(--dim); margin-right: 4px; }
+
+.modal-foot { display: flex; align-items: center; gap: 10px; padding: 12px 16px; }
+
+.jk-found { display: inline-flex; align-items: center; gap: 5px; color: var(--ok); font-size: 12.5px; }
+
+.use-folder {
+  background: var(--okc);
+  border: none;
+  border-radius: var(--r-md);
+  color: #fff;
+  padding: 7px 14px;
+  font: 600 12.5px var(--mono);
+  cursor: pointer;
+}
+
+.use-folder:disabled { opacity: 0.4; cursor: default; }
+
+/* ============================================================================
+ * motion + focus foundation
+ * Shared primitives: an entrance animation, a keyboard-focus ring, and a reduced-motion damp. The
+ * focus + reduced-motion rules take effect immediately (additive, keyboard- / OS-gated); .rise-in
+ * is applied to feed items (activity cards, project rows) with a per-item animation-delay bound
+ * from riseDelay() in app.js so the list cascades in. Uses the motion + --*-rgb tokens above.
+ * ==========================================================================*/
+
+/* Entrance: content rises + fades in on mount. Apply .rise-in; stagger with a bound animation-delay
+ * (grid items cascade by index). Kept subtle — 10px lift, one --dur-slow beat. */
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+/* fill: backwards (not both) — hold the FROM state through any stagger delay so items don't flash,
+ * but release to author styles once done, so a later :hover transform (card lift) still applies. */
+.rise-in { animation: fadeSlideIn var(--dur-slow) var(--ease) backwards; }
+
+/* Keyboard focus ring. jk's UA outline is nearly invisible on these dark custom controls; give
+ * focus a cyan ring (--cg is jk's accent/identity tone, cf. the .accent utility). :focus-visible
+ * so it shows for keyboard / assistive tech but not on mouse click. */
+:focus-visible { outline: 2px solid var(--cg); outline-offset: 2px; }
+button:focus-visible,
+input:focus-visible,
+.project:focus-visible,
+.fs-entry:focus-visible {
+  outline: 2px solid var(--cg);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(var(--cg-rgb), 0.18);
+}
+
+/* Honour the OS "reduce motion" preference: collapse animations/transitions to a near-instant
+ * step. The dashboard runs continuous spinners + status pulses that should hold still for
+ * motion-sensitive users — a prerequisite before adding the pulse-rings / hover motion planned
+ * next. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================================
+ * interactive polish (hover / focus)
+ * Fill the hover/focus gaps and add wsl-ui's tinted-hover + one-pass light sweep — kept subtle and,
+ * where colour is involved, tied to meaning (danger = err). Transitions live here too. Damped by
+ * the reduced-motion block above (its !important wins regardless of source order).
+ * ==========================================================================*/
+
+/* build-dir input — neon accent border + soft ring while focused/typing (mouse or keyboard) */
+.trigger input { transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.trigger input:focus { outline: none; border-color: var(--cn); box-shadow: 0 0 0 3px rgba(var(--cn-rgb), 0.18); }
+
+/* small rebuild / delete icon buttons — neon hover (cyan; the delete button goes red) */
+.rebuild { transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
+.rebuild:hover { color: var(--cn); border-color: rgba(var(--cn-rgb), 0.6); background: rgba(var(--cn-rgb), 0.16); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.3); }
+.rebuild.icon.danger:hover { color: var(--err); border-color: rgba(var(--err-rgb), 0.7); background: rgba(var(--err-rgb), 0.2); box-shadow: 0 0 14px rgba(var(--err-rgb), 0.3); }
+
+/* ghost buttons (back; Dependencies/Trends stay disabled) */
+.trigger button.ghost, .detail-actions button.ghost, .back { transition: color var(--dur-fast) var(--ease); }
+
+/* primary actions (Build, Use this folder) — WSLUI-style TINTED neon button: translucent green
+ * fill + green border + green text, intensifying on hover (never a flat solid that stays "on").
+ * Plus a one-pass light sweep; overflow:hidden clips it to the rounded button. inline-flex + gap so
+ * the leading bolt icon sits with the label. (.browse is excluded — it's the cyan button below.) */
+.trigger button:not(.ghost):not(.browse),
+.use-folder,
+.detail-actions button:not(.ghost) {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(var(--ok-rgb), 0.12);
+  color: var(--ok);
+  border: 1px solid rgba(var(--ok-rgb), 0.4);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+.trigger button:not(.ghost):not(.browse):hover:not(:disabled),
+.use-folder:hover:not(:disabled),
+.detail-actions button:not(.ghost):hover:not(:disabled) {
+  background: rgba(var(--ok-rgb), 0.22);
+  border-color: rgba(var(--ok-rgb), 0.65);
+  box-shadow: 0 0 16px rgba(var(--ok-rgb), 0.22);
+}
+.trigger button:not(.ghost):not(.browse)::before,
+.use-folder::before,
+.detail-actions button:not(.ghost)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transition: left var(--dur-slow) var(--ease);
+}
+.trigger button:not(.ghost):not(.browse):hover:not(:disabled)::before,
+.use-folder:hover:not(:disabled)::before,
+.detail-actions button:not(.ghost):hover:not(:disabled)::before {
+  left: 100%;
+}
+
+/* Browse — a neon-cyan icon button (accent colour at rest, brighter on hover). */
+.trigger button.browse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 12px;
+  background: rgba(var(--cn-rgb), 0.1);
+  color: var(--cn);
+  border: 1px solid rgba(var(--cn-rgb), 0.4);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.trigger button.browse:hover {
+  background: rgba(var(--cn-rgb), 0.2);
+  border-color: rgba(var(--cn-rgb), 0.65);
+  box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.2);
+}
+.trigger button.browse .ico { width: 17px; height: 17px; }
+
+/* ---- hover shimmer ----
+ * The one-pass light sweep the Build button has, extended to every other button so they all shimmer
+ * on hover. Each needs a positioning context + an overflow clip; .chain-nav is already
+ * position:absolute so it only needs the clip. (Primary green buttons carry their own sweep above.) */
+nav button,
+.icon-btn,
+.rebuild,
+.trigger button.browse {
+  position: relative;
+  overflow: hidden;
+}
+.chain-nav { overflow: hidden; }
+nav button::before,
+.icon-btn::before,
+.rebuild::before,
+.chain-nav::before,
+.trigger button.browse::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), transparent);
+  transition: left var(--dur-slow) var(--ease);
+  pointer-events: none;
+}
+nav button:hover::before,
+.icon-btn:hover::before,
+.rebuild:hover::before,
+.chain-nav:hover::before,
+.trigger button.browse:hover::before {
+  left: 100%;
+}
+
+/* ============================================================================
+ * footer: global status bar (fixed, shown on every view)
+ * ==========================================================================*/
+.statusbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: var(--header-bg);
+  border-top: 1px solid rgba(var(--cn-rgb), 0.18);
+  box-shadow: 0 -8px 24px -14px rgba(0, 0, 0, 0.9);
+  font: 600 11px var(--mono);
+  z-index: 10;
+}
+.sb-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sb-item { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); white-space: nowrap; }
+.sb-item .ico { width: 14px; height: 14px; color: var(--mu); }
+.sb-item b { color: var(--bright); font-weight: 700; }
+.sb-div { width: 1px; height: 14px; background: rgba(var(--cn-rgb), 0.14); flex: none; }
+
+/* Live indicator (moved here from the header) — dot + label, coloured by connection state; the
+ * live dot also carries the pulse-ring (see the pulsing status ring section above). */
+.conn { display: flex; align-items: center; gap: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--dim); }
+.live-label { color: var(--mu); }
+.conn.live .live-dot { background: var(--ok); box-shadow: 0 0 8px rgba(var(--ok-rgb), 0.9); }
+.conn.live .live-label { color: var(--ok); }
+.conn.connecting .live-dot { background: var(--warn); animation: pulse 1.4s ease-in-out infinite; }
+.conn.connecting .live-label { color: var(--warn); }
+.conn.offline .live-dot,
+.conn.unauthorized .live-dot { background: var(--warn); }
+.conn.offline .live-label,
+.conn.unauthorized .live-label { color: var(--warn); }
+
+/* ---- Help / About modal ---- */
+.modal.about { width: 460px; }
+.about-logo { width: 40px; height: 40px; border-radius: var(--r-md); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.25); }
+.about-title { font: 700 15px var(--mono); color: var(--bright); }
+.about-sub { font: 600 11px var(--mono); color: var(--cn); }
+.about-dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 18px;
+  margin: 0;
+  padding: 16px;
+  font-size: 12.5px;
+}
+.about-dl dt { color: var(--mu); }
+.about-dl dd { margin: 0; text-align: right; color: var(--bright); overflow-wrap: anywhere; }

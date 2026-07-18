@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli;
+
+import cc.jumpkick.model.command.Exit;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Optional;
+
+/**
+ * Resolved project dir + {@code jk.toml}/{@code jk.lock} for leaf commands that require a
+ * project. On a missing manifest, {@link #require} prints the standard error and returns empty
+ * ({@link Exit#CONFIG}). Workspace-ascent commands resolve their own root.
+ */
+public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
+
+    /**
+     * Resolve the project at {@code dir}, requiring {@code jk.toml}. On absence, prints {@code jk
+     * <command>: no jk.toml in <dir>} to stderr and returns empty (the caller returns {@link
+     * Exit#CONFIG}).
+     */
+    public static Optional<ProjectContext> require(Path dir, String command) {
+        Path buildFile = dir.resolve("jk.toml");
+        if (!Files.exists(buildFile)) {
+            CliOutput.err("jk " + command + ": no jk.toml in " + PathDisplay.styledRaw(dir));
+            return Optional.empty();
+        }
+        return Optional.of(new ProjectContext(dir, buildFile, dir.resolve("jk.lock")));
+    }
+
+    /** True when the project has been locked ({@code jk.lock} exists). */
+    public boolean isLocked() {
+        return Files.exists(lockFile);
+    }
+}

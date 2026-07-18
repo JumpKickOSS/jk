@@ -1,0 +1,12 @@
+# Kanban — Done
+
+Finished tickets (newest at top). Keep one-liners for history; ticket files stay in this
+directory as the record of what shipped.
+
+**Board:** [backlog](backlog.md) · [ready](ready.md) · [wip](wip.md) · [blocked](blocked.md) · [done](done.md)
+
+---
+
+## Done Items
+
+1. [ticket-1003](ticket-1003-doc-reconsolidation.md) — Public docs cutover: ≤4 product docs + kanban board

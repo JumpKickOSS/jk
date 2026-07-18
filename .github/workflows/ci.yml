@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Runners set TERM=dumb, which turns off ANSI rendering and fails TUI tests
+  # that assert escape sequences. Match a real terminal.
+  TERM: xterm-256color
+
+jobs:
+  test:
+    name: Gradle test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      # Full unit/integration suite across all modules. Uses the Gradle wrapper
+      # (9.6.x) only — no self-hosted jk build until manifests/lockfiles return.
+      - name: Test
+        run: ./gradlew test --no-daemon

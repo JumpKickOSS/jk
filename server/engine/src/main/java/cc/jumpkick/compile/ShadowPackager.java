@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.compile;
+
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
+import java.util.stream.Stream;
+
+/**
+ * Fat/uber jar: project classes first (win on conflict), custom manifest, drop signatures, concat
+ * {@code META-INF/services/*}, sorted fixed-timestamp entries for reproducibility.
+ */
+public final class ShadowPackager {
+
+    public Path packageShadow(ShadowRequest request) throws IOException {
+        Files.createDirectories(request.outputJar().getParent());
+        Manifest manifest = buildManifest(request);
+
+        Set<String> written = new HashSet<>();
+        // Service-provider files merged across inputs; TreeMap → deterministic.
+        Map<String, ByteArrayOutputStream> services = new TreeMap<>();
+
+        try (OutputStream out = Files.newOutputStream(request.outputJar());
+                JarOutputStream jos = new JarOutputStream(out)) {
+            // Write the manifest ourselves with a fixed timestamp; the
+            // JarOutputStream(out, manifest) convenience constructor stamps it
+            // with the current time and churns the jar every build.
+            DeterministicJar.writeManifest(jos, manifest, request.timestampEpochSeconds());
+            written.add("META-INF/MANIFEST.MF");
+
+            // 1. Project classes + resources win.
+            List<Path> files = collectFiles(request.classesDir());
+            files.sort(Comparator.comparing(p -> normalize(request.classesDir(), p)));
+            for (Path file : files) {
+                String name = normalize(request.classesDir(), file);
+                if (name.equals("META-INF/MANIFEST.MF")) continue;
+                if (DeterministicJar.isBuildStamp(name)) continue; // freshness stamp, not jar content
+                if (isServiceFile(name)) {
+                    accumulate(services, name, Files.readAllBytes(file));
+                    continue;
+                }
+                if (written.add(name)) {
+                    // Streamed — a large bundled resource never has to fit in the heap.
+                    DeterministicJar.writeEntryStreaming(
+                            jos, name, Files.newInputStream(file), request.timestampEpochSeconds());
+                }
+            }
+
+            // 2. Dependency jars, in declared order (earlier wins).
+            for (Path depJar : request.dependencyJars()) {
+                if (!Files.isRegularFile(depJar)) continue;
+                try (JarFile jf = new JarFile(depJar.toFile())) {
+                    List<JarEntry> entries = new ArrayList<>();
+                    jf.stream().filter(e -> !e.isDirectory()).forEach(entries::add);
+                    entries.sort(Comparator.comparing(JarEntry::getName));
+                    for (JarEntry e : entries) {
+                        String name = e.getName();
+                        if (name.equals("META-INF/MANIFEST.MF") || isSignatureFile(name)) continue;
+                        if (isServiceFile(name)) {
+                            // Service files are tiny and must be buffered for the cross-jar merge.
+                            try (InputStream in = jf.getInputStream(e)) {
+                                accumulate(services, name, in.readAllBytes());
+                            }
+                            continue;
+                        }
+                        if (written.add(name)) {
+                            // Streamed entry-to-entry copy — never buffers a whole entry.
+                            DeterministicJar.writeEntryStreaming(
+                                    jos, name, jf.getInputStream(e), request.timestampEpochSeconds());
+                        }
+                    }
+                }
+            }
+
+            // 3. Merged service-provider files.
+            for (Map.Entry<String, ByteArrayOutputStream> e : services.entrySet()) {
+                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue().toByteArray(), request.timestampEpochSeconds());
+                written.add(e.getKey());
+            }
+
+            // 4. Generated entries (e.g. the CycloneDX SBOM); real content wins on collision.
+            for (Map.Entry<String, byte[]> e : new TreeMap<>(request.extraEntries()).entrySet()) {
+                if (!written.add(e.getKey())) continue;
+                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue(), request.timestampEpochSeconds());
+            }
+        }
+        return request.outputJar();
+    }
+
+    private static void accumulate(Map<String, ByteArrayOutputStream> services, String name, byte[] data)
+            throws IOException {
+        ByteArrayOutputStream buf = services.computeIfAbsent(name, k -> new ByteArrayOutputStream());
+        if (buf.size() > 0) buf.write('\n');
+        buf.write(data);
+    }
+
+    private static boolean isServiceFile(String name) {
+        return name.startsWith("META-INF/services/") && !name.endsWith("/");
+    }
+
+    private static boolean isSignatureFile(String name) {
+        if (!name.startsWith("META-INF/")) return false;
+        String upper = name.toUpperCase(java.util.Locale.ROOT);
+        return upper.endsWith(".SF")
+                || upper.endsWith(".RSA")
+                || upper.endsWith(".DSA")
+                || upper.endsWith(".EC")
+                || upper.startsWith("META-INF/SIG-");
+    }
+
+    private static Manifest buildManifest(ShadowRequest request) {
+        Manifest manifest = new Manifest();
+        Attributes attrs = manifest.getMainAttributes();
+        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        if (request.mainClass() != null && !request.mainClass().isBlank()) {
+            attrs.put(Attributes.Name.MAIN_CLASS, request.mainClass());
+        }
+        for (Map.Entry<String, String> e : request.attributes().entrySet()) {
+            if (e.getKey() == null || e.getKey().isBlank() || e.getValue() == null) continue;
+            attrs.put(new Attributes.Name(e.getKey()), e.getValue());
+        }
+        return manifest;
+    }
+
+    private static List<Path> collectFiles(Path root) throws IOException {
+        if (!Files.exists(root)) return List.of();
+        List<Path> result = new ArrayList<>();
+        try (Stream<Path> stream = Files.walk(root)) {
+            stream.filter(Files::isRegularFile).forEach(result::add);
+        }
+        return result;
+    }
+
+    private static String normalize(Path root, Path file) {
+        return root.relativize(file).toString().replace(File.separatorChar, '/');
+    }
+
+    /** Inputs for {@link #packageShadow(ShadowRequest)}. */
+    public record ShadowRequest(
+            Path classesDir,
+            List<Path> dependencyJars,
+            Path outputJar,
+            String mainClass,
+            Map<String, String> attributes,
+            Map<String, byte[]> extraEntries,
+            long timestampEpochSeconds) {
+
+        public ShadowRequest {
+            Objects.requireNonNull(classesDir, "classesDir");
+            Objects.requireNonNull(outputJar, "outputJar");
+            dependencyJars = dependencyJars == null ? List.of() : List.copyOf(dependencyJars);
+            attributes = attributes == null ? Map.of() : Map.copyOf(attributes);
+            extraEntries = extraEntries == null ? Map.of() : Map.copyOf(extraEntries);
+        }
+
+        /** Back-compat constructor: no generated (non-filesystem) entries. */
+        public ShadowRequest(
+                Path classesDir,
+                List<Path> dependencyJars,
+                Path outputJar,
+                String mainClass,
+                Map<String, String> attributes,
+                long timestampEpochSeconds) {
+            this(classesDir, dependencyJars, outputJar, mainClass, attributes, Map.of(), timestampEpochSeconds);
+        }
+    }
+}

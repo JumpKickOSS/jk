@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.tui;
+
+import java.util.function.Function;
+import org.jline.utils.AttributedString;
+
+/**
+ * One radio/multi-select option. Optional {@code hint}/{@code hintFn} suffix; optional
+ * {@code richLabelFn} for multi-style labels (focused flag in the {@code Boolean} arg).
+ */
+public record Choice(
+        String id,
+        String label,
+        String hint,
+        Function<Answers, String> hintFn,
+        Function<Boolean, AttributedString> richLabelFn) {
+
+    public Choice {
+        if (hint == null) hint = "";
+    }
+
+    public Choice(String id, String label) {
+        this(id, label, "", null, null);
+    }
+
+    public Choice(String id, String label, String hint) {
+        this(id, label, hint, null, null);
+    }
+
+    public Choice(String id, String label, Function<Answers, String> hintFn) {
+        this(id, label, "", hintFn, null);
+    }
+
+    /** Rich-label factory — caller supplies focused/unfocused renderings. */
+    public static Choice rich(String id, String fallbackLabel, Function<Boolean, AttributedString> richLabelFn) {
+        return new Choice(id, fallbackLabel, "", null, richLabelFn);
+    }
+
+    /** Rich-label factory with a hint suffix. */
+    public static Choice rich(
+            String id, String fallbackLabel, String hint, Function<Boolean, AttributedString> richLabelFn) {
+        return new Choice(id, fallbackLabel, hint, null, richLabelFn);
+    }
+
+    /** Resolved hint at render time. Dynamic {@code hintFn} wins over static {@code hint}. */
+    public String hintFor(Answers answers) {
+        if (hintFn != null) {
+            var v = hintFn.apply(answers);
+            return v == null ? "" : v;
+        }
+        return hint;
+    }
+}

@@ -1,0 +1,88 @@
+# Version catalog for the jk build.
+# Library and plugin pins consumed by build.gradle.kts files.
+# All picks justified in docs/jk-impl.md §4.
+
+[versions]
+assertj = "3.27.7"
+asm = "9.10.1"
+bouncycastle = "1.84"
+commons-compress = "1.28.0"
+cyclonedx-core = "12.2.0"
+graalvm-native = "0.10.4"
+graalvm-sdk = "25.0.0"
+jackson = "3.2.0"
+jgit = "7.6.0.202603022253-r"
+jline = "4.1.2"
+jib-core = "0.28.1"
+junit = "6.1.0"
+kotlin-bta = "2.4.0"
+maven-artifact = "3.9.16"
+picocli = "4.7.7"
+sigstore = "2.1.0"
+spdx-java = "2.0.3"
+openrewrite = "8.56.1"
+slf4j = "2.0.16"
+spotless = "4.6.2"
+tomlj = "1.1.1"
+xz = "1.12"
+
+[libraries]
+# foundations
+tomlj                  = { module = "org.tomlj:tomlj",                              version.ref = "tomlj" }
+jackson-databind       = { module = "tools.jackson.core:jackson-databind",          version.ref = "jackson" }
+
+# resolver
+maven-artifact         = { module = "org.apache.maven:maven-artifact",              version.ref = "maven-artifact" }
+
+# I/O
+jgit                   = { module = "org.eclipse.jgit:org.eclipse.jgit",            version.ref = "jgit" }
+
+# build pipeline / bytecode
+asm                    = { module = "org.ow2.asm:asm",                              version.ref = "asm" }
+asm-tree               = { module = "org.ow2.asm:asm-tree",                         version.ref = "asm" }
+asm-commons            = { module = "org.ow2.asm:asm-commons",                      version.ref = "asm" }
+
+# archive formats (tar, tar.gz, xz, future OCI layer reads)
+commons-compress       = { module = "org.apache.commons:commons-compress",          version.ref = "commons-compress" }
+tukaani-xz             = { module = "org.tukaani:xz",                               version.ref = "xz" }
+
+# supply chain
+bouncycastle-bcpg      = { module = "org.bouncycastle:bcpg-jdk18on",                version.ref = "bouncycastle" }
+sigstore-java          = { module = "dev.sigstore:sigstore-java",                   version.ref = "sigstore" }
+cyclonedx-core-java    = { module = "org.cyclonedx:cyclonedx-core-java",            version.ref = "cyclonedx-core" }
+spdx-java-library      = { module = "org.spdx:java-spdx-library",                   version.ref = "spdx-java" }
+
+# OCI image
+jib-core               = { module = "com.google.cloud.tools:jib-core",              version.ref = "jib-core" }
+
+# Kotlin compile worker (Build Tools API — compile-time only; impl resolved at runtime)
+kotlin-build-tools-api = { module = "org.jetbrains.kotlin:kotlin-build-tools-api",  version.ref = "kotlin-bta" }
+# Compile-time only: lets javac resolve the kotlin.DeprecationLevel enum referenced by
+# the BTA's @Deprecated annotations. Not bundled, not on the worker's runtime closure.
+kotlin-stdlib          = { module = "org.jetbrains.kotlin:kotlin-stdlib",           version.ref = "kotlin-bta" }
+
+# Format worker (Spotless engine — the formatter impls are resolved at runtime
+# via jk's own resolver, NOT bundled, so only spotless-lib is a compile dep).
+openrewrite-java       = { module = "org.openrewrite:rewrite-java",                version.ref = "openrewrite" }
+openrewrite-java21     = { module = "org.openrewrite:rewrite-java-21",             version.ref = "openrewrite" }
+spotless-lib           = { module = "com.diffplug.spotless:spotless-lib",           version.ref = "spotless" }
+# spotless-lib declares slf4j-api as compileOnly ("zero runtime deps"), so the
+# worker bundles slf4j-api + a no-op binding to satisfy it at runtime.
+slf4j-api              = { module = "org.slf4j:slf4j-api",                          version.ref = "slf4j" }
+slf4j-nop              = { module = "org.slf4j:slf4j-nop",                          version.ref = "slf4j" }
+
+# CLI
+picocli                = { module = "info.picocli:picocli",                         version.ref = "picocli" }
+jline-terminal-ffm     = { module = "org.jline:jline-terminal-ffm",                 version.ref = "jline" }
+# native-image runtime API (compileOnly: the image builder provides the implementation;
+# JVM mode guards every use behind the imagecode property so the class never loads there)
+graalvm-nativeimage    = { module = "org.graalvm.sdk:nativeimage",                  version.ref = "graalvm-sdk" }
+
+# testing (consumed by jk.java-conventions; applied to every module)
+junit-jupiter           = { module = "org.junit.jupiter:junit-jupiter",              version.ref = "junit" }
+junit-platform-engine   = { module = "org.junit.platform:junit-platform-engine",    version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher",  version.ref = "junit" }
+assertj-core           = { module = "org.assertj:assertj-core",                     version.ref = "assertj" }
+
+[plugins]
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "graalvm-native" }

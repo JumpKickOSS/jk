@@ -1,0 +1,344 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.engine;
+
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.plugin.build.Phase;
+import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.run.PipelineListener;
+import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.PipelineView;
+import cc.jumpkick.run.Step;
+import cc.jumpkick.run.StepStatus;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.channels.Channels;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
+
+/**
+ * Engine-hosted lock/update/sync: decode wire events into the command's listeners/handlers.
+ * Lock/update cascade per module; sync is a single pipeline. Output is unthemed structured text.
+ */
+final class EngineResolveAdapter {
+
+    private EngineResolveAdapter() {}
+
+    /**
+     * Run {@code jk outdated} against the engine: one synchronous request, one {@code outdated-ack}
+     * carrying the {@link cc.jumpkick.engine.protocol.OutdatedReport} back. Read-only — no cascade,
+     * no pipeline stream.
+     */
+    static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
+            EnginePaths.Paths paths, EngineClient.OutdatedRequest req) throws IOException {
+        EngineClient.ensureRunning(paths, Jk.VERSION);
+        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = EngineClient.protocolReader(ch);
+            writer.write(EngineProtocol.outdatedRequest(
+                    req.entryDir().toString(),
+                    req.cache().toString(),
+                    req.repoUrl() != null ? req.repoUrl().toString() : null,
+                    req.offline(),
+                    req.force()));
+            writer.write('\n');
+            writer.flush();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!EngineProtocol.OUTDATED_ACK.equals(EngineProtocol.typeOf(line))) continue;
+                return cc.jumpkick.engine.protocol.OutdatedReport.decode(line);
+            }
+            throw new IOException("jk engine: disconnected before answering the outdated request");
+        }
+    }
+
+    /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */
+    static EngineClient.LockOutcome runLock(
+            EnginePaths.Paths paths, EngineClient.LockRequest req, EngineClient.LockHandler handler)
+            throws IOException {
+        return streamCascade(
+                paths,
+                EngineProtocol.lockRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.features(),
+                        req.noDefaultFeatures(),
+                        req.sources(),
+                        req.repoUrl() != null ? req.repoUrl().toString() : null,
+                        req.offline(),
+                        req.force(),
+                        req.verbose()),
+                handler,
+                "lock");
+    }
+
+    /** Run {@code jk update}'s full re-resolve cascade against the engine, driving {@code handler}. */
+    static EngineClient.LockOutcome runUpdate(
+            EnginePaths.Paths paths, EngineClient.UpdateRequest req, EngineClient.LockHandler handler)
+            throws IOException {
+        return streamCascade(paths, updateRequestLine(req, false, null), handler, "update");
+    }
+
+    /**
+     * Run {@code jk update --git [<name>]} against the engine. No pipeline events stream — the engine
+     * splices the lock and replies with just the terminal, whose {@code refreshed} count and plain
+     * {@code errors} the command renders.
+     */
+    static EngineClient.LockOutcome runUpdateGitOnly(
+            EnginePaths.Paths paths, EngineClient.UpdateRequest req, String gitTarget) throws IOException {
+        return streamCascade(paths, updateRequestLine(req, true, gitTarget), NOOP_HANDLER, "update");
+    }
+
+    private static String updateRequestLine(EngineClient.UpdateRequest req, boolean gitOnly, String gitTarget) {
+        return EngineProtocol.updateRequest(
+                req.entryDir().toString(),
+                req.cache().toString(),
+                req.features(),
+                req.noDefaultFeatures(),
+                req.repoUrl() != null ? req.repoUrl().toString() : null,
+                gitOnly,
+                gitTarget,
+                req.offline(),
+                req.force(),
+                req.verbose());
+    }
+
+    /**
+     * Run {@code jk sync}'s single pipeline against the engine — the same listener-factory contract as
+     * {@link EngineBuildListenerAdapter#runTest}. {@code fetchedOut}/{@code upToDateOut} (single-slot
+     * holders) are populated from the terminal pipeline-finish <em>before</em> it reaches the factory's
+     * listener, exactly mirroring how the in-process path's counters are already settled by the time
+     * the console listener's own {@code pipelineFinish} renders the summary line.
+     */
+    static PipelineResult runSync(
+            EnginePaths.Paths paths,
+            EngineClient.SyncRequest req,
+            Function<List<Step>, PipelineListener> listenerFactory,
+            long[] fetchedOut,
+            long[] upToDateOut)
+            throws IOException {
+        EngineClient.ensureRunning(paths, Jk.VERSION);
+
+        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = EngineClient.protocolReader(ch);
+
+            send(
+                    writer,
+                    EngineProtocol.syncRequest(
+                            req.entryDir().toString(),
+                            req.cache().toString(),
+                            req.jdksDir() != null ? req.jdksDir().toString() : null,
+                            req.repoUrl() != null ? req.repoUrl().toString() : null,
+                            req.sources(),
+                            req.offline(),
+                            req.force(),
+                            req.refresh(),
+                            req.verbose()));
+
+            List<Step> steps = new ArrayList<>();
+            List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
+            PipelineListener listener = null;
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String type = EngineProtocol.typeOf(line);
+                if (type == null) continue;
+                switch (type) {
+                    case EngineProtocol.PLAN_STEP ->
+                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                                .label(Jsonl.str(line, "label"))
+                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .build());
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.PIPELINE_FINISH -> {
+                        if (fetchedOut != null) fetchedOut[0] = Jsonl.longValue(line, "syncFetched", 0);
+                        if (upToDateOut != null) upToDateOut[0] = Jsonl.longValue(line, "syncUpToDate", 0);
+                        PipelineResult result = new PipelineResult(
+                                "sync",
+                                Jsonl.bool(line, "success", false),
+                                Duration.ZERO,
+                                List.of(),
+                                List.of(),
+                                diagnostics,
+                                false,
+                                false);
+                        if (listener != null) listener.pipelineFinish(result);
+                        return result;
+                    }
+                    case EngineProtocol.ERROR ->
+                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                    default -> dispatchPipelineEvent(type, line, listener, diagnostics);
+                }
+            }
+            throw disconnected();
+        }
+    }
+
+    /** Send a cascade request and replay its stream into {@code handler} until the terminal arrives. */
+    private static EngineClient.LockOutcome streamCascade(
+            EnginePaths.Paths paths, String requestLine, EngineClient.LockHandler handler, String pipelineName)
+            throws IOException {
+        EngineClient.ensureRunning(paths, Jk.VERSION);
+
+        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader = EngineClient.protocolReader(ch);
+            send(writer, requestLine);
+
+            // Cascade state: the module currently streaming. Modules are strictly sequential on the
+            // wire (the engine locks them one at a time), so one slot suffices.
+            String currentDir = null;
+            String currentCoord = null;
+            List<Step> steps = new ArrayList<>();
+            List<PipelineResult.Diagnostic> diagnostics = new ArrayList<>();
+            PipelineListener listener = null;
+
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String type = EngineProtocol.typeOf(line);
+                if (type == null) continue;
+                switch (type) {
+                    case EngineProtocol.LOCK_MODULE -> {
+                        currentDir = Jsonl.str(line, "dir");
+                        currentCoord = Jsonl.str(line, "coord");
+                        steps = new ArrayList<>();
+                        diagnostics = new ArrayList<>();
+                        listener = null;
+                    }
+                    case EngineProtocol.PLAN_STEP ->
+                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                                .label(Jsonl.str(line, "label"))
+                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .build());
+                    case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
+                    case EngineProtocol.LOCK_PACKAGE ->
+                        handler.onPackage(
+                                Jsonl.str(line, "dir"), Jsonl.str(line, "name"), Jsonl.str(line, "version"));
+                    case EngineProtocol.PIPELINE_FINISH -> {
+                        PipelineResult result = new PipelineResult(
+                                pipelineName,
+                                Jsonl.bool(line, "success", false),
+                                Duration.ZERO,
+                                List.of(),
+                                List.of(),
+                                diagnostics,
+                                false,
+                                false);
+                        if (listener != null) listener.pipelineFinish(result);
+                        handler.onModuleFinish(
+                                currentDir,
+                                result,
+                                new EngineClient.LockCounts(
+                                        Jsonl.longValue(line, "lockPackages", -1),
+                                        Jsonl.longValue(line, "lockSources", -1),
+                                        Jsonl.longValue(line, "lockPlugins", -1)));
+                    }
+                    case EngineProtocol.LOCK_FINISH -> {
+                        return new EngineClient.LockOutcome(
+                                Jsonl.bool(line, "success", false),
+                                Jsonl.intValue(line, "exitCode", 1),
+                                Jsonl.strArray(line, "errors"),
+                                Jsonl.intValue(line, "refreshed", -1));
+                    }
+                    case EngineProtocol.ERROR ->
+                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                    default -> dispatchPipelineEvent(type, line, listener, diagnostics);
+                }
+            }
+            throw disconnected();
+        }
+    }
+
+    /**
+     * Replay one standard single-pipeline wire event into {@code listener} (accumulating {@code
+     * pipeline-diagnostic}s aside, like {@link EngineBuildListenerAdapter} does) — the shared tail of
+     * both stream loops. Unknown types are forward-compatible no-ops.
+     */
+    private static void dispatchPipelineEvent(
+            String type, String line, PipelineListener listener, List<PipelineResult.Diagnostic> diagnostics) {
+        if (listener == null) {
+            // pipeline-diagnostics can still matter pre-listener; everything else needs one.
+            if (EngineProtocol.PIPELINE_DIAGNOSTIC.equals(type)) {
+                diagnostics.add(readDiagnostic(line));
+            }
+            return;
+        }
+        switch (type) {
+            case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
+            case EngineProtocol.STEP_START ->
+                listener.stepStart(
+                        Jsonl.str(line, "step"),
+                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                        Jsonl.intValue(line, "ticks", 0));
+            case EngineProtocol.PROGRESS ->
+                listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+            case EngineProtocol.TICK_UPDATE ->
+                listener.tickUpdate(
+                        Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+            case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
+            case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+            case EngineProtocol.WARN ->
+                listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+            case EngineProtocol.ERROR_LINE ->
+                listener.error(
+                        Jsonl.str(line, "step"),
+                        Jsonl.str(line, "code"),
+                        Jsonl.str(line, "message"),
+                        Jsonl.str(line, "test"),
+                        Jsonl.str(line, "exceptionClass"));
+            case EngineProtocol.PIPELINE_DIAGNOSTIC -> diagnostics.add(readDiagnostic(line));
+            case EngineProtocol.STEP_FINISH ->
+                listener.stepFinish(
+                        Jsonl.str(line, "step"),
+                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                        StepStatus.valueOf(Jsonl.str(line, "status")),
+                        Duration.ZERO);
+            default -> {
+                /* forward-compatible no-op */
+            }
+        }
+    }
+
+    private static PipelineResult.Diagnostic readDiagnostic(String line) {
+        return new PipelineResult.Diagnostic(
+                Jsonl.str(line, "step"),
+                Jsonl.str(line, "code"),
+                Jsonl.str(line, "message"),
+                Jsonl.str(line, "test"),
+                Jsonl.str(line, "exceptionClass"));
+    }
+
+    private static PipelineView readPipelineView(String line) {
+        return new PipelineView(
+                Jsonl.str(line, "pipelineName"),
+                Jsonl.longValue(line, "numerator", 0),
+                Jsonl.longValue(line, "denominator", 0),
+                Jsonl.intValue(line, "stepsTotal", 0),
+                Jsonl.intValue(line, "stepsComplete", 0),
+                Jsonl.bool(line, "cancelled", false));
+    }
+
+    private static void send(BufferedWriter writer, String line) throws IOException {
+        writer.write(line);
+        writer.write('\n');
+        writer.flush();
+    }
+
+    private static IOException disconnected() {
+        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
+                + "(it may have crashed); run `jk engine status` for details");
+    }
+
+    private static final EngineClient.LockHandler NOOP_HANDLER = (dir, coord, steps) -> new PipelineListener() {};
+}
