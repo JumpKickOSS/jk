@@ -359,7 +359,11 @@ These are the axes where beating Mill means **doubling down**, not converging.
 
 ## Priority recommendations (Mill → JumpKick backlog)
 
-Kanban tickets live under [`docs/kanban/`](kanban/backlog.md) (ordered on [backlog.md](kanban/backlog.md)):
+> **Board moved (2026-07-20).** Live tickets are **`JK-NNNN`** in
+> [kanartist](https://github.com/jkbuild/kanartist) (`projects/jk/`). Links below still
+> point at the frozen snapshot under [`docs/kanban/`](kanban/README.md) for reading.
+
+Kanban tickets (historical paths under [`docs/kanban/`](kanban/README.md)):
 
 | Priority | Ticket | Theme | Kind |
 |---|---|---|---|
@@ -425,7 +429,7 @@ That keeps Cargo ergonomics and a reviewable manifest while closing Mill’s “
 
 - Mill docs: [mill-build.org](https://mill-build.org/mill/index.html) (1.1.7) — design principles, caching, process architecture, performance comparisons, selective execution, testing, packaging, IDE install, migration  
 - Mill source: `../mill` (fetched main; core eval/exec, javalib, scalalib, kotlinlib, runner)  
-- JumpKick: [README.md](../README.md), [docs/architecture.md](architecture.md), [docs/guide.md](guide.md), kanban done/backlog
+- JumpKick: [README.md](../README.md), [docs/architecture.md](architecture.md), [docs/guide.md](guide.md); planning board in [kanartist](https://github.com/jkbuild/kanartist) (`JK-NNNN`)
 
 ---
 
@@ -433,4 +437,4 @@ That keeps Cargo ergonomics and a reviewable manifest while closing Mill’s “
 
 - Revisit when JumpKick approaches 1.0 or when Mill ships major 1.2+ features.  
 - Keep this file **adversarial and actionable**; do not turn it into a public marketing page unless product strategy asks for it.  
-- Actionable work is tracked as tickets **1023–1038** on [kanban/backlog.md](kanban/backlog.md); update that board when priorities shift rather than re-litigating this essay.
+- Actionable work is tracked as **`JK-NNNN`** tickets in [kanartist](https://github.com/jkbuild/kanartist) (project `jk`); update that board when priorities shift rather than re-litigating this essay.

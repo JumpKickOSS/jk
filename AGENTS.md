@@ -64,46 +64,49 @@ jk init smoke-app && cd smoke-app && jk build
 
 Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) / `.sdkmanrc`). If only unit tests matter mid-ticket, `./gradlew test` (or module filters) is fine; the reinstall smoke is required **before moving a code-changing ticket to done**.
 
-## Kanban (source of truth on `main`)
+## Planning / tickets (KanArtist — not this repo)
 
-Board lives under [`docs/kanban/`](docs/kanban/). **Only the kanban files on `main` count** for coordination. Other branches’ copies are not the board — pull/rebase `main` before claiming work.
+**Live board:** org planning repo **[kanartist](https://github.com/jkbuild/kanartist)** (`jkbuild/kanartist`), project key **`jk`**, ticket ids **`JK-NNNN`**.
 
-| Column file | Meaning |
-|---|---|
-| [backlog.md](docs/kanban/backlog.md) | Not refined enough to start |
-| [ready.md](docs/kanban/ready.md) | Refined; free to pull |
-| [wip.md](docs/kanban/wip.md) | Actively being worked |
-| [blocked.md](docs/kanban/blocked.md) | Stuck on an external dependency or decision |
-| [done.md](docs/kanban/done.md) | Finished (newest at top) |
+- Protocol: that repo’s [`AGENTS.md`](https://github.com/jkbuild/kanartist/blob/main/AGENTS.md).
+- Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
+- Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
+- **Do not** edit `docs/kanban/` for coordination — it is **frozen/historical** ([docs/kanban/README.md](docs/kanban/README.md)).
 
-**Rules**
+### Claim and ship a ticket
 
-1. **One-liners** live only in the column files. Detail lives in `docs/kanban/ticket-NNNN-short-name.md`.
-2. **Before starting:** update `main`, check that the ticket is not already in `wip.md` or `done.md`, then move the one-liner to `wip.md` (and update the ticket’s status if it has one).
-3. Prefer a small WIP limit (a few active tickets).
-4. When stuck, move to `blocked.md` with a short blocker note; when unblocked, back to `ready.md` or `wip.md`.
-5. When finished: meet the **done criteria** below, move the one-liner to `done.md`, leave the ticket file as the record, merge to `main`, and push.
+```bash
+# in kanartist
+git pull --rebase
+ka next --project jk          # or: ka ls --status ready --project jk
+ka claim JK-1044              # commits + pushes; push is the lock
+# work in this repo on a branch (prefer worktree)
+# … implement, meet Done criteria below …
+ka set-status JK-1044 done    # only after product acceptance + Done criteria
+```
+
+Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-… blocked` and note why on the ticket.
 
 ### Done criteria
 
-**Docs-only / non-Java** tickets (markdown, kanban, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
+**Docs-only / non-Java** tickets (markdown, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
-**Any ticket that changes Java (or other runtime) code** must **not** move to `done` until all of the following pass:
+**Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
    - Prefer full `./gradlew test` before merging to `main`.
-   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** moving the ticket to `done` / merging to `main`.
+   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** marking the ticket done / merging to `main`.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
 2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds.
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 
-Record failures on the ticket or in `blocked.md`; do not mark done on green unit tests alone if dist/install/dogfood is broken.
+Record failures on the kanartist ticket (`status: blocked` or body notes); do not mark done on green unit tests alone if dist/install/dogfood is broken.
 
 ## Git workflow (private repo)
 
 - **Trivial** fixes (typos, one-liner comment, obvious bug with no ticket): commit on `main` is fine.
-- **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `ticket-1001-wire-hardening`.
-- While the repo is private: **no pull requests**. Merge into `main` when the work is **done** (see **Done criteria** above; ticket acceptance met), then **push `main`** so the kanban and code stay the shared truth.
+- **Everything else:** work on a **dedicated branch** (prefer a **git worktree** so `main` stays clean and other agents can coordinate). Name branches after the ticket when possible, e.g. `JK-1044-build-logic-spi` (legacy `ticket-NNNN-…` names are fine for older branches).
+- While the repo is private: **no pull requests**. Merge into `main` when the work is **done** (see **Done criteria** above; ticket acceptance met), then **push `main`** so the code stays the shared truth. Update the kanartist ticket status when the work lands.
 - Do not leave half-finished tickets on `main`. Do not rewrite published history on `main` without an explicit human request.
 - Author commits as a normal human contributor; no agent/tool co-author trailers or “generated by …” attribution in commits or comments.

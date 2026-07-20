@@ -9,7 +9,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 | [**Plugins**](plugins.md) | Authoring first-party-style build plugins |
 | [**Feature PRDs**](features/README.md) | Design freezes for tickets (catalogs, BOMs, starters, …) |
 
-Project planning (not product docs): [kanban/backlog.md](kanban/backlog.md).
+Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` — local archive pointer [kanban/README.md](kanban/README.md).
 
 Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
 

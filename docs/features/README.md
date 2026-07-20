@@ -10,4 +10,4 @@ boundaries so agents and humans stay aligned.
 | [**Project build logic**](project-build-logic.md) | `.jk-build/` convention (+ `[build].logic` override); Mill-style tasks outside TOML |
 | [**Packaging matrix**](packaging.md) | Thin / fat (`jk assembly`) / R8 shrink / Spring Boot — rules and samples |
 
-Planning board: [kanban/backlog.md](../kanban/backlog.md).
+Planning board: [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`). Frozen local archive: [kanban/README.md](../kanban/README.md).
