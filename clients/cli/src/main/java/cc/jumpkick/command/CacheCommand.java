@@ -486,6 +486,12 @@ public final class CacheCommand extends GroupCommand {
                 CliOutput.err("  Run this from a project directory; it clears that project and its workspace.");
                 return cc.jumpkick.model.command.Exit.CONFIG;
             }
+            // Match BuildCommand realpath so action-cache tags/INPUT prefixes align (macOS /var etc.).
+            try {
+                projectDir = projectDir.toRealPath();
+            } catch (IOException ignored) {
+                projectDir = projectDir.toAbsolutePath().normalize();
+            }
 
             boolean dryRun = in.isSet("dry-run");
             boolean assumeYes = in.isSet("yes");

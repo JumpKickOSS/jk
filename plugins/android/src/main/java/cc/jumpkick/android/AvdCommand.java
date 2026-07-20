@@ -123,15 +123,18 @@ final class AvdCommand {
             exec.out("jk avd boot: no AVD named " + name + " — `jk avd list`");
             return 1;
         }
-        if (!Files.exists(Path.of("/dev/kvm"))) {
-            exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
-                    + "for a usable emulator");
-            return 1;
-        }
+        // Prefer "emulator missing" over accel errors so CI/macOS (no /dev/kvm) get an actionable
+        // install path. KVM is Linux-only; macOS uses Hypervisor.framework via the emulator binary.
         String override = flag(args, "--emulator");
         Path emulator = override != null ? Path.of(override) : root.resolve("emulator/emulator");
         if (!Files.isRegularFile(emulator)) {
             exec.out("jk avd boot: the emulator component is not installed — " + "run `jk android sdk emulator` first");
+            return 1;
+        }
+        String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+        if (os.contains("linux") && !Files.exists(Path.of("/dev/kvm"))) {
+            exec.out("jk avd boot: /dev/kvm is unavailable — hardware acceleration is required "
+                    + "for a usable emulator");
             return 1;
         }
         exec.label("emulator " + name);

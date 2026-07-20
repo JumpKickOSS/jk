@@ -51,3 +51,7 @@ Thumbs.db
 # --- Local tooling / scratch ---
 .claude/
 .cursor/
+
+# IDE BSP launch config (local)
+.bsp/
+**/.bsp/

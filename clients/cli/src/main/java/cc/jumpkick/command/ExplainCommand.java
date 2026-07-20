@@ -52,7 +52,15 @@ public final class ExplainCommand implements CliCommand {
                                 "<dir>",
                                 "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
                                 "--cache-dir")
-                        .hide());
+                        .hide(),
+                Opt.value(
+                        "<git-ref>",
+                        "Forecast only modules changed since this git ref.",
+                        "--affected-since"),
+                Opt.value(
+                        "<sel>",
+                        "Forecast only selected modules (comma list, globs, braces).",
+                        "--modules"));
     }
 
     @Override
@@ -78,6 +86,40 @@ public final class ExplainCommand implements CliCommand {
         boolean skipTests = in.isSet("skip-tests");
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        String affectedSince = in.value("affected-since").orElse(null);
+        String modulesSpec = in.value("modules").orElse(null);
+
+        // Client-side module filter listing (before engine forecast) when selectors are set.
+        if ((affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            try {
+                var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+                var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                        startDir, entry, modulesSpec, affectedSince);
+                if (selected != null && !selected.ok()) {
+                    CliOutput.err("jk explain: " + selected.errorMessage());
+                    return Exit.CONFIG;
+                }
+                if (selected != null) {
+                    CliOutput.out("Selected modules (" + selected.moduleDirs().size() + "):");
+                    for (Path m : selected.moduleDirs()) {
+                        Path rel;
+                        try {
+                            rel = startDir.toAbsolutePath().normalize().relativize(m);
+                        } catch (IllegalArgumentException e) {
+                            rel = m;
+                        }
+                        CliOutput.out("  " + (rel.toString().isEmpty() ? "." : rel));
+                    }
+                    if (selected.moduleDirs().isEmpty()) {
+                        return 0;
+                    }
+                }
+            } catch (Exception e) {
+                CliOutput.err("jk explain: module selection failed: " + e.getMessage());
+                return Exit.CONFIG;
+            }
+        }
 
         // Forecast the build through the engine facade — resolve the graph and run the truthful
         // per-step plan, returning a front-end-safe view (modules + edges + concurrency width).

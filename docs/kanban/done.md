@@ -9,7 +9,20 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1021](ticket-1021-cli-wire-test-fixture.md) — CLI wire-test fixture hardening (post-1020)
+1. [ticket-1031](ticket-1031-module-task-selectors.md) — Module selectors (`--modules` globs/braces; ∩ with `--affected-since`)
+2. [ticket-1039](ticket-1039-build-logic-graph-tasks.md) — Build-logic multi-task independent action cache
+3. [ticket-1040](ticket-1040-selective-prepare-run.md) — `jk selective resolve|prepare|run`
+4. [ticket-1041](ticket-1041-bsp-import-reliability.md) — BSP per-target compile/deps/sources + reload
+5. [ticket-1037](ticket-1037-programmable-escape-hatch-mvp.md) — Project build logic MVP (`jk-build/` + `[build].logic`)
+6. [ticket-1030](ticket-1030-warm-compiler-pool-benchmark.md) — Warm pool measure: **DEFER** (docs/perf/warm-pool-bench.md)
+7. [ticket-1028](ticket-1028-bsp-engine-host.md) — BSP install + minimal stdio server via IdeEngineClient
+8. [ticket-1029](ticket-1029-incremental-compile-contracts.md) — Incremental compile ABI contracts (+ ClassAbiContractTest)
+9. [ticket-1027](ticket-1027-selective-test-plan.md) — `jk test --affected-since` + shared AffectedSelection
+10. [ticket-1026](ticket-1026-programmable-escape-hatch-design.md) — Escape hatch design PRD
+11. [ticket-1025](ticket-1025-watch-mode.md) — `jk watch` (+ `dev` = `watch run`; one live-loop model)
+12. [ticket-1024](ticket-1024-microbench-harness.md) — `scripts/microbench.sh` + docs/perf
+13. [ticket-1023](ticket-1023-build-timeline-profile.md) — Chrome timeline profile every build/test
+7. [ticket-1021](ticket-1021-cli-wire-test-fixture.md) — CLI wire-test fixture hardening (post-1020)
 2. [ticket-1020](ticket-1020-eliminate-cli-engine.md) — Eliminate `:cli-engine`; strict client↔server wire separation
 2. [ticket-1018](ticket-1018-self-host-phase2.md) — Self-host phase 2: plugins on workspace + installDist path
 2. [ticket-1014](ticket-1014-ide-engine-client.md) — IDE engine client facade (sync/build events)

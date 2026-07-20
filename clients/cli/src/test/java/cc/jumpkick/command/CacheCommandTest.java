@@ -198,8 +198,8 @@ class CacheCommandTest {
         writeProject(proj, "com.example", "proj", "0.1.0");
         Path cache = tempDir.resolve("cache");
         // Unknown tag, but an INPUT source path under the project → still this project's.
-        String src = proj.toAbsolutePath()
-                .normalize()
+        // Build records realpath'd module roots (BuildCommand.toRealPath); seed the same form.
+        String src = proj.toRealPath()
                 .resolve("src/main/java/A.java")
                 .toString();
         seedRecord(cache, "keyPath", "compile-main@ffffffffffff", "INPUT abc123 " + src);
@@ -279,7 +279,8 @@ class CacheCommandTest {
 
     /** The qualified-task tag the build would use for {@code projectDir}'s main classes dir. */
     private static String classesTag(Path projectDir) throws Exception {
-        Path norm = projectDir.toAbsolutePath().normalize();
+        // BuildCommand realpaths the module root before hashing tags — match that form.
+        Path norm = projectDir.toRealPath();
         cc.jumpkick.model.JkBuild jb = cc.jumpkick.config.JkBuildParser.parse(norm.resolve("jk.toml"));
         return cc.jumpkick.task.ActionKey.taskTag(
                 cc.jumpkick.layout.BuildLayout.of(norm, jb).classesDir());

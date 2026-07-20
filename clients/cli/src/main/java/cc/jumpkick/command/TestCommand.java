@@ -51,7 +51,15 @@ public final class TestCommand implements CliCommand {
                 Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide()));
+                        .hide(),
+                Opt.value(
+                        "<git-ref>",
+                        "Test only modules (and dependents) changed since this git ref.",
+                        "--affected-since"),
+                Opt.value(
+                        "<sel>",
+                        "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                        "--modules")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -61,6 +69,8 @@ public final class TestCommand implements CliCommand {
     Path cacheDir;
     Path jdksDir;
     GlobalOptions global;
+    String affectedSince;
+    String modulesSpec;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -68,18 +78,50 @@ public final class TestCommand implements CliCommand {
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
+        this.affectedSince = in.value("affected-since").orElse(null);
+        this.modulesSpec = in.value("modules").orElse(null);
         this.global = GlobalOptions.from(in);
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
-        Path lockFile = proj.lockFile();
         // No jk.lock guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         int workerCount = workers != null && workers > 0 ? workers : 1;
+
+        // Selective tests: --modules and/or --affected-since (intersection when both).
+        if ((affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                    dir, entry, modulesSpec, affectedSince);
+            if (selected != null && !selected.ok()) {
+                CliOutput.err("jk test: " + selected.errorMessage());
+                return Exit.CONFIG;
+            }
+            if (selected != null && selected.moduleDirs().isEmpty()) {
+                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                        cc.jumpkick.cli.tui.Glyphs.CHECK,
+                        "Test",
+                        cc.jumpkick.config.GlobalConfig.nerdfont(),
+                        "nothing selected for tests"));
+                return 0;
+            }
+            if (selected != null && entry.isWorkspaceRoot()) {
+                return runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs());
+            }
+            if (selected != null && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
+                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                        cc.jumpkick.cli.tui.Glyphs.CHECK,
+                        "Test",
+                        cc.jumpkick.config.GlobalConfig.nerdfont(),
+                        "nothing selected for tests"));
+                return 0;
+            }
+        }
 
         PipelineResult result;
         TestSummary testResult;
@@ -108,7 +150,11 @@ public final class TestCommand implements CliCommand {
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force()),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    steps -> {
+                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
+                        var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(dir, module);
+                        return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
+                    },
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err("jk test: " + e.getMessage());
@@ -120,6 +166,58 @@ public final class TestCommand implements CliCommand {
         // Test failures get exit 4; compile / launcher errors are exit 1.
         if (testResult != null && !testResult.allPassed()) return 4;
         return 1;
+    }
+
+    /**
+     * Workspace selective tests: reuse the workspace build engine path with a dirty-module set and
+     * skip packaging (test-only pipelines).
+     */
+    private int runWorkspaceTests(
+            Path entryDir,
+            cc.jumpkick.model.JkBuild entryBuild,
+            Path cache,
+            int workerCount,
+            java.util.Set<Path> dirtyDirs)
+            throws IOException, InterruptedException {
+        // For v1, run sequential tests on each affected module via runTest.
+        int worst = 0;
+        for (Path mod : dirtyDirs) {
+            TestSummary[] testResultHolder = new TestSummary[1];
+            ConsoleSpec spec = new ConsoleSpec(
+                    "Test",
+                    r -> testSummary(testResultHolder[0], r),
+                    r -> testFailureMessage(testResultHolder[0], r));
+            String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
+            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+            PipelineResult result;
+            try {
+                result = cc.jumpkick.cli.engine.EngineClient.runTest(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.cli.engine.EngineClient.TestRequest(
+                                mod,
+                                cache,
+                                jdksDir,
+                                workerCount,
+                                profileName,
+                                global.verbose,
+                                cc.jumpkick.config.SessionContext.current().offline(),
+                                cc.jumpkick.config.SessionContext.current().force()),
+                        steps -> {
+                            var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
+                            var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(mod, module);
+                            return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
+                        },
+                        testResultHolder);
+            } catch (IOException e) {
+                CliOutput.err("jk test: " + mod + ": " + e.getMessage());
+                return Exit.SOFTWARE;
+            }
+            if (!result.success()) {
+                if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) worst = 4;
+                else if (worst == 0) worst = 1;
+            }
+        }
+        return worst;
     }
 
     /**

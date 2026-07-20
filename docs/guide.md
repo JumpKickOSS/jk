@@ -115,6 +115,69 @@ jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
 ```
 
+### Build timeline (chrome tracing)
+
+Every `jk build` / `jk test` writes a Chrome Trace Event file at
+`out/jk-chrome-profile.json` (under the project or workspace root). Open it in
+Perfetto or `chrome://tracing` to see step durations and parallel modules.
+
+```bash
+# disable
+JK_CHROME_PROFILE=off jk build
+# custom path
+JK_CHROME_PROFILE=/tmp/trace.json jk build
+```
+
+### Project build logic (`jk-build/`)
+
+Custom generate / prep steps live in a **project-local directory**, not in TOML scripts.
+
+**Convention:** if `jk-build/` exists next to `jk.toml`, its Java sources run on build (action-cached;
+outputs merge onto the classpath as resources).
+
+```toml
+# optional override
+[build]
+logic = "jk-build"                 # default when omitted; or another relative dir
+logic-main = "demo.LineCountBuild" # optional public static void main(String[])
+# logic = "off"                    # disable even if jk-build/ exists
+```
+
+```text
+my-app/
+  jk.toml
+  src/…
+  jk-build/src/demo/LineCountBuild.java
+```
+
+Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reusable tools; use
+`jk-build` for small project-local codegen (Mill task analogue). See
+[project-build-logic.md](features/project-build-logic.md).
+
+### IDE / BSP
+
+```bash
+jk bsp install               # write .bsp/jk.json
+# IDE launches: jk bsp serve
+jk ide                       # offline .idea / .vscode files (export path)
+```
+
+### Live loops (`jk watch` / `jk dev`)
+
+One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**
+
+```bash
+jk watch compile             # typecheck loop
+jk watch test                # TDD loop
+jk watch build               # package loop (--skip-tests)
+jk watch run                 # run the app + rebuild/reload on change
+jk dev                       # same as: jk watch run
+jk dev -- --port=8080        # app args after --
+```
+
+`watch run` / `dev` use classes-dir execution, Spring Boot DevTools when present, otherwise process
+restart; Android projects redeploy via the packaging plugin.
+
 ### Migration aliases
 
 Hidden shortcuts map familiar verbs (`package` → `build`, `why-rebuilt` → `explain`, etc.).
@@ -131,15 +194,29 @@ modules = ["libs/*", "services/*"]
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
 ```
 
-Monorepo tip: rebuild only what git changed (plus reverse dependents):
+Monorepo tip: rebuild or retest only what you need:
 
 ```bash
+# Git-changed modules (+ reverse dependents)
 jk build --affected-since=origin/main
+jk test --affected-since=origin/main
+
+# Explicit module selectors (comma list, globs, braces)
+jk build --modules api,worker
+jk test --modules 'libs/*'
+jk explain --modules '{api,worker}'
+
+# Intersection when both flags set
+jk build --modules 'libs/*' --affected-since=origin/main
+
+# CI prepare → run (writes .jk/selective-plan.json)
+jk selective prepare --since=origin/main
+jk selective run test
+jk selective resolve --modules 'api,worker'   # dry list
 ```
 
 Outside a git repo or with an invalid ref, jk prints a clear error. If nothing under the
-workspace changed, it exits 0 with “nothing affected”.
-
+workspace matched, it exits 0 with “nothing affected” / “nothing selected”.
 ```toml
 # services/api/jk.toml
 [project]

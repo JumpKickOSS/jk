@@ -35,7 +35,10 @@ class EngineServerTest {
     private final List<Path> tempDirs = new ArrayList<>();
 
     private Path shortTempDir() throws IOException {
-        Path dir = Files.createTempDirectory("jkd-");
+        // Prefer /tmp: macOS default TMPDIR is under /var/folders/... and with Java's long
+        // createTempDirectory suffix the UDS path (…/engine/<key>.genN.sock) exceeds sun_path (~104).
+        Path root = Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
+        Path dir = Files.createTempDirectory(root, "jkd-");
         tempDirs.add(dir);
         return dir;
     }
@@ -906,8 +909,10 @@ class EngineServerTest {
                 version = "0.1.0"
                 java = 25
                 """);
+        // Cache clear realpaths the module root (matches BuildCommand); seed tags the same way.
+        Path projectReal = project.toRealPath();
         String tag = cc.jumpkick.task.ActionKey.taskTag(cc.jumpkick.layout.BuildLayout.of(
-                        project, cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml")))
+                        projectReal, cc.jumpkick.config.JkBuildParser.parse(projectReal.resolve("jk.toml")))
                 .classesDir());
         Path mine = cache.resolve("actions/keys/mine");
         Files.createDirectories(mine.getParent());

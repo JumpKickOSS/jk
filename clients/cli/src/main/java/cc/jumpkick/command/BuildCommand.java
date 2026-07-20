@@ -10,7 +10,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.AffectedModules;
+import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.BuildLayout;
@@ -62,7 +62,11 @@ public final class BuildCommand implements CliCommand {
                 Opt.value(
                         "<git-ref>",
                         "Build only modules (and dependents) changed since this git ref.",
-                        "--affected-since")));
+                        "--affected-since"),
+                Opt.value(
+                        "<sel>",
+                        "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                        "--modules")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -78,6 +82,7 @@ public final class BuildCommand implements CliCommand {
     boolean aotCache;
     String variant;
     String affectedSince;
+    String modulesSpec;
     java.util.Map<String, String> clientEnv = java.util.Map.of();
     // ---- PipelineKeys -------------------------------------------------------
     //
@@ -107,6 +112,7 @@ public final class BuildCommand implements CliCommand {
         // (shared ports/locks/fixtures) — see BuildPipelines's test gate.
         this.parallelTests = in.isSet("parallel-tests");
         this.affectedSince = in.value("affected-since").orElse(null);
+        this.modulesSpec = in.value("modules").orElse(null);
         cc.jumpkick.config.SessionContext.install(
                 cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
         Path startDir = global.workingDir();
@@ -233,29 +239,40 @@ public final class BuildCommand implements CliCommand {
             System.err.println("[jk-perf] client-forecast " + (System.nanoTime() - buildStart) / 1_000_000 + "ms dirty="
                     + dirtyDirs.size());
         }
-        // Optional: restrict to modules changed since a git ref (+ reverse-dep dependents).
-        if (affectedSince != null && !affectedSince.isBlank()) {
-            var affected = resolveAffectedSince(entryDir, entryBuild, affectedSince);
-            if (affected.errorMessage() != null) {
-                CliOutput.err("jk build: " + affected.errorMessage());
+        // Optional: --modules and/or --affected-since (intersection when both).
+        if ((affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            JkBuild buildForSelect = entryBuild;
+            if (buildForSelect == null) {
+                try {
+                    buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                } catch (Exception e) {
+                    CliOutput.err("jk build: cannot load jk.toml for module selection: " + e.getMessage());
+                    return Exit.CONFIG;
+                }
+            }
+            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                    entryDir, buildForSelect, modulesSpec, affectedSince);
+            if (selected != null && !selected.ok()) {
+                CliOutput.err("jk build: " + selected.errorMessage());
                 return Exit.CONFIG;
             }
-            if (affected.moduleDirs().isEmpty()) {
+            if (selected != null && selected.moduleDirs().isEmpty()) {
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CHECK,
                         "Build",
                         nerdfont,
-                        "nothing affected since " + affectedSince));
+                        selectionEmptyMessage()));
                 return 0;
             }
-            Set<Path> restricted = new java.util.LinkedHashSet<>();
-            for (Path d : dirtyDirs) {
-                if (affected.moduleDirs().contains(d.toAbsolutePath().normalize())) restricted.add(d);
+            if (selected != null) {
+                Set<Path> restricted = new java.util.LinkedHashSet<>();
+                for (Path d : dirtyDirs) {
+                    if (selected.moduleDirs().contains(d.toAbsolutePath().normalize())) restricted.add(d);
+                }
+                // Force-include selected modules even if forecast thinks they are cached.
+                dirtyDirs = restricted.isEmpty() ? selected.moduleDirs() : restricted;
             }
-            // Force-include affected modules even if forecast thinks they are cached (user asked
-            // for the subset; engine still hits cache per-step). Prefer intersection when dirty
-            // is non-empty; otherwise build the affected set.
-            dirtyDirs = restricted.isEmpty() ? affected.moduleDirs() : restricted;
         }
         // The forecast runs against the per-module locks; when the merged workspace lock is stale
         // the engine will re-lock (freshenLock on the request) and the forecast may be wrong — so a
@@ -263,7 +280,11 @@ public final class BuildCommand implements CliCommand {
         // after freshening).
         boolean lockStale = forecast.lockStale();
         // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
-        if (forecast.fullyCached() && !global.force && !global.rebuild && affectedSince == null) {
+        if (forecast.fullyCached()
+                && !global.force
+                && !global.rebuild
+                && affectedSince == null
+                && (modulesSpec == null || modulesSpec.isBlank())) {
             // Fully cached — print chip line directly with no spinner ever created.
             CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, upToDateTail("all modules", buildStart)));
@@ -276,77 +297,14 @@ public final class BuildCommand implements CliCommand {
         return runGraphLive(view, entryDir, entryBuild, cache, buildStart, dirtyDirs, lockStale);
     }
 
-    /**
-     * Resolve {@code --affected-since} to absolute module dirs. Pure mapping is tested via {@link
-     * cc.jumpkick.config.AffectedModules}; this shells out to git for the changed-path list.
-     */
-    private static AffectedResult resolveAffectedSince(Path entryDir, JkBuild entryBuild, String ref) {
-        try {
-            Path root = entryDir.toAbsolutePath().normalize();
-            if (!entryBuild.isWorkspaceRoot()) {
-                // Module-level: treat the single project as the only candidate.
-                // Still need git for "did anything under this dir change?"
-                List<String> paths = gitDiffNameOnly(root, ref);
-                if (paths == null) {
-                    return AffectedResult.fail("git ref `" + ref + "` could not be resolved");
-                }
-                boolean hit = false;
-                for (String p : paths) {
-                    Path abs = root.resolve(p).normalize();
-                    if (abs.startsWith(root)) {
-                        hit = true;
-                        break;
-                    }
-                }
-                return hit
-                        ? AffectedResult.ok(Set.of(root))
-                        : AffectedResult.ok(Set.of());
-            }
-            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entryBuild);
-            Map<Path, Set<Path>> edges = AffectedModules.edgesFor(modules);
-            List<String> paths = gitDiffNameOnly(root, ref);
-            if (paths == null) {
-                return AffectedResult.fail(
-                        "git ref `" + ref + "` could not be resolved (not a git repo or bad ref)");
-            }
-            Set<Path> affected =
-                    AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths);
-            return AffectedResult.ok(affected);
-        } catch (Exception e) {
-            return AffectedResult.fail(e.getMessage() != null ? e.getMessage() : e.toString());
+    private String selectionEmptyMessage() {
+        if (modulesSpec != null && !modulesSpec.isBlank() && affectedSince != null && !affectedSince.isBlank()) {
+            return "nothing matched --modules=" + modulesSpec + " ∩ --affected-since=" + affectedSince;
         }
-    }
-
-    private record AffectedResult(Set<Path> moduleDirs, String errorMessage) {
-        static AffectedResult ok(Set<Path> dirs) {
-            return new AffectedResult(Set.copyOf(dirs), null);
+        if (modulesSpec != null && !modulesSpec.isBlank()) {
+            return "nothing matched --modules=" + modulesSpec;
         }
-
-        static AffectedResult fail(String msg) {
-            return new AffectedResult(Set.of(), msg);
-        }
-    }
-
-    /** {@code null} on git failure. Paths relative to the process cwd (repo root). */
-    private static List<String> gitDiffNameOnly(Path root, String ref) {
-        try {
-            Process p = new ProcessBuilder("git", "diff", "--name-only", ref + "...HEAD")
-                    .directory(root.toFile())
-                    .redirectErrorStream(true)
-                    .start();
-            List<String> lines = new ArrayList<>();
-            try (var r = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (!line.isBlank()) lines.add(line.trim());
-                }
-            }
-            if (p.waitFor() != 0) return null;
-            return lines;
-        } catch (Exception e) {
-            return null;
-        }
+        return "nothing affected since " + affectedSince;
     }
 
     /**
@@ -376,6 +334,8 @@ public final class BuildCommand implements CliCommand {
         long start = System.nanoTime();
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
+            final cc.jumpkick.cli.run.ChromeTimeline workspaceTimeline =
+                    cc.jumpkick.cli.run.ChromeTimeline.open(entryDir);
             cc.jumpkick.runtime.WorkspaceBuildListener headlessListener =
                     new cc.jumpkick.runtime.WorkspaceBuildListener() {
                         @Override
@@ -393,24 +353,28 @@ public final class BuildCommand implements CliCommand {
                                     m.cache(), m.pipeline().name());
                             List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
+                            var outLis = new cc.jumpkick.run.PipelineListener() {
+                                @Override
+                                public synchronized void output(String step, String line) {
+                                    buf.add(line);
+                                }
+
+                                @Override
+                                public synchronized void warn(String step, String code, String message) {
+                                    buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
+                                }
+
+                                @Override
+                                public synchronized void error(String step, String code, String message) {
+                                    buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
+                                }
+                            };
+                            var withLog = cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, log);
+                            if (workspaceTimeline == null) return withLog;
                             return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                                    new cc.jumpkick.run.PipelineListener() {
-                                        @Override
-                                        public synchronized void output(String step, String line) {
-                                            buf.add(line);
-                                        }
-
-                                        @Override
-                                        public synchronized void warn(String step, String code, String message) {
-                                            buf.add("  " + Glyphs.BANG + " " + step + ": " + message);
-                                        }
-
-                                        @Override
-                                        public synchronized void error(String step, String code, String message) {
-                                            buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
-                                        }
-                                    },
-                                    log);
+                                    withLog,
+                                    cc.jumpkick.cli.run.ChromeTimelineListener.forModule(
+                                            workspaceTimeline, m.coord()));
                         }
 
                         @Override
@@ -422,6 +386,11 @@ public final class BuildCommand implements CliCommand {
                                 CliOutput.out(completionLine(
                                         o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
                             }
+                        }
+
+                        @Override
+                        public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
+                            if (workspaceTimeline != null) workspaceTimeline.flush();
                         }
                     };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -491,6 +460,8 @@ public final class BuildCommand implements CliCommand {
                 .withVariant(variant, clientEnv);
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
+            final cc.jumpkick.cli.run.ChromeTimeline workspaceTimeline =
+                    cc.jumpkick.cli.run.ChromeTimeline.open(entryDir);
             cc.jumpkick.runtime.WorkspaceBuildListener liveListener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
                 public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
@@ -518,7 +489,11 @@ public final class BuildCommand implements CliCommand {
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);
-                    return cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
+                    var withLog = cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
+                    if (workspaceTimeline == null) return withLog;
+                    return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                            withLog,
+                            cc.jumpkick.cli.run.ChromeTimelineListener.forModule(workspaceTimeline, m.coord()));
                 }
 
                 @Override
@@ -539,6 +514,11 @@ public final class BuildCommand implements CliCommand {
                         block.append(completion);
                         view.writeAbove(block.toString());
                     }
+                }
+
+                @Override
+                public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
+                    if (workspaceTimeline != null) workspaceTimeline.flush();
                 }
             };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -670,10 +650,11 @@ public final class BuildCommand implements CliCommand {
         String[] buildOutcomeHolder = new String[1];
         cc.jumpkick.engine.protocol.ProjectInfo tailInfo = projectInfoOrNull(dir);
         final Path tailDir = dir;
+        final String timelineModule = target;
         ConsoleSpec spec = new ConsoleSpec(
                 "Build",
                 r -> projectTail(buildOutcomeHolder[0], tailDir, tailInfo),
-                r -> PipelineWedge.coord(target),
+                r -> PipelineWedge.coord(timelineModule),
                 true);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
@@ -692,7 +673,11 @@ public final class BuildCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             variant,
                             clientEnv),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target),
+                    steps -> {
+                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
+                        var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(tailDir, timelineModule);
+                        return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
+                    },
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (java.io.IOException e) {
@@ -709,7 +694,7 @@ public final class BuildCommand implements CliCommand {
     // ---- success summary -----------------------------------------------
 
     /** Header module label for the pipeline view: the project's {@code group:artifact}. */
-    static String buildTarget(Path buildFile, Path dir) {
+    public static String buildTarget(Path buildFile, Path dir) {
         var info = projectInfoOrNull(dir);
         if (info != null) return info.coord();
         return dir.getFileName() == null ? "" : dir.getFileName().toString();

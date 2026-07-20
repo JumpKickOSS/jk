@@ -38,7 +38,9 @@ class EngineDelegateTest {
     private final List<Path> tempDirs = new ArrayList<>();
 
     private Path shortTempDir() throws IOException {
-        Path dir = Files.createTempDirectory("jkg-");
+        // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
+        Path root = Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
+        Path dir = Files.createTempDirectory(root, "jkg-");
         tempDirs.add(dir);
         return dir;
     }

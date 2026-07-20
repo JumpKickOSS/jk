@@ -217,6 +217,29 @@ public final class IdeEngineClient {
         return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
     }
 
+    /**
+     * Build a single module directory (ticket-1041). When {@code moduleDir} is null, same as
+     * {@link #build(BuildListener)}. Workspace roots still cascade when {@code moduleDir} is null.
+     */
+    public BuildOutcome buildModule(Path moduleDir, BuildListener listener) throws IOException {
+        if (moduleDir == null) return build(listener);
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        Path mod = moduleDir.toAbsolutePath().normalize();
+        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
+        progress.onModuleStart(coord, mod);
+        List<String> errors = new ArrayList<>();
+        PipelineResult r = EngineClient.runSingleBuild(
+                EnginePaths.current(),
+                new EngineClient.SingleBuildRequest(
+                        mod, cacheDir, jdksDir, 1, null, false, false, false, false),
+                steps -> progressListener(progress, steps),
+                null,
+                null);
+        for (var d : r.errors()) errors.add(d.message());
+        progress.onModuleFinish(coord, r.success());
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+    }
+
     private Path resolveSyncRoot() {
         try {
             ProjectInfo info = projectInfo();

@@ -111,6 +111,8 @@ tasks.withType<Test>().configureEach {
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
+    // Fail fast if the engine stops streaming (default is 60 minutes — freezes the full suite).
+    environment("JK_STREAM_IDLE_MS", "45000")
     // Shared dep cache across tests (Kotlin compiler, JUnit, …) — outside @TempDir.
     systemProperty(
             "jk.test.cache.dir",

@@ -11,4 +11,6 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 
 Project planning (not product docs): [kanban/backlog.md](kanban/backlog.md).
 
+Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
+
 Contributing and build instructions: [../CONTRIBUTING.md](../CONTRIBUTING.md).

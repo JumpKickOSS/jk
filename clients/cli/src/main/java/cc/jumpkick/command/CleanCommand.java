@@ -174,6 +174,14 @@ public final class CleanCommand implements CliCommand {
             // Not a project dir: nothing project-scoped to clear; the file clean already ran.
             return 0;
         }
+        // Match BuildCommand: action-cache tags/INPUT paths are keyed on the realpath of the
+        // module root. Without this, macOS /var → /private/var (and other symlink roots) make
+        // `jk clean --force` miss every entry the build just wrote.
+        try {
+            projectDir = projectDir.toRealPath();
+        } catch (IOException ignored) {
+            projectDir = projectDir.toAbsolutePath().normalize();
+        }
         Path root = CacheCommand.resolveCacheRoot(cacheDirOverride);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(new GlobalOptions());
 

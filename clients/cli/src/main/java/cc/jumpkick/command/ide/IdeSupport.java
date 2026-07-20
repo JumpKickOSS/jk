@@ -210,6 +210,12 @@ public final class IdeSupport {
      * engine unreachable, offline, a pinned-but-uninstalled JDK failing the pipeline's resolve-only
      * ensure-jdk step — warns and returns; the model build skips whatever is still missing.
      */
+    /**
+     * Hard ceiling for best-effort IDE pre-sync. A wedged engine must not block {@code jk ide} /
+     * {@code jk vscode} (or the CLI test suite) for the full protocol idle timeout (default 60m).
+     */
+    private static final long BEST_EFFORT_SYNC_MS = 30_000L;
+
     private static void hostedBestEffortSync(Path wsRoot, Path cache, Path jdksDir, GlobalOptions global) {
         cc.jumpkick.cli.run.PipelineConsole.Mode mode = cc.jumpkick.cli.run.PipelineConsole.modeFor(global);
         long[] fetched = new long[1];
@@ -223,23 +229,61 @@ public final class IdeSupport {
                 true);
         String label = wsRoot.getFileName() != null ? wsRoot.getFileName().toString() : wsRoot.toString();
         var session = cc.jumpkick.config.SessionContext.current();
+        var paths = cc.jumpkick.engine.EnginePaths.current();
+        var req = new cc.jumpkick.cli.engine.EngineClient.SyncRequest(
+                wsRoot,
+                cache,
+                jdksDir,
+                null,
+                false,
+                session.offline(),
+                session.force(),
+                false,
+                global.verbose);
+        // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
+        // blocked protocol read unblocks via channel close.
+        java.util.concurrent.atomic.AtomicReference<Exception> fail = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        cc.jumpkick.cli.engine.EngineClient.runSync(
+                                paths,
+                                req,
+                                steps -> cc.jumpkick.cli.run.PipelineConsole.chooseConsoleListener(
+                                        steps, mode, spec, label),
+                                fetched,
+                                upToDate);
+                    } catch (Exception e) {
+                        fail.set(e);
+                    }
+                },
+                "jk-ide-best-effort-sync");
+        t.setDaemon(true);
+        t.start();
         try {
-            cc.jumpkick.cli.engine.EngineClient.runSync(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.SyncRequest(
-                            wsRoot,
-                            cache,
-                            jdksDir,
-                            null,
-                            false,
-                            session.offline(),
-                            session.force(),
-                            false,
-                            global.verbose),
-                    steps -> cc.jumpkick.cli.run.PipelineConsole.chooseConsoleListener(steps, mode, spec, label),
-                    fetched,
-                    upToDate);
-        } catch (IOException e) {
+            t.join(BEST_EFFORT_SYNC_MS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        if (t.isAlive()) {
+            try {
+                cc.jumpkick.cli.engine.EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
+            } catch (RuntimeException ignored) {
+                // best-effort
+            }
+            try {
+                t.join(2_000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            cc.jumpkick.cli.CliOutput.err(
+                    "jk ide: dependency sync timed out after "
+                            + (BEST_EFFORT_SYNC_MS / 1000)
+                            + "s — missing jars will be skipped");
+            return;
+        }
+        Exception e = fail.get();
+        if (e != null) {
             cc.jumpkick.cli.CliOutput.err(
                     "jk ide: dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
         }

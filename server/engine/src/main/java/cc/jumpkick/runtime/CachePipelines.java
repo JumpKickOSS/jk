@@ -231,7 +231,14 @@ public final class CachePipelines {
 
     /** The current project dir plus, if it's in a workspace, every {@code [workspace]} module dir. */
     private static List<Path> resolveModuleDirs(Path projectDir) {
-        Path here = projectDir.toAbsolutePath().normalize();
+        // Prefer realpath so tags/INPUT prefixes match BuildCommand (which realpaths before build).
+        // macOS /var → /private/var (and similar symlink roots) otherwise miss every action-cache key.
+        Path here;
+        try {
+            here = projectDir.toRealPath();
+        } catch (Exception e) {
+            here = projectDir.toAbsolutePath().normalize();
+        }
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
         dirs.add(here);
         try {
@@ -240,10 +247,21 @@ public final class CachePipelines {
                     ? here
                     : WorkspaceLocator.findRoot(here).orElse(null);
             if (wsRoot != null) {
+                try {
+                    wsRoot = wsRoot.toRealPath();
+                } catch (Exception ignored) {
+                    wsRoot = wsRoot.toAbsolutePath().normalize();
+                }
                 dirs.add(wsRoot);
                 JkBuild root = wsRoot.equals(here) ? manifest : JkBuildParser.parse(wsRoot.resolve("jk.toml"));
                 for (String module : root.workspaceOpt().map(Workspace::modules).orElse(List.of())) {
-                    dirs.add(wsRoot.resolve(module).normalize());
+                    Path mod = wsRoot.resolve(module).normalize();
+                    try {
+                        mod = mod.toRealPath();
+                    } catch (Exception ignored) {
+                        // module may not exist on disk yet
+                    }
+                    dirs.add(mod);
                 }
             }
         } catch (Exception ignored) {

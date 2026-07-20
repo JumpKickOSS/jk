@@ -1524,12 +1524,25 @@ public final class BuildPipelines {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path resMain = in.dir().resolve("src/main/resources");
-                    if (!Files.exists(resMain)) {
-                        ctx.label("no resources");
-                        return;
+                    if (Files.exists(resMain)) {
+                        ctx.label("copy resources");
+                        copyResources(resMain, classes);
+                    } else {
+                        ctx.label("no static resources");
                     }
-                    ctx.label("copy resources");
-                    copyResources(resMain, classes);
+                    // Project build logic (ticket-1037): jk-build/ or [build].logic → classes resources.
+                    try {
+                        boolean ran = BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                classes,
+                                ctx::label);
+                        if (ran) ctx.label("build-logic applied");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
                     ctx.progress(1);
                 })
                 .build();

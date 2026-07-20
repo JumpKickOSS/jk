@@ -22,14 +22,26 @@ public final class UsageGroups {
     public static final List<CommandGroup> COMMAND_GROUPS = List.of(
             new CommandGroup(
                     "Build commands:",
-                    List.of("build", "run", "clean", "image", "test", "compile", "native", "install", "publish")),
+                    List.of(
+                            "build",
+                            "run",
+                            "clean",
+                            "image",
+                            "test",
+                            "compile",
+                            "watch",
+                            "dev",
+                            "selective",
+                            "native",
+                            "install",
+                            "publish")),
             new CommandGroup(
                     "Project commands:",
                     List.of(
                             "new", "init", "add", "remove", "lock", "update", "sync", "deny", "tree", "why", "explain",
                             "audit", "verify")),
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate", "deactivate")),
-            new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export")),
+            new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp")),
             new CommandGroup("System commands:", List.of("doctor", "cache")));
 
     /**

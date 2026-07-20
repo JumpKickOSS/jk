@@ -1,44 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.GlobalOptions;
-import cc.jumpkick.cli.ProjectContext;
-import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
-import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.util.JkDirs;
-import java.io.IOException;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
-import java.util.ArrayList;
-import java.util.HashMap;
+import cc.jumpkick.model.command.Param;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 /**
- * {@code jk dev} — live rebuild loop: run from classes dir, watch sources, recompile via the
- * engine. Uses Boot DevTools in-place restart when present; otherwise restarts the process.
+ * {@code jk dev} — <strong>alias for {@code jk watch run}</strong>: run the app and rebuild on
+ * source changes (Boot DevTools / process restart / device deploy). Prefer documenting {@code jk
+ * watch}; keep {@code dev} as the short name for the run loop.
+ *
+ * <p>Implementation is entirely {@link WatchCommand} (alias registration + shared {@code
+ * AppWatchLoop}). This class remains only so help listings can describe the short name without
+ * duplicating the watch surface.
  */
 public final class DevCommand implements CliCommand {
 
-    /** Coalesce editor save bursts (rename+write+chmod) into one rebuild. */
-    private static final long DEBOUNCE_MILLIS = 150;
-
-    private GlobalOptions global;
-    private Path cacheDirOverride;
-    private Path jdksDir;
+    private final WatchCommand watch = new WatchCommand();
 
     @Override
     public String name() {
@@ -47,315 +27,32 @@ public final class DevCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run the app and hot-reload on source changes";
+        return "Alias for `jk watch run` — app + rebuild on change";
     }
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide(),
-                Opt.value("<dir>", "Override the JDK install directory.", "--jdks-dir")
-                        .hide()));
-        opts.addAll(VariantSelection.options());
-        return opts;
+        return watch.options();
     }
 
     @Override
-    public int run(Invocation in) throws IOException, InterruptedException {
-        this.global = GlobalOptions.from(in);
-        this.cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
-        this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
-        List<String> appArgs = in.positionals();
-
-        Path projectDir = global.workingDir();
-        VariantSelection.install(in, projectDir);
-        var proj = ProjectContext.require(projectDir, "dev").orElse(null);
-        if (proj == null) return Exit.CONFIG;
-
-        Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
-
-        // 1. Initial full build (skip tests — the dev loop optimizes for latency).
-        if (!build(projectDir, cache, false)) return 1;
-
-        // 2. The engine computes the dev plan: classes-dir + RUN classpath argv, DevTools
-        //    detection/injection, watch roots — no jk.toml/jk.lock reasoning client-side.
-        cc.jumpkick.engine.protocol.ExecPlan plan = devPlan(projectDir, cache);
-        if (plan.error() != null) {
-            CliOutput.err("jk dev: " + plan.error());
-            return Exit.SOFTWARE;
-        }
-        // Device artifact (APK): rebuild → redeploy via the plugin's deploy command (restart-based).
-        if (!plan.deployCommand().isEmpty()) {
-            return deviceLoop(projectDir, cache, plan, appArgs);
-        }
-        boolean devtools = plan.hotReload();
-        if (plan.devtoolsInjected()) {
-            CliOutput.err("jk dev: spring-boot-devtools auto-injected for this session"
-                    + " — add it to [dev-dependencies] to make it permanent.");
-        }
-        List<Path> watchRoots = new ArrayList<>();
-        for (String root : plan.watchRoots()) watchRoots.add(Path.of(root));
-        CliOutput.err("jk dev: watching "
-                + watchRoots.stream()
-                        .map(r -> projectDir.relativize(r).toString())
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("src")
-                + (devtools ? " — DevTools hot-restart" : " — process restart on change")
-                + ". Ctrl-C stops.");
-
-        // 3. Run the app from the classes dir (never a packaged jar: the loop recompiles
-        //    into this dir, and DevTools watches it).
-        Process app = startApp(plan, appArgs);
-
-        // 3. Watch → rebuild → (maybe) restart, until interrupted or the app exits.
-        try (WatchService watcher = FileSystems.getDefault().newWatchService()) {
-            Map<WatchKey, Path> keys = new HashMap<>();
-            for (Path root : watchRoots) registerTree(watcher, keys, root);
-            registerDir(watcher, keys, projectDir); // jk.toml lives here
-
-            while (true) {
-                WatchKey key = watcher.poll(500, TimeUnit.MILLISECONDS);
-                if (key == null) {
-                    if (!app.isAlive()) {
-                        int exit = app.exitValue();
-                        CliOutput.err("jk dev: app exited with code " + exit + " — stopping.");
-                        return exit;
-                    }
-                    continue;
-                }
-
-                Changes changes = drainEvents(watcher, keys, key, projectDir);
-                if (!changes.any()) continue;
-
-                if (changes.manifest) {
-                    CliOutput.err("jk dev: jk.toml changed — full rebuild + restart");
-                    if (build(projectDir, cache, false)) {
-                        plan = devPlan(projectDir, cache); // classpath shape may have changed
-                        if (plan.error() != null) {
-                            CliOutput.err("jk dev: " + plan.error());
-                            return Exit.SOFTWARE;
-                        }
-                        devtools = plan.hotReload();
-                        app = restartApp(app, plan, appArgs);
-                    }
-                    continue;
-                }
-                boolean ok = changes.resources
-                        ? build(projectDir, cache, false) // full: resource copy happens in-build
-                        : compile(projectDir, cache);
-                if (!ok) {
-                    CliOutput.err("jk dev: build failed — app keeps running the last good code.");
-                    continue;
-                }
-                if (devtools) {
-                    CliOutput.err("jk dev: recompiled — DevTools restarts the context.");
-                } else {
-                    app = restartApp(app, plan, appArgs);
-                }
-            }
-        } finally {
-            if (app.isAlive()) {
-                app.destroy();
-                if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
-            }
-        }
+    public List<Param> parameters() {
+        // App args only — verb is fixed to run.
+        return List.of(cc.jumpkick.model.command.Param.of(
+                "args", cc.jumpkick.model.command.Arity.ZERO_OR_MORE, "Arguments passed to the application."));
     }
 
-    /**
-     * The device dev loop: watch the plan's roots, rebuild on change, and re-dispatch the plugin's
-     * deploy command (install + relaunch happen in the plugin's worker — nothing runs on the host).
-     */
-    private int deviceLoop(Path projectDir, Path cache, cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs)
-            throws IOException, InterruptedException {
-        List<Path> watchRoots = new ArrayList<>();
-        for (String root : plan.watchRoots()) watchRoots.add(Path.of(root));
-        CliOutput.err("jk dev: watching "
-                + watchRoots.stream()
-                        .map(r -> projectDir.relativize(r).toString())
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("src")
-                + " — redeploy to device on change. Ctrl-C stops.");
-        int deployed = deploy(projectDir, cache, plan.deployCommand(), appArgs);
-        if (deployed != 0) return deployed;
-
-        try (WatchService watcher = FileSystems.getDefault().newWatchService()) {
-            Map<WatchKey, Path> keys = new HashMap<>();
-            for (Path root : watchRoots) registerTree(watcher, keys, root);
-            registerDir(watcher, keys, projectDir); // jk.toml lives here
-            while (true) {
-                WatchKey key = watcher.poll(500, TimeUnit.MILLISECONDS);
-                if (key == null) continue;
-                Changes changes = drainEvents(watcher, keys, key, projectDir);
-                if (!changes.any()) continue;
-                if (changes.manifest) CliOutput.err("jk dev: jk.toml changed — full rebuild + redeploy");
-                if (!build(projectDir, cache, false)) {
-                    CliOutput.err("jk dev: build failed — the device keeps the last good install.");
-                    continue;
-                }
-                int exit = deploy(projectDir, cache, plan.deployCommand(), appArgs);
-                if (exit != 0) CliOutput.err("jk dev: deploy failed (exit " + exit + ") — will retry on change.");
-            }
+    @Override
+    public int run(Invocation in) throws Exception {
+        // Rebuild as watch run: prepend the run verb so WatchCommand's parser sees a normal shape.
+        Invocation.Builder b = Invocation.builder();
+        b.addPositional("run");
+        for (String p : in.positionals()) b.addPositional(p);
+        // Flags the user passed on `jk dev` are already on Session/GlobalOptions; WatchCommand
+        // re-reads GlobalOptions.from(in) — re-emit known option values from the original invocation.
+        for (String name : List.of("cache-dir", "jdks-dir", "variant", "features")) {
+            in.value(name).ifPresent(v -> b.putValue(name, v));
         }
-    }
-
-    /** Dispatch the deploy command over the plugin-command protocol; returns its exit code. */
-    private int deploy(Path projectDir, Path cache, String command, List<String> appArgs) {
-        cc.jumpkick.engine.protocol.PluginCommandReport report;
-        try {
-            report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                            cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
-        } catch (Exception e) {
-            CliOutput.err("jk dev: " + e.getMessage());
-            return Exit.SOFTWARE;
-        }
-        if (!report.found()) {
-            CliOutput.err("jk dev: the packaging plugin declares deploy command `" + command + "` but does not"
-                    + " register it");
-            return Exit.SOFTWARE;
-        }
-        if (report.error() != null) {
-            CliOutput.err("jk dev: " + report.error());
-            return 1;
-        }
-        for (String line : report.output()) CliOutput.out(line);
-        return report.exit();
-    }
-
-    // --- build/compile through the engine ----------------------------------
-
-    private boolean build(Path projectDir, Path cache, boolean verbose) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
-        ConsoleSpec spec = new ConsoleSpec(
-                "Dev", r -> Theme.colorize("Built", Theme.active().focused()), r -> "Build failed");
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        PipelineResult result;
-                var session = cc.jumpkick.config.SessionContext.current();
-        result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
-                        projectDir,
-                        cache,
-                        jdksDir,
-                        1,
-                        null,
-                        true,
-                        global.verbose,
-                        session.offline(),
-                        session.force(),
-                        session.variant(),
-                        session.clientEnv()),
-                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target),
-                new cc.jumpkick.run.TestSummary[1],
-                new String[1]);
-
-        return result.success();
-    }
-
-    private boolean compile(Path projectDir, Path cache) throws IOException, InterruptedException {
-        String target = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
-        ConsoleSpec spec = new ConsoleSpec(
-                "Dev", r -> Theme.colorize("Recompiled", Theme.active().focused()), r -> "Compile failed");
-        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        PipelineResult result;
-                var session = cc.jumpkick.config.SessionContext.current();
-        result = cc.jumpkick.cli.engine.EngineClient.runCompile(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.CompileRequest(
-                        projectDir, cache, null, session.offline(), session.force(), global.verbose),
-                steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
-
-        return result.success();
-    }
-
-    // --- app process --------------------------------------------------------
-
-    /** Fetch the dev exec plan (engine-hosted;test.noEngine). */
-    private cc.jumpkick.engine.protocol.ExecPlan devPlan(Path projectDir, Path cache) throws IOException {
-        return cc.jumpkick.cli.engine.EngineClient.execPlan(
-                        cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, "dev", null, null);
-    }
-
-    private Process startApp(cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs) throws IOException {
-        List<String> command = new ArrayList<>(plan.argv());
-        command.addAll(appArgs);
-        return new ProcessBuilder(command)
-                .directory(Path.of(plan.workingDir()).toFile())
-                .inheritIO()
-                .start();
-    }
-
-    private Process restartApp(Process app, cc.jumpkick.engine.protocol.ExecPlan plan, List<String> appArgs)
-            throws IOException, InterruptedException {
-        if (app.isAlive()) {
-            app.destroy();
-            if (!app.waitFor(5, TimeUnit.SECONDS)) app.destroyForcibly();
-        }
-        CliOutput.err("jk dev: restarting app");
-        return startApp(plan, appArgs);
-    }
-
-    // --- filesystem watching --------------------------------------------------
-
-    private static void registerTree(WatchService watcher, Map<WatchKey, Path> keys, Path root) throws IOException {
-        try (var stream = Files.walk(root)) {
-            for (Path dir : stream.filter(Files::isDirectory).toList()) {
-                registerDir(watcher, keys, dir);
-            }
-        }
-    }
-
-    private static void registerDir(WatchService watcher, Map<WatchKey, Path> keys, Path dir) throws IOException {
-        WatchKey key = dir.register(
-                watcher,
-                StandardWatchEventKinds.ENTRY_CREATE,
-                StandardWatchEventKinds.ENTRY_MODIFY,
-                StandardWatchEventKinds.ENTRY_DELETE);
-        keys.put(key, dir);
-    }
-
-    private record Changes(boolean sources, boolean resources, boolean manifest) {
-
-        boolean any() {
-            return sources || resources || manifest;
-        }
-    }
-
-    /**
-     * Consume the triggering key plus everything that arrives inside the debounce window, and
-     * classify what changed. New directories are registered on the fly (nested package creation).
-     */
-    private static Changes drainEvents(WatchService watcher, Map<WatchKey, Path> keys, WatchKey first, Path projectDir)
-            throws IOException, InterruptedException {
-        boolean sources = false, resources = false, manifest = false;
-        WatchKey key = first;
-        long settleUntil = System.currentTimeMillis() + DEBOUNCE_MILLIS;
-        while (key != null) {
-            Path dir = keys.get(key);
-            for (WatchEvent<?> event : key.pollEvents()) {
-                if (!(event.context() instanceof Path rel) || dir == null) continue;
-                Path changed = dir.resolve(rel);
-                String name = rel.getFileName().toString();
-                if (dir.equals(projectDir)) {
-                    // Project root: only jk.toml matters (target/, .git/ churn is noise).
-                    if (name.equals("jk.toml")) manifest = true;
-                    continue;
-                }
-                if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
-                    registerTree(watcher, keys, changed);
-                }
-                if (projectDir.relativize(changed).toString().replace('\\', '/').contains("/resources/")) {
-                    resources = true;
-                } else if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".kts")) {
-                    sources = true;
-                } else if (!Files.isDirectory(changed)) {
-                    resources = true; // non-source file under src/ — treat as a resource
-                }
-            }
-            if (!key.reset()) keys.remove(key);
-            long remaining = settleUntil - System.currentTimeMillis();
-            key = remaining > 0 ? watcher.poll(remaining, TimeUnit.MILLISECONDS) : watcher.poll();
-        }
-        return new Changes(sources, resources, manifest);
+        return watch.run(b.build());
     }
 }

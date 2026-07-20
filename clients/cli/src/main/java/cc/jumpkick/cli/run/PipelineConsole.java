@@ -56,6 +56,15 @@ public final class PipelineConsole {
     }
 
     /**
+     * Best-effort chrome timeline for a local in-process pipeline. Prefer attaching from
+     * {@code BuildCommand}/{@code TestCommand} with an explicit project dir for engine-hosted runs.
+     */
+    public static void attachTimeline(Pipeline pipeline, Path projectDir, String module) {
+        ChromeTimelineListener tl = ChromeTimelineListener.forProject(projectDir, module);
+        if (tl != null) pipeline.addListener(tl);
+    }
+
+    /**
      * Variant that derives the cache root from {@link JkDirs#cache}. Use when the command doesn't
      * have an explicit override.
      */

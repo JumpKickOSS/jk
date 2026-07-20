@@ -157,9 +157,30 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 6. `ideModel()` — absolute classpath jars + source/classes roots for the open workspace.
 7. Optional `build(listener)` — module/step events for a Build tool window.
 8. Keep `jk ide` / export for writing `.idea` / `.vscode` files when desired.
+9. **BSP (ticket-1028):** `jk bsp install` writes `.bsp/jk.json`; `jk bsp serve` speaks a minimal
+   BSP 2.x JSON-RPC on stdio and delegates to `IdeEngineClient` (initialize, buildTargets, sources,
+   dependencyModules, compile). No engine jars on the IDE classpath. Marketplace plugins (1017)
+   can sit on BSP or call the facade directly.
+
+### BSP ↔ engine wire (MVP)
+
+| BSP | JumpKick |
+|---|---|
+| `build/initialize` | local capability advertise |
+| `workspace/buildTargets` | `projectInfo` + `ideModel` modules |
+| `buildTarget/sources` | module source roots from layout / model |
+| `buildTarget/dependencyModules` | `ideModel` lib jars (absolute URIs) |
+| `buildTarget/compile` | `IdeEngineClient.build` |
 
 - **Intended later:** marketplace IntelliJ/VS Code plugins (run configs, debug, test gutter) on
-  top of this facade — see ticket-1017.
+  top of this facade / BSP — see ticket-1017.
+
+### Project build logic (`jk-build/`, ticket-1037)
+
+Convention directory **`jk-build/`** next to `jk.toml` holds project-local Java build logic
+(overridable via `[build].logic`). The engine compiles and runs a main (`--project` / `--out`)
+during `copy-resources`, action-caches outputs, and merges generated files into the classes tree.
+No scripts in TOML. See [features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

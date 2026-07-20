@@ -1,0 +1,23 @@
+# Performance harness
+
+## Microbench (ticket-1024)
+
+```bash
+# jk on PATH (reinstall local first if dogfooding)
+./scripts/microbench.sh
+# or against a project:
+./scripts/microbench.sh /path/to/project
+```
+
+Scenarios: clean-all, noop, incr-body (touch one `.java`), aot-off control (`JK_WORKER_AOT=off`).
+Reports **median** of `RUNS` (default 3) wall times in ms.
+
+## Chrome timeline (ticket-1023)
+
+After `jk build` / `jk test`, open `out/jk-chrome-profile.json` in Perfetto or
+`chrome://tracing`. Disable with `JK_CHROME_PROFILE=off`.
+
+## Warm pool go/no-go (ticket-1030)
+
+**Decision: DEFER** — see [warm-pool-bench.md](warm-pool-bench.md). Do not implement a resident
+compiler pool until a worktree prototype beats **AOT-on** forks on wall time *and* RSS.

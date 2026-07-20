@@ -10,6 +10,7 @@ import cc.jumpkick.command.ActivateCommand;
 import cc.jumpkick.command.AddCommand;
 import cc.jumpkick.command.AuditCommand;
 import cc.jumpkick.command.AuthCommand;
+import cc.jumpkick.command.BspCommand;
 import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.command.CacheCommand;
 import cc.jumpkick.command.CleanCommand;
@@ -39,11 +40,13 @@ import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PublishCommand;
 import cc.jumpkick.command.RemoveCommand;
 import cc.jumpkick.command.RepoCommand;
+import cc.jumpkick.command.SelectiveCommand;
 import cc.jumpkick.command.SelfCommand;
 import cc.jumpkick.command.ShellCommand;
 import cc.jumpkick.command.StatusCommand;
 import cc.jumpkick.command.SyncCommand;
 import cc.jumpkick.command.TestCommand;
+import cc.jumpkick.command.WatchCommand;
 import cc.jumpkick.command.ToolCommand;
 import cc.jumpkick.command.ToolInstallCommand;
 import cc.jumpkick.command.ToolRunCommand;
@@ -119,7 +122,10 @@ public final class CommandDispatch {
             new ToolInstallCommand(),
             new CompileCommand(),
             new DevCommand(),
+            new WatchCommand(),
             new BuildCommand(),
+            new BspCommand(),
+            new SelectiveCommand(),
             new TestCommand(),
             new FormatCommand(),
             new NativeCommand(),
