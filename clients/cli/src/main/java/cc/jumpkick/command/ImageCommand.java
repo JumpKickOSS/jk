@@ -78,7 +78,7 @@ public final class ImageCommand implements CliCommand {
         VariantSelection.install(in, projectDir);
         Path jkBuildPath = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuildPath)) {
-            CliOutput.err("jk image: " + jkBuildPath + " not found.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", jkBuildPath + " not found."));
             return Exit.NO_INPUT;
         }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
@@ -125,7 +125,7 @@ public final class ImageCommand implements CliCommand {
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     summary);
         } catch (IOException e) {
-            CliOutput.err("jk image: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", e.getMessage()));
             return Exit.SOFTWARE;
         }
         testResult = summary[0] != null ? summary[0].testResult() : null;

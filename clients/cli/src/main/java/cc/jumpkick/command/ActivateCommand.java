@@ -56,7 +56,7 @@ public final class ActivateCommand implements CliCommand {
     private int printScript(String shellName) {
         var shell = Shell.byName(shellName);
         if (shell.isEmpty()) {
-            CliOutput.err("jk activate: unsupported shell `" + shellName + "` (supported: bash, zsh, fish, pwsh)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Activate", "unsupported shell `" + shellName + "` (supported: bash, zsh, fish, pwsh)"));
             return Exit.USAGE;
         }
         // Runs on every shell startup (the rc line evals this command), so jkx
@@ -80,9 +80,8 @@ public final class ActivateCommand implements CliCommand {
     private int runInstaller() throws IOException {
         var shell = Shell.detect();
         if (shell.isEmpty()) {
-            CliOutput.err("jk activate: couldn't detect your shell from $SHELL (value: `"
-                    + System.getenv("SHELL")
-                    + "`). Pass an explicit shell, e.g. `jk activate zsh`.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Activate", "couldn't detect your shell from $SHELL (value: `" + System.getenv("SHELL")
+                    + "`). Pass an explicit shell, e.g. `jk activate zsh`."));
             return Exit.USAGE;
         }
         if (!isInteractiveTerminal()) {

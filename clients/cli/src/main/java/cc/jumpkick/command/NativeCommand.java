@@ -93,7 +93,7 @@ public final class NativeCommand implements CliCommand {
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
 
         if (!Files.exists(buildFile)) {
-            CliOutput.err("jk native: " + cc.jumpkick.cli.PathDisplay.styledRaw(buildFile) + " not found.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", cc.jumpkick.cli.PathDisplay.styledRaw(buildFile) + " not found."));
             return Exit.NO_INPUT;
         }
 
@@ -110,11 +110,10 @@ public final class NativeCommand implements CliCommand {
                 && !peek.workspaceRootDir().equals(startDir.toString())) {
             Path wsRoot = Path.of(peek.workspaceRootDir());
             {
-                CliOutput.err("jk native: building from workspace root "
-                        + wsRoot.getFileName()
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", "building from workspace root " + wsRoot.getFileName()
                         + " (module: "
                         + startDir.getFileName()
-                        + ")");
+                        + ")"));
                 return runWorkspaceNative(wsRoot, cache);
             }
         }
@@ -158,7 +157,7 @@ public final class NativeCommand implements CliCommand {
         // install owns this terminal and must never run inside the engine.
         var rootInfo = BuildCommand.projectInfoOrNull(wsRoot);
         if (rootInfo == null) {
-            CliOutput.err("jk native: could not read the workspace summary at " + wsRoot);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", "could not read the workspace summary at " + wsRoot));
             return Exit.CONFIG;
         }
         if (rootInfo.moduleDirs().isEmpty()) {
@@ -220,8 +219,7 @@ public final class NativeCommand implements CliCommand {
                 @Override
                 public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
                     if (!o.success()) {
-                        CliOutput.err(
-                                "jk native: " + wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")");
+                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")"));
                     }
                 }
             };
@@ -229,10 +227,10 @@ public final class NativeCommand implements CliCommand {
             try {
                 result = EngineClient.runNative(paths, req, listener);
             } catch (IOException e) {
-                CliOutput.err("jk native: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", e.getMessage()));
                 return Exit.SOFTWARE;
             }
-            for (String err : result.errors()) CliOutput.err("jk native: " + err);
+            for (String err : result.errors()) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", err));
             return result.exitCode();
         }
 
@@ -314,9 +312,8 @@ public final class NativeCommand implements CliCommand {
         // Thin client: the gate reads the engine's summary, never a client-side parse.
         cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
         if (build == null || !"ALWAYS".equals(build.nativeMode())) {
-            CliOutput.err("jk native: "
-                    + projectDir.getFileName()
-                    + " is not native-eligible — set `always = true` under [native] to enable.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", projectDir.getFileName()
+                    + " is not native-eligible — set `always = true` under [native] to enable."));
             return Exit.CONFIG;
         }
 
@@ -352,10 +349,10 @@ public final class NativeCommand implements CliCommand {
                     hostedRequest(projectDir, cache, Map.of(projectDir, graalHome.get())),
                     listener);
         } catch (IOException e) {
-            CliOutput.err("jk native: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", e.getMessage()));
             return Exit.SOFTWARE;
         }
-        for (String err : result.errors()) CliOutput.err("jk native: " + err);
+        for (String err : result.errors()) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", err));
         return result.exitCode();
     }
 }

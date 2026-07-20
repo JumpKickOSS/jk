@@ -29,11 +29,11 @@ final class AotCachePackage {
         try {
             return runInner(projectDir, cacheDir);
         } catch (IOException e) {
-            CliOutput.err("jk build --aot-cache: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            CliOutput.err("jk build --aot-cache: interrupted");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "interrupted"));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
     }
@@ -45,7 +45,7 @@ final class AotCachePackage {
         cc.jumpkick.engine.protocol.ExecPlan plan = cc.jumpkick.cli.engine.EngineClient.execPlan(
                         cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir, "aot-cache", null, null);
         if (plan.error() != null) {
-            CliOutput.err("jk build --aot-cache: " + plan.error());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", plan.error()));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
 
@@ -104,24 +104,23 @@ final class AotCachePackage {
         });
         if (!process.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly();
-            CliOutput.err("jk build --aot-cache: the training run did not exit within "
-                    + TRAINING_TIMEOUT_SECONDS
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "the training run did not exit within " + TRAINING_TIMEOUT_SECONDS
                     + "s. Training needs one run that terminates — Spring Boot apps exit automatically;"
-                    + " other apps must exit on their own (a server main loop can't be trained this way yet).");
+                    + " other apps must exit on their own (a server main loop can't be trained this way yet)."));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
         reader.join(5_000);
         if (process.exitValue() != 0) {
-            CliOutput.err("jk build --aot-cache: training run failed (exit " + process.exitValue() + "):\n"
-                    + tail(output.toString()));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "training run failed (exit " + process.exitValue() + "):\n"
+                    + tail(output.toString())));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
         // JEP 514's one-step flow assembles the cache in a child JVM at exit; it is written
         // before the parent's waitFor returns. Verify the artifact exists either way.
         Path cachePath = outDir.resolve(cacheFile);
         if (!Files.isRegularFile(cachePath)) {
-            CliOutput.err("jk build --aot-cache: training completed but no " + cacheFile + " was produced:\n"
-                    + tail(output.toString()));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "training completed but no " + cacheFile + " was produced:\n"
+                    + tail(output.toString())));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
 

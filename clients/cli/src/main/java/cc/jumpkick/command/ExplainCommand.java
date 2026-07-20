@@ -135,7 +135,7 @@ public final class ExplainCommand implements CliCommand {
                 var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
                         startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err("jk explain: " + selected.errorMessage());
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
                     return Exit.CONFIG;
                 }
                 if (selected != null) {
@@ -154,7 +154,7 @@ public final class ExplainCommand implements CliCommand {
                     }
                 }
             } catch (Exception e) {
-                CliOutput.err("jk explain: module selection failed: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
                 return Exit.CONFIG;
             }
         }
@@ -524,7 +524,7 @@ public final class ExplainCommand implements CliCommand {
             throws Exception {
         String fmt = format.trim().toLowerCase(Locale.ROOT);
         if (!"dot".equals(fmt)) {
-            CliOutput.err("jk explain: unsupported --graph format '" + format + "' (supported: dot)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "unsupported --graph format '" + format + "' (supported: dot)"));
             return Exit.CONFIG;
         }
         JkBuild entry = JkBuildParser.parse(buildFile);
@@ -535,7 +535,7 @@ public final class ExplainCommand implements CliCommand {
             ModuleSelection.Result selected =
                     ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err("jk explain: " + selected.errorMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
                 return Exit.CONFIG;
             }
             Set<Path> only = selected != null ? selected.moduleDirs() : null;
@@ -554,7 +554,7 @@ public final class ExplainCommand implements CliCommand {
                 ModuleSelection.Result selected =
                         ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err("jk explain: " + selected.errorMessage());
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
                     return Exit.CONFIG;
                 }
             }
@@ -566,7 +566,7 @@ public final class ExplainCommand implements CliCommand {
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, dot);
-            CliOutput.err("jk explain: wrote " + out.toAbsolutePath().normalize());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "wrote " + out.toAbsolutePath().normalize()));
         } else {
             CliOutput.out(dot.endsWith("\n") ? dot.substring(0, dot.length() - 1) : dot);
         }

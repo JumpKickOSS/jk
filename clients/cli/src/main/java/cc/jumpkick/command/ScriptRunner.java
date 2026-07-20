@@ -76,7 +76,7 @@ final class ScriptRunner {
 
     private int runJavaScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err("jk tool run: script not found: " + script);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -89,7 +89,7 @@ final class ScriptRunner {
 
     private int runKotlinScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err("jk tool run: script not found: " + script);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
             return Exit.NO_INPUT;
         }
         ScriptHeader header = readHeader(script);
@@ -107,7 +107,7 @@ final class ScriptRunner {
 
     private int runKtsScript(Path script, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(script)) {
-            CliOutput.err("jk tool run: script not found: " + script);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "script not found: " + script));
             return Exit.NO_INPUT;
         }
         EngineClient.ScriptPrepareOutcome prep = prepare("kts", script);
@@ -161,7 +161,7 @@ final class ScriptRunner {
 
     private int runJar(Path jar, List<String> args) throws IOException, InterruptedException {
         if (!Files.isRegularFile(jar)) {
-            CliOutput.err("jk tool run: jar not found: " + jar);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "jar not found: " + jar));
             return Exit.NO_INPUT;
         }
         EngineClient.ScriptPrepareOutcome prep = prepare("jar", jar);

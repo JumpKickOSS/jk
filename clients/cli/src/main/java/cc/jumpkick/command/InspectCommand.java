@@ -48,14 +48,14 @@ public final class InspectCommand implements CliCommand {
         var proj = ProjectContext.require(startDir, "inspect").orElse(null);
         if (proj == null) return Exit.CONFIG;
         if (in.positionals().isEmpty()) {
-            CliOutput.err("jk inspect: expected a step name (try `jk tasks`)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", "expected a step name (try `jk tasks`)"));
             return Exit.USAGE;
         }
         try {
             return TasksCommand.showOrInspect(
                     "inspect", in.positionals().getFirst(), in, startDir, proj.buildFile());
         } catch (IllegalStateException e) {
-            CliOutput.err("jk inspect: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Inspect", e.getMessage()));
             return Exit.CONFIG;
         }
     }

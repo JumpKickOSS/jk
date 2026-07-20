@@ -42,7 +42,7 @@ public final class WhyCommand implements CliCommand {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = dir.resolve("jk.lock");
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
-            CliOutput.err("jk why: project must have jk.toml and jk.lock (run `jk lock` first)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", "project must have jk.toml and jk.lock (run `jk lock` first)"));
             return Exit.CONFIG;
         }
 
@@ -50,11 +50,11 @@ public final class WhyCommand implements CliCommand {
         // The graph reasoning is engine-side (thin client): matching + provenance ride WHY_ACK.
         WhyReport report = cc.jumpkick.cli.engine.EngineClient.why(cc.jumpkick.engine.EnginePaths.current(), dir, query);
         if (report.error() != null) {
-            CliOutput.err("jk why: " + report.error());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", report.error()));
             return Exit.CONFIG;
         }
         if (report.matchNames().isEmpty()) {
-            CliOutput.err("jk why: " + query + " is not in jk.lock");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", query + " is not in jk.lock"));
             return 1;
         }
 

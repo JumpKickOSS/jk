@@ -109,8 +109,8 @@ public final class ToolRunCommand implements CliCommand {
             return delegate.runProject(dir, args);
         }
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
-            CliOutput.err("jk tool run: " + dir + " is a JBang catalog — `alias@…` references aren't"
-                    + " supported yet.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", dir + " is a JBang catalog — `alias@…` references aren't"
+                    + " supported yet."));
             return Exit.USAGE;
         }
         ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile);
@@ -127,9 +127,9 @@ public final class ToolRunCommand implements CliCommand {
                     .toList();
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
-        CliOutput.err("jk tool run: nothing runnable in " + dir
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "nothing runnable in " + dir
                 + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
-                + scripts.size() + ").");
+                + scripts.size() + ")."));
         return Exit.USAGE;
     }
 
@@ -168,7 +168,7 @@ public final class ToolRunCommand implements CliCommand {
                             expanded, canonical, refStr, cacheDir, refresh, /* requireJkToml */ false),
                     steps -> PipelineConsole.chooseConsoleListener("tool-git-fetch", steps, mode));
         } catch (IOException e) {
-            CliOutput.err("jk tool run: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.checkout() == null) return 1;
@@ -177,7 +177,7 @@ public final class ToolRunCommand implements CliCommand {
         if (subdir != null) {
             Path sub = checkout.resolve(subdir).normalize();
             if (!sub.startsWith(checkout) || !Files.isDirectory(sub)) {
-                CliOutput.err("jk tool run: no directory `" + subdir + "` in " + input);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "no directory `" + subdir + "` in " + input));
                 return Exit.USAGE;
             }
             checkout = sub;
@@ -286,7 +286,7 @@ public final class ToolRunCommand implements CliCommand {
                 fetched = UrlToolSource.fetch(
                         u.raw(), cacheDirOverride != null ? cacheDirOverride : JkDirs.cache(), forceRecompile);
             } catch (IOException e) {
-                CliOutput.err("jk tool run: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
                 return Exit.SOFTWARE;
             }
             return new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile)
@@ -324,7 +324,7 @@ public final class ToolRunCommand implements CliCommand {
                     steps -> PipelineConsole.chooseConsoleListener(
                             "tool-run", steps, PipelineConsole.modeFor(global)));
         } catch (IOException e) {
-            CliOutput.err("jk tool run: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success() || outcome.mainClass() == null || outcome.coord() == null) return 1;

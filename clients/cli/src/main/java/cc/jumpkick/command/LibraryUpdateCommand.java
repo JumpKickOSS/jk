@@ -63,7 +63,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         try {
             result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
         } catch (IOException e) {
-            CliOutput.err("jk library update: failed to reach " + source + "\n  " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Library", "failed to reach " + source + "\n  " + e.getMessage()));
             return 1;
         }
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
@@ -77,8 +77,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         try {
             after = materialise(body);
         } catch (RuntimeException e) {
-            CliOutput.err("jk library update: refusing to replace cache — upstream payload did not validate:\n  "
-                    + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Library", "refusing to replace cache — upstream payload did not validate:\\n  " + e.getMessage()));
             return 1;
         }
 

@@ -80,7 +80,7 @@ public final class SelectiveCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
 
         if (in.positionals().isEmpty()) {
-            CliOutput.err("jk selective: expected resolve | prepare | run");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected resolve | prepare | run"));
             return Exit.USAGE;
         }
         String action = in.positionals().getFirst().trim().toLowerCase(Locale.ROOT);
@@ -94,7 +94,7 @@ public final class SelectiveCommand implements CliCommand {
             case "prepare" -> prepare(dir, proj.buildFile(), since, modules, planPath);
             case "run" -> runVerb(in, dir, proj.buildFile(), since, modules, planPath);
             default -> {
-                CliOutput.err("jk selective: unknown action `" + action + "` (resolve | prepare | run)");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "unknown action `" + action + "` (resolve | prepare | run)"));
                 yield Exit.USAGE;
             }
         };
@@ -105,16 +105,16 @@ public final class SelectiveCommand implements CliCommand {
             throws Exception {
         JkBuild entry = JkBuildParser.parse(buildFile);
         if ((since == null || since.isBlank()) && (modules == null || modules.isBlank())) {
-            CliOutput.err("jk selective resolve: pass --since=<ref> and/or --modules=<sel>");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
             return Exit.USAGE;
         }
         var selected = ModuleSelection.resolveOptional(dir, entry, modules, since);
         if (selected == null) {
-            CliOutput.err("jk selective resolve: pass --since=<ref> and/or --modules=<sel>");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
             return Exit.USAGE;
         }
         if (!selected.ok()) {
-            CliOutput.err("jk selective: " + selected.errorMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", selected.errorMessage()));
             return Exit.CONFIG;
         }
         if (into != null) into.addAll(selected.moduleDirs());
@@ -178,12 +178,12 @@ public final class SelectiveCommand implements CliCommand {
             Invocation in, Path dir, Path buildFile, String since, String modules, Path planPath)
             throws Exception {
         if (in.positionals().size() < 2) {
-            CliOutput.err("jk selective run: expected build | test");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected build | test"));
             return Exit.USAGE;
         }
         String verb = in.positionals().get(1).trim().toLowerCase(Locale.ROOT);
         if (!verb.equals("build") && !verb.equals("test")) {
-            CliOutput.err("jk selective run: expected build | test (got " + verb + ")");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected build | test (got " + verb + ")"));
             return Exit.USAGE;
         }
 
@@ -197,7 +197,7 @@ public final class SelectiveCommand implements CliCommand {
             if (plan.modules.isEmpty()
                     && (plan.since == null || plan.since.isBlank())
                     && (plan.modulesSpec == null || plan.modulesSpec.isBlank())) {
-                CliOutput.err("jk selective run: plan " + planPath + " has no modules");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "plan " + planPath + " has no modules"));
                 return Exit.CONFIG;
             }
             // Prefer plan modules as an explicit --modules list of relative paths.
@@ -211,7 +211,7 @@ public final class SelectiveCommand implements CliCommand {
 
         if ((effectiveSince == null || effectiveSince.isBlank())
                 && (effectiveModules == null || effectiveModules.isBlank())) {
-            CliOutput.err("jk selective run: pass --since / --modules, or run `jk selective prepare` first");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since / --modules, or run `jk selective prepare` first"));
             return Exit.USAGE;
         }
 
@@ -239,16 +239,15 @@ public final class SelectiveCommand implements CliCommand {
                 if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
             }
             if (dirty.isEmpty()) {
-                CliOutput.out("jk selective run: content hashes match plan — nothing changed ("
-                        + plannedClean.size()
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Selective", "content hashes match plan — nothing changed (" + plannedClean.size()
                         + " module"
                         + (plannedClean.size() == 1 ? "" : "s")
-                        + ")");
+                        + ")"));
                 return 0;
             }
             effectiveModules = String.join(",", dirty);
             effectiveSince = null; // modules list is authoritative
-            CliOutput.err("jk selective run: content-hash dirty modules: " + effectiveModules);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "content-hash dirty modules: " + effectiveModules));
         }
 
         List<String> args = new ArrayList<>();

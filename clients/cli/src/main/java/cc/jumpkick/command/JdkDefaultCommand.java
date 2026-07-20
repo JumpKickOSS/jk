@@ -66,24 +66,23 @@ public final class JdkDefaultCommand implements CliCommand {
 
         if (lts) {
             if (spec != null && !spec.isBlank()) {
-                CliOutput.err("jk jdk default: --lts and <spec> are mutually exclusive.");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "--lts and <spec> are mutually exclusive."));
                 return Exit.USAGE;
             }
             return applyLts(registry, defaults, CliOutput.stdout(), CliOutput.stderr()) ? 0 : 1;
         }
         if (spec == null || spec.isBlank()) {
-            CliOutput.err("jk jdk default: <spec> required (or pass --lts).");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "<spec> required (or pass --lts)."));
             return Exit.USAGE;
         }
         Optional<JdkHit> match = cc.jumpkick.jdk.JdkKeywords.isKeyword(spec)
                 ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.listHits())
                 : registry.findHitBySpec(spec);
         if (match.isEmpty()) {
-            CliOutput.err("jk jdk default: no installed JDK matches `"
-                    + spec
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no installed JDK matches `" + spec
                     + "` (try `jk jdk list` or `jk jdk install "
                     + spec
-                    + "`)");
+                    + "`)"));
             return 1;
         }
         applyDefault(match.get(), defaults, CliOutput.stdout());

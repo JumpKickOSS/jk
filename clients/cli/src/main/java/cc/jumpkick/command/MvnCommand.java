@@ -102,11 +102,11 @@ public final class MvnCommand implements CliCommand {
             p = cc.jumpkick.cli.engine.EngineClient.provision(
                     cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
         } catch (IOException e) {
-            CliOutput.err("jk " + tool + ": " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(tool, e.getMessage()));
             return null;
         }
 
-        if (p.error() != null) CliOutput.err("jk " + tool + ": " + p.error());
+        if (p.error() != null) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(tool, p.error()));
         if ("LINKED".equals(p.source()) || "DOWNLOADED".equals(p.source())) {
             CliOutput.err((isGradle ? "Gradle " : "Maven ") + p.version() + " "
                     + p.source().toLowerCase());

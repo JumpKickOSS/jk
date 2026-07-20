@@ -94,7 +94,7 @@ public final class VerifyBuildCommand implements CliCommand {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = dir.resolve("jk.lock");
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
-            CliOutput.err("jk verify: jk.toml and jk.lock required in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Verify", "jk.toml and jk.lock required in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();

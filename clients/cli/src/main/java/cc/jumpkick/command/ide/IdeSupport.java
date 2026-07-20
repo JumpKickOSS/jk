@@ -276,16 +276,13 @@ public final class IdeSupport {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            cc.jumpkick.cli.CliOutput.err(
-                    "jk ide: dependency sync timed out after "
-                            + (BEST_EFFORT_SYNC_MS / 1000)
-                            + "s — missing jars will be skipped");
+            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000)
+                            + "s — missing jars will be skipped"));
             return;
         }
         Exception e = fail.get();
         if (e != null) {
-            cc.jumpkick.cli.CliOutput.err(
-                    "jk ide: dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped");
+            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped"));
         }
     }
 

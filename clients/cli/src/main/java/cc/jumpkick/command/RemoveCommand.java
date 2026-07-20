@@ -67,12 +67,12 @@ public final class RemoveCommand implements CliCommand {
         Path dir = global.workingDir();
         Path file = dir.resolve("jk.toml");
         if (!Files.exists(file)) {
-            CliOutput.err("jk remove: no jk.toml in current directory");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", "no jk.toml in current directory"));
             return Exit.CONFIG;
         }
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            CliOutput.err("jk remove: --test / --runtime / --provided / --processor are mutually exclusive");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", "--test / --runtime / --provided / --processor are mutually exclusive"));
             return Exit.USAGE;
         }
         Scope scope = test
@@ -82,14 +82,14 @@ public final class RemoveCommand implements CliCommand {
         try {
             name = shortNameOf(nameArg);
         } catch (IllegalArgumentException e) {
-            CliOutput.err("jk remove: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
             return Exit.USAGE;
         }
 
         try {
             EngineEdits.apply(file, "remove-dependency", java.util.List.of(scope.canonical(), name));
         } catch (IOException e) {
-            CliOutput.err("jk remove: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
             return 1;
         }
         CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().darkGray())

@@ -62,8 +62,7 @@ public final class JdkGraalCommand implements CliCommand {
         List<JdkHit> graals =
                 registry.listHits().stream().filter(JdkGraalCommand::isGraal).toList();
         if (graals.isEmpty()) {
-            CliOutput.err("jk jdk graal: no GraalVM JDK installed — install one with "
-                    + "`jk jdk install native` (or `jk jdk install graalvm-25`).");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no GraalVM JDK installed — install one with " + "`jk jdk install native` (or `jk jdk install graalvm-25`)."));
             return 1;
         }
 
@@ -75,7 +74,7 @@ public final class JdkGraalCommand implements CliCommand {
                     ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, graals)
                     : registry.findHitBySpec(spec).filter(JdkGraalCommand::isGraal);
             if (match.isEmpty()) {
-                CliOutput.err("jk jdk graal: no installed GraalVM matches `" + spec + "` (try `jk jdk list`).");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no installed GraalVM matches `" + spec + "` (try `jk jdk list`)."));
                 return 1;
             }
             chosen = match.get();

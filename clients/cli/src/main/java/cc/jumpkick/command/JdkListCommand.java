@@ -626,8 +626,7 @@ public final class JdkListCommand implements CliCommand {
             return client.fetch(refresh, /* firstClassOnly= */ false);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            CliOutput.err(
-                    "jk jdk list: JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "JetBrains feed unreachable (" + e.getMessage() + "); showing installed JDKs only."));
             return null;
         }
     }

@@ -330,11 +330,10 @@ public final class JdkUpdateCommand implements CliCommand {
 
     private boolean hostSupported() {
         if (HostPlatform.supported()) return true;
-        CliOutput.err("jk jdk update: host "
-                + System.getProperty("os.name")
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "host " + System.getProperty("os.name")
                 + "/"
                 + System.getProperty("os.arch")
-                + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
+                + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
         return false;
     }
 

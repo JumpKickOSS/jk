@@ -137,7 +137,7 @@ public final class SelfCommand extends GroupCommand {
             Path client = Path.of(in.positionals().get(0));
             Path engineJar = Path.of(in.positionals().get(1));
             if (!Files.isRegularFile(engineJar)) {
-                CliOutput.err("jk self materialize: engine jar not found: " + engineJar);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "engine jar not found: " + engineJar));
                 return Exit.SOFTWARE;
             }
             VersionStore.Materialized m = VersionStore.current()
@@ -193,14 +193,14 @@ public final class SelfCommand extends GroupCommand {
                         .trim();
             }
             if (target.isEmpty()) {
-                CliOutput.err("jk self update: could not resolve a target version");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "could not resolve a target version"));
                 return Exit.SOFTWARE;
             }
             VersionStore store = VersionStore.current();
             Cas cas = new Cas(JkDirs.cache());
             String running = cc.jumpkick.cli.Jk.VERSION;
             if (target.equals(running) && store.resolve(target).isPresent()) {
-                CliOutput.out("jk " + target + " is already current");
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", target + " is already current"));
                 return 0;
             }
 
@@ -210,7 +210,7 @@ public final class SelfCommand extends GroupCommand {
             }
 
             flipPointer(m);
-            CliOutput.out("jk " + target + " installed (" + m.root() + ")");
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", target + " installed (" + m.root() + ")"));
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.

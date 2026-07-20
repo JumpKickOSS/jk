@@ -522,7 +522,7 @@ public final class CacheCommand extends GroupCommand {
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
-                CliOutput.err("jk cache clear: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Cache", e.getMessage()));
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             return result.success() ? 0 : 1;
@@ -640,7 +640,7 @@ public final class CacheCommand extends GroupCommand {
                         CacheCommand::printWait,
                         summary);
             } catch (IOException e) {
-                CliOutput.err("jk cache prune: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Cache", e.getMessage()));
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             if (summary[0] != null) warnReachableEvicted(summary[0].reachableEvicted());
@@ -752,7 +752,7 @@ public final class CacheCommand extends GroupCommand {
                         CacheCommand::printWait,
                         new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1]);
             } catch (IOException e) {
-                CliOutput.err("jk cache purge: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Cache", e.getMessage()));
                 return cc.jumpkick.model.command.Exit.SOFTWARE;
             }
             return pipelineResult.success() ? 0 : 1;

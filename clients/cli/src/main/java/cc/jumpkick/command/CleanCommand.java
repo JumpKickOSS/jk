@@ -122,7 +122,7 @@ public final class CleanCommand implements CliCommand {
                     (external, pipelines) -> {},
                     summary);
             if (!result.success() || summary[0] == null) {
-                CliOutput.err("jk clean: cache GC failed — run `jk engine status` for details");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Clean", "cache GC failed — run `jk engine status` for details"));
                 return;
             }
         }
@@ -200,7 +200,7 @@ public final class CleanCommand implements CliCommand {
                     summary);
             return result.success() ? 0 : 1;
         } catch (IOException e) {
-            CliOutput.err("jk clean --force: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Clean", e.getMessage()));
             return cc.jumpkick.model.command.Exit.SOFTWARE;
         }
     }

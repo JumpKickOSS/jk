@@ -76,7 +76,7 @@ public final class UpdateCommand implements CliCommand {
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            CliOutput.err("jk update: no jk.toml in " + PathDisplay.styledRaw(dir));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -122,11 +122,11 @@ public final class UpdateCommand implements CliCommand {
             outcome = EngineClient.runUpdate(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), handler);
         } catch (java.io.IOException e) {
-            CliOutput.err("jk update: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            CliOutput.err("jk update: " + err);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", err));
         }
         return outcome.exitCode();
     }
@@ -138,11 +138,11 @@ public final class UpdateCommand implements CliCommand {
             outcome = EngineClient.runUpdateGitOnly(
                     cc.jumpkick.engine.EnginePaths.current(), updateRequest(dir, cache), gitTarget);
         } catch (java.io.IOException e) {
-            CliOutput.err("jk update: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", e.getMessage()));
             return Exit.SOFTWARE;
         }
         for (String err : outcome.errors()) {
-            CliOutput.err("jk update: " + err);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", err));
         }
         if (outcome.success() && !global.outputIsJson()) {
             printGitSummary(outcome.refreshed());

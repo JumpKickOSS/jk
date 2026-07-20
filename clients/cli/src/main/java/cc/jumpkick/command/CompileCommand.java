@@ -75,7 +75,7 @@ public final class CompileCommand implements CliCommand {
                             dir, cache, profileName, session.offline(), session.force(), global.verbose),
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, target));
         } catch (IOException e) {
-            CliOutput.err("jk compile: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Compile", e.getMessage()));
             return Exit.SOFTWARE;
         }
 

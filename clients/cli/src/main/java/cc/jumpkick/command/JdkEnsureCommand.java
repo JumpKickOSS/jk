@@ -80,8 +80,7 @@ public final class JdkEnsureCommand implements CliCommand {
         this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
 
         if (spec == null || spec.isBlank()) {
-            CliOutput.err("jk jdk ensure: a <spec> is required "
-                    + "(e.g. `jk jdk ensure 25`, `jk jdk ensure 25.0.3`, `jk jdk ensure lts`).");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "a <spec> is required " + "(e.g. `jk jdk ensure 25`, `jk jdk ensure 25.0.3`, `jk jdk ensure lts`)."));
             return Exit.USAGE;
         }
 
@@ -168,13 +167,12 @@ public final class JdkEnsureCommand implements CliCommand {
         Optional<JdkCatalog.Entry> entry = JdkKeywords.resolveToMajorSpec(catalog, "lts", os, arch)
                 .flatMap(majorSpec -> JdkSelector.select(catalog, JdkSpec.parse(majorSpec), os, arch));
         if (entry.isEmpty()) {
-            CliOutput.err("jk jdk ensure: no JDK matches "
-                    + spec
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no JDK matches " + spec
                     + " and no LTS JDK is available for "
                     + os
                     + "/"
                     + arch
-                    + ".");
+                    + "."));
             return 1;
         }
         JdkCatalog.Entry e = entry.get();
@@ -269,11 +267,10 @@ public final class JdkEnsureCommand implements CliCommand {
 
     private boolean hostSupported() {
         if (HostPlatform.supported()) return true;
-        CliOutput.err("jk jdk ensure: host "
-                + System.getProperty("os.name")
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "host " + System.getProperty("os.name")
                 + "/"
                 + System.getProperty("os.arch")
-                + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly.");
+                + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
         return false;
     }
 

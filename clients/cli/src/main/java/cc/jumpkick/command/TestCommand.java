@@ -99,7 +99,7 @@ public final class TestCommand implements CliCommand {
             var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
                     dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
-                CliOutput.err("jk test: " + selected.errorMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
                 return Exit.CONFIG;
             }
             if (selected != null && selected.moduleDirs().isEmpty()) {
@@ -157,7 +157,7 @@ public final class TestCommand implements CliCommand {
                     },
                     testResultHolder);
         } catch (IOException e) {
-            CliOutput.err("jk test: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
             return Exit.SOFTWARE;
         }
         testResult = testResultHolder[0];
@@ -209,7 +209,7 @@ public final class TestCommand implements CliCommand {
                         },
                         testResultHolder);
             } catch (IOException e) {
-                CliOutput.err("jk test: " + mod + ": " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
                 return Exit.SOFTWARE;
             }
             if (!result.success()) {

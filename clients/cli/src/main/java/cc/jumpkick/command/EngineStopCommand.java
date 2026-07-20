@@ -44,7 +44,7 @@ public final class EngineStopCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> before = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
-            CliOutput.out("jk engine: not running");
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "not running"));
             return Exit.SUCCESS;
         }
         long started = before.get().startedAtMillis();
@@ -65,8 +65,7 @@ public final class EngineStopCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         if (!PipelineConsole.isInteractiveTerminal()) {
-            CliOutput.out(
-                    "jk engine: shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)");
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)"));
             return Exit.SUCCESS;
         }
         return drainOnTty(paths, jobs, started);

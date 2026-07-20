@@ -73,7 +73,7 @@ public final class TrustCommand extends GroupCommand {
         public int run(Invocation in) throws IOException {
             String prefix = in.positionals().get(0);
             if (!prefix.contains("://")) {
-                CliOutput.err("jk trust add: not a URL prefix: " + prefix);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "not a URL prefix: " + prefix));
                 return Exit.USAGE;
             }
             boolean added = TrustedSources.load(stateDir(in)).add(prefix);
@@ -109,7 +109,7 @@ public final class TrustCommand extends GroupCommand {
         public int run(Invocation in) throws IOException {
             String coordinate = in.positionals().get(0);
             if (coordinate.contains("://") || !coordinate.contains(":")) {
-                CliOutput.err("jk trust plugin: expected group:artifact (or a group: prefix), got: " + coordinate);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "expected group:artifact (or a group: prefix), got: " + coordinate));
                 return Exit.USAGE;
             }
             boolean added = TrustedPlugins.load(stateDir(in)).add(coordinate);
@@ -181,7 +181,7 @@ public final class TrustCommand extends GroupCommand {
             boolean removed = TrustedSources.load(stateDir(in)).remove(prefix)
                     || TrustedPlugins.load(stateDir(in)).remove(prefix);
             if (!removed) {
-                CliOutput.err("jk trust remove: not in the trusted list: " + prefix);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "not in the trusted list: " + prefix));
                 return Exit.USAGE;
             }
             if (!GlobalOptions.from(in).outputIsJson()) {
@@ -214,14 +214,14 @@ public final class TrustCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws IOException {
             if (!in.isSet("jbang") && in.value("file").isEmpty()) {
-                CliOutput.err("jk trust import: pass --jbang to import JBang's trusted sources.");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "pass --jbang to import JBang's trusted sources."));
                 return Exit.USAGE;
             }
             Path source = in.value("file")
                     .map(Path::of)
                     .orElseGet(() -> Path.of(System.getProperty("user.home"), ".jbang", "trusted-sources.json"));
             if (!Files.isRegularFile(source)) {
-                CliOutput.err("jk trust import: " + source + " not found.");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", source + " not found."));
                 return Exit.NO_INPUT;
             }
             List<String> imported = TrustedSources.parseJBang(Files.readString(source));

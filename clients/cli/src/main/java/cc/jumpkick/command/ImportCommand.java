@@ -63,31 +63,29 @@ public final class ImportCommand implements CliCommand {
         if (source == null) {
             source = autoDetectSource(baseDir);
             if (source == null) {
-                CliOutput.err("jk import: no build file found in "
-                        + baseDir
-                        + " (looked for build.gradle.kts, build.gradle, pom.xml).");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", "no build file found in " + baseDir
+                        + " (looked for build.gradle.kts, build.gradle, pom.xml)."));
                 return Exit.NO_INPUT;
             }
             CliOutput.out("Importing " + PathDisplay.styled(source, baseDir));
         } else {
             source = source.isAbsolute() ? source : baseDir.resolve(source);
             if (!Files.exists(source)) {
-                CliOutput.err("jk import: source not found: " + PathDisplay.styled(source, baseDir));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", "source not found: " + PathDisplay.styled(source, baseDir)));
                 return Exit.NO_INPUT;
             }
         }
 
         String filename = source.getFileName().toString().toLowerCase(Locale.ROOT);
         if (!filename.endsWith("pom.xml") && !filename.equals("build.gradle") && !filename.equals("build.gradle.kts")) {
-            CliOutput.err("jk import: expected pom.xml, build.gradle, or build.gradle.kts");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", "expected pom.xml, build.gradle, or build.gradle.kts"));
             return Exit.USAGE;
         }
 
         Path projectDir = source.toAbsolutePath().getParent();
         Path target = out != null ? out : projectDir.resolve("jk.toml");
         if (Files.exists(target) && !force) {
-            CliOutput.err(
-                    "jk import: refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force).");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", "refusing to overwrite " + PathDisplay.styled(target, baseDir) + " (use --force)."));
             return Exit.CANT_CREATE;
         }
 
@@ -121,12 +119,12 @@ public final class ImportCommand implements CliCommand {
                     steps -> new cc.jumpkick.run.PipelineListener() {},
                     observer);
         } catch (IOException e) {
-            CliOutput.err("jk import: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!outcome.result().success()) {
             for (PipelineResult.Diagnostic d : outcome.result().errors()) {
-                CliOutput.err("jk import: " + d.message());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", d.message()));
             }
             return 1;
         }
@@ -135,10 +133,10 @@ public final class ImportCommand implements CliCommand {
         error = outcome.error();
         diag = outcome.diag();
 
-        if (error != null) CliOutput.err("jk import: " + error);
+        if (error != null) CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", error));
         if (warnings != 0) CliOutput.out("Import notes: " + warnings + " issue(s)");
         if (exit != 0 && diag != null && !diag.isBlank()) {
-            CliOutput.err("jk import: " + diag);
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Import", diag));
         }
         return exit;
     }

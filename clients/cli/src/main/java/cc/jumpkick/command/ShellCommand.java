@@ -47,8 +47,7 @@ public final class ShellCommand implements CliCommand {
         // waitFor() would block. Fail fast instead. Keyed on the controlling
         // terminal, so `jk shell` under `curl | bash` (piped stdin) still works.
         if (!cc.jumpkick.cli.tui.Interactivity.canPrompt()) {
-            CliOutput.err("jk shell: requires an interactive terminal "
-                    + "(run it directly from your shell, not piped or scripted)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Shell", "requires an interactive terminal " + "(run it directly from your shell, not piped or scripted)"));
             return Exit.CONFIG;
         }
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
@@ -57,9 +56,8 @@ public final class ShellCommand implements CliCommand {
         JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
         var target = new JkEnv(registry, origPath).resolve(dir);
         if (!target.isActive()) {
-            CliOutput.err("jk shell: no pinned JDK for "
-                    + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                    + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk.lock)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Shell", "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                    + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk.lock)"));
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");

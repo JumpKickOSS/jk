@@ -207,7 +207,7 @@ public final class CommandDispatch {
 
             if (!report.found()) return null;
             if (report.error() != null) {
-                CliOutput.err("jk " + command + ": " + report.error());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(command, report.error()));
                 return 1;
             }
             for (String line : report.output()) CliOutput.out(line);

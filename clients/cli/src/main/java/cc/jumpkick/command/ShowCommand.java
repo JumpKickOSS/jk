@@ -48,14 +48,14 @@ public final class ShowCommand implements CliCommand {
         var proj = ProjectContext.require(startDir, "show").orElse(null);
         if (proj == null) return Exit.CONFIG;
         if (in.positionals().isEmpty()) {
-            CliOutput.err("jk show: expected a step name (try `jk tasks`)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", "expected a step name (try `jk tasks`)"));
             return Exit.USAGE;
         }
         try {
             return TasksCommand.showOrInspect(
                     "show", in.positionals().getFirst(), in, startDir, proj.buildFile());
         } catch (IllegalStateException e) {
-            CliOutput.err("jk show: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", e.getMessage()));
             return Exit.CONFIG;
         }
     }

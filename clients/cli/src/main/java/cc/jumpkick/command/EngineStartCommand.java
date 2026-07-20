@@ -54,7 +54,7 @@ public final class EngineStartCommand implements CliCommand {
             CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Engine", GlobalConfig.nerdfont(), message));
             return Exit.SUCCESS;
         } catch (IOException e) {
-            CliOutput.err("jk engine: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Engine", e.getMessage()));
             return Exit.SOFTWARE;
         }
     }

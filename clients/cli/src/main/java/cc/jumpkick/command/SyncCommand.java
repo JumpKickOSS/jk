@@ -87,10 +87,10 @@ public final class SyncCommand implements CliCommand {
                     info == null ? null : info.jdk(),
                     info == null ? 0 : info.javaRelease(),
                     info == null ? null : info.lockJdk(),
-                    m -> CliOutput.err("jk sync: " + m),
+                    m -> CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", m)),
                     true);
         } catch (Exception e) {
-            CliOutput.err("jk sync: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
             return 1;
         }
 
@@ -120,7 +120,7 @@ public final class SyncCommand implements CliCommand {
                     fetched,
                     upToDate);
         } catch (IOException e) {
-            CliOutput.err("jk sync: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", e.getMessage()));
             return Exit.SOFTWARE;
         }
         // The engine ran the opportunistic cache prune on success (it did the work); nothing more

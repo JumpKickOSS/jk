@@ -432,11 +432,11 @@ public final class NewCommand implements CliCommand {
         try {
             inputs = fromFlags(cwd);
         } catch (IllegalArgumentException e) {
-            CliOutput.err("jk new: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
             return Exit.USAGE;
         }
         if (assembly && inputs.main().isEmpty()) {
-            CliOutput.err("jk new: --assembly requires --executable");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "--assembly requires --executable"));
             return Exit.USAGE;
         }
         if (Files.exists(inputs.directory().resolve("jk.toml"))) {
@@ -834,7 +834,7 @@ public final class NewCommand implements CliCommand {
                 }
             }
         } catch (Exception e) {
-            CliOutput.err("jk new: failed to install JDK: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "failed to install JDK: " + e.getMessage()));
             return Optional.empty();
         }
     }

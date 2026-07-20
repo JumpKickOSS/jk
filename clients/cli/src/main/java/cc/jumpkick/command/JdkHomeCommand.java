@@ -40,9 +40,8 @@ public final class JdkHomeCommand implements CliCommand {
         Path dir = GlobalOptions.from(in).workingDir();
         Optional<InstalledJdk> jdk = JdkResolver.forProject(dir, jdksDir);
         if (jdk.isEmpty()) {
-            CliOutput.err("jk jdk home: no pinned JDK for "
-                    + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                    + " (write `.jdk-version` via `jk jdk use <spec>`)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                    + " (write `.jdk-version` via `jk jdk use <spec>`)"));
             return Exit.CONFIG;
         }
         CliOutput.out("export JAVA_HOME=" + shellQuote(jdk.get().home().toString()));

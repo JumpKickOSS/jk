@@ -45,13 +45,12 @@ public final class DenyCommand implements CliCommand {
         Path jkBuild = projectDir.resolve("jk.toml");
         Path lockPath = projectDir.resolve("jk.lock");
         if (!Files.exists(jkBuild)) {
-            CliOutput.err("jk deny: " + jkBuild + " not found.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", jkBuild + " not found."));
             return Exit.NO_INPUT;
         }
         if (!Files.exists(lockPath)) {
-            CliOutput.err("jk deny: no jk.lock in "
-                    + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                    + " (run `jk lock` first).");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
+                    + " (run `jk lock` first)."));
             return Exit.CONFIG;
         }
         Path cache = JkDirs.cache();
@@ -74,10 +73,10 @@ public final class DenyCommand implements CliCommand {
         DenyReport report = pipeline.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
-                CliOutput.out("jk deny: " + report.checked() + " package(s) checked — no violations.");
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Deny", report.checked() + " package(s) checked — no violations."));
             return 0;
         }
-        CliOutput.err("jk deny: " + report.violationCount() + " violation(s):");
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", report.violationCount() + " violation(s):"));
         for (int i = 0; i < report.violationCount(); i++) {
             CliOutput.err("  "
                     + Coords.module(report.modules().get(i), report.versions().get(i)) + " — "

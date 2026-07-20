@@ -91,7 +91,7 @@ public final class RunCommand {
                     testResultHolder,
                     new String[1]);
         } catch (IOException e) {
-            CliOutput.err("jk run: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.SOFTWARE;
         }
         testResult = testResultHolder[0];
@@ -116,11 +116,11 @@ public final class RunCommand {
             // first and cached the same plan) — VERBOSE/JSON print no chip, so give them the plain
             // text version there instead of leaving the command silent.
             if (mode == PipelineConsole.Mode.VERBOSE || mode == PipelineConsole.Mode.JSON) {
-                CliOutput.err("jk run: " + e.getMessage());
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             }
             return Exit.DATA_ERR;
         } catch (IOException e) {
-            CliOutput.err("jk run: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.USAGE;
         }
         if (mode == PipelineConsole.Mode.VERBOSE || mode == PipelineConsole.Mode.JSON) {
@@ -154,16 +154,16 @@ public final class RunCommand {
             report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
                             cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
-            CliOutput.err("jk run: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!report.found()) {
-            CliOutput.err("jk run: the packaging plugin declares deploy command `" + command + "` but does not"
-                    + " register it");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "the packaging plugin declares deploy command `" + command + "` but does not"
+                    + " register it"));
             return Exit.SOFTWARE;
         }
         if (report.error() != null) {
-            CliOutput.err("jk run: " + report.error());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", report.error()));
             return 1;
         }
         for (String line : report.output()) CliOutput.out(line);

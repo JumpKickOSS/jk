@@ -155,8 +155,8 @@ public final class JshellCommand implements CliCommand {
         cmd.addAll(in.positionals());
 
         if (global.verbose) {
-            CliOutput.err("jk jshell: " + cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s)
-                    .collect(Collectors.joining(" ")));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s)
+                    .collect(Collectors.joining(" "))));
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);

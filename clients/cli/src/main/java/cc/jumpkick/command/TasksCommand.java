@@ -180,7 +180,7 @@ public final class TasksCommand implements CliCommand {
             } else {
                 // show: path only (Mill-like), one line per module
                 if (out.isEmpty()) {
-                    CliOutput.err("jk show: step `" + task.name() + "` has no primary output path");
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", "step `" + task.name() + "` has no primary output path"));
                     return Exit.CONFIG;
                 }
                 if (modules.size() > 1) {

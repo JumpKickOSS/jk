@@ -99,11 +99,11 @@ public final class PublishCommand implements CliCommand {
         VariantSelection.install(in, projectDir);
         Path jkBuildPath = projectDir.resolve("jk.toml");
         if (!Files.exists(jkBuildPath)) {
-            CliOutput.err("jk publish: " + jkBuildPath + " not found.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", jkBuildPath + " not found."));
             return Exit.NO_INPUT;
         }
         if (sign && keyFile == null) {
-            CliOutput.err("jk publish: --sign requires --key-file <path>.");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", "--sign requires --key-file <path>."));
             return Exit.USAGE;
         }
         Path cache = JkDirs.cache();
@@ -112,7 +112,7 @@ public final class PublishCommand implements CliCommand {
         // read (keychain/env prompts stay here; secrets never ride the wire).
         ProjectInfo info = projectInfo(projectDir);
         if (info.error() != null) {
-            CliOutput.err("jk publish: " + info.error());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", info.error()));
             return Exit.CONFIG;
         }
 
@@ -120,10 +120,10 @@ public final class PublishCommand implements CliCommand {
         // reference a coordinate no consumer can resolve. Refuse before any upload —
         // `jk export` warn-and-skips for the same reason.
         for (String pathDep : info.pathDeps()) {
-            CliOutput.err("jk publish: `" + pathDep
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", "`" + pathDep
                     + "` is a path dependency — path deps are consume-only and cannot be"
                     + " published. Promote it to a [workspace] module or a published"
-                    + " coordinate first.");
+                    + " coordinate first."));
             return Exit.CONFIG;
         }
 
@@ -132,7 +132,7 @@ public final class PublishCommand implements CliCommand {
         try {
             cred = resolvePublishCredential(jkBuildPath);
         } catch (RuntimeException e) {
-            CliOutput.err("jk publish: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", e.getMessage()));
             return Exit.CONFIG;
         }
         String gpgPass = sign ? (keyPassphrase != null ? keyPassphrase : System.getenv("JK_GPG_PASSPHRASE")) : null;
@@ -162,7 +162,7 @@ public final class PublishCommand implements CliCommand {
                             global.verbose),
                     steps -> PipelineConsole.chooseConsoleListener("publish", steps, mode));
         } catch (IOException e) {
-            CliOutput.err("jk publish: " + e.getMessage());
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", e.getMessage()));
             return Exit.SOFTWARE;
         }
         result = outcome.result();

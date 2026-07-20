@@ -50,7 +50,7 @@ public final class AssemblyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path toml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) {
-            CliOutput.err("jk assembly: no jk.toml in " + PathDisplay.styledRaw(dir));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Assembly", "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         JkBuild project = JkBuildParser.parse(toml);
