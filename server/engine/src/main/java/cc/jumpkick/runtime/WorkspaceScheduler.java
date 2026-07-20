@@ -77,6 +77,11 @@ public final class WorkspaceScheduler {
                                 .filter(unitDirs::contains)
                                 .allMatch(done::contains))
                         .toList();
+                // Cycle / filtered-dep hole: remaining units but none are ready → spin forever
+                // without this guard (Pipeline.topoSort detects cycles; this path did not).
+                if (ready.isEmpty()) {
+                    throw unsatisfiable(remaining, dirOf, edges, unitDirs, done);
+                }
                 List<CompletableFuture<R>> futures = new ArrayList<>();
                 for (U u : ready) futures.add(CompletableFuture.supplyAsync(() -> task.run(u), JkThreads.io()));
                 List<R> results = new ArrayList<>(futures.size());
@@ -112,7 +117,13 @@ public final class WorkspaceScheduler {
                         .whenComplete((r, ex) -> completed.add(new Done<>(unit, r, ex)));
                 inFlight++;
             }
-            if (inFlight == 0) return null; // nothing running and nothing admittable — the DAG has drained
+            if (inFlight == 0) {
+                // Drained cleanly, or unsatisfiable (cycle / missing dep) with work left.
+                if (!notStarted.isEmpty()) {
+                    throw unsatisfiable(notStarted, dirOf, edges, unitDirs, done);
+                }
+                return null;
+            }
             Done<U, R> d;
             try {
                 d = completed.take(); // wait for the next unit to finish
@@ -128,5 +139,34 @@ public final class WorkspaceScheduler {
             R stop = sink.after(List.of(d.unit()), Collections.singletonList(d.result()), List.copyOf(notStarted));
             if (stop != null) return stop; // fail-fast; any in-flight units drain in the background
         }
+    }
+
+    /**
+     * Fail closed when units remain but none are ready (cycle, or a dep filtered out of the unit
+     * set while still named in {@code edges}).
+     */
+    static <U> IllegalStateException unsatisfiable(
+            List<U> stuck,
+            Function<U, Path> dirOf,
+            Map<Path, Set<Path>> edges,
+            Set<Path> unitDirs,
+            Set<Path> done) {
+        StringBuilder msg = new StringBuilder("workspace schedule unsatisfiable: stuck units");
+        for (U u : stuck) {
+            Path dir = dirOf.apply(u);
+            List<String> unmet = edges.getOrDefault(dir, Set.of()).stream()
+                    .filter(unitDirs::contains)
+                    .filter(d -> !done.contains(d))
+                    .map(Path::toString)
+                    .sorted()
+                    .toList();
+            msg.append("\n  - ").append(dir);
+            if (!unmet.isEmpty()) {
+                msg.append(" waits on ").append(unmet);
+            } else {
+                msg.append(" (no ready deps among remaining units — likely a cycle)");
+            }
+        }
+        return new IllegalStateException(msg.toString());
     }
 }

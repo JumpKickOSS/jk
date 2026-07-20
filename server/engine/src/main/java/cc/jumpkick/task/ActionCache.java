@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.File;
 import java.io.IOException;
@@ -110,8 +111,10 @@ public final class ActionCache {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
         ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units);
-        Files.writeString(keysDir().resolve(actionKey), render(record));
-        Files.writeString(tasksDir().resolve(taskId), actionKey);
+        // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
+        // truncated keys/ or tasks/ file (JK-1069). Order preserved: key before task pointer.
+        AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
+        AtomicWrites.replace(tasksDir().resolve(taskId), actionKey);
         return record;
     }
 

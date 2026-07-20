@@ -74,19 +74,15 @@ public final class CasPrewriter implements AutoCloseable {
                 if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
 
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
-                long size = Files.size(file);
-                long mtime = Files.getLastModifiedTime(file).toMillis();
-
+                // Authoritative pass always content-hashes. Size+mtime alone can miss a
+                // same-size rewrite within one filesystem mtime tick (JK-1069 / coarse mtime).
+                // Poll-time CAS ingest is still a win when the hex matches (put is a no-op hit).
+                String hex = Hashing.sha256Hex(file);
                 Processed pre = processed.get(file);
-                if (pre != null && pre.size == size && pre.mtime == mtime) {
-                    // Pre-processing caught this one and its content hasn't
-                    // changed — reuse the cached hex.
-                    outputs.put(relPath, pre.hex);
-                } else {
-                    // Either missed by the poller, or modified after we saw
-                    // it. Hash + link now.
-                    outputs.put(relPath, hashAndLink(file));
+                if (pre == null || !pre.hex.equals(hex)) {
+                    cas.putFile(file, hex);
                 }
+                outputs.put(relPath, hex);
             }
         }
         return outputs;
@@ -141,8 +137,11 @@ public final class CasPrewriter implements AutoCloseable {
         }
     }
 
+    /**
+     * Streamed SHA-256 then {@link Cas#putFile} <em>copy</em> into CAS (never hard-link — compile
+     * trees rewrite class files in place; linking would poison the blob). Name kept for call sites.
+     */
     private String hashAndLink(Path file) throws IOException {
-        // Streamed hash + hard-link — the file's bytes never land in the heap.
         String hex = Hashing.sha256Hex(file);
         cas.putFile(file, hex);
         return hex;

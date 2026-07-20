@@ -198,4 +198,44 @@ class ActionCacheTest {
         assertThat(Files.readString(outputs.resolve("Keep.class"))).isEqualTo("keep-v2");
         assertThat(outputs.resolve("Stale.class")).doesNotExist();
     }
+
+    @Test
+    void concurrent_store_lookup_never_reads_torn_metadata(@TempDir Path tempDir) throws Exception {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs);
+        Files.writeString(outputs.resolve("a.class"), "payload");
+
+        int threads = 8;
+        int rounds = 40;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<Throwable> fail =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+        for (int t = 0; t < threads; t++) {
+            final int id = t;
+            futures.add(pool.submit(() -> {
+                try {
+                    start.await();
+                    for (int i = 0; i < rounds; i++) {
+                        String key = "k" + (i % 4);
+                        String task = "task-" + id;
+                        cache.storeWithOutputs(task, key, Map.of("s", "1"), Map.of("a.class", "deadbeef"));
+                        cache.lookup(key); // must not throw on partial write
+                        cache.lastFor(task);
+                    }
+                } catch (Throwable e) {
+                    fail.compareAndSet(null, e);
+                }
+            }));
+        }
+        start.countDown();
+        for (var f : futures) f.get();
+        pool.shutdown();
+        if (fail.get() != null) {
+            throw new AssertionError("torn metadata observed", fail.get());
+        }
+    }
 }

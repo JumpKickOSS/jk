@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -140,5 +141,40 @@ class WorkspaceSchedulerTest {
                 (justCompleted, results, remaining) -> justCompleted.contains("a") ? "FAILED" : null,
                 0);
         assertThat(stop).isEqualTo("FAILED");
+    }
+
+    /** A↔B cycle: neither unit is ever ready → must throw, not spin. */
+    private static Map<Path, Set<Path>> cycleEdges() {
+        return Map.of(p("a"), Set.of(p("b")), p("b"), Set.of(p("a")));
+    }
+
+    @Test
+    void unbounded_cycle_throws_naming_stuck_units() {
+        assertThatThrownBy(() -> WorkspaceScheduler.run(
+                        List.of("a", "b"),
+                        WorkspaceSchedulerTest::p,
+                        cycleEdges(),
+                        unit -> unit,
+                        (justCompleted, results, remaining) -> null,
+                        0))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unsatisfiable")
+                .hasMessageContaining("a")
+                .hasMessageContaining("b");
+    }
+
+    @Test
+    void bounded_cycle_throws_naming_stuck_units() {
+        assertThatThrownBy(() -> WorkspaceScheduler.run(
+                        List.of("a", "b"),
+                        WorkspaceSchedulerTest::p,
+                        cycleEdges(),
+                        unit -> unit,
+                        (justCompleted, results, remaining) -> null,
+                        2))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("unsatisfiable")
+                .hasMessageContaining("a")
+                .hasMessageContaining("b");
     }
 }

@@ -101,4 +101,30 @@ class CasPrewriterTest {
 
         assertThat(outputs).isEmpty();
     }
+
+    /**
+     * Same size + same mtime as a poll-stable file must still re-content-hash on finish — coarse
+     * mtime filesystems can rewrite bytes without advancing mtime within one tick (JK-1069).
+     */
+    @Test
+    void finish_rehashes_when_content_changes_without_size_mtime_change(@TempDir Path tempDir) throws Exception {
+        Path classes = tempDir.resolve("classes");
+        Files.createDirectories(classes);
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        Path file = classes.resolve("Same.class");
+        // Equal-length payloads so size stays constant; force identical mtime after rewrite.
+        Files.writeString(file, "AAAAAA");
+        var mtime = Files.getLastModifiedTime(file);
+
+        CasPrewriter prewriter = CasPrewriter.watching(cas, classes);
+        try {
+            Thread.sleep(350); // poll settles first content
+            Files.writeString(file, "BBBBBB");
+            Files.setLastModifiedTime(file, mtime);
+        } finally {
+            Map<String, String> outputs = prewriter.finish();
+            assertThat(outputs).containsEntry("Same.class", Hashing.sha256Hex("BBBBBB".getBytes()));
+            assertThat(outputs.get("Same.class")).isNotEqualTo(Hashing.sha256Hex("AAAAAA".getBytes()));
+        }
+    }
 }
