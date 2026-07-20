@@ -78,6 +78,27 @@ class VersionStoreTest {
     }
 
     @Test
+    void rematerializing_snapshot_with_new_client_bytes_replaces_client(@TempDir Path dir) throws Exception {
+        // JK-1059: engine jar unchanged, client binary rebuilt — versions/ tree must update.
+        var cas = new Cas(dir.resolve("cache"));
+        var store = new VersionStore(dir.resolve("versions"));
+        Path jar = dir.resolve("engine.jar");
+        Files.writeString(jar, "engine same");
+        Path clientV1 = dir.resolve("jk-v1");
+        Files.writeString(clientV1, "client bytes v1");
+        Path clientV2 = dir.resolve("jk-v2");
+        Files.writeString(clientV2, "client bytes v2 (new dist)");
+
+        var first = store.materializeFromFiles("0.10.0-SNAPSHOT", cas, jar, clientV1);
+        assertThat(first.clientBin()).isPresent();
+        assertThat(first.clientBin().get()).hasContent("client bytes v1");
+
+        var second = store.materializeFromFiles("0.10.0-SNAPSHOT", cas, jar, clientV2);
+        assertThat(second.clientBin()).isPresent();
+        assertThat(second.clientBin().get()).hasContent("client bytes v2 (new dist)");
+    }
+
+    @Test
     void prune_retires_a_stale_version_with_its_engine_aot_caches(@TempDir Path home) throws Exception {
         VersionStore store = new VersionStore(home.resolve("versions"));
         java.nio.file.Path stale =

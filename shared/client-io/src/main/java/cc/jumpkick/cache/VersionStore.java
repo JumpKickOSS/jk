@@ -134,7 +134,7 @@ public final class VersionStore {
     public Materialized materialize(String version, Cas cas, String engineJarSha, String clientBinSha)
             throws IOException {
         Optional<Materialized> existing = resolve(version);
-        if (existing.isPresent() && hasContent(existing.get(), engineJarSha)) return existing.get();
+        if (existing.isPresent() && hasContent(existing.get(), engineJarSha, clientBinSha)) return existing.get();
 
         Path finalRoot = versionsDir().resolve(version);
         Files.createDirectories(versionsDir());
@@ -147,11 +147,11 @@ public final class VersionStore {
                         lockPath, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
                 java.nio.channels.FileLock lock = lockCh.lock()) {
             Optional<Materialized> raced = resolve(version);
-            if (raced.isPresent() && hasContent(raced.get(), engineJarSha)) return raced.get();
+            if (raced.isPresent() && hasContent(raced.get(), engineJarSha, clientBinSha)) return raced.get();
             if (raced.isPresent()) {
                 // Same version, DIFFERENT bytes: a dev -SNAPSHOT re-install. Replace the stale
-                // tree — short-circuiting here once left a new client running against an old
-                // engine jar. (Release versions are immutable, so they always match above.)
+                // tree — short-circuiting on engine-only match once left a new client binary
+                // unused while versions/<v>/bin/jk stayed old (JK-1059).
                 deleteRecursively(finalRoot);
             }
             return materializeLocked(version, cas, engineJarSha, clientBinSha, finalRoot);
@@ -180,11 +180,19 @@ public final class VersionStore {
         return java.util.Optional.empty();
     }
 
-    /** True when the materialized tree's manifest records exactly this engine jar. */
-    private static boolean hasContent(Materialized m, String engineJarSha) {
+    /**
+     * True when the materialized tree's manifest records this engine jar, and — when a client
+     * binary was supplied — the same client content. Engine-only checks left SNAPSHOT client
+     * binaries stale when the engine jar was unchanged (JK-1059).
+     */
+    private static boolean hasContent(Materialized m, String engineJarSha, String clientBinSha) {
         try {
             String manifest = Files.readString(m.root().resolve(MANIFEST));
-            return manifest.contains("engine-sha256 = \"" + engineJarSha + "\"");
+            if (!manifest.contains("engine-sha256 = \"" + engineJarSha + "\"")) return false;
+            if (clientBinSha != null) {
+                return manifest.contains("client-sha256 = \"" + clientBinSha + "\"");
+            }
+            return true;
         } catch (IOException e) {
             return false; // unreadable manifest — re-materialize
         }
