@@ -49,10 +49,16 @@ public final class PolicyChecker {
         return (colon >= 0 ? hostPort.substring(0, colon) : hostPort).toLowerCase(Locale.ROOT);
     }
 
-    private static boolean hostMatches(String host, String pattern) {
-        String lower = pattern.toLowerCase(Locale.ROOT);
-        if (host.equals(lower)) return true;
-        // Allow trailing-suffix match e.g. ".bintray.com".
-        return host.endsWith("." + lower) || host.endsWith(lower);
+    /**
+     * Exact host match, or a DNS-label suffix match ({@code evil.com} matches {@code a.evil.com}
+     * but not {@code notevil.com}). Patterns may be written with a leading {@code .}.
+     */
+    static boolean hostMatches(String host, String pattern) {
+        if (host == null || host.isBlank() || pattern == null || pattern.isBlank()) return false;
+        String h = host.toLowerCase(Locale.ROOT);
+        String p = pattern.toLowerCase(Locale.ROOT);
+        if (p.startsWith(".")) p = p.substring(1);
+        if (h.equals(p)) return true;
+        return h.endsWith("." + p);
     }
 }

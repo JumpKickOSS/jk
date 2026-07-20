@@ -168,7 +168,7 @@ jk clean
 jk explain                   # forecast / cache status (why will this rebuild?)
 jk format
 jk audit                     # OSV
-jk deny                      # license / source / yanked policy
+jk deny                      # apply [deny.sources] host denylist (see Deny policy)
 jk publish                   # optional --sign / --sigstore / --slsa / --sbom
 jk image                     # OCI (daemonless)
 jk native                    # GraalVM native-image
@@ -176,6 +176,19 @@ jk verify                    # rebuild in a scratch dir and compare hashes
 ```
 
 Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
+
+### Deny policy
+
+```toml
+[deny.sources]
+deny = ["jcenter.bintray.com"]   # enforced at lock / jk deny (host match)
+# deny.licenses — NOT enforced yet; config is rejected at parse (JK-1062)
+# deny.yanked = "deny" — NOT enforced yet; omit or set "allow" only
+```
+
+Host matching is exact or a DNS-label suffix (`evil.com` matches `repo.evil.com`, not
+`notevil.com`). License and yanked policies will fail closed at parse until enforcement
+ships — silent no-ops are not allowed.
 
 ## Quality (format + lint)
 

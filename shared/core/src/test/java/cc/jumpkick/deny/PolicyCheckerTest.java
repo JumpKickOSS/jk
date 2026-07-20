@@ -53,7 +53,16 @@ class PolicyCheckerTest {
     }
 
     @Test
-    void toml_parser_extracts_the_deny_block() {
+    void host_match_does_not_flag_unrelated_suffix_hosts() {
+        // deny evil.com must not match notevil.com (JK-1062)
+        assertThat(PolicyChecker.hostMatches("notevil.com", "evil.com")).isFalse();
+        assertThat(PolicyChecker.hostMatches("evil.com", "evil.com")).isTrue();
+        assertThat(PolicyChecker.hostMatches("repo.evil.com", "evil.com")).isTrue();
+        assertThat(PolicyChecker.hostMatches("evil.com.evil", "evil.com")).isFalse();
+    }
+
+    @Test
+    void toml_parser_extracts_sources_only() {
         DenyPolicy policy = DenyPolicyParser.parse("""
                 [project]
                 group    = "g"
@@ -61,20 +70,42 @@ class PolicyCheckerTest {
                 version  = "1"
                 jdk      = 21
 
-                [deny]
-                yanked = "warn"
-
-                [deny.licenses]
-                deny  = ["GPL-3.0", "AGPL-3.0"]
-                allow = ["Apache-2.0", "MIT"]
-
                 [deny.sources]
                 deny = ["jcenter.bintray.com"]
                 """);
-        assertThat(policy.deniedLicenses()).containsExactly("GPL-3.0", "AGPL-3.0");
-        assertThat(policy.allowedLicenses()).containsExactly("Apache-2.0", "MIT");
         assertThat(policy.deniedSources()).containsExactly("jcenter.bintray.com");
-        assertThat(policy.yanked()).isEqualTo(DenyPolicy.YankedPolicy.WARN);
+        assertThat(policy.deniedLicenses()).isEmpty();
+        assertThat(policy.yanked()).isEqualTo(DenyPolicy.YankedPolicy.ALLOW);
+    }
+
+    @Test
+    void toml_parser_rejects_unenforced_licenses() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                cc.jumpkick.config.JkBuildParseException.class,
+                () -> DenyPolicyParser.parse("""
+                        [project]
+                        group = "g"
+                        name = "a"
+                        version = "1"
+                        jdk = 21
+                        [deny.licenses]
+                        deny = ["GPL-3.0"]
+                        """));
+    }
+
+    @Test
+    void toml_parser_rejects_unenforced_yanked_deny() {
+        org.junit.jupiter.api.Assertions.assertThrows(
+                cc.jumpkick.config.JkBuildParseException.class,
+                () -> DenyPolicyParser.parse("""
+                        [project]
+                        group = "g"
+                        name = "a"
+                        version = "1"
+                        jdk = 21
+                        [deny]
+                        yanked = "deny"
+                        """));
     }
 
     @Test
