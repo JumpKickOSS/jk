@@ -1,0 +1,113 @@
+# jk installer (Windows / PowerShell)
+#
+# Usage:
+#   # Local dist (from a Gradle build tree) — supported now:
+#   pwsh -File scripts/install.ps1 -LocalPath path\to\jk.exe
+#   pwsh -File scripts/install.ps1 -LocalPath path\to\jk   # thin-client installDist
+#
+#   # Download from releases — blocked until JK-1066 ships Windows archives + SHA256SUMS:
+#   pwsh -File scripts/install.ps1
+#   # or:  irm https://jumpkick.build/install.ps1 | iex   (not yet)
+#
+# Environment:
+#   JK_HOME          Install home (default: $HOME\.jk)
+#   JK_INSTALL_DIR   Bin dir (default: $JK_HOME\bin)
+#   JK_NONINTERACTIVE  Non-zero to skip interactive activate prompts
+#
+# See install.sh for the Unix sibling. JK-1073.
+
+[CmdletBinding()]
+param(
+    [Parameter(Position = 0)]
+    [string] $LocalPath = "",
+
+    # Skip engine warm-up (useful in CI when only PATH install matters).
+    [switch] $SkipEngineWarm
+)
+
+$ErrorActionPreference = "Stop"
+
+function Write-Info([string] $msg) { Write-Host "* $msg" }
+function Write-Note([string] $msg) { Write-Host "  $msg" }
+function Die([string] $msg) { Write-Error $msg; exit 1 }
+
+$JkHome = if ($env:JK_HOME) { $env:JK_HOME } else { Join-Path $HOME ".jk" }
+$InstallDir = if ($env:JK_INSTALL_DIR) { $env:JK_INSTALL_DIR } else { Join-Path $JkHome "bin" }
+
+if (-not $LocalPath) {
+    Die @"
+Remote/download install is not available yet (JK-1066: release layout + SHA256SUMS for Windows).
+
+For a local checkout build:
+  .\gradlew :cli:installDist :engine:shadowJar
+  pwsh -File scripts/install.ps1 -LocalPath clients\cli\build\install\jk\bin\jk.bat
+  # or the native binary once Graal dist exists: build\dist\jk.exe
+
+Unix: install.sh supports curl | bash download today; Windows mirrors that after JK-1066.
+"@
+}
+
+if (-not (Test-Path -LiteralPath $LocalPath -PathType Leaf)) {
+    Die "local file not found: $LocalPath"
+}
+
+New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+$destName = if ([IO.Path]::GetExtension($LocalPath) -eq ".exe") { "jk.exe" } else { "jk.bat" }
+# Prefer preserving .bat for installDist; copy as-is when extension present.
+if ([string]::IsNullOrEmpty([IO.Path]::GetExtension($LocalPath))) {
+    $destName = "jk.exe"
+    if ($IsWindows -eq $false -and $null -ne $IsWindows) { $destName = "jk" }
+}
+# Always install as jk.cmd wrapper if source is a gradle installDist script name.
+$leaf = Split-Path -Leaf $LocalPath
+if ($leaf -eq "jk" -or $leaf -eq "jk.bat") {
+    $destName = $leaf
+}
+
+$dest = Join-Path $InstallDir $destName
+Write-Info "Installing JumpKick into $InstallDir"
+Copy-Item -LiteralPath $LocalPath -Destination $dest -Force
+
+# jkx alias — best-effort copy of the same binary for tool-run ergonomics.
+$jkx = Join-Path $InstallDir ("jkx" + [IO.Path]::GetExtension($destName))
+try {
+    Copy-Item -LiteralPath $dest -Destination $jkx -Force
+} catch {
+    Write-Note "jkx alias skipped: $_"
+}
+
+# Side-by-side materialize when a sibling lib/jk-engine-*.jar exists (local dist layout).
+$srcDir = Split-Path -Parent $LocalPath
+$libDir = Join-Path (Split-Path -Parent $srcDir) "lib"
+if (-not (Test-Path $libDir)) {
+    # installDist layout: clients/cli/build/install/jk/bin/jk + no lib; engine jar elsewhere.
+    $libDir = $null
+}
+$engineJar = $null
+if ($libDir -and (Test-Path $libDir)) {
+    $engineJar = Get-ChildItem -Path $libDir -Filter "jk-engine-*.jar" -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName
+}
+# Gradle installDist: look for engine shadow jar relative to repo if env set.
+if (-not $engineJar -and $env:JK_ENGINE_JAR -and (Test-Path $env:JK_ENGINE_JAR)) {
+    $engineJar = $env:JK_ENGINE_JAR
+}
+
+$jkBin = $dest
+if ($engineJar) {
+    Write-Note "Engine jar: $engineJar"
+    try {
+        & $jkBin self materialize $jkBin $engineJar 2>$null
+    } catch {
+        Write-Note "versions/ materialization skipped ($_); client re-fetches on demand"
+    }
+}
+
+if (-not $SkipEngineWarm -and $engineJar) {
+    Write-Info "Warming engine (best-effort)..."
+    try { & $jkBin engine start 2>$null | Out-Null } catch { Write-Note "Engine warm-up skipped" }
+}
+
+Write-Info "Installed. Add to PATH if needed:"
+Write-Note $InstallDir
+Write-Note "Then: jk --version"

@@ -80,10 +80,35 @@ The client never embeds the engine (ticket-1020). Spawning uses
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (full suite) | CI source of truth for the unit/integration suite |
+| `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
 | `./gradlew dist` / `nativeCompile` | Native-image + fat engine jar packaging |
 | `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` (PluginJar.locate) |
 | Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
+
+### Per-OS CI (JK-1073)
+
+| Lane | When | What |
+|---|---|---|
+| **Linux** (`ci.yml`) | Every push / PR | Full `./gradlew test`, self-host, showcase |
+| **Windows + macOS** (`ci-os-nightly.yml`) | **Nightly** (cron) + manual `workflow_dispatch` | Filtered `:core:test :wire:test :engine:test :cli:test`; Windows exercises real TCP+token engine transport (JK-1011 field path); macOS thin-client smoke |
+
+Rationale: macOS runners ~10× and Windows ~2× Linux minutes — not every push. Native-image
+per OS waits on the release matrix (JK-1066).
+
+**Reproduce locally**
+
+```bash
+# Same filter as nightly:
+./gradlew :core:test :wire:test :engine:test :cli:test
+
+# Windows local install of a thin client (PowerShell):
+#   .\gradlew :cli:installDist :engine:shadowJar
+#   pwsh -File scripts\install.ps1 -LocalPath clients\cli\build\install\jk\bin\jk.bat
+# Download install on Windows is stubbed until JK-1066.
+```
+
+Flakes on new OS lanes: open a ticket; known flake classes include TempDir/pipe-closed on
+Linux and are expected to grow Windows path/FD variants.
 
 #### Engine / CLI tests under self-host
 

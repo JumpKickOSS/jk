@@ -12,17 +12,19 @@ this ticket’s acceptance when a manual checklist exists.
 
 ## Field checklist (run on a real Windows host when available)
 
-Date / Windows version: _pending real host_  
+Date / Windows version: **JK-1073** — automated on `windows-latest` via
+[`.github/workflows/ci-os-nightly.yml`](../../.github/workflows/ci-os-nightly.yml)
+(`:engine:test` + `:cli:test` with real `os.name`, not forced). Manual paste still welcome.
 
 | Check | Result |
 |---|---|
-| `jk engine start` / `status` / `stop` | |
-| `jk build` tiny project (engine path) | |
-| Kill engine process → next command respawns | |
-| Ctrl-C during build does not wedge engine | |
+| `jk engine start` / `status` / `stop` | Nightly: exercised via engine/cli wire tests on `windows-latest` |
+| `jk build` tiny project (engine path) | Nightly: CLI/engine integration tests; thin install.ps1 local path |
+| Kill engine process → next command respawns | Still manual (not in nightly scope) |
+| Ctrl-C during build does not wedge engine | Still manual |
 
-Record results here when a Windows box is available. Linux TCP + auth tests remain the
-automated regression net.
+Linux TCP + auth tests remain the push-CI regression net; Windows nightly closes the
+“forced os.name only” gap for transport tests.
 
 ## Acceptance
 

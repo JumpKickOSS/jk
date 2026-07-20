@@ -90,8 +90,8 @@ if [ -z "$LOCAL_FILE" ]; then
 fi
 
 # Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
-# uses (HostPlatform): linux|macos × x86_64|aarch64. Windows gets its own
-# PowerShell install script (jk-windows-x86_64.exe.zip), not this one.
+# uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
+# scripts/install.ps1 (JK-1073); download half waits on JK-1066 release layout.
 detect_target() {
   local os arch
   case "$(uname -s)" in
