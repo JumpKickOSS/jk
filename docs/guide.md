@@ -184,6 +184,15 @@ wire — not scrape prose. Opt out of rich chrome with `NO_COLOR`, `--no-ansi`, 
 `JK_NERDFONT=false`. Full charter and migration tickets live on the org board (kanartist
 **JK-1076**–**JK-1081**).
 
+```bash
+# Detect Nerd Font support once; writes ~/.jk/config.toml [global].nerdfont
+jk self setup-terminal
+jk self setup-terminal --nerd      # force on
+jk self setup-terminal --no-nerd   # force off
+```
+
+Install runs `setup-terminal` best-effort after a local dist materialize.
+
 ### Deny policy
 
 ```toml

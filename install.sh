@@ -220,6 +220,9 @@ if [ -n "$LOCAL_FILE" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "versions/ materialization skipped (jk self materialize failed; the client re-fetches on demand)"
   fi
+  # Nerd Font probe → ~/.jk/config.toml [global].nerdfont (JK-1080); never fail install.
+  run_jk self setup-terminal >/dev/null 2>&1 \
+    || note "terminal setup skipped (run 'jk self setup-terminal' later)"
 fi
 
 # ---- activate --------------------------------------------------------------

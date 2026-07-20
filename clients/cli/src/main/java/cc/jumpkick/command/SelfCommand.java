@@ -39,7 +39,64 @@ public final class SelfCommand extends GroupCommand {
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new UpdateSub(), new MaterializeSub());
+        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub());
+    }
+
+    /**
+     * {@code jk self setup-terminal} — detect Nerd Font capability and persist {@code
+     * [global].nerdfont} in {@code ~/.jk/config.toml} (JK-1080). Also invoked from install.sh.
+     */
+    static final class SetupTerminalSub implements CliCommand {
+
+        @Override
+        public String name() {
+            return "setup-terminal";
+        }
+
+        @Override
+        public String description() {
+            return "Detect terminal/Nerd Font support and write [global].nerdfont in ~/.jk/config.toml";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return List.of(
+                    Opt.flag("Force nerdfont = true in config.", "--nerd"),
+                    Opt.flag("Force nerdfont = false in config.", "--no-nerd"));
+        }
+
+        @Override
+        public int run(Invocation in) throws Exception {
+            boolean nerd;
+            String reason;
+            if (in.isSet("nerd") && in.isSet("no-nerd")) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Self", "cannot combine --nerd and --no-nerd"));
+                return Exit.USAGE;
+            }
+            if (in.isSet("nerd")) {
+                nerd = true;
+                reason = "--nerd";
+            } else if (in.isSet("no-nerd")) {
+                nerd = false;
+                reason = "--no-nerd";
+            } else {
+                var det = cc.jumpkick.config.NerdFontDetect.detect();
+                nerd = det.nerdFont();
+                reason = det.reason();
+            }
+            Path cfg = JkDirs.userConfigFile();
+            cc.jumpkick.config.UserConfigEditor.setNerdfont(cfg, nerd);
+            // Invalidate any process-local config memo so subsequent calls see the write.
+            String msg = "Nerd Font glyphs "
+                    + (nerd ? "enabled" : "disabled")
+                    + " ("
+                    + reason
+                    + ") → "
+                    + cfg;
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", msg));
+            return 0;
+        }
     }
 
     /**
@@ -86,6 +143,12 @@ public final class SelfCommand extends GroupCommand {
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, new Cas(JkDirs.cache()), engineJar, client);
             CliOutput.out("materialized " + m.root());
+            // Best-effort install-time terminal probe (JK-1080); never fail materialize.
+            try {
+                new SetupTerminalSub().run(Invocation.builder().build());
+            } catch (Exception ignored) {
+                // ignore
+            }
             return 0;
         }
     }

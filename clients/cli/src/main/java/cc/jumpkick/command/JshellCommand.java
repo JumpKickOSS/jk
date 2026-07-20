@@ -70,10 +70,11 @@ public final class JshellCommand implements CliCommand {
 
         Path jshellBin = findJshell();
         if (jshellBin == null) {
-            CliOutput.err(
-                    "jk jshell: jshell not found under java.home="
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JShell",
+                    "jshell not found under java.home="
                             + System.getProperty("java.home")
-                            + " (need a full JDK, not a JRE)");
+                            + " (need a full JDK, not a JRE)"));
             return Exit.CONFIG;
         }
 
@@ -95,30 +96,31 @@ public final class JshellCommand implements CliCommand {
             }
             int code = new BuildCommand().run(bb.build());
             if (code != 0) {
-                CliOutput.err("jk jshell: preparatory build failed (exit " + code + "); try --no-build after a green build");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "JShell",
+                        "preparatory build failed (exit " + code + "); try --no-build after a green build"));
                 return code;
             }
         }
 
         if (!proj.isLocked()) {
-            CliOutput.err("jk jshell: no jk.lock — run `jk lock` first");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", "no jk.lock — run `jk lock` first"));
             return Exit.CONFIG;
         }
 
         JkBuild build = JkBuildParser.parse(proj.buildFile());
         if (build.isWorkspaceRoot()) {
-            CliOutput.err(
-                    "jk jshell: run from a module directory (workspace roots have no single compile classpath)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JShell", "run from a module directory (workspace roots have no single compile classpath)"));
             return Exit.CONFIG;
         }
 
         BuildLayout layout = BuildLayout.of(dir, build);
         Path classes = layout.classesDir();
         if (!Files.isDirectory(classes)) {
-            CliOutput.err(
-                    "jk jshell: no classes at "
-                            + classes
-                            + " — run `jk build --skip-tests` or drop `--no-build`");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JShell",
+                    "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`"));
             return Exit.CONFIG;
         }
 

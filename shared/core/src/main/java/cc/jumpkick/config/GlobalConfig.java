@@ -24,8 +24,10 @@ public final class GlobalConfig {
     private GlobalConfig() {}
 
     /**
-     * Whether Nerd Font glyphs may be used. Env {@code JK_NERDFONT} → file → default {@code true};
-     * forced false when color is disabled.
+     * Whether Nerd Font glyphs may be used. Precedence: env {@code JK_NERDFONT} → {@code
+     * ~/.jk/config.toml} {@code [global].nerdfont} → default {@code false} (safer than PUA tofu;
+     * set via {@code jk self setup-terminal} / install — JK-1080). Forced false when color is
+     * disabled.
      */
     public static boolean nerdfont() {
         return nerdfont(JkDirs.userConfigFile(), System.getenv("JK_NERDFONT"), colorActivelyEnabled());
@@ -59,13 +61,13 @@ public final class GlobalConfig {
 
     /** As {@link #nerdfont(Path)} but with an explicit env value — bypasses color check for tests. */
     static boolean nerdfont(Path configFile, String envValue) {
-        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", true));
+        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", false));
     }
 
     /** Full testable overload: config file + env value + explicit color-enabled flag. */
     static boolean nerdfont(Path configFile, String envValue, boolean colorEnabled) {
         if (!colorEnabled) return false;
-        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", true));
+        return EnvValues.parseBool(envValue).orElseGet(() -> booleanFromGlobal(configFile, "nerdfont", false));
     }
 
     /** Lenient {@code [global]} boolean via {@link TomlScan}; memoized per path+size+mtime. */
