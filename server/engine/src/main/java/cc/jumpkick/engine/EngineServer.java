@@ -818,22 +818,31 @@ public final class EngineServer implements AutoCloseable {
         registerAccumulator(eventRequestId, eventKind, eventDir, "cli");
         if (pipeline) notePipelineStarted();
         Thread heartbeatThread = null;
+        java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         try {
-            Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
+            Thread started = Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
                 currentEventRequestId.set(eventRequestId);
+                JobWorkers.open(eventRequestId);
                 try {
                     runner.run(requestLine, cancelToken, writer);
                 } finally {
+                    JobWorkers.close();
+                    JobWorkers.clear(eventRequestId);
                     currentEventRequestId.remove();
                     if (pipeline) cacheGate.readLock().unlock();
                     done.countDown();
                 }
             });
-            // Keep-alive + optional wall deadline while the job runs (ticket-1051). Client stream
-            // idle (JK_STREAM_IDLE_MS) resets on each heartbeat line.
+            runnerRef.set(started);
+            // Keep-alive + optional wall deadline while the job runs (ticket-1051 / JK-1067).
+            // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
+            // cancel cooperatively, destroyForcibly registered workers, then the connection thread
+            // bounds its wait (deadline + grace) so activePipelines / drain can complete.
             long heartbeatMs = jobHeartbeatMs();
             long deadlineMs = jobDeadlineMs();
+            long graceMs = jobDeadlineGraceMs();
             if (heartbeatMs > 0 || deadlineMs > 0) {
                 heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
                     long start = clockMillis.getAsLong();
@@ -843,14 +852,7 @@ public final class EngineServer implements AutoCloseable {
                         if (deadlineMs > 0) {
                             long remaining = deadlineMs - elapsed;
                             if (remaining <= 0) {
-                                cancelToken.cancel();
-                                sendQuiet(
-                                        writer,
-                                        EngineProtocol.error(
-                                                EngineProtocol.ERR_DEADLINE,
-                                                "job exceeded "
-                                                        + deadlineMs
-                                                        + "ms (JK_ENGINE_JOB_DEADLINE_MS); cancelled"));
+                                enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
                                 return;
                             }
                             wait = Math.min(wait, remaining);
@@ -884,12 +886,33 @@ public final class EngineServer implements AutoCloseable {
                 cancelToken.cancel();
             }
             try {
-                done.await();
+                // Bound the join when a wall deadline is set so a wedged runner cannot hang the
+                // connection forever (and block draining / cache maintenance accounting).
+                if (deadlineMs > 0) {
+                    long elapsed = clockMillis.getAsLong() - eventStartMillis;
+                    long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
+                    if (!done.await(budget, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
+                        // Last chance for the runner to unwind after worker kill / interrupt.
+                        if (!done.await(Math.min(graceMs, 5_000L), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                            log.accept(
+                                    "jk engine: job "
+                                            + eventRequestId
+                                            + " still running after deadline+"
+                                            + graceMs
+                                            + "ms grace — abandoned; workers killed");
+                        }
+                    }
+                } else {
+                    done.await();
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         } finally {
             if (heartbeatThread != null) heartbeatThread.interrupt();
+            JobWorkers.destroyForRequest(eventRequestId);
+            JobWorkers.clear(eventRequestId);
             if (pipeline) maybeIdleBoundaryGc();
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
             // cancelToken.cancelled() also trips on the benign end-of-request EOF, so a successful
@@ -906,6 +929,35 @@ public final class EngineServer implements AutoCloseable {
                             .put("millis", elapsedMillis));
             writeJournal(eventRequestId, cancelled, elapsedMillis);
         }
+    }
+
+    /**
+     * Cooperative cancel + kill forked workers + interrupt the runner (JK-1067). Idempotent; safe
+     * from the watchdog and the connection thread.
+     */
+    private void enforceDeadline(
+            long eventRequestId,
+            Session.CancelToken cancelToken,
+            Thread runnerThread,
+            BufferedWriter writer,
+            long deadlineMs) {
+        cancelToken.cancel();
+        int killed = JobWorkers.destroyForRequest(eventRequestId);
+        if (runnerThread != null) {
+            try {
+                runnerThread.interrupt();
+            } catch (RuntimeException ignored) {
+                // best-effort
+            }
+        }
+        sendQuiet(
+                writer,
+                EngineProtocol.error(
+                        EngineProtocol.ERR_DEADLINE,
+                        "job exceeded "
+                                + deadlineMs
+                                + "ms (JK_ENGINE_JOB_DEADLINE_MS); cancelled"
+                                + (killed > 0 ? " (killed " + killed + " worker process(es))" : "")));
     }
 
     /**
@@ -3508,11 +3560,21 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Optional per-request wall deadline (ticket-1051). Default {@code 0} = off (huge monorepos).
-     * Env: {@code JK_ENGINE_JOB_DEADLINE_MS}.
+     * Optional per-request wall deadline (ticket-1051 / JK-1067). Default {@code 0} = off (huge
+     * monorepos). Env: {@code JK_ENGINE_JOB_DEADLINE_MS}. When set, the engine cancels the job,
+     * {@code destroyForcibly}s registered worker processes, interrupts the runner, and bounds the
+     * connection join to deadline + {@link #jobDeadlineGraceMs()}.
      */
     static long jobDeadlineMs() {
         return envLongMs("JK_ENGINE_JOB_DEADLINE_MS", 0L);
+    }
+
+    /**
+     * Grace after the wall deadline for the runner to unwind after worker kill (JK-1067). Default
+     * 30s. Env: {@code JK_ENGINE_JOB_DEADLINE_GRACE_MS}.
+     */
+    static long jobDeadlineGraceMs() {
+        return envLongMs("JK_ENGINE_JOB_DEADLINE_GRACE_MS", 30_000L);
     }
 
     private static long envLongMs(String name, long defaultMs) {

@@ -105,6 +105,7 @@ public final class PluginProcess {
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
         Process process = pb.start();
+        cc.jumpkick.engine.JobWorkers.register(process);
         try (BufferedReader reader =
                         new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
                 BufferedWriter stdin =
@@ -161,8 +162,12 @@ public final class PluginProcess {
                 throw e;
             }
         } finally {
-            if (process.isAlive()) {
-                process.destroyForcibly();
+            try {
+                if (process.isAlive()) {
+                    process.destroyForcibly();
+                }
+            } finally {
+                cc.jumpkick.engine.JobWorkers.unregister(process);
             }
         }
         return process.waitFor();

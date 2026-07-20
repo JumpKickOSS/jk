@@ -29,5 +29,6 @@ class JobWatchdogConfigTest {
         // Defaults when env vars unset (test JVM typically has none).
         assertThat(EngineServer.jobHeartbeatMs()).isEqualTo(30_000L);
         assertThat(EngineServer.jobDeadlineMs()).isEqualTo(0L);
+        assertThat(EngineServer.jobDeadlineGraceMs()).isEqualTo(30_000L);
     }
 }
