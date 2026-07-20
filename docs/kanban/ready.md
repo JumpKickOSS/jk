@@ -9,10 +9,4 @@ into [wip.md](wip.md). Prefer WIP limit of a few active tickets.
 
 ## Ready Items
 
-### P2 product
-
-| # | Ticket | Why this order |
-|---|---|---|
-| 1 | [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — Marketplace IDE plugin (one track) | After BSP 1028/1041; **one** of VS Code or IntelliJ MVP |
-
-_(1034, 1032, 1038, 1033 done.)_
+_(empty — P2 product stack cleared; pull from [backlog](backlog.md) after refinement)_

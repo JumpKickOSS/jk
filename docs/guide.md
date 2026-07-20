@@ -250,10 +250,20 @@ Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reu
 
 ```bash
 jk bsp install               # write .bsp/jk.json
-# IDE launches: jk bsp serve
+# IDE launches: jk bsp serve  (stdio BSP — no engine jars in the IDE process)
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
+**VS Code (ticket-1017 Track A):** installable extension under [`clients/vscode/`](../clients/vscode/)
+(VSIX via `./scripts/package-vscode.sh`). Wire-only: shells `jk` on PATH; optional BSP import via
+`.bsp/jk.json`. Requires `jk` installed on the machine (`jk.path` setting if not on PATH).
+
+```bash
+./scripts/package-vscode.sh
+# VS Code → Extensions → … → Install from VSIX… → clients/vscode/jumpkick-*.vsix
+```
+
+IntelliJ marketplace plugin is a follow-up track (same BSP / wire lifecycle).
 ### Live loops (`jk watch` / `jk dev`)
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**

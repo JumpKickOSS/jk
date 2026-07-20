@@ -37,17 +37,21 @@ P0–P1, **P1-depth** Mill-steal, and **P1-infra** (1043/1022/1042) are done. **
 9. [ticket-1050](ticket-1050-timeline-watch-polish.md) — Timeline + watch polish (← 1023/1025)
 10. [ticket-1049](ticket-1049-warm-pool-implementation.md) — Warm compiler pool **if** measure goes go (← 1030)
 
+### IDE follow-up (← 1017 Track A)
+
+11. [ticket-1054](ticket-1054-intellij-marketplace-plugin.md) — IntelliJ marketplace / install-from-disk plugin (Track B)
+
 ### Other P3
 
-11. [ticket-1035](ticket-1035-dag-visualize.md) — Module DAG as DOT
-12. [ticket-1036](ticket-1036-jshell-repl-sandbox-dx.md) — `jk jshell` + test sandbox docs
-13. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Cosign/Sigstore additive plugin signatures
+12. [ticket-1035](ticket-1035-dag-visualize.md) — Module DAG as DOT
+13. [ticket-1036](ticket-1036-jshell-repl-sandbox-dx.md) — `jk jshell` + test sandbox docs
+14. [ticket-1019](ticket-1019-plugin-cosign-signing.md) — Cosign/Sigstore additive plugin signatures
 
 ---
 
 ## Notes
 
-- **Mill comparison:** [mill-comparison.md](../mill-comparison.md); tickets through **1053**.
-- **P2 order (ready):** 1034 → 1032 → 1038 → 1033 → 1017.
+- **Mill comparison:** [mill-comparison.md](../mill-comparison.md); tickets through **1054**.
+- **P2 product ready stack cleared** (1034→1032→1038→1033→1017 done). Next: refine backlog (infra 1051–1053 or Mill follow-ups).
 - **Warm pool:** do not implement 1049 without a fresh green measure (1030 / warm-pool-bench.md).
 - Prefer separate worktrees per ticket; keep WIP small.

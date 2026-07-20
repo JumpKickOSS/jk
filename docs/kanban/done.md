@@ -9,7 +9,8 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1033](ticket-1033-lint-matrix-research.md) — Lint matrix: Checkstyle recipe; Kotlin detekt deferred
+1. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — VS Code extension Track A (BSP + tasks, wire-only)
+2. [ticket-1033](ticket-1033-lint-matrix-research.md) — Lint matrix: Checkstyle recipe; Kotlin detekt deferred
 2. [ticket-1038](ticket-1038-showcase-monorepo-ci.md) — Showcase monorepo CI dogfood
 3. [ticket-1032](ticket-1032-assembly-packaging-depth.md) — Packaging matrix + fat-jar rules + `jk assembly`
 4. [ticket-1034](ticket-1034-outdated-deps.md) — `jk outdated` polish (guide, JSON schema, footer, offline note)

@@ -138,8 +138,17 @@ with a clear message. Use a separate worktree for true parallel builds.
 |---|---|
 | `shared/` | Client-safe modules (`jk-api`, `core`, `plugin-sdk`, `wire`, …) |
 | `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
-| `clients/` | `cli` (native/thin JVM client + CLI tests), `web` |
+| `clients/` | `cli` (native/thin JVM client + CLI tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |
+
+### VS Code extension (ticket-1017)
+
+```bash
+./scripts/package-vscode.sh    # → clients/vscode/jumpkick-*.vsix (gitignored)
+# Install from VSIX in VS Code; requires jk on PATH
+```
+
+Wire-only: no engine jars in the extension. See `clients/vscode/README.md`.
 
 See [docs/architecture.md](docs/architecture.md) for layering and process model, and
 [docs/guide.md](docs/guide.md) for product behavior.

@@ -184,8 +184,9 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 | `buildTarget/dependencyModules` | `ideModel` lib jars (absolute URIs) |
 | `buildTarget/compile` | `IdeEngineClient.build` |
 
-- **Intended later:** marketplace IntelliJ/VS Code plugins (run configs, debug, test gutter) on
-  top of this facade / BSP — see ticket-1017.
+- **VS Code extension (ticket-1017 Track A):** `clients/vscode/` — VSIX packaging, tasks/commands
+  via `jk` subprocess, `jk bsp install` for `.bsp/jk.json`. No engine jars on the extension
+  classpath. IntelliJ marketplace track remains follow-up.
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 

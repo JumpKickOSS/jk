@@ -1,64 +1,41 @@
 # ticket-1017 — Marketplace IDE plugins (IntelliJ / VS Code)
 
 **Priority:** P2  
-**Status:** backlog → **ready** (refined; after 1014 + 1028 + 1041)  
+**Status:** done (Track A — VS Code MVP)  
 **Kind:** go-do (phased MVP)  
 **Source:** [mill-comparison.md](../mill-comparison.md) §7  
-**Depends on:**
-- ticket-1014 IdeEngineClient (**done**)  
-- ticket-1028 BSP host (**done**)  
-- ticket-1041 BSP import reliability (**done**)  
+**Depends on:** 1014, 1028, 1041 (**done**)  
 **Branch:** `ticket-1017-ide-marketplace`  
-**Estimate:** L (multi-day; ship one IDE first)
 
-## Problem
-
-Wire facade + BSP exist, but users still cannot **install a marketplace plugin** and get
-JumpKick import/sync/build without shelling `jk` or hand-editing IDE files.
-
-## Product constraint (hard)
-
-- Plugins are **wire-only clients** (ticket-1020).  
-- **Never** put engine/server jars on the IDE plugin classpath.  
-- Lifecycle: plugin starts/connects engine (or relies on `jk bsp serve` / user-installed engine).  
-- Prefer BSP for import where the IDE already speaks BSP; use `IdeEngineClient` for richer UX only inside our plugin code that still talks wire/BSP, not server modules.
-
-## Phased MVP (pick **one** first track in implementation PR)
-
-### Track A — VS Code (recommended first)
+## Shipped — Track A (VS Code)
 
 | Slice | Deliverable |
 |---|---|
-| A1 | Extension packages `.bsp/jk.json` install (`jk bsp install`) + documents open-with-BSP |
-| A2 | Status bar / task: sync or build via `jk` subprocess **or** BSP compile (document choice) |
-| A3 | README + guide link |
+| A1 | Extension + `jk bsp install` command / auto-prompt for `.bsp/jk.json` |
+| A2 | Commands + tasks: lock / sync / build / test / assemble via `jk` subprocess; status bar + output channel |
+| A3 | `clients/vscode/README.md`, guide IDE section, architecture note, `./scripts/package-vscode.sh` → VSIX |
 
-### Track B — IntelliJ
+### Resolved open questions
 
-| Slice | Deliverable |
-|---|---|
-| B1 | Plugin registers JumpKick as build system or BSP-backed import |
-| B2 | Sync/build action with progress (BSP or thin process) |
-| B3 | Marketplace **or** install-from-disk instructions (publishing can be manual) |
+1. **Spawn:** CLI subprocess (`jk …`); BSP via `.bsp/jk.json` → `jk bsp serve`. No embedded wire client in the extension host.  
+2. **Engine skew:** user-installed `jk` on PATH (`jk.path` setting); extension does not bundle the engine.
 
-**Default recommendation:** Track A first (faster BSP reuse, less UI surface). Track B follows once A proves the lifecycle story.
+## Acceptance (MVP = one track)
 
-## Acceptance (MVP = one track complete)
+- [x] Installable artifact (VSIX via package script) for **VS Code**  
+- [x] Fresh project: `jk bsp install` + open workspace → BSP connection file; tasks/commands without manual `.iml`  
+- [x] Sync/build actions show progress (output channel + status bar) or clear failure  
+- [x] Docs: guide + architecture IDE sequence; engine on PATH  
+- [x] No server modules on plugin classpath (Node extension only)  
 
-- [ ] Installable artifact (VSIX or IntelliJ plugin zip) for **one** IDE  
-- [ ] Fresh project: import or open → targets/classpath visible without manual `.iml` editing  
-- [ ] Sync or build action shows progress or clear failure  
-- [ ] Docs: guide → architecture IDE sequence; “engine must be installable / on PATH”  
-- [ ] No server modules on plugin classpath (architecture review checklist)  
+## Follow-up
 
-## Non-goals
+- **Track B — IntelliJ** (register BSP/build system, marketplace or install-from-disk) — backlog when ready  
+- Language server / debug adapter — non-goals  
+
+## Non-goals (unchanged)
 
 - Language server / semantic highlighting  
 - Full debug adapter  
-- Replacing `jk export idea|vscode` entirely (export remains fallback)  
+- Replacing `jk export idea|vscode`  
 - Bundling Graal native image inside the plugin  
-
-## Open questions (resolve in PR description)
-
-1. Does the plugin spawn `jk bsp serve` or an embedded wire client?  
-2. Who owns engine version skew (plugin pins min `jk` version)?  
