@@ -168,7 +168,7 @@ else
     || die "failed to download $ARCHIVE_URL"
 fi
 
-info "Installing the JumpKick into $INSTALL_DIR"
+info "Installing JumpKick into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 JK_BIN="$INSTALL_DIR/jk"
@@ -194,15 +194,15 @@ if ! ln -f "$JK_BIN" "$JKX_BIN" 2>/dev/null; then
 fi
 
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
-# docs/architecture.md "Two artifacts"; the engine is a JVM app, not a second
-# binary). It lives ONLY in the side-by-side version layout,
+# docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
+# not a second native binary). It lives ONLY in the side-by-side version layout,
 # ~/.jk/versions/<v>/lib/jk-engine.jar — materialized below for local dists;
 # download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
   SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
 fi
 
-# ---- side-by-side version layout (docs/architecture.md R2) --------
+# ---- side-by-side version layout (docs/architecture.md "Versioning") --------
 #
 # Local dist installs (binary + engine jar together) also materialize
 # ~/.jk/versions/<v>/ — through the client itself (`jk self materialize`), which

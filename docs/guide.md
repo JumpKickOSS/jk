@@ -6,8 +6,7 @@ This guide covers the commands and files you touch every day.
 ## Install
 
 ```bash
-# From a release (see the project README for current install options)
-curl -fsSL https://…/install.sh | sh   # or use the published binary
+curl -fsSL https://jumpkick.build/install.sh | bash
 
 jk --help
 ```

@@ -8,7 +8,7 @@ tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
 }
 
-// The shippable native-dist layout (docs/architecture.md "Two artifacts"): the size-tuned native jk
+// The shippable native-dist layout (docs/architecture.md "Ship layout"): the size-tuned native jk
 // client next to the engine's fat jar. The engine is a JVM app, never a native image — the
 // installed client spawns it on the jk-managed JDK as
 // `java -cp ~/.jk/versions/<v>/lib/jk-engine.jar EngineMain`. dist/lib carries the jar the

@@ -3,7 +3,17 @@
 **Audience:** JumpKick maintainers and agents.  
 **Purpose:** Where [Mill](https://mill-build.org) is stronger today, what that implies for product direction, and which Mill ideas are worth stealing vs deliberately not matching.  
 **Mill version reviewed:** 1.1.7 docs + main-branch source at `../mill` (com-lihaoyi/mill).  
-**JumpKick status:** pre-1.0 alpha (`0.10.0-SNAPSHOT`).
+**JumpKick status:** pre-1.0 alpha (`0.10.0-SNAPSHOT`).  
+**As of:** 2026-07-20 — reconciled after tickets 1023–1055 / 1035–1048 dogfood. Historical priority
+tables below may still list old `ticket-NNNN` paths (frozen archive); live board is kanartist `JK-NNNN`.
+
+> **Shipped since first draft (do not re-litigate as gaps):** `jk watch` / `dev` (1025), chrome
+> timeline (1023), microbench (1024), module DAG `jk explain --graph dot` (1035), `jk tasks` /
+> `show` / `inspect` (1047), BSP server + compile/test (1028/1041/1048), VS Code + IntelliJ
+> wire-only plugins (1017/1054), selective prepare/run + content-hash (1040/1045), project
+> build-logic + SPI anchors (1037/1039/1044). **Still open / gated:** warm pool (1049), Zinc
+> (deferred 1046), cosign (1019), dependency-confusion namespace pins (1064), release pipeline
+> (1066).
 
 This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “better JVM build tool” space but make different bets. Mill is production-mature with a broad language/feature surface. JumpKick is early, lockfile-first, and **convention-over-configuration by default**—with a Mill-style programmable escape hatch as an intentional product goal (scripts live *outside* TOML, never *inside* it). Treat Mill as a high bar, not as an enemy to copy blindly.
 
@@ -16,9 +26,9 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 | **Maturity / dogfood** | **Mill** | Ships 1.x, self-hosts, proven on Netty/Mockito-scale ports |
 | **Programmable build graph** | **Mill** (today) | Tasks = methods; free cache/parallel/IDE — **steal this model as a jk escape hatch** |
 | **Fine-grained compile incrementality** | **Mill** (edge) | Zinc + persistent tasks; jk has ABI incremental but less battle-tested |
-| **Task DAG UX** | **Mill** | `resolve` / `inspect` / `show` / `visualize` / `-w` / chrome profiles |
-| **Selective CI** | **Mill** (edge) | `selective.prepare`/`run` is more complete than `--affected-since` |
-| **IDE / BSP** | **Mill** | Real BSP + IntelliJ/VSCode/Eclipse paths |
+| **Task DAG UX** | **Closer** | Mill still deeper path algebra; jk has `tasks`/`show`/`inspect`, DOT, timeline, watch |
+| **Selective CI** | **Closer** | jk has `--affected-since`, `selective prepare/run` + content-hash; Mill still richer inputs |
+| **IDE / BSP** | **Closer** | jk BSP + VS Code/IntelliJ wire-only plugins; Mill still broader IDE polish |
 | **Language surface** | **Mill** | Java + Kotlin + Scala (+ more); jk is Java/Kotlin-first |
 | **Extensibility model** | **Mill** (today) | OO traits; jk has out-of-process plugins, not yet a Mill-like task escape hatch |
 | **Lockfile / resolve diagnostics** | **JumpKick** | Canonical `jk.lock`, PubGrub prose; Mill is Coursier-resolve-on-demand |

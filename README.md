@@ -86,7 +86,7 @@ Coming from **Gradle**: think “declarative TOML + real lockfile, without the c
 ### Ship & supply chain
 - `jk publish` with GPG, Sigstore, SLSA, dual SBOMs
 - `jk image` (Jib-core, daemonless) · `jk native` (GraalVM)
-- `jk audit` · `jk deny` · repo pins against dependency confusion
+- `jk audit` · `jk deny` (source-host denylist); lock rows pin a source repo (namespace binding planned)
 - `jk verify` — rebuild in a scratch dir and diff artifact hashes
 
 ### Migration
