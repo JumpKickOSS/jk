@@ -95,11 +95,11 @@ siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
 CLI integration tests (`:cli:test`) spawn a real engine from `:engine:shadowJar` (materialized
 into the test `JK_HOME`) — no in-process dual path (ticket-1020).
 
-**Suite timing (order of magnitude, warm laptop):** `:cli:test` ≈ **7 minutes** after
-ticket-1042 (hybrid warm engine; was ~10 minutes with stop-after-every-method). Full
-`./gradlew test` is longer (engine + plugins). Use module filters mid-ticket
-(`:cli:test --tests '…'`, `:engine:test`); re-run full `./gradlew test` before merge to
-`main`. Shared dep cache: `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
+**Suite timing (order of magnitude, warm laptop):** `:cli:test` ≈ **7 minutes** with warm
+engine across methods (1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop
+engine only when delete fails). Full `./gradlew test` is longer. Use module filters mid-ticket;
+re-run full `./gradlew test` before merge to `main`. Shared dep cache:
+`jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
 Prefer `jk build --skip-tests` for the documented dogfood path; keep
 `./gradlew :engine:test` / `:cli:test` for the full nested suites (Gradle wires

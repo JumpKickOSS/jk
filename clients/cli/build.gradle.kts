@@ -120,7 +120,10 @@ tasks.withType<Test>().configureEach {
     // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
     // EngineTestExtension autodetection: materialize jar + stop engine after each class (1042/1052).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
-    // TempDir: retry delete; last-resort engine stop so warm engine works without denylist (1052).
+    // TempDir (JUnit 6): deletion strategy stops engine only when delete fails (1055).
+    systemProperty(
+            "junit.jupiter.tempdir.deletion.strategy.default",
+            "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy")
     systemProperty(
             "junit.jupiter.tempdir.factory.default",
             "cc.jumpkick.cli.engine.JkTempDirFactory")

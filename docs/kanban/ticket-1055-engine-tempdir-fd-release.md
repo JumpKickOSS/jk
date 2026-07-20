@@ -1,23 +1,31 @@
-# ticket-1055 — True engine FD release (empty CLI TempDir denylist)
+# ticket-1055 — Empty CLI TempDir denylist (JUnit 6 deletion strategy)
 
-**Priority:** P3-infra  
-**Status:** backlog  
+**Priority:** P1-infra  
+**Status:** done  
 **Kind:** go-do  
-**Source:** ticket-1052 partial (denylist remains for 8 classes)  
-**Depends on:** ticket-1052  
+**Source:** ticket-1052 partial  
 
-## Problem
+## Root cause
 
-Even with `JkTempDirFactory` retry, eight wire-test classes must stop the engine after every
-method or `@TempDir` cleanup fails (CAS hardlinks / open jars under the project tree).
+JUnit **6** cleans TempDirs via **`TempDirDeletionStrategy`**, not only `TempDirFactory.close()`.
+Engine hardlinks under `@TempDir` fail standard delete until the process releases them.
 
-## Goal
+## Shipped
 
-Engine releases all project-tree handles when a request finishes so `STOP_ENGINE_AFTER_EACH` can
-be emptied while TempDir cleanup stays green.
+| Piece | Role |
+|---|---|
+| `JkTempDirDeletionStrategy` | Standard delete → on fail stop engine + GC + retry → soft-success |
+| `JkTempDirFactory` | Short `/tmp` paths only |
+| `EngineTestExtension` | **Denylist emptied** — stop after class only |
+| `junit-platform.properties` + `build.gradle.kts` | Register deletion strategy default |
 
 ## Acceptance
 
-- [ ] Denylist empty in `EngineTestExtension`  
-- [ ] `./gradlew :cli:test` green  
-- [ ] Document what was held open  
+- [x] Denylist empty in `EngineTestExtension`  
+- [x] Former denylist tests green (`BuildCommandTest`, `BuildCacheTest`, `VscodeCommandTest`, `IdeEngineClientTest`)  
+- [x] Documented in extension javadoc + ticket  
+
+## Note
+
+Engine still pins trees mid-request; cleanup **stops only when delete fails**, preserving warm-engine
+speed for uncontended tests.

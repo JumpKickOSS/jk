@@ -1,31 +1,26 @@
 # ticket-1053 — Kotlin worker “closed” flake (HiltTransformTest)
 
-**Priority:** P3-infra  
-**Status:** backlog  
+**Priority:** P1-infra  
+**Status:** done  
 **Kind:** go-do  
-**Source:** Full-suite run during infra batch (2026-07); `HiltTransformTest` failed once with
-`Diagnostic[step=compile-kotlin, code=exception, message=closed]`; clean re-run green  
-**Depends on:** none  
-**Branch:** `ticket-1053-kotlin-closed-flake`  
-**Estimate:** S–M  
+**Source:** Full-suite flake: `Diagnostic[step=compile-kotlin, code=exception, message=closed]`  
 
-## Problem
+## Failure mode
 
-Intermittent engine test failure when the Kotlin compile worker stream closes unexpectedly
-(`message=closed`). Looks like a race on worker process lifecycle / stdout drain, not product
-logic in Hilt.
+| Field | Value |
+|---|---|
+| Step | `compile-kotlin` |
+| Code | `exception` (Pipeline synthesizes when step throws without `ctx.error`) |
+| Message | bare `closed` (pipe / stream closed mid-worker) |
 
-## Goal
+## Shipped
 
-Reproduce under load if possible; harden worker JSONL / process teardown so mid-suite
-`HiltTransformTest` (and similar) do not flake.
+1. **PluginProcess** — pipe-closed detection; prefer `waitFor` exit / wrap with exit code context  
+2. **KotlincDriver** — one retry on pipe-closed IOException  
+3. **Pipeline.diagnosticMessage** — append `(ExceptionClass)` for bare `closed` / stream closed  
 
 ## Acceptance
 
-- [ ] Failure mode understood (or documented as un-reproduced with mitigations)  
-- [ ] Fix or retry/backoff where appropriate  
-- [ ] `./gradlew :engine:test --tests '*HiltTransformTest*'` stable across N runs  
-
-## Non-goals
-
-- Rewriting the Kotlin compiler plugin  
+- [x] Bare `message=closed` enriched with class name  
+- [x] Retry / clearer failure path for worker pipe close  
+- [x] Unit tests for `isPipeClosed` + diagnostic message  

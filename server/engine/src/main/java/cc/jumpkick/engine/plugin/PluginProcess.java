@@ -130,15 +130,55 @@ public final class PluginProcess {
                     }
                 }
             };
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith(prefix)) {
-                    onProtocol.accept(line.substring(prefix.length()), convo);
-                } else if (onPassthrough != null) {
-                    onPassthrough.accept(line);
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.startsWith(prefix)) {
+                        onProtocol.accept(line.substring(prefix.length()), convo);
+                    } else if (onPassthrough != null) {
+                        onPassthrough.accept(line);
+                    }
                 }
+            } catch (IOException e) {
+                // Worker died or pipe closed mid-stream (ticket-1053: bare "closed"). Prefer a
+                // waitFor exit code over an opaque IOException when the process is already gone.
+                if (isPipeClosed(e) && !process.isAlive()) {
+                    return process.waitFor();
+                }
+                if (isPipeClosed(e)) {
+                    process.destroyForcibly();
+                    int exit;
+                    try {
+                        exit = process.waitFor();
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException(
+                                "plugin pipe closed while waiting (interrupted); partial exit unknown", e);
+                    }
+                    throw new IOException(
+                            "plugin pipe closed (worker exit " + exit + "): " + e.getMessage(), e);
+                }
+                throw e;
+            }
+        } finally {
+            if (process.isAlive()) {
+                process.destroyForcibly();
             }
         }
         return process.waitFor();
     }
+
+    /** {@code IOException} messages like {@code closed} / {@code Stream closed} from broken pipes. */
+    public static boolean isPipeClosed(IOException e) {
+        String m = e.getMessage();
+        if (m == null || m.isBlank()) {
+            return e.getClass().getSimpleName().contains("Closed");
+        }
+        String lower = m.toLowerCase(java.util.Locale.ROOT);
+        return lower.equals("closed")
+                || lower.contains("stream closed")
+                || lower.contains("pipe closed")
+                || lower.contains("broken pipe");
+    }
 }
+

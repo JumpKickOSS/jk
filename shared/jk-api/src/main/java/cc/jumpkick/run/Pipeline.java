@@ -359,7 +359,7 @@ public final class Pipeline {
                 errors.add(new PipelineResult.Diagnostic(
                         step.name(),
                         cancel ? "cancelled" : "exception",
-                        t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+                        diagnosticMessage(t)));
             }
             StepStatus terminal = cancel ? StepStatus.CANCELLED : StepStatus.FAIL;
             statuses.put(step.name(), terminal);
@@ -369,6 +369,21 @@ public final class Pipeline {
             emit(l -> l.stepFinish(step.name(), step.phase().orElse(null), terminal, dur));
             return terminal;
         }
+    }
+
+    /**
+     * Human diagnostic for an unexpected step throwable. Bare messages like {@code closed} (pipe /
+     * stream closed mid-worker) are nearly useless alone — append the exception class (ticket-1053).
+     */
+    static String diagnosticMessage(Throwable t) {
+        String msg = t.getMessage();
+        String type = t.getClass().getSimpleName();
+        if (msg == null || msg.isBlank()) return type;
+        String lower = msg.toLowerCase(java.util.Locale.ROOT);
+        if (lower.equals("closed") || lower.equals("stream closed") || lower.equals("broken pipe")) {
+            return msg + " (" + type + ")";
+        }
+        return msg;
     }
 
     private static Executor executorFor(StepKind kind) {

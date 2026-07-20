@@ -9,7 +9,9 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1054](ticket-1054-intellij-marketplace-plugin.md) — IntelliJ plugin (wire-only, install-from-disk)
+1. [ticket-1055](ticket-1055-engine-tempdir-fd-release.md) — Empty CLI TempDir denylist (JUnit 6 deletion strategy)
+2. [ticket-1053](ticket-1053-kotlin-worker-closed-flake.md) — Kotlin worker `closed` flake harden + diagnostics
+3. [ticket-1054](ticket-1054-intellij-marketplace-plugin.md) — IntelliJ plugin (wire-only, install-from-disk)
 2. [ticket-1052](ticket-1052-engine-release-project-fds.md) — TempDir factory + documented denylist residual
 3. [ticket-1051](ticket-1051-engine-job-deadline-watchdog.md) — Engine job heartbeat + optional deadline
 4. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — VS Code extension Track A (BSP + tasks, wire-only)

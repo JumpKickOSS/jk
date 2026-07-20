@@ -34,6 +34,18 @@ public final class KotlincDriver {
         try {
             return run(request);
         } catch (IOException e) {
+            // One retry when the worker pipe closes mid-compile (ticket-1053 flake).
+            if (cc.jumpkick.engine.plugin.PluginProcess.isPipeClosed(e)) {
+                try {
+                    return run(request);
+                } catch (IOException e2) {
+                    throw new UncheckedIOException(
+                            "kotlin compile failed after pipe-closed retry: " + e2.getMessage(), e2);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("kotlin compile interrupted on retry", ie);
+                }
+            }
             throw new UncheckedIOException(e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
