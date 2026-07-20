@@ -62,6 +62,30 @@ class SelectiveCommandTest {
     }
 
     @Test
+    void dirty_run_passes_modules_filter_not_full_workspace(@TempDir Path tempDir) throws Exception {
+        writeWorkspace(tempDir);
+        Files.createDirectories(tempDir.resolve("api/src/main/java"));
+        Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A {}");
+        assertThat(Jk.execute("selective", "prepare", "-C", tempDir.toString(), "--modules", "api"))
+                .isZero();
+        Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A { int x; }");
+        // Capture stderr for dirty line; stdout for module completion lines.
+        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        PrintStream origErr = System.err;
+        System.setErr(new PrintStream(err));
+        String out;
+        try {
+            out = capture(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
+        } finally {
+            System.setErr(origErr);
+        }
+        String e = err.toString(StandardCharsets.UTF_8);
+        assertThat(e).contains("content-hash dirty modules: api");
+        // Must not claim a full two-module workspace cascade when only api is dirty.
+        assertThat(out + e).doesNotContain("2 of 2");
+    }
+
+    @Test
     void resolve_unknown_module_fails(@TempDir Path tempDir) throws Exception {
         writeWorkspace(tempDir);
         int code = Jk.execute(

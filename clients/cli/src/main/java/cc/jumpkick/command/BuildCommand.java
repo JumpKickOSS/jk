@@ -455,6 +455,12 @@ public final class BuildCommand implements CliCommand {
         List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
         int[] total = {0};
+        // Reuse the forecast dirty set unless the workspace lock is stale (engine re-locks and
+        // re-forecasts). Exception (JK-1060): an explicit --modules / --affected-since selection
+        // must still be honored — nulling the hint would cascade the whole workspace.
+        boolean honorSelection = (modulesSpec != null && !modulesSpec.isBlank())
+                || (affectedSince != null && !affectedSince.isBlank());
+        Set<Path> dirtyHint = (lockStale && !honorSelection) ? null : dirtyDirs;
         var request = new cc.jumpkick.runtime.WorkspaceRequest(
                         entryDir,
                         entryBuild,
@@ -465,9 +471,7 @@ public final class BuildCommand implements CliCommand {
                         buildOpts.skipTests,
                         global.verbose,
                         noParallel ? 1 : 0, // --no-parallel → strict serial; else auto/unbounded
-                        // Reuse the forecast the fully-cached shortcut computed — unless the workspace lock
-                        // was stale, in which case the engine re-locks first and must re-forecast itself.
-                        lockStale ? null : dirtyDirs,
+                        dirtyHint,
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv);
