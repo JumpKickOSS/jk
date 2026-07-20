@@ -115,6 +115,63 @@ class CleanExplainWhyRebuiltTest {
         assertThat(stdout).containsIgnoringCase("cached");
     }
 
+    @Test
+    void explain_graph_dot_single_module(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        // --graph does not need a lock or engine
+        String stdout = captureStdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
+        assertThat(stdout).contains("digraph modules");
+        assertThat(stdout).contains("widget");
+        assertThat(stdout).doesNotContain("Build Plan");
+    }
+
+    @Test
+    void explain_graph_dot_workspace_edge(@TempDir Path tempDir) throws Exception {
+        // Minimal workspace: root + lib + app (app depends on lib)
+        Files.writeString(
+                tempDir.resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["lib", "app"]
+                """);
+        Files.createDirectories(tempDir.resolve("lib"));
+        Files.writeString(
+                tempDir.resolve("lib/jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        Files.createDirectories(tempDir.resolve("app"));
+        Files.writeString(
+                tempDir.resolve("app/jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+
+        String stdout = captureStdout(() -> run("explain", "--graph", "dot", "-C", tempDir.toString()));
+        assertThat(stdout).contains("com.example:lib");
+        assertThat(stdout).contains("com.example:app");
+        assertThat(stdout).contains("->");
+
+        Path out = tempDir.resolve("modules.dot");
+        int exit = run("explain", "--graph", "dot", "--graph-out", out.toString(), "-C", tempDir.toString());
+        assertThat(exit).isZero();
+        assertThat(Files.readString(out)).contains("digraph modules");
+    }
+
     // --- helpers -----------------------------------------------------------
 
     private static int run(String... args) {

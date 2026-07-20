@@ -204,6 +204,11 @@ stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
 jk explain                   # full plan: cached vs rebuild sections
 jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
+
+# Module dependency DAG as Graphviz DOT (no engine; pipe to graphviz yourself)
+jk explain --graph dot > modules.dot
+dot -Tsvg modules.dot -o modules.svg
+jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 ```
 
 ### Build timeline (chrome tracing)

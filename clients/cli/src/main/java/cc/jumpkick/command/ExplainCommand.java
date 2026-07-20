@@ -6,6 +6,11 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.ModuleDotGraph;
+import cc.jumpkick.config.ModuleSelection;
+import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -13,9 +18,14 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.runtime.BuildPlan;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.JkDirs;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * {@code jk explain} — offline forecast of what a build would run (cache hit/miss per module/step).
@@ -60,7 +70,15 @@ public final class ExplainCommand implements CliCommand {
                 Opt.value(
                         "<sel>",
                         "Forecast only selected modules (comma list, globs, braces).",
-                        "--modules"));
+                        "--modules"),
+                Opt.value(
+                        "<fmt>",
+                        "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
+                        "--graph"),
+                Opt.value(
+                        "<file>",
+                        "With --graph, write the graph to this file instead of stdout.",
+                        "--graph-out"));
     }
 
     @Override
@@ -75,6 +93,18 @@ public final class ExplainCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
+
+        // Module DAG export is offline (no engine / lock). Honor --modules / --affected-since.
+        String graphFmt = in.value("graph").orElse(null);
+        if (graphFmt != null && !graphFmt.isBlank()) {
+            return emitModuleGraph(
+                    startDir,
+                    buildFile,
+                    graphFmt,
+                    in.value("modules").orElse(null),
+                    in.value("affected-since").orElse(null),
+                    in.value("graph-out").orElse(null));
+        }
 
         // The plan-affecting options `jk build` reads, forecast with the same defaults build uses
         // (jdksDir=null → full JDK probe chain, workers=1, skipTests=false) so a bare `jk explain`
@@ -471,5 +501,67 @@ public final class ExplainCommand implements CliCommand {
         }
         if (cur.length() > 0) lines.add(cur.toString());
         return lines;
+    }
+
+    /**
+     * {@code jk explain --graph dot} — module dependency DAG as Graphviz DOT (no engine).
+     */
+    private static int emitModuleGraph(
+            Path startDir,
+            Path buildFile,
+            String format,
+            String modulesSpec,
+            String affectedSince,
+            String outputPath)
+            throws Exception {
+        String fmt = format.trim().toLowerCase(Locale.ROOT);
+        if (!"dot".equals(fmt)) {
+            CliOutput.err("jk explain: unsupported --graph format '" + format + "' (supported: dot)");
+            return Exit.CONFIG;
+        }
+        JkBuild entry = JkBuildParser.parse(buildFile);
+        Path root = startDir.toAbsolutePath().normalize();
+        String dot;
+        if (entry.isWorkspaceRoot()) {
+            Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
+            ModuleSelection.Result selected =
+                    ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
+            if (selected != null && !selected.ok()) {
+                CliOutput.err("jk explain: " + selected.errorMessage());
+                return Exit.CONFIG;
+            }
+            Set<Path> only = selected != null ? selected.moduleDirs() : null;
+            if (only != null && only.isEmpty()) {
+                // Nothing selected — still valid empty digraph
+                dot = ModuleDotGraph.toDot(root, Map.of(), null);
+            } else {
+                // Workspace root may not be in modules map; graph is modules only (Mill-like module DAG).
+                Map<Path, JkBuild> forGraph = new LinkedHashMap<>(modules);
+                dot = ModuleDotGraph.toDot(root, forGraph, only);
+            }
+        } else {
+            // Single project: trivial one-node graph (selectors ignored / no-op).
+            if ((modulesSpec != null && !modulesSpec.isBlank())
+                    || (affectedSince != null && !affectedSince.isBlank())) {
+                ModuleSelection.Result selected =
+                        ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
+                if (selected != null && !selected.ok()) {
+                    CliOutput.err("jk explain: " + selected.errorMessage());
+                    return Exit.CONFIG;
+                }
+            }
+            dot = ModuleDotGraph.singleModuleDot(entry, root);
+        }
+        if (outputPath != null && !outputPath.isBlank()) {
+            Path out = Path.of(outputPath);
+            if (!out.isAbsolute()) out = root.resolve(out);
+            Path parent = out.getParent();
+            if (parent != null) Files.createDirectories(parent);
+            Files.writeString(out, dot);
+            CliOutput.err("jk explain: wrote " + out.toAbsolutePath().normalize());
+        } else {
+            CliOutput.out(dot.endsWith("\n") ? dot.substring(0, dot.length() - 1) : dot);
+        }
+        return 0;
     }
 }
