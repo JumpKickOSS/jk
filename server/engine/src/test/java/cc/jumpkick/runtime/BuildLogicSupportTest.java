@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.plugin.buildlogic.BuildLogicAnchor;
 import cc.jumpkick.task.ActionCache;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -109,6 +110,70 @@ class BuildLogicSupportTest {
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         // Both tasks hit independently
         assertEquals(2, labels.toString().split("cache hit", -1).length - 1);
+    }
+
+    @Test
+    void spi_contributor_runs_at_two_anchors(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project.resolve("src/main/java/demo"));
+        Files.writeString(
+                project.resolve("jk.toml"),
+                """
+                [project]
+                group = "t"
+                name = "t"
+                version = "0.0.1"
+                jdk = 25
+                """);
+        Files.writeString(
+                project.resolve("src/main/java/demo/App.java"),
+                "package demo; public class App {}\n");
+
+        Path logicSrc = project.resolve(".jk-build/src/demo");
+        Files.createDirectories(logicSrc);
+        Files.writeString(
+                logicSrc.resolve("MultiAnchorLogic.java"),
+                """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                import java.nio.file.*;
+                public class MultiAnchorLogic implements BuildLogicContributor {
+                  @Override
+                  public void register(BuildLogicGraph g) {
+                    g.task("after-compile-marker", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("after-compile.txt"), "c");
+                    });
+                    g.task("before-package-marker", BuildLogicAnchor.BEFORE_PACKAGE, ctx -> {
+                      Files.writeString(ctx.outDir().resolve("before-package.txt"), "p");
+                    });
+                  }
+                }
+                """);
+
+        ActionCache ac = new ActionCache(new Cas(dir.resolve("cache/cas")), dir.resolve("cache/actions"));
+        BuildLayout layout = BuildLayout.of(project, JkBuildParser.parse(project.resolve("jk.toml")));
+        Path classes = layout.classesDir();
+        Files.createDirectories(classes);
+
+        StringBuilder labels = new StringBuilder();
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
+        assertTrue(labels.toString().contains("after-compile-marker"), labels.toString());
+
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> labels.append(s).append(';')));
+        assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
+        assertTrue(labels.toString().contains("before-package-marker"), labels.toString());
+
+        // Second AFTER_COMPILE is a cache hit
+        Files.delete(classes.resolve("after-compile.txt"));
+        labels.setLength(0);
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+        assertTrue(labels.toString().contains("cache hit"), labels.toString());
+        assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
     }
 
     @Test

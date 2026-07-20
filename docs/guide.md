@@ -229,8 +229,11 @@ JK_CHROME_PROFILE=/tmp/trace.json jk build
 Custom generate / prep steps live in a **hidden project-local directory**, not in TOML scripts
 (unlike Gradle’s visible `buildSrc/`).
 
-**Convention:** if `.jk-build/` exists next to `jk.toml`, its Java sources run on build
-(action-cached; outputs merge onto the classpath as resources).
+**Convention:** if `.jk-build/` exists next to `jk.toml`, its Java sources compile and run on
+build (action-cached; outputs merge onto the classpath as resources). Prefer a
+`BuildLogicContributor` SPI for **named tasks** at anchors (`AFTER_COMPILE`,
+`AFTER_RESOURCES`, `BEFORE_PACKAGE`); legacy `*Build` mains still run at
+`AFTER_RESOURCES`. `jk.toml` stays data-only (`logic` path / `logic-main` only).
 
 ```toml
 # optional override — only when you do not want the .jk-build/ convention
@@ -244,7 +247,7 @@ logic-main = "demo.LineCountBuild" # optional public static void main(String[])
 my-app/
   jk.toml
   src/…
-  .jk-build/src/demo/LineCountBuild.java
+  .jk-build/src/demo/LineCountBuild.java   # legacy main, or BuildLogicContributor
 ```
 
 Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reusable tools; use

@@ -490,6 +490,8 @@ public final class BuildPipelines {
             }
             return b;
         }
+        // Build-logic AFTER_COMPILE (SPI) before resources / AFTER_RESOURCES.
+        b.addStep(buildLogicAfterCompileStep(cx));
         b.addStep(copyResources);
         if (in.testOnly() || !in.skipTests()) {
             b.addStep(compileTest).addStep(runTests);
@@ -498,6 +500,7 @@ public final class BuildPipelines {
         // when packaging does: they exist to feed the packaged/native artifact.
         if (!in.testOnly()) {
             for (Step p : pluginSteps) b.addStep(p);
+            b.addStep(buildLogicBeforePackageStep(cx));
             b.addStep(packageJar);
         }
         // write-stamp is the Java-compile freshness companion; only when Java ran.
@@ -1530,15 +1533,78 @@ public final class BuildPipelines {
                     } else {
                         ctx.label("no static resources");
                     }
-                    // Project build logic (ticket-1037): .jk-build/ or [build].logic → classes resources.
+                    // Project build logic (1037/1044): AFTER_RESOURCES anchor.
                     try {
                         boolean ran = BuildLogicSupport.run(
                                 in.dir(),
                                 ctx.require(LAYOUT),
                                 actionCache,
                                 classes,
+                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_RESOURCES,
                                 ctx::label);
                         if (ran) ctx.label("build-logic applied");
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /** SPI anchor {@code AFTER_COMPILE}: named build-logic tasks after main classes exist. */
+    private static Step buildLogicAfterCompileStep(Ctx cx) {
+        Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        String mainCompile = cx.mainCompile();
+        return Step.builder("build-logic-after-compile")
+                .phase(Phase.COMPILE)
+                .label("Build logic (after compile)")
+                .kind(StepKind.CPU)
+                .requires(mainCompile)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    try {
+                        BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                classes,
+                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.AFTER_COMPILE,
+                                ctx::label);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("build-logic interrupted", e);
+                    }
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
+    /** SPI anchor {@code BEFORE_PACKAGE}: named build-logic tasks immediately before jar/image. */
+    private static Step buildLogicBeforePackageStep(Ctx cx) {
+        Inputs in = cx.in();
+        ActionCache actionCache = cx.actionCache();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        return Step.builder("build-logic-before-package")
+                .phase(Phase.PACKAGE)
+                .label("Build logic (before package)")
+                .kind(StepKind.CPU)
+                .weight(() -> plan.get().fullyCached() ? 0 : 1)
+                .ticks(1)
+                .execute(ctx -> {
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    try {
+                        BuildLogicSupport.run(
+                                in.dir(),
+                                ctx.require(LAYOUT),
+                                actionCache,
+                                classes,
+                                cc.jumpkick.plugin.buildlogic.BuildLogicAnchor.BEFORE_PACKAGE,
+                                ctx::label);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                         throw new IOException("build-logic interrupted", e);

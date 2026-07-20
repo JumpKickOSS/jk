@@ -1,8 +1,9 @@
 # Project build logic (`.jk-build/`)
 
-**Tickets:** [1026](../kanban/ticket-1026-programmable-escape-hatch-design.md) (design),
-[1037](../kanban/ticket-1037-programmable-escape-hatch-mvp.md) (MVP),
-[1039](../kanban/ticket-1039-build-logic-graph-tasks.md) (multi-task)  
+**Tickets:** JK-1026 (design), JK-1037 (MVP), JK-1039 (multi-task), **JK-1044** (graph SPI / anchors)  
+Historical snapshots: [1026](../kanban/ticket-1026-programmable-escape-hatch-design.md),
+[1037](../kanban/ticket-1037-programmable-escape-hatch-mvp.md),
+[1039](../kanban/ticket-1039-build-logic-graph-tasks.md).  
 **Related:** [mill-comparison.md](../mill-comparison.md) §6
 
 ## Intent
@@ -56,15 +57,43 @@ logic = "off"   # also: false, none, disable
 ## Runtime
 
 1. Resolve logic dir (override or `.jk-build`).  
-2. Compile all `.java` under that tree **once**.  
-3. Discover every public class named `*Build` / `*BuildMain` (or a single class from
-   `[build].logic-main`).  
-4. Run each main with `--project <module>` and `--out <generated-dir>` as an
-   **independently action-cached** task.  
-5. Merge each task’s outputs into the classes tree as resources.  
-6. Labels: `build-logic:<SimpleName>: cache hit` or `…: compile + run`.
+2. Compile all `.java` under that tree with the **build-logic SPI** (`jk-plugin-sdk`) on the
+   compile classpath.  
+3. Discover tasks:
+   - **SPI:** classes implementing `cc.jumpkick.plugin.buildlogic.BuildLogicContributor`
+     call `register(BuildLogicGraph)` and may attach named tasks to anchors.  
+   - **Legacy mains:** every public class named `*Build` / `*BuildMain` with
+     `public static void main` (or `[build].logic-main`) runs at **`AFTER_RESOURCES`**.  
+4. Pipeline anchors invoke matching tasks as **independently action-cached** steps:
+   - `AFTER_COMPILE` — after main compile / assemble  
+   - `AFTER_RESOURCES` — after static resources copy (default for legacy mains)  
+   - `BEFORE_PACKAGE` — immediately before jar/image packaging  
+5. Merge each task’s `outDir` into the classes tree.  
+6. Labels: `build-logic:<name>: cache hit` or `build-logic:<name>: <anchor>`.
 
-Sample: [examples/line-count-build/](examples/line-count-build/).
+### SPI sketch
+
+```java
+package demo;
+import cc.jumpkick.plugin.buildlogic.*;
+import java.nio.file.*;
+
+public class CodegenLogic implements BuildLogicContributor {
+  @Override
+  public void register(BuildLogicGraph g) {
+    g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE, ctx -> {
+      Files.writeString(ctx.outDir().resolve("tokens.txt"), "ok");
+    });
+    g.task("stamp-package", BuildLogicAnchor.BEFORE_PACKAGE, ctx -> {
+      Files.writeString(ctx.outDir().resolve("pkg.stamp"), "1");
+    });
+  }
+}
+```
+
+Legacy `*Build` mains still work unchanged (AFTER_RESOURCES). Both styles may coexist.
+
+Sample (legacy main): [examples/line-count-build/](examples/line-count-build/).
 
 ## Non-goals
 
@@ -76,9 +105,9 @@ Sample: [examples/line-count-build/](examples/line-count-build/).
 
 ## Future
 
-- Task graph SPI (`register(BuildGraph)`) with explicit anchors (after compile, before package)  
 - Kotlin sources in `.jk-build/`  
 - Workspace-shared logic via `[workspace]`  
+- Richer graph (task→task edges, Mill-style traits)
 
 ## Naming history
 
