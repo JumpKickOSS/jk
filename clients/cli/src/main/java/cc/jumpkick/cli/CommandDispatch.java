@@ -31,6 +31,7 @@ import cc.jumpkick.command.IdeCommand;
 import cc.jumpkick.command.ImageCommand;
 import cc.jumpkick.command.ImportCommand;
 import cc.jumpkick.command.InitCommand;
+import cc.jumpkick.command.InspectCommand;
 import cc.jumpkick.command.JdkCommand;
 import cc.jumpkick.command.LibraryCommand;
 import cc.jumpkick.command.LockCommand;
@@ -44,7 +45,9 @@ import cc.jumpkick.command.RepoCommand;
 import cc.jumpkick.command.SelectiveCommand;
 import cc.jumpkick.command.SelfCommand;
 import cc.jumpkick.command.ShellCommand;
+import cc.jumpkick.command.ShowCommand;
 import cc.jumpkick.command.StatusCommand;
+import cc.jumpkick.command.TasksCommand;
 import cc.jumpkick.command.SyncCommand;
 import cc.jumpkick.command.TestCommand;
 import cc.jumpkick.command.WatchCommand;
@@ -93,6 +96,9 @@ public final class CommandDispatch {
             new TreeCommand(),
             new WhyCommand(),
             new ExplainCommand(),
+            new TasksCommand(),
+            new ShowCommand(),
+            new InspectCommand(),
             new DeactivateCommand(),
             new ShellCommand(),
             new HookEnvCommand(),

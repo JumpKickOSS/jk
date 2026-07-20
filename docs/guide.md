@@ -209,6 +209,12 @@ jk explain --verbose         # expand every step
 jk explain --graph dot > modules.dot
 dot -Tsvg modules.dot -o modules.svg
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
+
+# Pipeline tasks (Mill resolve-lite)
+jk tasks                         # list first-party steps
+jk show package-jar              # primary jar path for this module
+jk inspect compile-java          # phase + path + on-disk status
+jk tasks show package-jar --modules 'libs/*'
 ```
 
 ### Build timeline (chrome tracing)
