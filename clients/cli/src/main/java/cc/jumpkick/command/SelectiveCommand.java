@@ -159,10 +159,18 @@ public final class SelectiveCommand implements CliCommand {
                         q(Instant.now().toString()),
                         String.join(",", rels.stream().map(SelectiveCommand::q).toList()),
                         hashesJson);
-        Files.createDirectories(planPath.getParent());
+        Path parent = planPath.getParent();
+        if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(planPath, body);
-        CliOutput.out("Wrote " + planPath + " (" + rels.size() + " module" + (rels.size() == 1 ? "" : "s")
-                + ", content hashes recorded)");
+        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                "Selective",
+                "Wrote "
+                        + planPath
+                        + " ("
+                        + rels.size()
+                        + " module"
+                        + (rels.size() == 1 ? "" : "s")
+                        + ", content hashes recorded)"));
         return 0;
     }
 
@@ -280,6 +288,13 @@ public final class SelectiveCommand implements CliCommand {
      * Fingerprint a module for selective skip: relative paths under {@code jk.toml} + {@code src/}
      * (file path + sha256). Absolute paths are not stored — only content — so agents can share
      * plans when trees match. Generated / target trees are ignored.
+     *
+     * <p><b>Transitive blind spot (JK-1070):</b> fingerprints do not yet include dependency
+     * siblings. An unchanged module can be skipped even when an upstream it depends on changed.
+     * Prefer full rebuilds when in doubt; see guide selective section.
+     *
+     * <p>Plan JSON is intentionally minimal hand-parsed today (paths must not contain unescaped
+     * {@code "} / structural braces); switch to a shared JSON util before enriching the schema.
      */
     static Map<String, String> contentHashes(Path workspaceRoot, List<String> moduleRels) throws Exception {
         Map<String, String> out = new LinkedHashMap<>();

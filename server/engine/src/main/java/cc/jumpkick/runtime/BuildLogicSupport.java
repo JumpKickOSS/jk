@@ -236,12 +236,8 @@ public final class BuildLogicSupport {
             for (String main : mains) {
                 // Skip if the same class already registered via SPI (contributor implements both)
                 String simple = simpleName(main);
-                if (nameAnchors.containsKey(simple)) continue;
-                if (nameAnchors.containsKey(main)) continue;
+                if (nameAnchors.containsKey(simple) || nameAnchors.containsKey(main)) continue;
                 String name = simple;
-                if (nameAnchors.containsKey(name)) {
-                    name = main.replace('.', '_');
-                }
                 final String mainClass = main;
                 BuildLogicTask task = ctx -> {
                     int exit = runMain(logicClasses, apiCp, mainClass, ctx.projectDir(), ctx.outDir());
@@ -344,8 +340,15 @@ public final class BuildLogicSupport {
     /** Location of the plugin-sdk jar / classes dir that hosts the build-logic API. */
     static Path apiClasspath() {
         try {
-            URL loc = BuildLogicContributor.class.getProtectionDomain().getCodeSource().getLocation();
-            return Path.of(loc.toURI());
+            var pd = BuildLogicContributor.class.getProtectionDomain();
+            var cs = pd == null ? null : pd.getCodeSource();
+            if (cs == null || cs.getLocation() == null) {
+                throw new IllegalStateException(
+                        "[build] logic: build-logic API classpath unknown (null code source — exotic packaging)");
+            }
+            return Path.of(cs.getLocation().toURI());
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
             throw new IllegalStateException("[build] logic: cannot locate build-logic API classpath", e);
         }

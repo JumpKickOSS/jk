@@ -83,9 +83,6 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        if (in.isSet("run")) {
-            return new BuildCommand().run(in); // forwards --cache-dir; build options default
-        }
         GlobalOptions global = GlobalOptions.from(in);
         Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
         Path startDir = global.workingDir();
@@ -94,9 +91,20 @@ public final class ExplainCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
 
-        // Module DAG export is offline (no engine / lock). Honor --modules / --affected-since.
         String graphFmt = in.value("graph").orElse(null);
-        if (graphFmt != null && !graphFmt.isBlank()) {
+        boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
+        if (in.isSet("run") && hasGraph) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Explain", "cannot combine --run with --graph (pick one)"));
+            return Exit.USAGE;
+        }
+        if (in.isSet("run")) {
+            return new BuildCommand().run(in); // forwards --cache-dir; build options default
+        }
+
+        // Module DAG export is offline (no engine / lock). Honor --modules / --affected-since.
+        // On single-project layouts, selectors only validate; the graph is one node.
+        if (hasGraph) {
             return emitModuleGraph(
                     startDir,
                     buildFile,

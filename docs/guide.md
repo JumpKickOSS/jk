@@ -176,6 +176,14 @@ jk verify                    # rebuild in a scratch dir and compare hashes
 
 Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
 
+### CLI UX (human-first)
+
+The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
+error red), not `jk <command>: …` log prefixes. Agents should use `--json`, BSP, or the engine
+wire — not scrape prose. Opt out of rich chrome with `NO_COLOR`, `--no-ansi`, or
+`JK_NERDFONT=false`. Full charter and migration tickets live on the org board (kanartist
+**JK-1076**–**JK-1081**).
+
 ### Deny policy
 
 ```toml
@@ -378,6 +386,10 @@ jk selective resolve --modules 'api,worker'   # dry list
 `selective run` without `--force`/`--rebuild` skips modules that still match (prints
 “nothing changed” when the whole plan is clean). Hashes are content-based (not absolute
 paths) so plans are shareable when trees match. Generated/`target` trees are not fingerprinted.
+
+**Caveat:** fingerprints are **not** transitive. An unchanged module can be skipped even when
+an upstream sibling it depends on changed. Use a full `jk build` / `--force` when the graph
+matters more than incremental CI savings.
 
 Outside a git repo or with an invalid ref, jk prints a clear error. If nothing under the
 workspace matched, it exits 0 with “nothing affected” / “nothing selected”.

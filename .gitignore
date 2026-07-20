@@ -20,12 +20,18 @@ replay_pid*
 # Keep the Gradle wrapper jar tracked (overrides *.jar above).
 !gradle/wrapper/gradle-wrapper.jar
 
-# --- IntelliJ IDEA ---
+# --- VS Code extension packaging ---
+*.vsix
+clients/vscode/node_modules/
+
+# --- IntelliJ IDEA / plugin packaging ---
 .idea/
 *.iml
 *.iws
 *.ipr
 out/
+clients/intellij/.gradle/
+clients/intellij/.intellijPlatform/
 
 # --- Eclipse ---
 .classpath

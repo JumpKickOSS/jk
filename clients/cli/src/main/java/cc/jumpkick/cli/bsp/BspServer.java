@@ -63,12 +63,12 @@ public final class BspServer {
         switch (method) {
             case "build/initialize" -> respond(
                     id,
-                    """
-                    {"displayName":"jk","version":"0.10.0","bspVersion":"2.1.0",\
-                    "capabilities":{"compileProvider":{"languageIds":["java","kotlin"]},\
-                    "testProvider":{"languageIds":["java","kotlin"]},\
-                    "canReload":true}}
-                    """);
+                    "{\"displayName\":\"jk\",\"version\":"
+                            + q(cc.jumpkick.cli.Jk.VERSION)
+                            + ",\"bspVersion\":\"2.1.0\","
+                            + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                            + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                            + "\"canReload\":true}}");
             case "build/initialized" -> {
                 /* notification */
             }

@@ -128,8 +128,20 @@ public final class JshellCommand implements CliCommand {
 
         List<String> cp = new ArrayList<>();
         cp.add(classes.toString());
+        int missing = 0;
         for (Path p : depCp) {
-            if (p != null && Files.exists(p)) cp.add(p.toString());
+            if (p == null) continue;
+            if (Files.exists(p)) {
+                cp.add(p.toString());
+            } else {
+                missing++;
+            }
+        }
+        if (missing > 0) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.chip(
+                    cc.jumpkick.cli.tui.Glyphs.BANG,
+                    "JShell",
+                    missing + " lock classpath entry(ies) missing on disk — run `jk sync`"));
         }
         String classpath = String.join(java.io.File.pathSeparator, cp);
 

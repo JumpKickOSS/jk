@@ -80,8 +80,8 @@ public final class WatchCommand implements CliCommand {
         List<String> rest;
         if (positionals.isEmpty()) {
             // Bare `jk watch` needs a verb. (`jk dev` always injects `run` via DevCommand.)
-            CliOutput.err("jk watch: expected a verb — compile, test, build, or run");
-            CliOutput.err("  tip: `jk dev` is short for `jk watch run`");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Watch", "expected a verb — compile, test, build, or run (tip: `jk dev` = watch run)"));
             return Exit.USAGE;
         }
         String first = positionals.getFirst().trim().toLowerCase(Locale.ROOT);
@@ -89,7 +89,8 @@ public final class WatchCommand implements CliCommand {
             verb = first;
             rest = positionals.size() > 1 ? positionals.subList(1, positionals.size()) : List.of();
         } else {
-            CliOutput.err("jk watch: unknown verb `" + first + "` (use compile, test, build, or run)");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Watch", "unknown verb `" + first + "` (use compile, test, build, or run)"));
             return Exit.USAGE;
         }
 
@@ -97,16 +98,30 @@ public final class WatchCommand implements CliCommand {
         var proj = ProjectContext.require(projectDir, "watch").orElse(null);
         if (proj == null) return Exit.CONFIG;
 
-        long debounceMs = in.value("debounce-ms")
-                .map(Long::parseLong)
-                .orElse(SourceWatch.DEBOUNCE_MILLIS);
+        long debounceMs;
+        try {
+            debounceMs = in.value("debounce-ms")
+                    .map(s -> {
+                        long v = Long.parseLong(s.trim());
+                        if (v < 0 || v > 60_000) {
+                            throw new NumberFormatException("out of range");
+                        }
+                        return v;
+                    })
+                    .orElse(SourceWatch.DEBOUNCE_MILLIS);
+        } catch (NumberFormatException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Watch", "invalid --debounce-ms (use an integer 0..60000)"));
+            return Exit.USAGE;
+        }
 
         return switch (verb) {
             case "run" -> new AppWatchLoop(global, jdksDir, "jk watch run")
                     .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
             case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
-                CliOutput.err("jk watch: unknown verb `" + verb + "` (use compile, test, build, or run)");
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Watch", "unknown verb `" + verb + "` (use compile, test, build, or run)"));
                 yield Exit.USAGE;
             }
         };
@@ -116,31 +131,30 @@ public final class WatchCommand implements CliCommand {
             throws Exception {
         int code = runVerb(verb);
         if (code != 0) {
-            CliOutput.err("jk watch: initial " + verb + " failed (exit " + code + "); watching anyway");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Watch", "initial " + verb + " failed (exit " + code + "); watching anyway"));
         }
 
         List<Path> roots = SourceWatch.defaultRoots(projectDir);
         if (roots.isEmpty()) roots = List.of(projectDir);
 
-        CliOutput.err(
-                "jk watch: "
-                        + verb
-                        + " on change (src/, test/, jk.toml; debounce "
-                        + debounceMs
-                        + "ms). Ctrl-C stops.");
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.working(
+                "Watch",
+                verb + " on change (src/, test/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops."));
 
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs)) {
             while (true) {
                 watch.awaitChange();
-                CliOutput.err("jk watch: change detected — " + verb);
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.working("Watch", "change detected — " + verb));
                 code = runVerb(verb);
                 if (code != 0) {
-                    CliOutput.err("jk watch: " + verb + " failed (exit " + code + ")");
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "Watch", verb + " failed (exit " + code + ")"));
                 }
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            CliOutput.err("jk watch: interrupted");
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Watch", "interrupted"));
             return 130;
         }
     }

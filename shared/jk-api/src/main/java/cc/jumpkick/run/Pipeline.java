@@ -26,11 +26,13 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Named DAG of {@link Step}s for one invocation: readiness-level scheduling, progress, diagnostics,
- * and a terminal {@link PipelineResult}. Cancellation is cooperative (200ms grace, then interrupt).
+ * and a terminal {@link PipelineResult}. Cancellation is cooperative: a flag is set, futures are
+ * cancelled after a short grace, but a running {@code supplyAsync} body is only stopped if it
+ * polls the flag (see JK-1067 for stronger termination).
  */
 public final class Pipeline {
 
-    /** How long async steps get to notice cancellation before we interrupt them. */
+    /** How long we wait for async steps to notice cancellation before calling {@code Future.cancel}. */
     static final Duration COOPERATIVE_CANCEL_GRACE = Duration.ofMillis(200);
 
     /** How often the interpolation interpTimer eases opaque steps forward. */
