@@ -47,4 +47,20 @@ class ChromeTimelineTest {
         assertTrue(json.contains("SUCCESS") || json.contains("SKIPPED"), json);
         assertTrue(json.contains("\"dur\":"), json);
     }
+
+    @Test
+    void no_timeline_thread_flag_disables_open(@TempDir Path dir) throws Exception {
+        Path project = dir.resolve("proj");
+        Files.createDirectories(project);
+        ChromeTimeline.disableForThread();
+        try {
+            org.junit.jupiter.api.Assertions.assertNull(ChromeTimeline.open(project));
+        } finally {
+            ChromeTimeline.clearDisabled();
+        }
+        // After clear, open works again (unless env disables)
+        ChromeTimeline t = ChromeTimeline.open(project);
+        org.junit.jupiter.api.Assumptions.assumeTrue(t != null);
+        org.junit.jupiter.api.Assertions.assertNotNull(t.file());
+    }
 }

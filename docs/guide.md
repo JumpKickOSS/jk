@@ -214,11 +214,15 @@ jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 ### Build timeline (chrome tracing)
 
 Every `jk build` / `jk test` writes a Chrome Trace Event file at
-`out/jk-chrome-profile.json` (under the project or workspace root). Open it in
-Perfetto or `chrome://tracing` to see step durations and parallel modules.
+`out/jk-chrome-profile.json` (under the project or workspace root) and prints a one-line
+**Timeline:** path on stderr when the file is written. Open it in Perfetto or
+`chrome://tracing` to see step durations and parallel modules. **CI tip:** archive
+`out/jk-chrome-profile.json` as a build artifact.
 
 ```bash
-# disable
+# disable for one run
+jk build --no-timeline
+# or via env
 JK_CHROME_PROFILE=off jk build
 # custom path
 JK_CHROME_PROFILE=/tmp/trace.json jk build
@@ -277,6 +281,9 @@ Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Re
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**
 
+Watches **`src/`**, **`test/`**, and project-root **`jk.toml`** by default — not `target/`,
+`out/`, `build/`, or VCS trees. Editor save bursts are debounced (default **150ms**).
+
 ```bash
 jk watch compile             # typecheck loop
 jk watch test                # TDD loop
@@ -284,6 +291,7 @@ jk watch build               # package loop (--skip-tests)
 jk watch run                 # run the app + rebuild/reload on change
 jk dev                       # same as: jk watch run
 jk dev -- --port=8080        # app args after --
+jk watch test --debounce-ms 300   # calmer loop on slow disks / network FS
 ```
 
 `watch run` / `dev` use classes-dir execution, Spring Boot DevTools when present, otherwise process

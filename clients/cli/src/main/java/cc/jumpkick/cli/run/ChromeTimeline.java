@@ -25,6 +25,9 @@ public final class ChromeTimeline {
     private static final String ENV = "JK_CHROME_PROFILE";
     private static final String DEFAULT_REL = "out/jk-chrome-profile.json";
 
+    /** Per-thread disable for {@code --no-timeline} (does not mutate process env). */
+    private static final ThreadLocal<Boolean> DISABLED = ThreadLocal.withInitial(() -> false);
+
     private final Path file;
     private final long originNanos;
     private final List<Event> events = new CopyOnWriteArrayList<>();
@@ -36,12 +39,22 @@ public final class ChromeTimeline {
         this.originNanos = System.nanoTime();
     }
 
+    /** Disable chrome timeline for this thread until {@link #clearDisabled()}. */
+    public static void disableForThread() {
+        DISABLED.set(true);
+    }
+
+    public static void clearDisabled() {
+        DISABLED.remove();
+    }
+
     /**
      * Open a session for {@code projectDir}, or {@code null} when disabled / path unusable.
      * Never throws.
      */
     public static ChromeTimeline open(Path projectDir) {
         if (projectDir == null) return null;
+        if (Boolean.TRUE.equals(DISABLED.get())) return null;
         String env = System.getenv(ENV);
         if (env != null && (env.isBlank() || "off".equalsIgnoreCase(env) || "0".equals(env))) {
             return null;
@@ -56,6 +69,18 @@ public final class ChromeTimeline {
         } catch (RuntimeException | IOException e) {
             return null;
         }
+    }
+
+    /**
+     * One-line discoverability after a successful flush: path + how to open + how to disable.
+     * Writes to stderr so it does not pollute {@code --output json} stdout.
+     */
+    public static void announceWritten(Path file) {
+        if (file == null) return;
+        System.err.println(
+                "Timeline: "
+                        + file
+                        + "  (Perfetto or chrome://tracing; CI: archive this file. Disable: --no-timeline or JK_CHROME_PROFILE=off)");
     }
 
     public Path file() {
@@ -99,6 +124,13 @@ public final class ChromeTimeline {
         } catch (RuntimeException | IOException e) {
             return java.util.Optional.empty();
         }
+    }
+
+    /** Flush then announce the path (discoverability for humans and CI logs). */
+    public java.util.Optional<Path> flushAndAnnounce() {
+        java.util.Optional<Path> written = flush();
+        written.ifPresent(ChromeTimeline::announceWritten);
+        return written;
     }
 
     private static String json(String s) {

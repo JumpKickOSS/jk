@@ -18,6 +18,10 @@ import java.util.concurrent.TimeUnit;
 /**
  * Debounced recursive directory watch for live loops ({@code jk watch}, {@code jk dev}). One
  * implementation for all verbs.
+ *
+ * <p>By default only {@code src/} and {@code test/} trees are watched (plus {@code jk.toml} at the
+ * project root). Build outputs ({@code target/}, {@code out/}, {@code build/}), VCS dirs, and editor
+ * junk are not registered — so they never wake the loop.
  */
 public final class SourceWatch implements AutoCloseable {
 
@@ -27,16 +31,23 @@ public final class SourceWatch implements AutoCloseable {
     private final WatchService watcher;
     private final Map<WatchKey, Path> keys = new HashMap<>();
     private final Path projectDir;
+    private final long debounceMillis;
 
-    private SourceWatch(WatchService watcher, Path projectDir) {
+    private SourceWatch(WatchService watcher, Path projectDir, long debounceMillis) {
         this.watcher = watcher;
         this.projectDir = projectDir;
+        this.debounceMillis = Math.max(0, debounceMillis);
     }
 
     /** Open a watch over {@code roots} (and the project dir for {@code jk.toml}). */
     public static SourceWatch open(Path projectDir, List<Path> roots) throws IOException {
+        return open(projectDir, roots, DEBOUNCE_MILLIS);
+    }
+
+    /** Open a watch with a custom debounce window (milliseconds). */
+    public static SourceWatch open(Path projectDir, List<Path> roots, long debounceMillis) throws IOException {
         WatchService ws = FileSystems.getDefault().newWatchService();
-        SourceWatch sw = new SourceWatch(ws, projectDir);
+        SourceWatch sw = new SourceWatch(ws, projectDir, debounceMillis);
         for (Path root : roots) {
             if (Files.isDirectory(root)) sw.registerTree(root);
             else if (Files.isRegularFile(root) && root.getParent() != null) sw.registerDir(root.getParent());
@@ -102,7 +113,7 @@ public final class SourceWatch implements AutoCloseable {
     private Changes drainEvents(WatchKey first) throws IOException, InterruptedException {
         boolean sources = false, resources = false, manifest = false;
         WatchKey key = first;
-        long settleUntil = System.currentTimeMillis() + DEBOUNCE_MILLIS;
+        long settleUntil = System.currentTimeMillis() + debounceMillis;
         while (key != null) {
             Path dir = keys.get(key);
             for (WatchEvent<?> event : key.pollEvents()) {

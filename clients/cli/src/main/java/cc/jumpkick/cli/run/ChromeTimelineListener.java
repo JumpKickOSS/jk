@@ -66,6 +66,6 @@ public final class ChromeTimelineListener implements PipelineListener {
 
     @Override
     public void pipelineFinish(PipelineResult result) {
-        if (flushOnFinish) timeline.flush();
+        if (flushOnFinish) timeline.flushAndAnnounce();
     }
 }

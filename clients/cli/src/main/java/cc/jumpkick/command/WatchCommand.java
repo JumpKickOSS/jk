@@ -49,7 +49,13 @@ public final class WatchCommand implements CliCommand {
                 Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install directory.", "--jdks-dir")
-                        .hide()));
+                        .hide(),
+                Opt.value(
+                        "<ms>",
+                        "Debounce window for change bursts (editor save storms). Default "
+                                + SourceWatch.DEBOUNCE_MILLIS
+                                + ".",
+                        "--debounce-ms")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -91,10 +97,14 @@ public final class WatchCommand implements CliCommand {
         var proj = ProjectContext.require(projectDir, "watch").orElse(null);
         if (proj == null) return Exit.CONFIG;
 
+        long debounceMs = in.value("debounce-ms")
+                .map(Long::parseLong)
+                .orElse(SourceWatch.DEBOUNCE_MILLIS);
+
         return switch (verb) {
             case "run" -> new AppWatchLoop(global, jdksDir, "jk watch run")
                     .run(projectDir, AppWatchLoop.cache(cacheOverride), rest);
-            case "compile", "test", "build" -> verbLoop(verb, projectDir, global);
+            case "compile", "test", "build" -> verbLoop(verb, projectDir, global, debounceMs);
             default -> {
                 CliOutput.err("jk watch: unknown verb `" + verb + "` (use compile, test, build, or run)");
                 yield Exit.USAGE;
@@ -102,7 +112,8 @@ public final class WatchCommand implements CliCommand {
         };
     }
 
-    private static int verbLoop(String verb, Path projectDir, GlobalOptions global) throws Exception {
+    private static int verbLoop(String verb, Path projectDir, GlobalOptions global, long debounceMs)
+            throws Exception {
         int code = runVerb(verb);
         if (code != 0) {
             CliOutput.err("jk watch: initial " + verb + " failed (exit " + code + "); watching anyway");
@@ -111,9 +122,14 @@ public final class WatchCommand implements CliCommand {
         List<Path> roots = SourceWatch.defaultRoots(projectDir);
         if (roots.isEmpty()) roots = List.of(projectDir);
 
-        CliOutput.err("jk watch: " + verb + " on change. Ctrl-C stops.");
+        CliOutput.err(
+                "jk watch: "
+                        + verb
+                        + " on change (src/, test/, jk.toml; debounce "
+                        + debounceMs
+                        + "ms). Ctrl-C stops.");
 
-        try (SourceWatch watch = SourceWatch.open(projectDir, roots)) {
+        try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs)) {
             while (true) {
                 watch.awaitChange();
                 CliOutput.err("jk watch: change detected — " + verb);

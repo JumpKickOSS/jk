@@ -66,7 +66,10 @@ public final class BuildCommand implements CliCommand {
                 Opt.value(
                         "<sel>",
                         "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                        "--modules")));
+                        "--modules"),
+                Opt.flag(
+                        "Disable writing out/jk-chrome-profile.json for this run (also: JK_CHROME_PROFILE=off).",
+                        "--no-timeline")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -99,6 +102,16 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
+        boolean noTimeline = in.isSet("no-timeline");
+        if (noTimeline) cc.jumpkick.cli.run.ChromeTimeline.disableForThread();
+        try {
+            return runBody(in);
+        } finally {
+            if (noTimeline) cc.jumpkick.cli.run.ChromeTimeline.clearDisabled();
+        }
+    }
+
+    private int runBody(Invocation in) throws Exception {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
@@ -390,7 +403,7 @@ public final class BuildCommand implements CliCommand {
 
                         @Override
                         public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
-                            if (workspaceTimeline != null) workspaceTimeline.flush();
+                            if (workspaceTimeline != null) workspaceTimeline.flushAndAnnounce();
                         }
                     };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -518,7 +531,7 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
-                    if (workspaceTimeline != null) workspaceTimeline.flush();
+                    if (workspaceTimeline != null) workspaceTimeline.flushAndAnnounce();
                 }
             };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
