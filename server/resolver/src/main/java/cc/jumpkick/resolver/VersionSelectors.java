@@ -153,10 +153,14 @@ public final class VersionSelectors {
     /**
      * Cargo-style caret semantics: increment the leading non-zero segment, zero out everything after
      * it, exclusive upper. {@code 1.2.3 → [1.2.3, 2.0.0)}, {@code 0.2.3 → [0.2.3, 0.3.0)}, {@code
-     * 0.0.3 → [0.0.3, 0.0.4)}. Non-numeric versions fall back to an exact match.
+     * 0.0.3 → [0.0.3, 0.0.4)}. Pre-release anchors use the numeric core for bound math and keep the
+     * full string as the inclusive lower bound ({@code ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0)} — includes
+     * RC1 itself). Non-numeric versions fall back to an exact match.
      */
     static VersionSet caretRange(String version) {
-        String[] parts = version.split("\\.");
+        String core = Versions.numericCore(version);
+        if (core.isEmpty()) return VersionSet.exact(version);
+        String[] parts = core.split("\\.");
         int leading = 0;
         while (leading < parts.length && parts[leading].equals("0")) leading++;
         if (leading >= parts.length) return VersionSet.exact(version);
@@ -174,10 +178,13 @@ public final class VersionSelectors {
 
     /**
      * Cargo-style tilde semantics: lock the major (and minor, if present), allow patches. {@code
-     * ~1.2.3 → [1.2.3, 1.3.0)}, {@code ~1.2 → [1.2, 1.3.0)}, {@code ~1 → [1, 2.0.0)}.
+     * ~1.2.3 → [1.2.3, 1.3.0)}, {@code ~1.2 → [1.2, 1.3.0)}, {@code ~1 → [1, 2.0.0)}. Pre-release
+     * anchors use the numeric core for upper-bound segments ({@code ~1.2.3-RC1 → [1.2.3-RC1, 1.3.0)}).
      */
     static VersionSet tildeRange(String version) {
-        String[] parts = version.split("\\.");
+        String core = Versions.numericCore(version);
+        if (core.isEmpty()) return VersionSet.exact(version);
+        String[] parts = core.split("\\.");
         try {
             if (parts.length == 1) {
                 int n = Integer.parseInt(parts[0]);

@@ -60,6 +60,29 @@ class VersionUniverseTest {
     }
 
     @Test
+    void soft_prefer_prerelease_pin_wins_over_later_stable() {
+        // Lock/BOM soft-prefer fronts a pre-release even though a stable is higher (JK-1072).
+        VersionUniverse u = VersionUniverse.of("widget", List.of("7.0.0-RC1", "7.0.0", "6.0.0"));
+        AllowedSet a = u.all();
+        assertThat(a.choosePreferred()).isEqualTo("7.0.0-RC1");
+    }
+
+    @Test
+    void soft_prefer_prerelease_pin_still_wins_when_constrained_to_range_including_pin() {
+        VersionUniverse u = VersionUniverse.of("widget", List.of("7.0.0-RC1", "7.0.0", "6.0.0"));
+        AllowedSet a = u.project(VersionSet.atLeast("7.0.0-RC1", true));
+        assertThat(a.choosePreferred()).isEqualTo("7.0.0-RC1");
+    }
+
+    @Test
+    void when_soft_prefer_front_excluded_falls_back_to_stable() {
+        VersionUniverse u = VersionUniverse.of("widget", List.of("7.0.0-RC1", "7.0.0", "6.0.0"));
+        // Pin ruled out (e.g. new constraint) — must not stick on another pre-release path.
+        AllowedSet a = u.project(VersionSet.exact("7.0.0-RC1").complement());
+        assertThat(a.choosePreferred()).isEqualTo("7.0.0");
+    }
+
+    @Test
     void toVersionSet_round_trips_membership() {
         VersionUniverse u = VersionUniverse.of("widget", List.of("3.0", "2.0", "1.0"));
         AllowedSet a = u.project(VersionSet.atLeast("2.0", true));

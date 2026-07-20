@@ -73,6 +73,12 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
 
+**Pre-release pins:** a lock (or BOM) that pins an RC/M/beta is a soft prefer. Conservative
+re-locks (e.g. after editing another dep) keep that pin when it still satisfies the range.
+Unpinned `latest` selection still prefers the newest **stable** over a newer pre-release.
+Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
+the conservative path.
+
 ### Check for updates (`jk outdated`)
 
 Lockfile stays law until you deliberately rewrite it. The usual loop:

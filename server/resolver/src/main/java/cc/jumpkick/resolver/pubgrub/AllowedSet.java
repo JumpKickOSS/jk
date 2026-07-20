@@ -75,17 +75,40 @@ public final class AllowedSet {
     }
 
     /**
-     * Highest-first preferred pick: first <em>stable</em> version still allowed in universe order,
-     * else the first (highest/preferred) pre-release, else {@code null} when empty.
+     * Preferred pick for the decision procedure.
+     *
+     * <p>Soft-prefer pins (lock/BOM) sit at universe index 0 even when lower than a later stable.
+     * When that front slot is still allowed, take it <em>unconditionally</em> — including pre-release
+     * pins (JK-1072). Otherwise walk remaining candidates highest-first, preferring the first
+     * <em>stable</em> version, then the first pre-release, else {@code null} when empty.
      */
     public String choosePreferred() {
+        int first = bits.nextSetBit(0);
+        if (first < 0) return null;
+        // Soft-prefer front: index 0 is not a strict max of the universe → pin was front-loaded.
+        if (first == 0 && isSoftPreferFront()) {
+            return universe.version(0);
+        }
         String prerelease = null;
-        for (int i = bits.nextSetBit(0); i >= 0; i = bits.nextSetBit(i + 1)) {
+        for (int i = first; i >= 0; i = bits.nextSetBit(i + 1)) {
             String v = universe.version(i);
             if (Versions.isStable(v)) return v;
             if (prerelease == null) prerelease = v;
         }
         return prerelease;
+    }
+
+    /**
+     * True when universe index 0 is a soft-prefer pin rather than the natural highest version:
+     * some later advertised version compares greater under Maven order.
+     */
+    private boolean isSoftPreferFront() {
+        if (universe.size() <= 1) return false;
+        String front = universe.version(0);
+        for (int i = 1; i < universe.size(); i++) {
+            if (Versions.compare(universe.version(i), front) > 0) return true;
+        }
+        return false;
     }
 
     /**

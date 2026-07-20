@@ -143,4 +143,28 @@ class VersionsTest {
         assertThat(Versions.isStable("RELEASE")).isFalse();
         assertThat(Versions.isStable("latest")).isFalse();
     }
+
+    @Test
+    void release_synonyms_and_calendar_versions_are_stable() {
+        for (String v : new String[] {
+            "1.0.Final",
+            "1.0.RELEASE",
+            "1.0-GA",
+            "1.0.GA",
+            "2024.01",
+            "2024.1.0",
+            "32.1.3-jre"
+        }) {
+            assertThat(Versions.isStable(v)).as(v).isTrue();
+        }
+    }
+
+    @Test
+    void milestone_m_digit_is_unstable_but_mid_token_m_is_not() {
+        assertThat(Versions.isStable("2.0.0-M2")).isFalse();
+        assertThat(Versions.isStable("2.0.0-m1")).isFalse();
+        // Numeric core only — no pre-release separator for a bare letter mid-string.
+        assertThat(Versions.numericCore("1.2.3-RC1")).isEqualTo("1.2.3");
+        assertThat(Versions.numericCore("0.2.3-beta")).isEqualTo("0.2.3");
+    }
 }

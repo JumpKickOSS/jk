@@ -10,6 +10,24 @@ import org.junit.jupiter.api.Test;
 class VersionSelectorsTest {
 
     @Test
+    void caret_with_prerelease_anchor_includes_rc_and_bumps_major() {
+        // Cargo: ^1.2.3-RC1 → [1.2.3-RC1, 2.0.0)
+        VersionSet set = VersionSelectors.caretRange("1.2.3-RC1");
+        assertThat(set.contains("1.2.3-RC1")).isTrue();
+        assertThat(set.contains("1.2.3")).isTrue();
+        assertThat(set.contains("1.9.9")).isTrue();
+        assertThat(set.contains("2.0.0")).isFalse();
+    }
+
+    @Test
+    void tilde_with_prerelease_anchor() {
+        VersionSet set = VersionSelectors.tildeRange("1.2.3-RC1");
+        assertThat(set.contains("1.2.3-RC1")).isTrue();
+        assertThat(set.contains("1.2.9")).isTrue();
+        assertThat(set.contains("1.3.0")).isFalse();
+    }
+
+    @Test
     void caret_with_nonzero_major_bumps_major() {
         VersionSet set = VersionSelectors.caretRange("1.2.3");
         assertThat(set.contains("1.2.3")).isTrue();
