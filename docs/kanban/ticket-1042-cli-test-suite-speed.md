@@ -46,7 +46,7 @@ This slows dogfood, CI, and agent loops. Distinct from a wedged engine (**1043**
 - [x] At least one optimization landed that cuts `:cli:test` wall time by a **material** amount (~29% measured; hybrid warm engine)  
 - [x] No new flake spike on TempDir / engine leak (1022 strategy intact)  
 - [x] CONTRIBUTING or Agents note: expected suite time + full vs fast  
-- [ ] Green full `./gradlew test` before merge to main (batch end)
+- [x] Green full `./gradlew test` before merge to main (batch end)
 
 ## Measurements (2026-07-20, Apple Silicon laptop)
 
