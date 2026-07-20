@@ -8,7 +8,7 @@ java     = 25
 
 # Module order is declaration preference only; build order is dependency-first.
 # Phase 2: thin first-party workers (test-runner, java-compiler) are workspace modules
-# with shadow-jar + PluginMain. Remaining plugins/* stay Gradle-only (fat workers / installLocal).
+# with assembly + PluginMain. Remaining plugins/* stay Gradle-only (fat workers / installLocal).
 [workspace]
 modules = [
   "shared/plugin-sdk",

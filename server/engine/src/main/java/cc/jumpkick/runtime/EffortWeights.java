@@ -42,7 +42,7 @@ public final class EffortWeights {
 
     static final int PACKAGE_JAR = 5;
     static final int JDK_DOWNLOAD = 70;
-    static final int SHADOW_RUN = 10;
+    static final int ASSEMBLY_RUN = 10;
     static final int NATIVE_RUN = 100;
     static final int OCI_RUN = 40;
     static final int OCI_SKIP = 2;
@@ -299,12 +299,12 @@ public final class EffortWeights {
     }
 
     /**
-     * Fat/shadow jar present and at least as new as the main jar (and not {@code --force}) → skip.
+     * Assembly jar present and at least as new as the main jar (and not {@code --force}) → skip.
      */
-    public static int shadowWeight(Path dir) {
-        return artifactFresh(dir, BuildLayout::shadowJar)
+    public static int assemblyWeight(Path dir) {
+        return artifactFresh(dir, BuildLayout::assemblyJar)
                 ? SKIP
-                : learnedFixedWeight(dir.toString(), "package-shadow", SHADOW_RUN);
+                : learnedFixedWeight(dir.toString(), "package-assembly", ASSEMBLY_RUN);
     }
 
     /** Native binary/library present and fresh → skip; otherwise a full native-image build. */

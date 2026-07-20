@@ -111,7 +111,7 @@ public final class BuildService {
             if (!layout.hasMain()) continue;
             List<Path> candidates = new ArrayList<>();
             candidates.add(layout.mainJar());
-            candidates.add(layout.shadowJar());
+            candidates.add(layout.assemblyJar());
             candidates.add(layout.nativeBinary());
             candidates.add(layout.nativeLibrary());
             candidates.add(layout.ociImageTar());

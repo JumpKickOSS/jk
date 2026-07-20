@@ -79,7 +79,7 @@ public final class InstallPipelines {
         // this project produces (so a follow-up client-side make-install finds them all built).
         java.util.List<String> requires = new java.util.ArrayList<>(List.of(StepNames.PACKAGE_JAR));
         if (isNative) requires.add(StepNames.NATIVE_IMAGE);
-        if (proj.isApplication() && proj.shadowJar() && !isNative) requires.add(StepNames.PACKAGE_SHADOW);
+        if (proj.isApplication() && proj.assembly() && !isNative) requires.add(StepNames.PACKAGE_ASSEMBLY);
 
         Step cacheInstall = Step.builder(StepNames.CACHE_INSTALL)
                 .requires(requires.toArray(new String[0]))

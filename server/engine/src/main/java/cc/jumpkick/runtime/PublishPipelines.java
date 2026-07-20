@@ -94,12 +94,12 @@ public final class PublishPipelines {
                         throw new RuntimeException("branch git dependency refused");
                     }
                     BuildLayout layout = BuildLayout.of(projectDir, project);
-                    // A shadow-jar project's self-contained artifact IS the fat jar (a build plugin,
+                    // A assembly project's self-contained artifact IS the fat jar (a build plugin,
                     // say, shades jk-plugin-sdk in) — publish that as the coordinate, not the thin
                     // main jar a consumer couldn't fork. An explicit --jar still wins.
                     Path jar = req.jarPath() != null
                             ? req.jarPath()
-                            : project.shadowJar() ? layout.shadowJar() : layout.mainJar();
+                            : project.assembly() ? layout.assemblyJar() : layout.mainJar();
                     if (!Files.exists(jar)) {
                         ctx.error(
                                 "missing-jar",

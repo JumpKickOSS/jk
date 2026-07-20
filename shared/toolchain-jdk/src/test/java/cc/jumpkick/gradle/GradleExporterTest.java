@@ -96,7 +96,7 @@ class GradleExporterTest {
 
                 [application]
                 main       = "com.example.Main"
-                shadow-jar = true
+                assembly = true
 
                 [native]
                 always = true

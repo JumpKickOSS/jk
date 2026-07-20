@@ -23,7 +23,7 @@ public record ProjectInfo(
         List<String> moduleDirs,
         boolean application,
         String mainClass,
-        boolean shadowJar,
+        boolean assembly,
         String nativeMode,
         String graal,
         boolean springBoot,
@@ -35,7 +35,7 @@ public record ProjectInfo(
         boolean hasLock,
         String lockJdk,
         String mainJarPath,
-        String shadowJarPath,
+        String assemblyJarPath,
         String nativeBinPath,
         String nativeLibPath,
         List<String> pathDeps,
@@ -101,7 +101,7 @@ public record ProjectInfo(
                 + ",\"moduleDirs\":" + EngineProtocol.quoteArray(moduleDirs)
                 + ",\"application\":" + application
                 + ",\"mainClass\":" + Jsonl.quote(mainClass)
-                + ",\"shadowJar\":" + shadowJar
+                + ",\"assembly\":" + assembly
                 + ",\"nativeMode\":" + Jsonl.quote(nativeMode)
                 + ",\"graal\":" + Jsonl.quote(graal)
                 + ",\"springBoot\":" + springBoot
@@ -113,7 +113,7 @@ public record ProjectInfo(
                 + ",\"hasLock\":" + hasLock
                 + ",\"lockJdk\":" + Jsonl.quote(lockJdk)
                 + ",\"mainJarPath\":" + Jsonl.quote(mainJarPath)
-                + ",\"shadowJarPath\":" + Jsonl.quote(shadowJarPath)
+                + ",\"assemblyJarPath\":" + Jsonl.quote(assemblyJarPath)
                 + ",\"nativeBinPath\":" + Jsonl.quote(nativeBinPath)
                 + ",\"nativeLibPath\":" + Jsonl.quote(nativeLibPath)
                 + ",\"pathDeps\":" + EngineProtocol.quoteArray(pathDeps)
@@ -140,7 +140,7 @@ public record ProjectInfo(
                 Jsonl.strArray(line, "moduleDirs"),
                 Jsonl.bool(line, "application", false),
                 orEmpty(Jsonl.str(line, "mainClass")),
-                Jsonl.bool(line, "shadowJar", false),
+                Jsonl.bool(line, "assembly", false),
                 orEmpty(Jsonl.str(line, "nativeMode")),
                 orEmpty(Jsonl.str(line, "graal")),
                 Jsonl.bool(line, "springBoot", false),
@@ -152,7 +152,7 @@ public record ProjectInfo(
                 Jsonl.bool(line, "hasLock", false),
                 orEmpty(Jsonl.str(line, "lockJdk")),
                 orEmpty(Jsonl.str(line, "mainJarPath")),
-                orEmpty(Jsonl.str(line, "shadowJarPath")),
+                orEmpty(Jsonl.str(line, "assemblyJarPath")),
                 orEmpty(Jsonl.str(line, "nativeBinPath")),
                 orEmpty(Jsonl.str(line, "nativeLibPath")),
                 Jsonl.strArray(line, "pathDeps"),

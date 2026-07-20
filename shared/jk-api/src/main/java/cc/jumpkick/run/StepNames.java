@@ -31,7 +31,7 @@ public final class StepNames {
     public static final String LOCK_SDK = "lock-sdk";
     public static final String NATIVE_IMAGE = "native-image";
     public static final String PACKAGE_JAR = "package-jar";
-    public static final String PACKAGE_SHADOW = "package-shadow";
+    public static final String PACKAGE_ASSEMBLY = "package-assembly";
     public static final String PACKAGE_SOURCES = "package-sources";
     public static final String PARSE_BUILD = "parse-build";
     public static final String PARSE_LOCK = "parse-lock";

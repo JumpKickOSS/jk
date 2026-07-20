@@ -47,7 +47,7 @@ class JkBuildRendererTest {
         assertThat(out).contains("kotlin   = \"=2.3.21\"");
         assertThat(out).contains("[application]");
         assertThat(out).contains("main       = \"com.example.App\"");
-        assertThat(out).contains("shadow-jar = true");
+        assertThat(out).contains("assembly = true");
         assertThat(out).contains("[native]");
     }
 

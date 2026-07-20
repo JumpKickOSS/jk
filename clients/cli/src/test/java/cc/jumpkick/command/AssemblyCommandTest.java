@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 class AssemblyCommandTest {
 
     @Test
-    void without_shadow_jar_prints_fix_and_exits_config(@TempDir Path dir) throws IOException {
+    void without_assembly_prints_fix_and_exits_config(@TempDir Path dir) throws IOException {
         Files.writeString(
                 dir.resolve("jk.toml"),
                 """
@@ -38,6 +38,6 @@ class AssemblyCommandTest {
             System.setErr(orig);
         }
         assertThat(exit).isEqualTo(2);
-        assertThat(err.toString(StandardCharsets.UTF_8)).contains("shadow-jar = true");
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("assembly = true");
     }
 }

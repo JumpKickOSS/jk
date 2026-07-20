@@ -316,14 +316,14 @@ public final class NewScaffolder {
                 - `%2$s` — the code layer: implements the SDK's `Plugin` + `BuildPlugin`, registered
                   via `META-INF/services/cc.jumpkick.plugin.Plugin`.
                 - `jk.toml` — depends on `cc.jumpkick:jk-plugin-sdk` and packages a **fat jar**
-                  (`shadow-jar = true`) whose `Main-Class` is the SDK's `PluginMain`. The SDK must be
+                  (`assembly = true`) whose `Main-Class` is the SDK's `PluginMain`. The SDK must be
                   shaded IN (the worker forks as `java -jar`), so the dep is a normal `main` dep.
 
                 ## Build
                 ```
                 jk build
                 ```
-                Produces `target/%1$s-0.1.0-all.jar` — the fat jar with `jk-plugin.toml` at its root.
+                Produces `target/%1$s-0.1.0-assembly.jar` — the fat jar with `jk-plugin.toml` at its root.
 
                 ## Publish, declare, trust
                 ```

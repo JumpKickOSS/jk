@@ -43,7 +43,7 @@ public final class InitCommand implements CliCommand {
         delegate.jdk = in.value("jdk").orElse(null);
         delegate.lang = in.value("lang").orElse(null);
         delegate.executable = in.flag("executable").orElse(null);
-        delegate.shadow = in.isSet("shadow");
+        delegate.assembly = in.isSet("assembly");
         delegate.nativeImage = in.isSet("native");
         delegate.depsCsv = in.value("deps").orElse(null);
         delegate.layoutFlag = in.value("layout").orElse(null);

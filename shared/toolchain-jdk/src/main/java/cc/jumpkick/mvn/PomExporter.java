@@ -192,10 +192,10 @@ public final class PomExporter {
         List<Dependency> processors = jkBuild.dependencies().of(Scope.PROCESSOR);
         boolean kotlin = p.kotlin() != null;
         boolean toolchain = p.jdk() != null && !p.jdk().isBlank();
-        boolean shade = jkBuild.shadowJar();
+        boolean assembly = jkBuild.assembly();
         boolean nativeImg = jkBuild.nativeMode() == JkBuild.NativeMode.ALWAYS;
         boolean jarManifest = jkBuild.mainClass() != null || !jkBuild.manifest().isEmpty();
-        boolean anyPlugin = !processors.isEmpty() || kotlin || toolchain || shade || nativeImg || jarManifest;
+        boolean anyPlugin = !processors.isEmpty() || kotlin || toolchain || assembly || nativeImg || jarManifest;
         boolean simple = layout == JkBuild.Layout.SIMPLE;
         if (!anyPlugin && !simple) return;
 
@@ -214,7 +214,8 @@ public final class PomExporter {
             if (!processors.isEmpty()) appendCompilerProcessorPlugin(sb, processors, p.javaRelease(), locked, report);
             if (toolchain) appendToolchainsPlugin(sb, p);
             if (jarManifest) appendJarPlugin(sb, jkBuild.mainClass(), jkBuild.manifest());
-            if (shade) appendShadePlugin(sb);
+            // Map jk assembly packaging onto maven-shade-plugin (export only).
+            if (assembly) appendShadePlugin(sb);
             if (nativeImg) appendNativePlugin(sb, jkBuild);
             sb.append("    </plugins>\n");
         }

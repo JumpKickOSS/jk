@@ -15,10 +15,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk assembly} — Mill-style name for the fat/shadow jar path. Same packaging graph as
- * {@code jk build} with {@code [application] shadow-jar = true}; does not invent a second graph.
+ * {@code jk assembly} — build the assembly (fat) jar. Same packaging graph as {@code jk build} with
+ * {@code [application] assembly = true}; does not invent a second graph.
  *
- * <p>Errors with a one-line fix when {@code shadow-jar} is not set.
+ * <p>Alias: {@code jk assemble}. Errors with a one-line fix when {@code assembly} is not set.
  */
 public final class AssemblyCommand implements CliCommand {
 
@@ -31,12 +31,12 @@ public final class AssemblyCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Build a fat (shadow) jar — requires [application] shadow-jar = true";
+        return "Build an assembly jar — requires [application] assembly = true";
     }
 
     @Override
     public List<String> aliases() {
-        return List.of("fat-jar", "shadow");
+        return List.of("assemble");
     }
 
     @Override
@@ -54,15 +54,17 @@ public final class AssemblyCommand implements CliCommand {
             return Exit.CONFIG;
         }
         JkBuild project = JkBuildParser.parse(toml);
-        if (!project.shadowJar()) {
+        if (!project.assembly()) {
             CliOutput.err(
-                    "jk assembly: fat jar packaging is off — add to jk.toml:\n"
-                            + "\n"
-                            + "  [application]\n"
-                            + "  main = \"your.Main\"   # optional but usual for a runnable jar\n"
-                            + "  shadow-jar = true\n"
-                            + "\n"
-                            + "Then re-run `jk assembly` (or `jk build`). See docs/features/packaging.md.");
+                    """
+                    jk assembly: assembly packaging is off — add to jk.toml:
+
+                      [application]
+                      main = "your.Main"   # optional but usual for a runnable jar
+                      assembly = true
+
+                    Then re-run `jk assembly` (or `jk build`). See docs/features/packaging.md.
+                    """.stripIndent());
             return Exit.CONFIG;
         }
         return build.run(in);

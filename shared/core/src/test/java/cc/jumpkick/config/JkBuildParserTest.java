@@ -35,7 +35,7 @@ class JkBuildParserTest {
         assertThat(parsed.project().isKotlin()).isFalse();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.isApplication()).isFalse();
-        assertThat(parsed.shadowJar()).isFalse();
+        assertThat(parsed.assembly()).isFalse();
         // [native] absent entirely → DISABLED (its presence is the enable switch now)
         assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
         assertThat(parsed.nativeImage()).isFalse();
@@ -1332,11 +1332,11 @@ class JkBuildParserTest {
     @Test
     void application_present_without_main_is_still_an_application() {
         // [application]'s mere presence is the signal — a main class is not required
-        // (e.g. a project that only wants shadow-jar packaging).
-        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nshadow-jar = true\n");
+        // (e.g. a project that only wants assembly packaging).
+        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nassembly = true\n");
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.mainClass()).isNull();
-        assertThat(parsed.shadowJar()).isTrue();
+        assertThat(parsed.assembly()).isTrue();
     }
 
     @Test

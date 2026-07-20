@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * Project run pipeline (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
- * delegates here via {@link #runProject}. Preference: <strong>native &gt; shadow jar &gt; plain
+ * delegates here via {@link #runProject}. Preference: <strong>native &gt; assembly jar &gt; plain
  * jar</strong>.
  */
 public final class RunCommand {
@@ -101,7 +101,7 @@ public final class RunCommand {
             return 1;
         }
 
-        // Exec the engine's plan: the most self-contained artifact (native > shadow > jar),
+        // Exec the engine's plan: the most self-contained artifact (native > assembly > jar),
         // computed engine-side against the just-built outputs. A device artifact (an APK)
         // never forks on the host — the plan names the plugin's deploy command instead.
         List<String> command;

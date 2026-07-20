@@ -101,7 +101,7 @@ public final class GradleExporter {
         JkBuild.Project p = jk.project();
         boolean kotlin = p.kotlin() != null;
         boolean app = jk.mainClass() != null;
-        boolean shadow = jk.shadowJar();
+        boolean assembly = jk.assembly();
         boolean nativeImg = jk.nativeMode() == JkBuild.NativeMode.ALWAYS;
 
         StringBuilder sb = new StringBuilder();
@@ -113,7 +113,8 @@ public final class GradleExporter {
                     .append("\"\n");
         }
         if (app) sb.append("    application\n");
-        if (shadow)
+        // Map jk assembly packaging onto Gradle's Shadow plugin (export only).
+        if (assembly)
             sb.append("    id(\"com.gradleup.shadow\") version \"")
                     .append(SHADOW)
                     .append("\"\n");

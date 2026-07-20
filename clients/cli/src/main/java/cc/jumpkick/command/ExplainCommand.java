@@ -287,7 +287,7 @@ public final class ExplainCommand implements CliCommand {
         return s >= 60 ? (s / 60) + "m " + (s % 60) + "s" : s + "s";
     }
 
-    /** Longest step-name column (e.g. {@code package-shadow}, {@code compile-kotlin}). */
+    /** Longest step-name column (e.g. {@code package-assembly}, {@code compile-kotlin}). */
     private static final int STEP_COL = 14;
 
     /**

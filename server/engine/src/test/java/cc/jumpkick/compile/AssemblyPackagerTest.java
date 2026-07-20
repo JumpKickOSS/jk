@@ -17,7 +17,7 @@ import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-class ShadowPackagerTest {
+class AssemblyPackagerTest {
 
     @Test
     void merges_classes_deps_services_and_drops_signatures(@TempDir Path tmp) throws IOException {
@@ -37,9 +37,9 @@ class ShadowPackagerTest {
             putEntry(jos, "META-INF/FOO.RSA", "signature");
         }
 
-        Path out = tmp.resolve("app-all.jar");
-        new ShadowPackager()
-                .packageShadow(new ShadowPackager.ShadowRequest(
+        Path out = tmp.resolve("app-assembly.jar");
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(
                         classes, List.of(dep), out, "app.Main", Map.of("Implementation-Title", "app"), 0L));
 
         try (JarFile jf = new JarFile(out.toFile())) {
@@ -79,8 +79,8 @@ class ShadowPackagerTest {
         }
 
         Path out = tmp.resolve("fat.jar");
-        new ShadowPackager()
-                .packageShadow(new ShadowPackager.ShadowRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
 
         try (JarFile jf = new JarFile(out.toFile())) {
             assertThat(jf.getJarEntry("module-info.class")).isNull();
@@ -102,8 +102,8 @@ class ShadowPackagerTest {
             putEntry(jos, "x/A.class", "DEP");
         }
         Path out = tmp.resolve("out.jar");
-        new ShadowPackager()
-                .packageShadow(new ShadowPackager.ShadowRequest(classes, List.of(dep), out, null, Map.of(), 0L));
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), out, null, Map.of(), 0L));
 
         try (JarFile jf = new JarFile(out.toFile())) {
             String content =
@@ -123,15 +123,15 @@ class ShadowPackagerTest {
             putEntry(jos, "lib/Helper.class", "LIBHELPER");
         }
 
-        Path a = tmp.resolve("a-all.jar");
-        new ShadowPackager()
-                .packageShadow(new ShadowPackager.ShadowRequest(classes, List.of(dep), a, "app.Main", Map.of(), 0L));
+        Path a = tmp.resolve("a-assembly.jar");
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), a, "app.Main", Map.of(), 0L));
         // The freshness stamp's content changes every build; the fat jar must
         // not bundle it (and the manifest must be pinned), or the jar churns.
         Files.writeString(classes.resolve(".jstamp"), "stamp-run-2-different");
-        Path b = tmp.resolve("b-all.jar");
-        new ShadowPackager()
-                .packageShadow(new ShadowPackager.ShadowRequest(classes, List.of(dep), b, "app.Main", Map.of(), 0L));
+        Path b = tmp.resolve("b-assembly.jar");
+        new AssemblyPackager()
+                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), b, "app.Main", Map.of(), 0L));
 
         assertThat(Files.readAllBytes(a)).isEqualTo(Files.readAllBytes(b));
         try (JarFile jf = new JarFile(a.toFile())) {

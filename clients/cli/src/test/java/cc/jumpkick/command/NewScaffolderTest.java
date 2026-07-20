@@ -225,7 +225,7 @@ class NewScaffolderTest {
     }
 
     @Test
-    void shadow_only_set_when_true(@TempDir Path tempDir) throws IOException {
+    void assembly_only_set_when_true(@TempDir Path tempDir) throws IOException {
         var off = inputs(
                 tempDir,
                 NewInputs.Language.JAVA,
@@ -238,7 +238,7 @@ class NewScaffolderTest {
                 false,
                 Optional.empty());
         NewScaffolder.write(off);
-        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("shadow");
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).doesNotContain("assembly = true");
 
         var sub = Files.createDirectories(tempDir.resolve("on"));
         var on = inputs(
@@ -253,7 +253,7 @@ class NewScaffolderTest {
                 false,
                 Optional.empty());
         NewScaffolder.write(on);
-        assertThat(Files.readString(sub.resolve("jk.toml"))).contains("shadow-jar = true");
+        assertThat(Files.readString(sub.resolve("jk.toml"))).contains("assembly = true");
     }
 
     @Test
@@ -384,7 +384,7 @@ class NewScaffolderTest {
         // jk.toml: fat jar whose main is PluginMain, with the SDK as a normal (shaded) dep.
         var toml = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(toml).contains("main       = \"cc.jumpkick.plugin.process.PluginMain\"");
-        assertThat(toml).contains("shadow-jar = true");
+        assertThat(toml).contains("assembly = true");
         assertThat(toml).contains("jk-plugin-sdk = { group = \"cc.jumpkick\", version = \"");
 
         // The manifest lands under src/main/resources so it's packaged at the jar root.
@@ -431,7 +431,7 @@ class NewScaffolderTest {
                 25,
                 Optional.empty(),
                 Optional.of("cc.jumpkick.plugin.process.PluginMain"),
-                true, // shadow (fat jar)
+                true, // assembly jar
                 false, // native
                 false, // spring
                 true, // plugin
@@ -505,7 +505,7 @@ class NewScaffolderTest {
             NewInputs.Language lang,
             String name,
             Optional<String> main,
-            boolean shadow,
+            boolean assembly,
             boolean nativeImage,
             List<String> deps,
             int major,
@@ -518,7 +518,7 @@ class NewScaffolderTest {
                 major,
                 Optional.empty(),
                 main,
-                shadow,
+                assembly,
                 nativeImage,
                 lang,
                 simple ? "simple" : null,

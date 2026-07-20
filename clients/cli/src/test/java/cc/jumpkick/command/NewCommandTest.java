@@ -148,8 +148,8 @@ class NewCommandTest {
     }
 
     @Test
-    void shadow_implies_executable(@TempDir Path tempDir) throws IOException {
-        // --shadow used to require an explicit --main; now it just implies
+    void assembly_implies_executable(@TempDir Path tempDir) throws IOException {
+        // --assembly used to require an explicit --main; now it just implies
         // --executable and the generated Main FQCN is derived from the group.
         int exit = Jk.execute(
                 "new",
@@ -157,7 +157,7 @@ class NewCommandTest {
                 "com.example",
                 "--name",
                 "widget",
-                "--shadow",
+                "--assembly",
                 "--layout",
                 "traditional",
                 tempDir.toString());

@@ -87,7 +87,7 @@ public final class ExecPlans {
                     moduleDirs,
                     build.isApplication(),
                     build.mainClass() == null ? "" : build.mainClass(),
-                    build.shadowJar(),
+                    build.assembly(),
                     build.nativeMode().name(),
                     orEmpty(build.graal()),
                     build.isSpringBoot(),
@@ -99,7 +99,7 @@ public final class ExecPlans {
                     hasLock,
                     lockJdk,
                     layoutOf(build, dir, BuildLayout::mainJar),
-                    layoutOf(build, dir, BuildLayout::shadowJar),
+                    layoutOf(build, dir, BuildLayout::assemblyJar),
                     layoutOf(build, dir, BuildLayout::nativeBinary),
                     layoutOf(build, dir, BuildLayout::nativeLibrary),
                     pathDeps(build),
@@ -254,14 +254,14 @@ public final class ExecPlans {
                         false,
                         List.of());
             }
-            Path shadow = layout.shadowJar();
-            if (Files.isRegularFile(shadow)) {
+            Path assemblyJar = layout.assemblyJar();
+            if (Files.isRegularFile(assemblyJar)) {
                 return runAck(
                         "run",
-                        List.of(java, "-jar", shadow.toAbsolutePath().toString()),
+                        List.of(java, "-jar", assemblyJar.toAbsolutePath().toString()),
                         dir,
                         javaHome,
-                        "java -jar " + dir.relativize(shadow),
+                        "java -jar " + dir.relativize(assemblyJar),
                         false,
                         false,
                         List.of());
@@ -424,8 +424,8 @@ public final class ExecPlans {
         // Shadow / self-contained packager output: one jar in lib.
         var shape = PluginBuild.shape(project, dir);
         boolean selfContained = shape.map(sh -> sh.selfContained()).orElse(false);
-        if (project.shadowJar() || selfContained) {
-            Path src = project.shadowJar() ? layout.shadowJar() : layout.mainJar();
+        if (project.assembly() || selfContained) {
+            Path src = project.assembly() ? layout.assemblyJar() : layout.mainJar();
             Path dest = libDir.resolve(src.getFileName().toString());
             linkSrcs.add(src.toAbsolutePath().toString());
             linkDests.add(dest.toString());

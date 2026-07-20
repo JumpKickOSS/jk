@@ -261,7 +261,7 @@ public final class InstallCommand {
             graalHome = resolved.get();
         }
 
-        // Build + cache-install through the shared InstallPipelines pipeline (jar always; shadow/native
+        // Build + cache-install through the shared InstallPipelines pipeline (jar always; assembly/native
         // per jk.toml; jar + generated pom into ~/.m2 / repos/local) — engine-hosted for a real
         // invocation, in-process for the test-only bypass. The make-install half runs below,
         // client-side either way: it writes the user-home launcher/binary this process owns.

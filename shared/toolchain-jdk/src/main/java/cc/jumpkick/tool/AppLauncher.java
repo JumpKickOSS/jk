@@ -47,7 +47,7 @@ public final class AppLauncher {
 
     /**
      * As {@link #install}, but launching a self-contained executable jar with {@code java -jar}
-     * (shadow jars, Spring Boot jars — anything whose manifest carries its own entry point).
+     * (assembly jars, Spring Boot jars — anything whose manifest carries its own entry point).
      */
     public static Path installJar(Path binDir, Path javaHome, String binName, Path jar) throws IOException {
         Files.createDirectories(binDir);

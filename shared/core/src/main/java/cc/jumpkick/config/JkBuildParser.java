@@ -1236,8 +1236,8 @@ public final class JkBuildParser {
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
-        boolean shadowJar = Boolean.TRUE.equals(application.getBoolean("shadow-jar"));
-        return Optional.of(new JkBuild.Application(main, shadowJar));
+        boolean assembly = Boolean.TRUE.equals(application.getBoolean("assembly"));
+        return Optional.of(new JkBuild.Application(main, assembly));
     }
 
     /** Schema-validate each installed plugin's owned table into a {@link PluginConfig}. */

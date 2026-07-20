@@ -774,10 +774,10 @@ public final class BuildCommand implements CliCommand {
         return buildOk() + (art.isEmpty() ? ", project built" : art);
     }
 
-    /** The headline artifact from ProjectInfo's candidate paths (native > shadow > jar). */
+    /** The headline artifact from ProjectInfo's candidate paths (native > assembly > jar). */
     static String builtArtifact(Path moduleRoot, cc.jumpkick.engine.protocol.ProjectInfo info) {
         for (String candidate : java.util.List.of(
-                info.nativeBinPath(), info.nativeLibPath(), info.shadowJarPath(), info.mainJarPath())) {
+                info.nativeBinPath(), info.nativeLibPath(), info.assemblyJarPath(), info.mainJarPath())) {
             if (candidate.isEmpty()) continue;
             Path p = Path.of(candidate);
             if (Files.isRegularFile(p)) {
@@ -791,7 +791,7 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * The headline artifact this build produced, as {@code ". Built <relpath>"} in the path color —
-     * the native binary/library if present, else the shadow (fat) jar, else the plain jar. Empty when
+     * the native binary/library if present, else the assembly jar, else the plain jar. Empty when
      * none exists. Shared with {@code jk native}.
      */
     static String builtArtifact(Pipeline pipeline) {
@@ -801,7 +801,7 @@ public final class BuildCommand implements CliCommand {
     /** As {@link #builtArtifact(Pipeline)}, from an already-resolved {@link BuildLayout} (or {@code null}). */
     static String builtArtifact(BuildLayout layout) {
         if (layout == null) return "";
-        Path art = firstExisting(layout.nativeBinary(), layout.nativeLibrary(), layout.shadowJar(), layout.mainJar());
+        Path art = firstExisting(layout.nativeBinary(), layout.nativeLibrary(), layout.assemblyJar(), layout.mainJar());
         return art == null
                 ? ""
                 : ". Built "

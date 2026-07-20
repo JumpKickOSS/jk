@@ -374,7 +374,7 @@ Kanban tickets live under [`docs/kanban/`](kanban/backlog.md) (ordered on [backl
 | **P1** | [1037](kanban/ticket-1037-programmable-escape-hatch-mvp.md) | Escape hatch MVP | go-do (after 1026) |
 | **P1-depth** | [1031](kanban/ticket-1031-module-task-selectors.md) · [1039](kanban/ticket-1039-build-logic-graph-tasks.md) · [1040](kanban/ticket-1040-selective-prepare-run.md) · [1041](kanban/ticket-1041-bsp-import-reliability.md) | Selectors, multi-task logic, selective prepare/run, BSP import | **done** (this branch) |
 | **P2** | [1034](kanban/ticket-1034-outdated-deps.md) | `jk outdated` polish | go-do (command exists) |
-| **P2** | [1032](kanban/ticket-1032-assembly-packaging-depth.md) | Fat-jar rules + R8 productization | go-do (`shadow-jar` exists) |
+| **P2** | [1032](kanban/ticket-1032-assembly-packaging-depth.md) | Fat-jar rules + R8 productization | go-do (`assembly` exists) |
 | **P2** | [1038](kanban/ticket-1038-showcase-monorepo-ci.md) | Showcase monorepo CI | go-do |
 | **P2** | [1033](kanban/ticket-1033-lint-matrix-research.md) | Lint matrix | research → thin go-do |
 | **P2** | [1017](kanban/ticket-1017-ide-marketplace-plugins.md) | Marketplace IDE plugin (one track) | go-do after BSP |

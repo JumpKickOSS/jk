@@ -112,10 +112,10 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void thin_worker_plugins_are_shadow_apps_with_plugin_main() throws Exception {
+    void thin_worker_plugins_are_assembly_apps_with_plugin_main() throws Exception {
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.shadowJar()).as(module).isTrue();
+            assertThat(p.assembly()).as(module).isTrue();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
             assertThat(p.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
                     .as(module)

@@ -281,12 +281,12 @@ public final class VerifyBuildCommand implements CliCommand {
         return dirs;
     }
 
-    /** One module's jar-family artifact paths (main/shadow/sources/javadoc), engine-computed. */
+    /** One module's jar-family artifact paths (main/assembly/sources/javadoc), engine-computed. */
     private static Path[] artifactPaths(Path moduleDir) throws IOException {
         ProjectInfo info = projectInfo(moduleDir);
         return new Path[] {
             Path.of(info.mainJarPath()),
-            Path.of(info.shadowJarPath()),
+            Path.of(info.assemblyJarPath()),
             Path.of(info.sourcesJarPath()),
             Path.of(info.javadocJarPath()),
         };
@@ -306,7 +306,7 @@ public final class VerifyBuildCommand implements CliCommand {
     }
 
     /**
-     * Hash every jar-family artifact ({@code mainJar}/{@code shadowJar}/{@code sourcesJar}/{@code
+     * Hash every jar-family artifact ({@code mainJar}/{@code assemblyJar}/{@code sourcesJar}/{@code
      * javadocJar}) that exists on either side, per module. Native binaries and OCI tars are out of
      * scope — they are not byte-comparable across builds the way the jar path guarantees.
      */

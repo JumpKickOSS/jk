@@ -35,13 +35,13 @@ public final class NewJkBuildRenderer {
         inputs.kotlinModuleName()
                 .ifPresent(m -> sb.append("module   = \"").append(m).append("\"\n"));
 
-        if (inputs.main().isPresent() || inputs.shadow()) {
+        if (inputs.main().isPresent() || inputs.assembly()) {
             sb.append("\n[application]\n");
             if (inputs.main().isPresent()) {
                 sb.append("main       = \"").append(inputs.main().get()).append("\"\n");
             }
-            if (inputs.shadow()) {
-                sb.append("shadow-jar = true\n");
+            if (inputs.assembly()) {
+                sb.append("assembly = true\n");
             }
         }
         if (inputs.nativeImage()) {

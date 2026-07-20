@@ -8,7 +8,7 @@ import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.ShadowPackager;
+import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -257,7 +257,7 @@ public final class BuildPipelines {
     static final int W_CACHED_TOUCH = 1;
     static final int W_NATIVE = 90;
 
-    /** Core build steps plus shadow/native tails from {@code jk.toml}. */
+    /** Core build steps plus assembly/native tails from {@code jk.toml}. */
     public static Pipeline.Builder coreBuilder(Inputs in) {
         return coreBuilder(in, false);
     }
@@ -2396,7 +2396,7 @@ public final class BuildPipelines {
                 components);
     }
 
-    /** SBOM path inside plain/shadow application jars (jar root = classpath root). */
+    /** SBOM path inside plain/assembly application jars (jar root = classpath root). */
     static final String SBOM_JAR_ENTRY = "META-INF/sbom/application.cdx.json";
 
     private static Step writeStampStep(Ctx cx) {
@@ -2534,7 +2534,7 @@ public final class BuildPipelines {
     }
 
     /**
-     * Append the artifact tails the project's {@code jk.toml} declares: {@code shadow = true} →
+     * Append the artifact tails the project's {@code jk.toml} declares: {@code assembly = true} →
      * fat-jar step. {@code jk build} / {@code jk run} / {@code jk install} call this after {@link
      * #coreBuilder}.
      *
@@ -2546,8 +2546,8 @@ public final class BuildPipelines {
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
         try {
             JkBuild project = JkBuildParser.parse(in.buildFile());
-            if (project.shadowJar()) {
-                b.addStep(shadowStep(in.cache(), in.lockFile()));
+            if (project.assembly()) {
+                b.addStep(assemblyStep(in.cache(), in.lockFile()));
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
                 b.addStep(sourcesStep(in.cache()));
@@ -2558,20 +2558,20 @@ public final class BuildPipelines {
 
     // ---- tail steps ----------------------------------------------------
 
-    /** Fat-jar (shadow) packaging — requires package-jar. */
-    public static Step shadowStep(Path cache, Path lockFile) {
-        return Step.builder(StepNames.PACKAGE_SHADOW)
+    /** Assembly-jar packaging — requires package-jar. */
+    public static Step assemblyStep(Path cache, Path lockFile) {
+        return Step.builder(StepNames.PACKAGE_ASSEMBLY)
                 .phase(Phase.PACKAGE)
-                .label("Shadow")
+                .label("Assembly")
                 .kind(StepKind.CPU)
                 .requires(StepNames.PACKAGE_JAR)
-                .weight(() -> EffortWeights.shadowWeight(lockFile.getParent()))
+                .weight(() -> EffortWeights.assemblyWeight(lockFile.getParent()))
                 .ticks(1)
                 .execute(ctx -> {
                     JkBuild project = ctx.require(PROJECT);
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
-                    Path shadowJar = layout.shadowJar();
+                    Path assemblyJar = layout.assemblyJar();
                     List<Path> depJars = new ArrayList<>();
                     if (Files.exists(lockFile)) {
                         ClasspathResolver resolver = new ClasspathResolver(new Cas(cache));
@@ -2604,33 +2604,33 @@ public final class BuildPipelines {
                             "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
                             "manifest:" + project.manifest());
-                    String shTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_SHADOW, shadowJar);
+                    String shTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_ASSEMBLY, assemblyJar);
                     String shKey =
                             ActionKey.forArtifact(shTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
-                    if (restorePackaged(cache, shKey, shadowJar.getParent())) {
-                        ctx.label(shadowJar.getFileName() + " up-to-date");
+                    if (restorePackaged(cache, shKey, assemblyJar.getParent())) {
+                        ctx.label(assemblyJar.getFileName() + " up-to-date");
                         ctx.cached();
                         ctx.progress(1);
                         return;
                     }
-                    ctx.label("package " + shadowJar.getFileName());
-                    byte[] shadowSbom = null;
-                    Map<String, String> shadowAttrs = new LinkedHashMap<>(project.manifest());
+                    ctx.label("package " + assemblyJar.getFileName());
+                    byte[] assemblySbom = null;
+                    Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
-                        shadowSbom = applicationSbom(project, LockfileReader.read(lockFile), new Cas(cache));
-                        shadowAttrs.put("Sbom-Format", "CycloneDX");
-                        shadowAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
+                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), new Cas(cache));
+                        assemblyAttrs.put("Sbom-Format", "CycloneDX");
+                        assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }
-                    new ShadowPackager()
-                            .packageShadow(new ShadowPackager.ShadowRequest(
+                    new AssemblyPackager()
+                            .packageAssembly(new AssemblyPackager.AssemblyRequest(
                                     classes,
                                     depJars,
-                                    shadowJar,
+                                    assemblyJar,
                                     project.mainClass(),
-                                    shadowAttrs,
-                                    shadowSbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, shadowSbom),
+                                    assemblyAttrs,
+                                    assemblySbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, assemblySbom),
                                     0L));
-                    storePackaged(cache, shTask, shKey, tokens, shadowJar.getParent(), List.of(shadowJar));
+                    storePackaged(cache, shTask, shKey, tokens, assemblyJar.getParent(), List.of(assemblyJar));
                     ctx.progress(1);
                 })
                 .build();
@@ -3176,10 +3176,10 @@ public final class BuildPipelines {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(dir, sib);
-            // A shadow (fat) plugin runs from its -all.jar — that's the artifact
+            // An assembly plugin runs from its -assembly.jar — that's the artifact
             // that bundles plugin-api/PluginMain and the plugin's deps; a
             // plain module ships only its main jar.
-            Path jar = sib.shadowJar() ? layout.shadowJar() : layout.mainJar();
+            Path jar = sib.assembly() ? layout.assemblyJar() : layout.mainJar();
             String name = sib.project().name();
             out.put(name, jar);
             out.put(sib.project().group() + ":" + name, jar);

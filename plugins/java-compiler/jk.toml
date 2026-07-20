@@ -9,7 +9,7 @@ java        = 25
 # Fat jar with PluginMain — plugin-sdk is shaded in (java -jar); JDK compiler APIs come from the host JDK.
 [application]
 main       = "cc.jumpkick.plugin.process.PluginMain"
-shadow-jar = true
+assembly = true
 
 [dependencies]
 jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }

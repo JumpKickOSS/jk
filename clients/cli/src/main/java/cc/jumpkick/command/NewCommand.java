@@ -67,7 +67,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<lang>", "Language: java | kotlin. Default: java.", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
-                Opt.flag("Shadow (fat) jar. Implies --executable.", "--shadow"),
+                Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
@@ -89,7 +89,7 @@ public final class NewCommand implements CliCommand {
     String jdk;
     String lang;
     Boolean executable;
-    boolean shadow;
+    boolean assembly;
     boolean nativeImage;
     boolean spring;
     boolean plugin;
@@ -202,7 +202,7 @@ public final class NewCommand implements CliCommand {
         this.jdk = in.value("jdk").orElse(null);
         this.lang = in.value("lang").orElse(null);
         this.executable = in.flag("executable").orElse(null);
-        this.shadow = in.isSet("shadow");
+        this.assembly = in.isSet("assembly");
         this.nativeImage = in.isSet("native");
         this.spring = in.isSet("spring");
         this.plugin = in.isSet("plugin");
@@ -435,8 +435,8 @@ public final class NewCommand implements CliCommand {
             CliOutput.err("jk new: " + e.getMessage());
             return Exit.USAGE;
         }
-        if (shadow && inputs.main().isEmpty()) {
-            CliOutput.err("jk new: --shadow requires --executable");
+        if (assembly && inputs.main().isEmpty()) {
+            CliOutput.err("jk new: --assembly requires --executable");
             return Exit.USAGE;
         }
         if (Files.exists(inputs.directory().resolve("jk.toml"))) {
@@ -490,7 +490,7 @@ public final class NewCommand implements CliCommand {
                 || jdk != null
                 || lang != null
                 || executable != null
-                || shadow
+                || assembly
                 || nativeImage
                 || plugin
                 || depsCsv != null
@@ -571,7 +571,7 @@ public final class NewCommand implements CliCommand {
         var resolvedLang = (lang != null && !lang.isBlank())
                 ? parseLanguage(lang)
                 : (parent != null && parent.kotlin()) ? NewInputs.Language.KOTLIN : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable) || shadow || nativeImage || spring || plugin;
+        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
         // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot
         // users also expect the Maven layout. An explicit --layout still wins.
@@ -601,7 +601,7 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 Optional.<String>empty(), // flag path doesn't resolve to a specific install
                 resolvedMain,
-                shadow || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
+                assembly || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
                 nativeImage,
                 spring,
                 plugin,
@@ -918,7 +918,7 @@ public final class NewCommand implements CliCommand {
 
         var buildTargets = WizardStep.MultiSelectStep.vertical("targets", "Build output:")
                 .choice("jar", "Regular jar")
-                .choice("shadow", "Shadow (fat) jar")
+                .choice("assembly", "Assembly (fat) jar")
                 .choice("native", "Native binary")
                 .defaults(java.util.Set.of("jar"))
                 .when(a -> "executable".equals(a.get("kind")))
@@ -1120,7 +1120,7 @@ public final class NewCommand implements CliCommand {
         var isExecutable = "executable".equals(answers.get("kind"));
 
         var targets = answers.getList("targets");
-        boolean resolvedShadow = isExecutable && targets.contains("shadow");
+        boolean resolvedAssembly = isExecutable && targets.contains("assembly");
         boolean resolvedNative = isExecutable && targets.contains("native");
 
         // Layout comes from its own dedicated step; default to "simple" if not answered.
@@ -1152,7 +1152,7 @@ public final class NewCommand implements CliCommand {
                 resolvedJavaRelease,
                 resolvedJdkIdentifier,
                 resolvedMain,
-                resolvedShadow,
+                resolvedAssembly,
                 resolvedNative,
                 resolvedLang,
                 resolvedLayout,

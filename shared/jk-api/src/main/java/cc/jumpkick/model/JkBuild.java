@@ -176,9 +176,9 @@ public record JkBuild(
     /** The built-in spring-boot plugin's id / table name. */
     public static final String SPRING_BOOT_ID = "spring-boot";
 
-    /** {@code [application].shadow-jar} — bundle an all-in-one (shadow / fat) jar. */
-    public boolean shadowJar() {
-        return application.map(Application::shadowJar).orElse(false);
+    /** {@code [application].assembly} — bundle an all-in-one assembly jar. */
+    public boolean assembly() {
+        return application.map(Application::assembly).orElse(false);
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
@@ -560,7 +560,7 @@ public record JkBuild(
     /**
      * {@code [application]} block. Presence alone marks an application; absent means library.
      */
-    public record Application(String main, boolean shadowJar) {
+    public record Application(String main, boolean assembly) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;

@@ -105,7 +105,7 @@ public final class JkBuildRenderer {
         sb.append("\n[application]\n");
         if (app.main() != null)
             sb.append("main       = ").append(quote(app.main())).append('\n');
-        if (app.shadowJar()) sb.append("shadow-jar = true\n");
+        if (app.assembly()) sb.append("assembly = true\n");
     }
 
     /** {@code [native]} table — its presence alone marks the project as native-image-eligible. */

@@ -333,13 +333,13 @@ public final class BuildPlanForecast {
                                 : new BuildPlan.Step("package-jar", BuildPlan.Status.RUN, "repackage", null));
             }
 
-            // ---- package-shadow (fat jar) — only when configured ----
-            if (project.shadowJar() && !(mainSrc.isEmpty() && ktSrc.isEmpty())) {
-                boolean fresh = !compileDirty && Files.isRegularFile(layout.shadowJar());
+            // ---- package-assembly (fat jar) — only when configured ----
+            if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty())) {
+                boolean fresh = !compileDirty && Files.isRegularFile(layout.assemblyJar());
                 steps.add(
                         fresh
-                                ? new BuildPlan.Step("package-shadow", BuildPlan.Status.CACHED, "", null)
-                                : new BuildPlan.Step("package-shadow", BuildPlan.Status.RUN, "repackage", null));
+                                ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
+                                : new BuildPlan.Step("package-assembly", BuildPlan.Status.RUN, "repackage", null));
             }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.

@@ -243,9 +243,9 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + "-" + version + ".jar");
     }
 
-    /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the shadow (fat) jar. */
-    public Path shadowJar() {
-        return artifactDir().resolve(artifact + "-" + version + "-all.jar");
+    /** {@code <artifactDir>/<artifact>-<version>-assembly.jar} — the assembly (fat) jar. */
+    public Path assemblyJar() {
+        return artifactDir().resolve(artifact + "-" + version + "-assembly.jar");
     }
 
     /** {@code <artifactDir>/<artifact>-<version>-sources.jar}. */

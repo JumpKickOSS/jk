@@ -34,7 +34,7 @@ after a Gradle `dist`/`installLocal` bootstrap. Remaining friction:
 
 ## Done
 
-- `plugins/test-runner` + `plugins/java-compiler` workspace modules (`shadow-jar` + `PluginMain`)
+- `plugins/test-runner` + `plugins/java-compiler` workspace modules (`assembly` + `PluginMain`)
 - `CachePruneScheduler.resolveJkExe` recovers `bin/jk` from installDist `lib/` classpath
 - `test-plugin-jars` resolves short names to sibling shadow jars (`jk-*` alias)
 - CI: native self-host + installDist self-host jobs; CONTRIBUTING phase-2 docs

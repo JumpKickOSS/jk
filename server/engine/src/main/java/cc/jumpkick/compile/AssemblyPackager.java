@@ -28,12 +28,12 @@ import java.util.stream.Stream;
  * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and common Spring
  * multi-entry META-INF files, sorted fixed-timestamp entries for reproducibility.
  *
- * <p>Enable with {@code [application] shadow-jar = true} (or {@code jk assembly}). See
+ * <p>Enable with {@code [application] assembly = true} (or {@code jk assembly}). See
  * {@code docs/features/packaging.md}.
  */
-public final class ShadowPackager {
+public final class AssemblyPackager {
 
-    public Path packageShadow(ShadowRequest request) throws IOException {
+    public Path packageAssembly(AssemblyRequest request) throws IOException {
         Files.createDirectories(request.outputJar().getParent());
         Manifest manifest = buildManifest(request);
 
@@ -140,7 +140,7 @@ public final class ShadowPackager {
                 || upper.startsWith("META-INF/SIG-");
     }
 
-    private static Manifest buildManifest(ShadowRequest request) {
+    private static Manifest buildManifest(AssemblyRequest request) {
         Manifest manifest = new Manifest();
         Attributes attrs = manifest.getMainAttributes();
         attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -167,8 +167,8 @@ public final class ShadowPackager {
         return root.relativize(file).toString().replace(File.separatorChar, '/');
     }
 
-    /** Inputs for {@link #packageShadow(ShadowRequest)}. */
-    public record ShadowRequest(
+    /** Inputs for {@link #packageAssembly(AssemblyRequest)}. */
+    public record AssemblyRequest(
             Path classesDir,
             List<Path> dependencyJars,
             Path outputJar,
@@ -177,7 +177,7 @@ public final class ShadowPackager {
             Map<String, byte[]> extraEntries,
             long timestampEpochSeconds) {
 
-        public ShadowRequest {
+        public AssemblyRequest {
             Objects.requireNonNull(classesDir, "classesDir");
             Objects.requireNonNull(outputJar, "outputJar");
             dependencyJars = dependencyJars == null ? List.of() : List.copyOf(dependencyJars);
@@ -186,7 +186,7 @@ public final class ShadowPackager {
         }
 
         /** Back-compat constructor: no generated (non-filesystem) entries. */
-        public ShadowRequest(
+        public AssemblyRequest(
                 Path classesDir,
                 List<Path> dependencyJars,
                 Path outputJar,

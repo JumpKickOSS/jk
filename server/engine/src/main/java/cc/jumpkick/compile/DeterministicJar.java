@@ -14,7 +14,7 @@ import java.util.jar.Manifest;
 
 /**
  * The shared reproducible-jar entry writer for the packagers ({@link JarPackager},
- * {@link ShadowPackager}). Every entry's timestamp is pinned to a fixed epoch via
+ * {@link AssemblyPackager}). Every entry's timestamp is pinned to a fixed epoch via
  * {@link JarEntry#setTimeLocal} — NOT {@link JarEntry#setTime}, whose DOS-time conversion is
  * timezone-sensitive — so identical inputs yield byte-identical jars regardless of build host,
  * clock, or {@code $TZ}. Extracted because both packagers had duplicated the exact same entry,

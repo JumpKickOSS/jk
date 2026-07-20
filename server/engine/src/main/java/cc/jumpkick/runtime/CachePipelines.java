@@ -287,7 +287,7 @@ public final class CachePipelines {
                     layout.kotlinClassesDir(),
                     layout.kotlinTestClassesDir(),
                     layout.mainJar(),
-                    layout.shadowJar(),
+                    layout.assemblyJar(),
                     layout.sourcesJar(),
                     layout.javadocJar(),
                     layout.nativeBinary(),

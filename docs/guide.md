@@ -131,23 +131,23 @@ Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub pr
 Main, test, and processor graphs are solved separately so annotation-processor constraints
 do not force main classpath versions.
 
-## Packaging (thin / fat / shrink / Boot)
+## Packaging (thin / assembly / shrink / Boot)
 
 | Artifact | Config | Command |
 |---|---|---|
 | Thin jar | default | `jk build` |
-| Fat / assembly jar | `[application] shadow-jar = true` | `jk assembly` or `jk build` |
+| Assembly jar | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[shrink]` (+ shrink plugin) | `jk build` (size before→after in labels) |
-| Spring Boot jar | spring-boot plugin | `jk build` (not `shadow-jar`) |
+| Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
 
-Fat jar merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
+Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
 [features/packaging.md](features/packaging.md). Samples:
-[fat-jar-app](features/examples/fat-jar-app/), [shrunk-cli](features/examples/shrunk-cli/).
+[assembly-app](features/examples/assembly-app/), [shrunk-cli](features/examples/shrunk-cli/).
 
 ```toml
 [application]
 main = "com.example.App"
-shadow-jar = true    # fat jar — also: jk assembly
+assembly = true    # assembly jar — jk assembly / jk assemble
 ```
 
 R8 is **opt-in** via `[shrink]` only — never the default.
@@ -160,8 +160,8 @@ jk remove <coord>
 jk outdated                  # check for newer deps (read-only; see lockfile section)
 jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
-jk build                     # package (thin, fat, shrink, or Boot per config)
-jk assembly                  # fat jar path (requires shadow-jar = true)
+jk build                     # package (thin, assembly, shrink, or Boot per config)
+jk assembly                  # assembly jar (alias: assemble; requires assembly = true)
 jk test
 jk run -- args…
 jk clean
