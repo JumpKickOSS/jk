@@ -240,6 +240,47 @@ public final class IdeEngineClient {
         return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
     }
 
+    /**
+     * Run the test pipeline for a module (JK-1048 BSP {@code buildTarget/test}). When {@code
+     * moduleDir} is null, tests the open project directory. Uses the same engine path as {@code jk
+     * test} (compile main+test → run JUnit).
+     */
+    public BuildOutcome testModule(Path moduleDir, BuildListener listener) throws IOException {
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
+        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
+        progress.onModuleStart(coord, mod);
+        List<String> errors = new ArrayList<>();
+        cc.jumpkick.run.TestSummary[] testOut = new cc.jumpkick.run.TestSummary[1];
+        var session = SessionContext.current();
+        PipelineResult r = EngineClient.runTest(
+                EnginePaths.current(),
+                new EngineClient.TestRequest(
+                        mod,
+                        cacheDir,
+                        jdksDir,
+                        1,
+                        null,
+                        false,
+                        session.offline(),
+                        session.force()),
+                steps -> progressListener(progress, steps),
+                testOut);
+        for (var d : r.errors()) errors.add(d.message());
+        if (!r.success()
+                && testOut[0] != null
+                && !testOut[0].allPassed()
+                && errors.isEmpty()) {
+            errors.add("tests failed: "
+                    + testOut[0].failed()
+                    + " failed / "
+                    + testOut[0].total()
+                    + " total");
+        }
+        progress.onModuleFinish(coord, r.success());
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+    }
+
     private Path resolveSyncRoot() {
         try {
             ProjectInfo info = projectInfo();

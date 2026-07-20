@@ -24,8 +24,9 @@ import java.util.regex.Pattern;
 /**
  * BSP 2.x JSON-RPC over Content-Length framing (stdio). Wire-only via {@link IdeEngineClient}.
  *
- * <p>ticket-1028 MVP + ticket-1041 import reliability: per-target deps/sources, compile by target
- * URI, workspace/reload, test source roots.
+ * <p>ticket-1028 MVP + ticket-1041 import reliability + JK-1048 test provider: per-target
+ * deps/sources, compile/test by target URI, workspace/reload, test source roots. {@code
+ * buildTarget/run} is not implemented yet (use IDE tasks / {@code jk run}).
  */
 public final class BspServer {
 
@@ -65,6 +66,7 @@ public final class BspServer {
                     """
                     {"displayName":"jk","version":"0.10.0","bspVersion":"2.1.0",\
                     "capabilities":{"compileProvider":{"languageIds":["java","kotlin"]},\
+                    "testProvider":{"languageIds":["java","kotlin"]},\
                     "canReload":true}}
                     """);
             case "build/initialized" -> {
@@ -78,6 +80,7 @@ public final class BspServer {
             case "buildTarget/sources" -> respond(id, sourcesJson(json));
             case "buildTarget/dependencyModules" -> respond(id, dependencyModulesJson(json));
             case "buildTarget/compile" -> respond(id, compileJson(json));
+            case "buildTarget/test" -> respond(id, testJson(json));
             case "build/shutdown" -> respond(id, "null");
             case "build/exit" -> throw new IOException("bsp exit");
             default -> {
@@ -129,7 +132,7 @@ public final class BspServer {
                 + ",\"baseDirectory\":"
                 + q(baseDir)
                 + ",\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\"],\"dependencies\":[],"
-                + "\"capabilities\":{\"canCompile\":true,\"canTest\":false,\"canRun\":false}}";
+                + "\"capabilities\":{\"canCompile\":true,\"canTest\":true,\"canRun\":false}}";
     }
 
     private String sourcesJson(String requestJson) throws IOException {
@@ -223,15 +226,26 @@ public final class BspServer {
     }
 
     private String compileJson(String requestJson) throws IOException {
-        Path moduleDir = resolveCompileTarget(requestJson);
+        Path moduleDir = resolveTargetModule(requestJson);
         var outcome = ide.buildModule(moduleDir, null);
+        return statusResult(outcome, "compile failed");
+    }
+
+    /** BSP {@code buildTarget/test} — run {@code jk test} pipeline for the selected module. */
+    private String testJson(String requestJson) throws IOException {
+        Path moduleDir = resolveTargetModule(requestJson);
+        var outcome = ide.testModule(moduleDir, null);
+        return statusResult(outcome, "test failed");
+    }
+
+    private static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
         int statusCode = outcome.success() ? 1 : 2; // BSP: 1=OK, 2=ERROR
         StringBuilder sb = new StringBuilder();
         sb.append("{\"statusCode\":").append(statusCode);
         if (!outcome.success()) {
             String msg = outcome.errors() != null && !outcome.errors().isEmpty()
                     ? String.join("; ", outcome.errors())
-                    : "compile failed";
+                    : defaultFail;
             sb.append(",\"message\":").append(q(msg));
         }
         sb.append('}');
@@ -239,10 +253,11 @@ public final class BspServer {
     }
 
     /**
-     * Map compile request targets to a module directory. First target URI wins; {@code #name}
-     * suffix selects a workspace module; missing/empty → project root (full workspace).
+     * Map compile/test request targets to a module directory. First target URI wins; {@code #name}
+     * suffix selects a workspace module; missing/empty → project root (full workspace / single
+     * project).
      */
-    private Path resolveCompileTarget(String requestJson) throws IOException {
+    private Path resolveTargetModule(String requestJson) throws IOException {
         List<String> uris = extractTargetUris(requestJson);
         if (uris.isEmpty()) return null; // whole project / workspace
         String uri = uris.getFirst();

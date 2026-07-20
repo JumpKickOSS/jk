@@ -272,6 +272,17 @@ jk bsp install               # write .bsp/jk.json
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
+**BSP capabilities (stdio `jk bsp serve`):**
+
+| Capability | Status |
+|---|---|
+| `workspace/buildTargets`, sources, dependency modules | yes |
+| `buildTarget/compile` | yes (per-target / module) |
+| `buildTarget/test` | yes (engine `jk test` path; JUnit) |
+| `buildTarget/run` | **no** — use IDE tasks / `jk run` |
+| `workspace/reload` | yes |
+| Debug adapter | no |
+
 **VS Code (ticket-1017):** [`clients/vscode/`](../clients/vscode/) — VSIX via `./scripts/package-vscode.sh`.
 
 **IntelliJ (ticket-1054):** [`clients/intellij/`](../clients/intellij/) — zip via `./scripts/package-intellij.sh`
