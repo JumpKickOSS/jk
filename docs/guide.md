@@ -69,9 +69,59 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 |---|---|
 | `jk lock` | Resolve and write `jk.lock` |
 | `jk sync` | Materialize cache / offline prep (`--offline-prepare`) |
-| `jk update` | Re-resolve within declared constraints |
+| `jk outdated` | Read-only: which direct deps have newer versions than the lock |
+| `jk update` | Re-resolve within declared constraints (rewrites the lock) |
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
+
+### Check for updates (`jk outdated`)
+
+Lockfile stays law until you deliberately rewrite it. The usual loop:
+
+```bash
+jk outdated                      # Current / Compatible / Latest table
+jk outdated --exclude-up-to-date # only rows that can move
+jk outdated --output json        # machine-readable array of rows
+jk why com.foo:bar               # why a pin is there
+jk tree                          # full graph
+jk update                        # re-resolve on purpose, then commit jk.lock
+```
+
+| Column | Meaning |
+|---|---|
+| **Current** | Version pinned in `jk.lock` (empty if unlocked) |
+| **Compatible** | Newest version that still satisfies the declared range |
+| **Latest** | Newest stable version in the repo (may be outside the range) |
+| **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
+
+**Exit code:** always `0` on a successful report (whether or not any dependency is outdated).
+For CI “fail if drift”, parse `--output json` (or the human table) rather than relying on exit
+status — there is no `--fail-if-outdated` flag by design (lockfile changes stay intentional).
+
+**JSON schema** (`--output json`): a JSON **array** of objects:
+
+```json
+[
+  {
+    "module": "com.acme:app",
+    "dependency": "com.foo:leaf",
+    "display": "leaf",
+    "scope": "main",
+    "current": "1.1",
+    "compatible": "1.1",
+    "latest": "2.0",
+    "tip": ""
+  }
+]
+```
+
+`module` is empty for a single-project (non-workspace) root. `display` is the catalog short
+name when known. Use `--exclude-up-to-date` to drop rows where Current already matches Compatible
+and Latest.
+
+**Offline:** with `--offline` (or session offline), enumeration uses only the local cache / repo
+mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
+not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
 Platform BOMs (`[platform-dependencies]`) are **recommendations** (Gradle `platform()` style):
 the pin is preferred first; a stricter transitive floor may lift past it. Use an exact or
@@ -86,6 +136,8 @@ do not force main classpath versions.
 ```bash
 jk add g:a:v                 # or catalog short name: jk add jackson
 jk remove <coord>
+jk outdated                  # check for newer deps (read-only; see lockfile section)
+jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
 jk build                     # package
 jk test

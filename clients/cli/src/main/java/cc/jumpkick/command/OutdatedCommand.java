@@ -25,6 +25,10 @@ import org.jline.utils.AttributedStyle;
  * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk.lock}
  * pins (Current / Compatible / Latest; optional Tip). Engine-hosted; writes nothing. At a workspace
  * root, cascades over every module.
+ *
+ * <p>Exit 0 on success whether or not any row is outdated (inspect JSON or the table for drift).
+ * Does not re-resolve or rewrite the lock — use {@code jk update} after review. Machine output:
+ * {@code --output json} emits a JSON array of row objects (see guide).
  */
 public final class OutdatedCommand implements CliCommand {
 
@@ -91,16 +95,25 @@ public final class OutdatedCommand implements CliCommand {
         }
         if (global.outputIsJson()) {
             CliOutput.outRaw(toJson(rows));
-            return 0;
+            return Exit.SUCCESS;
+        }
+        if (global.offline) {
+            CliOutput.out(
+                    "Note: offline mode — Compatible / Latest come from the local cache and repos only;"
+                            + " unreachable remotes may look up-to-date.");
         }
         if (rows.isEmpty()) {
             CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
-            return 0;
+            return Exit.SUCCESS;
         }
         for (String line : renderTable(rows, report.workspace(), showTip, "Dependency versions")) {
             CliOutput.out(line);
         }
-        return 0;
+        // Footer: lockfile-respecting workflow + graph inspection (ticket-1034).
+        CliOutput.out(
+                "Next: review with `jk why <coord>` / `jk tree`, then `jk update` only when you intend"
+                        + " to re-resolve (lockfile is law).");
+        return Exit.SUCCESS;
     }
 
     @Override

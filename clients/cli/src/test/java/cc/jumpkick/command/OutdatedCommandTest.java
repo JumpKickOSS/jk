@@ -192,6 +192,38 @@ class OutdatedCommandTest {
         assertThat(out).contains("Dependency", "Compatible", "Latest");
         assertThat(out).contains("com.foo:leaf");
         assertThat(out).contains("2.0");
+        // ticket-1034: footer points at graph inspection + intentional update
+        assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
+    }
+
+    @Test
+    void offline_flag_prints_cache_only_note(@TempDir Path tempDir) throws Exception {
+        registerMetadata("com.foo", "leaf", "1.0", "2.0");
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+
+        String out = table(tempDir, cache, "--offline");
+        assertThat(out).containsIgnoringCase("offline");
+        assertThat(out).containsIgnoringCase("cache");
+    }
+
+    @Test
+    void json_array_schema_fields_are_stable(@TempDir Path tempDir) throws Exception {
+        registerMetadata("com.foo", "leaf", "1.0", "2.0");
+        Path cache = tempDir.resolve("cache");
+        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+
+        String json = json(tempDir, cache).trim();
+        assertThat(json).startsWith("[").endsWith("]");
+        assertThat(json)
+                .contains("\"dependency\":")
+                .contains("\"current\":")
+                .contains("\"compatible\":")
+                .contains("\"latest\":")
+                .contains("\"tip\":")
+                .contains("\"scope\":")
+                .contains("\"module\":")
+                .contains("\"display\":");
     }
 
     @Test

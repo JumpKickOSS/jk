@@ -1,7 +1,7 @@
 # ticket-1034 — `jk outdated` polish (Mill showUpdates parity)
 
 **Priority:** P2  
-**Status:** ready  
+**Status:** done  
 **Kind:** go-do (polish — **command already exists**)  
 **Source:** [mill-comparison.md](../mill-comparison.md) §9  
 **Depends on:** none  
@@ -42,11 +42,11 @@ jk update                   # only after review (lockfile law)
 
 ## Acceptance
 
-- [ ] Guide section: outdated → update workflow (and offline note)  
-- [ ] Machine-readable output documented and covered by a test **or** proven already via existing JSON path  
-- [ ] Human output points at `jk why` / `jk tree` for at least one row style (footer OK)  
-- [ ] Smoke/fixture test green  
-- [ ] README / features list mentions `outdated` if public claims list deps tooling  
+- [x] Guide section: outdated → update workflow (and offline note)  
+- [x] Machine-readable output documented and covered by a test **or** proven already via existing JSON path  
+- [x] Human output points at `jk why` / `jk tree` for at least one row style (footer OK)  
+- [x] Smoke/fixture test green  
+- [x] README / features list mentions `outdated` if public claims list deps tooling  
 
 ## Non-goals
 

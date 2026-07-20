@@ -9,7 +9,8 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1042](ticket-1042-cli-test-suite-speed.md) — CLI suite speed (~29%: hybrid warm engine)
+1. [ticket-1034](ticket-1034-outdated-deps.md) — `jk outdated` polish (guide, JSON schema, footer, offline note)
+2. [ticket-1042](ticket-1042-cli-test-suite-speed.md) — CLI suite speed (~29%: hybrid warm engine)
 2. [ticket-1022](ticket-1022-tempdir-engine-cas-cleanup.md) — Drop TempDir `cleanup.mode=never`
 3. [ticket-1043](ticket-1043-engine-zombie-resilience.md) — Engine zombie / silent-peer recovery
 4. [ticket-1031](ticket-1031-module-task-selectors.md) — Module selectors (`--modules` globs/braces; ∩ with `--affected-since`)

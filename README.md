@@ -113,6 +113,7 @@ JumpKick writes every resolved version **and checksum** to `jk.lock` and treats 
 ```bash
 jk lock          # resolve → write jk.lock (commit this)
 jk build         # uses the lock; does not re-resolve
+jk outdated      # read-only: which deps have newer versions than the lock
 jk update        # re-resolve on purpose, within your declared ranges
 jk sync --offline-prepare   # download everything for offline/CI
 ```
