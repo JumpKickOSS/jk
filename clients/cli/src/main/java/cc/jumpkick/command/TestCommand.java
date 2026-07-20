@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
@@ -16,6 +17,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -71,6 +73,7 @@ public final class TestCommand implements CliCommand {
     GlobalOptions global;
     String affectedSince;
     String modulesSpec;
+    private CliSessionTranscript session;
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
@@ -86,6 +89,7 @@ public final class TestCommand implements CliCommand {
         var proj = ProjectContext.require(dir, "test").orElse(null);
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
+        this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
         // No jk.lock guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
@@ -100,7 +104,8 @@ public final class TestCommand implements CliCommand {
                     dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
-                return Exit.CONFIG;
+                if (session != null) session.error(selected.errorMessage());
+                return finishSession(Exit.CONFIG);
             }
             if (selected != null && selected.moduleDirs().isEmpty()) {
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
@@ -108,10 +113,12 @@ public final class TestCommand implements CliCommand {
                         "Test",
                         cc.jumpkick.config.GlobalConfig.nerdfont(),
                         "nothing selected for tests"));
-                return 0;
+                if (session != null) session.wedge("nothing selected for tests");
+                return finishSession(0);
             }
             if (selected != null && entry.isWorkspaceRoot()) {
-                return runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs());
+                return finishSession(
+                        runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs()));
             }
             if (selected != null && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
@@ -119,7 +126,8 @@ public final class TestCommand implements CliCommand {
                         "Test",
                         cc.jumpkick.config.GlobalConfig.nerdfont(),
                         "nothing selected for tests"));
-                return 0;
+                if (session != null) session.wedge("nothing selected for tests");
+                return finishSession(0);
             }
         }
 
@@ -158,14 +166,45 @@ public final class TestCommand implements CliCommand {
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
-            return Exit.SOFTWARE;
+            if (session != null) session.error(e.getMessage());
+            return finishSession(Exit.SOFTWARE);
         }
         testResult = testResultHolder[0];
+        if (session != null) {
+            session.module(module).absorb(result);
+            if (result.success()) {
+                session.wedge(testSummary(testResult, result));
+            } else {
+                session.wedge(testFailureMessage(testResult, result));
+            }
+        }
 
-        if (result.success()) return 0;
+        if (result.success()) return finishSession(0);
         // Test failures get exit 4; compile / launcher errors are exit 1.
-        if (testResult != null && !testResult.allPassed()) return 4;
-        return 1;
+        if (testResult != null && !testResult.allPassed()) return finishSession(4);
+        return finishSession(1);
+    }
+
+    private int finishSession(int code) {
+        return CliSessionTranscript.finish(session, code, global != null && global.verbose);
+    }
+
+    private List<String> testArgv(Invocation in) {
+        List<String> argv = new ArrayList<>();
+        argv.add("test");
+        in.value("profile").ifPresent(p -> {
+            argv.add("--profile");
+            argv.add(p);
+        });
+        in.value("modules").ifPresent(m -> {
+            argv.add("--modules");
+            argv.add(m);
+        });
+        in.value("affected-since").ifPresent(r -> {
+            argv.add("--affected-since");
+            argv.add(r);
+        });
+        return argv;
     }
 
     /**
@@ -210,7 +249,11 @@ public final class TestCommand implements CliCommand {
                         testResultHolder);
             } catch (IOException e) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
+                if (session != null) session.error(mod + ": " + e.getMessage());
                 return Exit.SOFTWARE;
+            }
+            if (session != null) {
+                session.module(module).absorb(result);
             }
             if (!result.success()) {
                 if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) worst = 4;

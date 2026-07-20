@@ -193,6 +193,23 @@ jk self setup-terminal --no-nerd   # force off
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
 
+### Session transcripts (`details.json`)
+
+`jk build` and `jk test` write a small, versioned session file by default:
+
+```text
+target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.json
+```
+
+Schema version is the top-level `schema` field (currently `1`). Contents include the
+command name, a compact argv snapshot, exit code, wall-clock duration, optional wedge
+summary, selected modules, pipeline steps, and key engine errors. The terminal stays
+terse; with `-v` / `--verbose`, jk prints a one-line `Details: <path>` pointer after the
+run.
+
+Writing is best-effort: a missing project, full disk, or permission error never fails the
+user command. Disable with `JK_CLI_DETAILS=off` (or `0`).
+
 ### Deny policy
 
 ```toml

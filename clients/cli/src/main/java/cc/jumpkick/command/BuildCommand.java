@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.AggregateContext;
+import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
@@ -87,6 +88,8 @@ public final class BuildCommand implements CliCommand {
     String affectedSince;
     String modulesSpec;
     java.util.Map<String, String> clientEnv = java.util.Map.of();
+    /** Best-effort session transcript (JK-1079); null when disabled / no project. */
+    private CliSessionTranscript session;
     // ---- PipelineKeys -------------------------------------------------------
     //
     // BuildPipelines owns the step DAG and all of its keys; BuildCommand only
@@ -139,6 +142,7 @@ public final class BuildCommand implements CliCommand {
         // ambient session for the in-process paths.
         this.variant = VariantSelection.install(in, startDir);
         this.clientEnv = cc.jumpkick.config.SessionContext.current().clientEnv();
+        this.session = CliSessionTranscript.open(startDir, "build", buildArgv(in));
 
         // Workspace root or module → full workspace build in topological order.
         cc.jumpkick.engine.protocol.ProjectInfo peek = projectInfoOrNull(startDir);
@@ -146,9 +150,9 @@ public final class BuildCommand implements CliCommand {
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "--aot-cache packages a single application project;" + " run it from the module directory."));
-                return Exit.USAGE;
+                return finishSession(Exit.USAGE);
             }
-            return buildWorkspace(startDir);
+            return finishSession(buildWorkspace(startDir));
         }
         if (peek != null
                 && !peek.workspaceRootDir().isEmpty()
@@ -160,7 +164,7 @@ public final class BuildCommand implements CliCommand {
                         + startDir.getFileName()
                         + ")"));
             }
-            return buildWorkspace(root);
+            return finishSession(buildWorkspace(root));
         }
         int code = runForDir(startDir);
         if (code == 0 && aotCache) {
@@ -168,7 +172,35 @@ public final class BuildCommand implements CliCommand {
             // the layout inputs come from the engine's exec plan (thin client).
             code = AotCachePackage.run(startDir, cacheDir != null ? cacheDir : JkDirs.cache());
         }
-        return code;
+        return finishSession(code);
+    }
+
+    /** Write the session transcript (best-effort) and return {@code code} unchanged. */
+    private int finishSession(int code) {
+        return CliSessionTranscript.finish(session, code, global != null && global.verbose);
+    }
+
+    /** Compact argv snapshot for details.json (command + selection flags). */
+    private List<String> buildArgv(Invocation in) {
+        List<String> argv = new ArrayList<>();
+        argv.add("build");
+        if (in.isSet("skip-tests")) argv.add("--skip-tests");
+        if (in.isSet("aot-cache")) argv.add("--aot-cache");
+        if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
+        if (in.isSet("no-timeline")) argv.add("--no-timeline");
+        in.value("profile").ifPresent(p -> {
+            argv.add("--profile");
+            argv.add(p);
+        });
+        in.value("modules").ifPresent(m -> {
+            argv.add("--modules");
+            argv.add(m);
+        });
+        in.value("affected-since").ifPresent(r -> {
+            argv.add("--affected-since");
+            argv.add(r);
+        });
+        return argv;
     }
 
     /** Default: parallel graph build; {@code --no-parallel}: the serial rich aggregate view. */
@@ -408,7 +440,12 @@ public final class BuildCommand implements CliCommand {
                             cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
         } catch (java.io.IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
+            if (session != null) session.error(e.getMessage());
             return Exit.SOFTWARE;
+        }
+        if (session != null) {
+            for (var m : result.modules()) session.module(m.coord());
+            for (String err : result.errors()) session.error(err);
         }
         if (!result.errors().isEmpty()) {
             for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
@@ -418,17 +455,24 @@ public final class BuildCommand implements CliCommand {
         }
         if (total[0] == 0) {
             CliOutput.out("(workspace declares no modules)");
+            if (session != null) session.wedge("workspace declares no modules");
             return 0;
         }
         if (!result.success()) {
             result.modules().stream()
                     .filter(m -> !m.success())
                     .findFirst()
-                    .ifPresent(f -> CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", f.coord() + " failed (exit " + f.exitCode() + ")")));
+                    .ifPresent(f -> {
+                        String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
+                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", msg));
+                        if (session != null) session.error(msg).wedge(msg);
+                    });
             return result.exitCode();
         }
+        String okTail = modulesTail(total[0], start);
         CliOutput.out(PipelineWedge.chipLine(
-                cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), modulesTail(total[0], start)));
+                cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
+        if (session != null) session.wedge(okTail);
         return 0;
     }
 
@@ -543,12 +587,21 @@ public final class BuildCommand implements CliCommand {
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build ..." chip).
             view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
+            if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
+        }
+        if (session != null) {
+            for (var m : result.modules()) session.module(m.coord());
+            for (String err : result.errors()) session.error(err);
+            for (PipelineResult.Diagnostic d : agg.lastErrors()) {
+                session.error(d.step(), d.code(), d.message());
+            }
         }
         if (!result.errors().isEmpty()) {
             List<String> above = new ArrayList<>();
             for (String err : result.errors()) above.add(ConsoleSpec.errorLine("composite", err));
             view.finishPipelineFailure("dependency resolution failed", above);
+            if (session != null) session.wedge("dependency resolution failed");
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
         }
@@ -565,12 +618,15 @@ public final class BuildCommand implements CliCommand {
                     .map(cc.jumpkick.runtime.ModuleOutcome::coord)
                     .findFirst()
                     .orElse("build");
-            view.finishPipelineFailure(failureTail(failedCoord, start), above);
+            String failTail = failureTail(failedCoord, start);
+            view.finishPipelineFailure(failTail, above);
+            if (session != null) session.wedge(failTail);
             return result.exitCode();
         }
-        view.finishPipelineSuccess(
-                dirtyDirs.isEmpty() ? upToDateTail("all modules", start) : modulesTail(total[0], start),
-                snapshot(deferredOutput));
+        String okTail =
+                dirtyDirs.isEmpty() ? upToDateTail("all modules", start) : modulesTail(total[0], start);
+        view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
+        if (session != null) session.wedge(okTail);
         return 0;
     }
 
@@ -642,11 +698,13 @@ public final class BuildCommand implements CliCommand {
                 var forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
+                    String upToDate = buildOk() + ", project up to date " + elapsedSince(startNanos);
                     CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                             cc.jumpkick.cli.tui.Glyphs.CHECK,
                             "Build",
                             cc.jumpkick.config.GlobalConfig.nerdfont(),
-                            buildOk() + ", project up to date " + elapsedSince(startNanos)));
+                            upToDate));
+                    if (session != null) session.module(target).wedge(upToDate);
                     return 0;
                 }
             } catch (java.io.IOException | RuntimeException ignored) {
@@ -697,7 +755,14 @@ public final class BuildCommand implements CliCommand {
                     buildOutcomeHolder);
         } catch (java.io.IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
+            if (session != null) session.error(e.getMessage());
             return Exit.SOFTWARE;
+        }
+        if (session != null) {
+            session.module(target).absorb(result);
+            if (result.success()) {
+                session.wedge(projectTail(buildOutcomeHolder[0], tailDir, tailInfo));
+            }
         }
         if (result.success()) return 0;
         // Test failures get exit 4; other failures exit 1.
