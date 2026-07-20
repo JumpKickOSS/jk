@@ -12,19 +12,20 @@ import org.junit.jupiter.api.extension.ExtensionContext;
  *
  * <ul>
  *   <li>BeforeAll (per class) — materialize the engine jar into the test {@code JK_HOME}
- *   <li>AfterEach — force-stop only for classes that keep project-tree FDs open across methods
- *       (TempDir cleanup fails otherwise). Other classes reuse a warm engine (ticket-1042).
- *   <li>AfterAll (per class) — always force-stop so the next class and suite teardown are clean
+ *   <li>AfterEach — stop engine only for classes that still pin project-tree FDs (see denylist)
+ *   <li>AfterAll (per class) — force-stop so the next class and suite teardown are clean
  * </ul>
  *
- * <p>TempDir cleanup uses the default JUnit mode (ticket-1022). forceStop waits for process death
- * (ticket-1043). Shared dep cache lives outside {@code @TempDir} ({@code jk.test.cache.dir}).
+ * <p>Warm engine across methods for most classes (ticket-1042). {@link JkTempDirFactory} retries
+ * TempDir delete and force-stops as a last resort (ticket-1052). The denylist is the documented
+ * exception set where OS hardlinks/open jars still require stop-after-each until engine FD
+ * lifetime is fully fixed.
  */
 public final class EngineTestExtension implements BeforeAllCallback, AfterEachCallback, AfterAllCallback {
 
     /**
-     * Wire tests that leave engine-held files under method-scoped {@code @TempDir} trees. Measured
-     * by TempDirDeletionException when class-scoped stop alone was enabled (ticket-1042).
+     * Wire tests that leave engine-held files under method-scoped {@code @TempDir} trees even with
+     * {@link JkTempDirFactory} retry (ticket-1052). Prefer shrinking this set as FD hygiene improves.
      */
     private static final Set<String> STOP_ENGINE_AFTER_EACH = Set.of(
             "cc.jumpkick.cli.ide.IdeEngineClientTest",

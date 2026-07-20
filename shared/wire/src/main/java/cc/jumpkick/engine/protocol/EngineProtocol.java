@@ -117,6 +117,15 @@ public final class EngineProtocol {
     /** Engine is draining after {@link #SHUTDOWN}; job refused. */
     public static final String ERR_SHUTTING_DOWN = "shutting-down";
     public static final String ERR_AUTH = "auth";
+    /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
+    public static final String ERR_DEADLINE = "deadline";
+
+    /**
+     * Server → client keep-alive while a long job runs (ticket-1051). Resets client stream idle
+     * ({@code JK_STREAM_IDLE_MS}); clients ignore the payload. Interval: {@code JK_ENGINE_HEARTBEAT_MS}
+     * (default 30s; {@code 0} disables).
+     */
+    public static final String HEARTBEAT = "heartbeat";
 
     /** Client → server: single-project test pipeline ({@code jk test}). */
     public static final String TEST_REQUEST = "test-request";
@@ -1947,6 +1956,11 @@ public final class EngineProtocol {
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */
     public static String requestFailed(String message) {
         return error(ERR_REQUEST_FAILED, message);
+    }
+
+    /** Keep-alive line during long jobs (ticket-1051). */
+    public static String heartbeat(long elapsedMillis) {
+        return "{\"t\":\"" + HEARTBEAT + "\",\"elapsedMillis\":" + elapsedMillis + "}";
     }
 
     // ---- hosted long-tail commands -----------------------------------------------------------------

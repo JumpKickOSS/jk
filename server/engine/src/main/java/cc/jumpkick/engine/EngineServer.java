@@ -817,6 +817,7 @@ public final class EngineServer implements AutoCloseable {
         publishRequestStart(eventRequestId, eventKind, eventDir);
         registerAccumulator(eventRequestId, eventKind, eventDir, "cli");
         if (pipeline) notePipelineStarted();
+        Thread heartbeatThread = null;
         try {
             Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
@@ -829,6 +830,46 @@ public final class EngineServer implements AutoCloseable {
                     done.countDown();
                 }
             });
+            // Keep-alive + optional wall deadline while the job runs (ticket-1051). Client stream
+            // idle (JK_STREAM_IDLE_MS) resets on each heartbeat line.
+            long heartbeatMs = jobHeartbeatMs();
+            long deadlineMs = jobDeadlineMs();
+            if (heartbeatMs > 0 || deadlineMs > 0) {
+                heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
+                    long start = clockMillis.getAsLong();
+                    while (done.getCount() > 0) {
+                        long elapsed = clockMillis.getAsLong() - start;
+                        long wait = heartbeatMs > 0 ? heartbeatMs : 1_000L;
+                        if (deadlineMs > 0) {
+                            long remaining = deadlineMs - elapsed;
+                            if (remaining <= 0) {
+                                cancelToken.cancel();
+                                sendQuiet(
+                                        writer,
+                                        EngineProtocol.error(
+                                                EngineProtocol.ERR_DEADLINE,
+                                                "job exceeded "
+                                                        + deadlineMs
+                                                        + "ms (JK_ENGINE_JOB_DEADLINE_MS); cancelled"));
+                                return;
+                            }
+                            wait = Math.min(wait, remaining);
+                        }
+                        try {
+                            if (done.await(wait, java.util.concurrent.TimeUnit.MILLISECONDS)) return;
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return;
+                        }
+                        if (done.getCount() == 0) return;
+                        if (heartbeatMs > 0) {
+                            sendQuiet(
+                                    writer,
+                                    EngineProtocol.heartbeat(clockMillis.getAsLong() - start));
+                        }
+                    }
+                });
+            }
             try {
                 String line;
                 while (done.getCount() > 0 && (line = reader.readLine()) != null) {
@@ -848,6 +889,7 @@ public final class EngineServer implements AutoCloseable {
                 Thread.currentThread().interrupt();
             }
         } finally {
+            if (heartbeatThread != null) heartbeatThread.interrupt();
             if (pipeline) maybeIdleBoundaryGc();
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
             // cancelToken.cancelled() also trips on the benign end-of-request EOF, so a successful
@@ -3457,6 +3499,32 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
+    /**
+     * Heartbeat interval while an async job runs (ticket-1051). Default 30s; {@code 0} disables.
+     * Env: {@code JK_ENGINE_HEARTBEAT_MS}.
+     */
+    static long jobHeartbeatMs() {
+        return envLongMs("JK_ENGINE_HEARTBEAT_MS", 30_000L);
+    }
+
+    /**
+     * Optional per-request wall deadline (ticket-1051). Default {@code 0} = off (huge monorepos).
+     * Env: {@code JK_ENGINE_JOB_DEADLINE_MS}.
+     */
+    static long jobDeadlineMs() {
+        return envLongMs("JK_ENGINE_JOB_DEADLINE_MS", 0L);
+    }
+
+    private static long envLongMs(String name, long defaultMs) {
+        String raw = System.getenv(name);
+        if (raw == null || raw.isBlank()) return defaultMs;
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            return defaultMs;
+        }
+    }
+
     private void onConnectionFinished() {
         activeConnections.decrementAndGet();
     }
@@ -3833,9 +3901,12 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private static void send(BufferedWriter writer, String line) throws IOException {
-        writer.write(line);
-        writer.write('\n');
-        writer.flush();
+        // Heartbeat + pipeline workers may write concurrently (ticket-1051).
+        synchronized (writer) {
+            writer.write(line);
+            writer.write('\n');
+            writer.flush();
+        }
     }
 
     private static void closeQuietly(SocketChannel ch) {

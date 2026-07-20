@@ -254,16 +254,17 @@ jk bsp install               # write .bsp/jk.json
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
-**VS Code (ticket-1017 Track A):** installable extension under [`clients/vscode/`](../clients/vscode/)
-(VSIX via `./scripts/package-vscode.sh`). Wire-only: shells `jk` on PATH; optional BSP import via
-`.bsp/jk.json`. Requires `jk` installed on the machine (`jk.path` setting if not on PATH).
+**VS Code (ticket-1017):** [`clients/vscode/`](../clients/vscode/) — VSIX via `./scripts/package-vscode.sh`.
+
+**IntelliJ (ticket-1054):** [`clients/intellij/`](../clients/intellij/) — zip via `./scripts/package-intellij.sh`
+(Tools → JumpKick actions).
+
+Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Requires `jk` on PATH.
 
 ```bash
-./scripts/package-vscode.sh
-# VS Code → Extensions → … → Install from VSIX… → clients/vscode/jumpkick-*.vsix
+./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix
+./scripts/package-intellij.sh    # → clients/intellij/build/distributions/*.zip
 ```
-
-IntelliJ marketplace plugin is a follow-up track (same BSP / wire lifecycle).
 ### Live loops (`jk watch` / `jk dev`)
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**

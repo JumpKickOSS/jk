@@ -141,15 +141,15 @@ with a clear message. Use a separate worktree for true parallel builds.
 | `clients/` | `cli` (native/thin JVM client + CLI tests), `web`, `vscode` (VS Code extension) |
 | `plugins/` | First-party build/worker plugins |
 
-### VS Code extension (ticket-1017)
+### IDE plugins (wire-only)
 
 ```bash
-./scripts/package-vscode.sh    # → clients/vscode/jumpkick-*.vsix (gitignored)
-# Install from VSIX in VS Code; requires jk on PATH
+./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix (gitignored)
+./scripts/package-intellij.sh    # → clients/intellij/build/distributions/*.zip
 ```
 
-Wire-only: no engine jars in the extension. See `clients/vscode/README.md`.
-
+Requires `jk` on PATH. No engine jars in the IDE process. See `clients/vscode/README.md` and
+`clients/intellij/README.md`.
 See [docs/architecture.md](docs/architecture.md) for layering and process model, and
 [docs/guide.md](docs/guide.md) for product behavior.
 

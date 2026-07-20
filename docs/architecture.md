@@ -40,12 +40,14 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 |---|---|---|
 | **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
+| **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async jobs run | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
+| **Job wall deadline** (ticket-1051) | Optional cancel + `error` code `deadline` | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off; set for CI caps) |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
-recover with `jk engine stop --force`). Huge monorepo builds that emit progress stay within the
-idle window; wedged engines do not hang the next command for an hour.
+recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
+idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
 
 ```bash
 jk engine start | status | stop
@@ -184,9 +186,9 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 | `buildTarget/dependencyModules` | `ideModel` lib jars (absolute URIs) |
 | `buildTarget/compile` | `IdeEngineClient.build` |
 
-- **VS Code extension (ticket-1017 Track A):** `clients/vscode/` — VSIX packaging, tasks/commands
-  via `jk` subprocess, `jk bsp install` for `.bsp/jk.json`. No engine jars on the extension
-  classpath. IntelliJ marketplace track remains follow-up.
+- **VS Code (ticket-1017):** `clients/vscode/` — VSIX, tasks/commands via `jk`, BSP install.  
+- **IntelliJ (ticket-1054):** `clients/intellij/` — install-from-disk zip, Tools → JumpKick actions
+  (`jk bsp install` / sync / build / test). No engine jars on the plugin classpath.
 
 ### Project build logic (`.jk-build/`, ticket-1037)
 

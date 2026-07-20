@@ -9,7 +9,10 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — VS Code extension Track A (BSP + tasks, wire-only)
+1. [ticket-1054](ticket-1054-intellij-marketplace-plugin.md) — IntelliJ plugin (wire-only, install-from-disk)
+2. [ticket-1052](ticket-1052-engine-release-project-fds.md) — TempDir factory + documented denylist residual
+3. [ticket-1051](ticket-1051-engine-job-deadline-watchdog.md) — Engine job heartbeat + optional deadline
+4. [ticket-1017](ticket-1017-ide-marketplace-plugins.md) — VS Code extension Track A (BSP + tasks, wire-only)
 2. [ticket-1033](ticket-1033-lint-matrix-research.md) — Lint matrix: Checkstyle recipe; Kotlin detekt deferred
 2. [ticket-1038](ticket-1038-showcase-monorepo-ci.md) — Showcase monorepo CI dogfood
 3. [ticket-1032](ticket-1032-assembly-packaging-depth.md) — Packaging matrix + fat-jar rules + `jk assembly`
