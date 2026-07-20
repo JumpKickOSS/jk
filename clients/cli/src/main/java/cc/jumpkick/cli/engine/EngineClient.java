@@ -41,6 +41,12 @@ public final class EngineClient {
     private static final int SOCKET_TIMEOUT_MILLIS = 2_000;
 
     /**
+     * After force-stop / hard-kill, wait this long for the OS process to exit before escalating
+     * (ticket-1043). Keeps the next client from racing a half-dead generation.
+     */
+    private static final Duration STOP_DEATH_WAIT = Duration.ofMillis(1_500);
+
+    /**
      * Ceiling for a normal (mapped-cache or no-cache) spawn to come up. A mapped-cache start is
      * sub-second; the pathological case is a <em>cold</em> boot (AOT ignored/disabled), which we
      * must tolerate rather than report as failure. Safe because {@link #awaitStartup} short-circuits
@@ -181,26 +187,79 @@ public final class EngineClient {
     /**
      * Force an immediate shutdown: the engine exits now via its clean-exit path (abandoning in-flight
      * job connections but still assembling the AOT cache). {@code true} if acknowledged or nothing was
-     * running; {@code false} if reachable but unresponsive (caller may {@link #killStale} as fallback).
+     * running; {@code false} if reachable but unresponsive (caller may {@link #hardKill} as fallback).
+     *
+     * <p>When a pid file is present for {@code socket}, waits for that process to actually die
+     * (ticket-1043) so the next {@link #ensureRunning} does not race a half-stopped generation.
      */
     public static boolean forceStop(Path socket) {
+        long pid = readPidForSocket(socket);
         SocketChannel ch;
         try {
             ch = connect(socket);
         } catch (IOException e) {
-            return true; // nothing reachable — already stopped
+            // Nothing accepting — still wait out a leftover pid if the file is stale-but-alive.
+            if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
+            return true;
         }
         try (ch) {
             String bye = exchange(ch, EngineProtocol.shutdown(true));
-            return EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
+            boolean ok = EngineProtocol.BYE.equals(EngineProtocol.typeOf(bye));
+            if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
+            else if (!ok) {
+                // bye missing but we connected — best-effort: try pid from a late status is gone;
+                // nothing else to wait on.
+            }
+            return ok;
         } catch (IOException e) {
+            if (pid > 0) waitForDeathOrKill(pid, STOP_DEATH_WAIT);
             return false;
         }
     }
 
-    /** Last-resort SIGTERM→SIGKILL when a clean {@link #forceStop} can't reach a wedged engine. */
+    /**
+     * Last-resort SIGTERM→SIGKILL when a clean {@link #forceStop} can't reach a wedged engine. Never
+     * targets the calling process (in-process {@code EngineServer} tests share this JVM's pid).
+     */
     public static void hardKill(long pid) {
+        if (pid <= 0 || pid == ProcessHandle.current().pid()) return;
         killStale(pid, COLD_START_CEILING);
+    }
+
+    /**
+     * Read the engine pid from the socket's sibling {@code .pid} file (generation-scoped). {@code -1}
+     * when missing or unreadable.
+     */
+    static long readPidForSocket(Path socket) {
+        return readPidFile(EnginePaths.pidFor(socket));
+    }
+
+    /** First line of a pid file as a long, or {@code -1}. */
+    static long readPidFile(Path pidFile) {
+        try {
+            if (!Files.isRegularFile(pidFile)) return -1;
+            String first = Files.readString(pidFile).lines().findFirst().orElse("").trim();
+            if (first.isEmpty()) return -1;
+            return Long.parseLong(first);
+        } catch (IOException | NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /**
+     * Wait up to {@code timeout} for {@code pid} to exit; {@link #hardKill} if still alive. No-op when
+     * the process is already gone, pid is non-positive, or pid is this JVM (in-process engine tests).
+     */
+    static void waitForDeathOrKill(long pid, Duration timeout) {
+        if (pid <= 0 || pid == ProcessHandle.current().pid()) return;
+        Optional<ProcessHandle> handle = ProcessHandle.of(pid);
+        if (handle.isEmpty() || !handle.get().isAlive()) return;
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!handle.get().isAlive()) return;
+            sleepQuietly(20);
+        }
+        if (handle.get().isAlive()) hardKill(pid);
     }
 
     // ---- build history ({@code jk history}) — thin RPC over the engine's journal ----------------
@@ -1250,9 +1309,10 @@ public final class EngineClient {
     }
 
     private static Handshake doEnsure(EnginePaths.Paths paths, String clientVersion) throws IOException {
-        Optional<Handshake> existing = handshake(EnginePaths.activeSocket(paths), clientVersion);
-        if (existing.isPresent()) {
-            Handshake hs = existing.get();
+        Path socket = EnginePaths.activeSocket(paths);
+        Reachability reach = probe(socket, clientVersion);
+        if (reach instanceof Reachability.Live live) {
+            Handshake hs = live.handshake();
             // A draining engine still owns the socket + file lock and is finishing in-flight jobs.
             // Fail fast — do NOT fall through to spawn a competing engine, and don't killStale it.
             if (hs.draining()) {
@@ -1265,8 +1325,77 @@ public final class EngineClient {
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
             // a kill: spawn this client's engine; its startup atomically repoints the endpoint and
             // drains the displaced engine — in-flight jobs finish untouched.
+        } else if (reach instanceof Reachability.Silent silent) {
+            // Accepts connections but never replies (ticket-1043). Displace so startWithSelfHeal
+            // can bind — do not wait for the 60m stream idle on the next build.
+            long pid = silent.pidHint() > 0 ? silent.pidHint() : readPidForSocket(socket);
+            logReason(
+                    paths,
+                    "displacing unresponsive engine"
+                            + (pid > 0 ? " (pid " + pid + ")" : "")
+                            + " — handshake timed out");
+            if (pid > 0) hardKill(pid);
+            else forceStop(socket); // best-effort; may still be false
+            waitForDeathOrKill(pid, STOP_DEATH_WAIT);
         }
+        // Absent / unusable / version skew → spawn (takeover or cold start).
         return startWithSelfHeal(paths, clientVersion);
+    }
+
+    /**
+     * Outcome of a one-shot ensure probe: live handshake, nothing listening, silent peer (connect
+     * works, no reply within {@link #SOCKET_TIMEOUT_MILLIS}), or connected-but-not-usable (e.g.
+     * newer protocol).
+     */
+    private sealed interface Reachability {
+        record Live(Handshake handshake) implements Reachability {}
+
+        record Absent() implements Reachability {}
+
+        /** Socket accepted the connection but never completed handshake. */
+        record Silent(long pidHint) implements Reachability {}
+
+        /** Reached something that is not a usable same-generation engine. */
+        record Unusable() implements Reachability {}
+    }
+
+    /**
+     * Probe liveness beyond "socket exists": connect + hello with the short exchange watchdog.
+     * Distinguishes a wedged peer (silent) from a missing engine so ensure can hard-kill once.
+     */
+    private static Reachability probe(Path socket, String clientVersion) {
+        SocketChannel ch;
+        try {
+            ch = connect(socket);
+        } catch (IOException e) {
+            return new Reachability.Absent();
+        }
+        try (ch) {
+            String ack = exchange(ch, EngineProtocol.hello(clientVersion));
+            if (!EngineProtocol.HELLO_ACK.equals(EngineProtocol.typeOf(ack))) {
+                return new Reachability.Unusable();
+            }
+            if (Jsonl.intValue(ack, "proto", EngineProtocol.PROTOCOL) > EngineProtocol.PROTOCOL) {
+                return new Reachability.Unusable();
+            }
+            String ackBuildId = Jsonl.str(ack, "buildId");
+            return new Reachability.Live(new Handshake(
+                    Jsonl.str(ack, "version"),
+                    Jsonl.longValue(ack, "pid", -1),
+                    Jsonl.longValue(ack, "startedAt", -1),
+                    Jsonl.bool(ack, "draining", false),
+                    ackBuildId == null ? "" : ackBuildId));
+        } catch (IOException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            if (msg.contains("did not reply")
+                    || msg.contains("closed the connection without replying")
+                    || msg.contains("no protocol traffic")) {
+                return new Reachability.Silent(readPidForSocket(socket));
+            }
+            // Connect worked but mid-exchange failure (reset, etc.) — treat as unusable and let
+            // spawn/takeover decide; avoid hard-killing a healthy peer on a flaky read.
+            return new Reachability.Unusable();
+        }
     }
 
     /**

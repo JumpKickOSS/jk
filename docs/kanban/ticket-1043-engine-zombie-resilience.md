@@ -1,12 +1,13 @@
 # ticket-1043 — Engine zombie / half-dead process resilience
 
-**Priority:** P2-infra (product reliability; promote when P2 product tickets allow)  
-**Status:** backlog  
+**Priority:** P1-infra (product reliability)  
+**Status:** done  
 **Kind:** go-do  
 **Source:** Full-suite hang investigation (client blocked on `runSync` / `runSingleBuild` while engine accepted the socket); long-lived laptop daemon (sleep/wake)  
 **Depends on:** none  
 **Branch:** `ticket-1043-engine-zombie-resilience`  
 **Estimate:** M  
+**Order:** **1 of 3** infra batch (before 1022 / 1042)
 
 ## Problem
 
@@ -16,68 +17,77 @@ A **live socket is not enough** to know the engine is healthy. Observed failure 
 2. Client sends a request and blocks on protocol `readLine`.  
 3. Engine never finishes (or never emits another line) — client hangs until idle timeout (**default 60 minutes**).  
 
-Contributing factors from investigation:
+Contributing factors:
 
-- **`forceStop` / afterEach stop** could return before the process fully exited → next client may race a dying generation.  
-- **Best-effort paths** (e.g. IDE pre-sync) had **no overall deadline** (partially mitigated for IDE with a 30s box).  
-- **Protocol idle** is configurable (`JK_STREAM_IDLE_MS` / minutes) but production default is very long.  
-- Laptops: sleep/wake, suspended engine threads, half-open sockets, stale endpoint files.
+- **`forceStop` / stop** can return before the process fully exits → next client races a dying generation.  
+- **Best-effort paths** (e.g. IDE pre-sync) had **no overall deadline** (partially mitigated: IDE 30s box).  
+- **Protocol idle** is configurable (`JK_STREAM_IDLE_MS`) but production default is very long.  
+- Laptops: sleep/wake, half-open sockets, stale endpoint files.
 
-Users leave the resident engine up for days. We must not allow a **zombie** that still accepts connections but never serves.
+Users leave the resident engine up for days. A **zombie** that accepts connections but never serves must not wedge the next command for minutes.
 
-## Goals
+## Liveness model (product contract)
 
-1. **Detect** unhealthy engines quickly (liveness beyond “socket exists”).  
-2. **Recover** automatically: displace/restart without user `kill -9`.  
-3. **Fail closed** on the client with a clear error within seconds–tens of seconds, not minutes.  
-4. Survive **sleep/wake** and long idle without wedging the next command.
+| Layer | Authority | Bound |
+|---|---|---|
+| **Probe** (`ping` / `hello` / `status`) | One request/reply via `exchange` | **2s** socket watchdog (`SOCKET_TIMEOUT_MILLIS`) |
+| **Stream** (build/test/sync) | Line stream via `BoundedLineReader` | **`JK_STREAM_IDLE_MS`** (default 60m between lines; tests use 45s) |
+| **Ensure** | Handshake must succeed | On connect-but-silent: **displace once** (kill + respawn) |
+| **Stop** | Process death, not only `bye` | Wait for PID exit (then hardKill) |
 
-## Design sketch (refine in implementation)
+Document this in [architecture.md](../architecture.md) under process model / lifecycle.
 
-### Engine side
+## MVP scope (this ticket)
 
-| Mechanism | Purpose |
-|---|---|
-| **Heartbeat / idle protocol** | Optional periodic `noop` or progress so idle timeout is meaningful; or server-side job watchdog |
-| **Request deadline** | Per-request max wall time for sync/build (configurable); abort + ERROR frame |
-| **Displacement on stall** | If generation holds lock but stops accepting/responding, next spawn takes over (already partly true for version skew) |
-| **Wake hygiene** | On first post-wake accept, validate JVM/thread state; refuse or self-restart if clocks/FDs look wrong |
+Ship the **client-side** recovery path that already almost exists; do **not** build a full engine-side job watchdog yet.
 
-### Client side
+1. **`forceStop` / stop helpers wait for process death**  
+   After a successful or failed force-stop that knew a pid, wait (bounded, ~1.5s) then `hardKill`. Same idea as `EngineTestSupport.stopEngineOnly` — promote to product API.
 
-| Mechanism | Purpose |
-|---|---|
-| **Health probe before heavy work** | `ping` + short status; if hang, hardKill + ensureRunning |
-| **Shorter stream idle default for interactive** | Keep long idle for huge builds; use tighter default for IDE/best-effort and document `JK_STREAM_IDLE_MS` |
-| **ensureRunning must not trust a wedged peer** | If exchange fails or times out, kill and respawn once |
+2. **`doEnsure` treats silent peer as dead**  
+   If the endpoint/socket exists but `handshake` fails with timeout / closed-without-reply (not “nothing listening”), read pid from status/pidfile if available, **hardKill**, clear stale endpoint if needed, then `startWithSelfHeal` once.
 
-### Partial mitigations already landed (do not regress)
+3. **Stream idle failure is fail-closed and clear**  
+   When `BoundedLineReader` closes for idle: message names the timeout + env knob + suggests `jk engine stop --force`. No automatic mid-build restart of a multi-minute compile (that would be surprising); next `ensureRunning` recovers via (2).
+
+4. **Docs** — architecture liveness table; env vars already exist.
+
+5. **Tests**  
+   - Silent peer: socket accepts, never replies → handshake empty within ~2s; ensure recovers (or kill path exercised).  
+   - Stop waits for death (unit or integration against in-process server / mock process if needed).
+
+### Already landed (do not regress)
 
 - IDE `hostedBestEffortSync` 30s ceiling + forceStop on timeout  
 - CLI test `JK_STREAM_IDLE_MS=45000`  
-- `EngineTestSupport.stopEngineOnly` waits for PID death  
-- `BoundedLineReader` idle close of channel  
+- `EngineTestSupport.stopEngineOnly` PID wait  
+- `BoundedLineReader` idle close  
 
-Ticket work = **product-grade** version of the same ideas for normal `jk build` / long-lived daemons.
+## Out of scope (follow-ups)
+
+- Engine-side **per-request wall deadline** / job watchdog that emits ERROR mid-build  
+- Periodic heartbeat frames on long silent compiles  
+- Separate supervisor process  
+- Changing default stream idle globally to a short value (huge monorepos need long idle)
 
 ## Acceptance
 
-- [ ] Documented liveness model (status + idle + kill/respawn) in architecture or engine docs  
-- [ ] Client: after simulated wedged engine (accepts connect, never replies), next `jk engine status` / `jk build` recovers within a bounded time (e.g. ≤15s probe + one restart) without manual kill  
-- [ ] Engine: no forever-stuck request without an ERROR or connection close (watchdog or deadline)  
-- [ ] Sleep/wake note tested or documented (macOS laptop path)  
-- [ ] Unit/integration tests for “silent peer” and “stop waits for death”  
-- [ ] Defaults chosen so huge monorepo builds still work (tunable env)  
+- [x] Architecture (or engine) docs describe probe vs stream vs ensure/stop liveness  
+- [x] `forceStop` path waits for PID death (bounded) before returning when pid known  
+- [x] Silent peer: next `ensureRunning` / `jk engine status` path recovers within ~15s without manual `kill -9`  
+- [x] Idle stream timeout surfaces a clear error (env name + force-stop hint)  
+- [x] Unit/integration coverage for silent peer and stop-waits-for-death  
+- [x] `./gradlew :cli:test` green for changed areas; reinstall + smoke at batch merge  
 
 ## Non-goals
 
 - Removing the resident engine model  
 - RBE / remote engine  
-- Full supervisor process outside the engine  
+- Full supervisor outside the engine  
 
 ## Refs
 
-- `EngineClient.ensureRunning` / `forceStop` / `hardKill` / `protocolReader`  
-- `EngineServer` accept loop + async pipeline handlers  
+- `EngineClient.ensureRunning` / `doEnsure` / `forceStop` / `hardKill` / `exchange` / `protocolReader`  
+- `EngineServer` accept loop  
 - `IdeSupport.hostedBestEffortSync`  
 - ticket-1021 (test stop cadence)  

@@ -120,10 +120,9 @@ tasks.withType<Test>().configureEach {
     // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
     // EngineTestExtension autodetection: materialize jar + stop engine after each test (1021).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
-    // TempDir cleanup still races the engine even after forceStop (CAS hardlinks / delayed
-    // unmap). Keep never so the suite doesn't fail on deletion; EngineTestExtension still
-    // force-stops so processes don't leak. Follow-up: per-test caches outside @TempDir.
-    systemProperty("junit.jupiter.tempdir.cleanup.mode.default", "never")
+    // TempDir cleanup: default JUnit deletion is OK after ticket-1022/1043 —
+    // EngineTestExtension force-stops and waits for process death; shared dep cache lives
+    // under build/test-shared-cache (jk.test.cache.dir), not under @TempDir project trees.
     doFirst {
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)

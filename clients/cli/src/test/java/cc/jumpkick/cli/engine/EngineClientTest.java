@@ -165,9 +165,51 @@ class EngineClientTest {
         Thread serverThread = startInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
+        long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
+        // In-process EngineServer records this JVM's pid; forceStop must not kill us (ticket-1043).
+        assertThat(pid).isEqualTo(ProcessHandle.current().pid());
+
         assertThat(EngineClient.forceStop(EnginePaths.activeSocket(p))).isTrue();
         serverThread.join(5_000);
         assertThat(serverThread.isAlive()).isFalse();
+    }
+
+    @Test
+    void handshake_is_empty_within_seconds_against_a_silent_peer() throws Exception {
+        // Accept connections, never read or write — models a wedged engine (ticket-1043).
+        Path dir = shortTempDir();
+        Path sock = dir.resolve("silent.sock");
+        try (var server = java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
+            server.bind(java.net.UnixDomainSocketAddress.of(sock));
+            Thread acceptor = new Thread(
+                    () -> {
+                        try {
+                            while (true) {
+                                var client = server.accept();
+                                // leave the client hanging; never reply
+                                Thread.sleep(10_000);
+                                client.close();
+                            }
+                        } catch (Exception ignored) {
+                            // channel closed when test ends
+                        }
+                    },
+                    "silent-peer");
+            acceptor.setDaemon(true);
+            acceptor.start();
+
+            long t0 = System.nanoTime();
+            assertThat(EngineClient.handshake(sock, "1.0")).isEmpty();
+            long ms = (System.nanoTime() - t0) / 1_000_000L;
+            // exchange watchdog is 2s — must not wait for stream idle (minutes).
+            assertThat(ms).isLessThan(8_000L);
+        }
+    }
+
+    @Test
+    void wait_for_death_or_kill_is_a_no_op_for_missing_pid() {
+        EngineClient.waitForDeathOrKill(-1, Duration.ofMillis(50));
+        EngineClient.waitForDeathOrKill(9_999_999_999L, Duration.ofMillis(50));
     }
 
     @Test

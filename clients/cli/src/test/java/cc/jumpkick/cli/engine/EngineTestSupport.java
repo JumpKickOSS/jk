@@ -61,25 +61,17 @@ public final class EngineTestSupport {
         try {
             EnginePaths.Paths paths = EnginePaths.current();
             Path socket = EnginePaths.activeSocket(paths);
-            var status = EngineClient.status(socket);
-            if (status.isEmpty()) return;
-            long pid = status.get().pid();
+            // forceStop waits for pid death when the pid file is present (ticket-1043).
+            long pid = EngineClient.readPidForSocket(socket);
+            if (pid <= 0) {
+                var status = EngineClient.status(socket);
+                if (status.isEmpty()) return;
+                pid = status.get().pid();
+            }
             if (!EngineClient.forceStop(socket)) {
                 EngineClient.hardKill(pid);
+                EngineClient.waitForDeathOrKill(pid, java.time.Duration.ofMillis(1_500));
             }
-            // Wait for the process to actually die — a half-stopped engine accepts the next
-            // connect then never replies (full-suite hang in VscodeCommandTest / runSync).
-            for (int i = 0; i < 30; i++) {
-                boolean alive = ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
-                if (!alive) return;
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-            EngineClient.hardKill(pid);
         } catch (RuntimeException ignored) {
             // best-effort
         }

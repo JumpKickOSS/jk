@@ -34,6 +34,18 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   version-skew replacement. One engine per `JK_HOME` / state directory.
 - **Versioning** — side-by-side installs under `~/.jk/versions/<v>/`; client and engine jar
   share a version; handshake detects skew and takes over.
+- **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
+
+| Layer | What proves health | Bound |
+|---|---|---|
+| **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
+| **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
+| **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
+| **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
+
+If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
+recover with `jk engine stop --force`). Huge monorepo builds that emit progress stay within the
+idle window; wedged engines do not hang the next command for an hour.
 
 ```bash
 jk engine start | status | stop

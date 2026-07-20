@@ -38,6 +38,15 @@ public final class BoundedLineReader extends BufferedReader {
         this.idleTimeoutMillis = idleTimeoutMillis;
     }
 
+    /** Human duration for idle-timeout errors (seconds under a minute, else minutes). */
+    static String formatIdle(long idleTimeoutMillis) {
+        if (idleTimeoutMillis < 60_000L) {
+            long sec = Math.max(1L, idleTimeoutMillis / 1_000L);
+            return sec + "s";
+        }
+        return (idleTimeoutMillis / 60_000L) + " minutes";
+    }
+
     @Override
     public String readLine() throws IOException {
         java.util.concurrent.ScheduledFuture<?> guard = null;
@@ -78,8 +87,10 @@ public final class BoundedLineReader extends BufferedReader {
         } catch (IOException e) {
             if (timedOut) {
                 throw new IOException(
-                        "no protocol traffic for " + (idleTimeoutMillis / 60_000)
-                                + " minutes — the engine looks dead (set JK_STREAM_IDLE_MINUTES to tune)",
+                        "no protocol traffic for "
+                                + formatIdle(idleTimeoutMillis)
+                                + " — the engine looks dead (set JK_STREAM_IDLE_MS to tune;"
+                                + " try `jk engine stop --force`)",
                         e);
             }
             throw e;

@@ -9,7 +9,10 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1031](ticket-1031-module-task-selectors.md) — Module selectors (`--modules` globs/braces; ∩ with `--affected-since`)
+1. [ticket-1042](ticket-1042-cli-test-suite-speed.md) — CLI suite speed (~29%: hybrid warm engine)
+2. [ticket-1022](ticket-1022-tempdir-engine-cas-cleanup.md) — Drop TempDir `cleanup.mode=never`
+3. [ticket-1043](ticket-1043-engine-zombie-resilience.md) — Engine zombie / silent-peer recovery
+4. [ticket-1031](ticket-1031-module-task-selectors.md) — Module selectors (`--modules` globs/braces; ∩ with `--affected-since`)
 2. [ticket-1039](ticket-1039-build-logic-graph-tasks.md) — Build-logic multi-task independent action cache
 3. [ticket-1040](ticket-1040-selective-prepare-run.md) — `jk selective resolve|prepare|run`
 4. [ticket-1041](ticket-1041-bsp-import-reliability.md) — BSP per-target compile/deps/sources + reload

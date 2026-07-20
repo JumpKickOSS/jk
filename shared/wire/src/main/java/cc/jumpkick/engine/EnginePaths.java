@@ -110,9 +110,22 @@ public final class EnginePaths {
      * whole record through every method.
      */
     public static Path tokenFor(Path socket) {
+        return siblingStem(socket, ".token");
+    }
+
+    /**
+     * The pid-file sibling of a {@code .sock} path ({@code <stem>.pid}), same naming convention as
+     * {@link #tokenFor} — used by the client to wait for process death after force-stop and to
+     * displace a silent peer (ticket-1043).
+     */
+    public static Path pidFor(Path socket) {
+        return siblingStem(socket, ".pid");
+    }
+
+    private static Path siblingStem(Path socket, String suffix) {
         String name = socket.getFileName().toString();
         String base = name.endsWith(".sock") ? name.substring(0, name.length() - ".sock".length()) : name;
-        return socket.resolveSibling(base + ".token");
+        return socket.resolveSibling(base + suffix);
     }
 
     /** A short, stable hash of the resolved absolute state-dir path. */
