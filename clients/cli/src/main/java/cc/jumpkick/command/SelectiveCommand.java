@@ -17,12 +17,17 @@ import cc.jumpkick.util.AtomicWrites;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * ticket-1040 — Mill-style selective prepare / resolve / run over git-affected + module selectors.
@@ -131,13 +136,20 @@ public final class SelectiveCommand implements CliCommand {
         if (code != 0) return code;
         List<String> rels = toRelPaths(dir, dirs);
         String gitHead = gitRevParse(dir);
+        Map<String, String> hashes = contentHashes(dir, rels);
+        String hashesJson = hashes.entrySet().stream()
+                .map(e -> q(e.getKey()) + ": " + q(e.getValue()))
+                .reduce((a, b) -> a + ", " + b)
+                .map(s -> "{ " + s + " }")
+                .orElse("{}");
         String body = """
                 {
                   "since": %s,
                   "modulesSpec": %s,
                   "gitHead": %s,
                   "createdAt": %s,
-                  "modules": [%s]
+                  "modules": [%s],
+                  "contentHashes": %s
                 }
                 """
                 .formatted(
@@ -145,10 +157,12 @@ public final class SelectiveCommand implements CliCommand {
                         q(modules == null ? "" : modules),
                         q(gitHead == null ? "" : gitHead),
                         q(Instant.now().toString()),
-                        String.join(",", rels.stream().map(SelectiveCommand::q).toList()));
+                        String.join(",", rels.stream().map(SelectiveCommand::q).toList()),
+                        hashesJson);
         Files.createDirectories(planPath.getParent());
         AtomicWrites.replace(planPath, body);
-        CliOutput.out("Wrote " + planPath + " (" + rels.size() + " module" + (rels.size() == 1 ? "" : "s") + ")");
+        CliOutput.out("Wrote " + planPath + " (" + rels.size() + " module" + (rels.size() == 1 ? "" : "s")
+                + ", content hashes recorded)");
         return 0;
     }
 
@@ -167,10 +181,11 @@ public final class SelectiveCommand implements CliCommand {
 
         String effectiveSince = since;
         String effectiveModules = modules;
+        Plan plan = null;
         if ((effectiveSince == null || effectiveSince.isBlank())
                 && (effectiveModules == null || effectiveModules.isBlank())
                 && Files.isRegularFile(planPath)) {
-            Plan plan = readPlan(planPath);
+            plan = readPlan(planPath);
             if (plan.modules.isEmpty()
                     && (plan.since == null || plan.since.isBlank())
                     && (plan.modulesSpec == null || plan.modulesSpec.isBlank())) {
@@ -192,6 +207,42 @@ public final class SelectiveCommand implements CliCommand {
             return Exit.USAGE;
         }
 
+        // Content-hash skip (JK-1045): when plan has contentHashes, only re-run modules whose
+        // fingerprints changed (unless --force / --rebuild).
+        GlobalOptions g = GlobalOptions.from(in);
+        if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
+            List<String> planned = !plan.modules.isEmpty()
+                    ? plan.modules
+                    : java.util.Arrays.stream(
+                                    effectiveModules == null ? new String[0] : effectiveModules.split(","))
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .toList();
+            List<String> plannedClean = new ArrayList<>();
+            for (String m : planned) {
+                String t = m == null ? "" : m.trim();
+                if (!t.isEmpty()) plannedClean.add(t);
+            }
+            Map<String, String> now = contentHashes(dir, plannedClean);
+            List<String> dirty = new ArrayList<>();
+            for (String m : plannedClean) {
+                String prev = plan.contentHashes.get(m);
+                String cur = now.get(m);
+                if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
+            }
+            if (dirty.isEmpty()) {
+                CliOutput.out("jk selective run: content hashes match plan — nothing changed ("
+                        + plannedClean.size()
+                        + " module"
+                        + (plannedClean.size() == 1 ? "" : "s")
+                        + ")");
+                return 0;
+            }
+            effectiveModules = String.join(",", dirty);
+            effectiveSince = null; // modules list is authoritative
+            CliOutput.err("jk selective run: content-hash dirty modules: " + effectiveModules);
+        }
+
         List<String> args = new ArrayList<>();
         args.add(verb);
         args.add("-C");
@@ -207,21 +258,70 @@ public final class SelectiveCommand implements CliCommand {
             args.add("--affected-since");
             args.add(effectiveSince);
         }
-        GlobalOptions g = GlobalOptions.from(in);
         if (g.force) args.add("--force");
         if (g.rebuild) args.add("--rebuild");
 
         return cc.jumpkick.cli.Jk.execute(args.toArray(String[]::new));
     }
 
-    private record Plan(String since, String modulesSpec, List<String> modules) {}
+    private record Plan(
+            String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}
 
     private static Plan readPlan(Path planPath) throws Exception {
         String text = Files.readString(planPath, StandardCharsets.UTF_8);
         String since = extractJsonString(text, "since");
         String modulesSpec = extractJsonString(text, "modulesSpec");
         List<String> modules = extractJsonStringArray(text, "modules");
-        return new Plan(since, modulesSpec, modules);
+        Map<String, String> hashes = extractJsonStringMap(text, "contentHashes");
+        return new Plan(since, modulesSpec, modules, hashes);
+    }
+
+    /**
+     * Fingerprint a module for selective skip: relative paths under {@code jk.toml} + {@code src/}
+     * (file path + sha256). Absolute paths are not stored — only content — so agents can share
+     * plans when trees match. Generated / target trees are ignored.
+     */
+    static Map<String, String> contentHashes(Path workspaceRoot, List<String> moduleRels) throws Exception {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String rel : moduleRels) {
+            Path mod = ".".equals(rel) ? workspaceRoot : workspaceRoot.resolve(rel);
+            out.put(rel, fingerprintModule(mod));
+        }
+        return out;
+    }
+
+    static String fingerprintModule(Path moduleDir) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        List<Path> files = new ArrayList<>();
+        Path toml = moduleDir.resolve("jk.toml");
+        if (Files.isRegularFile(toml)) files.add(toml);
+        Path src = moduleDir.resolve("src");
+        if (Files.isDirectory(src)) {
+            try (Stream<Path> walk = Files.walk(src)) {
+                walk.filter(Files::isRegularFile).forEach(files::add);
+            }
+        }
+        files.sort(Comparator.comparing(p -> moduleDir.relativize(p).toString().replace('\\', '/')));
+        for (Path f : files) {
+            String rel = moduleDir.relativize(f).toString().replace('\\', '/');
+            md.update(rel.getBytes(StandardCharsets.UTF_8));
+            md.update((byte) 0);
+            md.update(Files.readAllBytes(f));
+            md.update((byte) 0);
+        }
+        return "sha256:" + java.util.HexFormat.of().formatHex(md.digest());
+    }
+
+    private static Map<String, String> extractJsonStringMap(String json, String field) {
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                        "\"" + field + "\"\\s*:\\s*\\{(.*?)}", java.util.regex.Pattern.DOTALL)
+                .matcher(json);
+        if (!m.find()) return Map.of();
+        Map<String, String> out = new LinkedHashMap<>();
+        java.util.regex.Matcher pair = java.util.regex.Pattern.compile("\"([^\"]+)\"\\s*:\\s*\"([^\"]*)\"")
+                .matcher(m.group(1));
+        while (pair.find()) out.put(pair.group(1), pair.group(2));
+        return out;
     }
 
     private static String extractJsonString(String json, String field) {

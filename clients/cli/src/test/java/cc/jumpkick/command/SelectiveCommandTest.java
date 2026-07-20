@@ -34,6 +34,31 @@ class SelectiveCommandTest {
         assertThat(Files.isRegularFile(plan)).isTrue();
         String body = Files.readString(plan);
         assertThat(body).contains("\"api\"");
+        assertThat(body).contains("contentHashes");
+        assertThat(body).contains("sha256:");
+    }
+
+    @Test
+    void run_skips_when_content_hashes_match(@TempDir Path tempDir) throws Exception {
+        writeWorkspace(tempDir);
+        Files.createDirectories(tempDir.resolve("api/src/main/java"));
+        Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A {}");
+        assertThat(Jk.execute("selective", "prepare", "-C", tempDir.toString(), "--modules", "api"))
+                .isZero();
+        // Second prepare not needed — run with plan should see matching hashes and skip.
+        String out = capture(() -> Jk.execute("selective", "run", "build", "-C", tempDir.toString()));
+        assertThat(out).contains("nothing changed");
+    }
+
+    @Test
+    void content_hash_changes_when_source_edits(@TempDir Path tempDir) throws Exception {
+        writeWorkspace(tempDir);
+        Files.createDirectories(tempDir.resolve("api/src/main/java"));
+        Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A {}");
+        String h1 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"));
+        Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A { int x; }");
+        String h2 = SelectiveCommand.fingerprintModule(tempDir.resolve("api"));
+        assertThat(h1).isNotEqualTo(h2);
     }
 
     @Test

@@ -345,11 +345,16 @@ jk explain --modules '{api,worker}'
 # Intersection when both flags set
 jk build --modules 'libs/*' --affected-since=origin/main
 
-# CI prepare → run (writes .jk/selective-plan.json)
+# CI prepare → run (writes .jk/selective-plan.json with content hashes)
 jk selective prepare --since=origin/main
-jk selective run test
+jk selective run test            # skips modules whose src/ + jk.toml hash still match the plan
 jk selective resolve --modules 'api,worker'   # dry list
 ```
+
+`prepare` records per-module content fingerprints (`jk.toml` + `src/**`). A later
+`selective run` without `--force`/`--rebuild` skips modules that still match (prints
+“nothing changed” when the whole plan is clean). Hashes are content-based (not absolute
+paths) so plans are shareable when trees match. Generated/`target` trees are not fingerprinted.
 
 Outside a git repo or with an invalid ref, jk prints a clear error. If nothing under the
 workspace matched, it exits 0 with “nothing affected” / “nothing selected”.
