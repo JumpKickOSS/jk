@@ -128,30 +128,31 @@ JK_CHROME_PROFILE=off jk build
 JK_CHROME_PROFILE=/tmp/trace.json jk build
 ```
 
-### Project build logic (`jk-build/`)
+### Project build logic (`.jk-build/`)
 
-Custom generate / prep steps live in a **project-local directory**, not in TOML scripts.
+Custom generate / prep steps live in a **hidden project-local directory**, not in TOML scripts
+(unlike Gradle’s visible `buildSrc/`).
 
-**Convention:** if `jk-build/` exists next to `jk.toml`, its Java sources run on build (action-cached;
-outputs merge onto the classpath as resources).
+**Convention:** if `.jk-build/` exists next to `jk.toml`, its Java sources run on build
+(action-cached; outputs merge onto the classpath as resources).
 
 ```toml
-# optional override
+# optional override — only when you do not want the .jk-build/ convention
 [build]
-logic = "jk-build"                 # default when omitted; or another relative dir
+logic = "tools/codegen"            # project-relative dir
 logic-main = "demo.LineCountBuild" # optional public static void main(String[])
-# logic = "off"                    # disable even if jk-build/ exists
+# logic = "off"                    # disable even if .jk-build/ exists
 ```
 
 ```text
 my-app/
   jk.toml
   src/…
-  jk-build/src/demo/LineCountBuild.java
+  .jk-build/src/demo/LineCountBuild.java
 ```
 
 Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reusable tools; use
-`jk-build` for small project-local codegen (Mill task analogue). See
+`.jk-build` for small project-local codegen (Mill task analogue). See
 [project-build-logic.md](features/project-build-logic.md).
 
 ### IDE / BSP

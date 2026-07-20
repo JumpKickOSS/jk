@@ -13,7 +13,7 @@ directory as the record of what shipped.
 2. [ticket-1039](ticket-1039-build-logic-graph-tasks.md) — Build-logic multi-task independent action cache
 3. [ticket-1040](ticket-1040-selective-prepare-run.md) — `jk selective resolve|prepare|run`
 4. [ticket-1041](ticket-1041-bsp-import-reliability.md) — BSP per-target compile/deps/sources + reload
-5. [ticket-1037](ticket-1037-programmable-escape-hatch-mvp.md) — Project build logic MVP (`jk-build/` + `[build].logic`)
+5. [ticket-1037](ticket-1037-programmable-escape-hatch-mvp.md) — Project build logic MVP (`.jk-build/` + `[build].logic`)
 6. [ticket-1030](ticket-1030-warm-compiler-pool-benchmark.md) — Warm pool measure: **DEFER** (docs/perf/warm-pool-bench.md)
 7. [ticket-1028](ticket-1028-bsp-engine-host.md) — BSP install + minimal stdio server via IdeEngineClient
 8. [ticket-1029](ticket-1029-incremental-compile-contracts.md) — Incremental compile ABI contracts (+ ClassAbiContractTest)

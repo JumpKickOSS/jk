@@ -10,7 +10,7 @@
 
 ## Problem
 
-MVP `jk-build/` runs **one** main class as a single action-cached blob. Mill’s hatch value is
+MVP `.jk-build/` runs **one** main class as a single action-cached blob. Mill’s hatch value is
 **named graph nodes** (inspectable, independently cached). Depth without full OO traits:
 
 - multiple independent build-logic tasks per module  

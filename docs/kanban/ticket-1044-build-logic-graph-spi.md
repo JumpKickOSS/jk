@@ -9,7 +9,7 @@
 
 ## Problem
 
-MVP `jk-build/` runs discovered `*Build` mains as independently action-cached tasks. Mill’s bar is
+MVP `.jk-build/` runs discovered `*Build` mains as independently action-cached tasks. Mill’s bar is
 **graph-native** programmability: register named tasks, splice at pipeline anchors, share traits
 across modules, surface in explain/selective.
 
@@ -27,7 +27,7 @@ across modules, surface in explain/selective.
 - Shared logic dir or workspace-level pointer (data-only in root `jk.toml`)  
 - No monorepo trait language required in B if a shared jar/path is enough  
 
-### Phase C — Kotlin sources in `jk-build/`
+### Phase C — Kotlin sources in `.jk-build/`
 
 - Compile `.kt` with existing kotlin-compiler worker path  
 

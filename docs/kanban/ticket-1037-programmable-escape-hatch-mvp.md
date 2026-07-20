@@ -29,7 +29,7 @@ Ship MVP defined by 1026 PRD — minimum:
 
 ## Shipped
 
-- Convention dir **`jk-build/`**; override with `[build].logic` / `[build].logic-main` (`logic = "off"` disables)
+- Convention dir **`.jk-build/`**; override with `[build].logic` / `[build].logic-main` (`logic = "off"` disables)
 - `BuildLogicSupport` during copy-resources (action-cached)
 - Sample `docs/features/examples/line-count-build/`
 - `BuildLogicSupportTest` (convention, override, off, cache hit)

@@ -32,7 +32,7 @@ class BuildLogicSupportTest {
                 project.resolve("src/main/java/demo/App.java"),
                 "package demo; public class App { public static void main(String[] a) {} }\n");
 
-        Path logicSrc = project.resolve("jk-build/src/demo");
+        Path logicSrc = project.resolve(".jk-build/src/demo");
         Files.createDirectories(logicSrc);
         writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
 
@@ -63,8 +63,8 @@ class BuildLogicSupportTest {
         Files.createDirectories(logicSrc);
         writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
 
-        // jk-build absent; only custom-logic should run
-        assertTrue(Files.notExists(project.resolve("jk-build")));
+        // .jk-build absent; only custom-logic should run
+        assertTrue(Files.notExists(project.resolve(".jk-build")));
         runTwice(project, dir.resolve("cache"), "demo.LineCountBuild");
     }
 
@@ -85,7 +85,7 @@ class BuildLogicSupportTest {
                 project.resolve("src/main/java/demo/App.java"),
                 "package demo; public class App { public static void main(String[] a) {} }\n");
 
-        Path logicSrc = project.resolve("jk-build/src/demo");
+        Path logicSrc = project.resolve(".jk-build/src/demo");
         Files.createDirectories(logicSrc);
         writeLineCount(logicSrc.resolve("LineCountBuild.java"), "demo.LineCountBuild");
         writeStamp(logicSrc.resolve("StampBuild.java"), "demo.StampBuild");
@@ -114,7 +114,7 @@ class BuildLogicSupportTest {
     @Test
     void logic_off_skips_even_if_jk_build_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
-        Files.createDirectories(project.resolve("jk-build/src"));
+        Files.createDirectories(project.resolve(".jk-build/src"));
         Files.writeString(
                 project.resolve("jk.toml"),
                 """
@@ -126,7 +126,7 @@ class BuildLogicSupportTest {
                 [build]
                 logic = "off"
                 """);
-        Files.writeString(project.resolve("jk-build/src/X.java"), "class X {}");
+        Files.writeString(project.resolve(".jk-build/src/X.java"), "class X {}");
         assertTrue(BuildLogicSupport.config(project).isEmpty());
     }
 

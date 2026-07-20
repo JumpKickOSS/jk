@@ -175,12 +175,12 @@ There is no third-party marketplace yet; first-party plugins ship with jk and ve
 - **Intended later:** marketplace IntelliJ/VS Code plugins (run configs, debug, test gutter) on
   top of this facade / BSP — see ticket-1017.
 
-### Project build logic (`jk-build/`, ticket-1037)
+### Project build logic (`.jk-build/`, ticket-1037)
 
-Convention directory **`jk-build/`** next to `jk.toml` holds project-local Java build logic
-(overridable via `[build].logic`). The engine compiles and runs a main (`--project` / `--out`)
-during `copy-resources`, action-caches outputs, and merges generated files into the classes tree.
-No scripts in TOML. See [features/project-build-logic.md](features/project-build-logic.md).
+Convention directory **`.jk-build/`** (hidden) next to `jk.toml` holds project-local Java build
+logic (overridable via `[build].logic`). The engine compiles and runs mains (`--project` /
+`--out`) during `copy-resources`, action-caches outputs, and merges generated files into the
+classes tree. No scripts in TOML. See [features/project-build-logic.md](features/project-build-logic.md).
 
 ## Status
 

@@ -7,7 +7,7 @@ jdk     = 25
 [application]
 main = "demo.App"
 
-# Optional — omit to use the jk-build/ convention directory when present.
+# Optional — omit to use the .jk-build/ convention directory when present.
 # [build]
-# logic = "jk-build"
+# logic = "tools/codegen"          # only if not using .jk-build/
 # logic-main = "demo.LineCountBuild"

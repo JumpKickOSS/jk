@@ -22,12 +22,13 @@ import org.tomlj.TomlTable;
 
 /**
  * Project-local <strong>build logic</strong> (ticket-1037 / Mill-style escape hatch without TOML
- * scripts). Convention directory is {@code jk-build/}; override with {@code [build].logic}.
+ * scripts). Convention directory is {@code .jk-build/} (hidden tooling dir); override with {@code
+ * [build].logic}.
  *
  * <pre>
- * # optional — omit to use jk-build/ when that directory exists
+ * # optional — omit to use .jk-build/ when that directory exists
  * [build]
- * logic = "jk-build"           # project-relative dir (or "off" to disable)
+ * logic = "tools/codegen"      # project-relative dir (or "off" to disable)
  * logic-main = "demo.LineCount"  # optional main class
  * </pre>
  *
@@ -36,8 +37,8 @@ import org.tomlj.TomlTable;
  */
 public final class BuildLogicSupport {
 
-    /** Default project-relative directory for build logic sources. */
-    public static final String DEFAULT_DIR = "jk-build";
+    /** Default project-relative directory for build logic sources (dot-dir: not product noise). */
+    public static final String DEFAULT_DIR = ".jk-build";
 
     private BuildLogicSupport() {}
 
@@ -46,7 +47,7 @@ public final class BuildLogicSupport {
     /**
      * Resolve build-logic config: {@code [build].logic} overrides the directory (default {@link
      * #DEFAULT_DIR}); absent dir → empty. {@code logic = "off"} / {@code "false"} / {@code "none"}
-     * disables even when {@code jk-build/} exists.
+     * disables even when {@code .jk-build/} exists.
      */
     public static Optional<Config> config(Path projectDir) {
         Path root = projectDir.toAbsolutePath().normalize();

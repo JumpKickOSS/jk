@@ -1530,7 +1530,7 @@ public final class BuildPipelines {
                     } else {
                         ctx.label("no static resources");
                     }
-                    // Project build logic (ticket-1037): jk-build/ or [build].logic → classes resources.
+                    // Project build logic (ticket-1037): .jk-build/ or [build].logic → classes resources.
                     try {
                         boolean ran = BuildLogicSupport.run(
                                 in.dir(),
