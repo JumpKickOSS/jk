@@ -131,6 +131,27 @@ Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub pr
 Main, test, and processor graphs are solved separately so annotation-processor constraints
 do not force main classpath versions.
 
+## Packaging (thin / fat / shrink / Boot)
+
+| Artifact | Config | Command |
+|---|---|---|
+| Thin jar | default | `jk build` |
+| Fat / assembly jar | `[application] shadow-jar = true` | `jk assembly` or `jk build` |
+| Shrunk jar | `[shrink]` (+ shrink plugin) | `jk build` (size before→after in labels) |
+| Spring Boot jar | spring-boot plugin | `jk build` (not `shadow-jar`) |
+
+Fat jar merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
+[features/packaging.md](features/packaging.md). Samples:
+[fat-jar-app](features/examples/fat-jar-app/), [shrunk-cli](features/examples/shrunk-cli/).
+
+```toml
+[application]
+main = "com.example.App"
+shadow-jar = true    # fat jar — also: jk assembly
+```
+
+R8 is **opt-in** via `[shrink]` only — never the default.
+
 ## Common commands
 
 ```bash
@@ -139,7 +160,8 @@ jk remove <coord>
 jk outdated                  # check for newer deps (read-only; see lockfile section)
 jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
-jk build                     # package
+jk build                     # package (thin, fat, shrink, or Boot per config)
+jk assembly                  # fat jar path (requires shadow-jar = true)
 jk test
 jk run -- args…
 jk clean
@@ -154,6 +176,23 @@ jk verify                    # rebuild in a scratch dir and compare hashes
 ```
 
 Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
+
+## Quality (format + lint)
+
+| Concern | Path |
+|---|---|
+| **Format** (style rewrite) | `jk format` — first-party formatter plugin |
+| **Java lint** (analysis) | Documented **Checkstyle recipe** via `jk tool install` (ticket-1033) |
+| **Kotlin analysis** | **Deferred** — use `jk format` for style; detekt later as the same recipe pattern |
+
+```bash
+jk format
+jk tool install com.puppycrawl.tools:checkstyle:10.21.4
+jk tool run checkstyle -c checkstyle.xml src/main/java
+```
+
+Sample + notes: [features/examples/checkstyle-recipe/](features/examples/checkstyle-recipe/).
+We deliberately do **not** ship Mill’s full lint matrix as first-party plugins.
 
 ### Why did this rebuild?
 

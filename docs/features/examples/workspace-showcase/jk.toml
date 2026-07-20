@@ -1,0 +1,13 @@
+# Multi-module showcase for CI dogfood (ticket-1038).
+# After installing a local jk: jk lock && jk build && jk test
+
+[project]
+group = "com.example"
+name = "workspace-showcase"
+version = "0.0.1"
+jdk = 25
+java = 25
+layout = "traditional"
+
+[workspace]
+modules = ["lib", "app"]

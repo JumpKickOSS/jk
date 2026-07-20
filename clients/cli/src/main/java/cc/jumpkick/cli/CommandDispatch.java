@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.ActivateCommand;
 import cc.jumpkick.command.AddCommand;
+import cc.jumpkick.command.AssemblyCommand;
 import cc.jumpkick.command.AuditCommand;
 import cc.jumpkick.command.AuthCommand;
 import cc.jumpkick.command.BspCommand;
@@ -124,6 +125,7 @@ public final class CommandDispatch {
             new DevCommand(),
             new WatchCommand(),
             new BuildCommand(),
+            new AssemblyCommand(),
             new BspCommand(),
             new SelectiveCommand(),
             new TestCommand(),

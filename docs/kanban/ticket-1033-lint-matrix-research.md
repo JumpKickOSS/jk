@@ -1,11 +1,11 @@
 # ticket-1033 — Lint / static analysis matrix (research → thin go-do)
 
 **Priority:** P2  
-**Status:** ready  
+**Status:** done  
 **Kind:** research → thin go-do  
 **Source:** [mill-comparison.md](../mill-comparison.md) §8  
 **Depends on:** none (formatter plugin already exists for format, not lint)  
-**Branch:** `ticket-1033-lint-matrix`  
+**Branch:** `ticket-1032-1038-1033-p2`  
 **Estimate:** S research + S go-do (1–2 days total)  
 **Refs:** `plugins/formatter` (`jk format`), mill-comparison lint table, plugin worker model
 
@@ -16,44 +16,37 @@ JumpKick has **format** first-party; lint is missing, so “modern JVM shop” c
 
 We will **not** clone Mill’s full contrib set. Pick a **thin, maintainable** first path.
 
-## Research (must complete before merge)
-
-### Decision table (fill in ticket before coding)
+## Research decision (filled)
 
 | Language | Candidate | Integrate how? | Decision |
 |---|---|---|---|
-| Java | ErrorProne (javac plugin) | Engine/javac flags + dep | **pending** |
-| Java | SpotBugs / PMD / Checkstyle | Fork worker or `jkx` recipe | **pending** |
-| Kotlin | detekt | Plugin table / worker | **pending** |
-| Kotlin | ktlint | Overlaps format; lint rules differ | **pending** |
+| Java | ErrorProne (javac plugin) | Engine/javac flags + dep | **Defer** — needs engine compile flag plumbing and toolchain coupling; high surface for first lint path |
+| Java | SpotBugs | Fork worker / `jk tool` | **Defer** — heavier runtime; less common as first CI lint than style/static rules |
+| Java | PMD | Fork worker / `jk tool` | **Defer** — overlaps Checkstyle for many shops |
+| Java | **Checkstyle** | Documented **`jk tool install` + recipe** | **Chosen** — zero engine change; works with existing tool install / classpath launch; ubiquitous CI config |
+| Kotlin | detekt | Plugin table / worker | **Defer** until demand after Java recipe; analysis ≠ format |
+| Kotlin | ktlint | Overlaps `jk format` | **Defer** — style covered by formatter first-party |
 
-**Recommended lean default (validate in research write-up):**
+### Why this lean default
 
-1. **Java:** Checkstyle **or** SpotBugs as a **documented `jkx` / tool recipe** first (no new first-party plugin unless integration is &lt;1 day). Prefer whatever already fits `jk tool` / plugin-worker patterns with least engine change.  
-2. **Kotlin:** **detekt** via documented recipe **or** explicit **defer** with rationale (formatter covers style; detekt is analysis).  
-3. ErrorProne only if javac integration is already almost free — do not boil the ocean.
+1. **No new first-party plugin** until a tool proves itself via the recipe path.  
+2. Checkstyle is pure Java, ships a main class, and matches “config file in repo” CI habits.  
+3. ErrorProne is more powerful but is a **compiler** integration — wrong first ticket.  
+4. Kotlin: keep `jk format` as the style path; detekt is analysis and can land as a second recipe later (same pattern as Checkstyle).
 
-### Deliverable of research half
+## Thin go-do (shipped)
 
-A short section in this ticket (or `docs/features/` only if it earns a permanent page — prefer **ticket body + guide snippet** to avoid doc sprawl):
-
-- Chosen Java path + command to run  
-- Kotlin: path or “deferred until …”  
-- Why not the others (one line each)
-
-## Thin go-do (after decision)
-
-1. One runnable path from a sample project (script, `jk tool run`, or first-party opt-in table).  
-2. Guide snippet under “Quality” / format section.  
-3. CI optional: not required for ticket done (showcase CI is 1038).
+1. Guide **Quality** section: format vs lint; Checkstyle recipe via `jk tool install`.  
+2. Sample config + README under `docs/features/examples/checkstyle-recipe/`.  
+3. Explicit Kotlin defer in that guide section.
 
 ## Acceptance
 
-- [ ] Decision table filled (Java chosen; Kotlin chosen or deferred)  
-- [ ] ≥1 Java lint/analysis path runnable on a fixture  
-- [ ] ≥1 Kotlin path **or** explicit defer with rationale  
-- [ ] Guide snippet (how to run)  
-- [ ] Non-goal: Mill full matrix  
+- [x] Decision table filled (Java chosen; Kotlin deferred)  
+- [x] ≥1 Java lint/analysis path runnable on a fixture (recipe + sample config)  
+- [x] ≥1 Kotlin path **or** explicit defer with rationale  
+- [x] Guide snippet (how to run)  
+- [x] Non-goal: Mill full matrix  
 
 ## Non-goals
 

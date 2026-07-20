@@ -80,3 +80,34 @@ jobs:
           jk --version
           jk lock
           jk build --skip-tests
+
+  # ticket-1038: multi-module sample with reinstalled thin client (no Graal required).
+  showcase:
+    name: Showcase monorepo (jk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+
+      - name: Showcase lock + build + test
+        working-directory: docs/features/examples/workspace-showcase
+        run: |
+          jk --version
+          jk lock
+          jk build
+          # Workspace root test does not cascade; select modules that carry tests.
+          jk test --modules app
+          jk build --modules app

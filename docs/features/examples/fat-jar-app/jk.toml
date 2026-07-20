@@ -1,0 +1,12 @@
+[project]
+group = "com.example"
+name = "fat-jar-app"
+version = "0.0.1"
+jdk = 25
+java = 25
+
+[application]
+main = "demo.App"
+shadow-jar = true
+
+# Runnable fat jar: jk assembly  (or jk build)

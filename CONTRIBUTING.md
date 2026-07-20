@@ -107,6 +107,25 @@ worker jars via configurations).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
 
+### Showcase monorepo smoke (ticket-1038)
+
+Multi-module sample under
+[`docs/features/examples/workspace-showcase/`](docs/features/examples/workspace-showcase/):
+
+```bash
+./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+
+cd docs/features/examples/workspace-showcase
+jk lock && jk build && jk test --modules app
+# optional: jk build --modules app
+```
+
+CI job **Showcase monorepo (jk)** runs the same path (no `continue-on-error`).
+
 ### One build at a time per checkout
 
 `settings.gradle.kts` takes an OS file lock (`.gradle/cross-daemon-build.lock`) so

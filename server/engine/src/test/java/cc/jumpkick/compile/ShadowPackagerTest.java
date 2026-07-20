@@ -64,6 +64,35 @@ class ShadowPackagerTest {
     }
 
     @Test
+    void merges_spring_meta_inf_and_excludes_module_info(@TempDir Path tmp) throws IOException {
+        Path classes = tmp.resolve("classes");
+        Files.createDirectories(classes.resolve("META-INF"));
+        Files.createDirectories(classes.resolve("app"));
+        Files.writeString(classes.resolve("META-INF/spring.handlers"), "http://app=app.Ns");
+        Files.writeString(classes.resolve("app/Main.class"), "APP");
+
+        Path dep = tmp.resolve("dep.jar");
+        try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(dep))) {
+            putEntry(jos, "META-INF/spring.handlers", "http://lib=lib.Ns");
+            putEntry(jos, "module-info.class", "MODULE");
+            putEntry(jos, "lib/Helper.class", "HELP");
+        }
+
+        Path out = tmp.resolve("fat.jar");
+        new ShadowPackager()
+                .packageShadow(new ShadowPackager.ShadowRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
+
+        try (JarFile jf = new JarFile(out.toFile())) {
+            assertThat(jf.getJarEntry("module-info.class")).isNull();
+            assertThat(jf.getJarEntry("lib/Helper.class")).isNotNull();
+            String handlers = new String(
+                    jf.getInputStream(jf.getJarEntry("META-INF/spring.handlers")).readAllBytes(),
+                    StandardCharsets.UTF_8);
+            assertThat(handlers).contains("http://app=app.Ns").contains("http://lib=lib.Ns");
+        }
+    }
+
+    @Test
     void project_class_wins_on_conflict(@TempDir Path tmp) throws IOException {
         Path classes = tmp.resolve("classes");
         Files.createDirectories(classes.resolve("x"));

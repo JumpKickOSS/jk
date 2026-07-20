@@ -24,8 +24,12 @@ import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
 /**
- * Fat/uber jar: project classes first (win on conflict), custom manifest, drop signatures, concat
- * {@code META-INF/services/*}, sorted fixed-timestamp entries for reproducibility.
+ * Fat/uber (assembly) jar: project classes first (win on conflict), custom manifest, drop
+ * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and common Spring
+ * multi-entry META-INF files, sorted fixed-timestamp entries for reproducibility.
+ *
+ * <p>Enable with {@code [application] shadow-jar = true} (or {@code jk assembly}). See
+ * {@code docs/features/packaging.md}.
  */
 public final class ShadowPackager {
 
@@ -34,8 +38,8 @@ public final class ShadowPackager {
         Manifest manifest = buildManifest(request);
 
         Set<String> written = new HashSet<>();
-        // Service-provider files merged across inputs; TreeMap → deterministic.
-        Map<String, ByteArrayOutputStream> services = new TreeMap<>();
+        // Multi-entry META-INF files merged across inputs; TreeMap → deterministic.
+        Map<String, ByteArrayOutputStream> merged = new TreeMap<>();
 
         try (OutputStream out = Files.newOutputStream(request.outputJar());
                 JarOutputStream jos = new JarOutputStream(out)) {
@@ -52,8 +56,9 @@ public final class ShadowPackager {
                 String name = normalize(request.classesDir(), file);
                 if (name.equals("META-INF/MANIFEST.MF")) continue;
                 if (DeterministicJar.isBuildStamp(name)) continue; // freshness stamp, not jar content
-                if (isServiceFile(name)) {
-                    accumulate(services, name, Files.readAllBytes(file));
+                if (isExcluded(name)) continue;
+                if (isMergeFile(name)) {
+                    accumulate(merged, name, Files.readAllBytes(file));
                     continue;
                 }
                 if (written.add(name)) {
@@ -72,11 +77,11 @@ public final class ShadowPackager {
                     entries.sort(Comparator.comparing(JarEntry::getName));
                     for (JarEntry e : entries) {
                         String name = e.getName();
-                        if (name.equals("META-INF/MANIFEST.MF") || isSignatureFile(name)) continue;
-                        if (isServiceFile(name)) {
-                            // Service files are tiny and must be buffered for the cross-jar merge.
+                        if (name.equals("META-INF/MANIFEST.MF") || isExcluded(name)) continue;
+                        if (isMergeFile(name)) {
+                            // Tiny multi-entry files — buffer for the cross-jar merge.
                             try (InputStream in = jf.getInputStream(e)) {
-                                accumulate(services, name, in.readAllBytes());
+                                accumulate(merged, name, in.readAllBytes());
                             }
                             continue;
                         }
@@ -89,8 +94,8 @@ public final class ShadowPackager {
                 }
             }
 
-            // 3. Merged service-provider files.
-            for (Map.Entry<String, ByteArrayOutputStream> e : services.entrySet()) {
+            // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
+            for (Map.Entry<String, ByteArrayOutputStream> e : merged.entrySet()) {
                 DeterministicJar.writeEntry(jos, e.getKey(), e.getValue().toByteArray(), request.timestampEpochSeconds());
                 written.add(e.getKey());
             }
@@ -104,18 +109,28 @@ public final class ShadowPackager {
         return request.outputJar();
     }
 
-    private static void accumulate(Map<String, ByteArrayOutputStream> services, String name, byte[] data)
+    private static void accumulate(Map<String, ByteArrayOutputStream> sink, String name, byte[] data)
             throws IOException {
-        ByteArrayOutputStream buf = services.computeIfAbsent(name, k -> new ByteArrayOutputStream());
+        ByteArrayOutputStream buf = sink.computeIfAbsent(name, k -> new ByteArrayOutputStream());
         if (buf.size() > 0) buf.write('\n');
         buf.write(data);
     }
 
-    private static boolean isServiceFile(String name) {
-        return name.startsWith("META-INF/services/") && !name.endsWith("/");
+    /**
+     * Paths concatenated across project + dependency jars (ticket-1032). SPI files plus common
+     * Spring multi-value META-INF entries that break when first-wins.
+     */
+    static boolean isMergeFile(String name) {
+        if (name.startsWith("META-INF/services/") && !name.endsWith("/")) return true;
+        return name.equals("META-INF/spring.handlers")
+                || name.equals("META-INF/spring.schemas")
+                || name.equals("META-INF/spring.factories")
+                || name.equals("META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports");
     }
 
-    private static boolean isSignatureFile(String name) {
+    /** Signature blocks, JPMS module descriptors from deps, and other fat-jar poison. */
+    static boolean isExcluded(String name) {
+        if (name.equals("module-info.class") || name.endsWith("/module-info.class")) return true;
         if (!name.startsWith("META-INF/")) return false;
         String upper = name.toUpperCase(java.util.Locale.ROOT);
         return upper.endsWith(".SF")

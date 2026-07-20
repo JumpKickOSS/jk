@@ -9,7 +9,10 @@ directory as the record of what shipped.
 
 ## Done Items
 
-1. [ticket-1034](ticket-1034-outdated-deps.md) — `jk outdated` polish (guide, JSON schema, footer, offline note)
+1. [ticket-1033](ticket-1033-lint-matrix-research.md) — Lint matrix: Checkstyle recipe; Kotlin detekt deferred
+2. [ticket-1038](ticket-1038-showcase-monorepo-ci.md) — Showcase monorepo CI dogfood
+3. [ticket-1032](ticket-1032-assembly-packaging-depth.md) — Packaging matrix + fat-jar rules + `jk assembly`
+4. [ticket-1034](ticket-1034-outdated-deps.md) — `jk outdated` polish (guide, JSON schema, footer, offline note)
 2. [ticket-1042](ticket-1042-cli-test-suite-speed.md) — CLI suite speed (~29%: hybrid warm engine)
 2. [ticket-1022](ticket-1022-tempdir-engine-cas-cleanup.md) — Drop TempDir `cleanup.mode=never`
 3. [ticket-1043](ticket-1043-engine-zombie-resilience.md) — Engine zombie / silent-peer recovery

@@ -1,0 +1,14 @@
+[project]
+group = "com.example"
+name = "shrunk-cli"
+version = "0.0.1"
+jdk = 25
+java = 25
+
+[application]
+main = "demo.Cli"
+
+# Opt-in R8 shrink packager (first-party jk-shrink). Builds a smaller executable jar.
+[shrink]
+# optional: keep = ["-keep class demo.** { *; }"]
+# optional: keep-files = ["proguard-rules.pro"]
