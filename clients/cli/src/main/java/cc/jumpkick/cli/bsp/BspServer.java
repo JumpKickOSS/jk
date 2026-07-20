@@ -60,31 +60,47 @@ public final class BspServer {
         String method = extractString(json, "method");
         String id = extractId(json);
         if (method == null) return;
-        switch (method) {
-            case "build/initialize" -> respond(
-                    id,
-                    "{\"displayName\":\"jk\",\"version\":"
-                            + q(cc.jumpkick.cli.Jk.VERSION)
-                            + ",\"bspVersion\":\"2.1.0\","
-                            + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
-                            + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
-                            + "\"canReload\":true}}");
-            case "build/initialized" -> {
-                /* notification */
+        try {
+            switch (method) {
+                case "build/initialize" -> respond(
+                        id,
+                        "{\"displayName\":\"jk\",\"version\":"
+                                + q(cc.jumpkick.cli.Jk.VERSION)
+                                + ",\"bspVersion\":\"2.1.0\","
+                                + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                                + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                                + "\"canReload\":true}}");
+                case "build/initialized" -> {
+                    /* notification */
+                }
+                case "workspace/buildTargets" -> respond(id, buildTargetsJson());
+                case "workspace/reload" -> {
+                    invalidateModel();
+                    respond(id, "null");
+                }
+                case "buildTarget/sources" -> respond(id, sourcesJson(json));
+                case "buildTarget/dependencyModules" -> respond(id, dependencyModulesJson(json));
+                case "buildTarget/compile" -> respond(id, compileJson(json));
+                case "buildTarget/test" -> respond(id, testJson(json));
+                case "build/shutdown" -> respond(id, "null");
+                case "build/exit" -> throw new IOException("bsp exit");
+                default -> {
+                    if (id != null) error(id, -32601, "Method not found: " + method);
+                }
             }
-            case "workspace/buildTargets" -> respond(id, buildTargetsJson());
-            case "workspace/reload" -> {
-                invalidateModel();
-                respond(id, "null");
+        } catch (IOException e) {
+            if ("bsp exit".equals(e.getMessage())) throw e;
+            // Per-request isolation (JK-1063): one failed handler must not kill the BSP session.
+            invalidateModel();
+            if (id != null) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                error(id, -32000, msg);
             }
-            case "buildTarget/sources" -> respond(id, sourcesJson(json));
-            case "buildTarget/dependencyModules" -> respond(id, dependencyModulesJson(json));
-            case "buildTarget/compile" -> respond(id, compileJson(json));
-            case "buildTarget/test" -> respond(id, testJson(json));
-            case "build/shutdown" -> respond(id, "null");
-            case "build/exit" -> throw new IOException("bsp exit");
-            default -> {
-                if (id != null) error(id, -32601, "Method not found: " + method);
+        } catch (RuntimeException e) {
+            invalidateModel();
+            if (id != null) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                error(id, -32000, msg);
             }
         }
     }
@@ -124,7 +140,8 @@ public final class BspServer {
         return "{\"targets\":[" + String.join(",", targets) + "]}";
     }
 
-    private static String targetJson(String id, String display, String baseDir) {
+    /** Package-visible for contract tests (JK-1063). */
+    static String targetJson(String id, String display, String baseDir) {
         return "{\"id\":{\"uri\":"
                 + q(id)
                 + "},\"displayName\":"

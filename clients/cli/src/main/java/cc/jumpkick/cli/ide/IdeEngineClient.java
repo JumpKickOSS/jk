@@ -45,13 +45,14 @@ import java.util.Objects;
  * <p>File generation ({@code jk ide}) remains a separate offline/export path; this class does not
  * write {@code .iml} / {@code .vscode} files. The engine stays out-of-process.
  */
-public final class IdeEngineClient {
+public class IdeEngineClient {
 
     private final Path projectDir;
     private final Path cacheDir;
     private final Path jdksDir;
 
-    private IdeEngineClient(Path projectDir, Path cacheDir, Path jdksDir) {
+    /** Package-visible for BSP/IDE tests that stub engine calls (JK-1063). */
+    IdeEngineClient(Path projectDir, Path cacheDir, Path jdksDir) {
         this.projectDir = projectDir.toAbsolutePath().normalize();
         this.cacheDir = cacheDir.toAbsolutePath().normalize();
         this.jdksDir = jdksDir == null ? null : jdksDir.toAbsolutePath().normalize();
@@ -241,13 +242,51 @@ public final class IdeEngineClient {
     }
 
     /**
-     * Run the test pipeline for a module (JK-1048 BSP {@code buildTarget/test}). When {@code
-     * moduleDir} is null, tests the open project directory. Uses the same engine path as {@code jk
-     * test} (compile main+test → run JUnit).
+     * Run the test pipeline for a module (JK-1048 / JK-1063 BSP {@code buildTarget/test}). When
+     * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
+     * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
+     * engine path as {@code jk test}.
      */
     public BuildOutcome testModule(Path moduleDir, BuildListener listener) throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        if (moduleDir == null) {
+            ProjectInfo info = projectInfo();
+            if (info.error() != null && !info.error().isBlank()) {
+                return new BuildOutcome(false, 0, 0, List.of(info.error()));
+            }
+            if (info.workspaceRoot()) {
+                return testWorkspace(progress);
+            }
+        }
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
+        return testOneModule(mod, progress);
+    }
+
+    /** Sequential per-module {@code jk test} for a workspace root (JK-1063). */
+    private BuildOutcome testWorkspace(BuildListener progress) throws IOException {
+        IdeWireModel model = ideModel();
+        List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
+        if (dirs.isEmpty()) {
+            // No module list — fall back to testing the workspace root directory alone.
+            return testOneModule(projectDir, progress);
+        }
+        int modules = 0;
+        int failed = 0;
+        List<String> errors = new ArrayList<>();
+        for (String d : dirs) {
+            if (d == null || d.isBlank()) continue;
+            Path mod = Path.of(d);
+            modules++;
+            BuildOutcome o = testOneModule(mod, progress);
+            if (!o.success()) {
+                failed++;
+                if (o.errors() != null) errors.addAll(o.errors());
+            }
+        }
+        return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
+    }
+
+    private BuildOutcome testOneModule(Path mod, BuildListener progress) throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();

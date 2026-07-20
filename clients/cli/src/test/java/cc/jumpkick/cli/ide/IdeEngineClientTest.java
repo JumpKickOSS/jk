@@ -126,4 +126,48 @@ class IdeEngineClientTest {
         assertThat(events).anyMatch(e -> e.startsWith("module-finish:"));
         assertThat(events).anyMatch(e -> e.startsWith("step:"));
     }
+
+    @Test
+    void testModule_runs_against_wire(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app"));
+        Files.writeString(
+                project.resolve("jk.toml"),
+                """
+                [project]
+                name = "app"
+                group = "com.example"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
+                """);
+        Files.createDirectories(project.resolve("src"));
+        Files.writeString(
+                project.resolve("src/App.java"),
+                """
+                package com.example;
+                public class App {
+                  public static int one() { return 1; }
+                }
+                """);
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        List<String> events = new ArrayList<>();
+        IdeEngineClient ide = IdeEngineClient.open(project, cache, null);
+        ide.connect();
+        var outcome = ide.testModule(null, new IdeEngineClient.BuildListener() {
+            @Override
+            public void onModuleStart(String coord, Path dir) {
+                events.add("start:" + coord);
+            }
+
+            @Override
+            public void onModuleFinish(String coord, boolean success) {
+                events.add("finish:" + coord + ":" + success);
+            }
+        });
+        assertThat(events).anyMatch(e -> e.startsWith("start:"));
+        assertThat(events).anyMatch(e -> e.startsWith("finish:"));
+        // No tests is still a successful test pipeline (nothing failed).
+        assertThat(outcome.modules()).isEqualTo(1);
+    }
 }
+
