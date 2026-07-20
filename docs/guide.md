@@ -283,6 +283,17 @@ Both are **wire-only** (shell `jk` / BSP; no engine jars in the IDE process). Re
 ./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix
 ./scripts/package-intellij.sh    # → clients/intellij/build/distributions/*.zip
 ```
+### jshell / REPL
+
+```bash
+jk jshell                    # build --skip-tests if needed, then jshell on compile classpath
+jk jshell --no-build         # use existing target/classes + lock deps only
+jk repl                      # alias
+```
+
+Requires a full JDK with `jshell` on `JAVA_HOME` / `java.home`. Run from a **module**
+directory (not a pure workspace root). Extra args after the verb are forwarded to jshell.
+
 ### Live loops (`jk watch` / `jk dev`)
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**

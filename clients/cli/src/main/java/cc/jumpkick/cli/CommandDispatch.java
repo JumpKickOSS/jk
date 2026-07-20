@@ -33,6 +33,7 @@ import cc.jumpkick.command.ImportCommand;
 import cc.jumpkick.command.InitCommand;
 import cc.jumpkick.command.InspectCommand;
 import cc.jumpkick.command.JdkCommand;
+import cc.jumpkick.command.JshellCommand;
 import cc.jumpkick.command.LibraryCommand;
 import cc.jumpkick.command.LockCommand;
 import cc.jumpkick.command.MvnCommand;
@@ -99,6 +100,7 @@ public final class CommandDispatch {
             new TasksCommand(),
             new ShowCommand(),
             new InspectCommand(),
+            new JshellCommand(),
             new DeactivateCommand(),
             new ShellCommand(),
             new HookEnvCommand(),
