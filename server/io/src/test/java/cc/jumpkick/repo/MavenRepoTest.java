@@ -252,6 +252,52 @@ class MavenRepoTest {
                 .containsExactlyInAnyOrder("1.0", "2.0");
     }
 
+    @Test
+    void mismatching_sha256_sidecar_fails_closed(@TempDir Path tempDir) {
+        byte[] jar = "tampered-bytes".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.sha256",
+                200,
+                "0000000000000000000000000000000000000000000000000000000000000000".getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        assertThatThrownBy(() -> repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0")))
+                .isInstanceOf(MavenRepo.ChecksumMismatchException.class)
+                .hasMessageContaining("checksum mismatch")
+                .hasMessageContaining("sha256");
+    }
+
+    @Test
+    void matching_sha256_sidecar_allows_fetch(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "good-bytes".getBytes(StandardCharsets.UTF_8);
+        String hex = Hashing.sha256Hex(jar);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        serve(
+                "/com/example/widget/1.0/widget-1.0.jar.sha256",
+                200,
+                (hex + "  widget-1.0.jar\n").getBytes(StandardCharsets.UTF_8));
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        MavenRepo.Fetched f = repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(f.sha256()).isEqualTo(hex);
+        assertThat(repo.missingUpstreamChecksums()).isEqualTo(0);
+    }
+
+    @Test
+    void missing_sidecar_proceeds_and_is_counted(@TempDir Path tempDir) throws Exception {
+        byte[] jar = "no-sidecar".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
+        // No .sha256 / .sha1 handlers → 404 → TOFU count
+        MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
+        repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(repo.missingUpstreamChecksums()).isEqualTo(1);
+    }
+
+    @Test
+    void normalize_checksum_takes_first_token() {
+        assertThat(MavenRepo.normalizeChecksum("abc123  file.jar\n")).isEqualTo("abc123");
+        assertThat(MavenRepo.normalizeChecksum("  deadbeef\t")).isEqualTo("deadbeef");
+    }
+
     private void serve(String path, int status, byte[] body) {
         server.createContext(path, exchange -> {
             exchange.sendResponseHeaders(status, body.length);

@@ -79,6 +79,20 @@ Unpinned `latest` selection still prefers the newest **stable** over a newer pre
 Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
 the conservative path.
 
+### Lock-time trust
+
+`jk lock` is the trust boundary. For each POM/artifact download jk:
+
+1. Streams bytes into the content-addressed store and computes SHA-256 locally.
+2. Fetches the repository's published sidecar (`.sha256`, else `.sha1`) when present and
+   **fails closed** on mismatch (repo name + coordinate + expected vs actual).
+3. If no sidecar exists, pins TOFU-style and may report how many artifacts lacked a checksum.
+4. Warns once per repository that still uses plaintext `http://` (prefer HTTPS).
+
+After the lock exists, `jk sync` / builds enforce the pinned hashes only — they do not re-check
+upstream sidecars. GPG/Sigstore signatures are out of scope here (see release / plugin signing
+tickets).
+
 ### Check for updates (`jk outdated`)
 
 Lockfile stays law until you deliberately rewrite it. The usual loop:
