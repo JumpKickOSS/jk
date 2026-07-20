@@ -1521,7 +1521,8 @@ public final class BuildPipelines {
                 .phase(Phase.COMPILE)
                 .label("Resources")
                 .kind(StepKind.CPU)
-                .requires(mainCompile)
+                // After AFTER_COMPILE SPI so generated classes land before resource merge (JK-1061).
+                .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
@@ -1558,7 +1559,7 @@ public final class BuildPipelines {
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         String mainCompile = cx.mainCompile();
-        return Step.builder("build-logic-after-compile")
+        return Step.builder(StepNames.BUILD_LOGIC_AFTER_COMPILE)
                 .phase(Phase.COMPILE)
                 .label("Build logic (after compile)")
                 .kind(StepKind.CPU)
@@ -1589,10 +1590,11 @@ public final class BuildPipelines {
         Inputs in = cx.in();
         ActionCache actionCache = cx.actionCache();
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
-        return Step.builder("build-logic-before-package")
+        return Step.builder(StepNames.BUILD_LOGIC_BEFORE_PACKAGE)
                 .phase(Phase.PACKAGE)
                 .label("Build logic (before package)")
                 .kind(StepKind.CPU)
+                .requires(beforePackageRequires(in))
                 .weight(() -> plan.get().fullyCached() ? 0 : 1)
                 .ticks(1)
                 .execute(ctx -> {
@@ -1614,6 +1616,14 @@ public final class BuildPipelines {
                 .build();
     }
 
+    /** BEFORE_PACKAGE waits on resources (and tests when they run) so packaging sees a complete tree. */
+    private static String[] beforePackageRequires(Inputs in) {
+        List<String> requires = new ArrayList<>();
+        requires.add(StepNames.COPY_RESOURCES);
+        if (!in.skipTests()) requires.add(StepNames.RUN_TESTS);
+        return requires.toArray(new String[0]);
+    }
+
     private static Step compileTestStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -1631,7 +1641,8 @@ public final class BuildPipelines {
                 .phase(Phase.TEST)
                 .label("Test Compile")
                 .kind(StepKind.CPU)
-                .requires(mainCompile, StepNames.RESOLVE_DEPS)
+                // AFTER_COMPILE SPI may generate types tests import (JK-1061).
+                .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE, StepNames.RESOLVE_DEPS)
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
@@ -2022,11 +2033,13 @@ public final class BuildPipelines {
                 .build();
     }
 
-    /** package-jar's requires: resources/tests as always, plus every before-PACKAGE plugin step. */
+    /**
+     * package-jar's requires: SPI BEFORE_PACKAGE (which itself waits on resources/tests), plus
+     * every before-PACKAGE plugin step (JK-1061).
+     */
     private static String[] packageRequires(Inputs in, PluginBuild.Declarations decls) {
         List<String> requires = new ArrayList<>();
-        requires.add(StepNames.COPY_RESOURCES);
-        if (!in.skipTests()) requires.add(StepNames.RUN_TESTS);
+        requires.add(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
         if (decls != null) {
             for (PluginBuild.StepDecl step : decls.steps()) {
                 if (Phase.PACKAGE == step.beforePhase()) requires.add("plugin-" + step.name());
