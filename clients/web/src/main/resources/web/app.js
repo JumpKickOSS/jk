@@ -191,12 +191,13 @@ function cssVar(name, fallback) {
   return v || fallback;
 }
 
-/** Outcome → spark-bar colour, resolved from the style.css palette via cssVar (see BuildBars). */
+/** Outcome → spark-bar colour, resolved from the style.css palette via cssVar (see BuildBars).
+ * Fallbacks must equal :root tokens (Jk Dark / JK-1081) — not Material leftovers. */
 const buildColors = () => ({
-  success: cssVar('--ok', '#4caf50'),
-  failed: cssVar('--err', '#e91e63'),
-  cancelled: cssVar('--warn', '#ffc107'),
-  running: cssVar('--run', '#3d8fe0'),
+  success: cssVar('--ok', '#00ff87'),
+  failed: cssVar('--err', '#ff3366'),
+  cancelled: cssVar('--warn', '#ffb800'),
+  running: cssVar('--run', '#3d9bff'),
 });
 
 /** Fixed number of build slots the spark reserves — a single build fills 1/30 of the width. */
