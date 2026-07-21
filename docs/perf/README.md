@@ -24,3 +24,9 @@ Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremen
 
 **Decision: DEFER** — see [warm-pool-bench.md](warm-pool-bench.md). Do not implement a resident
 compiler pool until a worktree prototype beats **AOT-on** forks on wall time *and* RSS.
+
+## Engine heap monorepo (JK-1075)
+
+**Decision: keep 256 MiB default** — peak ~36 MiB heap on a 200-module `build --skip-tests`
+(~15% of cap). See [engine-heap-monorepo.md](engine-heap-monorepo.md). Re-measure with
+`scripts/heap-monorepo-measure.sh`.

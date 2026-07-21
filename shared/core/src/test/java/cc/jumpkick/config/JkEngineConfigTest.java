@@ -18,6 +18,17 @@ class JkEngineConfigTest {
         assertThat(JkEngineConfig.DEFAULTS.maxHeapMb()).isEqualTo(JkEngineConfig.DEFAULT_MAX_HEAP_MB);
     }
 
+    /**
+     * JK-1075: default engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module
+     * build — see docs/perf/engine-heap-monorepo.md). Do not raise without ticket JK-1085 evidence.
+     */
+    @Test
+    void default_max_heap_stays_256_mib_good_neighbor() {
+        assertThat(JkEngineConfig.DEFAULT_MAX_HEAP_MB).isEqualTo(256);
+        assertThat(JkEngineConfig.DEFAULTS.heapCapped()).isTrue();
+        assertThat(JkEngineConfig.DEFAULTS.minHeapMb()).isLessThanOrEqualTo(256);
+    }
+
     @Test
     void table_absent_yields_defaults(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
