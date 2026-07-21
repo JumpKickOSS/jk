@@ -1817,23 +1817,8 @@ public final class EngineServer implements AutoCloseable {
                     : cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/java"))
                             + cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/kotlin"));
 
-            JkConfig config = new JkConfig(
-                    Optional.empty(),
-                    Optional.of(offline),
-                    Optional.of(Jsonl.bool(requestLine, "rebuild", false)),
-                    Optional.empty(),
-                    Optional.empty(),
-                    Optional.of(verbose),
-                    Optional.empty(),
-                    Optional.of(force),
-                    Optional.empty());
-            Session session = Session.defaults()
-                    .withConfig(config)
-                    .withWorkingDir(entryDir)
-                    .withCacheDir(cache)
-                    .withJdksDir(jdksDir)
-                    .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine));
+            // resolveSession carries assemblyOverride / rebuild / force from the wire envelope.
+            Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
 
             // Session threaded explicitly — see runTest: the delegating Inputs constructors
             // capture the engine's ambient session at construction, dropping --force/--offline.
@@ -1854,9 +1839,14 @@ public final class EngineServer implements AutoCloseable {
                             java.util.Set.of(),
                             session)
                     .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
-            cc.jumpkick.run.Pipeline.Builder builder = cc.jumpkick.runtime.BuildPipelines.coreBuilder(inputs, false);
-            cc.jumpkick.runtime.BuildPipelines.appendDeclaredTails(builder, inputs);
-            cc.jumpkick.run.Pipeline pipeline = builder.build();
+            // Pipeline construction must see session.assemblyOverride (applyAssemblyOverride);
+            // run under SessionContext.where so ambient helpers agree with Inputs.session.
+            cc.jumpkick.run.Pipeline pipeline = SessionContext.where(session, () -> {
+                cc.jumpkick.run.Pipeline.Builder builder =
+                        cc.jumpkick.runtime.BuildPipelines.coreBuilder(inputs, false);
+                cc.jumpkick.runtime.BuildPipelines.appendDeclaredTails(builder, inputs);
+                return builder.build();
+            });
             long barWeight = pipeline.estimatedTotalWeight();
 
             String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
@@ -2914,7 +2904,8 @@ public final class EngineServer implements AutoCloseable {
                 .withJvm(EngineProtocol.jvmTuning(requestLine))
                 // The variant selection rides the session: every pipeline factory's Inputs defaults
                 // from it, so compile/install/native/publish/... are parameterized generically.
-                .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
+                .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine))
+                .withAssemblyOverride(EngineProtocol.assemblyOverrideOf(requestLine));
     }
 
     /** The optional {@code repoUrl} request field ({@code --repo-url} overrides), or {@code null}. */

@@ -130,6 +130,54 @@ public record JkBuild(
                 variants);
     }
 
+    /** This build without the plugin config {@code id} (no-op when absent). */
+    public JkBuild withoutPluginConfig(String id) {
+        if (id == null || !pluginConfigs.containsKey(id)) return this;
+        Map<String, PluginConfig> next = new LinkedHashMap<>(pluginConfigs);
+        next.remove(id);
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                next,
+                build,
+                format,
+                variants);
+    }
+
+    /**
+     * Override {@code [application].assembly} for this in-memory build (CLI {@code --fat}/{@code
+     * --shrink}). Does not rewrite {@code jk.toml}. Caller must ensure the shrink plugin config is
+     * present when {@code mode == SHRINK} (see {@code JkBuildParser.ensureShrinkForAssemblyMode}).
+     */
+    public JkBuild withAssemblyMode(AssemblyMode mode) {
+        AssemblyMode m = mode == null ? AssemblyMode.OFF : mode;
+        Application app = application.orElse(new Application(null, AssemblyMode.OFF));
+        if (app.assembly() == m) return this;
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                Optional.of(new Application(app.main(), m)),
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants);
+    }
+
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
     public JkBuild withBuild(Build build) {
         return new JkBuild(

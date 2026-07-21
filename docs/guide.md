@@ -212,6 +212,9 @@ do not force main classpath versions.
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
 
+One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
+`--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
+
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
 [features/packaging.md](features/packaging.md). Samples:
 [assembly-app](features/examples/assembly-app/), [shrunk-cli](features/examples/shrunk-cli/).
@@ -234,7 +237,7 @@ jk outdated                  # check for newer deps (read-only; see lockfile sec
 jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
 jk build                     # package (thin, assembly, shrink, or Boot per config)
-jk assembly                  # assembly jar (alias: assemble; requires assembly = true)
+jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
 jk test
 jk run -- args…
 jk clean

@@ -10,6 +10,7 @@ import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
@@ -285,6 +286,10 @@ public final class BuildPipelines {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
+            // CLI packaging override (jk assembly --shrink / --fat) wins over jk.toml for this run.
+            // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
+            // pipeline outside SessionContext.where.
+            jkBuild = applyAssemblyOverride(jkBuild, in.session());
             // Variant overlays fold into plugin configs HERE, so describe keys, contribution
             // predicates, step/packager action keys, and plugin specs all see one flat effective
             // config (parameterized pipelines, not configured objects).
@@ -2371,6 +2376,8 @@ public final class BuildPipelines {
         tokens.add("facts:" + project.project().group() + ":"
                 + project.project().name() + ":" + project.project().version() + ":" + startClass);
         tokens.add("manifest:" + project.manifest());
+        // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
+        tokens.add("packaging:" + decls.packager().name());
         // The packager's CODE is an input, same as plugin steps (see pluginStepStep).
         tokens.add(
                 "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
@@ -2624,7 +2631,7 @@ public final class BuildPipelines {
      */
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
         try {
-            JkBuild project = JkBuildParser.parse(in.buildFile());
+            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
                 b.addStep(assemblyStep(in.cache(), in.lockFile()));
             }
@@ -2633,6 +2640,23 @@ public final class BuildPipelines {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Apply {@link cc.jumpkick.config.Session#assemblyOverride()} (CLI {@code --fat}/{@code --shrink})
+     * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session()}
+     * over ambient {@link SessionContext} so single-build pipeline construction (outside {@code
+     * SessionContext.where}) still sees the wire override.
+     */
+    static JkBuild applyAssemblyOverride(JkBuild build, cc.jumpkick.config.Session session) {
+        String raw = session != null ? session.assemblyOverride() : "";
+        if (raw == null || raw.isBlank()) {
+            raw = SessionContext.current().assemblyOverride();
+        }
+        if (raw == null || raw.isBlank()) return build;
+        JkBuild.AssemblyMode mode = JkBuildParser.parseAssemblyOverride(raw);
+        if (mode == null) return build;
+        return JkBuildParser.withAssemblyModeOverride(build, mode);
     }
 
     // ---- tail steps ----------------------------------------------------
@@ -2682,7 +2706,8 @@ public final class BuildPipelines {
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
                             "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
-                            "manifest:" + project.manifest());
+                            "manifest:" + project.manifest(),
+                            "packaging:fat"); // distinct from shrink / thin package-jar
                     String shTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_ASSEMBLY, assemblyJar);
                     String shKey =
                             ActionKey.forArtifact(shTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);

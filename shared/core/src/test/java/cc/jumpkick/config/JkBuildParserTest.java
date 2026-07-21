@@ -1359,6 +1359,30 @@ class JkBuildParserTest {
     }
 
     @Test
+    void assembly_mode_override_injects_shrink_plugin() {
+        JkBuild base = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\n");
+        assertThat(base.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
+        JkBuild shrunk =
+                JkBuildParser.withAssemblyModeOverride(base, JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrunk.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrunk.pluginConfig("shrink")).isPresent();
+        assertThat(JkBuildParser.parseAssemblyOverride("fat")).isEqualTo(JkBuild.AssemblyMode.FAT);
+        assertThat(JkBuildParser.parseAssemblyOverride("shrink")).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(JkBuildParser.parseAssemblyOverride("")).isNull();
+    }
+
+    @Test
+    void assembly_mode_override_fat_strips_shrink_plugin() {
+        JkBuild shrink = JkBuildParser.parse(
+                PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        assertThat(shrink.pluginConfig("shrink")).isPresent();
+        JkBuild fat = JkBuildParser.withAssemblyModeOverride(shrink, JkBuild.AssemblyMode.FAT);
+        assertThat(fat.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+        assertThat(fat.assembly()).isTrue();
+        assertThat(fat.pluginConfig("shrink")).isEmpty();
+    }
+
+    @Test
     void native_absent_means_disabled_present_means_supported_or_always() {
         assertThat(JkBuildParser.parse(PROJECT).nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
         assertThat(JkBuildParser.parse(PROJECT + "\n[native]\n").nativeMode()).isEqualTo(JkBuild.NativeMode.SUPPORTED);

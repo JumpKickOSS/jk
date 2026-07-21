@@ -2219,6 +2219,21 @@ public final class EngineProtocol {
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild,
             boolean noTimeline) {
+        return withSession(request, variant, clientEnv, t, rebuild, noTimeline, null);
+    }
+
+    /**
+     * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code shrink}) for
+     * {@code jk assembly --shrink} one-offs.
+     */
+    public static String withSession(
+            String request,
+            String variant,
+            java.util.Map<String, String> clientEnv,
+            cc.jumpkick.config.PluginTuning t,
+            boolean rebuild,
+            boolean noTimeline,
+            String assemblyOverride) {
         if (request == null
                 || request.length() < 2
                 || request.charAt(0) != '{'
@@ -2232,12 +2247,14 @@ public final class EngineProtocol {
                         || t.gc() != null
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
-        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline) return request;
+        boolean hasAssembly = assemblyOverride != null && !assemblyOverride.isBlank();
+        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline && !hasAssembly) return request;
         StringBuilder b = new StringBuilder(request.substring(0, request.length() - 1));
         if (rebuild) b.append(",\"rebuild\":true");
         if (noTimeline) b.append(",\"noTimeline\":true");
         if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
         if (hasEnv) b.append(",\"env\":").append(Jsonl.map(clientEnv));
+        if (hasAssembly) b.append(",\"assemblyOverride\":").append(Jsonl.quote(assemblyOverride));
         if (hasJvm) {
             if (t.maxRamPercent() != null)
                 b.append(",\"jvmMaxRam\":\"").append(t.maxRamPercent()).append('\"');
@@ -2247,6 +2264,12 @@ public final class EngineProtocol {
             if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
         }
         return b.append('}').toString();
+    }
+
+    /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code shrink}/empty). */
+    public static String assemblyOverrideOf(String request) {
+        String v = Jsonl.str(request, "assemblyOverride");
+        return v == null ? "" : v;
     }
 
     /**

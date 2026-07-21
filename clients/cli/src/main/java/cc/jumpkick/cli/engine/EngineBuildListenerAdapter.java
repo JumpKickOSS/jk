@@ -97,7 +97,8 @@ final class EngineBuildListenerAdapter {
                     // rebuild rides the session envelope: bypass jk's caches without implying
                     // refresh — verify's scratch rebuild stays CAS-local (no re-download).
                     session.config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline(),
+                    SessionContext.current().assemblyOverride()));
             writer.write('\n');
             writer.flush();
 
@@ -185,7 +186,9 @@ final class EngineBuildListenerAdapter {
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline(),
+                    SessionContext.current().assemblyOverride()));
             writer.write('\n');
             writer.flush();
 

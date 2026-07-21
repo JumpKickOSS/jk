@@ -436,4 +436,45 @@ class JkBuildEditorTest {
         assertThatThrownBy(() -> JkBuildEditor.addDependency(BASE, Scope.MAIN, "", "g", "a", "1.0"))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void set_assembly_mode_creates_application_table() {
+        String fat = JkBuildEditor.setAssemblyMode(BASE, JkBuild.AssemblyMode.FAT);
+        assertThat(fat).contains("[application]");
+        assertThat(fat).contains("assembly = true");
+        assertThat(JkBuildParser.parse(fat).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+
+        String shrink = JkBuildEditor.setAssemblyMode(BASE, JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrink).contains("assembly = \"shrink\"");
+        assertThat(JkBuildParser.parse(shrink).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+    }
+
+    @Test
+    void set_assembly_mode_preserves_main_and_other_keys() {
+        String start =
+                BASE
+                        + """
+                        [application]
+                        main = "demo.App"
+                        # keep me
+                        """;
+        String result = JkBuildEditor.setAssemblyMode(start, JkBuild.AssemblyMode.SHRINK);
+        assertThat(result).contains("main = \"demo.App\"");
+        assertThat(result).contains("# keep me");
+        assertThat(result).contains("assembly = \"shrink\"");
+        assertThat(JkBuildParser.parse(result).mainClass()).isEqualTo("demo.App");
+        assertThat(JkBuildParser.parse(result).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+    }
+
+    @Test
+    void set_assembly_mode_replaces_existing_assignment() {
+        String start = BASE + "[application]\nmain = \"demo.App\"\nassembly = true\n";
+        String shrink = JkBuildEditor.setAssemblyMode(start, JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrink).contains("assembly = \"shrink\"");
+        assertThat(shrink).doesNotContain("assembly = true");
+        String off = JkBuildEditor.setAssemblyMode(shrink, JkBuild.AssemblyMode.OFF);
+        assertThat(off).doesNotContain("assembly =");
+        assertThat(off).contains("main = \"demo.App\"");
+        assertThat(JkBuildParser.parse(off).assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
+    }
 }

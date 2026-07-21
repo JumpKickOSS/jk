@@ -114,6 +114,16 @@ class EngineProtocolTest {
     }
 
     @Test
+    void with_session_carries_assembly_override() {
+        String base = EngineProtocol.ping();
+        assertThat(EngineProtocol.assemblyOverrideOf(base)).isEmpty();
+        String line = EngineProtocol.withSession(base, null, null, null, false, false, "shrink");
+        assertThat(EngineProtocol.assemblyOverrideOf(line)).isEqualTo("shrink");
+        String fat = EngineProtocol.withSession(base, null, null, null, false, false, "fat");
+        assertThat(EngineProtocol.assemblyOverrideOf(fat)).isEqualTo("fat");
+    }
+
+    @Test
     void goal_finish_carries_its_kind_discriminator() {
         assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind"))
                 .isEqualTo("build");

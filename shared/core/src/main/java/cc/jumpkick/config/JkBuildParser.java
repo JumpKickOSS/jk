@@ -1289,6 +1289,37 @@ public final class JkBuildParser {
         if (application.isEmpty() || application.get().assembly() != JkBuild.AssemblyMode.SHRINK) {
             return pluginConfigs;
         }
+        return ensureShrinkPluginConfig(pluginConfigs, installed);
+    }
+
+    /**
+     * Apply a CLI packaging override over a parsed build for this invocation only.
+     *
+     * <ul>
+     *   <li>{@link JkBuild.AssemblyMode#SHRINK} — set assembly mode and inject shrink defaults when
+     *       missing
+     *   <li>{@link JkBuild.AssemblyMode#FAT} / {@link JkBuild.AssemblyMode#OFF} — set mode and drop
+     *       the shrink plugin config so a prior {@code assembly = "shrink"} or bare {@code [shrink]}
+     *       cannot still own packaging for this run
+     * </ul>
+     */
+    public static JkBuild withAssemblyModeOverride(JkBuild build, JkBuild.AssemblyMode mode) {
+        Objects.requireNonNull(build, "build");
+        if (mode == null) return build;
+        JkBuild next = build.withAssemblyMode(mode);
+        if (mode == JkBuild.AssemblyMode.SHRINK) {
+            if (next.pluginConfig("shrink").isPresent()) return next;
+            Map<String, PluginConfig> configs = ensureShrinkPluginConfig(
+                    next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
+            PluginConfig shrink = configs.get("shrink");
+            return shrink == null ? next : next.withPluginConfig(shrink);
+        }
+        // FAT / OFF: CLI override must not leave the shrink packager active.
+        return next.withoutPluginConfig("shrink");
+    }
+
+    private static Map<String, PluginConfig> ensureShrinkPluginConfig(
+            Map<String, PluginConfig> pluginConfigs, List<PluginDescriptor> installed) {
         if (pluginConfigs.containsKey("shrink")) return pluginConfigs;
         PluginDescriptor shrink = null;
         for (PluginDescriptor m : installed) {
@@ -1298,14 +1329,28 @@ public final class JkBuildParser {
             }
         }
         if (shrink == null) {
-            throw new JkBuildParseException(
-                    "[application] assembly = \"shrink\" requires the built-in shrink plugin (not installed)");
+            shrink = PluginTableRegistry.byTable("shrink").orElse(null);
         }
-        // Empty [shrink] body → schema defaults (r8 version, no keep rules, no obfuscate).
+        if (shrink == null) {
+            throw new JkBuildParseException(
+                    "assembly = \"shrink\" requires the built-in shrink plugin (not installed)");
+        }
         TomlTable empty = Objects.requireNonNull(Toml.parse("[shrink]\n").getTable("shrink"));
         Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);
         out.put(shrink.id(), PluginTableRegistry.validate(shrink, empty));
         return out;
+    }
+
+    /** Parse CLI / wire override: empty → null (no override), {@code fat}/{@code shrink}. */
+    public static JkBuild.AssemblyMode parseAssemblyOverride(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            case "fat", "true", "assembly" -> JkBuild.AssemblyMode.FAT;
+            case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
+            case "off", "false", "none", "thin" -> JkBuild.AssemblyMode.OFF;
+            default -> throw new IllegalArgumentException(
+                    "unknown assembly override: " + raw + " (want fat|shrink)");
+        };
     }
 
     /** Core top-level tables; anything else must be owned by an installed plugin. */
