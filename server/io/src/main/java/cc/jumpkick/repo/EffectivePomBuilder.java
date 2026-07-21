@@ -12,12 +12,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Builds {@link EffectivePom}s: parent-chain merge, BOM import inlining, version backfill. Depth
- * capped at {@value #MAX_DEPTH}.
+ * capped at {@value #MAX_DEPTH}. Cache is concurrent so lock-time parallel materialize can probe
+ * packaging safely (JK-1088).
  */
 public final class EffectivePomBuilder {
 
@@ -25,7 +27,7 @@ public final class EffectivePomBuilder {
     private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)\\}");
 
     private final RepoGroup repos;
-    private final Map<String, EffectivePom> cache = new HashMap<>();
+    private final Map<String, EffectivePom> cache = new ConcurrentHashMap<>();
 
     public EffectivePomBuilder(MavenRepo repo) {
         this(RepoGroup.of(repo));
@@ -35,7 +37,11 @@ public final class EffectivePomBuilder {
         this.repos = Objects.requireNonNull(repos, "repos");
     }
 
-    public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
+    /**
+     * Build (or return cached) effective POM. Synchronized so concurrent materialize threads share
+     * one parent-chain walk without races on the in-flight {@code visiting} sets.
+     */
+    public synchronized EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
         return buildInternal(coord, new HashSet<>(), 0);
     }
 

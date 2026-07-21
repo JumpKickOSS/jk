@@ -4,17 +4,24 @@ package cc.jumpkick.resolver.pubgrub;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
  * PubGrub version solver: root deps + {@link PackageSource} → package → version map. Constraints
  * intern onto {@link VersionUniverse}/{@link AllowedSet} bitsets; budgets via {@code
  * JK_RESOLVE_MAX_DECISIONS} / {@code JK_RESOLVE_TIMEOUT_MS}.
+ *
+ * <p>JK-1088: when the positive constraint is an exact singleton, or the source has a soft-prefer
+ * pin that already satisfies the constraint, seed a singleton {@link VersionUniverse} without
+ * calling {@link PackageSource#versions}. Expand to the full advertised list only when that seed
+ * cannot produce a viable candidate.
  */
 public class PubGrubSolver {
 
@@ -30,6 +37,12 @@ public class PubGrubSolver {
 
     /** Cached discrete version lists per package for the duration of one {@link #solve}. */
     private final Map<String, VersionUniverse> universes = new HashMap<>();
+
+    /**
+     * Packages whose universe was seeded from an exact constraint or soft-prefer pin without a full
+     * {@link PackageSource#versions} load. Expanded once if the seed has no viable candidate.
+     */
+    private final Set<String> lazyUniverses = new HashSet<>();
 
     protected final PartialSolution solution;
     protected final List<Incompatibility> incompatibilities = new ArrayList<>();
@@ -273,9 +286,17 @@ public class PubGrubSolver {
             if (!solution.hasPositiveTerm(pkg)) continue;
 
             ensureUniverse(pkg);
+            // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
+            if (solution.hasNoCandidates(pkg) && lazyUniverses.contains(pkg)) {
+                expandUniverse(pkg);
+            }
 
             String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg);
             if (pick == null) {
+                // Diagnostics: if we never loaded metadata, expand once for a useful sample.
+                if (lazyUniverses.contains(pkg)) {
+                    expandUniverse(pkg);
+                }
                 boolean unknownPackage = universes.get(pkg).size() == 0;
                 VersionSet allowed = solution.positiveSet(pkg);
                 if (allowed.isEmpty()) allowed = VersionSet.ALL;
@@ -290,6 +311,24 @@ public class PubGrubSolver {
             try {
                 deps = source.dependencies(pkg, pick);
             } catch (PackageSource.VersionUnavailableException e) {
+                // Expand before recording Unavailable so unit-prop can exclude `pick` against a
+                // full candidate list (a lazy singleton of only `pick` would mark the inco as
+                // already SATISFIED and short-circuit into a false unsatisfiable).
+                if (lazyUniverses.contains(pkg)) {
+                    expandUniverse(pkg);
+                }
+                // Exact pin that was never advertised (or only candidate failed): NoVersions gives
+                // better diagnostics ("available: …") than Unavailable alone.
+                if (solution.hasNoCandidates(pkg)) {
+                    boolean unknownPackage = universes.get(pkg).size() == 0;
+                    VersionSet allowed = solution.positiveSet(pkg);
+                    if (allowed.isEmpty()) allowed = VersionSet.ALL;
+                    addIncompatibility(new Incompatibility(
+                            List.of(Term.positive(pkg, allowed)),
+                            new Incompatibility.Cause.NoVersions(
+                                    pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                    return pkg;
+                }
                 addIncompatibility(new Incompatibility(
                         List.of(Term.positive(pkg, VersionSet.exact(pick))),
                         new Incompatibility.Cause.Unavailable(pkg, pick, e.getMessage())));
@@ -318,12 +357,39 @@ public class PubGrubSolver {
         return List.copyOf(all.subList(0, AVAILABLE_SAMPLE));
     }
 
+    /**
+     * Bind a discrete universe for {@code pkg}. Prefer a singleton seed (exact constraint or
+     * soft-prefer pin) to avoid maven-metadata on the happy path; expand later if needed.
+     */
     private void ensureUniverse(String pkg) throws IOException, InterruptedException {
         if (!universes.containsKey(pkg)) {
-            List<String> versions = source.versions(pkg);
-            universes.put(pkg, VersionUniverse.of(pkg, versions));
+            VersionSet positive = solution.positiveSet(pkg);
+            Optional<String> exact = positive.asExactSingleton();
+            if (exact.isPresent()) {
+                // Exact pin: singleton is complete for success; no lazy expand needed unless we
+                // want metadata samples on failure (handled at NoVersions).
+                universes.put(pkg, VersionUniverse.of(pkg, List.of(exact.get())));
+                lazyUniverses.add(pkg);
+            } else {
+                Optional<String> preferred = source.preferredVersion(pkg);
+                if (preferred.isPresent() && positive.contains(preferred.get())) {
+                    universes.put(pkg, VersionUniverse.of(pkg, List.of(preferred.get())));
+                    lazyUniverses.add(pkg);
+                } else {
+                    List<String> versions = source.versions(pkg);
+                    universes.put(pkg, VersionUniverse.of(pkg, versions));
+                }
+            }
         }
         solution.bindUniverse(pkg);
+    }
+
+    /** Replace a lazy singleton with the full advertised list and re-project constraints. */
+    private void expandUniverse(String pkg) throws IOException, InterruptedException {
+        if (!lazyUniverses.remove(pkg)) return;
+        List<String> versions = source.versions(pkg);
+        universes.put(pkg, VersionUniverse.of(pkg, versions));
+        solution.rebindAfterUniverseExpand(pkg);
     }
 
     protected void addIncompatibility(Incompatibility inco) {

@@ -32,6 +32,14 @@ class VersionSetTest {
     }
 
     @Test
+    void asExactSingleton_only_for_point_ranges() {
+        assertThat(VersionSet.exact("1.2.3").asExactSingleton()).contains("1.2.3");
+        assertThat(VersionSet.atLeast("1.0", true).asExactSingleton()).isEmpty();
+        assertThat(VersionSet.ALL.asExactSingleton()).isEmpty();
+        assertThat(VersionSet.between("1.0", true, "2.0", false).asExactSingleton()).isEmpty();
+    }
+
+    @Test
     void range_inclusive_exclusive_endpoints() {
         VersionSet r = VersionSet.between("1.0", true, "2.0", false);
         assertThat(r.contains("1.0")).isTrue();

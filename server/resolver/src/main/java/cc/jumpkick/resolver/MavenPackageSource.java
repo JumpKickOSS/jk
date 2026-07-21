@@ -18,14 +18,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()}. BOM/lock soft-prefer front-loads candidates; POM exclusions
- * strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no soft-prefer pin is known. BOM/lock soft-prefer
+ * front-loads candidates (and seeds lazy singleton universes via {@link #preferredVersion}); POM
+ * exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -101,6 +103,26 @@ public final class MavenPackageSource implements PackageSource {
     /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
     public void setLockedVersionPrefs(Map<String, String> prefs) {
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(prefs, "prefs"));
+    }
+
+    /**
+     * Lock pin wins over BOM pin (same order as {@link #versions} soft-prefer). Used by the solver to
+     * seed a lazy singleton universe without maven-metadata (JK-1088).
+     */
+    @Override
+    public Optional<String> preferredVersion(String pkg) {
+        String ga = PackageId.parse(pkg).ga();
+        String lock = firstNonBlank(lockedVersionPrefs.get(pkg), lockedVersionPrefs.get(ga));
+        if (lock != null) return Optional.of(lock);
+        String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
+        if (bom != null) return Optional.of(bom);
+        return Optional.empty();
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
     }
 
     @Override
@@ -257,6 +279,11 @@ public final class MavenPackageSource implements PackageSource {
         for (Term dep : deps) {
             String pkg = dep.pkg();
             if (versionCache.containsKey(pkg)) continue;
+            // Soft-prefer pins let the solver seed a singleton without metadata — do not
+            // eagerly fetch maven-metadata for those GAs (JK-1088).
+            if (preferredVersion(pkg).isPresent()) continue;
+            // Exact child constraints do not need a version index on the happy path either.
+            if (dep.versions().asExactSingleton().isPresent()) continue;
             JkThreads.io().execute(() -> {
                 try {
                     prefetchSlots.acquire();

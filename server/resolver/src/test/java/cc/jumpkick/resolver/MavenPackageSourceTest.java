@@ -7,6 +7,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
+import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.Term;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -98,6 +99,20 @@ class MavenPackageSourceTest {
         assertThat(src.dependencies("com.foo:widget", "1.0"))
                 .extracting(Term::pkg)
                 .containsExactlyInAnyOrder("com.foo:a:jar:", "com.foo:b:jar:");
+    }
+
+    @Test
+    void preferredVersion_lock_beats_bom(@TempDir Path tempDir) {
+        Cas cas = new Cas(tempDir.resolve("cache"));
+        MavenRepo repo = new MavenRepo("local", base, new Http(), cas);
+        MavenPackageSource src = new MavenPackageSource(
+                RepoGroup.of(repo),
+                new EffectivePomBuilder(repo),
+                Map.of("com.foo:widget", "1.0"),
+                Map.of("com.foo:widget", "2.0"));
+        assertThat(src.preferredVersion("com.foo:widget")).contains("2.0");
+        assertThat(src.preferredVersion("com.foo:widget:jar:")).contains("2.0");
+        assertThat(src.preferredVersion("com.other:lib")).isEmpty();
     }
 
     private MavenPackageSource newSource(Path tempDir) {

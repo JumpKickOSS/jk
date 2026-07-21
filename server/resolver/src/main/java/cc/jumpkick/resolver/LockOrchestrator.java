@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -13,6 +14,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -28,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * End-to-end lock: {@link JkBuild} → three independent scope solves (main / test / processor) →
@@ -338,17 +342,53 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        for (var e : modByKey.entrySet()) {
+        // Parallel jar materialize (HostRateLimiter + io pool) — same pattern as CacheSync.
+        // Progress ticks stay on this thread after each join so wedge/UI state stays single-threaded.
+        List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
+        HostRateLimiter limiter = HostRateLimiter.shared();
+        @SuppressWarnings("unchecked")
+        CompletableFuture<Lockfile.Artifact>[] futures = new CompletableFuture[ordered.size()];
+        for (int i = 0; i < ordered.size(); i++) {
+            var e = ordered.get(i);
             EnumSet<Scope> tags = tagsByKey.get(e.getKey());
-            packages.add(toArtifact(
-                    e.getValue(),
-                    tags,
-                    kmp,
-                    pomBuilder,
-                    fallbackSource,
-                    bomConstraints,
-                    constraintProvenance,
-                    observer));
+            futures[i] = CompletableFuture.supplyAsync(
+                    () -> {
+                        try {
+                            // Per-host cap around tryFetchArtifact (local-first hits release quickly).
+                            return limiter.run(
+                                    first.baseUrl(),
+                                    () -> toArtifact(
+                                            e.getValue(),
+                                            tags,
+                                            kmp,
+                                            pomBuilder,
+                                            fallbackSource,
+                                            bomConstraints,
+                                            constraintProvenance,
+                                            ResolveObserver.NOOP));
+                        } catch (IOException | InterruptedException ex) {
+                            throw new CompletionException(ex);
+                        }
+                    },
+                    JkThreads.io());
+        }
+        for (int i = 0; i < futures.length; i++) {
+            try {
+                Lockfile.Artifact art = futures[i].join();
+                packages.add(art);
+                var mod = ordered.get(i).getValue();
+                observer.onPackage(displayModule(mod.module()), mod.version());
+            } catch (CompletionException ex) {
+                Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
+                }
+                if (c instanceof RuntimeException re) throw re;
+                if (c instanceof Error err) throw err;
+                throw new IOException(c);
+            }
         }
 
         for (Dependency dep : fileDeps) {

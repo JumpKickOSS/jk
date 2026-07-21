@@ -107,6 +107,30 @@ public final class PartialSolution {
     }
 
     /**
+     * After the solver replaces a lazy singleton {@link VersionUniverse} with the full metadata
+     * list, rebuild {@code pkg}'s continuous constraint from all assignments and re-project onto the
+     * new universe (JK-1088).
+     */
+    public void rebindAfterUniverseExpand(String pkg) {
+        VersionUniverse u = universes.get(pkg);
+        if (u == null) return;
+        VersionSet cont = VersionSet.ALL;
+        boolean hasPos = false;
+        boolean mentioned = false;
+        for (Assignment a : assignments) {
+            if (!a.term().pkg().equals(pkg)) continue;
+            mentioned = true;
+            if (a.term().positive()) hasPos = true;
+            cont = cont.intersect(a.term().effectiveVersions());
+        }
+        PackageState s = byPackage.computeIfAbsent(pkg, k -> new PackageState());
+        s.continuous = cont;
+        s.hasPositive = hasPos || s.hasPositive;
+        s.mentioned = mentioned || s.mentioned;
+        s.allowed = u.project(cont);
+    }
+
+    /**
      * True iff at least one positive term about {@code pkg} has been recorded — i.e. the partial
      * solution requires the package to exist at some version. False for "phantom" packages mentioned
      * only by negative incompatibilities.

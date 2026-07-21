@@ -37,7 +37,13 @@ public final class InMemoryPackageSource implements PackageSource {
     }
 
     @Override
-    public List<Term> dependencies(String pkg, String version) {
+    public List<Term> dependencies(String pkg, String version) throws VersionUnavailableException {
+        // Mirror Maven: a version absent from the advertised list is unavailable (not an empty
+        // dep graph). Lets exact-seeded universes still fail closed without inventing packages.
+        List<String> advertised = versionsByPackage.getOrDefault(pkg, List.of());
+        if (!advertised.contains(version)) {
+            throw new VersionUnavailableException(pkg + "@" + version + " not advertised");
+        }
         return depsByCoord.getOrDefault(coord(pkg, version), List.of());
     }
 
