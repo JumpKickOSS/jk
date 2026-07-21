@@ -36,3 +36,8 @@ compiler pool until a worktree prototype beats **AOT-on** forks on wall time *an
 `ActionKey` routes source (and plugin jar) content through `FileHashMemo`: thread-local walk
 cache (one content read per path per thread for key + why-rebuilt snapshot) plus settled
 disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path + SHA-256 hex).
+
+## Test parallelization (JK-1086 Phase A)
+
+**Decision: keep cross-module tests opt-in; within-module Mill path → JK-1087.**  
+See [test-parallelization.md](test-parallelization.md) for Mill vs jk map, RAM model (`-j`×`-w`×`parallel-tests`), isolation checklist, and default-on go/no-go.
