@@ -63,9 +63,14 @@ public final class JavaIncrementalCompile {
     /**
      * A dry-run prediction ({@code jk explain}): {@code sourceCount} is the total source count for a
      * {@link Outcome#CACHE_HIT} or {@link Outcome#FULL}, and the changed-source count for an {@link
-     * Outcome#INCREMENTAL} (partial) compile.
+     * Outcome#INCREMENTAL} (partial) compile. {@code reason} is a short human detail for explain
+     * (empty for {@link Outcome#CACHE_HIT}); e.g. why FULL or how many sources changed.
      */
-    public record Prediction(Outcome outcome, String actionKey, int sourceCount) {}
+    public record Prediction(Outcome outcome, String actionKey, int sourceCount, String reason) {
+        public Prediction(Outcome outcome, String actionKey, int sourceCount) {
+            this(outcome, actionKey, sourceCount, "");
+        }
+    }
 
     /**
      * Persisted per-class facts (key = internal class name, e.g. {@code a/Foo$Bar}). {@code
@@ -196,19 +201,21 @@ public final class JavaIncrementalCompile {
             throws IOException {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
         if (request.sources().isEmpty() || actionCache.lookup(key).isPresent()) {
-            return new Prediction(Outcome.CACHE_HIT, key, request.sources().size());
+            return new Prediction(Outcome.CACHE_HIT, key, request.sources().size(), "");
         }
         Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
         Map<String, ClassFacts> abi = loadState(stateDir);
         ApFlags flags = loadApFlags(stateDir);
-        boolean canInc = canIncrement(request, prior, abi) && (!flags.sourceGenAps() || flags.isolating());
-        if (canInc) {
+        String fullWhy = cannotIncrementReason(request, prior, abi, flags);
+        if (fullWhy == null) {
+            int n = changedSources(request, prior.get().inputs()).size();
             return new Prediction(
                     Outcome.INCREMENTAL,
                     key,
-                    changedSources(request, prior.get().inputs()).size());
+                    n,
+                    n == 1 ? "1 source changed" : n + " sources changed");
         }
-        return new Prediction(Outcome.FULL, key, request.sources().size());
+        return new Prediction(Outcome.FULL, key, request.sources().size(), fullWhy);
     }
 
     // ---- decide -----------------------------------------------------------
@@ -217,26 +224,37 @@ public final class JavaIncrementalCompile {
     private static boolean canIncrement(
             CompileRequest request, Optional<ActionCache.ActionRecord> prior, Map<String, ClassFacts> abi)
             throws IOException {
-        if (prior.isEmpty() || abi.isEmpty()) return false;
+        return cannotIncrementReason(request, prior, abi, ApFlags.NONE) == null;
+    }
+
+    /**
+     * {@code null} if incremental is allowed; otherwise a short reason for FULL (JK-1058 explain).
+     * When {@code flags} is {@link ApFlags#NONE}, AP isolation is not considered (run-path gate
+     * still applies AP separately).
+     */
+    private static String cannotIncrementReason(
+            CompileRequest request,
+            Optional<ActionCache.ActionRecord> prior,
+            Map<String, ClassFacts> abi,
+            ApFlags flags)
+            throws IOException {
+        if (prior.isEmpty()) return "no prior compile record";
+        if (abi.isEmpty()) return "no incremental ABI state";
         ActionCache.ActionRecord p = prior.get();
-        if (p.units().isEmpty()) return false; // pre-incremental record
+        if (p.units().isEmpty()) return "prior record pre-dates incremental units";
         Map<String, String> in = p.inputs();
-        // release/options change → full (they affect every class).
-        if (!String.valueOf(request.release()).equals(in.getOrDefault("release", null))) return false;
-        if (!String.join(",", request.extraOptions()).equals(in.getOrDefault("options", ""))) return false;
-        // A classpath change (a dependency bump: its CAS path/content changed) has no
-        // fine-grained ABI-diff mechanism, so a source referencing the dependency could go
-        // stale → recompile the whole module. (CAS paths encode content, so an unchanged
-        // classpath hashes identically here; only a real change forces the full rebuild.)
-        if (!classpathUnchanged(request, in)) return false;
-        // A processor-path change has no ABI-diff mechanism (a new processor can
-        // regenerate anything) → full. (CAS paths encode content, so a processor
-        // version bump shows up as a different path here.)
-        if (!processorPathUnchanged(request, in)) return false;
-        // Source removals are handled incrementally (incremental() deletes the
-        // removed classes and recompiles their referencers), so they no longer
-        // force a full build.
-        return true;
+        if (!String.valueOf(request.release()).equals(in.getOrDefault("release", null))) {
+            return "release changed";
+        }
+        if (!String.join(",", request.extraOptions()).equals(in.getOrDefault("options", ""))) {
+            return "javac options changed";
+        }
+        if (!classpathUnchanged(request, in)) return "classpath changed";
+        if (!processorPathUnchanged(request, in)) return "annotation processor path changed";
+        if (flags != null && flags.sourceGenAps() && !flags.isolating()) {
+            return "aggregating annotation processors (full recompile)";
+        }
+        return null;
     }
 
     private static boolean processorPathUnchanged(CompileRequest request, Map<String, String> in) {

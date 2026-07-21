@@ -155,6 +155,71 @@ class JavaIncrementalCompileTest {
         assertThat(p.classExists("a/B.class")).isFalse();
     }
 
+    // ---- JK-1058: predict() dirty-reason strings for explain ----------------
+
+    @Test
+    void predict_first_build_reasons_full_with_no_prior_record(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        JavaIncrementalCompile.Prediction pred = p.predict();
+        assertThat(pred.outcome()).isEqualTo(JavaIncrementalCompile.Outcome.FULL);
+        assertThat(pred.reason()).isEqualTo("no prior compile record");
+        assertThat(pred.sourceCount()).isEqualTo(1);
+    }
+
+    @Test
+    void predict_cache_hit_has_empty_reason(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        p.build();
+        JavaIncrementalCompile.Prediction pred = p.predict();
+        assertThat(pred.outcome()).isEqualTo(JavaIncrementalCompile.Outcome.CACHE_HIT);
+        assertThat(pred.reason()).isEmpty();
+    }
+
+    @Test
+    void predict_source_edit_reasons_incremental_with_count(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        p.write("a/B.java", "package a; public class B { public int g() { return 2; } }");
+        p.build();
+        p.write("a/A.java", "package a; public class A { public int f() { return 99; } }");
+        JavaIncrementalCompile.Prediction pred = p.predict();
+        assertThat(pred.outcome()).isEqualTo(JavaIncrementalCompile.Outcome.INCREMENTAL);
+        assertThat(pred.sourceCount()).isEqualTo(1);
+        assertThat(pred.reason()).isEqualTo("1 source changed");
+    }
+
+    @Test
+    void predict_classpath_change_reasons_full(@TempDir Path dir) throws Exception {
+        JavacFixture.compile(
+                dir.resolve("depv1"),
+                java.util.Map.of("dep.Lib", "package dep; public class Lib { public void f() {} }"));
+        JavacFixture.compile(
+                dir.resolve("depv2"),
+                java.util.Map.of("dep.Lib", "package dep; public class Lib { public void f() {} public void g() {} }"));
+        Path depV1 = dir.resolve("depv1").resolve("out");
+        Path depV2 = dir.resolve("depv2").resolve("out");
+
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public void call(dep.Lib lib) { lib.f(); } }");
+        p.build(List.of(depV1));
+
+        JavaIncrementalCompile.Prediction pred = p.predict(List.of(depV2));
+        assertThat(pred.outcome()).isEqualTo(JavaIncrementalCompile.Outcome.FULL);
+        assertThat(pred.reason()).isEqualTo("classpath changed");
+    }
+
+    @Test
+    void predict_release_change_reasons_full(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
+        p.build();
+        JavaIncrementalCompile.Prediction pred = p.predict(List.of(), 17);
+        assertThat(pred.outcome()).isEqualTo(JavaIncrementalCompile.Outcome.FULL);
+        assertThat(pred.reason()).isEqualTo("release changed");
+    }
+
     // ---- harness ----------------------------------------------------------
 
     private static final class Project {
@@ -203,20 +268,7 @@ class JavaIncrementalCompileTest {
         }
 
         Run build(List<Path> classpath, boolean requireSuccess) throws IOException {
-            List<Path> sources = new ArrayList<>();
-            try (var s = Files.walk(srcRoot)) {
-                for (Path p : (Iterable<Path>) s::iterator) {
-                    if (p.toString().endsWith(".java")) sources.add(p);
-                }
-            }
-            CompileRequest req = CompileRequest.builder()
-                    .sources(sources)
-                    .classpath(classpath)
-                    .outputDir(out)
-                    .release(21)
-                    .extraOptions(List.of())
-                    .javaHome(Path.of(System.getProperty("java.home")))
-                    .build();
+            CompileRequest req = request(classpath, 21);
             Recording rec = new Recording(
                     JavaIncrementalCompile.javacCompiler(new JavacRunner(), req.javaHome(), req.processorPath()));
             JavaIncrementalCompile.Result result = JavaIncrementalCompile.run(
@@ -225,6 +277,36 @@ class JavaIncrementalCompileTest {
                 assertThat(result.success()).as("compile succeeded").isTrue();
             }
             return new Run(result.outcome(), rec.compiled());
+        }
+
+        JavaIncrementalCompile.Prediction predict() throws IOException {
+            return predict(List.of(), 21);
+        }
+
+        JavaIncrementalCompile.Prediction predict(List<Path> classpath) throws IOException {
+            return predict(classpath, 21);
+        }
+
+        JavaIncrementalCompile.Prediction predict(List<Path> classpath, int release) throws IOException {
+            return JavaIncrementalCompile.predict(
+                    "compile-main", request(classpath, release), "jk-test", actionCache, stateDir);
+        }
+
+        private CompileRequest request(List<Path> classpath, int release) throws IOException {
+            List<Path> sources = new ArrayList<>();
+            try (var s = Files.walk(srcRoot)) {
+                for (Path p : (Iterable<Path>) s::iterator) {
+                    if (p.toString().endsWith(".java")) sources.add(p);
+                }
+            }
+            return CompileRequest.builder()
+                    .sources(sources)
+                    .classpath(classpath)
+                    .outputDir(out)
+                    .release(release)
+                    .extraOptions(List.of())
+                    .javaHome(Path.of(System.getProperty("java.home")))
+                    .build();
         }
     }
 

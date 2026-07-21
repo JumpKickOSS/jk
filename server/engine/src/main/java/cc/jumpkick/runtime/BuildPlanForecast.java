@@ -359,19 +359,23 @@ public final class BuildPlanForecast {
                 depDirty
                         ? new BuildPlan.Step(name, BuildPlan.Status.RUN, "recompile · dependency changed", null)
                         : new BuildPlan.Step(name, BuildPlan.Status.CACHED, "", key8(pred.actionKey()));
-            case INCREMENTAL ->
-                new BuildPlan.Step(
-                        name,
-                        BuildPlan.Status.PARTIAL,
-                        "compile · " + count(pred.sourceCount(), "source") + " changed",
-                        null);
-            case FULL ->
-                new BuildPlan.Step(
+            case INCREMENTAL -> {
+                String detail = pred.reason() != null && !pred.reason().isBlank()
+                        ? pred.reason()
+                        : count(pred.sourceCount(), "source") + " changed";
+                yield new BuildPlan.Step(name, BuildPlan.Status.PARTIAL, "compile · " + detail, null);
+            }
+            case FULL -> {
+                // JK-1058: surface the concrete gate (classpath, options, first compile, …).
+                String why = pred.reason() != null && !pred.reason().isBlank()
+                        ? pred.reason()
+                        : "sources / options / classpath";
+                yield new BuildPlan.Step(
                         name,
                         BuildPlan.Status.FULL,
-                        "full compile · " + count(pred.sourceCount(), "source")
-                                + " (sources / options / classpath)",
+                        "full compile · " + count(pred.sourceCount(), "source") + " · " + why,
                         null);
+            }
         };
     }
 
