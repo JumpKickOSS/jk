@@ -21,10 +21,16 @@ After `jk build` / `jk test`, open `target/jk-chrome-profile.json` in Perfetto o
 Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremental-zinc-decision.md)
 (JK-1046 — stay on ABI; Zinc deferred).
 
-## Warm pool go/no-go (ticket-1030)
+## Warm pool go/no-go (ticket-1030 / JK-1049)
 
-**Decision: DEFER** — see [warm-pool-bench.md](warm-pool-bench.md). Do not implement a resident
-compiler pool until a worktree prototype beats **AOT-on** forks on wall time *and* RSS.
+**Decision: DEFER** (reaffirmed 2026-07-21) — see [warm-pool-bench.md](warm-pool-bench.md).  
+AOT-on vs AOT-off on dogfood rebuilds is **~noise** (~612 vs ~621 ms median on spring-boot-hello
+`--rebuild`). Do not implement a resident compiler pool until a worktree prototype beats
+**AOT-on** forks on wall time *and* RSS.
+
+```bash
+./scripts/aot-vs-fork-bench.sh /path/to/project   # includes --rebuild arms
+```
 
 ## Engine heap monorepo (JK-1075)
 
