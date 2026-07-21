@@ -557,8 +557,11 @@ jk auth login                  # GitHub / GitLab / Gitea / Bitbucket
 # repositories in jk.toml or ~/.jk/config.toml — credentials via env / keychain / settings.xml
 ```
 
-Maven Central is default. Corporate mirrors, forge package registries, S3/MinIO, and GCS
-are supported. Prefer `auth = "env:TOKEN"` over secrets in TOML.
+Maven Central and Google Maven are the default remotes (Central first, then Google) so
+AndroidX / R8 / apksig resolve without a per-project `[repositories]` table. Local lookup
+still prefers CAS, per-repo mirrors under the cache, and `~/.m2` before the network. Corporate
+mirrors, forge package registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"`
+over secrets in TOML.
 
 ## Wrapper
 

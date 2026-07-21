@@ -21,10 +21,18 @@ import java.util.Map;
 
 /**
  * Builds a {@link RepoGroup} from project/global repositories (project wins on name clash),
- * optional test {@code --repo-url} override, else Maven Central. Shares one {@link Http} and
- * {@link Cas} across the resulting repos.
+ * optional test {@code --repo-url} override, else the public baseline pair Maven Central then
+ * Google Maven. Shares one {@link Http} and {@link Cas} across the resulting repos.
+ *
+ * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
+ * remotes in declaration order. Built-in defaults are Central first, Google second so R8 /
+ * AndroidX coords resolve without a per-project {@code [repositories]} table.
  */
 public final class RepoGroupBuilder {
+
+    /** Public baseline when neither project nor global config declares repositories. */
+    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS =
+            List.of(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
 
     private RepoGroupBuilder() {}
 
@@ -36,7 +44,7 @@ public final class RepoGroupBuilder {
             // Tests pin one URL; project-declared repos are ignored.
             repos.add(new MavenRepo("central", overrideUrl, http, cas, RepoCredential.ANONYMOUS, mirrorToM2));
         } else {
-            // Merge: project repos > global repos > built-in Maven Central.
+            // Merge: project repos > global repos > built-in public baseline.
             // Deduplicate by name: first declaration wins (project beats global,
             // global beats built-in).
             List<RepositorySpec> projectRepos = project.repositories();
@@ -47,22 +55,11 @@ public final class RepoGroupBuilder {
             for (RepositorySpec s : projectRepos) byName.put(s.name(), s);
             for (RepositorySpec s : globalRepos) byName.putIfAbsent(s.name(), s);
 
-            List<RepositorySpec> effective;
-            if (byName.isEmpty()) {
-                // Neither project nor global declared any repos → use built-in.
-                effective = List.of(RepositorySpec.MAVEN_CENTRAL);
-            } else {
-                effective = new ArrayList<>(byName.values());
-                // If no repo named "central" was declared, append Maven Central as
-                // the final fallback so artifact resolution has a public baseline.
-                if (!byName.containsKey(RepositorySpec.MAVEN_CENTRAL.name())) {
-                    effective.add(RepositorySpec.MAVEN_CENTRAL);
-                }
-            }
+            List<RepositorySpec> effective = effectiveRepos(byName);
 
             // Resolve credentials per declared repo (env / store / settings.xml /
             // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
-            // transparent for Maven Central and other open mirrors.
+            // transparent for Maven Central, Google Maven, and other open mirrors.
             RepoCredentialResolver creds = new RepoCredentialResolver();
             for (RepositorySpec spec : effective) {
                 RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
@@ -74,5 +71,22 @@ public final class RepoGroupBuilder {
             }
         }
         return new RepoGroup(repos);
+    }
+
+    /**
+     * Project/global specs first (insertion order); append each missing built-in default so a
+     * corporate-only list still has a public baseline (Central, then Google).
+     */
+    static List<RepositorySpec> effectiveRepos(Map<String, RepositorySpec> byName) {
+        if (byName.isEmpty()) {
+            return DEFAULT_REMOTE_REPOS;
+        }
+        List<RepositorySpec> effective = new ArrayList<>(byName.values());
+        for (RepositorySpec builtin : DEFAULT_REMOTE_REPOS) {
+            if (!byName.containsKey(builtin.name())) {
+                effective.add(builtin);
+            }
+        }
+        return effective;
     }
 }
