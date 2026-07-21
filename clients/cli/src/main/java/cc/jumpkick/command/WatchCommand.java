@@ -46,8 +46,7 @@ public final class WatchCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new ArrayList<>(List.of(
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide(),
+                cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install directory.", "--jdks-dir")
                         .hide(),
                 Opt.value(

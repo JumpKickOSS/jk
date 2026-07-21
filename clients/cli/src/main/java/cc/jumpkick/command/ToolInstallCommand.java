@@ -51,7 +51,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),

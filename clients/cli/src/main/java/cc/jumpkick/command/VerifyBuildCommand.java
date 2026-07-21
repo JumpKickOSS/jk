@@ -59,11 +59,7 @@ public final class VerifyBuildCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value(
-                        "<dir>",
-                        "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
-                        "--cache-dir")
-                .hide());
+        return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
     private Path cacheDir;

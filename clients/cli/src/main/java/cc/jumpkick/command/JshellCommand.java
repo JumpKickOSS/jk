@@ -50,7 +50,7 @@ public final class JshellCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir").hide(),
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir").hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide(),
                 Opt.flag("Skip tests during the preparatory build.", "--skip-tests"));
     }

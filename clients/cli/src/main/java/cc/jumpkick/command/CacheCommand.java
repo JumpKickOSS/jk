@@ -127,8 +127,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                    .hide());
+            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
         @Override
@@ -152,8 +151,7 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public List<Opt> options() {
-            return List.of(Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                    .hide());
+            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
         private static final String[] HEADERS = {"Metric", "File Count", "Storage Size"};
@@ -358,8 +356,7 @@ public final class CacheCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     Opt.value("<N>", "Cap the number of coordinates displayed (default: no cap).", "--limit"),
-                    Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                            .hide());
+                    cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
         @Override
@@ -465,8 +462,7 @@ public final class CacheCommand extends GroupCommand {
             return List.of(
                     Opt.flag("Print what would be invalidated; touch nothing.", "--dry-run"),
                     Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
-                    Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                            .hide());
+                    cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
         @Override
@@ -580,8 +576,7 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                            .hide(),
+                    cc.jumpkick.cli.CommonOpts.cacheDir(),
                     Opt.value(
                             "<days>",
                             "Prune action-cache entries with mtime older than N days. Default: 30.",
@@ -697,8 +692,7 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                            .hide(),
+                    cc.jumpkick.cli.CommonOpts.cacheDir(),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                     Opt.flag("Skip the confirmation prompt.", "-y", "--yes"));
         }

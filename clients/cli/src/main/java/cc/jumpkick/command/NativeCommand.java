@@ -48,7 +48,7 @@ public final class NativeCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<class>", "Main class. Default: jk.toml image.main or project.main.", "--main"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),

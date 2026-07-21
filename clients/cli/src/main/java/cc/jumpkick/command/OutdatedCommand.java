@@ -55,11 +55,7 @@ public final class OutdatedCommand implements CliCommand {
                 Opt.flag("Hide dependencies already on the newest compatible version.", "--exclude-up-to-date"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
-                Opt.value(
-                                "<dir>",
-                                "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
-                                "--cache-dir")
-                        .hide());
+                cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
     @Override

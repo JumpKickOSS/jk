@@ -46,8 +46,7 @@ public final class CleanCommand implements CliCommand {
         return List.of(
                 Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
                 Opt.flag("GC the shared cache: purge blobs idle 90+ days.", "--cache"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide());
+                cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
     @Override

@@ -61,11 +61,7 @@ public final class ExplainCommand implements CliCommand {
                 Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
-                Opt.value(
-                                "<dir>",
-                                "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
-                                "--cache-dir")
-                        .hide(),
+                cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value(
                         "<git-ref>",
                         "Forecast only modules changed since this git ref.",

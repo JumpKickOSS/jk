@@ -65,7 +65,7 @@ public final class TasksCommand implements CliCommand {
                         "<git-ref>",
                         "Intersect selection with modules changed since this git ref.",
                         "--affected-since"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir").hide());
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir").hide());
     }
 
     @Override

@@ -43,7 +43,7 @@ public final class ImageCommand implements CliCommand {
                 Opt.value("<path>", "Write an OCI tarball instead of pushing.", "--tarball")
                         .withFallback(""),
                 Opt.value("<exe>", "Docker/Podman executable (default: auto-detect).", "--docker-executable"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),

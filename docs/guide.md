@@ -15,6 +15,22 @@ Developer builds from this repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 State and cache live under `~/.jk/` (`JK_HOME` relocates the whole tree).
 
+| Env / flag | Effect |
+|------------|--------|
+| `JK_HOME` | Root of jk’s on-disk tree (default `~/.jk`): cache, state, engine socket, bin, lib, jdks |
+| `JK_CACHE_DIR` | Download / action cache only (CAS: `repos/`, `sha256/`, `metadata/`). Default `$JK_HOME/cache` |
+| `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; **passed to the resident engine** on the wire |
+
+Cold resolve tests without wiping your real cache:
+
+```bash
+COLD=$(mktemp -d /tmp/jk-cold-XXXX)
+jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
+# inspect: ls "$COLD/repos" "$COLD/sha256"
+```
+
+The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
+
 ## Projects and `jk.toml`
 
 ```bash

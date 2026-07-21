@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.util.AtomicWrites;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.CommonOpts;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.engine.EngineClient;
@@ -66,12 +67,8 @@ public final class LockCommand implements CliCommand {
                         .splitOn(","),
                 Opt.flag("Don't activate the project's default features.", "--no-default-features"),
                 Opt.flag("Pin sources JARs for all Maven deps too.", "--sources"),
+                CommonOpts.cacheDir(),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
-                        .hide(),
-                Opt.value(
-                                "<dir>",
-                                "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
-                                "--cache-dir")
                         .hide(),
                 Opt.value("<url>", "Override the library registry URL (used by tests).", "--library-registry-url")
                         .hide(),

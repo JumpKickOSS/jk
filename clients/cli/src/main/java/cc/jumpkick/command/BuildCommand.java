@@ -55,8 +55,7 @@ public final class BuildCommand implements CliCommand {
                         "Test-runner JVMs to fork per module (within -j). Default 1.",
                         "-w",
                         "--workers"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide(),
+                cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
                 Opt.flag("Skip compiling and running tests.", "--skip-tests"),

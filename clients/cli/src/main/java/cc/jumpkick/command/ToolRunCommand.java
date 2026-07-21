@@ -53,7 +53,7 @@ public final class ToolRunCommand implements CliCommand {
                 Opt.value("<class>", "Override the Main-Class to exec (coordinate targets only).", "--main"),
                 Opt.value("<coord>", "Add an extra dependency to the tool's classpath (repeatable).", "--with")
                         .repeat(),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),

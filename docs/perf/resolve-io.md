@@ -1,5 +1,26 @@
 # Resolve / lock I/O (JK-1088)
 
+## Measuring cold lock without wiping `~/.jk/cache`
+
+Use an isolated CAS (works with the resident engine):
+
+```bash
+COLD=$(mktemp -d /tmp/jk-cold-XXXX)
+time jk lock --cache-dir "$COLD"    # or: JK_CACHE_DIR="$COLD" jk lock
+```
+
+See [guide.md](../guide.md) (`JK_HOME` / `JK_CACHE_DIR` / `--cache-dir`).
+
+### Dogfood timings (macOS laptop, 2026-07-21, post lazy-universe + parallel materialize)
+
+| Scenario | Fixture | Wall |
+|----------|---------|------|
+| Cold CAS (`--cache-dir` empty temp) | `spring-boot-web` (90 deps) | **~52 s** |
+| Warm local CAS (`~/.jk/cache`) | same | **~1 s** |
+| Metadata cache wiped, POMs/jars warm | same | **~0.5–1 s** |
+
+Pre-1088 dogfood (same laptop, first-ish cache): multi-minute Spring Boot locks with sparse progress.
+
 ## What costs time on first lock
 
 Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:

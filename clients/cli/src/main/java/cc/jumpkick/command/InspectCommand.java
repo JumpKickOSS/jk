@@ -34,7 +34,7 @@ public final class InspectCommand implements CliCommand {
         return List.of(
                 Opt.value("<sel>", "Module selector.", "--modules"),
                 Opt.value("<git-ref>", "Intersect with modules changed since ref.", "--affected-since"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir").hide());
+                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir").hide());
     }
 
     @Override
