@@ -25,14 +25,13 @@ Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremen
 
 **Decision: DEFER warm pool**; **keep PluginAot for `java …` workers**. See [warm-pool-bench.md](warm-pool-bench.md).
 
-| Process | Temurin AOT-on vs off |
-|---------|------------------------|
-| Bare `javac` | ~noise (496 vs 485 ms full rebuild) |
-| **`java … java-compiler` PluginMain** | **~1.7×** (172 vs 299 ms microbench) |
-| **`java … kotlin-compiler` PluginMain** | modest/noise on hello-kotlin |
+| Process | AOT | Temurin note |
+|---------|-----|----------------|
+| Bare `javac` | **off** (no train/map) | was noise vs AOT |
+| **`java … java-compiler` PluginMain** | on | **~1.7×** (172 vs 299 ms microbench) |
+| **`java … kotlin-compiler` PluginMain** | on | modest on hello-kotlin |
 
 - **Graal host is ineligible** for worker AOT. Engine + workers need HotSpot 25+ (Temurin).
-- ForkedJavac now maps AOT like kotlinc (was missing).
 
 ```bash
 JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project   # bare javac path

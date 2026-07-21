@@ -18,9 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * JEP 514 AOT caches for short-lived plugin JVMs (javac/kotlinc). Background train on first miss;
- * later forks map the cache. Key includes JDK home/vendor/version and GC. Kill switch: {@code
- * -Djk.worker.aot=off} / {@code JK_WORKER_AOT=off}.
+ * JEP 514 AOT caches for short-lived <em>{@code java … PluginMain}</em> workers (kotlin-compiler,
+ * java-compiler ToolProvider host). <strong>Not</strong> used for bare {@code javac} launcher
+ * forks — that path saw no win and no longer trains or maps caches. Background train on first miss;
+ * later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin classpath. Kill
+ * switch: {@code -Djk.worker.aot=off} / {@code JK_WORKER_AOT=off}. HotSpot 25+ only (Graal
+ * ineligible).
  */
 public final class PluginAot {
 
@@ -60,48 +63,6 @@ public final class PluginAot {
         return JkDirs.state().resolve("aot");
     }
 
-    // ---- javac ----------------------------------------------------------------------------
-
-    /**
-     * Flags to append to a {@code javac} command line (after {@link JvmOptions#launcherFlags}):
-     * {@code -J-XX:AOTCache=…} when a cache exists for this JDK + effective GC, else empty — and in
-     * the empty case, when the JDK qualifies (HotSpot 25+), a background trainer is kicked off so
-     * the NEXT compile maps a cache. Never blocks, never throws.
-     */
-    public static List<String> javacFlags(Path javaHome) {
-        if (!enabled() || javaHome == null) return List.of();
-        try {
-            List<String> workerFlags = JvmOptions.launcherFlags(1);
-            JdkId id = jdkId(javaHome);
-            if (id == null) return List.of();
-            Path cache = dir().resolve("javac-" + key(id, effectiveGc(workerFlags), "") + ".aot");
-            if (Files.exists(cache)) {
-                touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
-                return List.of("-J-XX:AOTCache=" + cache, "-J-Xlog:aot=off");
-            }
-            if (eligible(id) && !Files.exists(noaotMarker(cache))) {
-                trainAsync("javac (" + id.vendor() + " " + id.version() + ")", cache, (aotOutput, scratch) -> {
-                    Path corpus = writeJavacCorpus(scratch);
-                    Path javac = javaHome.resolve("bin")
-                            .resolve(cc.jumpkick.jdk.HostPlatform.isWindows() ? "javac.exe" : "javac");
-                    List<String> cmd = new ArrayList<>();
-                    cmd.add(javac.toString());
-                    cmd.addAll(workerFlags); // train under the flags real compiles run with
-                    cmd.add("-J-XX:AOTCacheOutput=" + aotOutput);
-                    cmd.add("-d");
-                    cmd.add(scratch.resolve("out").toString());
-                    try (var sources = Files.list(corpus)) {
-                        sources.forEach(p -> cmd.add(p.toString()));
-                    }
-                    return cmd;
-                });
-            }
-        } catch (RuntimeException e) {
-            // AOT is an accelerator, never a dependency — any surprise here must not fail a compile.
-        }
-        return List.of();
-    }
-
     // ---- plugin workers (java -cp … PluginMain) -------------------------------------------
 
     /**
@@ -131,7 +92,7 @@ public final class PluginAot {
                 trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
             }
         } catch (RuntimeException e) {
-            // Same contract as javacFlags: never let the accelerator fail the build.
+            // AOT is an accelerator, never a dependency — never fail the build.
         }
         return List.of();
     }
@@ -146,8 +107,8 @@ public final class PluginAot {
 
     /**
      * JVM flags for the {@code jk-java-compiler} plugin spawn ({@code java -cp worker PluginMain}).
-     * This is the path that hosts ToolProvider/javac <em>inside</em> a short-lived JVM — distinct
-     * from bare {@link #javacFlags} on the {@code javac} launcher. Tool tag {@code java-compiler}.
+     * Hosts ToolProvider/javac <em>inside</em> a short-lived JVM (not the bare {@code javac}
+     * launcher). Tool tag {@code java-compiler}.
      */
     public static List<String> javaCompilerFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
         return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, trainer);
@@ -308,7 +269,7 @@ public final class PluginAot {
      */
     private static void sweepTool(Path cache) {
         String tool = cache.getFileName().toString();
-        tool = tool.substring(0, tool.indexOf('-') + 1); // "javac-" / "kotlinc-"
+        tool = tool.substring(0, tool.indexOf('-') + 1); // "kotlinc-" / "java-compiler-"
         long now = System.currentTimeMillis();
         List<Path> primaries = new ArrayList<>();
         List<Path> markers = new ArrayList<>();
@@ -366,65 +327,6 @@ public final class PluginAot {
         } catch (IOException ignored) {
             // best-effort; worst case the next compile retries training
         }
-    }
-
-    // ---- javac training corpus --------------------------------------------------------------
-
-    /**
-     * A synthetic-but-representative corpus: sealed hierarchies, records, pattern switches,
-     * generics, lambdas, and stream pipelines exercise javac's attribution/flow/lowering hot paths.
-     * Measured to generalize — the profile recorded here accelerated compiles of unrelated sources
-     * by the same factor as in-corpus files.
-     */
-    private static Path writeJavacCorpus(Path scratch) throws IOException {
-        Path dir = Files.createDirectories(scratch.resolve("corpus"));
-        for (int i = 0; i < 24; i++) {
-            Files.writeString(dir.resolve("C" + i + ".java"), """
-                    package demo;
-                    import java.util.*;
-                    import java.util.function.*;
-                    import java.util.stream.*;
-
-                    public class C%1$d {
-                        sealed interface Shape%1$d permits Circle%1$d, Square%1$d {}
-                        record Circle%1$d(double r) implements Shape%1$d {}
-                        record Square%1$d(double s) implements Shape%1$d {}
-
-                        static <T extends Comparable<T>> Optional<T> maxOf(List<T> xs) {
-                            return xs.stream().max(Comparator.naturalOrder());
-                        }
-
-                        static double area(Shape%1$d s) {
-                            return switch (s) {
-                                case Circle%1$d c -> Math.PI * c.r() * c.r();
-                                case Square%1$d q -> q.s() * q.s();
-                            };
-                        }
-
-                        public static Map<String, List<Integer>> group(Collection<Integer> in) {
-                            return in.stream()
-                                    .map(x -> x * %2$d)
-                                    .filter(x -> x %% 3 != 0)
-                                    .collect(Collectors.groupingBy(
-                                            x -> x %% 2 == 0 ? "even" : "odd", Collectors.toList()));
-                        }
-
-                        @FunctionalInterface
-                        interface Tri<A, B, C_, R> { R apply(A a, B b, C_ c); }
-
-                        static final Tri<Integer, Integer, Integer, Integer> SUM = (a, b, c) -> a + b + c;
-
-                        public static void main(String[] args) {
-                            var shapes = List.<Shape%1$d>of(new Circle%1$d(2), new Square%1$d(3));
-                            shapes.forEach(s -> System.out.println(area(s)));
-                            System.out.println(group(List.of(1, 2, 3, 4, 5)));
-                            System.out.println(maxOf(new ArrayList<>(List.of(1, %1$d))).orElse(0)
-                                    + SUM.apply(1, 2, 3));
-                        }
-                    }
-                    """.formatted(i, i + 1));
-        }
-        return dir;
     }
 
     // ---- small helpers ----------------------------------------------------------------------

@@ -27,37 +27,30 @@ So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was 
 
 | Arm | Meaning | On `main`? |
 |-----|---------|------------|
-| **A — Cold fork + AOT map** | Each compile starts a new `javac` JVM; maps `~/.jk/state/aot/javac-*.aot` when trained | yes (production) |
-| **B — Cold fork, AOT off** | Same fork model; `JK_WORKER_AOT=off` — pure cold start every time | yes (control) |
+| **A — Cold `java` worker + AOT map** | PluginMain forks map `kotlinc-*.aot` / `java-compiler-*.aot` when trained | yes (production) |
+| **B — Cold `java` worker, AOT off** | Same forks; `JK_WORKER_AOT=off` | yes (control) |
+| **Bare `javac`** | No AOT (by design) | yes |
 | **C — Warm / resident pool** | Mill-style long-lived compiler JVM(s) already JIT-warm | **no** — not prototyped |
 
-**Warm pool (C) must beat A (Temurin + AOT), not only B.**
-
-There is no “warm process” arm without a prototype. **A** is “cold process start, AOT-accelerated”; **B** is “cold process start, no AOT.”
+**Warm pool (C) must beat A (Temurin plugin workers + AOT), not only B.**
 
 ## Process shapes (what AOT can attach to)
 
 | Path | Process | AOT today | Typical when |
 |------|---------|-----------|----------------|
-| Bare **`javac`** | `javac -J-XX:AOTCache=…` | yes (`PluginAot.javacFlags`) | Default Java compile (no source-gen AP) |
-| **`java … PluginMain`** java-compiler | ToolProvider/javac *inside* worker | yes (`javaCompilerFlags`, wired 2026-07-21) | After project proves source-generating APs |
+| Bare **`javac`** | `javac …` (no AOT flags) | **none** — not trained or mapped | Default Java compile (no source-gen AP) |
+| **`java … PluginMain`** java-compiler | ToolProvider/javac *inside* worker | yes (`javaCompilerFlags`) | After project proves source-generating APs |
 | **`java … PluginMain`** kotlin-compiler | Kotlin Build Tools API | yes (`kotlincFlags`) | All Kotlin compiles |
 | Engine itself | `java -cp jk-engine.jar` | separate engine `.aot` | Always |
 
-**Hypothesis (confirmed for java-compiler worker):** AOT helps **`java …` worker JVMs** more than the thin **`javac`** launcher. Bare-javac AOT is noise; plugin-worker AOT can cut cold start.
+**Policy:** AOT only for **`java … PluginMain`** workers (kotlin-compiler + java-compiler). Bare `javac` never trains or maps `.aot` (measured as noise on Temurin).
 
 ## 2026-07-21 — Temurin 25.0.3 results
 
-### A. Bare `javac` (spring-boot-hello full rebuild)
+### A. Bare `javac` (historical — AOT removed)
 
-CLI median n=7, `--rebuild --jdk temurin-25`. Process: `…/temurin…/bin/javac -J-XX:AOTCache=…`.
-
-| Arm | Median |
-|-----|--------:|
-| AOT-on | **496 ms** |
-| AOT-off | **485 ms** |
-
-**No clear win** (noise / slightly against AOT).
+Temurin spring-boot-hello `--rebuild` had AOT-on ~496 vs AOT-off ~485 ms (**noise**). Bare-`javac`
+AOT training/mapping was **removed**; default Java compiles no longer touch `javac-*.aot`.
 
 ### B. `java … jk-java-compiler` PluginMain (microbench)
 

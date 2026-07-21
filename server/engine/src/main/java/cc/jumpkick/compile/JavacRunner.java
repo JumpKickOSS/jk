@@ -52,9 +52,8 @@ public final class JavacRunner {
                 List<String> command = new ArrayList<>();
                 command.add(javac.toString());
                 command.addAll(JvmOptions.launcherFlags(1));
-                // AOT cache for javac's own JVM (PluginAot): mapped when one exists for this
-                // JDK + GC, else a background trainer is kicked off so the NEXT compile maps it.
-                command.addAll(cc.jumpkick.engine.plugin.PluginAot.javacFlags(javaHome));
+                // No PluginAot on bare `javac` — AOT is for `java … PluginMain` workers only
+                // (jk-java-compiler ToolProvider host and kotlin-compiler). See PluginAot.
                 command.add("@" + argfile);
                 ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
                 Process process = pb.start();

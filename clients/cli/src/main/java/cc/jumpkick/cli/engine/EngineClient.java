@@ -1686,7 +1686,7 @@ public final class EngineClient {
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: VersionStore.prune retires a version's caches with the version, and
         // the sweep below stays within one version so side-by-side installs never thrash
-        // each other's caches. Worker caches (javac-/kotlinc-) have no version dimension.
+        // each other's caches. Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
         try {
             Files.createDirectories(aotDir);
