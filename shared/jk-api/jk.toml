@@ -1,0 +1,17 @@
+[project]
+group    = "cc.jumpkick"
+name     = "jk-model"
+version  = "0.10.0-SNAPSHOT"
+description = "jk domain model: Pipeline/Step/PipelineListener, Dependency/Coordinate; depends on plugin-sdk (PluginConfig/Phase)."
+jdk      = 25
+java     = 25
+
+# Contract leaf pair: plugin-sdk (jk-plugin-api) holds PluginConfig/Phase at the JDK-17 floor;
+# model layers the rest of the public API on top (matches :jk-api → :plugin-sdk in Gradle).
+[dependencies]
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

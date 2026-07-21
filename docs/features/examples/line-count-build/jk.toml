@@ -1,0 +1,13 @@
+[project]
+group   = "demo"
+name    = "line-count-build"
+version = "0.0.1"
+jdk     = 25
+
+[application]
+main = "demo.App"
+
+# Optional — omit to use the .jk-build/ convention directory when present.
+# [build]
+# logic = "tools/codegen"          # only if not using .jk-build/
+# logic-main = "demo.LineCountBuild"

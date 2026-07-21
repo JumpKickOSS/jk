@@ -1,0 +1,34 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-engine"
+version     = "0.10.0-SNAPSHOT"
+description = "jk build engine: BuildPipelines, plugin dispatch, action cache, compile/test machinery."
+jdk         = 25
+java        = 25
+
+[application]
+main = "cc.jumpkick.engine.EngineMain"
+
+[dependencies]
+jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.0-SNAPSHOT" }
+jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.0-SNAPSHOT" }
+jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.0-SNAPSHOT" }
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
+jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.0-SNAPSHOT" }
+jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.0-SNAPSHOT" }
+asm           = { group = "org.ow2.asm", name = "asm",            version = "9.10.1" }
+asm-tree      = { group = "org.ow2.asm", name = "asm-tree",       version = "9.10.1" }
+asm-commons   = { group = "org.ow2.asm", name = "asm-commons",    version = "9.10.1" }
+jgit          = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version = "7.6.0.202603022253-r" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+
+# Self-host: engine's tests fork jk's own worker jars via -Djk.<worker>.plugin.jar.
+#  - test-runner / java-compiler: workspace modules (phase 2) — sibling shadow jars preferred.
+#  - auditor: still Gradle-only fat worker; falls back to installLocal / CAS
+#    (`./gradlew :auditor:installLocal`). Git work runs in-process (CLI or JGit).
+[build]
+test-plugin-jars = ["test-runner", "java-compiler", "auditor"]

@@ -1,0 +1,434 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: Apache-2.0 — the jk engine dashboard shell (docs/webclient.md) -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JumpKick - JVM Buildtool</title>
+  <link rel="icon" href="/jk-logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <!-- Iconography is inline SVG via the <jk-icon> component (app.js) — no icon font, painted with
+       currentColor so state/utility colours drive it. A few typographic separators (·, ›) and the
+       inline diagnostic ✘ stay as text (they sit in flowing mono runs). The only image asset is the
+       SVG brand mark. -->
+  <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
+       builds. Update the integrity hash whenever the pin moves (docs/webclient.md). -->
+  <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
+          integrity="sha384-yrrm1s9PCS0I4n39ldjMqQlTorYls89GAS3wXVJooje/BSWnC2vTgky2LIyzRLEo"
+          crossorigin="anonymous" defer></script>
+  <!-- Apache ECharts powers the Projects tab's per-project build-history spark bars + trend line.
+       Version-pinned + SRI, same discipline as Vue above; update the hash whenever the pin moves. -->
+  <script src="https://unpkg.com/echarts@5.5.1/dist/echarts.min.js"
+          integrity="sha384-Mx5lkUEQPM1pOJCwFtUICyX45KNojXbkWdYhkKUKsbv391mavbfoAmONbzkgYPzR"
+          crossorigin="anonymous" defer></script>
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <div id="app" v-cloak>
+    <header>
+      <img class="logo" src="/jk-logo.svg" alt="jk">
+      <div class="brand">
+        <div class="brand-top">
+          <span class="brand-name">JumpKick</span>
+          <span v-if="versionPill()" class="ver-pill">{{ versionPill() }}</span>
+        </div>
+        <div class="brand-sub">Build Engine</div>
+      </div>
+
+      <span class="hdiv"></span>
+
+      <div class="sysbox" title="Engine host resources">
+        <div class="sysrow"><span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span></div>
+        <div class="sysrow"><span class="sk">RAM</span><span class="sv">{{ status ? gib(status.totalMemoryBytes) : '—' }}</span></div>
+      </div>
+
+      <span class="spacer"></span>
+
+      <nav>
+        <button :class="{ active: view === 'activity' }" @click="setView('activity')">Activity</button>
+        <button :class="{ active: view === 'projects' }" @click="setView('projects')">Projects</button>
+        <button :class="{ active: view === 'status' }" @click="setView('status')">Status</button>
+      </nav>
+
+      <span class="hdiv"></span>
+
+      <div class="hdr-actions">
+        <button class="icon-btn" @click="help = true" aria-label="Help" title="About &amp; help"><jk-icon name="help"></jk-icon></button>
+        <button class="icon-btn" @click="setView('status')" aria-label="Settings" title="Engine settings &amp; vitals"><jk-icon name="settings"></jk-icon></button>
+      </div>
+    </header>
+
+    <main v-if="view === 'activity'">
+      <div class="feed-head">
+        <h2>Live activity</h2>
+        <span class="retention">Last 50 requests</span>
+        <span class="spacer"></span>
+        <form class="trigger" @submit.prevent="triggerBuild()">
+          <input v-model="buildDir" placeholder="/absolute/path/to/workspace" spellcheck="false">
+          <button type="button" class="browse" @click="openBrowser()" aria-label="Browse for a workspace" title="Browse for a workspace"><jk-icon name="folder-open"></jk-icon></button>
+          <button type="submit"><jk-icon name="bolt"></jk-icon>Build</button>
+        </form>
+      </div>
+      <p v-if="buildError" class="error">{{ buildError }}</p>
+
+      <p v-if="cards.length === 0" class="empty">
+        No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
+      </p>
+
+      <article v-for="(card, i) in cards" :key="card.id" class="card rise-in" :class="outcome(card)" :style="{ animationDelay: riseDelay(i) }">
+        <div class="card-head">
+          <span v-if="outcome(card) === 'running'" class="spin"></span>
+          <span v-else class="badge" :class="outcome(card)"><jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}</span>
+          <span class="coord">
+            <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
+            <span class="cn">{{ coordParts(card).name }}</span>
+          </span>
+          <span class="kind">{{ card.kind }}</span>
+          <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
+          <span class="spacer"></span>
+          <button v-if="outcome(card) !== 'running' && card.kind === 'build'" class="rebuild icon"
+                  @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
+          <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
+                  @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
+          <span v-if="outcome(card) === 'running' && eta(card)" class="eta" title="estimated time remaining">{{ eta(card) }}</span>
+          <span class="millis">{{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}</span>
+          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
+        </div>
+
+        <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
+          <span class="cardbar-fill" :style="{ width: progress(card) + '%' }"></span>
+        </div>
+
+        <!-- Compact (single-module): the step chain rolls up under a "success details" accordion
+             that is open while the build runs and collapses once it finishes — same treatment as
+             workspace modules. A failed build keeps its chain and failure output visible inline. -->
+        <template v-if="compact(card)">
+          <details v-if="okModules(card).length && singleChain(card).length" class="module-group" :open="outcome(card) === 'running'">
+            <summary>success details</summary>
+            <phase-chain :steps="singleChain(card)"></phase-chain>
+          </details>
+          <template v-if="failedModules(card).length">
+            <phase-chain v-if="singleChain(card).length" :steps="singleChain(card)"></phase-chain>
+            <div v-if="singleModule(card) && singleModule(card).diagnostics.length" class="diag">
+              <div class="console">
+                <div v-for="(d, i) in singleModule(card).diagnostics" :key="i" class="diag-line">
+                  <!-- Separators live INSIDE spans (&nbsp;) — inter-element whitespace is not
+                       preserved reliably through the template pipeline, which squashed segments
+                       together. Shape: ✘ Phase › step › test › ExceptionClass › message -->
+                  <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(singleModule(card), d)"><span class="console-phase">{{ diagPhase(singleModule(card), d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
+        </template>
+
+        <!-- Multi-module workspace: successful modules roll up under an accordion that is open while
+             the build runs and collapses once it finishes; failed modules sit in a peer accordion
+             that stays open, each with its own step chain AND its own failure output nested under
+             it — the error belongs to the module and rolls up with it. -->
+        <template v-if="!compact(card)">
+          <details v-if="okModules(card).length" class="module-group" :open="outcome(card) === 'running'">
+            <summary>success details ({{ okModules(card).length }})</summary>
+            <div v-for="m in okModules(card)" :key="m.dir" class="module">
+              <div class="module-row">
+                <span class="dot" :class="m.state"></span>
+                <span class="mname" :title="m.dir">{{ moduleLabel(m) }}</span>
+                <span class="spacer"></span>
+                <span class="millis">{{ duration(m.millis) }}</span>
+              </div>
+              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+            </div>
+          </details>
+          <details v-if="failedModules(card).length" class="module-group fail" open>
+            <summary>failure details ({{ failedModules(card).length }})</summary>
+            <div v-for="m in failedModules(card)" :key="m.dir" class="module">
+              <div class="module-row">
+                <span class="dot" :class="m.state"></span>
+                <span class="mname" :title="m.dir">{{ moduleLabel(m) }}</span>
+                <span class="spacer"></span>
+                <span class="millis">{{ duration(m.millis) }}</span>
+              </div>
+              <phase-chain v-if="m.steps.length" :steps="m.steps"></phase-chain>
+              <div v-if="m.diagnostics.length" class="diag">
+                <div class="console">
+                  <div v-for="(d, i) in m.diagnostics" :key="i" class="diag-line">
+                    <span class="console-err">✘&nbsp;</span><template v-if="diagPhase(m, d)"><span class="console-phase">{{ diagPhase(m, d) }}</span><span class="console-sep">&nbsp;›&nbsp;</span></template><span class="console-dir">{{ d.step }}</span><template v-if="d.test"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.test }}</span></template><template v-if="d.exceptionClass"><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.exceptionClass }}</span></template><span class="console-sep">&nbsp;›&nbsp;</span><span>{{ d.message }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+        </template>
+
+        <div v-if="outcome(card) === 'running' && card.output.length" class="console">
+          <div v-for="(o, i) in card.output" :key="i">
+            <span class="console-dir">{{ lastSegment(o.dir) }}</span> <span class="console-sep">›</span> {{ o.line }}
+          </div>
+        </div>
+
+      </article>
+      <div v-if="browser" class="modal-bg" @click.self="closeBrowser()">
+        <div class="modal">
+          <div class="modal-head">
+            <span class="lbl">choose a workspace</span>
+            <span class="spacer"></span>
+            <button class="rebuild" @click="closeBrowser()">Close</button>
+          </div>
+          <div class="modal-path">{{ browser.dir }}</div>
+          <div class="modal-list">
+            <div v-if="browser.parent" class="fs-entry up" @click="browseTo(browser.parent)"><span class="fs-arrow"><jk-icon name="arrow-up"></jk-icon></span> ..</div>
+            <div v-for="d in browser.dirs" :key="d" class="fs-entry" @click="browseTo(joinPath(browser.dir, d))">
+              <span class="fs-arrow"><jk-icon name="folder"></jk-icon></span> {{ d }}
+            </div>
+            <div v-if="browser.dirs.length === 0" class="fs-entry none">No subfolders</div>
+            <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
+          </div>
+          <div class="modal-foot">
+            <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
+            <span v-else class="dim small">No jk.toml in this folder</span>
+            <span class="spacer"></span>
+            <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <main v-if="view === 'projects'">
+      <div class="feed-head">
+        <h2>Projects</h2>
+        <span class="retention">Every workspace jk has built on this machine</span>
+      </div>
+      <p v-if="projectsList.length === 0" class="empty">
+        No projects yet — run a <code>jk build</code> and every workspace you build shows up here with its history.
+      </p>
+
+      <!-- One row per project: {orb} {coords} left · {30-build spark bars + trend} centre · {status
+           pill #buildNumber} {reliability} right. State (orb + left border + pill) is the latest
+           build's outcome, upgraded to 'running' when a build is in flight right now. -->
+      <article v-for="(p, i) in projectsList" :key="p.key" class="project rise-in" :class="p.state"
+               @click="openProject(p.dir)" title="Open this project" :style="{ animationDelay: riseDelay(i) }">
+
+        <div class="proj-id">
+          <span class="orb" :class="p.state" :title="p.state"></span>
+          <div class="proj-label">
+            <span class="coord">
+              <template v-if="p.group"><span class="cg">{{ p.group }}</span><span class="csep">:</span></template>
+              <span class="cn">{{ p.name }}</span>
+            </span>
+            <div class="proj-meta">
+              <span class="dir" :title="p.dir">{{ shortDir(p.dir) }}</span>
+              <span class="proj-sep">·</span>
+              <span>{{ p.total }} build{{ p.total === 1 ? '' : 's' }}</span>
+              <template v-if="p.avgMillis"><span class="proj-sep">·</span><span>avg {{ duration(p.avgMillis) }}</span></template>
+              <template v-if="p.lastFinishedAt"><span class="proj-sep">·</span><span>{{ agoMillis(p.lastFinishedAt) }}</span></template>
+            </div>
+          </div>
+        </div>
+
+        <div class="proj-chart">
+          <build-bars :builds="p.recent"></build-bars>
+        </div>
+
+        <div class="proj-stats">
+          <span class="badge" :class="p.state"><jk-icon :name="stateIcon(p.state)"></jk-icon>#{{ p.total }}</span>
+          <span class="reliability" :class="p.reliabilityClass" title="pass rate over the builds shown (cancelled excluded)">
+            {{ p.reliability }}<span class="rel-lbl">reliability</span>
+          </span>
+        </div>
+      </article>
+    </main>
+
+    <main v-if="view === 'project'" class="project-detail">
+      <div class="detail-head">
+        <button class="ghost back" @click="setView('projects')"><jk-icon name="chevron-left"></jk-icon>Projects</button>
+        <span class="coord detail">
+          <template v-if="projectDetail && projectDetail.group"><span class="cg">{{ projectDetail.group }}</span><span class="csep">:</span></template>
+          <span class="cn">{{ projectDetail ? projectDetail.name : '' }}</span>
+        </span>
+        <span class="spacer"></span>
+        <div class="detail-actions">
+          <button class="ghost" title="Coming soon" disabled>Dependencies</button>
+          <button class="ghost" title="Coming soon" disabled>Trends</button>
+          <button v-if="projectDetail" @click="buildProject(projectDetail.dir)" title="Build this project now"><jk-icon name="bolt"></jk-icon>Build</button>
+        </div>
+      </div>
+      <p v-if="projectDetail && projectDetail.description" class="proj-desc">{{ projectDetail.description }}</p>
+      <p v-else-if="projectDetail" class="proj-desc dim small">No description — add one under <code>[project]</code> in jk.toml.</p>
+
+      <template v-if="projectDetail && !projectDetail.empty">
+        <div class="tiles">
+          <div class="tile"><span class="lbl">reliability</span><span class="kpi" :class="projectDetail.reliabilityClass">{{ projectDetail.reliability }}</span></div>
+          <div class="tile" title="Estimated wall-clock saved by the cache vs. a cold-cache build (critical-path estimate over the last 30 builds). ~ marks low baseline coverage."><span class="lbl">cache saved</span><span class="kpi">{{ projectDetail.cacheSaved }}<span class="kpi-sm" :class="{ warn: projectDetail.cacheLowConfidence }" v-if="projectDetail.cacheSavedPct"> {{ projectDetail.cacheSavedPct }}</span></span></div>
+          <div class="tile"><span class="lbl">avg build</span><span class="kpi">{{ duration(projectDetail.avgMillis) }}</span></div>
+          <div class="tile"><span class="lbl">min / max</span><span class="kpi kpi-sm">{{ duration(projectDetail.minMillis) }} / {{ duration(projectDetail.maxMillis) }}</span></div>
+          <div class="tile"><span class="lbl">last built</span><span class="kpi kpi-sm">{{ agoLong(projectDetail.lastFinishedAt) }}</span></div>
+        </div>
+
+        <div class="panels">
+          <div class="panel wide">
+            <div class="panel-head"><span class="lbl">build history</span><span class="spacer"></span><span class="mono dim">{{ projectDetail.total }} builds total</span></div>
+            <table class="stats history">
+              <thead><tr><th>Build</th><th>Trigger</th><th>Commit</th><th>Tests</th><th>Cache</th><th>Duration</th><th>When</th></tr></thead>
+              <tbody>
+                <tr v-for="r in projectDetail.rows" :key="r.id">
+                  <td><span class="badge" :class="r.outcome"><jk-icon :name="stateIcon(r.outcome)"></jk-icon><template v-if="r.buildNumber">#{{ r.buildNumber }}</template></span></td>
+                  <td>{{ triggerLabel(r.trigger) }}</td>
+                  <td class="mono">{{ r.commit || '—' }}</td>
+                  <td><template v-if="r.tests">{{ r.tests.succeeded }} / {{ r.tests.total }}</template><template v-else>—</template></td>
+                  <td :class="{ ok: r.savedPct >= 50 }"><template v-if="r.saved">{{ r.saved }} <span class="dim">({{ r.savedPct }}%)</span></template><template v-else>—</template></td>
+                  <td>{{ duration(r.millis) }}</td>
+                  <td>{{ agoMillis(r.finishedAt) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+      <p v-else-if="projectDetail && projectDetail.empty" class="empty">No build history retained for this project yet.</p>
+    </main>
+
+    <main v-if="view === 'status'">
+      <p v-if="!status" class="empty">No status yet — the engine hasn't answered.</p>
+      <template v-if="status">
+        <div class="tiles">
+          <div class="tile"><span class="lbl">version</span><span class="kpi">{{ status.version }}</span></div>
+          <div class="tile"><span class="lbl">pid</span><span class="kpi">{{ status.pid }}</span></div>
+          <div class="tile"><span class="lbl">uptime</span><span class="kpi">{{ uptime() }}</span></div>
+          <div class="tile"><span class="lbl">connections</span><span class="kpi">{{ status.activeRequests }}</span></div>
+          <div class="tile"><span class="lbl">pipelines</span><span class="kpi" :class="{ ok: status.activePipelines > 0 }">{{ status.activePipelines }}</span></div>
+        </div>
+
+        <div class="panels">
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">heap</span><span class="spacer"></span>
+              <span class="mono dim">{{ mib(status.heapUsedBytes) }} used / {{ mib(status.heapCommittedBytes) }} committed / {{ mib(status.heapMaxBytes) }} max</span></div>
+            <span class="meter tall">
+              <span class="meter-fill committed" :style="{ width: heapCommittedPercent() + '%' }"></span>
+              <span class="meter-fill used" :style="{ width: heapUsedPercent() + '%' }"></span>
+            </span>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">process rss</span><span class="spacer"></span>
+              <span class="mono dim">{{ mib(status.rssBytes) }}</span></div>
+            <div class="dim small">Compiles and tests run in separately-sized worker JVMs</div>
+          </div>
+        </div>
+
+        <!-- Running build stats (docs/metrics.md): the engine's persistent aggregates, folded at
+             every build/test finish. Tiles roll up the machine-wide invocation tiers; the table is
+             the per-step tier (a plugin verb runs as its own step, so this is also the
+             per-worker/per-plugin view). -->
+        <template v-if="metrics && metrics.length">
+          <div class="tiles">
+            <div class="tile"><span class="lbl">builds recorded</span><span class="kpi">{{ metricsTotals().runs }}</span></div>
+            <div class="tile"><span class="lbl">success rate</span><span class="kpi" :class="{ ok: metricsTotals().bad === 0 }">{{ successRate() }}</span></div>
+            <div v-for="r in metricsGlobal()" :key="r.kind" class="tile">
+              <span class="lbl">avg {{ r.kind }}</span><span class="kpi">{{ duration(r.okAvgMillis) }}</span>
+            </div>
+            <div class="tile"><span class="lbl">time building</span><span class="kpi">{{ duration(metricsTotals().totalMillis) }}</span></div>
+          </div>
+          <div class="panels">
+            <div class="panel wide">
+              <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
+              <table class="stats">
+                <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
+                <tbody>
+                  <tr v-for="r in metricsSteps()" :key="r.step">
+                    <td class="mono">{{ r.step }}</td>
+                    <td>{{ r.okCount }}</td>
+                    <td>{{ duration(r.okAvgMillis) }}</td>
+                    <td>{{ duration(r.okMinMillis) }}</td>
+                    <td>{{ duration(r.okMaxMillis) }}</td>
+                    <td>{{ duration(r.okTotalMillis) }}</td>
+                    <td :class="{ err: r.failCount > 0 }">{{ r.failCount > 0 ? r.failCount : '' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
+        <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
+
+        <div class="panels">
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">configuration</span><span class="spacer"></span><span class="mono dim">~/.jk/config.toml</span></div>
+            <dl>
+              <dt>max-concurrent-requests</dt><dd>{{ status.maxConcurrentRequests }}</dd>
+              <dt>web-root</dt><dd class="mono">{{ status.webRoot }}</dd>
+              <dt>url</dt><dd class="mono accent">{{ status.httpUrl }}</dd>
+            </dl>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">cache</span><span class="spacer"></span>
+              <span v-if="cache" class="mono dim">{{ mib(cache.totalBytes) }} of {{ mib(cache.maxBytes) }} · pruned {{ prunedAgo() }}</span></div>
+            <template v-if="cache">
+              <span class="meter">
+                <span class="meter-fill used" :style="{ width: cacheUtilizationPercent() + '%' }"></span>
+              </span>
+              <dl>
+                <dt>CAS blobs</dt><dd>{{ count(cache.casCount) }} · {{ mib(cache.casBytes) }}</dd>
+                <dt>action cache</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
+                <dt>worker JARs</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
+                <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
+                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
+              </dl>
+            </template>
+            <div v-else class="dim small">Cache breakdown loading…</div>
+          </div>
+        </div>
+
+        <div class="panels">
+          <div class="panel wide">
+            <div class="panel-head"><span class="lbl">engine log</span><span class="spacer"></span><span class="mono dim">state/engine/&lt;key&gt;.log</span></div>
+            <pre class="console log-tail">{{ engineLog || '(log empty)' }}</pre>
+          </div>
+        </div>
+      </template>
+    </main>
+
+    <!-- Global status bar: shown on every view. Left = live engine vitals; right = connection. -->
+    <footer class="statusbar">
+      <div class="sb-left">
+        <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
+        <span class="sb-div"></span>
+        <span class="sb-item"><jk-icon name="database"></jk-icon>Cache Used&nbsp;<b>{{ cache ? mib(cache.totalBytes) : '—' }}</b></span>
+        <span class="sb-div"></span>
+        <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
+      </div>
+      <span class="spacer"></span>
+      <div class="conn" :class="connection" :title="connectionLabel()">
+        <span class="live-dot"></span>
+        <span class="live-label">{{ connection === 'live' ? 'Live' : connection === 'connecting' ? 'Connecting' : connection === 'unauthorized' ? 'Unauthorized' : 'Offline' }}</span>
+      </div>
+    </footer>
+
+    <!-- Help / About (header ? button) -->
+    <div v-if="help" class="modal-bg" @click.self="help = false">
+      <div class="modal about">
+        <div class="modal-head">
+          <img class="about-logo" src="/jk-logo.svg" alt="">
+          <div>
+            <div class="about-title">JumpKick Build Engine</div>
+            <div class="about-sub">{{ versionPill() }}</div>
+          </div>
+          <span class="spacer"></span>
+          <button class="icon-btn" @click="help = false" aria-label="Close" title="Close"><jk-icon name="x"></jk-icon></button>
+        </div>
+        <dl class="about-dl">
+          <dt>Engine URL</dt><dd class="mono">{{ status ? status.httpUrl : '—' }}</dd>
+          <dt>PID</dt><dd class="mono">{{ status ? status.pid : '—' }}</dd>
+          <dt>Cores</dt><dd class="mono">{{ status ? status.cores : '—' }}</dd>
+          <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
+          <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
+        </dl>
+        <div class="modal-foot">
+          <span class="dim small">Live build activity streams over SSE. Run <code>jk build</code> in any workspace to see it here.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

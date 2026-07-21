@@ -1,0 +1,44 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<idea-plugin>
+  <id>cc.jumpkick.idea</id>
+  <name>JumpKick</name>
+  <vendor url="https://github.com/jkbuild/jk">JumpKick</vendor>
+  <description><![CDATA[
+    JumpKick for IntelliJ: BSP install + sync/build via the <code>jk</code> CLI (wire-only).
+    Does not put engine jars on the IDE classpath. Prefer JetBrains BSP support for import after
+    <em>JumpKick: Install BSP connection</em>.
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <notificationGroup id="JumpKick" displayType="BALLOON"/>
+  </extensions>
+
+  <actions>
+    <group id="JumpKick.Menu" text="JumpKick" description="JumpKick build tool" popup="true">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+      <action id="JumpKick.BspInstall"
+              class="cc.jumpkick.idea.JkCliAction$BspInstall"
+              text="Install BSP connection"
+              description="Run jk bsp install (writes .bsp/jk.json)"/>
+      <action id="JumpKick.Sync"
+              class="cc.jumpkick.idea.JkCliAction$Sync"
+              text="Sync dependencies"
+              description="Run jk sync"/>
+      <action id="JumpKick.Build"
+              class="cc.jumpkick.idea.JkCliAction$Build"
+              text="Build"
+              description="Run jk build"/>
+      <action id="JumpKick.Test"
+              class="cc.jumpkick.idea.JkCliAction$Test"
+              text="Test"
+              description="Run jk test"/>
+      <action id="JumpKick.Lock"
+              class="cc.jumpkick.idea.JkCliAction$Lock"
+              text="Lock"
+              description="Run jk lock"/>
+    </group>
+  </actions>
+</idea-plugin>

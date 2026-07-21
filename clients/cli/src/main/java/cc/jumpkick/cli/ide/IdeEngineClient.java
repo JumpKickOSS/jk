@@ -1,0 +1,399 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cli.ide;
+
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.engine.EnginePaths;
+import cc.jumpkick.engine.protocol.IdeWireModel;
+import cc.jumpkick.engine.protocol.ProjectInfo;
+import cc.jumpkick.plugin.build.Phase;
+import cc.jumpkick.run.PipelineListener;
+import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.PipelineView;
+import cc.jumpkick.run.Step;
+import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.runtime.ModuleOutcome;
+import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.runtime.WorkspaceRequest;
+import cc.jumpkick.runtime.WorkspaceResult;
+import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Engine-backed session for IDE hosts (IntelliJ / VS Code plugins and agents). Prefer this over
+ * shelling out to the {@code jk} CLI when you need structured progress and project model data.
+ *
+ * <p><b>Integration sequence</b> (see also {@code docs/architecture.md}):
+ *
+ * <ol>
+ *   <li>{@link #open(Path)} — project root containing {@code jk.toml}
+ *   <li>{@link #connect()} — ensure a live, version-matched engine (no-op under test in-process)
+ *   <li>{@link #projectInfo()} — group/name/modules without parsing TOML in the IDE process
+ *   <li>{@link #sync(ProgressListener)} — dependency materialization with progress callbacks
+ *   <li>{@link #ideModel()} — classpath / source roots for generators or in-IDE classpaths
+ *   <li>{@link #build(BuildListener)} — optional full build with per-module/step events
+ * </ol>
+ *
+ * <p>File generation ({@code jk ide}) remains a separate offline/export path; this class does not
+ * write {@code .iml} / {@code .vscode} files. The engine stays out-of-process.
+ */
+public class IdeEngineClient {
+
+    private final Path projectDir;
+    private final Path cacheDir;
+    private final Path jdksDir;
+
+    /** Package-visible for BSP/IDE tests that stub engine calls (JK-1063). */
+    IdeEngineClient(Path projectDir, Path cacheDir, Path jdksDir) {
+        this.projectDir = projectDir.toAbsolutePath().normalize();
+        this.cacheDir = cacheDir.toAbsolutePath().normalize();
+        this.jdksDir = jdksDir == null ? null : jdksDir.toAbsolutePath().normalize();
+    }
+
+    /** Open a session on {@code projectDir} using the default jk cache. */
+    public static IdeEngineClient open(Path projectDir) throws IOException {
+        return open(projectDir, JkDirs.cache(), null);
+    }
+
+    /** Open a session with an explicit cache (and optional JDK install root for tests). */
+    public static IdeEngineClient open(Path projectDir, Path cacheDir, Path jdksDir) throws IOException {
+        Objects.requireNonNull(projectDir, "projectDir");
+        Objects.requireNonNull(cacheDir, "cacheDir");
+        if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
+            throw new IOException("no jk.toml in " + projectDir);
+        }
+        return new IdeEngineClient(projectDir, cacheDir, jdksDir);
+    }
+
+    public Path projectDir() {
+        return projectDir;
+    }
+
+    public Path cacheDir() {
+        return cacheDir;
+    }
+
+    /** Ensure a live engine (spawn/replace on version skew). */
+    public EngineClient.Handshake connect() throws IOException {
+        return EngineClient.ensureRunning(EnginePaths.current(), Jk.VERSION);
+    }
+
+    /** Engine status (heap, active requests, …). */
+    public EngineClient.Status status() throws IOException {
+
+        return EngineClient.status(EnginePaths.activeSocket(EnginePaths.current()))
+                .orElseThrow(() -> new IOException("engine not reachable — call connect() first"));
+    }
+
+    /**
+     * Project summary for the open directory (workspace root and module list when applicable).
+     * Prefer this over parsing {@code jk.toml} in the IDE process.
+     */
+    public ProjectInfo projectInfo() throws IOException {
+
+        return EngineClient.projectInfo(EnginePaths.current(), projectDir);
+    }
+
+    /**
+     * IDE-agnostic workspace model (classpath jars, source/classes roots, modules). Used by
+     * generators and by IDE plugins that want classpath truth from the engine.
+     */
+    public IdeWireModel ideModel() throws IOException {
+
+        return EngineClient.ideModel(EnginePaths.current(), projectDir, cacheDir, jdksDir);
+    }
+
+    /**
+     * Run dependency sync against the workspace root (or this project if not in a workspace).
+     * Progress is reported through {@code listener} — no CLI stdout parsing required.
+     */
+    public SyncOutcome sync(ProgressListener listener) throws IOException {
+        ProgressListener progress = listener == null ? ProgressListener.NOOP : listener;
+        Path syncRoot = resolveSyncRoot();
+        long[] fetched = new long[1];
+        long[] upToDate = new long[1];
+        var session = SessionContext.current();
+        List<String> errors = new ArrayList<>();
+        boolean success;
+                PipelineResult result = EngineClient.runSync(
+                EnginePaths.current(),
+                new EngineClient.SyncRequest(
+                        syncRoot,
+                        cacheDir,
+                        jdksDir,
+                        null,
+                        false,
+                        session.offline(),
+                        session.force(),
+                        false,
+                        session.config().verboseOr(false)),
+                steps -> progressListener(progress, steps),
+                fetched,
+                upToDate);
+        success = result.success();
+        for (var d : result.errors()) errors.add(d.message());
+
+        return new SyncOutcome(success, fetched[0], upToDate[0], List.copyOf(errors));
+    }
+
+    /**
+     * Run a build with structured module/step events for the IDE progress UI. Non-workspace
+     * projects use a single-module build; workspace roots use the workspace cascade.
+     */
+    public BuildOutcome build(BuildListener listener) throws IOException {
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+
+        ProjectInfo info = projectInfo();
+        if (info.error() != null && !info.error().isBlank()) {
+            return new BuildOutcome(false, 0, 0, List.of(info.error()));
+        }
+        List<String> errors = new ArrayList<>();
+        int[] modules = {0};
+        int[] failed = {0};
+        if (info.workspaceRoot()) {
+            WorkspaceRequest req = new WorkspaceRequest(
+                    projectDir,
+                    null,
+                    cacheDir,
+                    jdksDir,
+                    1,
+                    null,
+                    false,
+                    false,
+                    0,
+                    null,
+                    true,
+                    true);
+            WorkspaceBuildListener wbl = new WorkspaceBuildListener() {
+                @Override
+                public void onPlan(List<ModulePlan> plan) {
+                    modules[0] = plan.size();
+                    progress.onPlan(plan.size());
+                }
+
+                @Override
+                public PipelineListener onModuleStart(ModulePlan module) {
+                    progress.onModuleStart(module.coord(), module.dir());
+                    List<Step> steps =
+                            module.pipeline() == null ? List.of() : module.pipeline().steps();
+                    return progressListener(progress, steps);
+                }
+
+                @Override
+                public void onModuleFinish(ModuleOutcome outcome) {
+                    if (!outcome.success()) failed[0]++;
+                    progress.onModuleFinish(outcome.coord(), outcome.success());
+                }
+
+                @Override
+                public void onWorkspaceFinish(WorkspaceResult result) {
+                    if (result.errors() != null) errors.addAll(result.errors());
+                }
+            };
+            WorkspaceResult ws = EngineClient.buildWorkspace(EnginePaths.current(), req, wbl);
+            return new BuildOutcome(ws.success(), modules[0], failed[0], List.copyOf(errors));
+        }
+        // Single-module projects: surface the same module boundary callbacks workspaces get.
+        String coord = info.coord() != null && !info.coord().isBlank()
+                ? info.coord()
+                : info.group() + ":" + info.name();
+        progress.onModuleStart(coord, projectDir);
+        PipelineResult r = EngineClient.runSingleBuild(
+                EnginePaths.current(),
+                new EngineClient.SingleBuildRequest(
+                        projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
+                steps -> progressListener(progress, steps),
+                null,
+                null);
+        for (var d : r.errors()) errors.add(d.message());
+        progress.onModuleFinish(coord, r.success());
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+    }
+
+    /**
+     * Build a single module directory (ticket-1041). When {@code moduleDir} is null, same as
+     * {@link #build(BuildListener)}. Workspace roots still cascade when {@code moduleDir} is null.
+     */
+    public BuildOutcome buildModule(Path moduleDir, BuildListener listener) throws IOException {
+        if (moduleDir == null) return build(listener);
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        Path mod = moduleDir.toAbsolutePath().normalize();
+        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
+        progress.onModuleStart(coord, mod);
+        List<String> errors = new ArrayList<>();
+        PipelineResult r = EngineClient.runSingleBuild(
+                EnginePaths.current(),
+                new EngineClient.SingleBuildRequest(
+                        mod, cacheDir, jdksDir, 1, null, false, false, false, false),
+                steps -> progressListener(progress, steps),
+                null,
+                null);
+        for (var d : r.errors()) errors.add(d.message());
+        progress.onModuleFinish(coord, r.success());
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+    }
+
+    /**
+     * Run the test pipeline for a module (JK-1048 / JK-1063 BSP {@code buildTarget/test}). When
+     * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
+     * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
+     * engine path as {@code jk test}.
+     */
+    public BuildOutcome testModule(Path moduleDir, BuildListener listener) throws IOException {
+        BuildListener progress = listener == null ? BuildListener.NOOP : listener;
+        if (moduleDir == null) {
+            ProjectInfo info = projectInfo();
+            if (info.error() != null && !info.error().isBlank()) {
+                return new BuildOutcome(false, 0, 0, List.of(info.error()));
+            }
+            if (info.workspaceRoot()) {
+                return testWorkspace(progress);
+            }
+        }
+        Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
+        return testOneModule(mod, progress);
+    }
+
+    /** Sequential per-module {@code jk test} for a workspace root (JK-1063). */
+    private BuildOutcome testWorkspace(BuildListener progress) throws IOException {
+        IdeWireModel model = ideModel();
+        List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
+        if (dirs.isEmpty()) {
+            // No module list — fall back to testing the workspace root directory alone.
+            return testOneModule(projectDir, progress);
+        }
+        int modules = 0;
+        int failed = 0;
+        List<String> errors = new ArrayList<>();
+        for (String d : dirs) {
+            if (d == null || d.isBlank()) continue;
+            Path mod = Path.of(d);
+            modules++;
+            BuildOutcome o = testOneModule(mod, progress);
+            if (!o.success()) {
+                failed++;
+                if (o.errors() != null) errors.addAll(o.errors());
+            }
+        }
+        return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
+    }
+
+    private BuildOutcome testOneModule(Path mod, BuildListener progress) throws IOException {
+        String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
+        progress.onModuleStart(coord, mod);
+        List<String> errors = new ArrayList<>();
+        cc.jumpkick.run.TestSummary[] testOut = new cc.jumpkick.run.TestSummary[1];
+        var session = SessionContext.current();
+        PipelineResult r = EngineClient.runTest(
+                EnginePaths.current(),
+                new EngineClient.TestRequest(
+                        mod,
+                        cacheDir,
+                        jdksDir,
+                        1,
+                        null,
+                        false,
+                        session.offline(),
+                        session.force()),
+                steps -> progressListener(progress, steps),
+                testOut);
+        for (var d : r.errors()) errors.add(d.message());
+        if (!r.success()
+                && testOut[0] != null
+                && !testOut[0].allPassed()
+                && errors.isEmpty()) {
+            errors.add("tests failed: "
+                    + testOut[0].failed()
+                    + " failed / "
+                    + testOut[0].total()
+                    + " total");
+        }
+        progress.onModuleFinish(coord, r.success());
+        return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));
+    }
+
+    private Path resolveSyncRoot() {
+        try {
+            ProjectInfo info = projectInfo();
+            if (info.error() == null
+                    && info.workspaceRootDir() != null
+                    && !info.workspaceRootDir().isEmpty()) {
+                return Path.of(info.workspaceRootDir());
+            }
+        } catch (Exception ignored) {
+            // fall through
+        }
+        return projectDir;
+    }
+
+    private static PipelineListener progressListener(ProgressListener progress, List<Step> steps) {
+        return new PipelineListener() {
+            @Override
+            public void pipelineStart(PipelineView view) {
+                int n = steps == null ? 0 : steps.size();
+                progress.onPlan(n);
+            }
+
+            @Override
+            public void stepStart(String step, Phase phase, int ticks) {
+                progress.onStepStart(step, phase == null ? "" : phase.name());
+            }
+
+            @Override
+            public void progress(String step, int delta, PipelineView view) {
+                long done = view == null ? delta : view.numerator();
+                long total = view == null ? 0 : view.denominator();
+                progress.onStepProgress(step, done, total);
+            }
+
+            @Override
+            public void output(String step, String line) {
+                progress.onOutput(step, line);
+            }
+
+            @Override
+            public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+                boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
+                progress.onStepFinish(step, ok, status == null ? "" : status.name());
+            }
+        };
+    }
+
+    // --- callbacks / outcomes -----------------------------------------------------------------
+
+    /** Sync / step progress for IDE progress bars. */
+    public interface ProgressListener {
+        ProgressListener NOOP = new ProgressListener() {};
+
+        default void onPlan(int stepCount) {}
+
+        default void onStepStart(String step, String phase) {}
+
+        default void onStepProgress(String step, long done, long total) {}
+
+        default void onOutput(String step, String line) {}
+
+        default void onStepFinish(String step, boolean success, String status) {}
+    }
+
+    /** Build progress including module boundaries. */
+    public interface BuildListener extends ProgressListener {
+        BuildListener NOOP = new BuildListener() {};
+
+        default void onModuleStart(String coord, Path dir) {}
+
+        default void onModuleFinish(String coord, boolean success) {}
+    }
+
+    public record SyncOutcome(boolean success, long fetched, long upToDate, List<String> errors) {}
+
+    public record BuildOutcome(boolean success, int modules, int failedModules, List<String> errors) {}
+}

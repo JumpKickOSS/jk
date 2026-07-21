@@ -1,0 +1,63 @@
+# --- jk build outputs (per PRD §4) ---
+.jk/
+target/
+
+# --- Gradle (bootstrap build system) ---
+.gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# --- Java / Kotlin ---
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+replay_pid*
+
+# Keep the Gradle wrapper jar tracked (overrides *.jar above).
+!gradle/wrapper/gradle-wrapper.jar
+
+# --- VS Code extension packaging ---
+*.vsix
+clients/vscode/node_modules/
+
+# --- IntelliJ IDEA / plugin packaging ---
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+clients/intellij/.gradle/
+clients/intellij/.intellijPlatform/
+
+# --- Eclipse ---
+.classpath
+.project
+.settings/
+bin/
+
+# --- VS Code / Fleet ---
+.vscode/
+.fleet/
+
+# --- macOS / Linux / Windows ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# --- Logs / env ---
+*.log
+.env
+.env.local
+
+# --- Local tooling / scratch ---
+.claude/
+.cursor/
+
+# IDE BSP launch config (local)
+.bsp/
+**/.bsp/

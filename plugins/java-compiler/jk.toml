@@ -1,0 +1,20 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-java-compiler"
+version     = "0.10.0-SNAPSHOT"
+description = "jk-java-compiler: child-JVM worker that runs javac in-process and captures AP provenance."
+jdk         = 25
+java        = 25
+
+# Fat jar with PluginMain — plugin-sdk is shaded in (java -jar); JDK compiler APIs come from the host JDK.
+[application]
+main       = "cc.jumpkick.plugin.process.PluginMain"
+assembly = true
+
+[dependencies]
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

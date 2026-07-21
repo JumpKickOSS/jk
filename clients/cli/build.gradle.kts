@@ -1,0 +1,228 @@
+// SPDX-License-Identifier: Apache-2.0
+
+plugins {
+    id("jk.java-conventions")
+    application
+    alias(libs.plugins.graalvm.native)
+}
+
+description = "jk command-line entrypoint (slim wire-only client)"
+
+dependencies {
+    // The slim client's whole kernel surface (Stage 5): the jk-api model, the build-file/lockfile
+    // readers, the thin client I/O slice (http, forge auth, credential files, CAS read/link), the
+    // client-resident JDK/toolchain flow, and the engine wire contract. NO :engine, :io, :resolver,
+    // or :toolchain — the compiler enforces that everything heavy reaches the engine over the wire
+    // (EngineClient). ticket-1020: no in-process engine seam on the production classpath.
+    implementation(project(":jk-api"))
+    implementation(project(":core"))
+    implementation(project(":client-io"))
+    implementation(project(":toolchain-jdk"))
+    implementation(project(":wire"))
+    // Shared JSONL reader for the engine/worker wire envelope.
+    implementation(project(":plugin-sdk"))
+
+    // JLine 4 FFM terminal provider for raw-mode TUI (jk init wizard).
+    // FFM backend requires JDK 22+; the GraalVM-compiled binary embeds the
+    // FFM downcalls natively. Reflection/resource hints live under
+    // src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/.
+    implementation(libs.jline.terminal.ffm)
+
+    // ProcessProperties.getArgumentVectorProgramName() for argv[0] `jkx` dispatch
+    // (Argv0). compileOnly: inside the image the builder provides the implementation;
+    // on a JVM every use is gated behind the imagecode property so the class never loads.
+    compileOnly(libs.graalvm.nativeimage)
+
+    // Test-only: EngineClientTest hosts an in-process EngineServer for protocol coverage
+    // (not production dual-path). Command tests spawn the real shadow jar over the wire.
+    testImplementation(project(":engine"))
+    // GpgTestFixture (publish command tests).
+    testImplementation(libs.bouncycastle.bcpg)
+}
+
+// Thin JVM client (installDist) — no engine on the classpath. Spawns jk-engine.jar via VersionStore
+// / JK_ENGINE_EXE. Prefer the native image for production dist; this path is for Temurin-only CI.
+application {
+    mainClass.set("cc.jumpkick.cli.Jk")
+    applicationName = "jk"
+    applicationDefaultJvmArgs =
+            listOf("-XX:+UseSerialGC", "-Xms24m", "-Xmx128m", "--enable-native-access=ALL-UNNAMED")
+}
+
+// Worker jars for integration tests that fork plugin JVMs (same wiring former :cli-engine used).
+val kotlinWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val testRunnerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val auditorWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val publisherWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val imageBuilderWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val compatBridgeWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val springBootWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+val androidWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies {
+    kotlinWorkerJar(project(":kotlin-compiler"))
+    testRunnerJar(project(":test-runner"))
+    auditorWorkerJar(project(":auditor"))
+    publisherWorkerJar(project(":publisher"))
+    imageBuilderWorkerJar(project(":image-builder"))
+    compatBridgeWorkerJar(project(":compat-bridge"))
+    springBootWorkerJar(project(":spring-boot"))
+    androidWorkerJar(project(":android"))
+}
+
+// Unique short UDS state dir for this test task run (ticket-1021). UDS sun_path is ~108 bytes;
+// deep worktree paths under build/ overflow, so pin under /tmp with a per-run id.
+val cliTestStateDir =
+        layout.buildDirectory
+                .dir("cli-test-state")
+                .get()
+                .asFile
+                .also { it.mkdirs() }
+// Prefer a short path when build dir is a deep worktree (UDS sun_path ~108 bytes).
+val cliTestStateDirShort =
+        file(
+                "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
+
+tasks.withType<Test>().configureEach {
+    // Engine spawn (PosixDetach setsid) + MemoryProbe FFM.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    // Single fork: one resident engine / JK_STATE_DIR per suite (ticket-1021).
+    maxParallelForks = 1
+    dependsOn(
+            ":engine:shadowJar",
+            kotlinWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
+            imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar)
+    // Deterministic TUI ANSI assertions (CI runners otherwise force TERM=dumb / NO_COLOR).
+    environment("TERM", "xterm-256color")
+    environment("CI", "false")
+    environment("NO_COLOR", "")
+    // Fail fast if the engine stops streaming (default is 60 minutes — freezes the full suite).
+    environment("JK_STREAM_IDLE_MS", "45000")
+    // Shared dep cache across tests (Kotlin compiler, JUnit, …) — outside @TempDir.
+    systemProperty(
+            "jk.test.cache.dir",
+            layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
+    // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
+    // EngineTestExtension autodetection: materialize jar + stop engine after each class (1042/1052).
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
+    // TempDir (JUnit 6): deletion strategy stops engine only when delete fails (1055).
+    systemProperty(
+            "junit.jupiter.tempdir.deletion.strategy.default",
+            "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy")
+    systemProperty(
+            "junit.jupiter.tempdir.factory.default",
+            "cc.jumpkick.cli.engine.JkTempDirFactory")
+    // Shared dep cache lives under build/test-shared-cache (jk.test.cache.dir), not @TempDir.
+    doFirst {
+        cliTestStateDirShort.mkdirs()
+        environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
+        // Isolate versions/cache from the developer machine.
+        environment(
+                "JK_HOME",
+                layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
+
+        val engineJar = project(":engine").tasks.named("shadowJar", org.gradle.jvm.tasks.Jar::class.java)
+                .get().archiveFile.get().asFile
+        systemProperty("jk.engine.jar", engineJar.absolutePath)
+        systemProperty("jk.kotlin.plugin.jar", kotlinWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.test.runner.jar", testRunnerJar.singleFile.absolutePath)
+        systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.image-builder.plugin.jar", imageBuilderWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.compat-bridge.plugin.jar", compatBridgeWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
+    }
+    // After the suite: remove the short state dir (best-effort; AfterAll also force-stops).
+    doLast {
+        cliTestStateDirShort.deleteRecursively()
+    }
+}
+
+graalvmNative {
+    binaries.named("main") {
+        imageName.set("jk")
+        mainClass.set("cc.jumpkick.cli.Jk")
+        // The plugin's "main" binary is supposed to default to executable,
+        // but the 0.10.4 / GraalVM 25 combination defaults to shared library
+        // on this host. Force the executable mode explicitly.
+        sharedLibrary.set(false)
+        // Slim classpath only (Stage 5 / ticket-1020) — never link :engine.
+        classpath(tasks.named("jar"), configurations.runtimeClasspath)
+
+        // Size-first build args. The jk binary's primary UX budget is its download +
+        // on-disk size and shell-integration startup latency; per-verb CPU work is
+        // shrinking as the CLI delegates the heavy lifting (hashing, compiling,
+        // packaging) to the resident engine and its forked workers.
+        //
+        // -Os       Optimize for size. (History: was -O3 + -march=x86-64-v3, tuned when
+        //           the CLI process itself did the CAS/ClasspathFingerprint SHA-256
+        //           work — the SIMD -march bought ≈1.5x on no-op builds then. Since the
+        //           Stage 5 split that hashing lives in the jk-engine jar, which
+        //           re-tunes for speed independently — see :engine shadowJar.)
+        // --gc=serial
+        //           Generational serial GC. Small/fast for short verbs and a ≤256 MiB
+        //           engine heap alike, and — unlike epsilon — it actually reclaims, so
+        //           verbs that stream data don't accumulate every transient byte until
+        //           the process dies.
+        // -R:MaxHeapSize=134217728
+        //           Hard 128 MiB max heap for the CLI process. jk's own work is tiny;
+        //           the cap turns any runaway allocation into a fast, loud OOM instead
+        //           of dragging the machine into swap. Heavy work runs in the engine
+        //           (spawned with its own -Xms/-Xmx, which override this baked default)
+        //           and in forked worker JVMs tuned via JvmOptions.
+        // -R:MinHeapSize=25165824
+        //           24 MiB initial heap — sized to what a trivial verb actually uses
+        //           (`jk --help` measured ~19 MiB RSS), so the smallest commands fit in
+        //           the floor without a growth step, while anything bigger still grows
+        //           lazily toward the 128 MiB cap.
+        buildArgs.add("-Os")
+        buildArgs.add("--gc=serial")
+        buildArgs.add("-R:MaxHeapSize=134217728")
+        buildArgs.add("-R:MinHeapSize=25165824")
+        // JLine 4 FFM's signal handler uses Arena.ofShared(), gated behind this
+        // flag in GraalVM 25. Without it the wizard crashes on Signal.INT setup.
+        buildArgs.add("-H:+SharedArenaSupport")
+        // Silence the FFM "restricted method" runtime warning. Without this,
+        // every wizard invocation prints a 4-line WARNING block before the UI.
+        buildArgs.add("--enable-native-access=ALL-UNNAMED")
+        // (No engine code in this image: the engine role — and its setsid(2)
+        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
+        // Push heavy deps to lazy init. Build-time <clinit> is faster at
+        // runtime but blows up .svm_heap with cached objects we may never
+        // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,
+        // grpc, cyclonedx, spdx, jgit, com.google) live in forked workers, not
+        // on the binary's classpath, so jline is the only contributor left:
+        // its FFM Linker/Arena lookups must run at image-runtime regardless.
+        buildArgs.add("--initialize-at-run-time=org.jline")
+        // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
+        // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
+        // FreeBSD .so/.dylib for every arch) as image resources.  jk uses the FFM
+        // terminal provider exclusively; the JNI/JNA fallback (JLineNativeLoader,
+        // CLibrary, Kernel32, etc.) is reachable via jline-terminal's AbstractPty
+        // but never exercised at runtime.  Exclude those cross-platform binaries
+        // with -H:ExcludeResources so they are not baked into the image heap.
+        buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
+    }
+
+}
+
+// JLine 4 FFM terminal provider ships native-image hints; we supplement them
+// at src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/
+// with reflection-config.json and resource-config.json bootstrapped via the
+// GraalVM tracing agent against the JVM wizard (see plan §8d).

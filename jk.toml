@@ -1,0 +1,27 @@
+[project]
+group    = "cc.jumpkick"
+name     = "jk"
+version  = "0.10.0-SNAPSHOT"
+description = "A modern build tool for Java and Kotlin."
+jdk      = 25
+java     = 25
+
+# Module order is declaration preference only; build order is dependency-first.
+# Phase 2: thin first-party workers (test-runner, java-compiler) are workspace modules
+# with assembly + PluginMain. Remaining plugins/* stay Gradle-only (fat workers / installLocal).
+[workspace]
+modules = [
+  "shared/plugin-sdk",
+  "shared/jk-api",
+  "shared/core",
+  "shared/client-io",
+  "server/io",
+  "server/resolver",
+  "shared/toolchain-jdk",
+  "server/toolchain",
+  "shared/wire",
+  "server/engine",
+  "clients/cli",
+  "plugins/test-runner",
+  "plugins/java-compiler",
+]

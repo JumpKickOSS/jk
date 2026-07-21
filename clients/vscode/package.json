@@ -1,0 +1,102 @@
+{
+  "name": "jumpkick",
+  "displayName": "JumpKick",
+  "description": "JumpKick build tool for Java and Kotlin — BSP install, tasks, and status (wire-only; no engine on the extension classpath).",
+  "version": "0.10.0",
+  "publisher": "jumpkick",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jkbuild/jk.git",
+    "directory": "clients/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Build Tools",
+    "Other"
+  ],
+  "keywords": [
+    "jumpkick",
+    "jk",
+    "java",
+    "kotlin",
+    "bsp",
+    "build"
+  ],
+  "activationEvents": [
+    "workspaceContains:jk.toml"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jk.bspInstall",
+        "title": "JumpKick: Install BSP connection (.bsp/jk.json)"
+      },
+      {
+        "command": "jk.sync",
+        "title": "JumpKick: Sync dependencies"
+      },
+      {
+        "command": "jk.build",
+        "title": "JumpKick: Build"
+      },
+      {
+        "command": "jk.test",
+        "title": "JumpKick: Test"
+      },
+      {
+        "command": "jk.lock",
+        "title": "JumpKick: Lock"
+      },
+      {
+        "command": "jk.showOutput",
+        "title": "JumpKick: Show output"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "jk",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "JumpKick verb: lock, sync, build, test, assemble, …"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Extra CLI arguments"
+          }
+        }
+      }
+    ],
+    "configuration": {
+      "title": "JumpKick",
+      "properties": {
+        "jk.path": {
+          "type": "string",
+          "default": "jk",
+          "description": "Path to the jk executable (must be on PATH or absolute). Never put the engine jar on the IDE classpath."
+        },
+        "jk.autoBspInstall": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a workspace has jk.toml but no .bsp/jk.json, offer (or auto-run) jk bsp install."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "package": "vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.1"
+  }
+}

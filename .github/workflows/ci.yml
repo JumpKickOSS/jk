@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # Runners set TERM=dumb, which turns off ANSI rendering and fails TUI tests
+  # that assert escape sequences. Match a real terminal.
+  TERM: xterm-256color
+
+jobs:
+  test:
+    name: Gradle test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      # Full unit/integration suite across all modules (source of truth until phase 2).
+      - name: Test
+        run: ./gradlew test --no-daemon
+
+  # ticket-1007/1018: dogfood workspace lock + build with a freshly built jk.
+  self-host:
+    name: Self-host workspace (jk, native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Native client needs GraalVM; engine jar is a normal HotSpot fat jar.
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Bootstrap dist + workers
+        run: |
+          ./gradlew dist installLocal --no-daemon
+          ./install.sh build/dist/jk
+          echo "$HOME/.jk/versions/0.10.0-SNAPSHOT/bin" >> "$GITHUB_PATH"
+
+      - name: jk lock + build --skip-tests
+        run: |
+          jk --version
+          jk lock
+          jk build --skip-tests
+
+  # ticket-1020: thin client + engine jar (no monolyth, no Graal).
+  self-host-jvm:
+    name: Self-host workspace (jk, thin client + engine jar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+
+      - name: jk lock + build --skip-tests
+        run: |
+          jk --version
+          jk lock
+          jk build --skip-tests
+
+  # ticket-1038: multi-module sample with reinstalled thin client (no Graal required).
+  showcase:
+    name: Showcase monorepo (jk)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Bootstrap thin client + engine jar + workers
+        run: |
+          ./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+          CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+          ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+          "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+          echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
+
+      - name: Showcase lock + build + test
+        working-directory: docs/features/examples/workspace-showcase
+        run: |
+          jk --version
+          jk lock
+          jk build
+          # Workspace root test does not cascade; select modules that carry tests.
+          jk test --modules app
+          jk build --modules app

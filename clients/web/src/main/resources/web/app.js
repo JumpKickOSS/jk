@@ -1,0 +1,977 @@
+// SPDX-License-Identifier: Apache-2.0
+// The dashboard: one root component, two views (Activity, Status), mounted by Vue 3 (global
+// build from the CDN — see docs/webclient.md). The in-DOM template lives in index.html; Vue's
+// runtime compiler turns it into render functions at load (the CSP 'unsafe-eval' grant).
+
+import { bootstrapToken, get, getText, post, del, events } from './api.js';
+import { foldEvent, outcomeOf, moduleSummary, phaseChainOf, seedFromHistory, weightNumerator, weightDenominator } from './fold.js';
+
+bootstrapToken();
+
+// The build **phase-chain**: a single horizontal strip of coarse pipeline phases (Resolve →
+// Compile → Test → …), never wrapping. New phases advance rightward and push earlier ones off the
+// left; when phases are hidden a ◂ / ▸ nav button pages the view (no scrollbar). Anchored to the
+// newest phase on mount and whenever the chain grows. Each phase node is a click-to-expand toggle
+// (single-open) that reveals the steps it collapses; the failed phase auto-opens. See
+// docs/webclient.md. The `steps` prop is the module's raw step rows; the phase grouping is derived
+// from them client-side (fold.phaseChainOf), so a new/plugin phase needs no code change here.
+// A tiny inline-SVG icon set: <jk-icon name="refresh">. Each glyph is a 24x24 path stroked (or, for
+// a couple, filled) with currentColor, so `color` / state classes drive it — no icon font, no network
+// fetch, and inline SVG is allowed under the dashboard's CSP (default-src 'self' doesn't gate SVG DOM,
+// unlike a data: URI). Sized by the .ico class (1em by default; see style.css). Registered globally
+// before mount so every component (including phase-chain) can use it.
+const ICON_PATHS = {
+  'chevron-left': 'M15 18l-6-6 6-6',
+  'chevron-right': 'M9 18l6-6-6-6',
+  'arrow-up': 'M12 19V5M5 12l7-7 7 7',
+  check: 'M20 6L9 17l-5-5',
+  x: 'M18 6L6 18M6 6l12 12',
+  ban: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
+  alert: 'M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01',
+  refresh: 'M23 4v6h-6M1 20v-6h6M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15',
+  trash: 'M4 7h16M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3M6 7l1 13a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-13M10 11v6M14 11v6',
+  folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z',
+  help: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM9.6 9.5a2.5 2.5 0 0 1 4.85.83c0 1.67-2.45 2.17-2.45 3.67M12 17h.01',
+  settings: 'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.05.05a2 2 0 1 1-2.83 2.83l-.05-.05a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.05.05a2 2 0 1 1-2.83-2.83l.05-.05a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.05-.05a2 2 0 1 1 2.83-2.83l.05.05a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.05-.05a2 2 0 1 1 2.83 2.83l-.05.05a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  bolt: 'M13 2 3 14 12 14 11 22 21 10 12 10Z',
+  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+  database: 'M12 3c-4.4 0-8 1.3-8 3s3.6 3 8 3 8-1.3 8-3-3.6-3-8-3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
+  cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
+  'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
+};
+// Icons that read better as a solid shape than an outline at small sizes.
+const ICON_SOLID = {
+  play: 'M8 5v14l11-7z',
+  dot: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+};
+const JkIcon = {
+  props: { name: { type: String, required: true } },
+  computed: {
+    solid() {
+      return this.name in ICON_SOLID;
+    },
+    d() {
+      return this.solid ? ICON_SOLID[this.name] : ICON_PATHS[this.name] || '';
+    },
+  },
+  template: `<svg class="ico" viewBox="0 0 24 24" :fill="solid ? 'currentColor' : 'none'"
+       :stroke="solid ? 'none' : 'currentColor'" stroke-width="2" stroke-linecap="round"
+       stroke-linejoin="round" aria-hidden="true"><path :d="d"></path></svg>`,
+};
+
+const PhaseChain = {
+  props: { steps: { type: Array, required: true } },
+  // `follow` = keep pinned to the newest phase (re-armed when the user pages back to the end).
+  // `manualKey` = the user's single-open accordion choice: `undefined` until they click (failed
+  // phase auto-opens), then a phase key, or `null` when they've closed all.
+  data: () => ({ atStart: true, atEnd: true, follow: true, manualKey: undefined }),
+  template: `
+    <div class="phase-chain-outer">
+      <div class="step-chain-wrap">
+        <button v-show="!atStart" type="button" class="chain-nav left" @click="page(-1)"
+                aria-label="show earlier phases" title="earlier phases"><jk-icon name="chevron-left"></jk-icon></button>
+        <span v-show="!atStart" class="chain-fade left" aria-hidden="true"></span>
+        <div class="step-chain" ref="track">
+          <template v-for="(p, i) in phases" :key="p.key">
+            <span v-if="i > 0" class="step-edge" :class="phases[i - 1].state"></span>
+            <button type="button" class="step-node phase-node" :class="[p.state, { open: openKey === p.key }]"
+                    :title="phaseTitle(p)" :aria-expanded="String(openKey === p.key)" @click="toggle(p.key)">
+              <span v-if="p.state === 'running'" class="spin small"></span>
+              <jk-icon v-else-if="p.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+              <jk-icon v-else-if="p.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
+              {{ p.label }}
+            </button>
+          </template>
+        </div>
+        <span v-show="!atEnd" class="chain-fade right" aria-hidden="true"></span>
+        <button v-show="!atEnd" type="button" class="chain-nav right" @click="page(1)"
+                aria-label="show later phases" title="later phases"><jk-icon name="chevron-right"></jk-icon></button>
+      </div>
+      <div v-if="openPhase" class="phase-steps">
+        <template v-for="(s, i) in openPhase.steps" :key="s.name">
+          <span v-if="i > 0" class="step-edge" :class="openPhase.steps[i - 1].state"></span>
+          <span class="step-node" :class="s.state" :title="s.name">
+            <span v-if="s.state === 'running'" class="spin small"></span>
+            <jk-icon v-else-if="s.state === 'success'" name="check" class="step-glyph ok"></jk-icon>
+            <jk-icon v-else-if="s.state === 'failed'" name="x" class="step-glyph err"></jk-icon>
+            {{ stepLabel(s) }}
+          </span>
+        </template>
+      </div>
+    </div>`,
+  computed: {
+    phases() {
+      return phaseChainOf({ steps: this.steps });
+    },
+    // Effective open phase: the user's manual choice once they've clicked, else the failed phase
+    // (auto-open on failure) — so a failure's step is visible without any interaction.
+    openKey() {
+      if (this.manualKey !== undefined) return this.manualKey;
+      const failed = this.phases.find((p) => p.state === 'failed');
+      return failed ? failed.key : null;
+    },
+    openPhase() {
+      return this.phases.find((p) => p.key === this.openKey) || null;
+    },
+  },
+  mounted() {
+    this.observer = new ResizeObserver(() => this.reflow());
+    this.observer.observe(this.$refs.track);
+    this.$nextTick(() => this.anchorEnd());
+  },
+  updated() {
+    // Fires after each phase update (state/width change); nextTick lets layout settle first.
+    this.$nextTick(() => this.reflow());
+  },
+  beforeUnmount() {
+    if (this.observer) this.observer.disconnect();
+  },
+  methods: {
+    // Single-open accordion: clicking the open phase closes it, clicking another switches to it.
+    // Either way the user has taken control (manualKey set), so auto-open-on-failure stands down.
+    toggle(key) {
+      this.manualKey = this.openKey === key ? null : key;
+    },
+    // A sub-chain step's label: drop the redundant leading "phase-" ("compile-java" under Compile →
+    // "java"). A step whose name is exactly its phase, or that carries none, shows verbatim.
+    stepLabel(s) {
+      const prefix = (s.phase || '') + '-';
+      return s.phase && s.name.startsWith(prefix) ? s.name.slice(prefix.length) : s.name;
+    },
+    // Tooltip: the phase plus the raw step names it collapses, so the detail is recoverable on hover.
+    phaseTitle(p) {
+      const names = p.steps.map((s) => s.name).join(', ');
+      return p.phase ? p.phase + ': ' + names : names;
+    },
+    reflow() {
+      if (this.follow) this.anchorEnd();
+      else this.measure();
+    },
+    measure() {
+      const t = this.$refs.track;
+      if (!t) return;
+      const max = t.scrollWidth - t.clientWidth;
+      this.atStart = t.scrollLeft <= 1;
+      this.atEnd = t.scrollLeft >= max - 1;
+    },
+    anchorEnd() {
+      const t = this.$refs.track;
+      if (!t) return;
+      // Instant jump (not the smooth CSS path): a synchronous read in measure() must see the final
+      // scrollLeft, and only user paging should animate.
+      const max = Math.max(0, t.scrollWidth - t.clientWidth);
+      if (Math.abs(t.scrollLeft - max) > 1) t.scrollLeft = max;
+      this.measure();
+    },
+    page(dir) {
+      const t = this.$refs.track;
+      if (!t) return;
+      this.follow = false; // manual navigation — stop auto-pinning to the end
+      t.scrollTo({ left: t.scrollLeft + dir * Math.max(90, Math.round(t.clientWidth * 0.6)), behavior: 'smooth' });
+      setTimeout(() => {
+        this.measure();
+        if (this.atEnd) this.follow = true; // paged back to the newest end → resume following
+      }, 260);
+    },
+  },
+};
+
+// The Projects tab's per-project history spark: one vertical bar per recent build (height = wall
+// clock, colour = outcome), drawn with Apache ECharts (loaded globally from the CDN — see
+// index.html). Kept deliberately chrome-less (no axes, no grid) so it reads as a sparkline inside the
+// row. The x-axis is a fixed 30 slots so every bar is a consistent 1/30 width, packed left-to-right:
+// a project with one build shows one bar occupying 1/30 of the track, not a single fat bar. Re-renders
+// only when its `builds` prop changes (projectsList is a computed, so the 1s tick never thrashes it).
+/** Read a CSS custom property off :root, falling back to a literal. ECharts paints to a <canvas>
+ * and can't resolve var(), so the spark's bar/tooltip colours are looked up here at render time
+ * (after the stylesheet has applied) — style.css :root stays the single source of the palette, and
+ * the literal fallbacks (equal to those tokens) only cover the pre-stylesheet window. */
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+/** Outcome → spark-bar colour, resolved from the style.css palette via cssVar (see BuildBars).
+ * Fallbacks must equal :root tokens (Jk Dark / JK-1081) — not Material leftovers. */
+const buildColors = () => ({
+  success: cssVar('--ok', '#00ff87'),
+  failed: cssVar('--err', '#ff3366'),
+  cancelled: cssVar('--warn', '#ffb800'),
+  running: cssVar('--run', '#3d9bff'),
+});
+
+/** Fixed number of build slots the spark reserves — a single build fills 1/30 of the width. */
+const BUILD_SLOTS = 30;
+
+const BuildBars = {
+  props: { builds: { type: Array, required: true } },
+  template: `<div class="build-bars" ref="el"></div>`,
+  mounted() {
+    if (window.echarts) this.chart = echarts.init(this.$refs.el, null, { renderer: 'canvas' });
+    this.render();
+    // The row's centre column is flex-sized; the chart must follow it (and any window resize).
+    this.ro = new ResizeObserver(() => this.chart && this.chart.resize());
+    this.ro.observe(this.$refs.el);
+  },
+  beforeUnmount() {
+    if (this.ro) this.ro.disconnect();
+    if (this.chart) this.chart.dispose();
+  },
+  watch: {
+    builds() {
+      this.render();
+    },
+  },
+  methods: {
+    render() {
+      if (!this.chart) return;
+      const builds = this.builds || [];
+      const colors = buildColors();
+      // A fixed BUILD_SLOTS-long category axis: builds fill the leftmost slots (oldest → newest),
+      // the rest are empty (zero-height) placeholders so every bar keeps the same 1/30 width.
+      const data = [];
+      for (let i = 0; i < BUILD_SLOTS; i++) {
+        const b = builds[i];
+        data.push(
+          b
+            ? { value: Math.max(1, b.millis || 0), itemStyle: { color: colors[b.outcome] || cssVar('--dim', '#5c6d78'), borderRadius: [2, 2, 0, 0] } }
+            : { value: 0, itemStyle: { color: 'transparent' } },
+        );
+      }
+      this.chart.setOption(
+        {
+          animation: false,
+          grid: { left: 1, right: 1, top: 6, bottom: 1, containLabel: false },
+          xAxis: {
+            type: 'category',
+            show: false,
+            data: Array.from({ length: BUILD_SLOTS }, (_, i) => i),
+            boundaryGap: true,
+          },
+          yAxis: { type: 'value', show: false, min: 0 },
+          tooltip: {
+            trigger: 'axis',
+            appendToBody: true,
+            backgroundColor: cssVar('--s1', '#161d25'),
+            borderColor: cssVar('--bd', '#2a3742'),
+            borderWidth: 1,
+            padding: [4, 8],
+            textStyle: { color: cssVar('--tx', '#cfd8dc'), fontSize: 11, fontFamily: 'var(--mono)' },
+            axisPointer: { type: 'none' },
+            formatter: (ps) => {
+              const b = builds[ps[0].dataIndex];
+              if (!b) return '';
+              const n = b.buildNumber ? '#' + b.buildNumber + ' · ' : '';
+              return n + b.outcome + ' · ' + fmtMillis(b.millis);
+            },
+          },
+          series: [{ type: 'bar', data, barWidth: '80%', z: 2 }],
+        },
+        true,
+      );
+    },
+  },
+};
+
+/** A finished record's outcome for the Projects tab: cancelled ▸ success ▸ failed (records are terminal). */
+function recordOutcome(r) {
+  return r.cancelled ? 'cancelled' : r.success ? 'success' : 'failed';
+}
+
+/**
+ * Parse the location hash into a route. Flat top-level views plus one detail route:
+ * `#project/<url-encoded dir>` opens a single project's page (routed by dir — a coord isn't uniquely
+ * reversible to a dir). Anything unrecognised falls back to the activity feed.
+ */
+function routeFromHash() {
+  const h = location.hash || '';
+  if (h.startsWith('#project/')) return { view: 'project', dir: decodeURIComponent(h.slice('#project/'.length)) };
+  if (h === '#projects') return { view: 'projects', dir: null };
+  if (h === '#status') return { view: 'status', dir: null };
+  return { view: 'activity', dir: null };
+}
+
+/** Cached-vs-total step counts for one record → the build's "N of M steps served from cache". */
+// The cache's estimated wall-clock benefit for a run, from the engine-computed `benefit` snapshot
+// (a two-level critical-path estimate — see CacheBenefit). Replaces the old "steps skipped" count,
+// which weighted a skipped 5ms no-op the same as a skipped 90s compile. `present` is false for
+// records with no benefit (older records, or a build that didn't succeed cleanly).
+function benefitStats(rec) {
+  const b = rec.benefit;
+  if (!b) return { saved: 0, uncached: 0, coveredSkips: 0, totalSkips: 0, present: false };
+  return {
+    saved: b.savedMillis || 0,
+    uncached: b.estimatedUncachedMillis || 0,
+    coveredSkips: b.coveredSkips || 0,
+    totalSkips: b.totalSkips || 0,
+    present: true,
+  };
+}
+
+/** Compact duration for the chart tooltip (no Vue instance in reach): "820 ms" / "3.4 s" / "1m 05s". */
+function fmtMillis(millis) {
+  if (millis == null) return '';
+  if (millis < 1000) return millis + ' ms';
+  if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
+  return Math.floor(millis / 60_000) + 'm ' + String(Math.round((millis % 60_000) / 1000)).padStart(2, '0') + 's';
+}
+
+Vue.createApp({
+  data: () => ({
+    view: routeFromHash().view, // 'activity' | 'projects' | 'project' | 'status'
+    selectedProjectDir: routeFromHash().dir, // the project whose detail page is open (#project/<dir>)
+    projectMeta: null, // live /api/project payload (coord + description) for the open project
+    connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
+    status: null, // the /api/status payload
+    metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
+    cache: null, // the /api/cache payload (cache breakdown), shown on the Status view
+    engineLog: '', // the /api/log tail, shown on the Status view
+    cards: [], // folded activity, newest first
+    projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
+    buildDir: '',
+    buildError: null,
+    browser: null, // the /api/fs payload while the workspace picker is open, else null
+    help: false, // the header Help/About modal
+    now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
+  }),
+
+  mounted() {
+    events(
+      (event) => {
+        foldEvent(this.cards, { ...event, at: Date.now() });
+        // The build number + journal record are written just after request-finish (writeJournal),
+        // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
+        // refreshes the Projects tab. Debounced so a burst of finishes triggers one reload.
+        if (event.type === 'request-finish') {
+          clearTimeout(this._reconcileTimer);
+          this._reconcileTimer = setTimeout(() => {
+            this.loadHistory();
+            this.loadProjectHistory();
+          }, 500);
+        }
+      },
+      (state) => {
+        const wasOffline = this.connection === 'offline';
+        if (this.connection !== 'unauthorized' || state === 'live') this.connection = state;
+        if (state === 'live' && wasOffline) {
+          this.refresh(); // resync after an engine restart
+          this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
+          this.loadProjectHistory();
+        }
+      },
+    );
+    this.refresh();
+    this.loadHistory(); // backfill past builds so a reload/restart doesn't start from an empty feed
+    this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
+    // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
+    window.addEventListener('hashchange', () => this.applyRoute());
+    if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
+    setInterval(() => this.refresh(), 30_000); // slow fallback; SSE is the primary signal
+    setInterval(() => (this.now = Date.now()), 1_000);
+  },
+
+  computed: {
+    // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
+    // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
+    // the ECharts canvases don't re-render every second. Key = coord when the project has one, else
+    // its dir (two dirs sharing a coord fold together; a coord-less project stands on its dir).
+    projectsList() {
+      const RECENT = 30;
+      const groups = new Map(); // key → { records[] } (records arrive newest-first from /api/history)
+      for (const rec of this.projectHistory || []) {
+        if (!rec || !rec.dir) continue;
+        const key = rec.coord && rec.coord.includes(':') ? rec.coord : rec.dir;
+        let g = groups.get(key);
+        if (!g) {
+          g = { key, records: [] };
+          groups.set(key, g);
+        }
+        g.records.push(rec);
+      }
+
+      // A project with a build in flight right now shows the pulsing 'running' orb, overriding the
+      // last finished outcome. Live running builds live in the SSE cards feed, keyed the same way.
+      const runningKeys = new Set();
+      for (const c of this.cards || []) {
+        if (outcomeOf(c) !== 'running') continue;
+        const key = c.coord && c.coord.includes(':') ? c.coord : c.dir;
+        if (key) runningKeys.add(key);
+      }
+
+      const list = [];
+      for (const g of groups.values()) {
+        const recs = g.records; // newest-first
+        const latest = recs[0];
+        const window = recs.slice(0, RECENT); // newest-first slice for stats
+        const recent = window
+          .slice()
+          .reverse() // oldest → newest, left → right for the chart
+          .map((r) => ({
+            outcome: recordOutcome(r),
+            millis: r.millis || 0,
+            buildNumber: r.buildNumber || 0,
+            finishedAt: r.finishedAt || 0,
+          }));
+
+        // Reliability over the shown window: passes / (passes + fails), cancelled excluded — so the
+        // number and the coloured bars always describe the same set of builds.
+        let passed = 0;
+        let ran = 0;
+        let totalMillis = 0;
+        let timed = 0;
+        for (const r of window) {
+          const o = recordOutcome(r);
+          if (o !== 'cancelled') {
+            ran++;
+            if (o === 'success') passed++;
+          }
+          if (r.millis) {
+            totalMillis += r.millis;
+            timed++;
+          }
+        }
+        const relPct = ran ? Math.round((100 * passed) / ran) : null;
+        const parts = this.coordParts(latest); // reuse the card coord-splitter (coord or dir tail)
+        const running = runningKeys.has(g.key);
+
+        list.push({
+          key: g.key,
+          group: parts.group,
+          name: parts.name,
+          dir: latest.dir,
+          state: running ? 'running' : recordOutcome(latest),
+          buildNumber: latest.buildNumber || 0,
+          // The durable per-project counter (newest build's number) is the true total; fall back to
+          // the count of retained records for pre-numbering (schema-1) history.
+          total: latest.buildNumber || recs.length,
+          avgMillis: timed ? Math.round(totalMillis / timed) : 0,
+          lastFinishedAt: latest.finishedAt || 0,
+          recent,
+          reliability: relPct == null ? '—' : relPct + '%',
+          reliabilityClass: relPct == null ? '' : relPct >= 90 ? 'ok' : relPct >= 70 ? 'warn' : 'err',
+        });
+      }
+      // Running projects float to the top, then most-recently-active first.
+      list.sort((a, b) => (b.state === 'running') - (a.state === 'running') || b.lastFinishedAt - a.lastFinishedAt);
+      return list;
+    },
+
+    // The open project's detail page: identity + aggregate metrics + a build-history table, all
+    // derived from the journal filtered to this project (same coord/dir grouping as projectsList).
+    // Recomputes only when the history, selection, or meta change — not on the 1s clock tick.
+    projectDetail() {
+      const dir = this.selectedProjectDir;
+      if (!dir) return null;
+      const RECENT = 30;
+      const metaCoord = this.projectMeta && this.projectMeta.coord ? this.projectMeta.coord : null;
+      const key = metaCoord || dir; // match how projectsList groups (coord when present, else dir)
+      const records = (this.projectHistory || []).filter((r) => {
+        const rk = r.coord && r.coord.includes(':') ? r.coord : r.dir;
+        return rk === key || r.dir === dir;
+      });
+      const parts = this.coordParts({ coord: metaCoord || (records[0] && records[0].coord), dir });
+      const base = {
+        dir,
+        group: parts.group,
+        name: parts.name,
+        description: (this.projectMeta && this.projectMeta.description) || null,
+      };
+      if (records.length === 0) return { ...base, empty: true, rows: [] };
+
+      const latest = records[0];
+      const window = records.slice(0, RECENT);
+      let passed = 0;
+      let ran = 0;
+      let savedSum = 0;
+      let uncachedSum = 0;
+      let covSkips = 0;
+      let totSkips = 0;
+      const durs = [];
+      for (const r of window) {
+        const o = recordOutcome(r);
+        if (o !== 'cancelled') {
+          ran++;
+          if (o === 'success') passed++;
+        }
+        // Cache benefit is a build-time property; aggregate only successful `build` runs so the tile
+        // tells the "cache saved on builds" story cleanly (test runs get a partial estimate).
+        if (r.kind === 'build') {
+          const bs = benefitStats(r);
+          if (bs.present) {
+            savedSum += bs.saved;
+            uncachedSum += bs.uncached;
+            covSkips += bs.coveredSkips;
+            totSkips += bs.totalSkips;
+          }
+        }
+        if (r.millis) durs.push(r.millis);
+      }
+      const relPct = ran ? Math.round((100 * passed) / ran) : null;
+      const cacheSavedPct = uncachedSum ? Math.round((100 * savedSum) / uncachedSum) : null;
+      const cacheLowConfidence = totSkips > 0 && covSkips / totSkips < 0.5;
+      durs.sort((a, b) => a - b);
+      const avg = durs.length ? Math.round(durs.reduce((s, x) => s + x, 0) / durs.length) : null;
+
+      const rows = records.slice(0, 50).map((r) => {
+        const bs = benefitStats(r);
+        return {
+          id: r.id,
+          buildNumber: r.buildNumber || null,
+          outcome: recordOutcome(r),
+          trigger: r.trigger || null,
+          commit: r.commit || null,
+          tests: r.tests || null,
+          saved: bs.present && bs.uncached > 0 ? this.duration(bs.saved) : null,
+          savedPct: bs.present && bs.uncached > 0 ? Math.round((100 * bs.saved) / bs.uncached) : null,
+          millis: r.millis,
+          finishedAt: r.finishedAt || 0,
+        };
+      });
+
+      return {
+        ...base,
+        empty: false,
+        total: latest.buildNumber || records.length,
+        reliability: relPct == null ? '—' : relPct + '%',
+        reliabilityClass: relPct == null ? '' : relPct >= 90 ? 'ok' : relPct >= 70 ? 'warn' : 'err',
+        cacheSaved: savedSum > 0 ? this.duration(savedSum) : '—',
+        cacheSavedPct: cacheSavedPct == null ? '' : (cacheLowConfidence ? '~' : '') + cacheSavedPct + '%',
+        cacheLowConfidence,
+        minMillis: durs.length ? durs[0] : null,
+        maxMillis: durs.length ? durs[durs.length - 1] : null,
+        avgMillis: avg,
+        lastFinishedAt: latest.finishedAt || 0,
+        rows,
+      };
+    },
+  },
+
+  methods: {
+    setView(view) {
+      this.view = view;
+      history.replaceState(null, '', '#' + view);
+      if (view === 'status') this.refresh();
+      if (view === 'projects') this.loadProjectHistory();
+    },
+
+    // ---- the Projects tab (grouped /api/history + live running overlay) ----
+
+    // Pull the raw journal (newest-first, up to 200 records); projectsList groups it per project.
+    async loadProjectHistory() {
+      try {
+        this.projectHistory = await get('/api/history');
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+    },
+
+    // The <jk-icon> name for a build/project state (badges + pills). Running gets a play triangle (the
+    // Activity feed shows a spinner instead); 'issue' (alert) is reserved for the audit/CVE signal —
+    // nothing drives it yet, but the state, colour, and chip are wired so a future signal only sets it.
+    stateIcon(state) {
+      return { running: 'play', success: 'check', failed: 'x', cancelled: 'ban', issue: 'alert', finished: 'dot' }[state] || 'dot';
+    },
+
+    // Staggered entrance delay for the .rise-in cascade on feed items, capped so long lists don't
+    // wait seconds. New SSE cards prepend at index 0, so they land immediately.
+    riseDelay(i) {
+      return Math.min(i, 8) * 0.04 + 's';
+    },
+
+    // "just now" / "5m ago" / "3h ago" / "2d ago" from an epoch-millis stamp (drives the 1s clock).
+    agoMillis(ms) {
+      if (!ms) return '';
+      const s = Math.max(0, Math.floor((this.now - ms) / 1000));
+      if (s < 60) return 'just now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      if (s < 86_400) return Math.floor(s / 3600) + 'h ago';
+      return Math.floor(s / 86_400) + 'd ago';
+    },
+
+    // Full-breakdown elapsed for the "Last built" line: "1d 2h 3m 4s ago" — the largest non-zero unit
+    // down to seconds (leading zero units dropped). Drives off the 1s clock like agoMillis.
+    agoLong(ms) {
+      if (!ms) return 'never';
+      let s = Math.max(0, Math.floor((this.now - ms) / 1000));
+      const d = Math.floor(s / 86_400); s -= d * 86_400;
+      const h = Math.floor(s / 3600); s -= h * 3600;
+      const m = Math.floor(s / 60); s -= m * 60;
+      const parts = [];
+      if (d) parts.push(d + 'd');
+      if (h || parts.length) parts.push(h + 'h');
+      if (m || parts.length) parts.push(m + 'm');
+      parts.push(s + 's');
+      return parts.join(' ') + ' ago';
+    },
+
+    // ---- the project detail page (#project/<dir>) ----
+
+    // Open a project's page — set the hash (creating a history entry so Back returns to the list);
+    // the hashchange listener drives applyRoute, which flips the view and loads the metadata.
+    openProject(dir) {
+      if (!dir) return;
+      location.hash = '#project/' + encodeURIComponent(dir);
+    },
+
+    // Re-derive view + selected project from the hash, loading whatever that route needs.
+    applyRoute() {
+      const r = routeFromHash();
+      this.view = r.view;
+      this.selectedProjectDir = r.dir;
+      if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
+      if (r.view === 'projects') this.loadProjectHistory();
+      if (r.view === 'status') this.refresh();
+    },
+
+    // Live coord + description for the open project, straight from its jk.toml on disk.
+    async loadProjectMeta(dir) {
+      this.projectMeta = null;
+      try {
+        this.projectMeta = await get('/api/project?dir=' + encodeURIComponent(dir));
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+      if (!this.projectHistory.length) this.loadProjectHistory(); // detail rows come from history
+    },
+
+    // The "Build" button: kick off a fresh build of this project and jump to the live Activity feed.
+    buildProject(dir) {
+      this.triggerBuild(dir);
+      this.setView('activity');
+    },
+
+    // Human label for a build's trigger. Older (pre-capture) records have none → em dash.
+    triggerLabel(trigger) {
+      return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
+    },
+
+    // Progress percentage for a running card's bar — the identical weight-based model as the CLI
+    // (ProgressBar): fraction = numerator/denominator of the engine's weight units, aggregated across
+    // modules (fold.js). Clamped to 99% while running; only a finished card is 100% — matching
+    // ProgressBarListener. No client-side estimation: the engine already did all the weight math.
+    progress(card) {
+      if (this.outcome(card) !== 'running') return 100;
+      const den = weightDenominator(card);
+      if (den <= 0) return 0; // no weight yet (before pipeline-start) — the bar fills in a beat
+      return Math.min(99, Math.round((100 * weightNumerator(card)) / den));
+    },
+
+    // Live ETA countdown for a running card — the same calibrated millis the CLI countdown and
+    // `jk explain` show. remaining = eta − elapsed; overrun flips to '+'. Empty when no estimate
+    // (the elapsed "+Ns" timer already covers count-up). Re-emitted eta events retarget it.
+    eta(card) {
+      if (this.outcome(card) !== 'running') return '';
+      const ms = card.etaMillis;
+      if (ms == null || ms <= 0 || card.startedAt == null) return '';
+      const remaining = ms - (this.now - card.startedAt);
+      return remaining >= 0 ? '~' + this.fmtClock(remaining) : '+' + this.fmtClock(-remaining);
+    },
+
+    // mm:ss-style clock mirroring the CLI's CommandManager.fmtClock: "42s" / "1m 02s" / "1h 05m 09s".
+    fmtClock(ms) {
+      const s = Math.max(0, Math.round(ms / 1000));
+      if (s < 60) return s + 's';
+      const pad = (n) => String(n).padStart(2, '0');
+      const m = Math.floor(s / 60);
+      if (m < 60) return m + 'm ' + pad(s % 60) + 's';
+      return Math.floor(m / 60) + 'h ' + pad(m % 60) + 'm ' + pad(s % 60) + 's';
+    },
+
+    outcome(card) {
+      return outcomeOf(card);
+    },
+
+    // Badge label for a finished Activity card — optional #buildNumber + capitalized outcome, e.g.
+    // "#11 Failed" or "Success". The leading state icon is a <jk-icon> in the template (see stateIcon).
+    activityBadge(card) {
+      const o = this.outcome(card);
+      const num = card.buildNumber ? '#' + card.buildNumber + ' ' : '';
+      return num + o.charAt(0).toUpperCase() + o.slice(1);
+    },
+
+    summary(card) {
+      return moduleSummary(card);
+    },
+
+    // The capitalized phase a diagnostic belongs to, joined from the module's step rows (which carry
+    // the phase) by matching the diagnostic's step name. '' when the step has no phase or isn't found
+    // — the failure line then reads step › … without a phase prefix.
+    diagPhase(mod, d) {
+      const st = ((mod && mod.steps) || []).find((s) => s.name === d.step);
+      const wire = st && st.phase ? st.phase : '';
+      return wire ? wire.charAt(0).toUpperCase() + wire.slice(1) : '';
+    },
+
+    // A build is "compact" (one step chain under the header, no module-name rows) when it has at
+    // most one module — a single-project build, or a 1-module workspace. Multi-module builds render
+    // a bullet+name row per module, each with its own chain.
+    compact(card) {
+      return card.modules.length <= 1;
+    },
+
+    // The single chain shown under the header for a compact card (the one module's steps, if any).
+    singleChain(card) {
+      return card.modules[0] ? card.modules[0].steps : [];
+    },
+
+    // The lone module of a compact card — carries the steps and any failure output shown inline.
+    singleModule(card) {
+      return card.modules[0] || null;
+    },
+
+    // Multi-module cards split their module rows across two peer accordions: the failed modules
+    // (kept open) and everything else — succeeded, still-running, skipped, cancelled — which rolls
+    // up under a "success details" accordion that is open while running and collapsed once done. A
+    // module carrying failure output counts as failed even if its state was never marked (covers
+    // request-level errors that land on a synthetic row).
+    failedModules(card) {
+      return card.modules.filter((m) => m.state === 'failed' || m.diagnostics.length > 0);
+    },
+    okModules(card) {
+      return card.modules.filter((m) => m.state !== 'failed' && m.diagnostics.length === 0);
+    },
+
+    // A module row's label: the artifact name from its coord (e.g. "core"), else the dir's tail.
+    moduleLabel(m) {
+      if (m.coord) {
+        const i = m.coord.lastIndexOf(':');
+        return i >= 0 ? m.coord.slice(i + 1) : m.coord;
+      }
+      return this.shortDir(m.dir);
+    },
+
+    async refresh() {
+      try {
+        this.status = await get('/api/status');
+        if (this.connection === 'unauthorized') this.connection = 'live';
+        if (this.view === 'status') {
+          this.engineLog = await getText('/api/log?lines=100');
+        }
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+      // Separate try: a metrics hiccup must not blank the status vitals.
+      try {
+        this.metrics = await get('/api/metrics');
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+      // Cache breakdown: needed by the always-on footer (Cache Used), so pull it on every refresh
+      // rather than only on the Status view. Still only on the 30s refresh cadence, not the 1s tick.
+      try {
+        this.cache = await get('/api/cache');
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+    },
+
+    // ---- the Status view's Cache panel (/api/cache) ----
+
+    cacheUtilizationPercent() {
+      const c = this.cache;
+      if (!c || c.maxBytes <= 0) return 0;
+      return Math.min(100, Math.round((100 * c.totalBytes) / c.maxBytes));
+    },
+
+    prunedAgo() {
+      const at = this.cache?.lastPrunedMillis;
+      if (!at) return 'never';
+      const days = Math.floor((this.now - at) / 86_400_000);
+      if (days <= 0) return 'today';
+      return days === 1 ? '1 day ago' : days + ' days ago';
+    },
+
+    count(n) {
+      return n == null ? '—' : n.toLocaleString();
+    },
+
+    // ---- the Status view's build-stats section (running aggregates from /api/metrics) ----
+
+    // The machine-wide invocation rows (one per kind: build, test), stable order.
+    metricsGlobal() {
+      return (this.metrics || [])
+        .filter((r) => r.scope === 'global')
+        .sort((a, b) => a.kind.localeCompare(b.kind));
+    },
+
+    // The machine-wide per-step rows, biggest total first, capped for the panel.
+    metricsSteps() {
+      return (this.metrics || [])
+        .filter((r) => r.scope === 'step')
+        .sort((a, b) => b.okTotalMillis - a.okTotalMillis)
+        .slice(0, 10);
+    },
+
+    // Sums across kinds for the KPI tiles: total runs, ok, failed+cancelled, total wall-clock.
+    metricsTotals() {
+      const g = this.metricsGlobal();
+      const sum = (f) => g.reduce((acc, r) => acc + f(r), 0);
+      const ok = sum((r) => r.okCount);
+      const bad = sum((r) => r.failCount) + sum((r) => r.cancelledCount);
+      return { runs: ok + bad, ok, bad, totalMillis: sum((r) => r.okTotalMillis + r.failTotalMillis) };
+    },
+
+    successRate() {
+      const t = this.metricsTotals();
+      return t.runs === 0 ? '—' : Math.round((100 * t.ok) / t.runs) + '%';
+    },
+
+    // Backfill the feed from the persisted journal (/api/history), reconciled with live cards.
+    async loadHistory() {
+      try {
+        const records = await get('/api/history');
+        seedFromHistory(this.cards, records);
+      } catch (e) {
+        if (e.status === 401) this.connection = 'unauthorized';
+      }
+    },
+
+    // Delete a finished run from history (engine + disk), then drop its card locally.
+    async deleteCard(card) {
+      if (!card.historyId) return;
+      try {
+        await del('/api/history?id=' + encodeURIComponent(card.historyId));
+        const i = this.cards.indexOf(card);
+        if (i >= 0) this.cards.splice(i, 1);
+      } catch (e) {
+        this.buildError =
+          e.status === 401
+            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
+            : 'Could not delete this run';
+      }
+    },
+
+    // ---- the workspace picker (Browse…) ----
+    async openBrowser() {
+      // Start from the typed path when it looks absolute; the server defaults to $HOME otherwise.
+      const seed = this.buildDir.trim().startsWith('/') ? this.buildDir.trim() : null;
+      await this.browseTo(seed);
+    },
+
+    async browseTo(dir) {
+      this.buildError = null;
+      try {
+        this.browser = await get('/api/fs' + (dir ? '?dir=' + encodeURIComponent(dir) : ''));
+      } catch (e) {
+        if (e.status === 401) {
+          this.buildError = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
+          this.browser = null;
+        } else if (this.browser) {
+          // an unreadable subdir: stay where we are
+        } else {
+          this.buildError = 'Could not list that directory';
+        }
+      }
+    },
+
+    chooseBrowsed() {
+      this.buildDir = this.browser.dir;
+      this.browser = null;
+    },
+
+    closeBrowser() {
+      this.browser = null;
+    },
+
+    joinPath(dir, name) {
+      return dir.endsWith('/') ? dir + name : dir + '/' + name;
+    },
+
+    async triggerBuild(dir) {
+      this.buildError = null;
+      const target = (dir ?? this.buildDir).trim();
+      if (!target) return;
+      try {
+        await post('/api/build', { dir: target });
+        if (dir == null) this.buildDir = '';
+      } catch (e) {
+        this.buildError =
+          e.status === 401
+            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
+            : e.error || 'Build request failed';
+      }
+    },
+
+    // ---- formatting helpers (templates keep zero logic beyond these) ----
+    coordParts(card) {
+      // "group:name" → colored segments; fall back to the dir's last two path segments.
+      if (card.coord && card.coord.includes(':')) {
+        const i = card.coord.indexOf(':');
+        return { group: card.coord.slice(0, i), name: card.coord.slice(i + 1) };
+      }
+      const parts = card.dir.split('/').filter(Boolean);
+      return { group: null, name: parts.length ? parts[parts.length - 1] : card.dir };
+    },
+    mib(bytes) {
+      return bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
+    },
+    // System RAM reads naturally in GiB (total physical memory the engine's OS reports).
+    gib(bytes) {
+      return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
+    },
+    // Header version pill: "v0.10.0" — the build-metadata suffix (-SNAPSHOT) is dropped for the chip.
+    versionPill() {
+      return this.status ? 'v' + String(this.status.version).replace(/-SNAPSHOT$/, '') : '';
+    },
+    // Footer "Builds Running": the engine's live pipeline count (authoritative, always in /api/status).
+    buildsRunning() {
+      return this.status ? this.status.activePipelines : 0;
+    },
+    heapUsedPercent() {
+      return this.percentOfMax(this.status?.heapUsedBytes);
+    },
+    heapCommittedPercent() {
+      return this.percentOfMax(this.status?.heapCommittedBytes);
+    },
+    percentOfMax(bytes) {
+      const s = this.status;
+      if (!s || s.heapMaxBytes <= 0 || bytes == null || bytes < 0) return 0;
+      return Math.min(100, Math.round((100 * bytes) / s.heapMaxBytes));
+    },
+    uptime() {
+      const s = this.status;
+      if (!s) return '—';
+      const total = Math.max(0, Math.floor((this.now - s.startedAt) / 1000));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      return h + 'h ' + m + 'm ' + (total % 60) + 's';
+    },
+    elapsed(card) {
+      if (card.startedAt == null) return '';
+      return '+' + Math.max(0, Math.floor((this.now - card.startedAt) / 1000)) + 's';
+    },
+    ago(card) {
+      if (card.finishedAt == null) return '';
+      const s = Math.max(0, Math.floor((this.now - card.finishedAt) / 1000));
+      if (s < 60) return 'just now';
+      if (s < 3600) return Math.floor(s / 60) + 'm ago';
+      return Math.floor(s / 3600) + 'h ago';
+    },
+    duration(millis) {
+      if (millis == null) return '';
+      if (millis < 1000) return millis + ' ms';
+      if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
+      return Math.floor(millis / 60_000) + 'm ' + Math.round((millis % 60_000) / 1000) + 's';
+    },
+    shortDir(dir) {
+      const parts = dir.split('/').filter(Boolean);
+      return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : dir;
+    },
+    lastSegment(dir) {
+      const parts = dir.split('/').filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : dir;
+    },
+    connectionLabel() {
+      return {
+        connecting: 'Connecting…',
+        live: 'Live',
+        offline: 'Engine stopped — run any jk command to restart it',
+        unauthorized: 'Unauthorized — open the URL printed by `jk engine status`',
+      }[this.connection];
+    },
+  },
+})
+  .component('jk-icon', JkIcon)
+  .component('phase-chain', PhaseChain)
+  .component('build-bars', BuildBars)
+  .mount('#app');

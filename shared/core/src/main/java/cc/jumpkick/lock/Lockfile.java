@@ -1,0 +1,316 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.lock;
+
+import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.Scope;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * In-memory {@code jk.lock} (schema {@code version = 1}). Optional fields ({@code jdk},
+ * {@code kotlin}, plugins, SDK, toolchain) may be null/empty for older lockfiles.
+ */
+public record Lockfile(
+        int version,
+        String generatedBy,
+        String resolutionAlgorithm,
+        String jdk,
+        String kotlin,
+        List<Artifact> artifacts,
+        List<PluginEntry> plugins,
+        List<SdkEntry> sdk,
+        JkToolchain jk) {
+
+    /**
+     * Pinned jk version and engine-jar sha256 (empty for -SNAPSHOT). The wrapper's contract for
+     * this checkout.
+     */
+    public record JkToolchain(String version, String sha256) {}
+
+    public static final int CURRENT_VERSION = 1;
+    public static final int MIN_SUPPORTED_VERSION = 1;
+    public static final String RESOLUTION_ALGORITHM = "pubgrub-v1";
+
+    public Lockfile {
+        Objects.requireNonNull(generatedBy, "generatedBy");
+        Objects.requireNonNull(resolutionAlgorithm, "resolutionAlgorithm");
+        Objects.requireNonNull(artifacts, "artifacts");
+        artifacts = List.copyOf(artifacts);
+        plugins = plugins == null ? List.of() : List.copyOf(plugins);
+        sdk = sdk == null ? List.of() : List.copyOf(sdk);
+    }
+
+    /** Back-compat constructor without the jk toolchain pin. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts,
+            List<PluginEntry> plugins,
+            List<SdkEntry> sdk) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, null);
+    }
+
+    /** This lock with the jk toolchain pin set. */
+    public Lockfile withJk(JkToolchain toolchain) {
+        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, toolchain);
+    }
+
+    /** Back-compat constructor without SDK entries. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts,
+            List<PluginEntry> plugins) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, List.of());
+    }
+
+    /** Back-compat constructor without plugin entries. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, List.of());
+    }
+
+    /** Back-compat constructor for callers that stamp a JDK but no Kotlin version. */
+    public Lockfile(int version, String generatedBy, String resolutionAlgorithm, String jdk, List<Artifact> artifacts) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, null, artifacts, List.of());
+    }
+
+    /** Back-compat constructor for callers that don't yet stamp a JDK. */
+    public Lockfile(int version, String generatedBy, String resolutionAlgorithm, List<Artifact> artifacts) {
+        this(version, generatedBy, resolutionAlgorithm, null, null, artifacts, List.of());
+    }
+
+    /** Return a copy with the resolved Kotlin compiler version stamped in. */
+    public Lockfile withKotlin(String kotlinVersion) {
+        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlinVersion, artifacts, plugins, sdk);
+    }
+
+    /** Return a copy with the given plugin entries (replaces any existing). */
+    public Lockfile withPlugins(List<PluginEntry> newPlugins) {
+        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, newPlugins, sdk);
+    }
+
+    /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
+    public Lockfile withSdk(List<SdkEntry> newSdk) {
+        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, newSdk);
+    }
+
+    public static Lockfile empty(String jkVersion) {
+        return empty(jkVersion, null);
+    }
+
+    /** Empty artifact set with a resolved JDK pinned for the project. */
+    public static Lockfile empty(String jkVersion, String jdk) {
+        return new Lockfile(
+                CURRENT_VERSION, "jk " + jkVersion, RESOLUTION_ALGORITHM, jdk, null, List.of(), List.of(), List.of());
+    }
+
+    /** Provisioned SDK component pin (sdkmanager path + revision). */
+    public record SdkEntry(String component, String revision) {
+        public SdkEntry {
+            Objects.requireNonNull(component, "component");
+            Objects.requireNonNull(revision, "revision");
+        }
+    }
+
+    /** Third-party plugin pin: Maven {@code group:name}, version, {@code sha256:<hex>}. */
+    public record PluginEntry(String coordinate, String version, String checksum) {
+        public PluginEntry {
+            Objects.requireNonNull(coordinate, "coordinate");
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(checksum, "checksum");
+        }
+
+        /** Raw hex SHA-256 (strips a {@code "sha256:"} prefix). */
+        public String sha256Hex() {
+            return checksum.startsWith("sha256:") ? checksum.substring(7) : checksum;
+        }
+    }
+
+    public record Artifact(
+            String name,
+            String version,
+            String source,
+            String checksum,
+            String path,
+            List<Scope> scopes,
+            List<String> deps,
+            String pinnedBy,
+            GitInfo git,
+            /** SHA-256 of the {@code -sources.jar}, or {@code null} when not published. */
+            String sourcesChecksum) {
+
+        public Artifact {
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(version, "version");
+            Objects.requireNonNull(source, "source");
+            Objects.requireNonNull(deps, "deps");
+            Objects.requireNonNull(scopes, "scopes");
+            // Canonicalize scope order for stable lockfile output.
+            EnumSet<Scope> set = EnumSet.noneOf(Scope.class);
+            set.addAll(scopes);
+            scopes = new ArrayList<>(set);
+            deps = List.copyOf(deps);
+        }
+
+        /** Without sources checksum (the common case). */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                String checksum,
+                String path,
+                List<Scope> scopes,
+                List<String> deps,
+                String pinnedBy,
+                GitInfo git) {
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, git, null);
+        }
+
+        /** Without git provenance — the common Maven-coordinate case. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                String checksum,
+                String path,
+                List<Scope> scopes,
+                List<String> deps,
+                String pinnedBy) {
+            this(name, version, source, checksum, path, scopes, deps, pinnedBy, null, null);
+        }
+
+        /** Without {@code pinnedBy}. */
+        public Artifact(
+                String name,
+                String version,
+                String source,
+                String checksum,
+                String path,
+                List<Scope> scopes,
+                List<String> deps) {
+            this(name, version, source, checksum, path, scopes, deps, null, null, null);
+        }
+
+        /** Convenience constructor for callers that don't care about scopes (defaults to MAIN). */
+        public Artifact(String name, String version, String source, String checksum, String path, List<String> deps) {
+            this(name, version, source, checksum, path, List.of(Scope.MAIN), deps, null, null);
+        }
+
+        public boolean inAnyScope(Set<Scope> include) {
+            for (Scope s : scopes) if (include.contains(s)) return true;
+            return false;
+        }
+
+        /** The {@code group} segment of {@link #name}. */
+        public String moduleGroup() {
+            if (!PackageId.isMavenPackageKey(name)) {
+                int c = name.indexOf(':');
+                return c < 0 ? name : name.substring(0, c);
+            }
+            return PackageId.parse(name).group();
+        }
+
+        /** The {@code artifact} segment of {@link #name} (not type/classifier). */
+        public String moduleArtifact() {
+            if (!PackageId.isMavenPackageKey(name)) {
+                int c = name.indexOf(':');
+                return c < 0 ? "" : name.substring(c + 1);
+            }
+            return PackageId.parse(name).artifact();
+        }
+
+        /**
+         * Canonical package key for this row. Bare legacy {@code g:a} names normalize to
+         * {@code g:a:jar:}.
+         */
+        public String packageKey() {
+            if (!PackageId.isMavenPackageKey(name)) return name;
+            return PackageId.parse(name).key();
+        }
+
+        /**
+         * True when {@code moduleOrKey} refers to this row — exact name/key match, or the same
+         * {@code group:artifact} as a full package key ({@code g:a:jar:}). Used by {@code jk why},
+         * tests, and lookups that still speak GA after package identity gained type/classifier.
+         */
+        public boolean matchesModule(String moduleOrKey) {
+            if (moduleOrKey == null || moduleOrKey.isBlank()) return false;
+            if (name.equals(moduleOrKey) || packageKey().equals(moduleOrKey)) return true;
+            String thisGa = gaOf(name);
+            String thatGa = gaOf(moduleOrKey);
+            return thisGa != null && thisGa.equals(thatGa);
+        }
+
+        private static String gaOf(String nameOrKey) {
+            if (!PackageId.isMavenPackageKey(nameOrKey)) return nameOrKey;
+            try {
+                return PackageId.parse(nameOrKey).ga();
+            } catch (RuntimeException e) {
+                return nameOrKey;
+            }
+        }
+
+        /** This artifact as a {@link Coordinate} at its {@link #version}. */
+        public Coordinate coordinate() {
+            // The optional `path` field carries the artifact's real file name when the packaging
+            // is not a plain jar (an androidx AAR) — the coordinate's type follows it, so every
+            // fetch/locate path (sync, repo store, IDE fetch) asks for the right extension.
+            if (isAar()) {
+                return new Coordinate(moduleGroup(), moduleArtifact(), version, null, "aar");
+            }
+            if (!PackageId.isMavenPackageKey(name)) {
+                return Coordinate.of(moduleGroup(), moduleArtifact(), version);
+            }
+            return PackageId.parse(name).withVersion(version);
+        }
+
+        /** True when the locked artifact is an Android AAR (path or package type). */
+        public boolean isAar() {
+            if (path != null && path.endsWith(".aar")) return true;
+            return PackageId.isMavenPackageKey(name) && "aar".equals(PackageId.parse(name).type());
+        }
+
+        /** Raw hex SHA-256 of the jar (strips a {@code "sha256:"} prefix), or {@code null}. */
+        public String checksumHex() {
+            return stripSha256(checksum);
+        }
+
+        /** Raw hex SHA-256 of the {@code -sources.jar} (strips the prefix), or {@code null}. */
+        public String sourcesChecksumHex() {
+            return stripSha256(sourcesChecksum);
+        }
+
+        private static String stripSha256(String c) {
+            if (c == null) return null;
+            return c.startsWith("sha256:") ? c.substring(7) : c;
+        }
+
+        /**
+         * Provenance for a git-source artifact: the canonical repo URL, the resolved commit SHA, and
+         * the original ref token (e.g. {@code tag:v1}). Present only for git-built artifacts; null for
+         * Maven coordinates.
+         */
+        public record GitInfo(String url, String rev, String ref) {
+            public GitInfo {
+                Objects.requireNonNull(url, "url");
+                Objects.requireNonNull(rev, "rev");
+            }
+        }
+    }
+}

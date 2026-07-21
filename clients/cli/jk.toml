@@ -1,0 +1,35 @@
+[project]
+group    = "cc.jumpkick"
+name     = "jk-cli"
+version  = "0.10.0-SNAPSHOT"
+description = "jk command-line client: verb dispatch, rendering, the thin kernel slice (Stage 5)."
+jdk      = 25
+java     = 25
+
+[application]
+main = "cc.jumpkick.cli.Jk"
+
+# The slim client's whole kernel surface — NO jk-io, jk-resolver, jk-toolchain, or jk-engine
+# (slim-client Stage 5 / ticket-1020): heavy verbs reach the engine over the wire.
+# Integration tests under src/test spawn the real :engine shadow jar.
+[dependencies]
+jk-core            = { group = "cc.jumpkick", name = "jk-core",            version = "0.10.0-SNAPSHOT" }
+jk-client-io       = { group = "cc.jumpkick", name = "jk-client-io",       version = "0.10.0-SNAPSHOT" }
+jk-toolchain-jdk   = { group = "cc.jumpkick", name = "jk-toolchain-jdk",   version = "0.10.0-SNAPSHOT" }
+jk-engine-api      = { group = "cc.jumpkick", name = "jk-engine-api",      version = "0.10.0-SNAPSHOT" }
+jk-plugin-api      = { group = "cc.jumpkick", name = "jk-plugin-api",      version = "0.10.0-SNAPSHOT" }
+jline-terminal-ffm = { group = "org.jline",   name = "jline-terminal-ffm", version = "4.1.2" }
+
+# ProcessProperties for argv[0] `jkx` dispatch (Argv0) — compile-time only; the
+# native-image builder provides the implementation and JVM mode never loads it.
+[provided-dependencies]
+graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version = "25.0.0" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+bcpg-jdk18on            = { group = "org.bouncycastle",   name = "bcpg-jdk18on",            version = "1.84" }
+
+[image]
+main-class = "cc.jumpkick.cli.Jk"

@@ -1,0 +1,188 @@
+# Contributing to jk
+
+## Source headers
+
+Every source file starts with an SPDX line:
+
+```
+// SPDX-License-Identifier: Apache-2.0
+```
+
+Use the comment syntax appropriate to the file type (`//`, `#`, `<!--`, …).
+
+## Toolchain
+
+Bootstrap pins (`.sdkmanrc`):
+
+```
+java=25.0.3-graal
+gradle=9.5.1
+```
+
+With SDKMAN: `sdk env install && sdk env`. Otherwise Gradle can provision a JDK via the
+foojay resolver on first use.
+
+## Building
+
+```bash
+./gradlew classes
+./gradlew :cli:installDist :engine:shadowJar   # thin JVM client + engine fat jar
+./gradlew dist                                  # native client + engine jar → build/dist/
+./install.sh build/dist/jk                      # optional local install
+```
+
+`dist` builds the slim GraalVM native `jk` client and the engine fat jar
+(`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
+jk-managed JDK — never as a native image. `nativeCompile` needs a GraalVM-capable
+JDK (the pin above qualifies).
+
+Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
+full suite.
+
+### Self-host (phase 2) — workspace modules + thin workers with jk
+
+The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
+`server/`, `clients/`, and thin workers under `plugins/test-runner` +
+`plugins/java-compiler`). Those two workers package as **shadow jars** with
+`Main-Class = PluginMain` (plugin-sdk shaded in). Other `plugins/*` stay Gradle-only
+(fat workers + `installLocal`).
+
+#### A) Native client bootstrap (CI default; needs GraalVM)
+
+```bash
+# 1) Produce a local JumpKick + side-load worker jars into ~/.jk/cache
+./gradlew dist installLocal
+./install.sh build/dist/jk
+export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install layout
+
+# 2) Lock + compile/package workspace modules (no Gradle for javac)
+jk lock
+jk build --skip-tests
+```
+
+#### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
+
+```bash
+# 1) Slim client installDist + server-only engine fat jar + worker jars
+./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+
+# 2) Same dogfood as (A)
+jk lock
+jk build --skip-tests
+```
+
+The client never embeds the engine (ticket-1020). Spawning uses
+`~/.jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
+
+| Still Gradle | Why |
+|---|---|
+| `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
+| `./gradlew dist` / `nativeCompile` | Native-image + fat engine jar packaging |
+| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` (PluginJar.locate) |
+| Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
+
+### Per-OS CI (JK-1073)
+
+| Lane | When | What |
+|---|---|---|
+| **Linux** (`ci.yml`) | Every push / PR | Full `./gradlew test`, self-host, showcase |
+| **Windows + macOS** (`ci-os-nightly.yml`) | **Nightly** (cron) + manual `workflow_dispatch` | Filtered `:core:test :wire:test :engine:test :cli:test`; Windows exercises real TCP+token engine transport (JK-1011 field path); macOS thin-client smoke |
+
+Rationale: macOS runners ~10× and Windows ~2× Linux minutes — not every push. Native-image
+per OS waits on the release matrix (JK-1066).
+
+**Reproduce locally**
+
+```bash
+# Same filter as nightly:
+./gradlew :core:test :wire:test :engine:test :cli:test
+
+# Windows local install of a thin client (PowerShell):
+#   .\gradlew :cli:installDist :engine:shadowJar
+#   pwsh -File scripts\install.ps1 -LocalPath clients\cli\build\install\jk\bin\jk.bat
+# Download install on Windows is stubbed until JK-1066.
+```
+
+Flakes on new OS lanes: open a ticket; known flake classes include TempDir/pipe-closed on
+Linux and are expected to grow Windows path/FD variants.
+
+#### Engine / CLI tests under self-host
+
+`server/engine` declares `[build].test-plugin-jars`. When those names are **workspace
+siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
+`-Djk.<worker>.plugin.jar` pointing at the **built shadow jar** under
+`plugins/<name>/target/`. Other workers still resolve from `installLocal` / CAS.
+
+CLI integration tests (`:cli:test`) spawn a real engine from `:engine:shadowJar` (materialized
+into the test `JK_HOME`) — no in-process dual path (ticket-1020).
+
+**Suite timing (order of magnitude, warm laptop):** `:cli:test` ≈ **7 minutes** with warm
+engine across methods (1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop
+engine only when delete fails). Full `./gradlew test` is longer. Use module filters mid-ticket;
+re-run full `./gradlew test` before merge to `main`. Shared dep cache:
+`jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
+
+Prefer `jk build --skip-tests` for the documented dogfood path; keep
+`./gradlew :engine:test` / `:cli:test` for the full nested suites (Gradle wires
+worker jars via configurations).
+
+Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
+
+### Showcase monorepo smoke (ticket-1038)
+
+Multi-module sample under
+[`docs/features/examples/workspace-showcase/`](docs/features/examples/workspace-showcase/):
+
+```bash
+./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
+CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
+ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
+"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+
+cd docs/features/examples/workspace-showcase
+jk lock && jk build && jk test --modules app
+# optional: jk build --modules app
+```
+
+CI job **Showcase monorepo (jk)** runs the same path (no `continue-on-error`).
+
+### One build at a time per checkout
+
+`settings.gradle.kts` takes an OS file lock (`.gradle/cross-daemon-build.lock`) so
+two Gradle daemons do not corrupt shared test outputs. A second invocation waits
+with a clear message. Use a separate worktree for true parallel builds.
+
+## Project layout
+
+| Path | Role |
+|---|---|
+| `shared/` | Client-safe modules (`jk-api`, `core`, `plugin-sdk`, `wire`, …) |
+| `server/` | Engine-only (`engine`, `resolver`, `io`, `toolchain`) |
+| `clients/` | `cli` (native/thin JVM client + CLI tests), `web`, `vscode` (VS Code extension) |
+| `plugins/` | First-party build/worker plugins |
+
+### IDE plugins (wire-only)
+
+```bash
+./scripts/package-vscode.sh      # → clients/vscode/jumpkick-*.vsix (gitignored)
+./scripts/package-intellij.sh    # → clients/intellij/build/distributions/*.zip
+```
+
+Requires `jk` on PATH. No engine jars in the IDE process. See `clients/vscode/README.md` and
+`clients/intellij/README.md`.
+See [docs/architecture.md](docs/architecture.md) for layering and process model, and
+[docs/guide.md](docs/guide.md) for product behavior.
+
+## Docs and planning
+
+- Public docs live under [`docs/`](docs/README.md) (keep the set small and accurate).
+- Engineering board: **[kanartist](https://github.com/jkbuild/kanartist)** project `jk` (`JK-NNNN`). See root [`AGENTS.md`](AGENTS.md). The old [`docs/kanban/`](docs/kanban/README.md) tree is frozen/historical.
+
+## License
+
+Contributions are under the [Apache 2.0](LICENSE) license.
