@@ -10,6 +10,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 JK_BIN="${JK_BIN:-jk}"
 PROJECT="${1:-}"
 RUNS="${RUNS:-5}"
+# HotSpot only — Graal is ineligible for PluginAot worker caches (see PluginAot.eligible).
+JDK_SPEC="${JDK_SPEC:-temurin-25}"
 
 if [[ -z "$PROJECT" ]]; then
   echo "usage: $0 <project-dir>" >&2
@@ -17,6 +19,7 @@ if [[ -z "$PROJECT" ]]; then
 fi
 PROJECT="$(cd "$PROJECT" && pwd)"
 cd "$PROJECT"
+JK=("$JK_BIN" --jdk "$JDK_SPEC")
 
 median() {
   sort -n | awk '{a[NR]=$1} END{ if(NR==0) print 0; else if(NR%2) print a[(NR+1)/2]; else print (a[NR/2]+a[NR/2+1])/2 }'
@@ -69,54 +72,58 @@ run_median() {
   printf '| %s | %s | ~%s MiB |\n' "$label" "${med}ms" "$rss_mb"
 }
 
-echo "# AOT-on vs AOT-off (fork workers)"
+echo "# AOT-on vs AOT-off (cold fork workers) on HotSpot"
 echo "project: $PROJECT"
 echo "jk: $($JK_BIN --version 2>/dev/null || echo unknown)"
+echo "jdk: --jdk $JDK_SPEC  (Graal is NOT eligible for worker AOT)"
 echo "date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "runs: $RUNS (median wall)"
 echo "aot caches:"
-find "${HOME}/.jk/state/aot" -name '*.aot' 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
+find "${HOME}/.jk/state/aot" -name 'javac-*.aot' 2>/dev/null | head -10 | sed 's/^/  /' || echo "  (none)"
 echo
 
-# Ensure engine up + deps + AOT trained (production path)
+# Ensure engine up + deps + AOT trained under HotSpot
 unset JK_WORKER_AOT || true
 "$JK_BIN" engine status >/dev/null 2>&1 || true
-"$JK_BIN" build --skip-tests >/dev/null 2>&1 || true
-# second build to map AOT if first was train-only
-"$JK_BIN" build --skip-tests >/dev/null 2>&1 || true
+"${JK[@]}" build --skip-tests >/dev/null 2>&1 || true
+# train pass (rebuild) + settle background trainer
+"${JK[@]}" build --skip-tests --rebuild >/dev/null 2>&1 || true
+sleep 3
+"${JK[@]}" build --skip-tests --rebuild >/dev/null 2>&1 || true
 
 JAVA_FILE=$(find . -name '*.java' -not -path './target/*' -not -path './out/*' -not -path './.jk/*' 2>/dev/null | head -1 || true)
 
 echo "| scenario | median wall | engine RSS (median sample) |"
 echo "|---|---|---|"
 
-# --- AOT ON ---
+# --- AOT ON (cold fork + AOT map) ---
 unset JK_WORKER_AOT || true
 rm -rf target out 2>/dev/null || true
-run_median "AOT-on clean (rm target)" "$JK_BIN" build --skip-tests
-run_median "AOT-on noop" "$JK_BIN" build --skip-tests
+run_median "AOT-on clean (rm target)" "${JK[@]}" build --skip-tests
+run_median "AOT-on noop" "${JK[@]}" build --skip-tests
 # Force recompile even when action cache is warm (the fair AOT stress):
-run_median "AOT-on rebuild" "$JK_BIN" build --skip-tests --rebuild
+run_median "AOT-on rebuild (cold fork+AOT)" "${JK[@]}" build --skip-tests --rebuild
 if [[ -n "${JAVA_FILE:-}" ]]; then
   echo "" >>"$JAVA_FILE"
-  run_median "AOT-on incr-body" "$JK_BIN" build --skip-tests
+  run_median "AOT-on incr-body" "${JK[@]}" build --skip-tests
 fi
 
-# --- AOT OFF ---
+# --- AOT OFF (pure cold fork) ---
 export JK_WORKER_AOT=off
 rm -rf target out 2>/dev/null || true
-run_median "AOT-off clean (rm target)" "$JK_BIN" build --skip-tests
-run_median "AOT-off noop" "$JK_BIN" build --skip-tests
-run_median "AOT-off rebuild" "$JK_BIN" build --skip-tests --rebuild
+run_median "AOT-off clean (rm target)" "${JK[@]}" build --skip-tests
+run_median "AOT-off noop" "${JK[@]}" build --skip-tests
+run_median "AOT-off rebuild (cold fork)" "${JK[@]}" build --skip-tests --rebuild
 if [[ -n "${JAVA_FILE:-}" ]]; then
   echo "" >>"$JAVA_FILE"
-  run_median "AOT-off incr-body" "$JK_BIN" build --skip-tests
+  run_median "AOT-off incr-body" "${JK[@]}" build --skip-tests
 fi
 unset JK_WORKER_AOT
 
 echo
 echo "Notes:"
-echo "- Warm pool (resident compiler) is not on main; a pool must beat **AOT-on**, not only AOT-off."
+echo "- Arms are both cold process starts: AOT map vs no AOT. Warm *pool* is not on main."
+echo "- A pool must beat AOT-on on HotSpot (Temurin), not Graal (ineligible)."
+echo "- Confirm: ps shows …/temurin…/bin/javac and -J-XX:AOTCache= during AOT-on rebuild."
 echo "- Engine RSS is a coarse sample after each run (not peak worker set)."
-echo "- Wall includes engine work; engine was pre-warmed before the table."
 echo "- Timeline: target/jk-chrome-profile.json after a build."

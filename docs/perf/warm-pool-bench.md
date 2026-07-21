@@ -1,80 +1,96 @@
 # Warm compiler pool vs AOT forks — measure & decision
 
-**Date:** 2026-07-21 (re-run)  
+**Date:** 2026-07-21 (Temurin 25 re-run)  
 **Status:** **DEFER** warm pool (no implementation on `main`)  
-**Baseline:** JumpKick short-lived fork + JEP 514 `.aot` (`PluginAot`)  
-**Harness:** `scripts/aot-vs-fork-bench.sh`, `scripts/microbench.sh`, chrome timeline (`target/jk-chrome-profile.json`)
+**Baseline:** JumpKick short-lived **fork** + JEP 514 `.aot` (`PluginAot`) on **HotSpot / Temurin 25**  
+**Harness:** `scripts/aot-vs-fork-bench.sh`, forced `jk build --skip-tests --rebuild --jdk temurin-25`
 
-## Arms
+## Important: GraalVM does not participate in worker AOT
 
-| Arm | How | On `main`? |
-|-----|-----|------------|
-| **A. Fork + AOT** (production) | Default; maps `~/.jk/state/aot/javac-*.aot` via `-J-XX:AOTCache=` when present | yes |
-| **B. Fork, AOT off** | `JK_WORKER_AOT=off` | yes |
-| **C. Warm / resident compiler pool** | Mill-style reused javac/kotlinc JVMs | **no** — not prototyped |
+`PluginAot.eligible` **rejects** Oracle GraalVM and GraalVM CE:
 
-A pool (C) must beat **A**, not only **B**.
-
-## How to re-run
-
-```bash
-# Prefer --rebuild-style work (action-cache hits hide compile):
-RUNS=5 ./scripts/aot-vs-fork-bench.sh /path/to/project
-
-# Forced recompile median (CLI "took Nms"):
-#   for i in 1..7: jk build --skip-tests --rebuild   # AOT on vs JK_WORKER_AOT=off
+```text
+// HotSpot 25+ records mappable caches; Graal hosts and older JDKs never train.
 ```
 
-AOT caches train in the background on first miss; ensure `~/.jk/state/aot/javac-*.aot` exists before measuring A.
+On a Graal **project/toolchain** JDK:
 
-## 2026-07-21 dogfood (macOS, GraalVM JDK 25, `jk 0.10.0-SNAPSHOT`)
+- no javac/kotlinc `.aot` train  
+- no `-J-XX:AOTCache=` on the worker  
+- `JK_WORKER_AOT=on` vs `off` are **the same cold fork**  
 
-### Forced recompile: `spring-boot-hello` (`jk build --skip-tests --rebuild`, n=7)
+So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was Graal (common when Graal is `active` for native-image / dogfood) are **not** measuring AOT. They only measure pipeline noise.
 
-| Arm | Median wall (CLI “took”) | Notes |
-|-----|--------------------------|--------|
-| **AOT-on** | **612 ms** | AOT files present under `~/.jk/state/aot/` |
-| **AOT-off** | **621 ms** | `JK_WORKER_AOT=off` |
+**Default clean-host story:** `project.jdk = 25` resolves to **Eclipse Temurin** (or similar HotSpot) via `jk jdk` — that is the right arm for AOT and for warm-pool go/no-go.
 
-**Delta: ~1% (noise).** Chrome timeline on a rebuild: ~**426 ms** in `compile-java`, ~136 ms `package-jar` — compile is real work, but AOT mapping is not buying a clear win on this fixture.
+## What we are comparing
 
-### Cache-friendly builds (median of 5, wall including engine handshake)
+| Arm | Meaning | On `main`? |
+|-----|---------|------------|
+| **A — Cold fork + AOT map** | Each compile starts a new `javac` JVM; maps `~/.jk/state/aot/javac-*.aot` when trained | yes (production) |
+| **B — Cold fork, AOT off** | Same fork model; `JK_WORKER_AOT=off` — pure cold start every time | yes (control) |
+| **C — Warm / resident pool** | Mill-style long-lived compiler JVM(s) already JIT-warm | **no** — not prototyped |
 
-Small projects often sit on a **~130–160 ms pipeline floor** (noop ≈ clean when action cache / tiny sources). AOT-on vs AOT-off differences there are also **within noise**.
+**Warm pool (C) must beat A (Temurin + AOT), not only B.**
 
-| Project | AOT-on clean | AOT-off clean | AOT-on noop | AOT-off noop |
-|---------|-------------:|-------------:|------------:|-------------:|
-| spring-boot-hello | 159 ms | 162 ms | 153 ms | 155 ms |
-| hello-java | 137 ms | 127 ms | 138 ms | 109 ms |
-| workspace-basic | 158 ms | 151 ms | 161 ms | 140 ms |
+There is no “warm process” arm without a prototype. **A** is “cold process start, AOT-accelerated”; **B** is “cold process start, no AOT.”
 
-Engine process RSS samples after runs were ~**450–580 MiB** (full process, not just heap; coarse `ps` after each run — not a peak-worker capture).
+## 2026-07-21 — Temurin 25.0.3 (`25.0.3-tem`)
+
+**Fixture:** `jk-examples/examples/spring-boot-hello`  
+**Command:** `jk build --skip-tests --rebuild --jdk temurin-25` (n=7, median of CLI “took”)  
+**Compiler process (ps):**  
+`/…/25.0.3-tem/bin/javac … -J-XX:AOTCache=…/javac-9ae6aacc8f2c4999.aot` when AOT on.
+
+| Arm | Median wall | Raw (ms) |
+|-----|-------------:|----------|
+| **A — Temurin + AOT map** | **496 ms** | 473–528 |
+| **B — Temurin, AOT off** | **485 ms** | 478–500 |
+
+**Delta: AOT ≈ flat / slightly slower (~2%) on this fixture — modest at best; no clear win.**
+
+Training: first Temurin compile after deleting `javac-*.aot` produced a new cache within ~2s (background trainer).
+
+### Earlier invalid Graal runs (for the record)
+
+When the toolchain was Graal, AOT-on vs AOT-off medians were ~612 vs ~621 ms — both pure cold forks; treat as **void**.
 
 ## Decision: **DEFER warm pool** (reaffirmed)
 
 | Finding | Implication |
 |---------|-------------|
-| AOT-on ≈ AOT-off on wall for dogfood rebuilds | Room for a warm pool **might** exist vs fork cold-start, but AOT is not the differentiator on these sizes |
-| Warm pool still unprototyped | Cannot claim GO without arm **C** wall + peak RSS (engine + pool × worker heap) |
-| Product memory story | Pinned resident compilers fight capped concurrent engines until proven |
-| Steady-state noop is already ~150 ms | Warm pool must improve **real compile** (rebuild / multi-module dirty), not handshake |
+| AOT only applies on HotSpot 25+ (Temurin, Corretto, …) | Always measure with `--jdk temurin-25` (or host default HotSpot), never Graal-as-compiler |
+| On Temurin spring-boot-hello rebuild, AOT-on ≉ faster than AOT-off | Room for a **warm pool** might still exist (live JIT + no process spawn), but AOT is not buying much here |
+| Arm C unprototyped | No GO without wall **and** peak RSS vs A |
 
-**Do not implement a warm pool on `main` yet.** Keep `PluginAot` + short-lived workers.
+**Do not implement a warm pool on `main` yet.**
 
-### When to reopen (GO criteria)
+### When to reopen
 
-Prototype arm **C** in a **worktree** and measure against **A**:
+Worktree prototype of arm **C** on **Temurin 25**, measure against **A**:
 
-1. Median wall: clean rebuild, single-file incr, multi-module dirty  
-2. Peak RSS: engine + N forked workers vs engine + pool  
-3. Benefit still holds with AOT **on** (C must beat A, not only B)  
-4. Parallelism under default `max-heap-mb` not forced down  
+1. Forced rebuild / multi-module dirty wall  
+2. Peak RSS (engine + forks vs engine + pool)  
+3. C beats **A**, not only **B**
 
-If C wins wall by a clear margin **and** RSS fits concurrent budget → **GO** (JK-1049).  
-If C only beats B → **NO-GO**.
+## How to re-run
+
+```bash
+# Prefer Temurin as project/default JDK
+jk jdk default temurin-25
+jk jdk pin temurin-25 -C /path/to/project
+
+# Train then measure (after caches exist under ~/.jk/state/aot/javac-*)
+RUNS=7 ./scripts/aot-vs-fork-bench.sh /path/to/project
+# or forced:
+for i in 1..7; do jk build --skip-tests --rebuild --jdk temurin-25; done  # AOT on
+JK_WORKER_AOT=off  # same with AOT off
+```
+
+Confirm mapping with a mid-build `ps` line containing both `…/temurin…/bin/javac` and `-J-XX:AOTCache=`.
 
 ## Related
 
-- Historical: [ticket-1030](../kanban/ticket-1030-warm-compiler-pool-benchmark.md), [ticket-1049](../kanban/ticket-1049-warm-pool-implementation.md)  
+- `PluginAot.eligible` — Graal excluded by design  
 - [mill-comparison.md](../mill-comparison.md) §5b  
-- Harness: `scripts/aot-vs-fork-bench.sh`, `scripts/microbench.sh`
+- JK-1049 (warm pool implementation, gated), ticket-1030  

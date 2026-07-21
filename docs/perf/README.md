@@ -23,13 +23,14 @@ Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremen
 
 ## Warm pool go/no-go (ticket-1030 / JK-1049)
 
-**Decision: DEFER** (reaffirmed 2026-07-21) — see [warm-pool-bench.md](warm-pool-bench.md).  
-AOT-on vs AOT-off on dogfood rebuilds is **~noise** (~612 vs ~621 ms median on spring-boot-hello
-`--rebuild`). Do not implement a resident compiler pool until a worktree prototype beats
-**AOT-on** forks on wall time *and* RSS.
+**Decision: DEFER** (reaffirmed 2026-07-21 on **Temurin 25**) — see [warm-pool-bench.md](warm-pool-bench.md).
+
+- **Graal is ineligible** for worker AOT (`PluginAot.eligible`); measure with `--jdk temurin-25`.
+- Temurin rebuild: AOT-on **~496 ms** vs AOT-off **~485 ms** (n=7) — **no clear AOT win**.
+- Both arms are **cold forks**; warm *pool* is not on main and must beat AOT-on HotSpot.
 
 ```bash
-./scripts/aot-vs-fork-bench.sh /path/to/project   # includes --rebuild arms
+JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project
 ```
 
 ## Engine heap monorepo (JK-1075)
