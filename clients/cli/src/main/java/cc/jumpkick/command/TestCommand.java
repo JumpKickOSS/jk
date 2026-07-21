@@ -162,11 +162,7 @@ public final class TestCommand implements CliCommand {
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force()),
-                    steps -> {
-                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
-                        var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(dir, module);
-                        return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
-                    },
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
@@ -245,11 +241,7 @@ public final class TestCommand implements CliCommand {
                                 global.verbose,
                                 cc.jumpkick.config.SessionContext.current().offline(),
                                 cc.jumpkick.config.SessionContext.current().force()),
-                        steps -> {
-                            var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
-                            var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(mod, module);
-                            return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
-                        },
+                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                         testResultHolder);
             } catch (IOException e) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));

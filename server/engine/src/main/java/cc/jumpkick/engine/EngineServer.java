@@ -26,6 +26,7 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.BuildService;
 import cc.jumpkick.runtime.CacheBenefit;
+import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
@@ -815,7 +816,12 @@ public final class EngineServer implements AutoCloseable {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
         publishRequestStart(eventRequestId, eventKind, eventDir);
-        registerAccumulator(eventRequestId, eventKind, eventDir, "cli");
+        registerAccumulator(
+                eventRequestId,
+                eventKind,
+                eventDir,
+                "cli",
+                Jsonl.bool(requestLine, "noTimeline", false));
         if (pipeline) notePipelineStarted();
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
@@ -927,7 +933,7 @@ public final class EngineServer implements AutoCloseable {
                             .put("dir", eventDir)
                             .put("cancelled", cancelled)
                             .put("millis", elapsedMillis));
-            writeJournal(eventRequestId, cancelled, elapsedMillis);
+            writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
         }
     }
 
@@ -1333,6 +1339,8 @@ public final class EngineServer implements AutoCloseable {
             WorkspaceBuildListener listener = wireListener(writer);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             accOutcome(eventRequestId(), result.success(), result.exitCode());
+            // Chrome timeline before terminal event so the client still has the socket open.
+            flushTimelineToClient(eventRequestId(), writer);
             send(writer, EngineProtocol.workspaceFinish(result.success(), result.exitCode(), result.errors()));
             if (!result.success()) {
                 for (String error : result.errors().stream().limit(5).toList()) {
@@ -3050,8 +3058,20 @@ public final class EngineServer implements AutoCloseable {
      * append itself is gated on {@code historyConfig.enabled()}.
      */
     private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
+        registerAccumulator(requestId, kind, dir, trigger, false);
+    }
+
+    private void registerAccumulator(
+            long requestId, String kind, String dir, String trigger, boolean noTimeline) {
         if (!JOURNALED_KINDS.contains(kind)) return;
-        accumulators.put(requestId, new BuildAccumulator(kind, dir, coordOf(dir), trigger));
+        Path projectDir = null;
+        try {
+            if (dir != null && !dir.isBlank()) projectDir = Path.of(dir);
+        } catch (RuntimeException ignored) {
+            projectDir = null;
+        }
+        ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
+        accumulators.put(requestId, new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline));
     }
 
     /** The project's {@code group:name}, or {@code null} when its {@code jk.toml} doesn't parse. */
@@ -3124,6 +3144,10 @@ public final class EngineServer implements AutoCloseable {
      * a failure here is logged, never propagated (journaling must not affect the build's outcome).
      */
     private void writeJournal(long requestId, boolean cancelled, long millis) {
+        writeJournal(requestId, cancelled, millis, null);
+    }
+
+    private void writeJournal(long requestId, boolean cancelled, long millis, BufferedWriter writer) {
         BuildAccumulator a = accumulators.remove(requestId);
         if (a == null) return;
         try {
@@ -3137,6 +3161,11 @@ public final class EngineServer implements AutoCloseable {
             // even when history is disabled, so the counter stays consistent regardless.
             long buildNumber = BuildMetrics.record(metricsFile, toOutcome(record), finishedAt);
             record = record.withBuildNumber(buildNumber);
+            // Chrome timeline (web / late path): same step durations as metrics. Socket clients
+            // usually already flushed via flushTimelineToClient before terminal events.
+            a.flushTimeline().ifPresent(path -> {
+                if (writer != null) sendQuiet(writer, EngineProtocol.timeline(path.toString()));
+            });
             if (!historyConfig.enabled()) return;
             Path dir = Path.of(a.dir());
             // Snapshot paths mirror BuildLayout.markdownTestResults() and the project's jk.lock; each
@@ -3404,28 +3433,35 @@ public final class EngineServer implements AutoCloseable {
      */
     private PipelineListener wirePipelineListener(
             String dir, BufferedWriter writer, cc.jumpkick.run.Pipeline realPipeline) {
-        return wirePipelineListener(dir, writer, (java.util.function.Function<PipelineResult, String>) result -> {
-            cc.jumpkick.run.TestSummary testResult = realPipeline == null
-                    ? null
-                    : realPipeline
-                            .get(cc.jumpkick.runtime.BuildPipelines.TEST_RESULT)
-                            .orElse(null);
-            String buildOutcome = realPipeline == null
-                    ? null
-                    : realPipeline
-                            .get(cc.jumpkick.runtime.BuildPipelines.BUILD_OUTCOME)
-                            .orElse(null);
-            return testResult == null && buildOutcome == null
-                    ? EngineProtocol.pipelineFinish(dir, result.success())
-                    : EngineProtocol.pipelineFinish(
-                            dir,
-                            result.success(),
-                            buildOutcome,
-                            testResult != null ? testResult.total() : -1,
-                            testResult != null ? testResult.succeeded() : -1,
-                            testResult != null ? testResult.failed() : -1,
-                            testResult != null ? testResult.skipped() : -1);
-        });
+        // realPipeline non-null ⇒ single-project run: flush chrome timeline on pipeline finish.
+        // Workspace modules pass null and flush once on workspace finish instead.
+        boolean flushTimeline = realPipeline != null;
+        return wirePipelineListener(
+                dir,
+                writer,
+                (java.util.function.Function<PipelineResult, String>) result -> {
+                    cc.jumpkick.run.TestSummary testResult = realPipeline == null
+                            ? null
+                            : realPipeline
+                                    .get(cc.jumpkick.runtime.BuildPipelines.TEST_RESULT)
+                                    .orElse(null);
+                    String buildOutcome = realPipeline == null
+                            ? null
+                            : realPipeline
+                                    .get(cc.jumpkick.runtime.BuildPipelines.BUILD_OUTCOME)
+                                    .orElse(null);
+                    return testResult == null && buildOutcome == null
+                            ? EngineProtocol.pipelineFinish(dir, result.success())
+                            : EngineProtocol.pipelineFinish(
+                                    dir,
+                                    result.success(),
+                                    buildOutcome,
+                                    testResult != null ? testResult.total() : -1,
+                                    testResult != null ? testResult.succeeded() : -1,
+                                    testResult != null ? testResult.failed() : -1,
+                                    testResult != null ? testResult.skipped() : -1);
+                },
+                flushTimeline);
     }
 
     /**
@@ -3437,6 +3473,14 @@ public final class EngineServer implements AutoCloseable {
      */
     private PipelineListener wirePipelineListener(
             String dir, BufferedWriter writer, java.util.function.Function<PipelineResult, String> finishEncoder) {
+        return wirePipelineListener(dir, writer, finishEncoder, false);
+    }
+
+    private PipelineListener wirePipelineListener(
+            String dir,
+            BufferedWriter writer,
+            java.util.function.Function<PipelineResult, String> finishEncoder,
+            boolean flushTimelineOnPipelineFinish) {
         // Created on the runner's thread (directly, or via wireListener's onModuleStart which runs
         // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
         long eventRequestId = eventRequestId();
@@ -3534,12 +3578,24 @@ public final class EngineServer implements AutoCloseable {
                             EngineProtocol.pipelineDiagnostic(
                                     dir, d.step(), d.code(), d.message(), d.test(), d.exceptionClass()));
                 }
+                // Single-pipeline builds: timeline before terminal finish. Workspace modules skip
+                // (flush once in runBuild before workspace-finish).
+                if (flushTimelineOnPipelineFinish) flushTimelineToClient(eventRequestId, writer);
                 sendQuiet(writer, finishEncoder.apply(result));
                 publishPipelineFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
                 accPipelineFinish(eventRequestId, dir, result);
             }
         };
+    }
+
+    /** Write chrome timeline (if any) and notify the socket client. Idempotent per request. */
+    private void flushTimelineToClient(long requestId, BufferedWriter writer) {
+        BuildAccumulator a = accumulators.get(requestId);
+        if (a == null) return;
+        a.flushTimeline().ifPresent(path -> {
+            if (writer != null) sendQuiet(writer, EngineProtocol.timeline(path.toString()));
+        });
     }
 
     /** Best-effort send: a write failure means the client is gone — nothing more to do for this event. */
@@ -3991,6 +4047,8 @@ public final class EngineServer implements AutoCloseable {
         private final String dir;
         private final String coord;
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
+        /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
+        private final ChromeTimeline timeline;
         private final java.util.List<ModuleOutcome> modules = new java.util.concurrent.CopyOnWriteArrayList<>();
         // Steps per module dir (name → Step, arrival order, last status wins). The single-pipeline path
         // uses the "" (SINGLE_PIPELINE_DIR) bucket; workspace modules use their real dir. Rendered as a
@@ -4012,10 +4070,15 @@ public final class EngineServer implements AutoCloseable {
         private volatile int exitCode;
 
         BuildAccumulator(String kind, String dir, String coord, String trigger) {
+            this(kind, dir, coord, trigger, null);
+        }
+
+        BuildAccumulator(String kind, String dir, String coord, String trigger, ChromeTimeline timeline) {
             this.kind = kind;
             this.dir = dir;
             this.coord = coord;
             this.trigger = trigger;
+            this.timeline = timeline;
         }
 
         String dir() {
@@ -4044,6 +4107,32 @@ public final class EngineServer implements AutoCloseable {
                             dir == null ? "" : dir,
                             k -> java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>()))
                     .put(step, new BuildRecord.Step(step, phase, status, millis));
+            if (timeline != null) {
+                timeline.complete(timelineModule(dir), step, status == null ? "" : status, millis);
+            }
+        }
+
+        /** Track label for chrome: entry coord when single-pipeline; else module path leaf. */
+        private String timelineModule(String stepDir) {
+            if (stepDir == null || stepDir.isBlank()) {
+                return coord != null && !coord.isBlank() ? coord : (dir != null ? dir : "_");
+            }
+            try {
+                Path p = Path.of(stepDir);
+                Path name = p.getFileName();
+                return name != null ? name.toString() : stepDir;
+            } catch (RuntimeException e) {
+                return stepDir;
+            }
+        }
+
+        private volatile boolean timelineFlushed;
+
+        java.util.Optional<Path> flushTimeline() {
+            if (timeline == null || timelineFlushed) return java.util.Optional.empty();
+            java.util.Optional<Path> written = timeline.flush();
+            if (written.isPresent()) timelineFlushed = true;
+            return written;
         }
 
         /** Diagnostics + failure flag from a finished pipeline (steps come from {@link #addStep}). */

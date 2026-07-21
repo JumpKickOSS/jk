@@ -72,7 +72,7 @@ public final class BuildCommand implements CliCommand {
                         "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
                         "--modules"),
                 Opt.flag(
-                        "Disable writing out/jk-chrome-profile.json for this run (also: JK_CHROME_PROFILE=off).",
+                        "Disable writing target/jk-chrome-profile.json for this run (also: JK_CHROME_PROFILE=off).",
                         "--no-timeline")));
         opts.addAll(VariantSelection.options());
         return opts;
@@ -110,11 +110,11 @@ public final class BuildCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         boolean noTimeline = in.isSet("no-timeline");
-        if (noTimeline) cc.jumpkick.cli.run.ChromeTimeline.disableForThread();
+        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(noTimeline);
         try {
             return runBody(in);
         } finally {
-            if (noTimeline) cc.jumpkick.cli.run.ChromeTimeline.clearDisabled();
+            cc.jumpkick.cli.run.TimelineOpts.clear();
         }
     }
 
@@ -379,8 +379,6 @@ public final class BuildCommand implements CliCommand {
         long start = System.nanoTime();
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
-            final cc.jumpkick.cli.run.ChromeTimeline workspaceTimeline =
-                    cc.jumpkick.cli.run.ChromeTimeline.open(entryDir);
             cc.jumpkick.runtime.WorkspaceBuildListener headlessListener =
                     new cc.jumpkick.runtime.WorkspaceBuildListener() {
                         @Override
@@ -414,12 +412,7 @@ public final class BuildCommand implements CliCommand {
                                     buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
-                            var withLog = cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, log);
-                            if (workspaceTimeline == null) return withLog;
-                            return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                                    withLog,
-                                    cc.jumpkick.cli.run.ChromeTimelineListener.forModule(
-                                            workspaceTimeline, m.coord()));
+                            return cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, log);
                         }
 
                         @Override
@@ -431,11 +424,6 @@ public final class BuildCommand implements CliCommand {
                                 CliOutput.out(completionLine(
                                         o.success(), done.incrementAndGet(), total[0], o.coord(), o.millis()));
                             }
-                        }
-
-                        @Override
-                        public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
-                            if (workspaceTimeline != null) workspaceTimeline.flushAndAnnounce();
                         }
                     };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -521,8 +509,6 @@ public final class BuildCommand implements CliCommand {
                 .withVariant(variant, clientEnv);
         cc.jumpkick.runtime.WorkspaceResult result;
         try {
-            final cc.jumpkick.cli.run.ChromeTimeline workspaceTimeline =
-                    cc.jumpkick.cli.run.ChromeTimeline.open(entryDir);
             cc.jumpkick.runtime.WorkspaceBuildListener liveListener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
                 public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
@@ -550,11 +536,7 @@ public final class BuildCommand implements CliCommand {
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);
-                    var withLog = cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
-                    if (workspaceTimeline == null) return withLog;
-                    return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                            withLog,
-                            cc.jumpkick.cli.run.ChromeTimelineListener.forModule(workspaceTimeline, m.coord()));
+                    return cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
                 }
 
                 @Override
@@ -575,11 +557,6 @@ public final class BuildCommand implements CliCommand {
                         block.append(completion);
                         view.writeAbove(block.toString());
                     }
-                }
-
-                @Override
-                public void onWorkspaceFinish(cc.jumpkick.runtime.WorkspaceResult result) {
-                    if (workspaceTimeline != null) workspaceTimeline.flushAndAnnounce();
                 }
             };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -748,11 +725,7 @@ public final class BuildCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             variant,
                             clientEnv),
-                    steps -> {
-                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
-                        var timeline = cc.jumpkick.cli.run.ChromeTimelineListener.forProject(tailDir, timelineModule);
-                        return cc.jumpkick.cli.run.CompositePipelineListener.of(console, timeline);
-                    },
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule),
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (java.io.IOException e) {

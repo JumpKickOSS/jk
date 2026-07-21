@@ -106,6 +106,12 @@ public final class EngineProtocol {
     public static final String WORKSPACE_FINISH = "workspace-finish";
 
     /**
+     * Server → client: chrome timeline written under the project's {@code target/} (or override).
+     * Path is absolute. Engine owns the file; clients only announce or archive.
+     */
+    public static final String TIMELINE = "timeline";
+
+    /**
      * Server → client transport/control error envelope ({@code code} + {@code message}). Not the
      * result-payload {@code errors[]} on finish messages (those are command output).
      */
@@ -583,6 +589,8 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean freshenLock) {
+        // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
+        // a false default here (Jsonl.bool takes the first key match).
         return "{\"t\":\""
                 + BUILD_REQUEST
                 + "\",\"dir\":"
@@ -626,6 +634,7 @@ public final class EngineProtocol {
             boolean verbose,
             boolean offline,
             boolean force) {
+        // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"t\":\""
                 + TEST_REQUEST
                 + "\",\"dir\":"
@@ -658,6 +667,7 @@ public final class EngineProtocol {
             boolean verbose,
             boolean offline,
             boolean force) {
+        // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"t\":\""
                 + SINGLE_BUILD_REQUEST
                 + "\",\"dir\":"
@@ -679,6 +689,11 @@ public final class EngineProtocol {
                 + ",\"force\":"
                 + force
                 + "}";
+    }
+
+    /** Notify client that a chrome timeline file was written (absolute path). */
+    public static String timeline(String absolutePath) {
+        return "{\"t\":\"" + TIMELINE + "\",\"path\":" + Jsonl.quote(absolutePath) + "}";
     }
 
     /**
@@ -2180,7 +2195,7 @@ public final class EngineProtocol {
             String variant,
             java.util.Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t) {
-        return withSession(request, variant, clientEnv, t, false);
+        return withSession(request, variant, clientEnv, t, false, false);
     }
 
     /** As above, additionally carrying the session's {@code rebuild} distrust flag when set. */
@@ -2190,6 +2205,20 @@ public final class EngineProtocol {
             java.util.Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild) {
+        return withSession(request, variant, clientEnv, t, rebuild, false);
+    }
+
+    /**
+     * As above, with {@code noTimeline} (skip chrome profile write). {@code rebuild} distrusts action
+     * cache; {@code noTimeline} is independent.
+     */
+    public static String withSession(
+            String request,
+            String variant,
+            java.util.Map<String, String> clientEnv,
+            cc.jumpkick.config.PluginTuning t,
+            boolean rebuild,
+            boolean noTimeline) {
         if (request == null
                 || request.length() < 2
                 || request.charAt(0) != '{'
@@ -2203,9 +2232,10 @@ public final class EngineProtocol {
                         || t.gc() != null
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
-        if (!hasVariant && !hasEnv && !hasJvm && !rebuild) return request;
+        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline) return request;
         StringBuilder b = new StringBuilder(request.substring(0, request.length() - 1));
         if (rebuild) b.append(",\"rebuild\":true");
+        if (noTimeline) b.append(",\"noTimeline\":true");
         if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
         if (hasEnv) b.append(",\"env\":").append(Jsonl.map(clientEnv));
         if (hasJvm) {

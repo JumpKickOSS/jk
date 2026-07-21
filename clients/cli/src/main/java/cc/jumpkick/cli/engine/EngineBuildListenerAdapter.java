@@ -96,7 +96,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().jvm(),
                     // rebuild rides the session envelope: bypass jk's caches without implying
                     // refresh — verify's scratch rebuild stays CAS-local (no re-download).
-                    session.config().rebuildOr(false)));
+                    session.config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -141,7 +142,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -184,7 +185,7 @@ final class EngineBuildListenerAdapter {
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -228,7 +229,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -268,7 +269,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -511,7 +512,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             String line;
@@ -587,7 +588,7 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false)));
+                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             String line;
@@ -693,6 +694,8 @@ final class EngineBuildListenerAdapter {
                             Phase.fromWireOrNull(Jsonl.str(line, "phase")),
                             StepStatus.valueOf(Jsonl.str(line, "status")),
                             Duration.ZERO);
+                case EngineProtocol.TIMELINE ->
+                    cc.jumpkick.cli.run.TimelineOpts.announce(Jsonl.str(line, "path"));
                 case EngineProtocol.PIPELINE_FINISH -> {
                     boolean success = Jsonl.bool(line, "success", false);
                     long total = Jsonl.longValue(line, "testTotal", -1);
@@ -831,6 +834,8 @@ final class EngineBuildListenerAdapter {
                                     Phase.fromWireOrNull(Jsonl.str(line, "phase")),
                                     StepStatus.valueOf(Jsonl.str(line, "status")),
                                     Duration.ZERO);
+                case EngineProtocol.TIMELINE ->
+                    cc.jumpkick.cli.run.TimelineOpts.announce(Jsonl.str(line, "path"));
                 case EngineProtocol.PIPELINE_FINISH -> {
                     ModuleMeta meta = planByDir.get(dir);
                     String pipelineName = meta != null ? meta.pipelineName : dir;

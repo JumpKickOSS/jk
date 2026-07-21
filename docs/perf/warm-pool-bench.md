@@ -3,7 +3,7 @@
 **Date:** 2026-07-19  
 **Status:** **DEFER** (no warm pool on `main`)  
 **Baseline:** JumpKick fork + JEP 514 `.aot` (`PluginAot`)  
-**Harness:** `scripts/microbench.sh`, chrome timeline (`out/jk-chrome-profile.json`)
+**Harness:** `scripts/microbench.sh`, chrome timeline (`target/jk-chrome-profile.json`)
 
 ## What was measured
 
