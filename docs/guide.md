@@ -238,6 +238,7 @@ jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
 jk build                     # package (thin, assembly, shrink, or Boot per config)
 jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
+jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…
 jk clean

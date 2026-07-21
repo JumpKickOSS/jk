@@ -75,12 +75,36 @@ Copies each PluginMain assembly jar into
 `~/.jk/cache/repos/local/cc/jumpkick/jk-<name>/<ver>/` (same layout as Gradle
 `installLocal`) so the engine can locate workers.
 
+## Ship layout (`jk release` / `jk dist`)
+
+After a bootstrap `jk` is on PATH:
+
+```bash
+jk release --skip-tests --jvm
+# alias: jk dist --skip-tests --jvm
+./install.sh target/dist/jk
+```
+
+Produces:
+
+```text
+target/dist/
+  jk                         # running client (--jvm) or native binary (--native)
+  lib/
+    jk-engine-<version>.jar  # engine assembly (includes web SPA)
+```
+
+Also runs `jk plugin install-local` for workspace PluginMain workers.
+
+Flags: `--out <dir>`, `--skip-tests`, `--native`, `--jvm`, `--dry-run`, `--modules <sel>`.
+
 ## Roadmap (summary)
 
 1. ~~Default Google Maven~~ (done)
-2. `clients/web` workspace module + engine `assembly = true`
-3. All first-party plugins on the workspace + install-local
-4. `jk release` / `jk dist` → `target/dist/{jk,lib/jk-engine-*.jar}`
-5. Expand `jk test`; cut over CI dogfood
+2. ~~`clients/web` + engine assembly~~ (done)
+3. ~~`jk plugin install-local`~~ (done)
+4. ~~`jk release` / `jk dist`~~ (done)
+5. Remaining first-party plugins on the workspace
+6. Expand `jk test`; cut over CI dogfood
 
 Details: session plan *Self-host JumpKick in ../jk-jk*.
