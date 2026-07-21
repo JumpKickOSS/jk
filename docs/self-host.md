@@ -43,9 +43,8 @@ jk lock
 jk build --skip-tests
 ```
 
-Current workspace modules (phase 2): libraries, `clients/cli`, `server/engine`, thin workers
-`plugins/test-runner` and `plugins/java-compiler`. Remaining plugins, engine fat packaging, and
-`jk release` land as product work (see plan / kanban).
+Current workspace: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat jar),
+and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
 
 ## Default repositories
 
@@ -59,7 +58,6 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 | Full `./gradlew test` | Nested CLI/engine suites and worker wiring |
 | `./gradlew dist` / `nativeCompile` | Until `jk release` ships |
 | `./gradlew installLocal` | Prefer `jk plugin install-local` after `jk build` for workspace workers |
-| Most `plugins/*` | Until they join the workspace with `jk.toml` |
 
 ## Side-load workers (no Gradle)
 
@@ -104,7 +102,7 @@ Flags: `--out <dir>`, `--skip-tests`, `--native`, `--jvm`, `--dry-run`, `--modul
 2. ~~`clients/web` + engine assembly~~ (done)
 3. ~~`jk plugin install-local`~~ (done)
 4. ~~`jk release` / `jk dist`~~ (done)
-5. Remaining first-party plugins on the workspace
-6. Expand `jk test`; cut over CI dogfood
+5. ~~All first-party plugins on the workspace~~ (done)
+6. Expand `jk test`; cut over CI dogfood; native client via `jk native`
 
 Details: session plan *Self-host JumpKick in ../jk-jk*.

@@ -30,9 +30,20 @@ assertj-core            = { group = "org.assertj",        name = "assertj-core",
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
 
-# Self-host: engine's tests fork jk's own worker jars via -Djk.<worker>.plugin.jar.
-#  - test-runner / java-compiler: workspace modules (phase 2) — sibling shadow jars preferred.
-#  - auditor: still Gradle-only fat worker; falls back to installLocal / CAS
-#    (`./gradlew :auditor:installLocal`). Git work runs in-process (CLI or JGit).
+# Self-host: engine tests fork workers via -Djk.<worker>.plugin.jar from sibling assemblies
+# (or install-local / CAS). Prefer short names that match plugins/<name> modules.
 [build]
-test-plugin-jars = ["test-runner", "java-compiler", "auditor"]
+test-plugin-jars = [
+  "test-runner",
+  "java-compiler",
+  "kotlin-compiler",
+  "auditor",
+  "publisher",
+  "image-builder",
+  "compat-bridge",
+  "formatter",
+  "spring-boot",
+  "android",
+  "protobuf",
+  "shrink",
+]

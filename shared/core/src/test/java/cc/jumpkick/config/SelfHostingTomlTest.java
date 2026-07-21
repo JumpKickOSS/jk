@@ -96,7 +96,17 @@ class SelfHostingTomlTest {
                         "server/engine",
                         "clients/cli",
                         "plugins/test-runner",
-                        "plugins/java-compiler");
+                        "plugins/java-compiler",
+                        "plugins/kotlin-compiler",
+                        "plugins/auditor",
+                        "plugins/publisher",
+                        "plugins/image-builder",
+                        "plugins/compat-bridge",
+                        "plugins/formatter",
+                        "plugins/spring-boot",
+                        "plugins/android",
+                        "plugins/protobuf",
+                        "plugins/shrink");
     }
 
     @Test
@@ -136,6 +146,17 @@ class SelfHostingTomlTest {
         // test-runner keeps the JDK-17 floor for the user's forked test JVM.
         JkBuild runner = JkBuildParser.parse(REPO.resolve("plugins/test-runner/jk.toml"));
         assertThat(runner.project().javaRelease()).isEqualTo(17);
+    }
+
+    @Test
+    void all_first_party_plugin_modules_are_plugin_main_assemblies() throws Exception {
+        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        for (String module : root.workspace().modules()) {
+            if (!module.startsWith("plugins/")) continue;
+            JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
+            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.assemblyMode().isBundled()).as(module).isTrue();
+        }
     }
 
     @Test

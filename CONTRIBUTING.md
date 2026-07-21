@@ -45,11 +45,9 @@ Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
-`server/`, `clients/`, and thin workers under `plugins/test-runner` +
-`plugins/java-compiler`). `clients/web` is a resources module; `server/engine` packages
-as an **assembly** jar (fat) including the web SPA. Thin workers package as **assembly jars**
-with `Main-Class = PluginMain` (plugin-sdk shaded in). Other `plugins/*` stay Gradle-only
-(fat workers + `installLocal`) until they join the workspace.
+`server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
+`server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers package as
+**assembly jars** with `Main-Class = PluginMain`. Side-load with `jk plugin install-local`.
 
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
@@ -87,7 +85,7 @@ The client never embeds the engine (ticket-1020). Spawning uses
 | `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
 | `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
-| Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
+| Nested `:cli:test` / full suite wiring | Still Gradle-centric for some hermetic suite flags |
 
 Dogfood ship layout (after bootstrap `jk` on PATH):
 
