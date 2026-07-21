@@ -3958,7 +3958,8 @@ public final class EngineServer implements AutoCloseable {
      * builds pass {@code applyMemoryPlan=false} so concurrent requests do not overwrite it.
      */
     private void planSharedWorkerMemoryOnce() {
-        int cap = Runtime.getRuntime().availableProcessors();
+        // JK-1082: requested concurrency from [engine] jobs / JK_JOBS (default = cores).
+        int cap = cc.jumpkick.config.Jobs.resolve(cc.jumpkick.config.JkEngineConfig.resolve());
         JvmOptions.planAndApply(HeapPlan.requestedJvms(cap, 1, false, cap));
     }
 

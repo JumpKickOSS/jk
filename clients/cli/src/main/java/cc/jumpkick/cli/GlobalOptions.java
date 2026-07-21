@@ -82,6 +82,13 @@ public final class GlobalOptions {
     /** {@code --max-ram-percent}: per-JVM heap cap for jk's worker JVMs, or null. */
     public Double maxRamPercent;
 
+    /**
+     * {@code -j}/{@code --jobs}: concurrent module/worker budget (JK-1082). {@code null} = use
+     * env/TOML/default; {@code 0} = all cores; {@code 1} = serial; {@code N} = cap. Resolved via
+     * {@link #jobsEffective()}.
+     */
+    public Integer jobs;
+
     /** {@code --jvm-arg}: extra raw flags for jk's worker JVMs (repeatable). */
     public List<String> jvmArgs = List.of();
 
@@ -124,6 +131,15 @@ public final class GlobalOptions {
                 })
                 .orElse(null);
         g.jvmArgs = in.values("jvm-arg");
+        g.jobs = in.value("jobs")
+                .map(s -> {
+                    try {
+                        return Integer.valueOf(s.trim());
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                })
+                .orElse(null);
         g.jdk = in.value("jdk").orElse(null);
         g.graal = in.value("graal").orElse(null);
         // Carry the top-tier JDK/GraalVM selection and the client's JVM-tuning layers on the
@@ -159,11 +175,27 @@ public final class GlobalOptions {
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
                 Opt.value("<DIR>", "Change to this directory before running", "-C", "--directory"),
                 Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--max-ram-percent"),
+                Opt.value(
+                        "<N>",
+                        "Concurrent modules/workers: 0=all cores (default), 1=serial, N=cap (JK_JOBS / [engine] jobs)",
+                        "-j",
+                        "--jobs"),
                 Opt.value("<ARG>", "Extra worker-JVM flag (repeatable)", "--jvm-arg")
                         .repeat(),
                 Opt.value("<spec>", "JDK for this run; overrides project pins", "--jdk"),
                 Opt.value("<spec>", "GraalVM for jk native / GRAALVM_HOME", "--graal"),
                 Opt.flag("Show this help message and exit", "-h", "--help"),
                 Opt.flag("Print version information and exit", "-V", "--version"));
+    }
+
+    /**
+     * Resolved concurrent-work budget: CLI {@code -j} &gt; {@code JK_JOBS} / {@code [engine] jobs} &gt;
+     * cores. Always ≥ 1.
+     */
+    public int jobsEffective() {
+        return cc.jumpkick.config.Jobs.resolve(
+                java.util.Optional.ofNullable(jobs),
+                cc.jumpkick.config.JkEngineConfig.resolve(),
+                System::getenv);
     }
 }

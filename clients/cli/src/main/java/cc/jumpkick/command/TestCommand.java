@@ -49,7 +49,11 @@ public final class TestCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value("<N>", "Test-runner JVMs to fork in parallel. Default 1.", "-w", "--workers"),
+                Opt.value(
+                        "<N>",
+                        "Test-runner JVMs to fork per module (within -j). Default 1.",
+                        "-w",
+                        "--workers"),
                 Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")

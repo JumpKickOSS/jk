@@ -390,7 +390,7 @@ public final class EffortWeights {
 
     /**
      * Estimate a build's wall-clock (ms) from per-module weights, honoring how {@code jk build}
-     * actually schedules. Serial ({@code --no-parallel}) sums every module's weight. The parallel
+     * actually schedules. Serial ({@code -j1}) sums every module's weight. The parallel
      * graph build overlaps independent modules, so the estimate is the largest of three lower bounds
      * — the dependency <b>critical path</b> (longest weighted chain, since a module can't start
      * before its prereqs finish), the <b>throughput</b> ceiling (Σweight ÷ concurrency, when work

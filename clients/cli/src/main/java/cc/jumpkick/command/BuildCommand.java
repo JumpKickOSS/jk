@@ -50,16 +50,19 @@ public final class BuildCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new java.util.ArrayList<>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value("<N>", "Test-runner JVMs to fork in parallel. Default 1.", "-w", "--workers"),
+                Opt.value(
+                        "<N>",
+                        "Test-runner JVMs to fork per module (within -j). Default 1.",
+                        "-w",
+                        "--workers"),
                 Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
                 Opt.flag("Skip compiling and running tests.", "--skip-tests"),
                 Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"),
-                Opt.flag("Build modules in parallel (default; --no-parallel for the rich serial view).", "--parallel")
-                        .negate(),
-                Opt.flag("Run modules' tests concurrently too. Default: off.", "--parallel-tests"),
+                // Module concurrency is global -j/--jobs (JK-1082). --parallel/--no-parallel removed.
+                Opt.flag("Run modules' tests concurrently too (cross-module). Default: off.", "--parallel-tests"),
                 Opt.value(
                         "<git-ref>",
                         "Build only modules (and dependents) changed since this git ref.",
@@ -81,7 +84,8 @@ public final class BuildCommand implements CliCommand {
     Path jdksDir;
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
-    boolean noParallel;
+    /** Resolved concurrent module budget (from global -j / JK_JOBS / [engine] jobs). */
+    int jobs;
     boolean parallelTests;
     boolean aotCache;
     String variant;
@@ -122,8 +126,8 @@ public final class BuildCommand implements CliCommand {
         this.buildOpts = new cc.jumpkick.cli.BuildOptions();
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.aotCache = in.isSet("aot-cache");
-        this.noParallel = !in.flag("parallel").orElse(true) && !in.isSet("parallel-tests");
         this.global = GlobalOptions.from(in);
+        this.jobs = global.jobsEffective();
         // Opt-in: run modules' tests concurrently. Default serializes them
         // (shared ports/locks/fixtures) — see BuildPipelines's test gate.
         this.parallelTests = in.isSet("parallel-tests");
@@ -203,13 +207,11 @@ public final class BuildCommand implements CliCommand {
         return argv;
     }
 
-    /** Default: parallel graph build; {@code --no-parallel}: the serial rich aggregate view. */
+    /** Workspace graph build; concurrency from {@link #jobs} ({@code -j1} = serial UI path). */
     private int buildWorkspace(Path root) throws Exception {
         // The whole-workspace lock-staleness guard now runs engine-side, inside
         // BuildService.buildWorkspace (the request carries freshenLock=true) — the CLI only renders
-        // the failure via the standard workspace-errors path. Both modes drive the one engine
-        // planner; --no-parallel just caps module concurrency to 1 (strict serial) via the request
-        // the view layer builds below.
+        // the failure via the standard workspace-errors path. jobs=1 is strict serial; else N-wide.
         //
         // Thin client: entryBuild never crosses the wire (EngineProtocol.buildRequest serializes
         // only entryDir + flags; the engine re-parses). The parsed model is needed ONLY by the
@@ -366,7 +368,7 @@ public final class BuildCommand implements CliCommand {
                         profileName,
                         buildOpts.skipTests,
                         global.verbose,
-                        noParallel ? 1 : 0, // --no-parallel → strict serial; else auto/unbounded
+                        jobs, // -j / JK_JOBS / [engine] jobs (always ≥ 1)
                         null, // headless: let the engine forecast dirty modules
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
@@ -512,7 +514,7 @@ public final class BuildCommand implements CliCommand {
                         profileName,
                         buildOpts.skipTests,
                         global.verbose,
-                        noParallel ? 1 : 0, // --no-parallel → strict serial; else auto/unbounded
+                        jobs,
                         dirtyHint,
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side

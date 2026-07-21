@@ -29,9 +29,10 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling **256 MiB**
   (`~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
   **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
-  200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency
-  capped by cores and RAM (`PluginSlots` — Mill-like jobs knobs in JK-1082). Do not grow the
-  engine default toward multi-GiB “just in case”; CI may raise `max-heap-mb` when needed.
+  200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
+  **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=cores, `1`=serial, `N`=cap),
+  still RAM-clamped by `PluginSlots`. Do not grow the engine default toward multi-GiB “just
+  in case”; CI may raise `max-heap-mb` when needed.
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or

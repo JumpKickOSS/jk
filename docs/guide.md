@@ -79,6 +79,33 @@ Unpinned `latest` selection still prefers the newest **stable** over a newer pre
 Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
 the conservative path.
 
+### Parallelism (`-j` / jobs)
+
+One Mill-shaped knob for concurrent modules/workers (JK-1082). Free RAM may still reduce
+live worker JVMs (`HeapPlan`).
+
+| Value | Meaning |
+|---|---|
+| omit / `0` | All cores (default) |
+| `1` | Serial (`-j1`) |
+| `N` | Cap at N concurrent modules |
+
+```bash
+jk build              # parallel, up to cores (and free RAM)
+jk build -j1          # serial
+jk build -j4          # at most 4 modules at once
+jk build -w 2         # 2 test-runner JVMs *per module* (within -j)
+jk build --parallel-tests   # also run tests across modules concurrently
+```
+
+| Layer | Setting |
+|---|---|
+| CLI | `-j` / `--jobs` (wins) |
+| Env | `JK_JOBS` (or `JK_ENGINE_JOBS`) |
+| Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
+
+There is no separate `--parallel` / `--no-parallel` (removed; use `-j` / `-j1`).
+
 ### Lock-time trust
 
 `jk lock` is the trust boundary. For each POM/artifact download jk:

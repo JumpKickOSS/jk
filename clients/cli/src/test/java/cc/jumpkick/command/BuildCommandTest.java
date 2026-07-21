@@ -180,10 +180,11 @@ class BuildCommandTest {
         assertThat(tempDir.resolve("libb/target/lib/libb-1.0.0.jar")).exists();
         assertThat(tempDir.resolve("app/target/lib/app-1.0.0.jar")).exists();
 
-        // --no-parallel still builds the workspace (the serial rich path).
+        // -j1 still builds the workspace (serial module concurrency).
         int serial = run(
                 "build",
-                "--no-parallel",
+                "-j",
+                "1",
                 "-C",
                 tempDir.toString(),
                 "--cache-dir",

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Whitebox tests for {@link WorkspaceScheduler}: the unbounded batch-per-level path and the bounded
- * rolling-window path (including the strict-serial {@code cap = 1} used by {@code --no-parallel}).
+ * rolling-window path (including the strict-serial {@code cap = 1} used by {@code -j1}).
  */
 class WorkspaceSchedulerTest {
 

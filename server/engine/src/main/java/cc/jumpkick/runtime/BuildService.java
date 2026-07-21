@@ -381,7 +381,7 @@ public final class BuildService {
         int cap = Runtime.getRuntime().availableProcessors();
         boolean parallelTests = SessionContext.current().parallelTests();
         int width = BuildGraph.maxReadyWidth(units, graph.edges());
-        // A module-concurrency cap (e.g. --no-parallel → 1) bounds the peak module count for both the
+        // A module-concurrency cap (e.g. -j1 → 1) bounds the peak module count for both the
         // memory plan and the ETA below, so serial builds size heaps and estimate time as serial.
         if (req.maxModuleConcurrency() > 0) width = Math.min(width, req.maxModuleConcurrency());
         if (req.applyMemoryPlan()) {
