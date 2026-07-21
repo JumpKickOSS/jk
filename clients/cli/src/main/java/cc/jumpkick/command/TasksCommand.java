@@ -136,6 +136,18 @@ public final class TasksCommand implements CliCommand {
             for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
                 CliOutput.out(String.format("%-28s %-10s %s", t.name(), t.phase(), t.description()));
             }
+            List<String> logicTasks = BuildLogicTaskScan.discoverNames(e.getKey());
+            if (!logicTasks.isEmpty()) {
+                CliOutput.out("");
+                CliOutput.out("# project build logic (.jk-build SPI / *Build — offline scan)");
+                for (String name : logicTasks) {
+                    CliOutput.out(String.format(
+                            "%-28s %-10s %s",
+                            "build-logic:" + name,
+                            "logic",
+                            "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
+                }
+            }
             if (multi) CliOutput.out("");
         }
         // Table is the wedge substitute; tip is post-table detail.

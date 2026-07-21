@@ -75,6 +75,36 @@ class TasksCommandTest {
         assertThat(out.trim()).contains("widget");
     }
 
+    @Test
+    void tasks_list_includes_jk_build_logic_names(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        Path logic = tempDir.resolve(".jk-build/src/demo");
+        Files.createDirectories(logic);
+        Files.writeString(
+                logic.resolve("GenLogic.java"),
+                """
+                package demo;
+                import cc.jumpkick.plugin.buildlogic.*;
+                public class GenLogic implements BuildLogicContributor {
+                  public void register(BuildLogicGraph g) {
+                    g.task("gen-tokens", BuildLogicAnchor.AFTER_COMPILE, ctx -> {});
+                  }
+                }
+                """);
+        Files.writeString(
+                logic.resolve("LineCountBuild.java"),
+                """
+                package demo;
+                public class LineCountBuild {
+                  public static void main(String[] a) {}
+                }
+                """);
+        String out = captureStdout(() -> run("tasks", "-C", tempDir.toString()));
+        assertThat(out).contains("build-logic:gen-tokens");
+        assertThat(out).contains("build-logic:LineCountBuild");
+        assertThat(out).contains("project build logic");
+    }
+
     private static int run(String... args) {
         return Jk.execute(args);
     }
