@@ -93,7 +93,8 @@ public final class AutoLock {
             lockedVersions.put(a.packageKey(), a.version());
             try {
                 if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
-                    lockedVersions.put(cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
+                    lockedVersions.put(
+                            cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
                 }
             } catch (RuntimeException ignored) {
                 // non-Maven lock name

@@ -68,14 +68,14 @@ public final class PublishablePom {
         if (description != null) {
             sb.append("  <description>").append(PomXml.escape(description)).append("</description>\n");
         }
-        if (meta.url() != null) sb.append("  <url>").append(PomXml.escape(meta.url())).append("</url>\n");
+        if (meta.url() != null)
+            sb.append("  <url>").append(PomXml.escape(meta.url())).append("</url>\n");
 
         appendLicenses(sb, meta.licenses());
         appendDevelopers(sb, meta.developers());
         appendScm(sb, meta.scm());
 
-        PomXml.appendDependencyManagement(
-                sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d.version()));
+        PomXml.appendDependencyManagement(sb, jkBuild.dependencies().of(Scope.PLATFORM), d -> versionOf(d.version()));
         appendDependencies(sb, jkBuild);
 
         sb.append("</project>\n");
@@ -116,9 +116,12 @@ public final class PublishablePom {
     private static void appendScm(StringBuilder sb, Scm scm) {
         if (scm == null) return;
         sb.append("  <scm>\n");
-        if (scm.url() != null) sb.append("    <url>").append(PomXml.escape(scm.url())).append("</url>\n");
+        if (scm.url() != null)
+            sb.append("    <url>").append(PomXml.escape(scm.url())).append("</url>\n");
         if (scm.connection() != null) {
-            sb.append("    <connection>").append(PomXml.escape(scm.connection())).append("</connection>\n");
+            sb.append("    <connection>")
+                    .append(PomXml.escape(scm.connection()))
+                    .append("</connection>\n");
         }
         if (scm.developerConnection() != null) {
             sb.append("    <developerConnection>")
@@ -165,5 +168,4 @@ public final class PublishablePom {
             case VersionSelector.Latest l -> "LATEST";
         };
     }
-
 }

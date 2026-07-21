@@ -69,8 +69,7 @@ public final class PluginSpec {
                             s.config.put(key, Jsonl.bool(line, PluginProtocol.VALUE, false));
                         case PluginProtocol.KIND_INT ->
                             s.config.put(key, Jsonl.longValue(line, PluginProtocol.VALUE, 0));
-                        case PluginProtocol.KIND_LIST ->
-                            s.config.put(key, Jsonl.strArray(line, PluginProtocol.VALUES));
+                        case PluginProtocol.KIND_LIST -> s.config.put(key, Jsonl.strArray(line, PluginProtocol.VALUES));
                         default -> {
                             // unknown kind — forward-compat
                         }

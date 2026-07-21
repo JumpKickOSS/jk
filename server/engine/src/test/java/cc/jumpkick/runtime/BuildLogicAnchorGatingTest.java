@@ -9,6 +9,7 @@ import cc.jumpkick.run.StepNames;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -23,13 +24,14 @@ class BuildLogicAnchorGatingTest {
         Pipeline p = pipeline(project, dir.resolve("cache"), false);
         Map<String, Step> byName = index(p);
 
-        assertThat(byName).containsKeys(
-                StepNames.BUILD_LOGIC_AFTER_COMPILE,
-                StepNames.BUILD_LOGIC_BEFORE_PACKAGE,
-                StepNames.COPY_RESOURCES,
-                StepNames.PACKAGE_JAR,
-                StepNames.COMPILE_TEST,
-                StepNames.RUN_TESTS);
+        assertThat(byName)
+                .containsKeys(
+                        StepNames.BUILD_LOGIC_AFTER_COMPILE,
+                        StepNames.BUILD_LOGIC_BEFORE_PACKAGE,
+                        StepNames.COPY_RESOURCES,
+                        StepNames.PACKAGE_JAR,
+                        StepNames.COMPILE_TEST,
+                        StepNames.RUN_TESTS);
 
         Step after = byName.get(StepNames.BUILD_LOGIC_AFTER_COMPILE);
         Step before = byName.get(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
@@ -62,8 +64,7 @@ class BuildLogicAnchorGatingTest {
         assertThat(byName.get(StepNames.BUILD_LOGIC_BEFORE_PACKAGE).requires())
                 .contains(StepNames.COPY_RESOURCES)
                 .doesNotContain(StepNames.RUN_TESTS);
-        assertThat(byName.get(StepNames.PACKAGE_JAR).requires())
-                .contains(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
+        assertThat(byName.get(StepNames.PACKAGE_JAR).requires()).contains(StepNames.BUILD_LOGIC_BEFORE_PACKAGE);
     }
 
     private static Map<String, Step> index(Pipeline p) {
@@ -73,22 +74,16 @@ class BuildLogicAnchorGatingTest {
     private static Path scaffold(Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
                 jdk = 25
                 """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App {}\n");
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
         Files.createDirectories(project.resolve("src/test/java/demo"));
-        Files.writeString(
-                project.resolve("src/test/java/demo/AppTest.java"),
-                "package demo; class AppTest {}\n");
+        Files.writeString(project.resolve("src/test/java/demo/AppTest.java"), "package demo; class AppTest {}\n");
         return project;
     }
 
@@ -108,7 +103,7 @@ class BuildLogicAnchorGatingTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         return BuildPipelines.coreBuilder(in).build();
     }

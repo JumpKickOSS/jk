@@ -451,9 +451,7 @@ class JkBuildEditorTest {
 
     @Test
     void set_assembly_mode_preserves_main_and_other_keys() {
-        String start =
-                BASE
-                        + """
+        String start = BASE + """
                         [application]
                         main = "demo.App"
                         # keep me

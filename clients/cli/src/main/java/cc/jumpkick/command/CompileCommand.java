@@ -64,7 +64,7 @@ public final class CompileCommand implements CliCommand {
         String target = BuildCommand.buildTarget(buildFile, dir);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
-                // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
+        // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
         // arrives over the socket.
         var session = cc.jumpkick.config.SessionContext.current();
         try {

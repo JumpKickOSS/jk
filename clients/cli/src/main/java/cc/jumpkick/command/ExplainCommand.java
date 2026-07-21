@@ -48,7 +48,9 @@ public final class ExplainCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Build the plan instead of printing it (`jk build`).", "--run"),
-                Opt.flag("Estimate ETA with modules' tests concurrent (cross-module). Default: off.", "--parallel-tests"),
+                Opt.flag(
+                        "Estimate ETA with modules' tests concurrent (cross-module). Default: off.",
+                        "--parallel-tests"),
                 // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
                 // means feeding the same inputs to the shared estimate (and, with --run, to build).
                 // Module concurrency: global -j/--jobs (JK-1082).
@@ -62,22 +64,13 @@ public final class ExplainCommand implements CliCommand {
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value(
-                        "<git-ref>",
-                        "Forecast only modules changed since this git ref.",
-                        "--affected-since"),
-                Opt.value(
-                        "<sel>",
-                        "Forecast only selected modules (comma list, globs, braces).",
-                        "--modules"),
+                Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"),
+                Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"),
                 Opt.value(
                         "<fmt>",
                         "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
                         "--graph"),
-                Opt.value(
-                        "<file>",
-                        "With --graph, write the graph to this file instead of stdout.",
-                        "--graph-out"));
+                Opt.value("<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
     }
 
     @Override
@@ -93,8 +86,8 @@ public final class ExplainCommand implements CliCommand {
         String graphFmt = in.value("graph").orElse(null);
         boolean hasGraph = graphFmt != null && !graphFmt.isBlank();
         if (in.isSet("run") && hasGraph) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Explain", "cannot combine --run with --graph (pick one)"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "cannot combine --run with --graph (pick one)"));
             return Exit.USAGE;
         }
         if (in.isSet("run")) {
@@ -128,12 +121,11 @@ public final class ExplainCommand implements CliCommand {
         String modulesSpec = in.value("modules").orElse(null);
 
         // Client-side module filter listing (before engine forecast) when selectors are set.
-        if ((affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             try {
                 var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-                var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                        startDir, entry, modulesSpec, affectedSince);
+                var selected =
+                        cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
                     return Exit.CONFIG;
@@ -154,7 +146,8 @@ public final class ExplainCommand implements CliCommand {
                     }
                 }
             } catch (Exception e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
+                CliOutput.err(
+                        cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
                 return Exit.CONFIG;
             }
         }
@@ -166,19 +159,11 @@ public final class ExplainCommand implements CliCommand {
         // (BuildService.estimateEtaMillis) and rides back as an `eta` event; 0 = unknown.
         ExplainPlan plan;
         long etaMillis;
-                long[] etaOut = new long[1];
+        long[] etaOut = new long[1];
         plan = cc.jumpkick.cli.engine.EngineClient.explain(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
-                        startDir,
-                        cache,
-                        workers,
-                        skipTests,
-                        profile,
-                        jdksDir,
-                        serial,
-                        parallelTests,
-                        global.verbose),
+                        startDir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, global.verbose),
                 etaOut);
         etaMillis = etaOut[0];
 
@@ -515,16 +500,12 @@ public final class ExplainCommand implements CliCommand {
      * {@code jk explain --graph dot} — module dependency DAG as Graphviz DOT (no engine).
      */
     private static int emitModuleGraph(
-            Path startDir,
-            Path buildFile,
-            String format,
-            String modulesSpec,
-            String affectedSince,
-            String outputPath)
+            Path startDir, Path buildFile, String format, String modulesSpec, String affectedSince, String outputPath)
             throws Exception {
         String fmt = format.trim().toLowerCase(Locale.ROOT);
         if (!"dot".equals(fmt)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "unsupported --graph format '" + format + "' (supported: dot)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Explain", "unsupported --graph format '" + format + "' (supported: dot)"));
             return Exit.CONFIG;
         }
         JkBuild entry = JkBuildParser.parse(buildFile);
@@ -566,7 +547,8 @@ public final class ExplainCommand implements CliCommand {
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
             Files.writeString(out, dot);
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "wrote " + out.toAbsolutePath().normalize()));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Explain", "wrote " + out.toAbsolutePath().normalize()));
         } else {
             CliOutput.out(dot.endsWith("\n") ? dot.substring(0, dot.length() - 1) : dot);
         }

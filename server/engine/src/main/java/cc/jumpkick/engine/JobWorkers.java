@@ -19,6 +19,7 @@ public final class JobWorkers {
      * processes to the same request id.
      */
     private static final InheritableThreadLocal<Long> CURRENT = new InheritableThreadLocal<>();
+
     private static final ConcurrentHashMap<Long, Set<Process>> BY_REQUEST = new ConcurrentHashMap<>();
 
     private JobWorkers() {}

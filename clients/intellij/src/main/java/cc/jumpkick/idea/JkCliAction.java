@@ -16,7 +16,6 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Key;
-import com.intellij.openapi.vfs.VirtualFile;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -51,26 +50,24 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
             balloon(project, "No jk.toml in project base — open a JumpKick project root", NotificationType.ERROR);
             return;
         }
-        ProgressManager.getInstance()
-                .run(new Task.Backgroundable(project, "JumpKick: " + title, true) {
-                    @Override
-                    public void run(@NotNull ProgressIndicator indicator) {
-                        indicator.setIndeterminate(true);
-                        indicator.setText("jk " + String.join(" ", args));
-                        int code = runJk(base, args, indicator);
-                        ApplicationManager.getApplication()
-                                .invokeLater(() -> {
-                                    if (code == 0) {
-                                        balloon(project, title + " succeeded", NotificationType.INFORMATION);
-                                    } else {
-                                        balloon(
-                                                project,
-                                                title + " failed (exit " + code + ") — see Run tool window / logs",
-                                                NotificationType.ERROR);
-                                    }
-                                });
+        ProgressManager.getInstance().run(new Task.Backgroundable(project, "JumpKick: " + title, true) {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                indicator.setIndeterminate(true);
+                indicator.setText("jk " + String.join(" ", args));
+                int code = runJk(base, args, indicator);
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    if (code == 0) {
+                        balloon(project, title + " succeeded", NotificationType.INFORMATION);
+                    } else {
+                        balloon(
+                                project,
+                                title + " failed (exit " + code + ") — see Run tool window / logs",
+                                NotificationType.ERROR);
                     }
                 });
+            }
+        });
     }
 
     private static int runJk(File cwd, List<String> args, ProgressIndicator indicator) {
@@ -110,11 +107,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
         } catch (Exception ex) {
             balloon(
                     null,
-                    "Failed to start '"
-                            + bin
-                            + "': "
-                            + ex.getMessage()
-                            + " — install jk and ensure PATH / JK_BIN",
+                    "Failed to start '" + bin + "': " + ex.getMessage() + " — install jk and ensure PATH / JK_BIN",
                     NotificationType.ERROR);
             return 1;
         }

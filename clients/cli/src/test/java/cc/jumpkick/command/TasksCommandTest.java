@@ -58,7 +58,14 @@ class TasksCommandTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, "package example; public class Hello {}");
         Path cache = tempDir.resolve("cache");
-        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--no-timeline", "--skip-tests"))
+        assertThat(run(
+                        "build",
+                        "-C",
+                        tempDir.toString(),
+                        "--cache-dir",
+                        cache.toString(),
+                        "--no-timeline",
+                        "--skip-tests"))
                 .isZero();
         String out = captureStdout(
                 () -> run("inspect", "package-jar", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
@@ -80,9 +87,7 @@ class TasksCommandTest {
         run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
         Path logic = tempDir.resolve(".jk-build/src/demo");
         Files.createDirectories(logic);
-        Files.writeString(
-                logic.resolve("GenLogic.java"),
-                """
+        Files.writeString(logic.resolve("GenLogic.java"), """
                 package demo;
                 import cc.jumpkick.plugin.buildlogic.*;
                 public class GenLogic implements BuildLogicContributor {
@@ -91,9 +96,7 @@ class TasksCommandTest {
                   }
                 }
                 """);
-        Files.writeString(
-                logic.resolve("LineCountBuild.java"),
-                """
+        Files.writeString(logic.resolve("LineCountBuild.java"), """
                 package demo;
                 public class LineCountBuild {
                   public static void main(String[] a) {}

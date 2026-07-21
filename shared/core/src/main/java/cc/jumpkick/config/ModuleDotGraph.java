@@ -56,7 +56,8 @@ public final class ModuleDotGraph {
         for (var e : modules.entrySet()) {
             String id = "m" + (i++);
             ids.put(e.getKey(), id);
-            String coord = e.getValue().project().group() + ":" + e.getValue().project().name();
+            String coord = e.getValue().project().group() + ":"
+                    + e.getValue().project().name();
             String rel = relLabel(root, e.getKey());
             // Prefer coord as visible label; path as Graphviz tooltip for monorepo debugging.
             sb.append("  ")

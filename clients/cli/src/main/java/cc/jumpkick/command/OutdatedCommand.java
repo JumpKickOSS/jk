@@ -68,14 +68,15 @@ public final class OutdatedCommand implements CliCommand {
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Outdated", "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
 
         OutdatedReport report;
-                report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
+        report = cc.jumpkick.cli.engine.EngineClient.runOutdated(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineClient.OutdatedRequest(
                         dir, cache, repoUrl, global.offline, global.force));
@@ -94,9 +95,8 @@ public final class OutdatedCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         if (global.offline) {
-            CliOutput.out(
-                    "Note: offline mode — Compatible / Latest come from the local cache and repos only;"
-                            + " unreachable remotes may look up-to-date.");
+            CliOutput.out("Note: offline mode — Compatible / Latest come from the local cache and repos only;"
+                    + " unreachable remotes may look up-to-date.");
         }
         if (rows.isEmpty()) {
             CliOutput.out(excludeUpToDate ? "(no outdated dependencies)" : "(no dependencies to check)");
@@ -106,9 +106,8 @@ public final class OutdatedCommand implements CliCommand {
             CliOutput.out(line);
         }
         // Footer: lockfile-respecting workflow + graph inspection (ticket-1034).
-        CliOutput.out(
-                "Next: review with `jk why <coord>` / `jk tree`, then `jk update` only when you intend"
-                        + " to re-resolve (lockfile is law).");
+        CliOutput.out("Next: review with `jk why <coord>` / `jk tree`, then `jk update` only when you intend"
+                + " to re-resolve (lockfile is law).");
         return Exit.SUCCESS;
     }
 

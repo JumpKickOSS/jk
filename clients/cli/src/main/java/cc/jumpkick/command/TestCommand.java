@@ -49,11 +49,7 @@ public final class TestCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value(
-                        "<N>",
-                        "Test-runner JVMs to fork per module (within -j). Default 1.",
-                        "-w",
-                        "--workers"),
+                Opt.value("<N>", "Test-runner JVMs to fork per module (within -j). Default 1.", "-w", "--workers"),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -100,11 +96,9 @@ public final class TestCommand implements CliCommand {
         int workerCount = workers != null && workers > 0 ? workers : 1;
 
         // Selective tests: --modules and/or --affected-since (intersection when both).
-        if ((affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                    dir, entry, modulesSpec, affectedSince);
+            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
                 if (session != null) session.error(selected.errorMessage());
@@ -120,10 +114,10 @@ public final class TestCommand implements CliCommand {
                 return finishSession(0);
             }
             if (selected != null && entry.isWorkspaceRoot()) {
-                return finishSession(
-                        runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs()));
+                return finishSession(runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs()));
             }
-            if (selected != null && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
+            if (selected != null
+                    && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CHECK,
                         "Test",
@@ -136,7 +130,7 @@ public final class TestCommand implements CliCommand {
 
         PipelineResult result;
         TestSummary testResult;
-                // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
+        // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
         // ahead of time, so the listener is chosen once the step list arrives over the socket —
         // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
         // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
@@ -222,9 +216,7 @@ public final class TestCommand implements CliCommand {
         for (Path mod : dirtyDirs) {
             TestSummary[] testResultHolder = new TestSummary[1];
             ConsoleSpec spec = new ConsoleSpec(
-                    "Test",
-                    r -> testSummary(testResultHolder[0], r),
-                    r -> testFailureMessage(testResultHolder[0], r));
+                    "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
             String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
             PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
             PipelineResult result;

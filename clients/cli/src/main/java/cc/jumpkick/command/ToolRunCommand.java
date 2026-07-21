@@ -53,7 +53,10 @@ public final class ToolRunCommand implements CliCommand {
                 Opt.value("<class>", "Override the Main-Class to exec (coordinate targets only).", "--main"),
                 Opt.value("<coord>", "Add an extra dependency to the tool's classpath (repeatable).", "--with")
                         .repeat(),
-                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir")
+                Opt.value(
+                                "<dir>",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")
                         .hide(),
@@ -109,8 +112,8 @@ public final class ToolRunCommand implements CliCommand {
             return delegate.runProject(dir, args);
         }
         if (Files.isRegularFile(dir.resolve("jbang-catalog.json"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", dir + " is a JBang catalog — `alias@…` references aren't"
-                    + " supported yet."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Tool", dir + " is a JBang catalog — `alias@…` references aren't" + " supported yet."));
             return Exit.USAGE;
         }
         ScriptRunner runner = new ScriptRunner(global, cacheDirOverride, stateDirOverride, repoUrl, forceRecompile);
@@ -127,9 +130,11 @@ public final class ToolRunCommand implements CliCommand {
                     .toList();
         }
         if (scripts.size() == 1) return runner.run(scripts.get(0), args);
-        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "nothing runnable in " + dir
-                + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
-                + scripts.size() + ")."));
+        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                "Tool",
+                "nothing runnable in " + dir
+                        + " — looked for jk.toml, main.java, or exactly one .java/.kt/.kts (found "
+                        + scripts.size() + ")."));
         return Exit.USAGE;
     }
 
@@ -160,7 +165,7 @@ public final class ToolRunCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
         Path checkout;
-                cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
+        cc.jumpkick.cli.engine.EngineClient.GitFetchOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runGitFetch(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -177,7 +182,8 @@ public final class ToolRunCommand implements CliCommand {
         if (subdir != null) {
             Path sub = checkout.resolve(subdir).normalize();
             if (!sub.startsWith(checkout) || !Files.isDirectory(sub)) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "no directory `" + subdir + "` in " + input));
+                CliOutput.err(
+                        cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "no directory `" + subdir + "` in " + input));
                 return Exit.USAGE;
             }
             checkout = sub;
@@ -315,14 +321,13 @@ public final class ToolRunCommand implements CliCommand {
         Files.createDirectories(cacheDir);
 
         ToolEnv env;
-                cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ToolResolveRequest(
                             resolved.coordSpec(), with, bin, mainClass, repoUrl, cacheDir),
-                    steps -> PipelineConsole.chooseConsoleListener(
-                            "tool-run", steps, PipelineConsole.modeFor(global)));
+                    steps -> PipelineConsole.chooseConsoleListener("tool-run", steps, PipelineConsole.modeFor(global)));
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", e.getMessage()));
             return Exit.SOFTWARE;

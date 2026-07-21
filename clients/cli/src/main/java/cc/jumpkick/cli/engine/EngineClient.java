@@ -238,7 +238,8 @@ public final class EngineClient {
     static long readPidFile(Path pidFile) {
         try {
             if (!Files.isRegularFile(pidFile)) return -1;
-            String first = Files.readString(pidFile).lines().findFirst().orElse("").trim();
+            String first =
+                    Files.readString(pidFile).lines().findFirst().orElse("").trim();
             if (first.isEmpty()) return -1;
             return Long.parseLong(first);
         } catch (IOException | NumberFormatException e) {
@@ -1098,9 +1099,7 @@ public final class EngineClient {
                 (type, line) -> {});
         String checkout = Jsonl.str(finish.finishLine(), "gitCheckout");
         return new GitFetchOutcome(
-                finish.result(),
-                checkout != null ? Path.of(checkout) : null,
-                Jsonl.str(finish.finishLine(), "gitSha"));
+                finish.result(), checkout != null ? Path.of(checkout) : null, Jsonl.str(finish.finishLine(), "gitSha"));
     }
 
     // ---- hosted long-tail commands ----------------------------------------------------------------
@@ -1469,8 +1468,7 @@ public final class EngineClient {
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
         // Engine spawn is java -cp jk-engine.jar EngineMain (or JK_ENGINE_EXE). The client binary
         // path is only needed for cache-prune re-invocation elsewhere — not for the daemon spawn.
-        Optional<EngineArtifact> resolved =
-                resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
+        Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
                 && EngineJarFetcher.applicable(
@@ -1481,10 +1479,9 @@ public final class EngineClient {
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
-        EngineArtifact engine = resolved.orElseThrow(() -> new IOException(
-                "no build engine for jk " + clientVersion
-                        + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
-                        + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
+        EngineArtifact engine = resolved.orElseThrow(() -> new IOException("no build engine for jk " + clientVersion
+                + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
+                + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null, false, null, false);
         }

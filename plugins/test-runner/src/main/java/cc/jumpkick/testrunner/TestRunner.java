@@ -158,8 +158,7 @@ public final class TestRunner implements Plugin {
                     continue;
                 }
                 String className = line.substring(4).trim();
-                var classRequest = discoveryRequest(
-                        List.of(DiscoverySelectors.selectClass(className)), List.of());
+                var classRequest = discoveryRequest(List.of(DiscoverySelectors.selectClass(className)), List.of());
                 for (var engine : engines) {
                     var uid = UniqueId.root("[engine]", engine.getId());
                     var descriptor = engine.discover(classRequest, uid);
@@ -175,8 +174,8 @@ public final class TestRunner implements Plugin {
     // --- shared --------------------------------------------------------------
 
     private static EngineDiscoveryRequest baseRequest(Args args) {
-        var selectors = new ArrayList<DiscoverySelector>(
-                DiscoverySelectors.selectClasspathRoots(Set.of(args.scanClasspath)));
+        var selectors =
+                new ArrayList<DiscoverySelector>(DiscoverySelectors.selectClasspathRoots(Set.of(args.scanClasspath)));
         var filters = new ArrayList<DiscoveryFilter<?>>();
         if (args.filter != null && !args.filter.isEmpty()) {
             filters.add(ClassNameFilter.includeClassNamePatterns(args.filter));
@@ -196,11 +195,17 @@ public final class TestRunner implements Plugin {
             return switch (name) {
                 case "getSelectorsByType" -> {
                     Class<?> type = (Class<?>) args[0];
-                    yield selectors.stream().filter(type::isInstance).map(type::cast).toList();
+                    yield selectors.stream()
+                            .filter(type::isInstance)
+                            .map(type::cast)
+                            .toList();
                 }
                 case "getFiltersByType" -> {
                     Class<?> type = (Class<?>) args[0];
-                    yield filters.stream().filter(type::isInstance).map(type::cast).toList();
+                    yield filters.stream()
+                            .filter(type::isInstance)
+                            .map(type::cast)
+                            .toList();
                 }
                 case "getConfigurationParameters" -> EmptyConfigParams.INSTANCE;
                 case "getOutputDirectoryCreator" -> outputDirectoryCreator();
@@ -218,9 +223,7 @@ public final class TestRunner implements Plugin {
             };
         };
         return (EngineDiscoveryRequest) Proxy.newProxyInstance(
-                EngineDiscoveryRequest.class.getClassLoader(),
-                new Class<?>[] {EngineDiscoveryRequest.class},
-                handler);
+                EngineDiscoveryRequest.class.getClassLoader(), new Class<?>[] {EngineDiscoveryRequest.class}, handler);
     }
 
     /** JUnit 6 only: no-op {@code OutputDirectoryCreator}, or null if the type is absent. */
@@ -229,9 +232,7 @@ public final class TestRunner implements Plugin {
             Class<?> iface = Class.forName("org.junit.platform.engine.OutputDirectoryCreator");
             Path tmp = Path.of(System.getProperty("java.io.tmpdir", "/tmp"));
             return Proxy.newProxyInstance(
-                    iface.getClassLoader(),
-                    new Class<?>[] {iface},
-                    (proxy, method, args) -> switch (method.getName()) {
+                    iface.getClassLoader(), new Class<?>[] {iface}, (proxy, method, args) -> switch (method.getName()) {
                         case "getRootDirectory" -> tmp;
                         case "createOutputDirectory" -> null;
                         case "equals" -> proxy == args[0];
@@ -253,9 +254,7 @@ public final class TestRunner implements Plugin {
         } catch (ReflectiveOperationException ignored) {
             if (!returnType.isInterface()) return null;
             return Proxy.newProxyInstance(
-                    returnType.getClassLoader(),
-                    new Class<?>[] {returnType},
-                    (proxy, method, args) -> {
+                    returnType.getClassLoader(), new Class<?>[] {returnType}, (proxy, method, args) -> {
                         if (method.getReturnType() == boolean.class) return false;
                         if (method.getReturnType() == int.class) return 0;
                         return null;
@@ -268,12 +267,10 @@ public final class TestRunner implements Plugin {
      * constructor. No JUnit-6-only types appear in this method's signature.
      */
     @SuppressWarnings("deprecation")
-    private static ExecutionRequest makeExecutionRequest(
-            TestDescriptor descriptor, EngineExecutionListener listener) {
+    private static ExecutionRequest makeExecutionRequest(TestDescriptor descriptor, EngineExecutionListener listener) {
         // Prefer JUnit 6 factory via reflection so linking this method never requires Platform 6.
         try {
-            Class<?> storeClass =
-                    Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
+            Class<?> storeClass = Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
             Class<?> cancelClass = Class.forName("org.junit.platform.engine.CancellationToken");
             Constructor<?> storeCtor = storeClass.getConstructor(storeClass);
             Object parentStore = storeCtor.newInstance(new Object[] {null});

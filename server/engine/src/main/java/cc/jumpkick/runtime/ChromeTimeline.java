@@ -93,8 +93,8 @@ public final class ChromeTimeline {
     void completeNanos(String module, String step, String status, long startNanos, long endNanos) {
         long start = startNanos;
         long end = Math.max(startNanos, endNanos);
-        int tid = tids.computeIfAbsent(
-                module == null || module.isBlank() ? "_" : module, k -> nextTid.getAndIncrement());
+        int tid =
+                tids.computeIfAbsent(module == null || module.isBlank() ? "_" : module, k -> nextTid.getAndIncrement());
         events.add(new Event(module, step, status, start, end, tid));
     }
 

@@ -1342,8 +1342,7 @@ class JkBuildParserTest {
 
     @Test
     void application_assembly_shrink_enables_shrink_plugin_without_table() {
-        JkBuild parsed = JkBuildParser.parse(
-                PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.assembly()).isFalse();
         assertThat(parsed.assemblyShrink()).isTrue();
@@ -1362,8 +1361,7 @@ class JkBuildParserTest {
     void assembly_mode_override_injects_shrink_plugin() {
         JkBuild base = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\n");
         assertThat(base.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
-        JkBuild shrunk =
-                JkBuildParser.withAssemblyModeOverride(base, JkBuild.AssemblyMode.SHRINK);
+        JkBuild shrunk = JkBuildParser.withAssemblyModeOverride(base, JkBuild.AssemblyMode.SHRINK);
         assertThat(shrunk.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
         assertThat(shrunk.pluginConfig("shrink")).isPresent();
         assertThat(JkBuildParser.parseAssemblyOverride("fat")).isEqualTo(JkBuild.AssemblyMode.FAT);
@@ -1373,8 +1371,7 @@ class JkBuildParserTest {
 
     @Test
     void assembly_mode_override_fat_strips_shrink_plugin() {
-        JkBuild shrink = JkBuildParser.parse(
-                PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        JkBuild shrink = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
         assertThat(shrink.pluginConfig("shrink")).isPresent();
         JkBuild fat = JkBuildParser.withAssemblyModeOverride(shrink, JkBuild.AssemblyMode.FAT);
         assertThat(fat.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);

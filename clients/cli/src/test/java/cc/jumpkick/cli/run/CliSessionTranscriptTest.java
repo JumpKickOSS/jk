@@ -9,9 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.StepStatus;
 import cc.jumpkick.util.MiniJson;
+import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,8 +24,7 @@ class CliSessionTranscriptTest {
 
     @Test
     void writes_versioned_details_json(@TempDir Path project) throws Exception {
-        CliSessionTranscript session =
-                CliSessionTranscript.open(project, "build", List.of("build", "--skip-tests"));
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build", List.of("build", "--skip-tests"));
         assertNotNull(session, "open should succeed under a writable project dir");
 
         PipelineResult result = new PipelineResult(
@@ -34,15 +35,13 @@ class CliSessionTranscriptTest {
                 List.of(),
                 List.of(),
                 false);
-        session.module("demo:app")
-                .absorb(result)
-                .wedge("Build successful. Built target/lib/app.jar");
+        session.module("demo:app").absorb(result).wedge("Build successful. Built target/lib/app.jar");
 
         Optional<Path> written = session.finish(0);
         assertTrue(written.isPresent());
         Path file = written.get();
         assertTrue(Files.isRegularFile(file));
-        assertTrue(file.toString().contains(CliSessionTranscript.REL_ROOT.replace('/', java.io.File.separatorChar))
+        assertTrue(file.toString().contains(CliSessionTranscript.REL_ROOT.replace('/', File.separatorChar))
                 || file.toString().replace('\\', '/').contains(CliSessionTranscript.REL_ROOT));
         assertEquals(CliSessionTranscript.FILE_NAME, file.getFileName().toString());
 
@@ -119,14 +118,12 @@ class CliSessionTranscriptTest {
         CliSessionTranscript session = CliSessionTranscript.open(project, "build");
         assertNotNull(session);
         Path parent = session.file().getParent();
-        Files.walk(parent)
-                .sorted(java.util.Comparator.reverseOrder())
-                .forEach(p -> {
-                    try {
-                        Files.deleteIfExists(p);
-                    } catch (Exception ignored) {
-                    }
-                });
+        Files.walk(parent).sorted(Comparator.reverseOrder()).forEach(p -> {
+            try {
+                Files.deleteIfExists(p);
+            } catch (Exception ignored) {
+            }
+        });
         // Replace parent with a file so write fails.
         Files.writeString(parent, "blocked");
         Optional<Path> written = session.finish(1);

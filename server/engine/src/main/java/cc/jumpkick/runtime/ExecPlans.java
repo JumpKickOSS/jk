@@ -288,7 +288,8 @@ public final class ExecPlans {
                             || "org.springframework.boot:spring-boot-devtools:jar:".equals(a.packageKey())
                             || (cc.jumpkick.model.PackageId.isMavenPackageKey(n)
                                     && "org.springframework.boot:spring-boot-devtools"
-                                            .equals(cc.jumpkick.model.PackageId.parse(n).ga()));
+                                            .equals(cc.jumpkick.model.PackageId.parse(n)
+                                                    .ga()));
                 });
             }
         }

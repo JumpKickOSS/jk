@@ -26,11 +26,10 @@ public final class Versions {
      * not false-positive; {@code m}/{@code M} milestones require a following digit ({@code M2},
      * {@code m1}).
      */
-    private static final java.util.regex.Pattern PRE_RELEASE = java.util.regex.Pattern.compile(
-            "(?i)(?:^|[-_.+])("
-                    + "alpha|beta|milestone|rc|cr|pre|preview|snapshot|dev|ea|canary|nightly"
-                    + "|m\\d+"
-                    + ")(?:$|[-_.+\\d])");
+    private static final java.util.regex.Pattern PRE_RELEASE = java.util.regex.Pattern.compile("(?i)(?:^|[-_.+])("
+            + "alpha|beta|milestone|rc|cr|pre|preview|snapshot|dev|ea|canary|nightly"
+            + "|m\\d+"
+            + ")(?:$|[-_.+\\d])");
 
     /** Maven's resolved-snapshot form, e.g. {@code 1.0-20260520.123456-7} — always a pre-release. */
     private static final java.util.regex.Pattern SNAPSHOT_TIMESTAMP =

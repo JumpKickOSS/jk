@@ -28,8 +28,7 @@ public final class FileHashMemo {
     private static final long SETTLE_MS = 2_000;
 
     /** Absolute-path → hex for the current thread (request / pipeline worker). */
-    private static final ThreadLocal<Map<String, String>> THREAD_CACHE =
-            ThreadLocal.withInitial(HashMap::new);
+    private static final ThreadLocal<Map<String, String>> THREAD_CACHE = ThreadLocal.withInitial(HashMap::new);
 
     private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();
     private static final AtomicLong THREAD_HITS = new AtomicLong();

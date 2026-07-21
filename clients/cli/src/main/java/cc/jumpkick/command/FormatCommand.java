@@ -63,12 +63,14 @@ public final class FormatCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path buildFile = projectDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Format", "no jk.toml in " + PathDisplay.styledRaw(projectDir)));
             return Exit.CONFIG;
         }
         cc.jumpkick.engine.protocol.ProjectInfo build = BuildCommand.projectInfoOrNull(projectDir);
         if (build == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Format", "could not read the project summary (is the engine reachable?)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Format", "could not read the project summary (is the engine reachable?)"));
             return Exit.CONFIG;
         }
 
@@ -151,7 +153,8 @@ public final class FormatCommand implements CliCommand {
                 return 1;
             }
             if (o.total() == 0) {
-                if (!global.outputIsJson()) CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Format", "no Java or Kotlin sources found."));
+                if (!global.outputIsJson())
+                    CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Format", "no Java or Kotlin sources found."));
                 return 0;
             }
             if (!global.outputIsJson()) {

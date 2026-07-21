@@ -64,11 +64,7 @@ public final class CliSessionTranscript {
         if (disabled()) return null;
         try {
             Instant started = Instant.now();
-            Path dir = projectDir
-                    .toAbsolutePath()
-                    .normalize()
-                    .resolve(REL_ROOT)
-                    .resolve(DIR_TS.format(started));
+            Path dir = projectDir.toAbsolutePath().normalize().resolve(REL_ROOT).resolve(DIR_TS.format(started));
             Files.createDirectories(dir);
             Path file = dir.resolve(FILE_NAME);
             List<String> args = argv == null || argv.isEmpty() ? List.of(command) : List.copyOf(argv);

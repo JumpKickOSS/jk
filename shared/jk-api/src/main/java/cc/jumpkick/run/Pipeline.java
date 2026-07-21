@@ -359,9 +359,7 @@ public final class Pipeline {
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {
                 errors.add(new PipelineResult.Diagnostic(
-                        step.name(),
-                        cancel ? "cancelled" : "exception",
-                        diagnosticMessage(t)));
+                        step.name(), cancel ? "cancelled" : "exception", diagnosticMessage(t)));
             }
             StepStatus terminal = cancel ? StepStatus.CANCELLED : StepStatus.FAIL;
             statuses.put(step.name(), terminal);

@@ -90,7 +90,8 @@ public final class VerifyBuildCommand implements CliCommand {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = dir.resolve("jk.lock");
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Verify", "jk.toml and jk.lock required in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Verify", "jk.toml and jk.lock required in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -235,7 +236,7 @@ public final class VerifyBuildCommand implements CliCommand {
         WorkspaceResult result = SessionContext.where(
                 session,
                 () -> cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                                cc.jumpkick.engine.EnginePaths.current(), request, listener));
+                        cc.jumpkick.engine.EnginePaths.current(), request, listener));
         if (!result.errors().isEmpty()) {
             errors.error("build", String.join("; ", result.errors()));
             throw new RuntimeException("scratch rebuild failed");
@@ -291,7 +292,8 @@ public final class VerifyBuildCommand implements CliCommand {
     /** The engine's project summary for {@code dir}; throws with the engine's message on error. */
     private static ProjectInfo projectInfo(Path dir) throws IOException {
         try {
-            ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            ProjectInfo info =
+                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
             if (info.error() != null) throw new IOException(info.error());
             return info;
         } catch (IOException e) {

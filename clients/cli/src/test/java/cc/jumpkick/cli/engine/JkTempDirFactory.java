@@ -16,9 +16,8 @@ public final class JkTempDirFactory implements TempDirFactory {
     @Override
     public Path createTempDirectory(AnnotatedElementContext elementContext, ExtensionContext extensionContext)
             throws Exception {
-        Path root = Files.isDirectory(Path.of("/tmp"))
-                ? Path.of("/tmp")
-                : Path.of(System.getProperty("java.io.tmpdir"));
+        Path root =
+                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
         return Files.createTempDirectory(root, "jk-junit-");
     }
 }

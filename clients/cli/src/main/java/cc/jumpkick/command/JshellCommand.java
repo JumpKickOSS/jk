@@ -22,7 +22,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -50,8 +49,13 @@ public final class JshellCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"),
-                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir").hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide(),
+                Opt.value(
+                                "<dir>",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "--cache-dir")
+                        .hide(),
+                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
+                        .hide(),
                 Opt.flag("Skip tests during the preparatory build.", "--skip-tests"));
     }
 
@@ -97,8 +101,7 @@ public final class JshellCommand implements CliCommand {
             int code = new BuildCommand().run(bb.build());
             if (code != 0) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "JShell",
-                        "preparatory build failed (exit " + code + "); try --no-build after a green build"));
+                        "JShell", "preparatory build failed (exit " + code + "); try --no-build after a green build"));
                 return code;
             }
         }
@@ -119,8 +122,7 @@ public final class JshellCommand implements CliCommand {
         Path classes = layout.classesDir();
         if (!Files.isDirectory(classes)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "JShell",
-                    "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`"));
+                    "JShell", "no classes at " + classes + " — run `jk build --skip-tests` or drop `--no-build`"));
             return Exit.CONFIG;
         }
 
@@ -155,8 +157,9 @@ public final class JshellCommand implements CliCommand {
         cmd.addAll(in.positionals());
 
         if (global.verbose) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s)
-                    .collect(Collectors.joining(" "))));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JShell",
+                    cmd.stream().map(s -> s.contains(" ") ? "\"" + s + "\"" : s).collect(Collectors.joining(" "))));
         }
 
         ProcessBuilder pb = new ProcessBuilder(cmd);

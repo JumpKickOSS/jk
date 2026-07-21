@@ -117,7 +117,9 @@ class SelfHostingTomlTest {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.assembly()).as(module).isTrue();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
-            assertThat(p.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+            assertThat(p.dependencies().of(Scope.MAIN).stream()
+                            .map(d -> d.module())
+                            .toList())
                     .as(module)
                     .contains("cc.jumpkick:jk-plugin-api");
         }

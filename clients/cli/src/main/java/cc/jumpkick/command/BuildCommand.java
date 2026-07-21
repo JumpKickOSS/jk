@@ -11,9 +11,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.AffectedSelection;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
@@ -50,11 +48,7 @@ public final class BuildCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new java.util.ArrayList<>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value(
-                        "<N>",
-                        "Test-runner JVMs to fork per module (within -j). Default 1.",
-                        "-w",
-                        "--workers"),
+                Opt.value("<N>", "Test-runner JVMs to fork per module (within -j). Default 1.", "-w", "--workers"),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -82,6 +76,7 @@ public final class BuildCommand implements CliCommand {
     GlobalOptions global;
     /** Resolved concurrent module budget (from global -j / JK_JOBS / [engine] jobs). */
     int jobs;
+
     boolean parallelTests;
     boolean aotCache;
     String variant;
@@ -124,7 +119,8 @@ public final class BuildCommand implements CliCommand {
         Path startDir = global.workingDir();
         Path buildFile = startDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir)));
             return Exit.CONFIG;
         }
         // Variant selection (--release / --variant <dim>=<value>): rides the request as a compact
@@ -139,7 +135,9 @@ public final class BuildCommand implements CliCommand {
 
         if (peek != null && peek.workspaceRoot()) {
             if (aotCache) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "--aot-cache packages a single application project;" + " run it from the module directory."));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Build",
+                        "--aot-cache packages a single application project;" + " run it from the module directory."));
                 return finishSession(Exit.USAGE);
             }
             return finishSession(buildWorkspace(startDir));
@@ -149,10 +147,9 @@ public final class BuildCommand implements CliCommand {
                 && !peek.workspaceRootDir().equals(startDir.toString())) {
             Path root = Path.of(peek.workspaceRootDir());
             if (!global.outputIsJson()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "building workspace from " + root.getFileName()
-                        + " (module: "
-                        + startDir.getFileName()
-                        + ")"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Build",
+                        "building workspace from " + root.getFileName() + " (module: " + startDir.getFileName() + ")"));
             }
             return finishSession(buildWorkspace(root));
         }
@@ -249,7 +246,7 @@ public final class BuildCommand implements CliCommand {
         cc.jumpkick.runtime.BuildForecast forecast;
         try {
             forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
-                            cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
+                    cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
         } catch (java.io.IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             return Exit.SOFTWARE;
@@ -271,14 +268,14 @@ public final class BuildCommand implements CliCommand {
                     + dirtyDirs.size());
         }
         // Optional: --modules and/or --affected-since (intersection when both).
-        if ((affectedSince != null && !affectedSince.isBlank())
-                || (modulesSpec != null && !modulesSpec.isBlank())) {
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
             JkBuild buildForSelect = entryBuild;
             if (buildForSelect == null) {
                 try {
                     buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
                 } catch (Exception e) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "cannot load jk.toml for module selection: " + e.getMessage()));
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "Build", "cannot load jk.toml for module selection: " + e.getMessage()));
                     return Exit.CONFIG;
                 }
             }
@@ -290,10 +287,7 @@ public final class BuildCommand implements CliCommand {
             }
             if (selected != null && selected.moduleDirs().isEmpty()) {
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Build",
-                        nerdfont,
-                        selectionEmptyMessage()));
+                        cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, selectionEmptyMessage()));
                 return 0;
             }
             if (selected != null) {
@@ -413,7 +407,7 @@ public final class BuildCommand implements CliCommand {
                         }
                     };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                            cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
+                    cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
         } catch (java.io.IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             if (session != null) session.error(e.getMessage());
@@ -435,19 +429,16 @@ public final class BuildCommand implements CliCommand {
             return 0;
         }
         if (!result.success()) {
-            result.modules().stream()
-                    .filter(m -> !m.success())
-                    .findFirst()
-                    .ifPresent(f -> {
-                        String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", msg));
-                        if (session != null) session.error(msg).wedge(msg);
-                    });
+            result.modules().stream().filter(m -> !m.success()).findFirst().ifPresent(f -> {
+                String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", msg));
+                if (session != null) session.error(msg).wedge(msg);
+            });
             return result.exitCode();
         }
         String okTail = modulesTail(total[0], start);
-        CliOutput.out(PipelineWedge.chipLine(
-                cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
+        CliOutput.out(
+                PipelineWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
         if (session != null) session.wedge(okTail);
         return 0;
     }
@@ -476,8 +467,8 @@ public final class BuildCommand implements CliCommand {
         // Reuse the forecast dirty set unless the workspace lock is stale (engine re-locks and
         // re-forecasts). Exception (JK-1060): an explicit --modules / --affected-since selection
         // must still be honored — nulling the hint would cascade the whole workspace.
-        boolean honorSelection = (modulesSpec != null && !modulesSpec.isBlank())
-                || (affectedSince != null && !affectedSince.isBlank());
+        boolean honorSelection =
+                (modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank());
         Set<Path> dirtyHint = (lockStale && !honorSelection) ? null : dirtyDirs;
         var request = new cc.jumpkick.runtime.WorkspaceRequest(
                         entryDir,
@@ -546,7 +537,7 @@ public final class BuildCommand implements CliCommand {
                 }
             };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                            cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
+                    cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
         } catch (java.io.IOException e) {
             // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName(),
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
@@ -588,8 +579,7 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge(failTail);
             return result.exitCode();
         }
-        String okTail =
-                dirtyDirs.isEmpty() ? upToDateTail("all modules", start) : modulesTail(total[0], start);
+        String okTail = dirtyDirs.isEmpty() ? upToDateTail("all modules", start) : modulesTail(total[0], start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
         return 0;
@@ -644,7 +634,8 @@ public final class BuildCommand implements CliCommand {
         long startNanos = System.nanoTime(); // captured before the forecast so timing includes it
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Build", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -744,7 +735,8 @@ public final class BuildCommand implements CliCommand {
     /** Engine project summary, or null when unavailable / errored. */
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfoOrNull(Path dir) {
         try {
-            cc.jumpkick.engine.protocol.ProjectInfo info = cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
+            cc.jumpkick.engine.protocol.ProjectInfo info =
+                    cc.jumpkick.cli.engine.EngineClient.projectInfo(cc.jumpkick.engine.EnginePaths.current(), dir);
             return info.error() != null ? null : info;
         } catch (Exception e) {
             return null;

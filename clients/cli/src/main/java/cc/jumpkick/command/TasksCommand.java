@@ -22,7 +22,6 @@ import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -65,7 +64,11 @@ public final class TasksCommand implements CliCommand {
                         "<git-ref>",
                         "Intersect selection with modules changed since this git ref.",
                         "--affected-since"),
-                Opt.value("<dir>", "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).", "--cache-dir").hide());
+                Opt.value(
+                                "<dir>",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "--cache-dir")
+                        .hide());
     }
 
     @Override
@@ -86,10 +89,7 @@ public final class TasksCommand implements CliCommand {
             List<String> pos = in.positionals();
             String action = pos.isEmpty() ? "list" : pos.getFirst().trim().toLowerCase(Locale.ROOT);
             // Allow `jk tasks package-jar` as shorthand for show when first token is a known step.
-            if (!action.equals("list")
-                    && !action.equals("show")
-                    && !action.equals("inspect")
-                    && !action.equals("ls")) {
+            if (!action.equals("list") && !action.equals("show") && !action.equals("inspect") && !action.equals("ls")) {
                 if (TaskCatalog.find(action).isPresent()) {
                     return showOrInspect("show", action, in, startDir, proj.buildFile());
                 }
@@ -129,7 +129,8 @@ public final class TasksCommand implements CliCommand {
         boolean multi = modules.size() > 1;
         for (var e : modules.entrySet()) {
             if (multi) {
-                String label = e.getValue().project().group() + ":" + e.getValue().project().name();
+                String label = e.getValue().project().group() + ":"
+                        + e.getValue().project().name();
                 CliOutput.out("# " + label + "  (" + rel(startDir, e.getKey()) + ")");
             }
             CliOutput.out(String.format("%-28s %-10s %s", "NAME", "PHASE", "DESCRIPTION"));
@@ -203,7 +204,8 @@ public final class TasksCommand implements CliCommand {
             } else {
                 // show: path only (Mill-like), one line per module
                 if (out.isEmpty()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", "step `" + task.name() + "` has no primary output path"));
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "Show", "step `" + task.name() + "` has no primary output path"));
                     return Exit.CONFIG;
                 }
                 if (modules.size() > 1) {
@@ -216,8 +218,7 @@ public final class TasksCommand implements CliCommand {
         return 0;
     }
 
-    private static Map<Path, JkBuild> resolveModules(Invocation in, Path startDir, Path buildFile)
-            throws Exception {
+    private static Map<Path, JkBuild> resolveModules(Invocation in, Path startDir, Path buildFile) throws Exception {
         JkBuild entry = JkBuildParser.parse(buildFile);
         Path root = startDir.toAbsolutePath().normalize();
         String modulesSpec = in.value("modules").orElse(null);
@@ -232,8 +233,7 @@ public final class TasksCommand implements CliCommand {
             all.put(root, entry);
         }
 
-        ModuleSelection.Result selected =
-                ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affected);
+        ModuleSelection.Result selected = ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affected);
         if (selected != null && !selected.ok()) {
             throw new IllegalStateException(selected.errorMessage());
         }
@@ -293,7 +293,10 @@ public final class TasksCommand implements CliCommand {
      * is not in the forecast (side-effect / SPI-only names).
      */
     static String cacheLine(ExplainPlan plan, Path modDir, String stepName) {
-        if (plan == null || plan.hasErrors() || plan.modules() == null || plan.modules().isEmpty()) {
+        if (plan == null
+                || plan.hasErrors()
+                || plan.modules() == null
+                || plan.modules().isEmpty()) {
             return "unknown (engine offline or forecast failed — try `jk explain`)";
         }
         Path abs = modDir.toAbsolutePath().normalize();

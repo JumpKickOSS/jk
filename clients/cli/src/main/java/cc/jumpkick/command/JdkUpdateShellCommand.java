@@ -53,8 +53,10 @@ public final class JdkUpdateShellCommand implements CliCommand {
         Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
         Optional<JdkShell> detected = shellOverride != null ? JdkShell.detect(shellOverride) : JdkShell.detect();
         if (detected.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "could not detect shell (set --shell, or add `" + bashLine(binDir)
-                    + "` to your rc file manually)."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JDK",
+                    "could not detect shell (set --shell, or add `" + bashLine(binDir)
+                            + "` to your rc file manually)."));
             return Exit.USAGE;
         }
         JdkShell shell = detected.get();

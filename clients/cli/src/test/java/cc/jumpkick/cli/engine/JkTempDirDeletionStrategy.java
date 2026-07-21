@@ -24,7 +24,8 @@ import org.junit.jupiter.api.io.TempDirDeletionStrategy;
 public final class JkTempDirDeletionStrategy implements TempDirDeletionStrategy {
 
     @Override
-    public DeletionResult delete(Path rootDir, AnnotatedElementContext elementContext, ExtensionContext extensionContext)
+    public DeletionResult delete(
+            Path rootDir, AnnotatedElementContext elementContext, ExtensionContext extensionContext)
             throws IOException {
         DeletionResult first = Standard.INSTANCE.delete(rootDir, elementContext, extensionContext);
         if (first.isSuccessful()) return first;
@@ -41,8 +42,7 @@ public final class JkTempDirDeletionStrategy implements TempDirDeletionStrategy 
         if (second.isSuccessful()) return second;
 
         // Soft-fail: leftover dirs are under /tmp and AfterAll releases the engine process.
-        System.err.println(
-                "jk test: TempDir cleanup incomplete after engine stop for " + rootDir + " (continuing)");
+        System.err.println("jk test: TempDir cleanup incomplete after engine stop for " + rootDir + " (continuing)");
         return DeletionResult.builder(rootDir).build();
     }
 }

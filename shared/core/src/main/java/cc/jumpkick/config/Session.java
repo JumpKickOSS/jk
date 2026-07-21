@@ -158,12 +158,34 @@ public record Session(
 
     public Session withCacheDir(Path dir) {
         return new Session(
-                config, workingDir, dir, jdksDir, jvm, jdkSpec, graalSpec, parallelTests, cancel, variant, clientEnv, assemblyOverride);
+                config,
+                workingDir,
+                dir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withJdksDir(Path dir) {
         return new Session(
-                config, workingDir, cacheDir, dir, jvm, jdkSpec, graalSpec, parallelTests, cancel, variant, clientEnv, assemblyOverride);
+                config,
+                workingDir,
+                cacheDir,
+                dir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withJvm(PluginTuning tuning) {
@@ -201,7 +223,18 @@ public record Session(
 
     public Session withParallelTests(boolean enabled) {
         return new Session(
-                config, workingDir, cacheDir, jdksDir, jvm, jdkSpec, graalSpec, enabled, cancel, variant, clientEnv, assemblyOverride);
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                enabled,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
     }
 
     /**

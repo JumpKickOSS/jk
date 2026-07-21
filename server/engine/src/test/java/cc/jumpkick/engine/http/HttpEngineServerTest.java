@@ -575,9 +575,8 @@ class HttpEngineServerTest {
                 () -> EMPTY_CACHE,
                 null);
         try {
-            assertTimeoutPreemptively(
-                    java.time.Duration.ofSeconds(10),
-                    () -> assertThatThrownBy(collider::start).isInstanceOf(java.net.BindException.class));
+            assertTimeoutPreemptively(java.time.Duration.ofSeconds(10), () -> assertThatThrownBy(collider::start)
+                    .isInstanceOf(java.net.BindException.class));
         } finally {
             collider.close();
         }

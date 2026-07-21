@@ -19,9 +19,7 @@ class BspServerFramingTest {
 
     @Test
     void install_writes_bsp_config(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -35,9 +33,7 @@ class BspServerFramingTest {
         // Working dir may not be temp — call install logic via path write we can do directly:
         Path bsp = dir.resolve(".bsp");
         Files.createDirectories(bsp);
-        Files.writeString(
-                bsp.resolve("jk.json"),
-                """
+        Files.writeString(bsp.resolve("jk.json"), """
                 {"name":"jk","argv":["jk","bsp","serve"]}
                 """);
         assertTrue(Files.isRegularFile(bsp.resolve("jk.json")));

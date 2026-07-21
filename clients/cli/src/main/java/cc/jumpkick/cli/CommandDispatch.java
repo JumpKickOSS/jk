@@ -48,10 +48,9 @@ import cc.jumpkick.command.SelfCommand;
 import cc.jumpkick.command.ShellCommand;
 import cc.jumpkick.command.ShowCommand;
 import cc.jumpkick.command.StatusCommand;
-import cc.jumpkick.command.TasksCommand;
 import cc.jumpkick.command.SyncCommand;
+import cc.jumpkick.command.TasksCommand;
 import cc.jumpkick.command.TestCommand;
-import cc.jumpkick.command.WatchCommand;
 import cc.jumpkick.command.ToolCommand;
 import cc.jumpkick.command.ToolInstallCommand;
 import cc.jumpkick.command.ToolRunCommand;
@@ -60,6 +59,7 @@ import cc.jumpkick.command.TrustCommand;
 import cc.jumpkick.command.UpdateCommand;
 import cc.jumpkick.command.VerifyBuildCommand;
 import cc.jumpkick.command.VscodeCommand;
+import cc.jumpkick.command.WatchCommand;
 import cc.jumpkick.command.WhyCommand;
 import cc.jumpkick.command.WrapperCommand;
 import cc.jumpkick.config.JkConfig;
@@ -199,7 +199,7 @@ public final class CommandDispatch {
         if (!java.nio.file.Files.isRegularFile(dir.resolve("jk.toml"))) return null;
         try {
             cc.jumpkick.engine.protocol.PluginCommandReport report;
-                        var paths = cc.jumpkick.engine.EnginePaths.current();
+            var paths = cc.jumpkick.engine.EnginePaths.current();
             if (!cc.jumpkick.cli.engine.EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
                 return null;
             report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(

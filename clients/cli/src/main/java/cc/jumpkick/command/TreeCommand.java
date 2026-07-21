@@ -62,14 +62,16 @@ public final class TreeCommand implements CliCommand {
                     .filter(s -> !s.isEmpty())
                     .toList();
             if (tokens.isEmpty()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Tree", "--scopes requires at least one scope (valid: " + validScopes() + ")"));
                 return Exit.CONFIG;
             }
             Set<Scope> ordered = new LinkedHashSet<>();
             for (String token : tokens) {
                 List<Scope> expanded = resolveScopeToken(token);
                 if (expanded == null) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")"));
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "Tree", "invalid scope '" + token + "' (valid: " + validScopes() + ")"));
                     return Exit.CONFIG;
                 }
                 ordered.addAll(expanded);
@@ -82,7 +84,8 @@ public final class TreeCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         Path lockFile = proj.lockFile();
         if (!proj.isLocked()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Tree", "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
             return Exit.CONFIG;
         }
 
@@ -118,7 +121,7 @@ public final class TreeCommand implements CliCommand {
         String tagged;
         try {
             tagged = cc.jumpkick.cli.engine.EngineClient.treeRender(
-                            cc.jumpkick.engine.EnginePaths.current(), dir, max, flatten, stack, scopeNames);
+                    cc.jumpkick.engine.EnginePaths.current(), dir, max, flatten, stack, scopeNames);
         } catch (IOException | RuntimeException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tree", e.getMessage()));
             return Exit.CONFIG;

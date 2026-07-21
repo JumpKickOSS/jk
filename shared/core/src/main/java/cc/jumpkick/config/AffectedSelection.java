@@ -55,8 +55,7 @@ public final class AffectedSelection {
             if (paths == null) {
                 return Result.fail("git ref `" + ref + "` could not be resolved (not a git repo or bad ref)");
             }
-            Set<Path> affected =
-                    AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths);
+            Set<Path> affected = AffectedModules.fromChangedPaths(root, modules.keySet(), edges, paths);
             return Result.ok(affected);
         } catch (Exception e) {
             return Result.fail(e.getMessage() != null ? e.getMessage() : e.toString());

@@ -178,7 +178,8 @@ public final class PubGrubResolver implements Resolver {
                 Set<String> kmpDropped = Set.of();
                 if (kmpSelection.isPresent()) {
                     var target = kmpSelection.get().target();
-                    String targetPkg = PackageId.ofGa(target.group() + ":" + target.module()).key();
+                    String targetPkg = PackageId.ofGa(target.group() + ":" + target.module())
+                            .key();
                     if (decisions.containsKey(targetPkg) && !MavenPackageSource.isExcluded(targetPkg, excl)) {
                         deps.add(targetPkg + "@" + decisions.get(targetPkg));
                     }

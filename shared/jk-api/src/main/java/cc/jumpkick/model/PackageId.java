@@ -38,8 +38,7 @@ public final class PackageId {
         if (colon <= 0 || colon != groupArtifact.lastIndexOf(':')) {
             throw new IllegalArgumentException("expected group:artifact, got: " + groupArtifact);
         }
-        return new PackageId(
-                groupArtifact.substring(0, colon), groupArtifact.substring(colon + 1), DEFAULT_TYPE, "");
+        return new PackageId(groupArtifact.substring(0, colon), groupArtifact.substring(colon + 1), DEFAULT_TYPE, "");
     }
 
     /**

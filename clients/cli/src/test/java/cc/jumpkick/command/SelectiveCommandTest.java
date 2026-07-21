@@ -18,8 +18,8 @@ class SelectiveCommandTest {
     @Test
     void resolve_modules_selector(@TempDir Path tempDir) throws Exception {
         writeWorkspace(tempDir);
-        String out = capture(() -> Jk.execute(
-                "selective", "resolve", "-C", tempDir.toString(), "--modules", "api,worker"));
+        String out =
+                capture(() -> Jk.execute("selective", "resolve", "-C", tempDir.toString(), "--modules", "api,worker"));
         assertThat(out).contains("api").contains("worker");
         assertThat(out).doesNotContain("libs/core");
     }
@@ -27,8 +27,7 @@ class SelectiveCommandTest {
     @Test
     void prepare_writes_plan(@TempDir Path tempDir) throws Exception {
         writeWorkspace(tempDir);
-        int code = Jk.execute(
-                "selective", "prepare", "-C", tempDir.toString(), "--modules", "api");
+        int code = Jk.execute("selective", "prepare", "-C", tempDir.toString(), "--modules", "api");
         assertThat(code).isEqualTo(0);
         Path plan = tempDir.resolve(SelectiveCommand.PLAN_REL);
         assertThat(Files.isRegularFile(plan)).isTrue();
@@ -70,7 +69,7 @@ class SelectiveCommandTest {
                 .isZero();
         Files.writeString(tempDir.resolve("api/src/main/java/A.java"), "class A { int x; }");
         // Capture stderr for dirty line; stdout for module completion lines.
-        java.io.ByteArrayOutputStream err = new java.io.ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
         PrintStream origErr = System.err;
         System.setErr(new PrintStream(err));
         String out;
@@ -88,28 +87,22 @@ class SelectiveCommandTest {
     @Test
     void resolve_unknown_module_fails(@TempDir Path tempDir) throws Exception {
         writeWorkspace(tempDir);
-        int code = Jk.execute(
-                "selective", "resolve", "-C", tempDir.toString(), "--modules", "nope");
+        int code = Jk.execute("selective", "resolve", "-C", tempDir.toString(), "--modules", "nope");
         assertThat(code).isNotEqualTo(0);
     }
 
     private static void writeWorkspace(Path root) throws Exception {
         for (String m : new String[] {"api", "worker", "libs/core"}) {
             Files.createDirectories(root.resolve(m));
-            Files.writeString(
-                    root.resolve(m).resolve("jk.toml"),
-                    """
+            Files.writeString(root.resolve(m).resolve("jk.toml"), """
                     [project]
                     group = "com.ex"
                     name = "%s"
                     version = "1.0.0"
                     java = 25
-                    """
-                            .formatted(m.replace('/', '-')));
+                    """.formatted(m.replace('/', '-')));
         }
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.ex"
                 name = "ws"

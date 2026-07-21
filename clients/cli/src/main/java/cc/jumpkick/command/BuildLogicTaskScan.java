@@ -23,10 +23,8 @@ import org.tomlj.TomlTable;
  */
 final class BuildLogicTaskScan {
 
-    private static final Pattern SPI_TASK =
-            Pattern.compile("\\.task\\s*\\(\\s*\"([^\"]+)\"", Pattern.MULTILINE);
-    private static final Pattern SPI_TASK_SQ =
-            Pattern.compile("\\.task\\s*\\(\\s*'([^']+)'", Pattern.MULTILINE);
+    private static final Pattern SPI_TASK = Pattern.compile("\\.task\\s*\\(\\s*\"([^\"]+)\"", Pattern.MULTILINE);
+    private static final Pattern SPI_TASK_SQ = Pattern.compile("\\.task\\s*\\(\\s*'([^']+)'", Pattern.MULTILINE);
 
     private BuildLogicTaskScan() {}
 

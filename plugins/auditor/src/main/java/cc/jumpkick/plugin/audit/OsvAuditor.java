@@ -2,7 +2,6 @@
 package cc.jumpkick.plugin.audit;
 
 import cc.jumpkick.audit.AuditReport;
-
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.run.JkThreads;
 import java.io.IOException;

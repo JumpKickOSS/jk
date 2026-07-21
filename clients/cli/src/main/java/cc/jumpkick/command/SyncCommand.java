@@ -86,7 +86,8 @@ public final class SyncCommand implements CliCommand {
                     m -> CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", m)),
                     true);
         } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
             return 1;
         }
 

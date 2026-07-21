@@ -199,9 +199,7 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         // Unknown tag, but an INPUT source path under the project → still this project's.
         // Build records realpath'd module roots (BuildCommand.toRealPath); seed the same form.
-        String src = proj.toRealPath()
-                .resolve("src/main/java/A.java")
-                .toString();
+        String src = proj.toRealPath().resolve("src/main/java/A.java").toString();
         seedRecord(cache, "keyPath", "compile-main@ffffffffffff", "INPUT abc123 " + src);
 
         run("cache", "clear", "-C", proj.toString(), "--cache-dir", cache.toString(), "--yes");

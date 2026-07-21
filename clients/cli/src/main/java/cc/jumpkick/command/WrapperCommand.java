@@ -69,7 +69,8 @@ public final class WrapperCommand implements CliCommand {
         if ("latest".equals(target)) {
             var resp = http.get(java.net.URI.create(SelfCommand.UpdateSub.releasesBase() + "/latest/VERSION"));
             if (resp.statusCode() != 200) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Wrapper", "could not resolve the latest release (HTTP " + resp.statusCode() + ")"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Wrapper", "could not resolve the latest release (HTTP " + resp.statusCode() + ")"));
                 return Exit.SOFTWARE;
             }
             target = new String(resp.body(), StandardCharsets.UTF_8).trim();
@@ -86,7 +87,8 @@ public final class WrapperCommand implements CliCommand {
         }
         Path client = m.clientBin().orElse(null);
         if (client == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Wrapper", "jk " + target + " is materialized without a client binary"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Wrapper", "jk " + target + " is materialized without a client binary"));
             return Exit.SOFTWARE;
         }
         return new ProcessBuilder(client.toString(), "wrapper", "--emit")

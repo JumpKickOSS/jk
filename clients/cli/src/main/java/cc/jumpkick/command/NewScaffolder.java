@@ -140,8 +140,10 @@ public final class NewScaffolder {
         Path resources = dir.resolve("src").resolve("main").resolve("resources");
         Path services = resources.resolve("META-INF").resolve("services");
         Files.createDirectories(services);
-        Files.writeString(resources.resolve("jk-plugin.toml"), renderPluginManifest(pluginId, prefix), StandardCharsets.UTF_8);
-        Files.writeString(services.resolve("cc.jumpkick.plugin.Plugin"), pkg + "." + className + "\n", StandardCharsets.UTF_8);
+        Files.writeString(
+                resources.resolve("jk-plugin.toml"), renderPluginManifest(pluginId, prefix), StandardCharsets.UTF_8);
+        Files.writeString(
+                services.resolve("cc.jumpkick.plugin.Plugin"), pkg + "." + className + "\n", StandardCharsets.UTF_8);
 
         // The code layer.
         String pkgPath = "/" + pkg.replace('.', '/');
@@ -154,7 +156,8 @@ public final class NewScaffolder {
                 : renderJavaPlugin(pkg, className, pluginId, prefix);
         Files.writeString(src.resolve(className + ext), body, StandardCharsets.UTF_8);
 
-        Files.writeString(dir.resolve("README.md"), renderPluginReadme(inputs, pluginId, className), StandardCharsets.UTF_8);
+        Files.writeString(
+                dir.resolve("README.md"), renderPluginReadme(inputs, pluginId, className), StandardCharsets.UTF_8);
     }
 
     /** CamelCase the plugin id into a class name, appending {@code Plugin} unless it already ends so. */
@@ -207,8 +210,7 @@ public final class NewScaffolder {
                 # %1$s's manifest() — they demux the worker's protocol lines from its stdout.
                 [code]
                 protocol-prefix = "%2$s"
-                """
-                .formatted(id, prefix);
+                """.formatted(id, prefix);
     }
 
     private static String renderJavaPlugin(String pkg, String className, String id, String prefix) {
@@ -256,8 +258,7 @@ public final class NewScaffolder {
                                 }));
                     }
                 }
-                """
-                .formatted(pkg, className, id, prefix);
+                """.formatted(pkg, className, id, prefix);
     }
 
     private static String renderKotlinPlugin(String pkg, String className, String id, String prefix) {
@@ -298,8 +299,7 @@ public final class NewScaffolder {
                             })
                     }
                 }
-                """
-                .formatted(pkg, className, id, prefix);
+                """.formatted(pkg, className, id, prefix);
     }
 
     private static String renderPluginReadme(NewInputs inputs, String id, String className) {
@@ -339,8 +339,7 @@ public final class NewScaffolder {
                 ```
                 Then `jk sync` (resolves + SHA-pins the plugin), `jk trust plugin %3$s:%1$s`
                 (code hooks are consent-gated), and `jk %1$s` prints the greeting.
-                """
-                .formatted(id, className, inputs.group());
+                """.formatted(id, className, inputs.group());
     }
 
     /**

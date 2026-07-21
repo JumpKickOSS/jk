@@ -141,8 +141,7 @@ public final class StatusCommand implements CliCommand {
         if (Jsonl.longValue(r, prefix + "Count", 0) == 0) return "";
         long avg = prefix.equals("ok")
                 ? Jsonl.longValue(r, "okAvgMillis", 0)
-                : Jsonl.longValue(r, prefix + "TotalMillis", 0)
-                        / Math.max(1, Jsonl.longValue(r, prefix + "Count", 1));
+                : Jsonl.longValue(r, prefix + "TotalMillis", 0) / Math.max(1, Jsonl.longValue(r, prefix + "Count", 1));
         return "avg " + HistoryCommand.duration(avg)
                 + "  min " + HistoryCommand.duration(Jsonl.longValue(r, prefix + "MinMillis", -1))
                 + "  max " + HistoryCommand.duration(Jsonl.longValue(r, prefix + "MaxMillis", -1))

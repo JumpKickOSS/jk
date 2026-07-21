@@ -44,7 +44,11 @@ final class TaskCatalog {
                     "compile-main",
                     "compile"),
             def(StepNames.COMPILE_KOTLIN, "compile", "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
-            def(StepNames.ASSEMBLE_CLASSES, "compile", "Merge language outputs into classes/main", BuildLayout::classesDir),
+            def(
+                    StepNames.ASSEMBLE_CLASSES,
+                    "compile",
+                    "Merge language outputs into classes/main",
+                    BuildLayout::classesDir),
             def(
                     "build-logic-after-compile",
                     "compile",
@@ -63,13 +67,7 @@ final class TaskCatalog {
                     "package",
                     "Project build-logic SPI (BEFORE_PACKAGE)",
                     BuildLayout::classesDir),
-            def(
-                    StepNames.PACKAGE_JAR,
-                    "package",
-                    "Package main jar",
-                    BuildLayout::mainJar,
-                    "package",
-                    "jar"),
+            def(StepNames.PACKAGE_JAR, "package", "Package main jar", BuildLayout::mainJar, "package", "jar"),
             def(
                     StepNames.PACKAGE_ASSEMBLY,
                     "package",

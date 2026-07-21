@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.publish;
 
-import cc.jumpkick.publish.PublishablePom;
-
 import cc.jumpkick.cache.SourcesJar;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.credential.RepoCredential;
@@ -21,6 +19,7 @@ import cc.jumpkick.plugin.build.PublishResult;
 import cc.jumpkick.plugin.protocol.PluginReply;
 import cc.jumpkick.plugin.protocol.PluginSpec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
+import cc.jumpkick.publish.PublishablePom;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

@@ -251,8 +251,12 @@ public final class PomExporter {
         sb.append("          <annotationProcessorPaths>\n");
         for (Dependency d : processors) {
             sb.append("            <path>\n");
-            sb.append("              <groupId>").append(PomXml.escape(d.group())).append("</groupId>\n");
-            sb.append("              <artifactId>").append(PomXml.escape(d.name())).append("</artifactId>\n");
+            sb.append("              <groupId>")
+                    .append(PomXml.escape(d.group()))
+                    .append("</groupId>\n");
+            sb.append("              <artifactId>")
+                    .append(PomXml.escape(d.name()))
+                    .append("</artifactId>\n");
             sb.append("              <version>")
                     .append(PomXml.escape(resolveVersion(d, locked, report)))
                     .append("</version>\n");
@@ -291,7 +295,9 @@ public final class PomExporter {
         sb.append("        <version>").append(JAR_PLUGIN).append("</version>\n");
         sb.append("        <configuration>\n          <archive>\n            <manifest>\n");
         if (mainClass != null) {
-            sb.append("              <mainClass>").append(PomXml.escape(mainClass)).append("</mainClass>\n");
+            sb.append("              <mainClass>")
+                    .append(PomXml.escape(mainClass))
+                    .append("</mainClass>\n");
         }
         if (!manifest.isEmpty()) {
             sb.append("            </manifest>\n            <manifestEntries>\n");
@@ -340,8 +346,8 @@ public final class PomExporter {
 
     private static void warnAboutDroppedConcerns(JkBuild jkBuild, ImportReport.Builder report) {
         if (!jkBuild.features().isEmpty()) {
-            report.warning("`features` block dropped — features are jk-only consumer-side"
-                    + " selectors; not a POM concept.");
+            report.warning(
+                    "`features` block dropped — features are jk-only consumer-side" + " selectors; not a POM concept.");
         }
         if (jkBuild.profiles() != null && !jkBuild.profiles().byName().isEmpty()) {
             report.warning("`profiles` block dropped — jk profiles change javac/jvm args at the"
@@ -396,5 +402,4 @@ public final class PomExporter {
             }
         };
     }
-
 }

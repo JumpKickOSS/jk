@@ -30,7 +30,7 @@ final class ExportSupport {
     static GeneratedFiles generate(Path dir, String kind, java.util.Map<String, String> params, String cmd) {
         try {
             GeneratedFiles files = cc.jumpkick.cli.engine.EngineClient.generate(
-                            cc.jumpkick.engine.EnginePaths.current(), dir, kind, params);
+                    cc.jumpkick.engine.EnginePaths.current(), dir, kind, params);
             if (files.error() != null) {
                 CliOutput.err(cmd + ": " + files.error());
                 return null;
@@ -89,5 +89,4 @@ final class ExportSupport {
     static void wrote(Path path) {
         CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " Wrote " + PathDisplay.styled(path));
     }
-
-    }
+}

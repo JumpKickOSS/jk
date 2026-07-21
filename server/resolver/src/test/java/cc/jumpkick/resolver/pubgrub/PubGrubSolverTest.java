@@ -38,12 +38,14 @@ class PubGrubSolverTest {
     @Test
     void exact_constraint_skips_versions_lookup() throws Exception {
         AtomicInteger versionsCalls = new AtomicInteger();
-        PackageSource inner =
-                InMemoryPackageSource.builder().version("leaf", "1.0").version("leaf", "2.0").build();
+        PackageSource inner = InMemoryPackageSource.builder()
+                .version("leaf", "1.0")
+                .version("leaf", "2.0")
+                .build();
         PackageSource src = counting(inner, versionsCalls, null);
 
-        Map<String, String> solution = new PubGrubSolver(src)
-                .solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.exact("1.0"))));
+        Map<String, String> solution =
+                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.exact("1.0"))));
 
         assertThat(solution).containsEntry("leaf", "1.0");
         assertThat(versionsCalls.get()).isZero();

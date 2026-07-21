@@ -72,7 +72,8 @@ public final class UpdateCommand implements CliCommand {
 
         Path dir = global.workingDir();
         if (!Files.exists(dir.resolve("jk.toml"))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Update", "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();

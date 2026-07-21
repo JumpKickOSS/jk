@@ -123,7 +123,7 @@ public class IdeEngineClient {
         var session = SessionContext.current();
         List<String> errors = new ArrayList<>();
         boolean success;
-                PipelineResult result = EngineClient.runSync(
+        PipelineResult result = EngineClient.runSync(
                 EnginePaths.current(),
                 new EngineClient.SyncRequest(
                         syncRoot,
@@ -160,18 +160,7 @@ public class IdeEngineClient {
         int[] failed = {0};
         if (info.workspaceRoot()) {
             WorkspaceRequest req = new WorkspaceRequest(
-                    projectDir,
-                    null,
-                    cacheDir,
-                    jdksDir,
-                    1,
-                    null,
-                    false,
-                    false,
-                    0,
-                    null,
-                    true,
-                    true);
+                    projectDir, null, cacheDir, jdksDir, 1, null, false, false, 0, null, true, true);
             WorkspaceBuildListener wbl = new WorkspaceBuildListener() {
                 @Override
                 public void onPlan(List<ModulePlan> plan) {
@@ -182,8 +171,9 @@ public class IdeEngineClient {
                 @Override
                 public PipelineListener onModuleStart(ModulePlan module) {
                     progress.onModuleStart(module.coord(), module.dir());
-                    List<Step> steps =
-                            module.pipeline() == null ? List.of() : module.pipeline().steps();
+                    List<Step> steps = module.pipeline() == null
+                            ? List.of()
+                            : module.pipeline().steps();
                     return progressListener(progress, steps);
                 }
 
@@ -202,14 +192,12 @@ public class IdeEngineClient {
             return new BuildOutcome(ws.success(), modules[0], failed[0], List.copyOf(errors));
         }
         // Single-module projects: surface the same module boundary callbacks workspaces get.
-        String coord = info.coord() != null && !info.coord().isBlank()
-                ? info.coord()
-                : info.group() + ":" + info.name();
+        String coord =
+                info.coord() != null && !info.coord().isBlank() ? info.coord() : info.group() + ":" + info.name();
         progress.onModuleStart(coord, projectDir);
         PipelineResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
-                new EngineClient.SingleBuildRequest(
-                        projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
+                new EngineClient.SingleBuildRequest(projectDir, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
                 null,
                 null);
@@ -231,8 +219,7 @@ public class IdeEngineClient {
         List<String> errors = new ArrayList<>();
         PipelineResult r = EngineClient.runSingleBuild(
                 EnginePaths.current(),
-                new EngineClient.SingleBuildRequest(
-                        mod, cacheDir, jdksDir, 1, null, false, false, false, false),
+                new EngineClient.SingleBuildRequest(mod, cacheDir, jdksDir, 1, null, false, false, false, false),
                 steps -> progressListener(progress, steps),
                 null,
                 null);
@@ -295,26 +282,12 @@ public class IdeEngineClient {
         PipelineResult r = EngineClient.runTest(
                 EnginePaths.current(),
                 new EngineClient.TestRequest(
-                        mod,
-                        cacheDir,
-                        jdksDir,
-                        1,
-                        null,
-                        false,
-                        session.offline(),
-                        session.force()),
+                        mod, cacheDir, jdksDir, 1, null, false, session.offline(), session.force()),
                 steps -> progressListener(progress, steps),
                 testOut);
         for (var d : r.errors()) errors.add(d.message());
-        if (!r.success()
-                && testOut[0] != null
-                && !testOut[0].allPassed()
-                && errors.isEmpty()) {
-            errors.add("tests failed: "
-                    + testOut[0].failed()
-                    + " failed / "
-                    + testOut[0].total()
-                    + " total");
+        if (!r.success() && testOut[0] != null && !testOut[0].allPassed() && errors.isEmpty()) {
+            errors.add("tests failed: " + testOut[0].failed() + " failed / " + testOut[0].total() + " total");
         }
         progress.onModuleFinish(coord, r.success());
         return new BuildOutcome(r.success(), 1, r.success() ? 0 : 1, List.copyOf(errors));

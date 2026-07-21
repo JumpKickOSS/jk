@@ -63,11 +63,7 @@ class MavenPackageSourceExclusionTest {
         serveMetadata("/com/foo/parent/maven-metadata.xml", "com.foo", "parent", List.of("1.0"));
         serveMetadata("/com/foo/child/maven-metadata.xml", "com.foo", "child", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom(
-                "com.foo",
-                "parent",
-                "1.0",
-                """
+        servePom("com.foo", "parent", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>parent</artifactId><version>1.0</version>
                   <dependencies>
@@ -82,11 +78,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom(
-                "com.foo",
-                "child",
-                "1.0",
-                """
+        servePom("com.foo", "child", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>child</artifactId><version>1.0</version>
                   <dependencies>
@@ -99,8 +91,7 @@ class MavenPackageSourceExclusionTest {
         servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
 
         PubGrubResolver resolver = new PubGrubResolver(repoGroup(tempDir));
-        Resolution result =
-                resolver.resolve(List.of(new Dependency("com.foo:parent", VersionSelector.parse("=1.0"))));
+        Resolution result = resolver.resolve(List.of(new Dependency("com.foo:parent", VersionSelector.parse("=1.0"))));
 
         assertThat(result.modules()).containsKeys("com.foo:parent:jar:", "com.foo:child:jar:");
         assertThat(result.modules()).doesNotContainKey("com.foo:leaf");
@@ -113,11 +104,7 @@ class MavenPackageSourceExclusionTest {
         serveMetadata("/com/foo/child/maven-metadata.xml", "com.foo", "child", List.of("1.0"));
         serveMetadata("/com/foo/other/maven-metadata.xml", "com.foo", "other", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0"));
-        servePom(
-                "com.foo",
-                "parent",
-                "1.0",
-                """
+        servePom("com.foo", "parent", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>parent</artifactId><version>1.0</version>
                   <dependencies>
@@ -132,11 +119,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom(
-                "com.foo",
-                "child",
-                "1.0",
-                """
+        servePom("com.foo", "child", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>child</artifactId><version>1.0</version>
                   <dependencies>
@@ -146,11 +129,7 @@ class MavenPackageSourceExclusionTest {
                   </dependencies>
                 </project>
                 """);
-        servePom(
-                "com.foo",
-                "other",
-                "1.0",
-                """
+        servePom("com.foo", "other", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>other</artifactId><version>1.0</version>
                   <dependencies>
@@ -172,11 +151,15 @@ class MavenPackageSourceExclusionTest {
 
     @Test
     void isExcluded_wildcards() {
-        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.foo:leaf"))).isTrue();
-        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.foo:*"))).isTrue();
-        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("*:leaf"))).isTrue();
+        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.foo:leaf")))
+                .isTrue();
+        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.foo:*")))
+                .isTrue();
+        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("*:leaf")))
+                .isTrue();
         assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("*:*"))).isTrue();
-        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.bar:leaf"))).isFalse();
+        assertThat(MavenPackageSource.isExcluded("com.foo:leaf", Set.of("com.bar:leaf")))
+                .isFalse();
     }
 
     @Test
@@ -184,11 +167,7 @@ class MavenPackageSourceExclusionTest {
         // middle depends on leaf with Maven range [1.0,2.0) — must not pick 2.0.
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
-        servePom(
-                "com.foo",
-                "middle",
-                "1.0",
-                """
+        servePom("com.foo", "middle", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>middle</artifactId><version>1.0</version>
                   <dependencies>
@@ -252,7 +231,6 @@ class MavenPackageSourceExclusionTest {
                   <artifactId>%s</artifactId>
                   <version>%s</version>
                 </project>
-                """
-                .formatted(group, artifact, version);
+                """.formatted(group, artifact, version);
     }
 }

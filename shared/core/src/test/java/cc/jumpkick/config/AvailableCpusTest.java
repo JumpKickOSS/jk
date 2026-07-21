@@ -42,7 +42,8 @@ class AvailableCpusTest {
     @Test
     void v2_root_cpu_max(@TempDir Path root) throws Exception {
         Files.writeString(root.resolve("cpu.max"), "200000 100000\n");
-        assertThat(AvailableCpus.count(root, root.resolve("missing-proc"), () -> 64)).isEqualTo(2);
+        assertThat(AvailableCpus.count(root, root.resolve("missing-proc"), () -> 64))
+                .isEqualTo(2);
     }
 
     @Test
@@ -76,7 +77,8 @@ class AvailableCpusTest {
 
     @Test
     void missing_cgroup_falls_back_to_jvm(@TempDir Path root) {
-        assertThat(AvailableCpus.count(root.resolve("absent"), root.resolve("nope"), () -> 7)).isEqualTo(7);
+        assertThat(AvailableCpus.count(root.resolve("absent"), root.resolve("nope"), () -> 7))
+                .isEqualTo(7);
     }
 
     @Test

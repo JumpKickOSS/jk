@@ -137,9 +137,7 @@ public final class ForkedJavac {
     private static List<String> trainerCommand(Request req, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
         Path src = scratch.resolve("Hello.java");
-        Files.writeString(
-                src,
-                """
+        Files.writeString(src, """
                 package demo;
                 public class Hello {
                   public static void main(String[] args) {

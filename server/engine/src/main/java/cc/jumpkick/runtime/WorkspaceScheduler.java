@@ -146,11 +146,7 @@ public final class WorkspaceScheduler {
      * set while still named in {@code edges}).
      */
     static <U> IllegalStateException unsatisfiable(
-            List<U> stuck,
-            Function<U, Path> dirOf,
-            Map<Path, Set<Path>> edges,
-            Set<Path> unitDirs,
-            Set<Path> done) {
+            List<U> stuck, Function<U, Path> dirOf, Map<Path, Set<Path>> edges, Set<Path> unitDirs, Set<Path> done) {
         StringBuilder msg = new StringBuilder("workspace schedule unsatisfiable: stuck units");
         for (U u : stuck) {
             Path dir = dirOf.apply(u);

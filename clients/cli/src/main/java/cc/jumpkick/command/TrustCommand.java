@@ -109,7 +109,8 @@ public final class TrustCommand extends GroupCommand {
         public int run(Invocation in) throws IOException {
             String coordinate = in.positionals().get(0);
             if (coordinate.contains("://") || !coordinate.contains(":")) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "expected group:artifact (or a group: prefix), got: " + coordinate));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Trust", "expected group:artifact (or a group: prefix), got: " + coordinate));
                 return Exit.USAGE;
             }
             boolean added = TrustedPlugins.load(stateDir(in)).add(coordinate);
@@ -214,7 +215,8 @@ public final class TrustCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws IOException {
             if (!in.isSet("jbang") && in.value("file").isEmpty()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Trust", "pass --jbang to import JBang's trusted sources."));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Trust", "pass --jbang to import JBang's trusted sources."));
                 return Exit.USAGE;
             }
             Path source = in.value("file")

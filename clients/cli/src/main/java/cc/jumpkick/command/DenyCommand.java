@@ -49,8 +49,9 @@ public final class DenyCommand implements CliCommand {
             return Exit.NO_INPUT;
         }
         if (!Files.exists(lockPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                    + " (run `jk lock` first)."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Deny",
+                    "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir) + " (run `jk lock` first)."));
             return Exit.CONFIG;
         }
         Path cache = JkDirs.cache();
@@ -73,7 +74,8 @@ public final class DenyCommand implements CliCommand {
         DenyReport report = pipeline.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Deny", report.checked() + " package(s) checked — no violations."));
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                        "Deny", report.checked() + " package(s) checked — no violations."));
             return 0;
         }
         CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", report.violationCount() + " violation(s):"));
@@ -84,5 +86,4 @@ public final class DenyCommand implements CliCommand {
         }
         return 1;
     }
-
-    }
+}

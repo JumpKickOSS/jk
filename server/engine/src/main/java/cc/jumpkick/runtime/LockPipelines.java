@@ -233,9 +233,8 @@ public final class LockPipelines {
                             if (pd.isPathPin()) {
                                 Path jar = resolvePluginPath(dir, pd.path());
                                 if (!Files.isRegularFile(jar)) {
-                                    throw new RuntimeException(
-                                            "plugins." + pd.alias() + " path `" + pd.path()
-                                                    + "` is not a readable file (" + jar + ")");
+                                    throw new RuntimeException("plugins." + pd.alias() + " path `" + pd.path()
+                                            + "` is not a readable file (" + jar + ")");
                                 }
                                 hex = cc.jumpkick.util.Hashing.sha256Hex(jar);
                                 if (!hex.equals(pd.sha256())) {
@@ -259,8 +258,7 @@ public final class LockPipelines {
                                 }
                                 jarPath = fetched.fetched().cachePath();
                             }
-                            entries.add(new Lockfile.PluginEntry(
-                                    pd.coordinate(), pd.version(), "sha256:" + hex));
+                            entries.add(new Lockfile.PluginEntry(pd.coordinate(), pd.version(), "sha256:" + hex));
                             try {
                                 PluginDescriptorOps.materialize(dir, hex, jarPath);
                             } catch (java.io.IOException e) {

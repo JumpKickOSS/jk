@@ -26,8 +26,8 @@ class AffectedModulesTest {
         edges.put(b, Set.of());
         edges.put(app, Set.of(a));
 
-        Set<Path> affected = AffectedModules.fromChangedPaths(
-                root, List.of(a, b, app), edges, List.of("libs/a/src/Main.java"));
+        Set<Path> affected =
+                AffectedModules.fromChangedPaths(root, List.of(a, b, app), edges, List.of("libs/a/src/Main.java"));
 
         assertThat(affected).containsExactlyInAnyOrder(a, app);
         assertThat(affected).doesNotContain(b);
@@ -40,8 +40,7 @@ class AffectedModulesTest {
         Path b = root.resolve("libs/b");
         Map<Path, Set<Path>> edges = Map.of(a, Set.of(), b, Set.of());
 
-        Set<Path> affected =
-                AffectedModules.fromChangedPaths(root, List.of(a, b), edges, List.of("jk.toml"));
+        Set<Path> affected = AffectedModules.fromChangedPaths(root, List.of(a, b), edges, List.of("jk.toml"));
 
         assertThat(affected).containsExactlyInAnyOrder(a, b);
     }
@@ -74,8 +73,8 @@ class AffectedModulesTest {
         assertThat(edges.get(appDir)).contains(libDir);
         assertThat(edges.get(libDir)).isEmpty();
 
-        Set<Path> affected = AffectedModules.fromChangedPaths(
-                Path.of("/ws"), modules.keySet(), edges, List.of("lib/src/X.java"));
+        Set<Path> affected =
+                AffectedModules.fromChangedPaths(Path.of("/ws"), modules.keySet(), edges, List.of("lib/src/X.java"));
         assertThat(affected).containsExactlyInAnyOrder(libDir, appDir);
     }
 }

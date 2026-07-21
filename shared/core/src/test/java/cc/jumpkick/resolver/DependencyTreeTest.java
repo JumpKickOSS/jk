@@ -100,10 +100,9 @@ class DependencyTreeTest {
     void platform_bom_shows_declared_version_not_missing() {
         // BOM is pin metadata (pinned-by on managed jars), not a lock [[artifact]] row.
         var platform = List.of(Dependency.of(
-                "boot",
-                "org.springframework.boot:spring-boot-dependencies",
-                VersionSelector.parse("=4.1.0")));
-        var main = List.of(Dependency.of("web", "org.springframework.boot:spring-boot-starter-webmvc", VersionSelector.parse("=4.1.0")));
+                "boot", "org.springframework.boot:spring-boot-dependencies", VersionSelector.parse("=4.1.0")));
+        var main = List.of(Dependency.of(
+                "web", "org.springframework.boot:spring-boot-starter-webmvc", VersionSelector.parse("=4.1.0")));
         JkBuild project = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(Scope.PLATFORM, platform, Scope.MAIN, main)));
@@ -118,7 +117,10 @@ class DependencyTreeTest {
         JkBuild missingMain = new JkBuild(
                 new JkBuild.Project("com.example", "widget", "0.1.0", 0),
                 new JkBuild.Dependencies(Map.of(
-                        Scope.PLATFORM, platform, Scope.MAIN, List.of(new Dependency("com.foo:absent", VersionSelector.parse("=1.0"))))));
+                        Scope.PLATFORM,
+                        platform,
+                        Scope.MAIN,
+                        List.of(new Dependency("com.foo:absent", VersionSelector.parse("=1.0"))))));
         String bad = DependencyTree.render(missingMain, lockOf());
         assertThat(bad).contains("com.foo:absent (missing)");
         assertThat(bad).contains("spring-boot-dependencies:4.1.0");

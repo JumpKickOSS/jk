@@ -3,7 +3,6 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;

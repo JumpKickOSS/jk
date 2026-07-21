@@ -51,8 +51,7 @@ public final class AssemblyCommand implements CliCommand {
         opts.add(Opt.flag("One-off fat assembly jar (overrides jk.toml for this run only).", "--fat"));
         opts.add(Opt.flag("One-off R8 shrunk jar (overrides jk.toml for this run only).", "--shrink"));
         opts.add(Opt.flag(
-                "Surgically set [application].assembly in jk.toml to match --fat or --shrink.",
-                "--write-config"));
+                "Surgically set [application].assembly in jk.toml to match --fat or --shrink.", "--write-config"));
         return opts;
     }
 
@@ -62,7 +61,8 @@ public final class AssemblyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path toml = dir.resolve("jk.toml");
         if (!Files.isRegularFile(toml)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Assembly", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Assembly", "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Exit.CONFIG;
         }
 
@@ -70,19 +70,18 @@ public final class AssemblyCommand implements CliCommand {
         boolean shrink = in.isSet("shrink");
         boolean writeConfig = in.isSet("write-config");
         if (fat && shrink) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Assembly", "choose one of --fat or --shrink (not both)"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Assembly", "choose one of --fat or --shrink (not both)"));
             return Exit.USAGE;
         }
         if (writeConfig && !fat && !shrink) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Assembly", "--write-config requires --fat or --shrink"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Assembly", "--write-config requires --fat or --shrink"));
             return Exit.USAGE;
         }
 
-        JkBuild.AssemblyMode overrideMode = fat
-                ? JkBuild.AssemblyMode.FAT
-                : shrink ? JkBuild.AssemblyMode.SHRINK : null;
+        JkBuild.AssemblyMode overrideMode =
+                fat ? JkBuild.AssemblyMode.FAT : shrink ? JkBuild.AssemblyMode.SHRINK : null;
 
         if (writeConfig && overrideMode != null) {
             String original = Files.readString(toml);
@@ -104,23 +103,18 @@ public final class AssemblyCommand implements CliCommand {
                     .withAssemblyOverride(overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
             if (!writeConfig) {
                 String modeLabel = overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink (R8)" : "fat";
-                CliOutput.err(
-                        """
+                CliOutput.err("""
                         jk assembly: one-off packaging override — %s for this run only
                           (not written to jk.toml; action cache keys include the packaging mode)
                           make it permanent: jk assembly --%s --write-config
-                        """
-                                .formatted(
-                                        modeLabel,
-                                        overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat")
-                                .stripIndent()
-                                .trim());
+                        """.formatted(modeLabel, overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat")
+                        .stripIndent()
+                        .trim());
             }
         } else {
             JkBuild project = JkBuildParser.parse(toml);
             if (!project.assemblyMode().isBundled()) {
-                CliOutput.err(
-                        """
+                CliOutput.err("""
                         jk assembly: assembly packaging is off — pick one:
 
                           One-off (this run only):

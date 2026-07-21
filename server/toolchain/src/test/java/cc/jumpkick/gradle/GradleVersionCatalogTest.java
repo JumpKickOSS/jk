@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,13 +31,11 @@ class GradleVersionCatalogTest {
         assertThat(cat.resolveLibrary("guava")).hasValue("com.google.guava:guava:33.0.0-jre");
         assertThat(cat.resolveLibrary("string.form")).hasValue("com.example:stringy:1.2.3");
         // Version-less (BOM-managed) keeps GA form — not silently dropped.
-        assertThat(cat.resolveLibrary("bom.managed"))
-                .hasValue("org.springframework.boot:spring-boot-starter-web");
+        assertThat(cat.resolveLibrary("bom.managed")).hasValue("org.springframework.boot:spring-boot-starter-web");
 
         var bundle = cat.resolveBundle("testing").orElseThrow();
         assertThat(bundle.coordinates())
-                .containsExactly(
-                        "org.junit.jupiter:junit-jupiter:5.10.2", "com.google.guava:guava:33.0.0-jre");
+                .containsExactly("org.junit.jupiter:junit-jupiter:5.10.2", "com.google.guava:guava:33.0.0-jre");
         assertThat(bundle.missingMembers()).isEmpty();
         assertThat(cat.parseNotes()).isEmpty();
     }

@@ -202,11 +202,7 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
 
         @Override
         public Optional<String> asExactSingleton() {
-            if (min != null
-                    && max != null
-                    && minInclusive
-                    && maxInclusive
-                    && min.equals(max)) {
+            if (min != null && max != null && minInclusive && maxInclusive && min.equals(max)) {
                 return Optional.of(min);
             }
             return Optional.empty();

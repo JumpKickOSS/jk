@@ -71,11 +71,7 @@ class LockOrchestratorScopeTest {
         serveMetadata("/com/foo/lib-main/maven-metadata.xml", "com.foo", "lib-main", List.of("1.0"));
         serveMetadata("/com/foo/lib-proc/maven-metadata.xml", "com.foo", "lib-proc", List.of("1.0"));
         serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0", "2.0"));
-        servePom(
-                "com.foo",
-                "lib-main",
-                "1.0",
-                """
+        servePom("com.foo", "lib-main", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
@@ -85,11 +81,7 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom(
-                "com.foo",
-                "lib-proc",
-                "1.0",
-                """
+        servePom("com.foo", "lib-proc", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-proc</artifactId><version>1.0</version>
                   <dependencies>
@@ -103,10 +95,8 @@ class LockOrchestratorScopeTest {
         servePom("com.foo", "shared", "2.0", emptyPom("com.foo", "shared", "2.0"));
 
         JkBuild project = jkBuild(Map.of(
-                Scope.MAIN,
-                        List.of(new Dependency("com.foo:lib-main", VersionSelector.parse("=1.0"))),
-                Scope.PROCESSOR,
-                        List.of(new Dependency("com.foo:lib-proc", VersionSelector.parse("=1.0")))));
+                Scope.MAIN, List.of(new Dependency("com.foo:lib-main", VersionSelector.parse("=1.0"))),
+                Scope.PROCESSOR, List.of(new Dependency("com.foo:lib-proc", VersionSelector.parse("=1.0")))));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
 
@@ -136,11 +126,7 @@ class LockOrchestratorScopeTest {
     void same_version_in_both_graphs_is_single_row_with_both_scopes(@TempDir Path tempDir) throws Exception {
         serveMetadata("/com/foo/lib/maven-metadata.xml", "com.foo", "lib", List.of("1.0"));
         serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0"));
-        servePom(
-                "com.foo",
-                "lib",
-                "1.0",
-                """
+        servePom("com.foo", "lib", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib</artifactId><version>1.0</version>
                   <dependencies>
@@ -171,11 +157,7 @@ class LockOrchestratorScopeTest {
         serveMetadata("/com/foo/lib-main/maven-metadata.xml", "com.foo", "lib-main", List.of("1.0"));
         serveMetadata("/com/foo/lib-test/maven-metadata.xml", "com.foo", "lib-test", List.of("1.0"));
         serveMetadata("/com/foo/shared/maven-metadata.xml", "com.foo", "shared", List.of("1.0", "2.0"));
-        servePom(
-                "com.foo",
-                "lib-main",
-                "1.0",
-                """
+        servePom("com.foo", "lib-main", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-main</artifactId><version>1.0</version>
                   <dependencies>
@@ -185,11 +167,7 @@ class LockOrchestratorScopeTest {
                   </dependencies>
                 </project>
                 """);
-        servePom(
-                "com.foo",
-                "lib-test",
-                "1.0",
-                """
+        servePom("com.foo", "lib-test", "1.0", """
                 <project>
                   <groupId>com.foo</groupId><artifactId>lib-test</artifactId><version>1.0</version>
                   <dependencies>
@@ -219,8 +197,8 @@ class LockOrchestratorScopeTest {
         serveMetadata("/com/foo/proc/maven-metadata.xml", "com.foo", "proc", List.of("1.0"));
         servePom("com.foo", "proc", "1.0", emptyPom("com.foo", "proc", "1.0"));
 
-        JkBuild project = jkBuild(Map.of(
-                Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
+        JkBuild project = jkBuild(
+                Map.of(Scope.PROCESSOR, List.of(new Dependency("com.foo:proc", VersionSelector.parseFloating("1.0")))));
 
         Lockfile lock = new LockOrchestrator(repoGroup(tempDir)).lock(project, "test");
         Lockfile.Artifact proc = lock.artifacts().stream()
@@ -288,7 +266,6 @@ class LockOrchestratorScopeTest {
                   <artifactId>%s</artifactId>
                   <version>%s</version>
                 </project>
-                """
-                .formatted(group, artifact, version);
+                """.formatted(group, artifact, version);
     }
 }

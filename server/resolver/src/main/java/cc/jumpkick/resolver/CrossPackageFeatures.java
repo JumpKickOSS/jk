@@ -51,7 +51,8 @@ final class CrossPackageFeatures {
                         + "` selects features, but only path= dependencies support cross-package features yet"
                         + " (workspace/git/Maven sidecar come later)");
             }
-            Path libToml = projectDir.resolve(d.pathSource().rawPath()).normalize().resolve("jk.toml");
+            Path libToml =
+                    projectDir.resolve(d.pathSource().rawPath()).normalize().resolve("jk.toml");
             if (!Files.isRegularFile(libToml)) {
                 throw new IllegalArgumentException("dependency `"
                         + d.library()
@@ -68,8 +69,7 @@ final class CrossPackageFeatures {
             }
             Set<String> activated;
             try {
-                activated = lib.features()
-                        .activate(new LinkedHashSet<>(d.requestedFeatures()), d.defaultFeatures());
+                activated = lib.features().activate(new LinkedHashSet<>(d.requestedFeatures()), d.defaultFeatures());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
                         "dependency `" + d.library() + "` (" + PackageLabel.of(d) + "): " + e.getMessage(), e);

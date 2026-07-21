@@ -198,11 +198,13 @@ public final class LockOrchestrator {
         Map<String, String> prefs = new HashMap<>();
         for (Lockfile.Artifact pkg : existing.artifacts()) {
             // Prefer main-scoped rows over test-only / processor-only duals.
-            boolean specializedOnly = pkg.scopes().stream()
-                            .allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
-                    && pkg.scopes().stream().noneMatch(MAIN_SCOPES::contains);
+            boolean specializedOnly =
+                    pkg.scopes().stream().allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
+                            && pkg.scopes().stream().noneMatch(MAIN_SCOPES::contains);
             String key = pkg.packageKey();
-            String ga = PackageId.isMavenPackageKey(pkg.name()) ? PackageId.parse(pkg.name()).ga() : pkg.name();
+            String ga = PackageId.isMavenPackageKey(pkg.name())
+                    ? PackageId.parse(pkg.name()).ga()
+                    : pkg.name();
             if (specializedOnly) {
                 prefs.putIfAbsent(key, pkg.version());
                 prefs.putIfAbsent(ga, pkg.version());
@@ -262,8 +264,7 @@ public final class LockOrchestrator {
             }
         }
         // Cross-package features on path= libraries (ticket-1006): pull their optional deps.
-        CrossPackageFeatures.Result cross =
-                CrossPackageFeatures.expand(projectDir, mainDeduped.values());
+        CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
         this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
             mainDeduped.putIfAbsent(extra.module(), extra);
@@ -327,8 +328,7 @@ public final class LockOrchestrator {
 
         Map<String, EnumSet<Scope>> mainTags = tagScopes(project, mainResolution, MAIN_SCOPES, false);
         Map<String, EnumSet<Scope>> testTags = tagScopes(project, testResolution, TEST_SCOPES, true);
-        Map<String, EnumSet<Scope>> processorTags =
-                tagScopes(project, processorResolution, PROCESSOR_SCOPES, false);
+        Map<String, EnumSet<Scope>> processorTags = tagScopes(project, processorResolution, PROCESSOR_SCOPES, false);
 
         MavenRepo first = repos.repos().getFirst();
         String fallbackSource = first.name() + "+" + first.baseUrl();
@@ -425,8 +425,7 @@ public final class LockOrchestrator {
         };
     }
 
-    private static List<Dependency> splitFile(
-            LinkedHashMap<String, Dependency> deduped, List<Dependency> fileDeps) {
+    private static List<Dependency> splitFile(LinkedHashMap<String, Dependency> deduped, List<Dependency> fileDeps) {
         List<Dependency> out = new ArrayList<>();
         for (Dependency d : deduped.values()) {
             if (d.isFile()) {
@@ -445,8 +444,7 @@ public final class LockOrchestrator {
     }
 
     /** Tick graph progress for each newly decided package (normalized bar, JK-1088). */
-    private static void noteGraph(
-            ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
+    private static void noteGraph(ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
         for (Resolution.ResolvedModule mod : resolution.modules().values()) {
             if (!seen.add(mod.module())) continue;
             observer.onGraphPackage(displayModule(mod.module()), mod.version());
@@ -458,10 +456,7 @@ public final class LockOrchestrator {
     }
 
     private Resolution resolveGroup(
-            List<Dependency> roots,
-            Map<String, String> bomConstraints,
-            Map<String, String> prefs,
-            KmpRedirects kmp)
+            List<Dependency> roots, Map<String, String> bomConstraints, Map<String, String> prefs, KmpRedirects kmp)
             throws IOException, InterruptedException {
         return resolveGroup(roots, bomConstraints, prefs, kmp, null, null);
     }
@@ -505,8 +500,8 @@ public final class LockOrchestrator {
             } else {
                 // If another version of this module already exists, keep this row's scopes
                 // specialized (don't leak MAIN onto a test-only dual).
-                boolean otherVersion = tagsByKey.keySet().stream()
-                        .anyMatch(k -> k.startsWith(mod.module() + "@") && !k.equals(key));
+                boolean otherVersion =
+                        tagsByKey.keySet().stream().anyMatch(k -> k.startsWith(mod.module() + "@") && !k.equals(key));
                 EnumSet<Scope> rowTags = EnumSet.copyOf(tags);
                 if (otherVersion) {
                     // Keep only scopes from this graph's tag set (already the case).
@@ -584,13 +579,7 @@ public final class LockOrchestrator {
                             + " — add a `version`, or import the BOM that pins it.");
                 }
                 roots.add(new Dependency(
-                        d.library(),
-                        d.module(),
-                        VersionSelector.parse("=" + managed),
-                        null,
-                        null,
-                        true,
-                        d.optional()));
+                        d.library(), d.module(), VersionSelector.parse("=" + managed), null, null, true, d.optional()));
             } else {
                 roots.add(d);
             }
@@ -616,7 +605,9 @@ public final class LockOrchestrator {
             }
             if (rootModules.isEmpty()) continue;
             for (String module : reachableFrom(rootModules, resolution)) {
-                tagsByModule.computeIfAbsent(module, k -> EnumSet.noneOf(Scope.class)).add(scope);
+                tagsByModule
+                        .computeIfAbsent(module, k -> EnumSet.noneOf(Scope.class))
+                        .add(scope);
             }
         }
         return tagsByModule;
@@ -643,7 +634,8 @@ public final class LockOrchestrator {
         try {
             if (!kmpAlias && "aar".equals(pomBuilder.build(coord).packaging())) {
                 coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
-                packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
+                packageName =
+                        PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
                 artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
             }
         } catch (Exception ignored) {
@@ -652,7 +644,8 @@ public final class LockOrchestrator {
 
         String source = fallbackSource;
         String checksum = null;
-        RepoGroup.RepoFetched hit = kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
+        RepoGroup.RepoFetched hit =
+                kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
@@ -669,9 +662,7 @@ public final class LockOrchestrator {
             pinnedBy = constraintProvenance.get(ga);
         }
         // Record activated cross-package features on the library row when present.
-        List<String> feat = crossPackageActivatedFeatures == null
-                ? null
-                : crossPackageActivatedFeatures.get(ga);
+        List<String> feat = crossPackageActivatedFeatures == null ? null : crossPackageActivatedFeatures.get(ga);
         if (feat == null && crossPackageActivatedFeatures != null) {
             feat = crossPackageActivatedFeatures.get(mod.module());
         }

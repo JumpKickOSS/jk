@@ -283,7 +283,8 @@ public record Lockfile(
         /** True when the locked artifact is an Android AAR (path or package type). */
         public boolean isAar() {
             if (path != null && path.endsWith(".aar")) return true;
-            return PackageId.isMavenPackageKey(name) && "aar".equals(PackageId.parse(name).type());
+            return PackageId.isMavenPackageKey(name)
+                    && "aar".equals(PackageId.parse(name).type());
         }
 
         /** Raw hex SHA-256 of the jar (strips a {@code "sha256:"} prefix), or {@code null}. */

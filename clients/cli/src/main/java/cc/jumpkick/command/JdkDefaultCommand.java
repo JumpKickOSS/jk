@@ -79,10 +79,9 @@ public final class JdkDefaultCommand implements CliCommand {
                 ? cc.jumpkick.jdk.JdkKeywords.bestInstalledMatch(spec, registry.listHits())
                 : registry.findHitBySpec(spec);
         if (match.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "no installed JDK matches `" + spec
-                    + "` (try `jk jdk list` or `jk jdk install "
-                    + spec
-                    + "`)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JDK",
+                    "no installed JDK matches `" + spec + "` (try `jk jdk list` or `jk jdk install " + spec + "`)"));
             return 1;
         }
         applyDefault(match.get(), defaults, CliOutput.stdout());

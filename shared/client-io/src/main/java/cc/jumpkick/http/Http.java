@@ -183,8 +183,11 @@ public final class Http {
      * (nullable) runs on each retried 5xx before the next attempt.
      */
     private <T> HttpResponse<T> sendWithRetry(
-            String verb, URI uri, HttpRequest request,
-            HttpResponse.BodyHandler<T> handler, OnServerError<T> onServerError)
+            String verb,
+            URI uri,
+            HttpRequest request,
+            HttpResponse.BodyHandler<T> handler,
+            OnServerError<T> onServerError)
             throws IOException, InterruptedException {
         IOException lastIo = null;
         int lastStatus = -1;

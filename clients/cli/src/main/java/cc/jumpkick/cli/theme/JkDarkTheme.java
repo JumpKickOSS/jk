@@ -66,9 +66,11 @@ public final class JkDarkTheme implements Theme {
     public static final Rgb DARK_BLACK = BRIGHT_BLACK.darker(0.40); // bright black × 0.6 — the dimmest gray
     public static final Rgb BRIGHT_RED = NORMAL_RED.brighter(0.25); // web --err lifted (web has no separate bright red)
     public static final Rgb BRIGHT_GREEN = Rgb.hex(0x00FF87); // web --ok (neon green)
-    public static final Rgb BRIGHT_YELLOW = NORMAL_YELLOW.brighter(0.20); // web --warn lifted (web has no separate bright amber)
+    public static final Rgb BRIGHT_YELLOW =
+            NORMAL_YELLOW.brighter(0.20); // web --warn lifted (web has no separate bright amber)
     public static final Rgb BRIGHT_BLUE = Rgb.hex(0x5AB0FF); // web --run-line (brighter running blue)
-    public static final Rgb BRIGHT_MAGENTA = NORMAL_MAGENTA.brighter(0.15); // web --prog-b lifted (web has no separate bright violet)
+    public static final Rgb BRIGHT_MAGENTA =
+            NORMAL_MAGENTA.brighter(0.15); // web --prog-b lifted (web has no separate bright violet)
     public static final Rgb BRIGHT_CYAN = Rgb.hex(0x00F0FF); // web --cn (neon cyan, accent)
     public static final Rgb BRIGHT_WHITE = Rgb.hex(0xECEFF1); // Blue Grey 50
     /** {@code coordVersion()} — 75% between {@link #BRIGHT_CYAN} and {@link #BRIGHT_WHITE} (50% brighter than the midpoint). */

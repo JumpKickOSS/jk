@@ -201,8 +201,6 @@ public final class GlobalOptions {
      */
     public int jobsEffective() {
         return cc.jumpkick.config.Jobs.resolve(
-                java.util.Optional.ofNullable(jobs),
-                cc.jumpkick.config.JkEngineConfig.resolve(),
-                System::getenv);
+                java.util.Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
     }
 }

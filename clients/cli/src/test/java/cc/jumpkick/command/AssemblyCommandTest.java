@@ -17,8 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 class AssemblyCommandTest {
 
-    private static final String TOML =
-            """
+    private static final String TOML = """
             [project]
             group = "t"
             name = "t"

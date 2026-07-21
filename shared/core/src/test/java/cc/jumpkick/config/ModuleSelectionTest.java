@@ -27,13 +27,15 @@ class ModuleSelectionTest {
         var lit = ModuleSelection.resolve(root, build, "api,worker");
         assertThat(lit.ok()).isTrue();
         assertThat(lit.moduleDirs())
-                .containsExactlyInAnyOrder(root.resolve("api").normalize(), root.resolve("worker").normalize());
+                .containsExactlyInAnyOrder(
+                        root.resolve("api").normalize(), root.resolve("worker").normalize());
 
         var glob = ModuleSelection.resolve(root, build, "libs/*");
         assertThat(glob.ok()).isTrue();
         assertThat(glob.moduleDirs())
                 .containsExactlyInAnyOrder(
-                        root.resolve("libs/core").normalize(), root.resolve("libs/util").normalize());
+                        root.resolve("libs/core").normalize(),
+                        root.resolve("libs/util").normalize());
     }
 
     @Test
@@ -47,9 +49,7 @@ class ModuleSelectionTest {
 
     @Test
     void single_project_matches_dot_or_name(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.ex"
                 name = "solo"
@@ -67,20 +67,15 @@ class ModuleSelectionTest {
             if (!mods.isEmpty()) mods.append(", ");
             mods.append('"').append(m).append('"');
             Files.createDirectories(root.resolve(m));
-            Files.writeString(
-                    root.resolve(m).resolve("jk.toml"),
-                    """
+            Files.writeString(root.resolve(m).resolve("jk.toml"), """
                     [project]
                     group = "com.ex"
                     name = "%s"
                     version = "1.0.0"
                     java = 25
-                    """
-                            .formatted(m.replace('/', '-')));
+                    """.formatted(m.replace('/', '-')));
         }
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.ex"
                 name = "ws"
@@ -89,7 +84,6 @@ class ModuleSelectionTest {
 
                 [workspace]
                 modules = [%s]
-                """
-                        .formatted(mods));
+                """.formatted(mods));
     }
 }

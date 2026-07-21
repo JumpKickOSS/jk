@@ -210,8 +210,7 @@ public final class DependencyTree {
 
         List<String> roots = collectRoots(project);
         Set<String> platformMods = platformModules(project);
-        Map<String, String> declared =
-                declaredVersions(project, java.util.Arrays.asList(Scope.values()));
+        Map<String, String> declared = declaredVersions(project, java.util.Arrays.asList(Scope.values()));
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < roots.size(); i++) {
             String root = roots.get(i);
@@ -715,7 +714,14 @@ public final class DependencyTree {
             for (Scope s : sections) {
                 for (String m : directModules(project, s)) {
                     collectFlat(
-                            m, composite, byModule, Map.of(), visited, collected, declared.get(m), platformMods.contains(m));
+                            m,
+                            composite,
+                            byModule,
+                            Map.of(),
+                            visited,
+                            collected,
+                            declared.get(m),
+                            platformMods.contains(m));
                 }
             }
             renderFlatSection(badgeRow(sections, styling), true, collected, "", styling, out);

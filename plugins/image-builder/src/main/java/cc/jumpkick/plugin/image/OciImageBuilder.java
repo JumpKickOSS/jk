@@ -2,7 +2,6 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.image.ImageConfig;
-
 import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginConfig;
 import cc.jumpkick.plugin.PluginManifest;

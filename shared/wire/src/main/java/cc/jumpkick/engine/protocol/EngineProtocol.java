@@ -122,6 +122,7 @@ public final class EngineProtocol {
     public static final String ERR_VERSION_SKEW = "version-skew";
     /** Engine is draining after {@link #SHUTDOWN}; job refused. */
     public static final String ERR_SHUTTING_DOWN = "shutting-down";
+
     public static final String ERR_AUTH = "auth";
     /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
     public static final String ERR_DEADLINE = "deadline";
@@ -1283,9 +1284,7 @@ public final class EngineProtocol {
     }
 
     public static String whyRequest(String dir, String query) {
-        return "{\"t\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
-                + ",\"query\":" + Jsonl.quote(query)
-                + "}";
+        return "{\"t\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query) + "}";
     }
 
     public static String ideModelRequest(String dir, String cache, String jdksDir) {
@@ -1685,8 +1684,7 @@ public final class EngineProtocol {
 
     /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link #LOCK_MODULE}). */
     public static String lockModule(String dir, String coord) {
-        return "{\"t\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord)
-                + "}";
+        return "{\"t\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord) + "}";
     }
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
@@ -1964,8 +1962,7 @@ public final class EngineProtocol {
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
-        return "{\"t\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message)
-                + "}";
+        return "{\"t\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */

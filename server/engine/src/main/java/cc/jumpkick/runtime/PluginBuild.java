@@ -190,8 +190,7 @@ public final class PluginBuild {
                             Jsonl.strArray(line, "contributesSources"),
                             Jsonl.strArray(line, "contributesTestClasspath"),
                             Jsonl.str(line, "transformsClasses")));
-                case "packager" ->
-                    packager = new PackagerDecl(Jsonl.str(line, "name"), Jsonl.strArray(line, "inputs"));
+                case "packager" -> packager = new PackagerDecl(Jsonl.str(line, "name"), Jsonl.strArray(line, "inputs"));
                 case "command" ->
                     commands.add(new CommandDecl(Jsonl.str(line, "name"), Jsonl.str(line, "description")));
                 default -> {

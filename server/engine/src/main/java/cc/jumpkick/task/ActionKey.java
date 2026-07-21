@@ -152,7 +152,11 @@ public final class ActionKey {
         sortedSources.sort(Comparator.comparing(Path::toString));
         for (Path src : sortedSources) {
             Path abs = src.toAbsolutePath().normalize();
-            sb.append("source:").append(abs).append(':').append(FileHashMemo.contentHash(abs)).append('\n');
+            sb.append("source:")
+                    .append(abs)
+                    .append(':')
+                    .append(FileHashMemo.contentHash(abs))
+                    .append('\n');
         }
     }
 

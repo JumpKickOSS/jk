@@ -81,8 +81,7 @@ class PolicyCheckerTest {
     @Test
     void toml_parser_rejects_unenforced_licenses() {
         org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class,
-                () -> DenyPolicyParser.parse("""
+                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
                         [project]
                         group = "g"
                         name = "a"
@@ -96,8 +95,7 @@ class PolicyCheckerTest {
     @Test
     void toml_parser_rejects_unenforced_yanked_deny() {
         org.junit.jupiter.api.Assertions.assertThrows(
-                cc.jumpkick.config.JkBuildParseException.class,
-                () -> DenyPolicyParser.parse("""
+                cc.jumpkick.config.JkBuildParseException.class, () -> DenyPolicyParser.parse("""
                         [project]
                         group = "g"
                         name = "a"

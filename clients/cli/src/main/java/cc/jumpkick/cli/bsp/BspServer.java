@@ -30,7 +30,8 @@ import java.util.regex.Pattern;
  */
 public final class BspServer {
 
-    private static final Pattern CONTENT_LENGTH = Pattern.compile("Content-Length:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONTENT_LENGTH =
+            Pattern.compile("Content-Length:\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final IdeEngineClient ide;
     private final BufferedReader in;
@@ -62,14 +63,15 @@ public final class BspServer {
         if (method == null) return;
         try {
             switch (method) {
-                case "build/initialize" -> respond(
-                        id,
-                        "{\"displayName\":\"jk\",\"version\":"
-                                + q(cc.jumpkick.cli.Jk.VERSION)
-                                + ",\"bspVersion\":\"2.1.0\","
-                                + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
-                                + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
-                                + "\"canReload\":true}}");
+                case "build/initialize" ->
+                    respond(
+                            id,
+                            "{\"displayName\":\"jk\",\"version\":"
+                                    + q(cc.jumpkick.cli.Jk.VERSION)
+                                    + ",\"bspVersion\":\"2.1.0\","
+                                    + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                                    + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                                    + "\"canReload\":true}}");
                 case "build/initialized" -> {
                     /* notification */
                 }
@@ -93,13 +95,15 @@ public final class BspServer {
             // Per-request isolation (JK-1063): one failed handler must not kill the BSP session.
             invalidateModel();
             if (id != null) {
-                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                String msg =
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 error(id, -32000, msg);
             }
         } catch (RuntimeException e) {
             invalidateModel();
             if (id != null) {
-                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                String msg =
+                        e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 error(id, -32000, msg);
             }
         }
@@ -129,7 +133,9 @@ public final class BspServer {
             List<String> dirs = model.moduleDirs();
             List<String> names = model.names() != null ? model.names() : List.of();
             for (int i = 0; i < dirs.size(); i++) {
-                String name = i < names.size() ? names.get(i) : Path.of(dirs.get(i)).getFileName().toString();
+                String name = i < names.size()
+                        ? names.get(i)
+                        : Path.of(dirs.get(i)).getFileName().toString();
                 String id = rootUri + "#" + name;
                 targets.add(targetJson(id, name, pathUri(Path.of(dirs.get(i)))));
             }
@@ -162,7 +168,9 @@ public final class BspServer {
             List<String> dirs = model.moduleDirs();
             List<String> names = model.names() != null ? model.names() : List.of();
             for (int i = 0; i < dirs.size(); i++) {
-                String name = i < names.size() ? names.get(i) : Path.of(dirs.get(i)).getFileName().toString();
+                String name = i < names.size()
+                        ? names.get(i)
+                        : Path.of(dirs.get(i)).getFileName().toString();
                 String tid = rootUri + "#" + name;
                 if (!requested.isEmpty() && !requested.contains(tid)) continue;
                 Path mod = Path.of(dirs.get(i));
@@ -206,15 +214,13 @@ public final class BspServer {
             List<String> dirs = model.moduleDirs();
             List<String> names = model.names() != null ? model.names() : List.of();
             for (int i = 0; i < dirs.size(); i++) {
-                String name = i < names.size() ? names.get(i) : Path.of(dirs.get(i)).getFileName().toString();
+                String name = i < names.size()
+                        ? names.get(i)
+                        : Path.of(dirs.get(i)).getFileName().toString();
                 String tid = rootUri + "#" + name;
                 if (!requested.isEmpty() && !requested.contains(tid)) continue;
                 // Per-target: same resolved jars for v1 (engine model is workspace-wide).
-                items.add("{\"target\":{\"uri\":"
-                        + q(tid)
-                        + "},\"modules\":["
-                        + String.join(",", depMods)
-                        + "]}");
+                items.add("{\"target\":{\"uri\":" + q(tid) + "},\"modules\":[" + String.join(",", depMods) + "]}");
             }
         } else {
             String tid = rootUri + "#root";
@@ -287,7 +293,9 @@ public final class BspServer {
         List<String> dirs = model.moduleDirs();
         List<String> names = model.names() != null ? model.names() : List.of();
         for (int i = 0; i < dirs.size(); i++) {
-            String n = i < names.size() ? names.get(i) : Path.of(dirs.get(i)).getFileName().toString();
+            String n = i < names.size()
+                    ? names.get(i)
+                    : Path.of(dirs.get(i)).getFileName().toString();
             if (n.equals(name) || Path.of(dirs.get(i)).getFileName().toString().equals(name)) {
                 return Path.of(dirs.get(i));
             }

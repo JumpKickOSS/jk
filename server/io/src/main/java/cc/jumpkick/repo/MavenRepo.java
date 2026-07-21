@@ -241,12 +241,11 @@ public final class MavenRepo {
         String scheme = baseUrl.getScheme();
         if (scheme == null || !"http".equalsIgnoreCase(scheme)) return;
         if (!httpWarned.compareAndSet(false, true)) return;
-        System.err.println(
-                "jk: warning: repository `"
-                        + name
-                        + "` uses plaintext http:// ("
-                        + baseUrl
-                        + ") — lock-time fetches can be MITM'd; prefer https");
+        System.err.println("jk: warning: repository `"
+                + name
+                + "` uses plaintext http:// ("
+                + baseUrl
+                + ") — lock-time fetches can be MITM'd; prefer https");
     }
 
     /**
@@ -260,17 +259,16 @@ public final class MavenRepo {
             String expected = normalizeChecksum(new String(sha256Side.get(), java.nio.charset.StandardCharsets.UTF_8));
             if (isHexChecksum(expected, 64)) {
                 if (!expected.equalsIgnoreCase(actualSha256)) {
-                    throw new ChecksumMismatchException(
-                            "upstream checksum mismatch for "
-                                    + coord
-                                    + " from "
-                                    + name
-                                    + " ("
-                                    + relativePath
-                                    + "): expected sha256 "
-                                    + expected
-                                    + " but got "
-                                    + actualSha256);
+                    throw new ChecksumMismatchException("upstream checksum mismatch for "
+                            + coord
+                            + " from "
+                            + name
+                            + " ("
+                            + relativePath
+                            + "): expected sha256 "
+                            + expected
+                            + " but got "
+                            + actualSha256);
                 }
                 return;
             }
@@ -283,17 +281,16 @@ public final class MavenRepo {
                 Path blob = cas.pathFor(actualSha256);
                 String actualSha1 = Hashing.hashHex("SHA-1", Files.readAllBytes(blob));
                 if (!expected.equalsIgnoreCase(actualSha1)) {
-                    throw new ChecksumMismatchException(
-                            "upstream checksum mismatch for "
-                                    + coord
-                                    + " from "
-                                    + name
-                                    + " ("
-                                    + relativePath
-                                    + "): expected sha1 "
-                                    + expected
-                                    + " but got "
-                                    + actualSha1);
+                    throw new ChecksumMismatchException("upstream checksum mismatch for "
+                            + coord
+                            + " from "
+                            + name
+                            + " ("
+                            + relativePath
+                            + "): expected sha1 "
+                            + expected
+                            + " but got "
+                            + actualSha1);
                 }
                 return;
             }

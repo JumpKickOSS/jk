@@ -41,9 +41,7 @@ class ForkedJavacAotBenchTest {
 
         Path src = dir.resolve("src/demo/Hello.java");
         Files.createDirectories(src.getParent());
-        Files.writeString(
-                src,
-                """
+        Files.writeString(src, """
                 package demo;
                 public class Hello {
                   public static int add(int a, int b) { return a + b; }

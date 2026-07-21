@@ -20,9 +20,7 @@ class BuildLogicSupportTest {
     void convention_jk_build_dir_runs_and_cache_hits(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -44,9 +42,7 @@ class BuildLogicSupportTest {
     void logic_path_override(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -56,9 +52,7 @@ class BuildLogicSupportTest {
                 logic = "custom-logic"
                 logic-main = "demo.LineCountBuild"
                 """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App {}\n");
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
 
         Path logicSrc = project.resolve("custom-logic/src/demo");
         Files.createDirectories(logicSrc);
@@ -73,9 +67,7 @@ class BuildLogicSupportTest {
     void two_build_mains_are_independently_cached(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -97,7 +89,8 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("line-count.txt")));
         assertTrue(Files.isRegularFile(classes.resolve("stamp.txt")));
         assertTrue(labels.toString().contains("LineCountBuild"));
@@ -106,7 +99,8 @@ class BuildLogicSupportTest {
         Files.delete(classes.resolve("line-count.txt"));
         Files.delete(classes.resolve("stamp.txt"));
         labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         // Both tasks hit independently
         assertEquals(2, labels.toString().split("cache hit", -1).length - 1);
@@ -116,24 +110,18 @@ class BuildLogicSupportTest {
     void spi_contributor_runs_at_two_anchors(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve("src/main/java/demo"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
                 version = "0.0.1"
                 jdk = 25
                 """);
-        Files.writeString(
-                project.resolve("src/main/java/demo/App.java"),
-                "package demo; public class App {}\n");
+        Files.writeString(project.resolve("src/main/java/demo/App.java"), "package demo; public class App {}\n");
 
         Path logicSrc = project.resolve(".jk-build/src/demo");
         Files.createDirectories(logicSrc);
-        Files.writeString(
-                logicSrc.resolve("MultiAnchorLogic.java"),
-                """
+        Files.writeString(logicSrc.resolve("MultiAnchorLogic.java"), """
                 package demo;
                 import cc.jumpkick.plugin.buildlogic.*;
                 import java.nio.file.*;
@@ -157,13 +145,15 @@ class BuildLogicSupportTest {
 
         StringBuilder labels = new StringBuilder();
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
         assertTrue(labels.toString().contains("after-compile-marker"), labels.toString());
 
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.BEFORE_PACKAGE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(Files.isRegularFile(classes.resolve("before-package.txt")));
         assertTrue(labels.toString().contains("before-package-marker"), labels.toString());
 
@@ -171,7 +161,8 @@ class BuildLogicSupportTest {
         Files.delete(classes.resolve("after-compile.txt"));
         labels.setLength(0);
         assertTrue(BuildLogicSupport.run(
-                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s).append(';')));
+                project, layout, ac, classes, BuildLogicAnchor.AFTER_COMPILE, s -> labels.append(s)
+                        .append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertTrue(Files.isRegularFile(classes.resolve("after-compile.txt")));
     }
@@ -180,9 +171,7 @@ class BuildLogicSupportTest {
     void logic_off_skips_even_if_jk_build_exists(@TempDir Path dir) throws Exception {
         Path project = dir.resolve("proj");
         Files.createDirectories(project.resolve(".jk-build/src"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -198,9 +187,7 @@ class BuildLogicSupportTest {
     private static void writeStamp(Path file, String fqcn) throws Exception {
         String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
         String pkg = fqcn.contains(".") ? fqcn.substring(0, fqcn.lastIndexOf('.')) : "";
-        Files.writeString(
-                file,
-                """
+        Files.writeString(file, """
                 package %s;
                 import java.nio.file.*;
                 public class %s {
@@ -213,16 +200,13 @@ class BuildLogicSupportTest {
                     Files.writeString(out.resolve("stamp.txt"), "ok");
                   }
                 }
-                """
-                        .formatted(pkg, simple));
+                """.formatted(pkg, simple));
     }
 
     private static void writeLineCount(Path file, String fqcn) throws Exception {
         String simple = fqcn.substring(fqcn.lastIndexOf('.') + 1);
         String pkg = fqcn.contains(".") ? fqcn.substring(0, fqcn.lastIndexOf('.')) : "";
-        Files.writeString(
-                file,
-                """
+        Files.writeString(file, """
                 package %s;
                 import java.nio.file.*;
                 import java.util.stream.Stream;
@@ -245,8 +229,7 @@ class BuildLogicSupportTest {
                     Files.writeString(out.resolve("line-count.txt"), Long.toString(n));
                   }
                 }
-                """
-                        .formatted(pkg, simple));
+                """.formatted(pkg, simple));
     }
 
     private static void runTwice(Path project, Path cacheRoot, String ignoredMain) throws Exception {
@@ -256,7 +239,8 @@ class BuildLogicSupportTest {
         Files.createDirectories(classes);
 
         StringBuilder labels = new StringBuilder();
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
         Path generated = classes.resolve("line-count.txt");
         assertTrue(Files.isRegularFile(generated), "expected generated resource");
         String first = Files.readString(generated).trim();
@@ -264,7 +248,8 @@ class BuildLogicSupportTest {
 
         Files.delete(generated);
         labels.setLength(0);
-        assertTrue(BuildLogicSupport.run(project, layout, ac, classes, s -> labels.append(s).append(';')));
+        assertTrue(BuildLogicSupport.run(
+                project, layout, ac, classes, s -> labels.append(s).append(';')));
         assertTrue(labels.toString().contains("cache hit"), labels.toString());
         assertEquals(first, Files.readString(generated).trim());
     }

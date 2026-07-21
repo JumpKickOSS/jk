@@ -329,8 +329,7 @@ public final class JUnitLauncher {
                     if ("discovered".equals(event)) {
                         classes.add(Jsonl.str(json, "class"));
                     } else if ("discovery_total".equals(event)) {
-                        listener.onDiscoveryTotal(
-                                Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
+                        listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
                     }
                 },
                 null);

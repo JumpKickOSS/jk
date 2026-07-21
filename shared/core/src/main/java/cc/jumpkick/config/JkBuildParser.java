@@ -671,7 +671,8 @@ public final class JkBuildParser {
         // (coord / git / path / workspace / sha256) since it's applied to the
         // parsed result regardless of source.
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
-        Dependency dep = parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        Dependency dep =
+                parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
         // Cross-package features (ticket-1006): only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -1259,8 +1260,9 @@ public final class JkBuildParser {
                 case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
                 case "true", "fat", "assembly", "on" -> JkBuild.AssemblyMode.FAT;
                 case "false", "off", "none", "thin" -> JkBuild.AssemblyMode.OFF;
-                default -> throw new JkBuildParseException(
-                        "[application].assembly must be true, false, or \"shrink\" (got \"" + raw + "\")");
+                default ->
+                    throw new JkBuildParseException(
+                            "[application].assembly must be true, false, or \"shrink\" (got \"" + raw + "\")");
             };
         }
         throw new JkBuildParseException(
@@ -1348,8 +1350,7 @@ public final class JkBuildParser {
             case "fat", "true", "assembly" -> JkBuild.AssemblyMode.FAT;
             case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
             case "off", "false", "none", "thin" -> JkBuild.AssemblyMode.OFF;
-            default -> throw new IllegalArgumentException(
-                    "unknown assembly override: " + raw + " (want fat|shrink)");
+            default -> throw new IllegalArgumentException("unknown assembly override: " + raw + " (want fat|shrink)");
         };
     }
 
@@ -1575,8 +1576,7 @@ public final class JkBuildParser {
             if (coordinate != null && !coordinate.isBlank()) {
                 String[] parts = coordinate.split(":", -1);
                 if (parts.length != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
-                    throw new JkBuildParseException(
-                            "plugins." + alias + ".coordinate must be group:artifact:version");
+                    throw new JkBuildParseException("plugins." + alias + ".coordinate must be group:artifact:version");
                 }
                 if (group == null || group.isBlank()) group = parts[0];
                 if (name == null || name.isBlank()) name = parts[1];

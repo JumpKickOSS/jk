@@ -125,8 +125,7 @@ class EngineProtocolTest {
 
     @Test
     void goal_finish_carries_its_kind_discriminator() {
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind"))
-                .isEqualTo("build");
+        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind")).isEqualTo("build");
         assertThat(Jsonl.str(EngineProtocol.pipelineFinishSync("/w", true, 3, 4), "kind"))
                 .isEqualTo("sync");
         assertThat(Jsonl.str(EngineProtocol.pipelineFinishLock("/w", true, 1, 2, 3), "kind"))

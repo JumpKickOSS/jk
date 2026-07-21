@@ -38,9 +38,7 @@ final class ToolTargets {
             case ToolTarget.JBangAlias j ->
                 throw new TargetException("jk tool: JBang catalog aliases (`alias@user/repo`) aren't supported yet"
                         + " — not supported yet.");
-            case ToolTarget.Url u ->
-                throw new TargetException(
-                        "jk tool: web URL targets aren't supported yet.");
+            case ToolTarget.Url u -> throw new TargetException("jk tool: web URL targets aren't supported yet.");
             case ToolTarget.Git g ->
                 throw new TargetException("jk tool: git targets aren't supported yet"
                         + ". To install an app from a git repo, use `jk install "

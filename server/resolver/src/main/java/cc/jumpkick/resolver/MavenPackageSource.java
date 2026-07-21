@@ -189,7 +189,8 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> kmpDropped = Set.of();
         if (kmpSelection.isPresent()) {
             var target = kmpSelection.get().target();
-            String targetPkg = PackageId.ofGa(target.group() + ":" + target.module()).key();
+            String targetPkg =
+                    PackageId.ofGa(target.group() + ":" + target.module()).key();
             if (!isExcluded(targetPkg, excl)) {
                 out.add(Term.positive(targetPkg, VersionSet.exact(target.version())));
                 // Cascade parent exclusions onto the redirect target.
@@ -242,7 +243,9 @@ public final class MavenPackageSource implements PackageSource {
      */
     static boolean isExcluded(String packageKey, Set<String> exclusions) {
         if (exclusions == null || exclusions.isEmpty()) return false;
-        String ga = PackageId.isMavenPackageKey(packageKey) ? PackageId.parse(packageKey).ga() : packageKey;
+        String ga = PackageId.isMavenPackageKey(packageKey)
+                ? PackageId.parse(packageKey).ga()
+                : packageKey;
         if (exclusions.contains(ga) || exclusions.contains(packageKey)) return true;
         // Wildcard forms stored as "group:*", "*:artifact", "*:*"
         int colon = ga.indexOf(':');
@@ -288,7 +291,10 @@ public final class MavenPackageSource implements PackageSource {
     private void prefetchTransitiveAsync(List<Term> deps) {
         for (Term dep : deps) {
             String pkg = dep.pkg();
-            String pin = dep.versions().asExactSingleton().or(() -> preferredVersion(pkg)).orElse(null);
+            String pin = dep.versions()
+                    .asExactSingleton()
+                    .or(() -> preferredVersion(pkg))
+                    .orElse(null);
             if (pin != null) {
                 Coordinate child = withVersion(pkg, pin);
                 JkThreads.io().execute(() -> {

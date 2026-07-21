@@ -36,7 +36,8 @@ class VersionSetTest {
         assertThat(VersionSet.exact("1.2.3").asExactSingleton()).contains("1.2.3");
         assertThat(VersionSet.atLeast("1.0", true).asExactSingleton()).isEmpty();
         assertThat(VersionSet.ALL.asExactSingleton()).isEmpty();
-        assertThat(VersionSet.between("1.0", true, "2.0", false).asExactSingleton()).isEmpty();
+        assertThat(VersionSet.between("1.0", true, "2.0", false).asExactSingleton())
+                .isEmpty();
     }
 
     @Test
@@ -141,10 +142,10 @@ class VersionSetTest {
 
     @Test
     void of_flattens_nested_unions() {
-        VersionSet u1 = VersionSet.between("1.0", true, "2.0", false)
-                .union(VersionSet.between("3.0", true, "4.0", false));
-        VersionSet u2 = VersionSet.between("5.0", true, "6.0", false)
-                .union(VersionSet.between("7.0", true, "8.0", false));
+        VersionSet u1 =
+                VersionSet.between("1.0", true, "2.0", false).union(VersionSet.between("3.0", true, "4.0", false));
+        VersionSet u2 =
+                VersionSet.between("5.0", true, "6.0", false).union(VersionSet.between("7.0", true, "8.0", false));
         // Pre-R1: Union.intersect could nest; of() must flatten.
         VersionSet combined = VersionSet.Union.of(List.of(u1, u2));
         assertThat(combined).isInstanceOf(VersionSet.Union.class);
@@ -161,10 +162,10 @@ class VersionSetTest {
     @Test
     void of_merges_overlapping_parts_across_nested_unions() {
         // Two unions that together form a contiguous [1,4).
-        VersionSet u1 = VersionSet.between("1.0", true, "2.5", false)
-                .union(VersionSet.between("5.0", true, "6.0", false));
-        VersionSet u2 = VersionSet.between("2.0", true, "4.0", false)
-                .union(VersionSet.between("7.0", true, "8.0", false));
+        VersionSet u1 =
+                VersionSet.between("1.0", true, "2.5", false).union(VersionSet.between("5.0", true, "6.0", false));
+        VersionSet u2 =
+                VersionSet.between("2.0", true, "4.0", false).union(VersionSet.between("7.0", true, "8.0", false));
         VersionSet combined = VersionSet.Union.of(List.of(u1, u2));
         assertCanonical(combined);
         // [1,2.5) ∪ [2,4) → [1,4); plus [5,6) and [7,8).
@@ -180,10 +181,10 @@ class VersionSetTest {
 
     @Test
     void union_intersect_union_is_canonical_not_nested() {
-        VersionSet a = VersionSet.between("1.0", true, "3.0", false)
-                .union(VersionSet.between("5.0", true, "7.0", false));
-        VersionSet b = VersionSet.between("2.0", true, "4.0", false)
-                .union(VersionSet.between("6.0", true, "8.0", false));
+        VersionSet a =
+                VersionSet.between("1.0", true, "3.0", false).union(VersionSet.between("5.0", true, "7.0", false));
+        VersionSet b =
+                VersionSet.between("2.0", true, "4.0", false).union(VersionSet.between("6.0", true, "8.0", false));
         VersionSet ab = a.intersect(b);
         // [2,3) ∪ [6,7)
         assertThat(ab).isInstanceOf(VersionSet.Union.class);
@@ -235,8 +236,8 @@ class VersionSetTest {
 
     @Test
     void complement_of_union_is_canonical() {
-        VersionSet u = VersionSet.between("1.0", true, "2.0", false)
-                .union(VersionSet.between("3.0", true, "4.0", false));
+        VersionSet u =
+                VersionSet.between("1.0", true, "2.0", false).union(VersionSet.between("3.0", true, "4.0", false));
         VersionSet c = u.complement();
         assertCanonical(c);
         // Double complement recovers membership (structural equality of multi-range sets

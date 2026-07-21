@@ -27,9 +27,7 @@ class IdeEngineClientTest {
     @Test
     void projectInfo_and_connect_work_without_shelling_out(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name = "app"
                 group = "com.example"
@@ -52,9 +50,7 @@ class IdeEngineClientTest {
     @Test
     void sync_fires_progress_callbacks(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name = "app"
                 group = "com.example"
@@ -89,9 +85,7 @@ class IdeEngineClientTest {
     @Test
     void build_listener_sees_module_boundaries(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name = "app"
                 group = "com.example"
@@ -130,9 +124,7 @@ class IdeEngineClientTest {
     @Test
     void testModule_runs_against_wire(@TempDir Path tmp) throws Exception {
         Path project = Files.createDirectories(tmp.resolve("app"));
-        Files.writeString(
-                project.resolve("jk.toml"),
-                """
+        Files.writeString(project.resolve("jk.toml"), """
                 [project]
                 name = "app"
                 group = "com.example"
@@ -141,9 +133,7 @@ class IdeEngineClientTest {
                 java = 25
                 """);
         Files.createDirectories(project.resolve("src"));
-        Files.writeString(
-                project.resolve("src/App.java"),
-                """
+        Files.writeString(project.resolve("src/App.java"), """
                 package com.example;
                 public class App {
                   public static int one() { return 1; }
@@ -170,4 +160,3 @@ class IdeEngineClientTest {
         assertThat(outcome.modules()).isEqualTo(1);
     }
 }
-

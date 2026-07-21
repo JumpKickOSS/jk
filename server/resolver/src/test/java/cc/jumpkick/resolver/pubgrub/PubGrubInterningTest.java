@@ -31,8 +31,8 @@ class PubGrubInterningTest {
                 return List.of();
             }
         };
-        Map<String, String> solution =
-                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
         assertThat(solution).containsEntry("widget", "1.5");
     }
 
@@ -50,9 +50,8 @@ class PubGrubInterningTest {
                 return List.of();
             }
         };
-        Map<String, String> solution =
-                new PubGrubSolver(src)
-                        .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("2.0", true))));
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("2.0", true))));
         assertThat(solution).containsEntry("widget", "2.0");
     }
 
@@ -66,23 +65,23 @@ class PubGrubInterningTest {
             }
 
             @Override
-            public List<Term> dependencies(String pkg, String version) throws PackageSource.VersionUnavailableException {
+            public List<Term> dependencies(String pkg, String version)
+                    throws PackageSource.VersionUnavailableException {
                 if (pkg.equals("widget") && version.equals("2.0")) {
                     throw new PackageSource.VersionUnavailableException("half-published");
                 }
                 return List.of();
             }
         };
-        Map<String, String> solution =
-                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
         assertThat(solution).containsEntry("widget", "1.0");
     }
 
     @Test
     void no_matching_version_is_unsatisfiable() {
-        PackageSource src = InMemoryPackageSource.builder()
-                .version("widget", "1.0")
-                .build();
+        PackageSource src =
+                InMemoryPackageSource.builder().version("widget", "1.0").build();
         assertThatThrownBy(() -> new PubGrubSolver(src)
                         .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.exact("9.9.9")))))
                 .isInstanceOf(UnsatisfiableException.class);

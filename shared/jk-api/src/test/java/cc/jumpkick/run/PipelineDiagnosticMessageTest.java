@@ -10,8 +10,7 @@ class PipelineDiagnosticMessageTest {
 
     @Test
     void closed_messages_include_exception_class() {
-        assertThat(Pipeline.diagnosticMessage(new IOException("closed")))
-                .isEqualTo("closed (IOException)");
+        assertThat(Pipeline.diagnosticMessage(new IOException("closed"))).isEqualTo("closed (IOException)");
         assertThat(Pipeline.diagnosticMessage(new IOException("Stream closed")))
                 .contains("Stream closed")
                 .contains("IOException");

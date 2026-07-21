@@ -107,15 +107,13 @@ public final class EffectivePomBuilder {
         List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
-                bomCoordsOrdered.add(
-                        Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props)));
+                bomCoordsOrdered.add(Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props)));
             }
         }
         Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
-                Coordinate bomCoord =
-                        Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props));
+                Coordinate bomCoord = Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props));
                 EffectivePom bom = bomsByGav.get(bomCoord.toGav());
                 if (bom == null) {
                     // Should not happen; fall back to serial expand.
@@ -163,8 +161,7 @@ public final class EffectivePomBuilder {
      * thread; several run on {@link JkThreads#io()} with independent cycle sets (JK-1090).
      */
     private Map<String, EffectivePom> buildBomImportsParallel(
-            List<Coordinate> bomCoords, Set<String> visiting, int depth)
-            throws IOException, InterruptedException {
+            List<Coordinate> bomCoords, Set<String> visiting, int depth) throws IOException, InterruptedException {
         // Dedupe while preserving first-seen order.
         LinkedHashMap<String, Coordinate> unique = new LinkedHashMap<>();
         for (Coordinate c : bomCoords) {

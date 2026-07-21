@@ -159,8 +159,10 @@ public final class Diagnostics {
                         + "] is allowed");
             }
             case Incompatibility.Cause.Dependency dep -> {
-                if (ROOT_PKG.equals(dep.from().pkg()) && !ROOT_PKG.equals(dep.to().pkg())) {
-                    lines.add("Relax or remove the project constraint on " + displayPkg(dep.to().pkg()));
+                if (ROOT_PKG.equals(dep.from().pkg())
+                        && !ROOT_PKG.equals(dep.to().pkg())) {
+                    lines.add("Relax or remove the project constraint on "
+                            + displayPkg(dep.to().pkg()));
                 }
             }
             case Incompatibility.Cause.Derived d -> {

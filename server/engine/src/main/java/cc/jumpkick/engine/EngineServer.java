@@ -816,12 +816,7 @@ public final class EngineServer implements AutoCloseable {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
         publishRequestStart(eventRequestId, eventKind, eventDir);
-        registerAccumulator(
-                eventRequestId,
-                eventKind,
-                eventDir,
-                "cli",
-                Jsonl.bool(requestLine, "noTimeline", false));
+        registerAccumulator(eventRequestId, eventKind, eventDir, "cli", Jsonl.bool(requestLine, "noTimeline", false));
         if (pipeline) notePipelineStarted();
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
@@ -871,9 +866,7 @@ public final class EngineServer implements AutoCloseable {
                         }
                         if (done.getCount() == 0) return;
                         if (heartbeatMs > 0) {
-                            sendQuiet(
-                                    writer,
-                                    EngineProtocol.heartbeat(clockMillis.getAsLong() - start));
+                            sendQuiet(writer, EngineProtocol.heartbeat(clockMillis.getAsLong() - start));
                         }
                     }
                 });
@@ -901,12 +894,11 @@ public final class EngineServer implements AutoCloseable {
                         enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
                         // Last chance for the runner to unwind after worker kill / interrupt.
                         if (!done.await(Math.min(graceMs, 5_000L), java.util.concurrent.TimeUnit.MILLISECONDS)) {
-                            log.accept(
-                                    "jk engine: job "
-                                            + eventRequestId
-                                            + " still running after deadline+"
-                                            + graceMs
-                                            + "ms grace — abandoned; workers killed");
+                            log.accept("jk engine: job "
+                                    + eventRequestId
+                                    + " still running after deadline+"
+                                    + graceMs
+                                    + "ms grace — abandoned; workers killed");
                         }
                     }
                 } else {
@@ -3052,8 +3044,7 @@ public final class EngineServer implements AutoCloseable {
         registerAccumulator(requestId, kind, dir, trigger, false);
     }
 
-    private void registerAccumulator(
-            long requestId, String kind, String dir, String trigger, boolean noTimeline) {
+    private void registerAccumulator(long requestId, String kind, String dir, String trigger, boolean noTimeline) {
         if (!JOURNALED_KINDS.contains(kind)) return;
         Path projectDir = null;
         try {
@@ -4040,6 +4031,7 @@ public final class EngineServer implements AutoCloseable {
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
+
         private final java.util.List<ModuleOutcome> modules = new java.util.concurrent.CopyOnWriteArrayList<>();
         // Steps per module dir (name → Step, arrival order, last status wins). The single-pipeline path
         // uses the "" (SINGLE_PIPELINE_DIR) bucket; workspace modules use their real dir. Rendered as a

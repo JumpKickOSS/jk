@@ -14,15 +14,13 @@ class ModuleDotGraphTest {
 
     @Test
     void multi_module_emits_expected_edge() {
-        JkBuild lib = JkBuildParser.parse(
-                """
+        JkBuild lib = JkBuildParser.parse("""
                 [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
-        JkBuild app = JkBuildParser.parse(
-                """
+        JkBuild app = JkBuildParser.parse("""
                 [project]
                 group = "com.example"
                 name = "app"
@@ -52,15 +50,13 @@ class ModuleDotGraphTest {
 
     @Test
     void filter_drops_unselected_modules_and_edges() {
-        JkBuild lib = JkBuildParser.parse(
-                """
+        JkBuild lib = JkBuildParser.parse("""
                 [project]
                 group = "com.example"
                 name = "lib"
                 version = "1.0.0"
                 """);
-        JkBuild app = JkBuildParser.parse(
-                """
+        JkBuild app = JkBuildParser.parse("""
                 [project]
                 group = "com.example"
                 name = "app"
@@ -69,8 +65,7 @@ class ModuleDotGraphTest {
                 [dependencies]
                 lib = { group = "com.example", name = "lib", version = "1.0.0" }
                 """);
-        JkBuild other = JkBuildParser.parse(
-                """
+        JkBuild other = JkBuildParser.parse("""
                 [project]
                 group = "com.example"
                 name = "other"
@@ -96,8 +91,7 @@ class ModuleDotGraphTest {
     @Test
     void empty_map_is_valid_trivial_graph() {
         String dot = ModuleDotGraph.toDot(Path.of("/ws"), Map.of(), null);
-        assertThat(dot).isEqualTo(
-                """
+        assertThat(dot).isEqualTo("""
                 digraph modules {
                   rankdir=LR;
                   node [shape=box, fontname="Helvetica"];
@@ -107,8 +101,7 @@ class ModuleDotGraphTest {
 
     @Test
     void single_module_dot_one_node() {
-        JkBuild b = JkBuildParser.parse(
-                """
+        JkBuild b = JkBuildParser.parse("""
                 [project]
                 group = "g"
                 name = "n"

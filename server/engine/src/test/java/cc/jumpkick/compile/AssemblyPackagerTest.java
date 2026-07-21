@@ -80,13 +80,15 @@ class AssemblyPackagerTest {
 
         Path out = tmp.resolve("fat.jar");
         new AssemblyPackager()
-                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(dep), out, "app.Main", Map.of(), 0L));
 
         try (JarFile jf = new JarFile(out.toFile())) {
             assertThat(jf.getJarEntry("module-info.class")).isNull();
             assertThat(jf.getJarEntry("lib/Helper.class")).isNotNull();
             String handlers = new String(
-                    jf.getInputStream(jf.getJarEntry("META-INF/spring.handlers")).readAllBytes(),
+                    jf.getInputStream(jf.getJarEntry("META-INF/spring.handlers"))
+                            .readAllBytes(),
                     StandardCharsets.UTF_8);
             assertThat(handlers).contains("http://app=app.Ns").contains("http://lib=lib.Ns");
         }
@@ -125,13 +127,15 @@ class AssemblyPackagerTest {
 
         Path a = tmp.resolve("a-assembly.jar");
         new AssemblyPackager()
-                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), a, "app.Main", Map.of(), 0L));
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(dep), a, "app.Main", Map.of(), 0L));
         // The freshness stamp's content changes every build; the fat jar must
         // not bundle it (and the manifest must be pinned), or the jar churns.
         Files.writeString(classes.resolve(".jstamp"), "stamp-run-2-different");
         Path b = tmp.resolve("b-assembly.jar");
         new AssemblyPackager()
-                .packageAssembly(new AssemblyPackager.AssemblyRequest(classes, List.of(dep), b, "app.Main", Map.of(), 0L));
+                .packageAssembly(
+                        new AssemblyPackager.AssemblyRequest(classes, List.of(dep), b, "app.Main", Map.of(), 0L));
 
         assertThat(Files.readAllBytes(a)).isEqualTo(Files.readAllBytes(b));
         try (JarFile jf = new JarFile(a.toFile())) {

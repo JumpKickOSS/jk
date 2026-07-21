@@ -107,7 +107,8 @@ class CachePruneSchedulerTest {
         Path bat = bin.resolve("jk.bat");
         Files.writeString(bat, "@echo off\n");
 
-        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(lib.resolve("app.jar").toString()))
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(
+                        lib.resolve("app.jar").toString()))
                 .contains(bat.toAbsolutePath().toString());
     }
 }

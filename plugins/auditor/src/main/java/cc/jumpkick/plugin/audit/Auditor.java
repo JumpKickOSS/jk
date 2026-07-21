@@ -2,7 +2,6 @@
 package cc.jumpkick.plugin.audit;
 
 import cc.jumpkick.audit.AuditReport;
-
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.plugin.Plugin;

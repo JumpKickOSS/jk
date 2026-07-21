@@ -209,11 +209,7 @@ public final class JavaIncrementalCompile {
         String fullWhy = cannotIncrementReason(request, prior, abi, flags);
         if (fullWhy == null) {
             int n = changedSources(request, prior.get().inputs()).size();
-            return new Prediction(
-                    Outcome.INCREMENTAL,
-                    key,
-                    n,
-                    n == 1 ? "1 source changed" : n + " sources changed");
+            return new Prediction(Outcome.INCREMENTAL, key, n, n == 1 ? "1 source changed" : n + " sources changed");
         }
         return new Prediction(Outcome.FULL, key, request.sources().size(), fullWhy);
     }

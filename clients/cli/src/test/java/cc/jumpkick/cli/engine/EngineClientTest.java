@@ -29,7 +29,8 @@ class EngineClientTest {
 
     private Path shortTempDir() throws IOException {
         // Prefer /tmp: macOS TMPDIR under /var/folders overflows UDS sun_path (~104 bytes).
-        Path root = Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
+        Path root =
+                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
         Path dir = Files.createTempDirectory(root, "jkc-");
         tempDirs.add(dir);
         return dir;
@@ -275,13 +276,15 @@ class EngineClientTest {
         assertThat(viaVersions.path()).isEqualTo(engineJar.toString());
 
         // JK_ENGINE_EXE wins over the materialized jar, always a dedicated executable
-        EngineClient.EngineArtifact viaEnv =
-                EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store).orElseThrow();
+        EngineClient.EngineArtifact viaEnv = EngineClient.resolveEngineArtifact("/opt/jk/jk-engine", "1.2.3", store)
+                .orElseThrow();
         assertThat(viaEnv.kind()).isEqualTo(EngineClient.EngineArtifact.Kind.EXE);
         assertThat(viaEnv.path()).isEqualTo("/opt/jk/jk-engine");
 
         // a blank override is ignored, not obeyed
-        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", store).orElseThrow().path())
+        assertThat(EngineClient.resolveEngineArtifact("  ", "1.2.3", store)
+                        .orElseThrow()
+                        .path())
                 .isEqualTo(viaVersions.path());
     }
 

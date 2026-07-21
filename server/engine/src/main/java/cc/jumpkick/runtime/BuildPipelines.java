@@ -2,13 +2,13 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -256,6 +256,7 @@ public final class BuildPipelines {
     static final int W_SOURCES = 3;
     /** Always-run tail for a fully-cached module (token touch, not full static weight). */
     static final int W_CACHED_TOUCH = 1;
+
     static final int W_NATIVE = 90;
 
     /** Core build steps plus assembly/native tails from {@code jk.toml}. */

@@ -58,9 +58,7 @@ public final class SelectiveCommand implements CliCommand {
         return List.of(
                 Opt.value("<git-ref>", "Select modules changed since this git ref.", "--since", "--affected-since"),
                 Opt.value(
-                        "<sel>",
-                        "Module selector (comma list, globs, braces). Intersects with --since.",
-                        "--modules"),
+                        "<sel>", "Module selector (comma list, globs, braces). Intersects with --since.", "--modules"),
                 Opt.flag("Machine-readable module list (one path per line).", "--json"),
                 Opt.value("<file>", "Plan file path (default: .jk/selective-plan.json).", "--plan"));
     }
@@ -94,23 +92,25 @@ public final class SelectiveCommand implements CliCommand {
             case "prepare" -> prepare(dir, proj.buildFile(), since, modules, planPath);
             case "run" -> runVerb(in, dir, proj.buildFile(), since, modules, planPath);
             default -> {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "unknown action `" + action + "` (resolve | prepare | run)"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Selective", "unknown action `" + action + "` (resolve | prepare | run)"));
                 yield Exit.USAGE;
             }
         };
     }
 
-    private static int resolve(
-            Path dir, Path buildFile, String since, String modules, boolean json, Set<Path> into)
+    private static int resolve(Path dir, Path buildFile, String since, String modules, boolean json, Set<Path> into)
             throws Exception {
         JkBuild entry = JkBuildParser.parse(buildFile);
         if ((since == null || since.isBlank()) && (modules == null || modules.isBlank())) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
             return Exit.USAGE;
         }
         var selected = ModuleSelection.resolveOptional(dir, entry, modules, since);
         if (selected == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since=<ref> and/or --modules=<sel>"));
             return Exit.USAGE;
         }
         if (!selected.ok()) {
@@ -120,7 +120,8 @@ public final class SelectiveCommand implements CliCommand {
         if (into != null) into.addAll(selected.moduleDirs());
         List<String> rels = toRelPaths(dir, selected.moduleDirs());
         if (json) {
-            CliOutput.out("{\"modules\":[" + String.join(",", rels.stream().map(SelectiveCommand::q).toList()) + "]}");
+            CliOutput.out("{\"modules\":["
+                    + String.join(",", rels.stream().map(SelectiveCommand::q).toList()) + "]}");
         } else if (rels.isEmpty()) {
             CliOutput.out("(no modules selected)");
         } else {
@@ -129,8 +130,7 @@ public final class SelectiveCommand implements CliCommand {
         return 0;
     }
 
-    private static int prepare(Path dir, Path buildFile, String since, String modules, Path planPath)
-            throws Exception {
+    private static int prepare(Path dir, Path buildFile, String since, String modules, Path planPath) throws Exception {
         Set<Path> dirs = new LinkedHashSet<>();
         int code = resolve(dir, buildFile, since, modules, false, dirs);
         if (code != 0) return code;
@@ -151,8 +151,7 @@ public final class SelectiveCommand implements CliCommand {
                   "modules": [%s],
                   "contentHashes": %s
                 }
-                """
-                .formatted(
+                """.formatted(
                         q(since == null ? "" : since),
                         q(modules == null ? "" : modules),
                         q(gitHead == null ? "" : gitHead),
@@ -174,8 +173,7 @@ public final class SelectiveCommand implements CliCommand {
         return 0;
     }
 
-    private static int runVerb(
-            Invocation in, Path dir, Path buildFile, String since, String modules, Path planPath)
+    private static int runVerb(Invocation in, Path dir, Path buildFile, String since, String modules, Path planPath)
             throws Exception {
         if (in.positionals().size() < 2) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected build | test"));
@@ -183,7 +181,8 @@ public final class SelectiveCommand implements CliCommand {
         }
         String verb = in.positionals().get(1).trim().toLowerCase(Locale.ROOT);
         if (!verb.equals("build") && !verb.equals("test")) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected build | test (got " + verb + ")"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "expected build | test (got " + verb + ")"));
             return Exit.USAGE;
         }
 
@@ -197,7 +196,8 @@ public final class SelectiveCommand implements CliCommand {
             if (plan.modules.isEmpty()
                     && (plan.since == null || plan.since.isBlank())
                     && (plan.modulesSpec == null || plan.modulesSpec.isBlank())) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "plan " + planPath + " has no modules"));
+                CliOutput.err(
+                        cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "plan " + planPath + " has no modules"));
                 return Exit.CONFIG;
             }
             // Prefer plan modules as an explicit --modules list of relative paths.
@@ -211,7 +211,8 @@ public final class SelectiveCommand implements CliCommand {
 
         if ((effectiveSince == null || effectiveSince.isBlank())
                 && (effectiveModules == null || effectiveModules.isBlank())) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "pass --since / --modules, or run `jk selective prepare` first"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Selective", "pass --since / --modules, or run `jk selective prepare` first"));
             return Exit.USAGE;
         }
 
@@ -221,8 +222,7 @@ public final class SelectiveCommand implements CliCommand {
         if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
             List<String> planned = !plan.modules.isEmpty()
                     ? plan.modules
-                    : java.util.Arrays.stream(
-                                    effectiveModules == null ? new String[0] : effectiveModules.split(","))
+                    : java.util.Arrays.stream(effectiveModules == null ? new String[0] : effectiveModules.split(","))
                             .map(String::trim)
                             .filter(s -> !s.isEmpty())
                             .toList();
@@ -239,15 +239,18 @@ public final class SelectiveCommand implements CliCommand {
                 if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
             }
             if (dirty.isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Selective", "content hashes match plan — nothing changed (" + plannedClean.size()
-                        + " module"
-                        + (plannedClean.size() == 1 ? "" : "s")
-                        + ")"));
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                        "Selective",
+                        "content hashes match plan — nothing changed (" + plannedClean.size()
+                                + " module"
+                                + (plannedClean.size() == 1 ? "" : "s")
+                                + ")"));
                 return 0;
             }
             effectiveModules = String.join(",", dirty);
             effectiveSince = null; // modules list is authoritative
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Selective", "content-hash dirty modules: " + effectiveModules));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Selective", "content-hash dirty modules: " + effectiveModules));
         }
 
         List<String> args = new ArrayList<>();
@@ -271,8 +274,7 @@ public final class SelectiveCommand implements CliCommand {
         return cc.jumpkick.cli.Jk.execute(args.toArray(String[]::new));
     }
 
-    private record Plan(
-            String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}
+    private record Plan(String since, String modulesSpec, List<String> modules, Map<String, String> contentHashes) {}
 
     private static Plan readPlan(Path planPath) throws Exception {
         String text = Files.readString(planPath, StandardCharsets.UTF_8);
@@ -339,18 +341,19 @@ public final class SelectiveCommand implements CliCommand {
     }
 
     private static String extractJsonString(String json, String field) {
-        java.util.regex.Matcher m =
-                java.util.regex.Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"").matcher(json);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"" + field + "\"\\s*:\\s*\"([^\"]*)\"")
+                .matcher(json);
         return m.find() ? m.group(1) : null;
     }
 
     private static List<String> extractJsonStringArray(String json, String field) {
-        java.util.regex.Matcher m =
-                java.util.regex.Pattern.compile("\"" + field + "\"\\s*:\\s*\\[(.*?)]", java.util.regex.Pattern.DOTALL)
-                        .matcher(json);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile(
+                        "\"" + field + "\"\\s*:\\s*\\[(.*?)]", java.util.regex.Pattern.DOTALL)
+                .matcher(json);
         if (!m.find()) return List.of();
         List<String> out = new ArrayList<>();
-        java.util.regex.Matcher s = java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
+        java.util.regex.Matcher s =
+                java.util.regex.Pattern.compile("\"([^\"]*)\"").matcher(m.group(1));
         while (s.find()) out.add(s.group(1));
         return out;
     }

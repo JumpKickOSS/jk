@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
@@ -56,13 +55,7 @@ class ClassAbiContractTest {
         Files.createDirectories(src.getParent());
         Files.writeString(src, source);
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
-        int rc = javac.run(
-                null,
-                null,
-                null,
-                "-d",
-                classes.toString(),
-                src.toString());
+        int rc = javac.run(null, null, null, "-d", classes.toString(), src.toString());
         if (rc != 0) throw new IllegalStateException("javac failed");
         Path classFile = classes.resolve(fqcn.replace('.', '/') + ".class");
         return Files.readAllBytes(classFile);

@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.task;
 
-import cc.jumpkick.util.AtomicWrites;
-
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Collection;
 import java.util.HashMap;

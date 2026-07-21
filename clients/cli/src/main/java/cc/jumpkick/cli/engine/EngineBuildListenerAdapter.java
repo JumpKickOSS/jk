@@ -143,7 +143,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -232,7 +233,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -272,7 +274,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
 
@@ -515,7 +518,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             String line;
@@ -591,7 +595,8 @@ final class EngineBuildListenerAdapter {
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false), cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
+                    SessionContext.current().config().rebuildOr(false),
+                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
             writer.write('\n');
             writer.flush();
             String line;
@@ -787,16 +792,12 @@ final class EngineBuildListenerAdapter {
                     pipelineListenersByDir
                             .getOrDefault(dir, NOOP)
                             .progress(
-                                    Jsonl.str(line, "step"),
-                                    Jsonl.intValue(line, "delta", 0),
-                                    readPipelineView(line));
+                                    Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
                 case EngineProtocol.TICK_UPDATE ->
                     pipelineListenersByDir
                             .getOrDefault(dir, NOOP)
                             .tickUpdate(
-                                    Jsonl.str(line, "step"),
-                                    Jsonl.intValue(line, "delta", 0),
-                                    readPipelineView(line));
+                                    Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
                 case EngineProtocol.LABEL ->
                     pipelineListenersByDir
                             .getOrDefault(dir, NOOP)

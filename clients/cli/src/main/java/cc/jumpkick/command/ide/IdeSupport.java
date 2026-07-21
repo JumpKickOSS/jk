@@ -231,18 +231,11 @@ public final class IdeSupport {
         var session = cc.jumpkick.config.SessionContext.current();
         var paths = cc.jumpkick.engine.EnginePaths.current();
         var req = new cc.jumpkick.cli.engine.EngineClient.SyncRequest(
-                wsRoot,
-                cache,
-                jdksDir,
-                null,
-                false,
-                session.offline(),
-                session.force(),
-                false,
-                global.verbose);
+                wsRoot, cache, jdksDir, null, false, session.offline(), session.force(), false, global.verbose);
         // Time-box: best-effort must never hang the CLI. On timeout, force-stop the engine so the
         // blocked protocol read unblocks via channel close.
-        java.util.concurrent.atomic.AtomicReference<Exception> fail = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<Exception> fail =
+                new java.util.concurrent.atomic.AtomicReference<>();
         Thread t = new Thread(
                 () -> {
                     try {
@@ -276,13 +269,16 @@ public final class IdeSupport {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000)
+            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "IDE",
+                    "dependency sync timed out after " + (BEST_EFFORT_SYNC_MS / 1000)
                             + "s — missing jars will be skipped"));
             return;
         }
         Exception e = fail.get();
         if (e != null) {
-            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped"));
+            cc.jumpkick.cli.CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "IDE", "dependency sync incomplete (" + e.getMessage() + ") — missing jars will be skipped"));
         }
     }
 

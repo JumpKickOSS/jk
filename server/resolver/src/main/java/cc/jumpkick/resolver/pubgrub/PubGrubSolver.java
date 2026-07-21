@@ -325,8 +325,7 @@ public class PubGrubSolver {
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
                     addIncompatibility(new Incompatibility(
                             List.of(Term.positive(pkg, allowed)),
-                            new Incompatibility.Cause.NoVersions(
-                                    pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
                     return pkg;
                 }
                 addIncompatibility(new Incompatibility(

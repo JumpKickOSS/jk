@@ -89,5 +89,4 @@ public final class RepoCredentialStore {
         }
         return sb.length() == 0 ? "_" : sb.toString();
     }
-
 }

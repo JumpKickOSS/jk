@@ -2,7 +2,6 @@
 package cc.jumpkick.jdk;
 
 import cc.jumpkick.util.AtomicWrites;
-
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

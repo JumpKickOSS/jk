@@ -169,11 +169,7 @@ public final class GradleVersionCatalog {
     // --- parsing helpers ----------------------------------------------------
 
     private static void flattenLibraries(
-            TomlTable table,
-            String prefix,
-            Map<String, String> versions,
-            Map<String, String> out,
-            List<String> notes) {
+            TomlTable table, String prefix, Map<String, String> versions, Map<String, String> out, List<String> notes) {
         for (String key : table.keySet()) {
             String path = prefix.isEmpty() ? accessor(key) : prefix + "." + accessor(key);
             Object value = table.get(key);
@@ -221,11 +217,12 @@ public final class GradleVersionCatalog {
             }
             String v = versions.get(ref);
             if (v == null) {
-                notes.add("library `"
-                        + accessorPath
-                        + "` version.ref `"
-                        + ref
-                        + "` is not defined in [versions]; imported as version-less (platform-managed if a BOM is present)");
+                notes.add(
+                        "library `"
+                                + accessorPath
+                                + "` version.ref `"
+                                + ref
+                                + "` is not defined in [versions]; imported as version-less (platform-managed if a BOM is present)");
                 return ga;
             }
             return ga + ":" + v;
