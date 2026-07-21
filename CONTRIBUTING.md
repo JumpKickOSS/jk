@@ -39,13 +39,17 @@ JDK (the pin above qualifies).
 Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
 full suite.
 
-### Self-host (phase 2) — workspace modules + thin workers with jk
+### Self-host (phase 2+) — workspace modules + thin workers with jk
+
+Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
+Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and thin workers under `plugins/test-runner` +
-`plugins/java-compiler`). Those two workers package as **shadow jars** with
-`Main-Class = PluginMain` (plugin-sdk shaded in). Other `plugins/*` stay Gradle-only
-(fat workers + `installLocal`).
+`plugins/java-compiler`). `clients/web` is a resources module; `server/engine` packages
+as an **assembly** jar (fat) including the web SPA. Thin workers package as **assembly jars**
+with `Main-Class = PluginMain` (plugin-sdk shaded in). Other `plugins/*` stay Gradle-only
+(fat workers + `installLocal`) until they join the workspace.
 
 #### A) Native client bootstrap (CI default; needs GraalVM)
 

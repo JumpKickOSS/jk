@@ -20,6 +20,7 @@ modules = [
   "shared/toolchain-jdk",
   "server/toolchain",
   "shared/wire",
+  "clients/web",
   "server/engine",
   "clients/cli",
   "plugins/test-runner",

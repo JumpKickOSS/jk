@@ -92,10 +92,20 @@ class SelfHostingTomlTest {
                         "shared/toolchain-jdk",
                         "server/toolchain",
                         "shared/wire",
+                        "clients/web",
                         "server/engine",
                         "clients/cli",
                         "plugins/test-runner",
                         "plugins/java-compiler");
+    }
+
+    @Test
+    void engine_is_assembly_app_and_depends_on_web() throws Exception {
+        JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
+        assertThat(engine.assembly()).isTrue();
+        assertThat(engine.mainClass()).isEqualTo("cc.jumpkick.engine.EngineMain");
+        assertThat(engine.dependencies().of(Scope.MAIN).stream().map(d -> d.library()).toList())
+                .contains("jk-web");
     }
 
     @Test

@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.10.0-SNAPSHOT"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.0-SNAPSHOT", sha256 = "ca533b54cc3b4c08f41bf0c7c9b95c84cf7f016724637a40918aac0da327b970" }
+jk = { version = "0.10.0-SNAPSHOT", sha256 = "4dee464d1744472b9823c3a8ca19bf0d03126b79e6b023964d588608f2f2461d" }
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -42,6 +42,34 @@ checksum = "sha256:c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4f
 scopes   = ["test"]
 deps = [
   "net.bytebuddy:byte-buddy:jar:@1.18.11-jdk5",
+]
+
+[[artifact]]
+name     = "org.bouncycastle:bcpg-jdk18on:jar:"
+version  = "1.85"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:39426367dc247dfaae9b1253457a39298b6b9a6c28a39b908bca829e315323dd"
+scopes   = ["test"]
+deps = [
+  "org.bouncycastle:bcprov-jdk18on:jar:@1.85",
+  "org.bouncycastle:bcutil-jdk18on:jar:@1.85",
+]
+
+[[artifact]]
+name     = "org.bouncycastle:bcprov-jdk18on:jar:"
+version  = "1.85"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:20af26bf6060bb8005cc2389916812c1e0e998dc48d2ced7131b89461b54cff7"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.bouncycastle:bcutil-jdk18on:jar:"
+version  = "1.85"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:590f55ed5d68529239898a4a5c4f730b6e37f45d1cfa3fbe51f8485abe32c42d"
+scopes   = ["test"]
+deps = [
+  "org.bouncycastle:bcprov-jdk18on:jar:@1.85",
 ]
 
 [[artifact]]

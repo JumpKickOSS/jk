@@ -1,0 +1,9 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-web"
+version     = "0.10.0-SNAPSHOT"
+description = "jk web dashboard SPA (static assets under classpath /web/)."
+jdk         = 25
+java        = 25
+# Resources-only module: traditional tree keeps src/main/resources/web/* on the jar.
+layout      = "traditional"

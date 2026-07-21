@@ -7,7 +7,9 @@ jdk         = 25
 java        = 25
 
 [application]
-main = "cc.jumpkick.engine.EngineMain"
+main     = "cc.jumpkick.engine.EngineMain"
+# Fat ship jar (replaces Gradle shadowJar for self-host): runtime deps + web SPA assets.
+assembly = true
 
 [dependencies]
 jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.0-SNAPSHOT" }
@@ -16,6 +18,8 @@ jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10
 jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
 jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.0-SNAPSHOT" }
 jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.0-SNAPSHOT" }
+# Dashboard static assets (classpath /web/*) — Gradle used runtimeOnly(project(":web")).
+jk-web        = { group = "cc.jumpkick", name = "jk-web",        version = "0.10.0-SNAPSHOT" }
 asm           = { group = "org.ow2.asm", name = "asm",            version = "9.10.1" }
 asm-tree      = { group = "org.ow2.asm", name = "asm-tree",       version = "9.10.1" }
 asm-commons   = { group = "org.ow2.asm", name = "asm-commons",    version = "9.10.1" }
