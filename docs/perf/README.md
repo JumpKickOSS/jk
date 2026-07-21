@@ -41,3 +41,8 @@ disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path 
 
 **Decision: keep cross-module tests opt-in; within-module Mill path → JK-1087.**  
 See [test-parallelization.md](test-parallelization.md) for Mill vs jk map, RAM model (`-j`×`-w`×`parallel-tests`), isolation checklist, and default-on go/no-go.
+
+## Within-module test workers (JK-1087)
+
+**Decision: GO for opt-in `-w N` (already dynamic class pull-queue); NO-GO for default raise.**  
+Spike numbers: [within-module-test-parallel-spike.md](within-module-test-parallel-spike.md) (~2.4× wall at `-w4` on 24×200 ms classes; ~4× RSS).
