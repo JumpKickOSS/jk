@@ -17,6 +17,7 @@ See [guide.md](../guide.md) (`JK_HOME` / `JK_CACHE_DIR` / `--cache-dir`).
 |----------|---------|------|
 | Cold CAS (`--cache-dir` empty temp), pre POM-prefetch | `spring-boot-web` (90 deps) | **~52 s** |
 | Cold CAS + POM prefetch for pinned children | same | **~29 s** |
+| Cold CAS + concurrent POM/BOM expand (JK-1090) | same | **~19 s** |
 | Warm local CAS (`~/.jk/cache`) | same | **~1 s** |
 | Metadata cache wiped, POMs/jars warm | same | **~0.5–1 s** |
 
@@ -44,7 +45,8 @@ BOM pins **prefer** versions; they do not by themselves skip POM/jar work. Soft-
 | **Lazy exact / soft-prefer universes** | Exact constraints and BOM/lock pins seed `{v}` without `availableVersions`; expand to full metadata only on conflict / unavailable / empty projection |
 | **Prefetch skip** for pinned/exact children | Do not eagerly fetch metadata the solver will not need |
 | **Parallel lock-time materialize** | `toArtifact` jar fetches on `JkThreads.io()` + `HostRateLimiter` (same pattern as CacheSync) |
-| **POM prefetch for pinned children** | After expanding a package, async-fetch preferred/exact child POM bytes into `repos/` (parallel; parent walk still on first `build`) |
+| **POM prefetch for pinned children** | After expanding a package, async full `EffectivePomBuilder.build` for preferred/exact children (parents + imports) |
+| **Concurrent POM builder (JK-1090)** | Dropped global `synchronized` on `build`; multi BOM-import expand in parallel; sibling prefetches walk chains together |
 
 ## Lazy version universes (metadata skip)
 

@@ -295,10 +295,9 @@ public final class MavenPackageSource implements PackageSource {
                     try {
                         prefetchSlots.acquire();
                         try {
-                            // Raw POM into repos/<name>/ only — avoid synchronized EffectivePomBuilder
-                            // so sibling prefetches stay parallel. Parent chains still walk on first
-                            // real build(); local-first then makes those cheap.
-                            repos.tryFetchPom(child);
+                            // Full effective POM (parents + BOM imports). Builder is concurrent-safe
+                            // (JK-1090) so sibling prefetches walk chains in parallel.
+                            pomBuilder.build(child);
                         } finally {
                             prefetchSlots.release();
                         }
