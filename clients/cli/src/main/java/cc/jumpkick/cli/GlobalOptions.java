@@ -35,6 +35,9 @@ public final class GlobalOptions {
     /** {@code --no-ansi} — declared as a global; read here so command code never misses it. */
     public boolean noAnsi;
 
+    /** {@code --no-timeline} — skip engine chrome-trace write under {@code target/}. */
+    public boolean noTimeline;
+
     /** {@code --jdk <spec>} / {@code --graal <spec>}: the top JDK / GraalVM resolution tier. */
     public String jdk;
 
@@ -117,6 +120,9 @@ public final class GlobalOptions {
         g.rebuild = in.isSet("rebuild");
         g.noProgress = in.isSet("no-progress");
         g.noAnsi = in.isSet("no-ansi");
+        g.noTimeline = in.isSet("no-timeline");
+        // Engine-owned chrome profile; CLI only forwards the preference on the wire.
+        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
@@ -170,6 +176,7 @@ public final class GlobalOptions {
                 Opt.flag("Redo this build's work (skip jk's caches) without re-fetching deps", "--rebuild"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
                 Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
+                Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
                 Opt.value("<FORMAT>", "Output format: text (default) or json", "--output"),
                 Opt.value("<FILE>", "Use this jk.toml for configuration", "--config-file"),
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),

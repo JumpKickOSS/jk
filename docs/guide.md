@@ -321,19 +321,14 @@ jk tasks show package-jar --modules 'libs/*'
 ### Build timeline (chrome tracing)
 
 Every `jk build` / `jk test` has the **engine** write a Chrome Trace Event file at
-`target/jk-chrome-profile.json` (canonical build output under the project or workspace
-root). The CLI only announces the path on stderr when the engine reports it — web and
-other clients get the same file without reimplementing capture. Spans use the same step
-durations as build metrics. Open the file in Perfetto or `chrome://tracing`. **CI tip:**
-archive `target/jk-chrome-profile.json` as a build artifact.
+`target/jk-chrome-profile.json` (no terminal noise). Spans use the same step durations as
+build metrics. Open the file in Perfetto or `chrome://tracing`. **CI tip:** archive that
+path as a build artifact.
 
 ```bash
-# disable for one run
-jk build --no-timeline
-# or via env
-JK_CHROME_PROFILE=off jk build
-# custom path
-JK_CHROME_PROFILE=/tmp/trace.json jk build
+jk build --no-timeline              # skip the file (global flag)
+JK_CHROME_PROFILE=off jk build      # same via env
+JK_CHROME_PROFILE=/tmp/trace.json jk build   # custom path
 ```
 
 ### Project build logic (`.jk-build/`)

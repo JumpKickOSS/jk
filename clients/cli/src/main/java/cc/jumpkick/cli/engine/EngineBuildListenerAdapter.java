@@ -694,8 +694,6 @@ final class EngineBuildListenerAdapter {
                             Phase.fromWireOrNull(Jsonl.str(line, "phase")),
                             StepStatus.valueOf(Jsonl.str(line, "status")),
                             Duration.ZERO);
-                case EngineProtocol.TIMELINE ->
-                    cc.jumpkick.cli.run.TimelineOpts.announce(Jsonl.str(line, "path"));
                 case EngineProtocol.PIPELINE_FINISH -> {
                     boolean success = Jsonl.bool(line, "success", false);
                     long total = Jsonl.longValue(line, "testTotal", -1);
@@ -834,8 +832,6 @@ final class EngineBuildListenerAdapter {
                                     Phase.fromWireOrNull(Jsonl.str(line, "phase")),
                                     StepStatus.valueOf(Jsonl.str(line, "status")),
                                     Duration.ZERO);
-                case EngineProtocol.TIMELINE ->
-                    cc.jumpkick.cli.run.TimelineOpts.announce(Jsonl.str(line, "path"));
                 case EngineProtocol.PIPELINE_FINISH -> {
                     ModuleMeta meta = planByDir.get(dir);
                     String pipelineName = meta != null ? meta.pipelineName : dir;

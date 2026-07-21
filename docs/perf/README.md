@@ -15,7 +15,8 @@ Reports **median** of `RUNS` (default 3) wall times in ms.
 ## Chrome timeline (ticket-1023)
 
 After `jk build` / `jk test`, open `target/jk-chrome-profile.json` in Perfetto or
-`chrome://tracing`. Disable with `JK_CHROME_PROFILE=off` or `jk build --no-timeline`.
+`chrome://tracing` (engine-written; not printed to the terminal). Disable with
+`JK_CHROME_PROFILE=off` or `--no-timeline`.
 
 Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremental-zinc-decision.md)
 (JK-1046 — stay on ABI; Zinc deferred).

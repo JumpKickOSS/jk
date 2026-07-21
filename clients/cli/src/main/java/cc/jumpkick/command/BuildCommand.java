@@ -70,10 +70,7 @@ public final class BuildCommand implements CliCommand {
                 Opt.value(
                         "<sel>",
                         "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                        "--modules"),
-                Opt.flag(
-                        "Disable writing target/jk-chrome-profile.json for this run (also: JK_CHROME_PROFILE=off).",
-                        "--no-timeline")));
+                        "--modules")));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -109,16 +106,6 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        boolean noTimeline = in.isSet("no-timeline");
-        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(noTimeline);
-        try {
-            return runBody(in);
-        } finally {
-            cc.jumpkick.cli.run.TimelineOpts.clear();
-        }
-    }
-
-    private int runBody(Invocation in) throws Exception {
         this.profileName = in.value("profile").orElse(null);
         this.workers = in.value("workers").map(Integer::parseInt).orElse(null);
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
