@@ -123,6 +123,17 @@ public final class RepoArtifactStore {
         return Optional.of(artifact);
     }
 
+    /** SHA-256 hex from the materialised sidecar, if fully stored. */
+    public Optional<String> storedSha256(String relativePath) {
+        if (root == null || !contains(relativePath)) return Optional.empty();
+        try {
+            String s = Files.readString(sidecarPath(relativePath)).strip();
+            return s.isBlank() ? Optional.empty() : Optional.of(s);
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Write paths
     // -------------------------------------------------------------------------

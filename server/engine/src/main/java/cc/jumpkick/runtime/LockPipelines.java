@@ -158,10 +158,28 @@ public final class LockPipelines {
                         @Override
                         public void onPackage(String module, String version) {
                             if (coordLabel != null) {
-                                ctx.label("Resolved " + coordLabel.apply(module, version));
+                                ctx.label("Fetched " + coordLabel.apply(module, version));
                             }
                             ctx.progress(1);
                             observer.onPackage(module, version);
+                        }
+
+                        @Override
+                        public void onPhase(String label) {
+                            if (label != null && !label.isBlank()) ctx.label(label);
+                            observer.onPhase(label);
+                        }
+
+                        @Override
+                        public void onGraphPackage(String module, String version) {
+                            // Graph phase: advance bar without implying the jar is on disk yet.
+                            if (coordLabel != null) {
+                                ctx.label("Resolving " + coordLabel.apply(module, version));
+                            } else if (module != null) {
+                                ctx.label("Resolving " + module + (version != null ? ":" + version : ""));
+                            }
+                            ctx.progress(1);
+                            observer.onGraphPackage(module, version);
                         }
                     };
                     try {
@@ -582,19 +600,20 @@ public final class LockPipelines {
      * or declared deps × a transitive expansion factor.
      */
     private static int scopeEstimate(JkBuild effective, Path lockFile) {
+        // Dual-phase budget (graph + materialize) ≈ 2× packages (JK-1088).
         try {
             int n = LockfileReader.read(lockFile).artifacts().size();
-            if (n > 0) return n;
+            if (n > 0) return Math.max(10, n * 2);
         } catch (Exception ignored) {
         }
         try {
             int declared = effective.dependencies().byScope().values().stream()
                     .mapToInt(List::size)
                     .sum();
-            return Math.max(5, declared * 8);
+            return Math.max(10, declared * 12 * 2);
         } catch (Exception ignored) {
         }
-        return 20;
+        return 40;
     }
 
     /**

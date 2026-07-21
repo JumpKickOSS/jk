@@ -76,8 +76,14 @@ public final class PubGrubResolver implements Resolver {
 
     /** Test seam: lets unit tests inject an in-memory {@link PackageSource}. */
     PubGrubResolver(PackageSource source, EffectivePomBuilder pomBuilder) {
+        this(source, pomBuilder, KmpRedirects.NONE);
+    }
+
+    /** Shared-source constructor (JK-1088): reuse POM/version caches across scope groups. */
+    public PubGrubResolver(PackageSource source, EffectivePomBuilder pomBuilder, KmpRedirects kmp) {
         this.source = Objects.requireNonNull(source, "source");
         this.pomBuilder = pomBuilder;
+        this.kmp = kmp == null ? KmpRedirects.NONE : kmp;
     }
 
     @Override

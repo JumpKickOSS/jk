@@ -277,6 +277,7 @@ public final class LockOrchestrator {
 
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
+        // JK-1088: one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         collectBomConstraints(project, pomBuilder, bomConstraints, constraintProvenance);
 
@@ -289,20 +290,36 @@ public final class LockOrchestrator {
         List<Dependency> processorRoots = materializePlatformManaged(processorDeclared, bomConstraints);
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
+        // Shared package source across main/test/processor so version/deps caches survive scope splits.
+        MavenPackageSource sharedSource = resolverOverride != null
+                ? null
+                : new MavenPackageSource(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp);
 
-        Resolution mainResolution = resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp);
+        // Progress budget: graph phase + materialize phase (≈2× package count). Grow estimate as we go.
+        int declared = mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size();
+        int estimate = Math.max(10, declared * 12);
+        observer.onTotal(estimate * 2);
+        observer.onPhase("Resolving dependency graph…");
+
+        Set<String> graphSeen = new LinkedHashSet<>();
+        Resolution mainResolution =
+                resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder);
+        noteGraph(observer, mainResolution, graphSeen, estimate);
         Map<String, String> testPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(testPrefs, mainResolution);
-        Resolution testResolution = resolveGroup(testRoots, bomConstraints, testPrefs, kmp);
+        Resolution testResolution = resolveGroup(testRoots, bomConstraints, testPrefs, kmp, sharedSource, pomBuilder);
+        noteGraph(observer, testResolution, graphSeen, estimate);
         Map<String, String> processorPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(processorPrefs, mainResolution);
         putVersions(processorPrefs, testResolution);
-        Resolution processorResolution = resolveGroup(processorRoots, bomConstraints, processorPrefs, kmp);
+        Resolution processorResolution =
+                resolveGroup(processorRoots, bomConstraints, processorPrefs, kmp, sharedSource, pomBuilder);
+        noteGraph(observer, processorResolution, graphSeen, estimate);
 
-        observer.onTotal(mainResolution.modules().size()
-                + testResolution.modules().size()
-                + processorResolution.modules().size()
-                + fileDeps.size());
+        int uniquePackages = graphSeen.size() + fileDeps.size();
+        // Exact remaining budget for jar materialization (+ any under-estimated graph ticks).
+        observer.onTotal(Math.max(estimate * 2, graphSeen.size() + uniquePackages));
+        observer.onPhase("Downloading " + uniquePackages + " artifacts…");
 
         Map<String, EnumSet<Scope>> mainTags = tagScopes(project, mainResolution, MAIN_SCOPES, false);
         Map<String, EnumSet<Scope>> testTags = tagScopes(project, testResolution, TEST_SCOPES, true);
@@ -387,17 +404,45 @@ public final class LockOrchestrator {
         }
     }
 
+    /** Tick graph progress for each newly decided package (normalized bar, JK-1088). */
+    private static void noteGraph(
+            ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
+        for (Resolution.ResolvedModule mod : resolution.modules().values()) {
+            if (!seen.add(mod.module())) continue;
+            observer.onGraphPackage(displayModule(mod.module()), mod.version());
+            // Grow denominator if the graph outruns the initial estimate.
+            if (seen.size() > estimate) {
+                observer.onTotal(seen.size() * 2 + 16);
+            }
+        }
+    }
+
     private Resolution resolveGroup(
             List<Dependency> roots,
             Map<String, String> bomConstraints,
             Map<String, String> prefs,
             KmpRedirects kmp)
             throws IOException, InterruptedException {
+        return resolveGroup(roots, bomConstraints, prefs, kmp, null, null);
+    }
+
+    private Resolution resolveGroup(
+            List<Dependency> roots,
+            Map<String, String> bomConstraints,
+            Map<String, String> prefs,
+            KmpRedirects kmp,
+            MavenPackageSource sharedSource,
+            EffectivePomBuilder sharedPomBuilder)
+            throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
-        Resolver r = resolverOverride != null
-                ? resolverOverride
-                : buildResolver(repos, bomConstraints, prefs, kmp);
-        return r.resolve(roots);
+        if (resolverOverride != null) return resolverOverride.resolve(roots);
+        if (sharedSource != null && sharedPomBuilder != null) {
+            sharedSource.setLockedVersionPrefs(prefs);
+            PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp);
+            if (diagnosticPalette != null) r.palette = diagnosticPalette;
+            return r.resolve(roots);
+        }
+        return buildResolver(repos, bomConstraints, prefs, kmp).resolve(roots);
     }
 
     /**

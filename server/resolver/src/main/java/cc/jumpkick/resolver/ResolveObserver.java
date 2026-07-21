@@ -6,11 +6,26 @@ package cc.jumpkick.resolver;
  * the resolver thread — must be thread-safe.
  */
 public interface ResolveObserver {
-    /** Called once when the total package count is known (after the solver returns). */
+    /**
+     * Called when the progress denominator is known or grows (after the solver returns, or when the
+     * graph estimate expands). May fire more than once.
+     */
     void onTotal(int total);
 
     /** Called for each package as it is fetched and recorded in the lockfile. */
     void onPackage(String module, String version);
+
+    /**
+     * Cheap phase label during long lock (BOM load, graph solve, download) so the CLI/web bar is not
+     * silent before materialization ticks fire (JK-1088).
+     */
+    default void onPhase(String label) {}
+
+    /**
+     * A package was chosen by the solver (before jar download). Used for normalized progress during
+     * the graph phase; {@link #onPackage} still fires when the artifact is recorded/fetched.
+     */
+    default void onGraphPackage(String module, String version) {}
 
     /** No-op observer — used when no progress tracking is needed. */
     ResolveObserver NOOP = new ResolveObserver() {

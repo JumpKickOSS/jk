@@ -39,8 +39,8 @@ public final class MavenPackageSource implements PackageSource {
     private final Map<String, String> bomConstraints;
     private final KmpRedirects kmp;
 
-    /** Locked versions from a prior lock file — preferred but NOT hard-pinned. */
-    private final Map<String, String> lockedVersionPrefs;
+    /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
+    private volatile Map<String, String> lockedVersionPrefs;
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     /**
@@ -98,15 +98,22 @@ public final class MavenPackageSource implements PackageSource {
         this.kmp = Objects.requireNonNull(kmp, "kmp");
     }
 
+    /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
+    public void setLockedVersionPrefs(Map<String, String> prefs) {
+        this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(prefs, "prefs"));
+    }
+
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
+
         List<String> available = repos.availableVersions(withVersion(pkg, "any"));
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
+        // Soft-prefer keeps the full list (Gradle platform() parity — pin first, backtrack if needed).
         String ga = PackageId.parse(pkg).ga();
         preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
