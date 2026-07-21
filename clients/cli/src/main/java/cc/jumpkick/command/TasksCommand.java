@@ -4,9 +4,11 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
+import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.Arity;
@@ -15,6 +17,9 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -59,7 +64,8 @@ public final class TasksCommand implements CliCommand {
                 Opt.value(
                         "<git-ref>",
                         "Intersect selection with modules changed since this git ref.",
-                        "--affected-since"));
+                        "--affected-since"),
+                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir").hide());
     }
 
     @Override
@@ -152,6 +158,11 @@ public final class TasksCommand implements CliCommand {
             return Exit.CONFIG;
         }
         boolean inspect = "inspect".equals(action);
+        GlobalOptions global = GlobalOptions.from(in);
+        Path cache = in.value("cache-dir").map(Path::of).orElse(null);
+        if (cache == null) cache = JkDirs.cache();
+        // One explain forecast for the entry project — maps steps to hit/miss (JK-1056).
+        ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;
         for (var e : modules.entrySet()) {
             Path modDir = e.getKey();
             JkBuild build = e.getValue();
@@ -175,7 +186,7 @@ public final class TasksCommand implements CliCommand {
                 } else {
                     CliOutput.out("output:      (no primary path — intermediate / side-effect step)");
                 }
-                CliOutput.out("cache:       unknown offline (use `jk explain` for forecast hit/miss)");
+                CliOutput.out("cache:       " + cacheLine(forecast, modDir, task.name()));
                 if (modules.size() > 1) CliOutput.out("");
             } else {
                 // show: path only (Mill-like), one line per module
@@ -241,5 +252,68 @@ public final class TasksCommand implements CliCommand {
         } catch (IllegalArgumentException e) {
             return p.toString();
         }
+    }
+
+    /** Best-effort engine explain; null when engine unavailable (inspect still works offline). */
+    private static ExplainPlan explainBestEffort(Path startDir, Path cache, GlobalOptions global) {
+        try {
+            boolean serial = global != null && global.jobsEffective() == 1;
+            return EngineClient.explain(
+                    EnginePaths.current(),
+                    new EngineClient.ExplainRequest(
+                            startDir.toAbsolutePath().normalize(),
+                            cache.toAbsolutePath().normalize(),
+                            1,
+                            false,
+                            null,
+                            null,
+                            serial,
+                            false,
+                            global != null && global.verbose),
+                    null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Format forecast hit/miss for a module step. Falls back when the engine is down or the step
+     * is not in the forecast (side-effect / SPI-only names).
+     */
+    static String cacheLine(ExplainPlan plan, Path modDir, String stepName) {
+        if (plan == null || plan.hasErrors() || plan.modules() == null || plan.modules().isEmpty()) {
+            return "unknown (engine offline or forecast failed — try `jk explain`)";
+        }
+        Path abs = modDir.toAbsolutePath().normalize();
+        BuildPlan.Module mod = null;
+        for (BuildPlan.Module m : plan.modules()) {
+            if (m.dir() != null && m.dir().toAbsolutePath().normalize().equals(abs)) {
+                mod = m;
+                break;
+            }
+        }
+        if (mod == null && plan.modules().size() == 1) {
+            mod = plan.modules().getFirst();
+        }
+        if (mod == null) {
+            return "unknown (module not in forecast)";
+        }
+        BuildPlan.Step step = null;
+        for (BuildPlan.Step s : mod.steps()) {
+            if (s.name() != null && s.name().equals(stepName)) {
+                step = s;
+                break;
+            }
+        }
+        if (step == null) {
+            return "n/a (step not forecast — intermediate or plugin SPI)";
+        }
+        if (step.cached()) {
+            String key = step.key() != null && !step.key().isBlank() ? " key=" + step.key() : "";
+            return "hit" + key + (step.text() != null && !step.text().isBlank() ? " · " + step.text() : "");
+        }
+        String detail = step.text() != null && !step.text().isBlank() ? " · " + step.text() : "";
+        String status = step.status() != null ? step.status().name().toLowerCase(Locale.ROOT) : "miss";
+        return "miss (" + status + ")" + detail;
     }
 }

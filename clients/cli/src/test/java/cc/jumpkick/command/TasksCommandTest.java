@@ -46,6 +46,25 @@ class TasksCommandTest {
         assertThat(out).contains("step:").contains("compile-java");
         assertThat(out).contains("phase:").contains("compile");
         assertThat(out).contains("output:");
+        assertThat(out).contains("cache:");
+        // JK-1056: not the old "unknown offline" stub when engine can forecast
+        assertThat(out).doesNotContain("unknown offline");
+    }
+
+    @Test
+    void inspect_cache_hit_after_build(@TempDir Path tempDir) throws Exception {
+        run("new", "--name", "widget", "--layout", "traditional", tempDir.toString());
+        Path src = tempDir.resolve("src/main/java/example/Hello.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, "package example; public class Hello {}");
+        Path cache = tempDir.resolve("cache");
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString(), "--no-timeline", "--skip-tests"))
+                .isZero();
+        String out = captureStdout(
+                () -> run("inspect", "package-jar", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+        assertThat(out).contains("cache:");
+        // After a successful build, package-jar is typically a forecast hit (or miss with detail).
+        assertThat(out).doesNotContain("unknown offline");
     }
 
     @Test

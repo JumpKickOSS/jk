@@ -33,7 +33,8 @@ public final class InspectCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.value("<sel>", "Module selector.", "--modules"),
-                Opt.value("<git-ref>", "Intersect with modules changed since ref.", "--affected-since"));
+                Opt.value("<git-ref>", "Intersect with modules changed since ref.", "--affected-since"),
+                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir").hide());
     }
 
     @Override
