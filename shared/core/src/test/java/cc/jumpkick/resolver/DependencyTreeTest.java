@@ -97,6 +97,34 @@ class DependencyTreeTest {
     }
 
     @Test
+    void platform_bom_shows_declared_version_not_missing() {
+        // BOM is pin metadata (pinned-by on managed jars), not a lock [[artifact]] row.
+        var platform = List.of(Dependency.of(
+                "boot",
+                "org.springframework.boot:spring-boot-dependencies",
+                VersionSelector.parse("=4.1.0")));
+        var main = List.of(Dependency.of("web", "org.springframework.boot:spring-boot-starter-webmvc", VersionSelector.parse("=4.1.0")));
+        JkBuild project = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(Scope.PLATFORM, platform, Scope.MAIN, main)));
+        Lockfile lock = lockOf(pkg("org.springframework.boot:spring-boot-starter-webmvc", "4.1.0", List.of()));
+
+        String rendered = DependencyTree.render(project, lock);
+        assertThat(rendered).contains("org.springframework.boot:spring-boot-dependencies:4.1.0");
+        assertThat(rendered).contains("(platform)");
+        assertThat(rendered).doesNotContain("spring-boot-dependencies (missing)");
+        assertThat(rendered).doesNotContain("spring-boot-dependencies" + DependencyTree.MISSING_SUFFIX);
+        // Real missing main dep still marked
+        JkBuild missingMain = new JkBuild(
+                new JkBuild.Project("com.example", "widget", "0.1.0", 0),
+                new JkBuild.Dependencies(Map.of(
+                        Scope.PLATFORM, platform, Scope.MAIN, List.of(new Dependency("com.foo:absent", VersionSelector.parse("=1.0"))))));
+        String bad = DependencyTree.render(missingMain, lockOf());
+        assertThat(bad).contains("com.foo:absent (missing)");
+        assertThat(bad).contains("spring-boot-dependencies:4.1.0");
+    }
+
+    @Test
     void branch_git_dep_renders_as_a_locked_coordinate(@org.junit.jupiter.api.io.TempDir Path tmp) {
         // A branch-ref git dep is materialized and pinned in jk.lock like any other
         // git dep — it renders exactly like a locked Maven coordinate, no special tag.

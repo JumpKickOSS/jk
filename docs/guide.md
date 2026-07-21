@@ -177,9 +177,11 @@ and Latest.
 mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
-Platform BOMs (`[platform-dependencies]`) are **recommendations** (Gradle `platform()` style):
-the pin is preferred first; a stricter transitive floor may lift past it. Use an exact or
-caret/tilde version on the BOM itself — not `latest`.
+Platform BOMs (`[platform-dependencies]` / `[spring-boot] version`) are **recommendations**
+(Gradle `platform()` style): the pin is preferred first; a stricter transitive floor may lift
+past it. Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a
+**pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree`
+shows it under the platform section with its version and a `(platform)` tag, not as missing.
 
 Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub prose on conflict.
 Main, test, and processor graphs are solved separately so annotation-processor constraints
