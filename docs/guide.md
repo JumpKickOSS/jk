@@ -209,7 +209,7 @@ do not force main classpath versions.
 |---|---|---|
 | Thin jar | default | `jk build` |
 | Assembly jar | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
-| Shrunk jar | `[shrink]` (+ shrink plugin) | `jk build` (size before→after in labels) |
+| Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
@@ -219,10 +219,11 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 ```toml
 [application]
 main = "com.example.App"
-assembly = true    # assembly jar — jk assembly / jk assemble
+assembly = true       # fat jar — jk assembly / jk assemble
+# assembly = "shrink" # R8 small fat jar — same commands
 ```
 
-R8 is **opt-in** via `[shrink]` only — never the default.
+R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
 
 ## Common commands
 

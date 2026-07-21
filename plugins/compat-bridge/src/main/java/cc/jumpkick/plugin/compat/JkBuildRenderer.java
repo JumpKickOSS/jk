@@ -105,7 +105,11 @@ public final class JkBuildRenderer {
         sb.append("\n[application]\n");
         if (app.main() != null)
             sb.append("main       = ").append(quote(app.main())).append('\n');
-        if (app.assembly()) sb.append("assembly = true\n");
+        switch (app.assembly()) {
+            case FAT -> sb.append("assembly = true\n");
+            case SHRINK -> sb.append("assembly = \"shrink\"\n");
+            case OFF -> {}
+        }
     }
 
     /** {@code [native]} table — its presence alone marks the project as native-image-eligible. */

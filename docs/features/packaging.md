@@ -9,7 +9,7 @@ default.
 |---|---|---|---|
 | **Thin jar** | default | `jk build` | no |
 | **Assembly jar** | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` | no |
-| **Shrunk jar** | `[shrink]` table (+ shrink plugin) | `jk build` | yes (opt-in) |
+| **Shrunk jar** | `[application] assembly = "shrink"` | `jk assembly` / `jk build` | yes (opt-in) |
 | **Spring Boot jar** | spring-boot plugin | `jk build` | plugin-owned |
 
 ## Thin jar (default)
@@ -56,15 +56,20 @@ Sample: [examples/assembly-app/](examples/assembly-app/).
 ```toml
 [application]
 main = "com.example.App"
-
-[shrink]
-# optional: obfuscate = false   # default
-# optional: keep = ["-keep class com.example.** { *; }"]
-# optional: keep-files = ["proguard-rules.pro"]
+assembly = "shrink"   # R8 over classes + runtime closure → small fat jar
 ```
 
-Enable the first-party shrink plugin (see plugin docs / workspace conventions). Build summary
-labels size before → after. **Not** on by default.
+Optional keep rules / R8 version still live under `[shrink]` when you need them:
+
+```toml
+[shrink]
+# keep = ["-keep class com.example.** { *; }"]
+# keep-files = ["proguard-rules.pro"]
+# obfuscate = false   # default
+```
+
+A bare `[shrink]` table (without `assembly = "shrink"`) still enables the packager for
+backward compatibility. Prefer `assembly = "shrink"`. Build labels size before → after.
 
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 

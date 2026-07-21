@@ -1,8 +1,9 @@
 # The built-in shrink build plugin's declarative manifest: R8 in --classfile mode over the
 # application + its runtime closure, packaged as a slim self-contained jar — the fat-jar
 # counterpart of Android's release shrinking, for CLI tools, functions, and services that
-# ship a single artifact. Deliberately opt-in ([shrink] present = on): reflection-heavy
-# frameworks need keep rules the user owns, and jk never guesses.
+# ship a single artifact. Opt-in via [application] assembly = "shrink" (preferred) or a
+# [shrink] table (keep rules / r8-version). Reflection-heavy frameworks need keep rules
+# the user owns; jk never guesses.
 
 [plugin]
 id        = "shrink"

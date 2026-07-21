@@ -176,9 +176,24 @@ public record JkBuild(
     /** The built-in spring-boot plugin's id / table name. */
     public static final String SPRING_BOOT_ID = "spring-boot";
 
-    /** {@code [application].assembly} — bundle an all-in-one assembly jar. */
+    /**
+     * {@code [application].assembly} packaging mode: off, fat assembly jar, or R8 shrink packager.
+     */
+    public AssemblyMode assemblyMode() {
+        return application.map(Application::assembly).orElse(AssemblyMode.OFF);
+    }
+
+    /**
+     * True when a classic fat assembly jar is requested ({@code assembly = true}). False for {@code
+     * assembly = "shrink"} (that path uses the shrink packager on the main artifact instead).
+     */
     public boolean assembly() {
-        return application.map(Application::assembly).orElse(false);
+        return assemblyMode() == AssemblyMode.FAT;
+    }
+
+    /** True when {@code assembly = "shrink"} (or equivalent) is set. */
+    public boolean assemblyShrink() {
+        return assemblyMode() == AssemblyMode.SHRINK;
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
@@ -558,12 +573,41 @@ public record JkBuild(
     }
 
     /**
-     * {@code [application]} block. Presence alone marks an application; absent means library.
+     * How {@code [application].assembly} packages the app.
+     *
+     * <ul>
+     *   <li>{@link #OFF} — thin main jar only
+     *   <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assembly})
+     *   <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
+     * </ul>
      */
-    public record Application(String main, boolean assembly) {
+    public enum AssemblyMode {
+        OFF,
+        FAT,
+        SHRINK;
+
+        /** Fat or shrink — some form of bundled runtime packaging is requested. */
+        public boolean isBundled() {
+            return this != OFF;
+        }
+    }
+
+    /**
+     * {@code [application]} block. Presence alone marks an application; absent means library.
+     *
+     * @param assembly packaging mode ({@link AssemblyMode#FAT} / {@link AssemblyMode#SHRINK} /
+     *     {@link AssemblyMode#OFF})
+     */
+    public record Application(String main, AssemblyMode assembly) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
+            if (assembly == null) assembly = AssemblyMode.OFF;
+        }
+
+        /** Convenience for importers: {@code true} → fat assembly, {@code false} → off. */
+        public Application(String main, boolean fatAssembly) {
+            this(main, fatAssembly ? AssemblyMode.FAT : AssemblyMode.OFF);
         }
     }
 

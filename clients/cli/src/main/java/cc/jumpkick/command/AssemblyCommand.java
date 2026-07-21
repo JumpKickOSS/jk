@@ -15,10 +15,11 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk assembly} — build the assembly (fat) jar. Same packaging graph as {@code jk build} with
- * {@code [application] assembly = true}; does not invent a second graph.
+ * {@code jk assembly} — build a bundled app jar. Same packaging graph as {@code jk build} when
+ * {@code [application] assembly = true} (fat) or {@code assembly = "shrink"} (R8); does not invent a
+ * second graph.
  *
- * <p>Alias: {@code jk assemble}. Errors with a one-line fix when {@code assembly} is not set.
+ * <p>Alias: {@code jk assemble}. Errors with a one-line fix when {@code assembly} is off.
  */
 public final class AssemblyCommand implements CliCommand {
 
@@ -31,7 +32,7 @@ public final class AssemblyCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Build an assembly jar — requires [application] assembly = true";
+        return "Build an assembly/shrink jar — requires [application] assembly = true or \"shrink\"";
     }
 
     @Override
@@ -54,14 +55,16 @@ public final class AssemblyCommand implements CliCommand {
             return Exit.CONFIG;
         }
         JkBuild project = JkBuildParser.parse(toml);
-        if (!project.assembly()) {
+        if (!project.assemblyMode().isBundled()) {
             CliOutput.err(
                     """
                     jk assembly: assembly packaging is off — add to jk.toml:
 
                       [application]
                       main = "your.Main"   # optional but usual for a runnable jar
-                      assembly = true
+                      assembly = true        # fat jar (all deps)
+                      # or:
+                      # assembly = "shrink"  # R8 small fat jar
 
                     Then re-run `jk assembly` (or `jk build`). See docs/features/packaging.md.
                     """.stripIndent());

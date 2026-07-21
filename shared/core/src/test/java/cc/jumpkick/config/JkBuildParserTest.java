@@ -1337,6 +1337,25 @@ class JkBuildParserTest {
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.assembly()).isTrue();
+        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+    }
+
+    @Test
+    void application_assembly_shrink_enables_shrink_plugin_without_table() {
+        JkBuild parsed = JkBuildParser.parse(
+                PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        assertThat(parsed.isApplication()).isTrue();
+        assertThat(parsed.assembly()).isFalse();
+        assertThat(parsed.assemblyShrink()).isTrue();
+        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(parsed.pluginConfig("shrink")).isPresent();
+    }
+
+    @Test
+    void application_assembly_rejects_unknown_string() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[application]\nassembly = \"shadow\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("assembly");
     }
 
     @Test

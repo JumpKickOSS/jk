@@ -127,6 +127,8 @@ public final class JkBuildParser {
         Optional<JkBuild.NativeConfig> nativeConfig = parseNativeConfig(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = parsePluginTables(result, installedManifests);
+        // assembly = "shrink" enables the shrink packager without requiring an empty [shrink] table.
+        pluginConfigs = ensureShrinkForAssemblyMode(application, pluginConfigs, installedManifests);
         checkUnownedTables(result, moduleDir, plugins, installedManifests);
         deps = withPlatformContributions(deps, project, nativeConfig.isPresent(), pluginConfigs, installedManifests);
         JkBuild.Build build = parseBuild(result);
@@ -1236,8 +1238,33 @@ public final class JkBuildParser {
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
-        boolean assembly = Boolean.TRUE.equals(application.getBoolean("assembly"));
-        return Optional.of(new JkBuild.Application(main, assembly));
+        return Optional.of(new JkBuild.Application(main, parseAssemblyMode(application)));
+    }
+
+    /**
+     * {@code assembly = true} → fat jar; {@code assembly = "shrink"} → R8 packager; absent/false →
+     * off. Also accepts {@code "fat"} / {@code "assembly"} as synonyms for true.
+     */
+    private static JkBuild.AssemblyMode parseAssemblyMode(TomlTable application) {
+        if (!application.contains("assembly")) return JkBuild.AssemblyMode.OFF;
+        if (application.isBoolean("assembly")) {
+            return Boolean.TRUE.equals(application.getBoolean("assembly"))
+                    ? JkBuild.AssemblyMode.FAT
+                    : JkBuild.AssemblyMode.OFF;
+        }
+        if (application.isString("assembly")) {
+            String raw = application.getString("assembly");
+            String s = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+            return switch (s) {
+                case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
+                case "true", "fat", "assembly", "on" -> JkBuild.AssemblyMode.FAT;
+                case "false", "off", "none", "thin" -> JkBuild.AssemblyMode.OFF;
+                default -> throw new JkBuildParseException(
+                        "[application].assembly must be true, false, or \"shrink\" (got \"" + raw + "\")");
+            };
+        }
+        throw new JkBuildParseException(
+                "[application].assembly must be true, false, or \"shrink\" (got a non-bool/string value)");
     }
 
     /** Schema-validate each installed plugin's owned table into a {@link PluginConfig}. */
@@ -1248,6 +1275,36 @@ public final class JkBuildParser {
             if (table == null) continue;
             out.put(manifest.id(), PluginTableRegistry.validate(manifest, table));
         }
+        return out;
+    }
+
+    /**
+     * When {@code [application] assembly = "shrink"} and no {@code [shrink]} table is present, inject
+     * shrink plugin defaults so the shrunk-jar packager activates.
+     */
+    private static Map<String, PluginConfig> ensureShrinkForAssemblyMode(
+            Optional<JkBuild.Application> application,
+            Map<String, PluginConfig> pluginConfigs,
+            List<PluginDescriptor> installed) {
+        if (application.isEmpty() || application.get().assembly() != JkBuild.AssemblyMode.SHRINK) {
+            return pluginConfigs;
+        }
+        if (pluginConfigs.containsKey("shrink")) return pluginConfigs;
+        PluginDescriptor shrink = null;
+        for (PluginDescriptor m : installed) {
+            if ("shrink".equals(m.id()) || "shrink".equals(m.table())) {
+                shrink = m;
+                break;
+            }
+        }
+        if (shrink == null) {
+            throw new JkBuildParseException(
+                    "[application] assembly = \"shrink\" requires the built-in shrink plugin (not installed)");
+        }
+        // Empty [shrink] body → schema defaults (r8 version, no keep rules, no obfuscate).
+        TomlTable empty = Objects.requireNonNull(Toml.parse("[shrink]\n").getTable("shrink"));
+        Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);
+        out.put(shrink.id(), PluginTableRegistry.validate(shrink, empty));
         return out;
     }
 
