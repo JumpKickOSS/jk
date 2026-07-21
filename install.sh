@@ -228,10 +228,11 @@ fi
 # ---- activate --------------------------------------------------------------
 
 info "Running \`jk activate\`... This may download a JDK and optimize your installation."
-# Best-effort: activate needs a tty to pick a shell (CI/pipe installs have
-# none) and its failure must not abort the warm-up and bin/ consolidation
-# below — the install itself is already complete.
-run_jk activate || note "'jk activate' failed (no tty?); run 'jk activate <shell>' manually."
+# --yes: write shell integration without the interactive Yes/No wizard. install.sh
+# used to call bare `jk activate`, which opened a TUI over /dev/tty and waited for
+# a keypress even on automated/local installs. Failure must not abort warm-up —
+# the binary is already installed.
+run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
 
 # ---- warm the engine -------------------------------------------------------
 #
@@ -277,25 +278,9 @@ printf '\n'
 
 # ---- restart shell ---------------------------------------------------------
 #
-# Three cases:
-#   1. Real interactive shell (fd 0 + fd 1 are ttys): exec $SHELL directly.
-#   2. `curl … | bash` in a terminal (fd 0 is the pipe, but /dev/tty is
-#      reachable → INTERACTIVE): don't hijack the terminal — ask first, and if
-#      yes exec with stdin rebound to the terminal so the new shell is usable.
-#   3. No terminal (CI, Docker build, cron, NO_COLOR pipe): just print how to
-#      reload; exec'ing here would hang or detach.
+# Never block on a keypress here: install is finished. Cases that used to
+# `read` from /dev/tty (curl|bash) or silently `exec $SHELL` (local tty) made
+# the script feel hung after `jk activate`. Print how to pick up PATH/hooks;
+# the user reloads when ready.
 RELOAD_HINT="Open a new terminal or run 'exec \$SHELL' to start using jk."
-
-if [ -t 0 ] && [ -t 1 ] && [ -n "${SHELL:-}" ]; then
-  note "Restarting your shell ($SHELL) to apply changes..."
-  exec "$SHELL"
-elif [ "$INTERACTIVE" = 1 ] && [ -n "${SHELL:-}" ]; then
-  printf '%s    Reload your shell (%s) now to apply changes? [Y/n] %s' "$DIM" "$SHELL" "$RESET"
-  read -r reply </dev/tty || reply=""
-  case "$reply" in
-    [Nn]*) note "$RELOAD_HINT" ;;
-    *)     note "Restarting your shell ($SHELL)..."; exec "$SHELL" </dev/tty ;;
-  esac
-else
-  note "$RELOAD_HINT"
-fi
+note "$RELOAD_HINT"
