@@ -6,17 +6,35 @@ import cc.jumpkick.plugin.PluginManifest;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import org.junit.platform.engine.ConfigurationParameters;
+import org.junit.platform.engine.DiscoveryFilter;
+import org.junit.platform.engine.DiscoverySelector;
+import org.junit.platform.engine.EngineDiscoveryRequest;
+import org.junit.platform.engine.EngineExecutionListener;
+import org.junit.platform.engine.ExecutionRequest;
+import org.junit.platform.engine.TestDescriptor;
+import org.junit.platform.engine.TestEngine;
+import org.junit.platform.engine.UniqueId;
 import org.junit.platform.engine.discovery.ClassNameFilter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
+import org.junit.platform.engine.support.descriptor.ClassSource;
 
 /**
  * {@code jk test} child JVM: one-shot, list-only discovery, or pull worker ({@code RUN}/{@code DONE}).
  * Exit 0/1/2; protocol on stdout per {@link EventType}.
+ *
+ * <p>Supports both JUnit Platform 1.x (JUnit 5 / Spring Boot 3.x BOMs) and Platform 6.x without
+ * hard classpath links to JUnit-6-only types ({@code OutputDirectoryCreator}, etc.) so ServiceLoader
+ * can load this class when the project pins an older platform.
  */
 public final class TestRunner implements Plugin {
 
@@ -47,20 +65,14 @@ public final class TestRunner implements Plugin {
                 return runOneShot(parsed, writer);
             }
         } catch (LinkageError e) {
-            // A JUnit Platform that's missing or too old for the TestEngine SPI
-            // this runner is built against surfaces as a NoClassDefFound /
-            // NoSuchMethod against org.junit.platform.* — give an actionable
-            // hint instead of a raw stack trace. (Anything else is the user's
-            // own test code and falls through to the generic handler.)
             String where = String.valueOf(e.getMessage());
             if (where.contains("junit/platform") || where.contains("junit.platform")) {
                 System.err.println("jk-test-runner: incompatible JUnit Platform on the test classpath — "
                         + e.getClass().getSimpleName()
                         + ": "
                         + e.getMessage());
-                System.err.println("  jk drives the JUnit Platform TestEngine SPI; ensure "
-                        + "org.junit.platform:junit-platform-engine is on the test classpath "
-                        + "with a compatible version.");
+                System.err.println("  Ensure org.junit.platform:junit-platform-engine is on the test classpath "
+                        + "(Spring Boot: spring-boot-starter-test; bare projects: junit-jupiter).");
                 return 2;
             }
             System.err.println("jk-test-runner: " + e.getClass().getName() + ": " + e.getMessage());
@@ -75,21 +87,16 @@ public final class TestRunner implements Plugin {
 
     // --- mode 1: one-shot ----------------------------------------------------
 
-    /**
-     * Discover + execute everything reachable from {@code --scan-classpath}, emitting events as we
-     * go. Returns the exit code (0 on green).
-     */
     private static int runOneShot(Args args, JsonEventWriter writer) {
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
-        var engines = java.util.ServiceLoader.load(org.junit.platform.engine.TestEngine.class);
+        var engines = java.util.ServiceLoader.load(TestEngine.class);
         long planStart = System.nanoTime();
         for (var engine : engines) {
-            var uid = org.junit.platform.engine.UniqueId.root("[engine]", engine.getId());
+            var uid = UniqueId.root("[engine]", engine.getId());
             var descriptor = engine.discover(request, uid);
             emitDiscovery(descriptor, streaming);
-            var execRequest = makeExecutionRequest(descriptor, streaming);
-            engine.execute(execRequest);
+            engine.execute(makeExecutionRequest(descriptor, streaming));
         }
         long planMs = Math.max(0, (System.nanoTime() - planStart) / 1_000_000);
         streaming.emitPlanFinished(planMs);
@@ -98,29 +105,18 @@ public final class TestRunner implements Plugin {
 
     // --- mode 2: discovery ---------------------------------------------------
 
-    /**
-     * Walk the test plan and emit one {@link EventType#DISCOVERED} per top-level test class, plus a
-     * {@link EventType#DISCOVERY_TOTAL} with the {@code (classes, tests)} totals. Uses engine
-     * discovery only (not execute) so this completes in 100–300 ms even for big suites.
-     */
     private static void runListOnly(Args args, JsonEventWriter writer) {
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
-        var engines = java.util.ServiceLoader.load(org.junit.platform.engine.TestEngine.class);
+        var engines = java.util.ServiceLoader.load(TestEngine.class);
         for (var engine : engines) {
-            var uid = org.junit.platform.engine.UniqueId.root("[engine]", engine.getId());
+            var uid = UniqueId.root("[engine]", engine.getId());
             var descriptor = engine.discover(request, uid);
             emitDiscovery(descriptor, streaming);
         }
     }
 
-    /**
-     * Shared discovery emission used by both one-shot and list-only modes: walk the engine
-     * descriptor tree once, emit a DISCOVERED per class, then a DISCOVERY_TOTAL with cumulative
-     * counts. Single source of truth so the wire shape is identical regardless of which mode
-     * invoked it.
-     */
-    private static void emitDiscovery(org.junit.platform.engine.TestDescriptor root, StreamingListener listener) {
+    private static void emitDiscovery(TestDescriptor root, StreamingListener listener) {
         var counts = new int[] {0, 0}; // [classes, tests]
         for (var child : root.getChildren()) {
             walkAndEmit(child, listener, counts);
@@ -128,17 +124,11 @@ public final class TestRunner implements Plugin {
         listener.emitDiscoveryTotal(counts[0], counts[1]);
     }
 
-    /**
-     * Depth-first walk over the TestDescriptor tree. Emits a DISCOVERED event for every
-     * class-shaped CONTAINER and bumps the test counter for every TEST leaf. Counts mirror what a
-     * full execution would find, but without running anything.
-     */
-    private static void walkAndEmit(
-            org.junit.platform.engine.TestDescriptor node, StreamingListener listener, int[] counts) {
-        boolean isContainer = node.getType() == org.junit.platform.engine.TestDescriptor.Type.CONTAINER;
-        boolean isTest = node.getType() == org.junit.platform.engine.TestDescriptor.Type.TEST;
+    private static void walkAndEmit(TestDescriptor node, StreamingListener listener, int[] counts) {
+        boolean isContainer = node.getType() == TestDescriptor.Type.CONTAINER;
+        boolean isTest = node.getType() == TestDescriptor.Type.TEST;
         node.getSource().ifPresent(src -> {
-            if (src instanceof org.junit.platform.engine.support.descriptor.ClassSource cs && isContainer) {
+            if (src instanceof ClassSource cs && isContainer) {
                 listener.emitDiscovered(cs.getClassName());
                 counts[0]++;
             }
@@ -151,11 +141,9 @@ public final class TestRunner implements Plugin {
 
     // --- mode 3: pull worker -------------------------------------------------
 
-    /** Pull worker: load engines once; stdin {@code RUN <fqcn>} / {@code DONE}. */
     private static int runPullMode(Args args, JsonEventWriter writer) throws Exception {
         var streaming = new StreamingListener(writer, args.workerId);
-        // Load engines once and reuse across all classes — keeps JIT warm.
-        var engines = java.util.ServiceLoader.load(org.junit.platform.engine.TestEngine.class).stream()
+        var engines = java.util.ServiceLoader.load(TestEngine.class).stream()
                 .map(java.util.ServiceLoader.Provider::get)
                 .toList();
 
@@ -170,14 +158,13 @@ public final class TestRunner implements Plugin {
                     continue;
                 }
                 String className = line.substring(4).trim();
-                var classRequest =
-                        new SimpleDiscoveryRequest(List.of(DiscoverySelectors.selectClass(className)), List.of());
+                var classRequest = discoveryRequest(
+                        List.of(DiscoverySelectors.selectClass(className)), List.of());
                 for (var engine : engines) {
-                    var uid = org.junit.platform.engine.UniqueId.root("[engine]", engine.getId());
+                    var uid = UniqueId.root("[engine]", engine.getId());
                     var descriptor = engine.discover(classRequest, uid);
-                    if (descriptor.getChildren().isEmpty()) continue; // engine has nothing for this class
-                    var execRequest = makeExecutionRequest(descriptor, streaming);
-                    engine.execute(execRequest);
+                    if (descriptor.getChildren().isEmpty()) continue;
+                    engine.execute(makeExecutionRequest(descriptor, streaming));
                 }
                 streaming.emitReady();
             }
@@ -187,50 +174,128 @@ public final class TestRunner implements Plugin {
 
     // --- shared --------------------------------------------------------------
 
-    private static org.junit.platform.engine.EngineDiscoveryRequest baseRequest(Args args) {
-        var selectors = new ArrayList<org.junit.platform.engine.DiscoverySelector>(
+    private static EngineDiscoveryRequest baseRequest(Args args) {
+        var selectors = new ArrayList<DiscoverySelector>(
                 DiscoverySelectors.selectClasspathRoots(Set.of(args.scanClasspath)));
-        var filters = new ArrayList<org.junit.platform.engine.DiscoveryFilter<?>>();
+        var filters = new ArrayList<DiscoveryFilter<?>>();
         if (args.filter != null && !args.filter.isEmpty()) {
             filters.add(ClassNameFilter.includeClassNamePatterns(args.filter));
         }
-        return new SimpleDiscoveryRequest(List.copyOf(selectors), List.copyOf(filters));
+        return discoveryRequest(List.copyOf(selectors), List.copyOf(filters));
     }
 
     /**
-     * Creates an {@link org.junit.platform.engine.ExecutionRequest} using the JUnit 6.x 6-arg
-     * factory. Falls back to the deprecated 3-arg constructor on JUnit 5.x (where
-     * {@link org.junit.platform.engine.support.store.NamespacedHierarchicalStore} and
-     * {@link org.junit.platform.engine.CancellationToken} don't exist).
-     *
-     * <p>The {@code NoClassDefFoundError} catch is the clean 5.x/6.x seam: the JVM resolves
-     * types lazily inside method bodies, so the try block only fails when those classes are
-     * genuinely absent at runtime.
+     * {@link EngineDiscoveryRequest} via {@link Proxy} so we never mention JUnit-6-only types
+     * ({@code OutputDirectoryCreator}) in class/method signatures — those types are absent on
+     * Spring Boot 3.x BOMs (Platform 1.11 / Jupiter 5.11).
      */
-    @SuppressWarnings("deprecation")
-    private static org.junit.platform.engine.ExecutionRequest makeExecutionRequest(
-            org.junit.platform.engine.TestDescriptor descriptor,
-            org.junit.platform.engine.EngineExecutionListener listener) {
+    private static EngineDiscoveryRequest discoveryRequest(
+            List<DiscoverySelector> selectors, List<DiscoveryFilter<?>> filters) {
+        InvocationHandler handler = (proxy, method, args) -> {
+            String name = method.getName();
+            return switch (name) {
+                case "getSelectorsByType" -> {
+                    Class<?> type = (Class<?>) args[0];
+                    yield selectors.stream().filter(type::isInstance).map(type::cast).toList();
+                }
+                case "getFiltersByType" -> {
+                    Class<?> type = (Class<?>) args[0];
+                    yield filters.stream().filter(type::isInstance).map(type::cast).toList();
+                }
+                case "getConfigurationParameters" -> EmptyConfigParams.INSTANCE;
+                case "getOutputDirectoryCreator" -> outputDirectoryCreator();
+                case "getDiscoveryListener" -> discoveryListenerNoOp(method.getReturnType());
+                case "equals" -> proxy == args[0];
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "toString" -> "jk-EngineDiscoveryRequest";
+                default -> {
+                    if (method.getReturnType() == boolean.class) yield false;
+                    if (method.getReturnType().isPrimitive()) {
+                        throw new UnsupportedOperationException("discovery request: " + name);
+                    }
+                    yield null;
+                }
+            };
+        };
+        return (EngineDiscoveryRequest) Proxy.newProxyInstance(
+                EngineDiscoveryRequest.class.getClassLoader(),
+                new Class<?>[] {EngineDiscoveryRequest.class},
+                handler);
+    }
+
+    /** JUnit 6 only: no-op {@code OutputDirectoryCreator}, or null if the type is absent. */
+    private static Object outputDirectoryCreator() {
         try {
-            // Jupiter requires requestLevelStore.getParent() to be present.
-            // Create a launcher-level root store then a child for this request.
-            var parentStore = new org.junit.platform.engine.support.store.NamespacedHierarchicalStore<
-                    org.junit.platform.engine.support.store.Namespace>(null);
-            var store = parentStore.newChild();
-            return org.junit.platform.engine.ExecutionRequest.create(
-                    descriptor,
-                    listener,
-                    EmptyConfigParams.INSTANCE,
-                    NoOpOutputDirectoryCreator.INSTANCE,
-                    store,
-                    org.junit.platform.engine.CancellationToken.disabled());
-        } catch (NoClassDefFoundError e) {
-            // JUnit 5.x: NamespacedHierarchicalStore / CancellationToken absent.
-            return new org.junit.platform.engine.ExecutionRequest(descriptor, listener, EmptyConfigParams.INSTANCE);
+            Class<?> iface = Class.forName("org.junit.platform.engine.OutputDirectoryCreator");
+            Path tmp = Path.of(System.getProperty("java.io.tmpdir", "/tmp"));
+            return Proxy.newProxyInstance(
+                    iface.getClassLoader(),
+                    new Class<?>[] {iface},
+                    (proxy, method, args) -> switch (method.getName()) {
+                        case "getRootDirectory" -> tmp;
+                        case "createOutputDirectory" -> null;
+                        case "equals" -> proxy == args[0];
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "toString" -> "jk-NoOpOutputDirectoryCreator";
+                        default -> null;
+                    });
+        } catch (ClassNotFoundException e) {
+            return null;
         }
     }
 
-    /** Parsed CLI args. */
+    private static Object discoveryListenerNoOp(Class<?> returnType) {
+        if (returnType == null || returnType == void.class) return null;
+        try {
+            // EngineDiscoveryListener.NOOP on 1.10+ / 6.x when present as static field.
+            var noop = returnType.getField("NOOP").get(null);
+            return noop;
+        } catch (ReflectiveOperationException ignored) {
+            if (!returnType.isInterface()) return null;
+            return Proxy.newProxyInstance(
+                    returnType.getClassLoader(),
+                    new Class<?>[] {returnType},
+                    (proxy, method, args) -> {
+                        if (method.getReturnType() == boolean.class) return false;
+                        if (method.getReturnType() == int.class) return 0;
+                        return null;
+                    });
+        }
+    }
+
+    /**
+     * JUnit 6.x {@code ExecutionRequest.create(...)} when available; else the JUnit 5.x 3-arg
+     * constructor. No JUnit-6-only types appear in this method's signature.
+     */
+    @SuppressWarnings("deprecation")
+    private static ExecutionRequest makeExecutionRequest(
+            TestDescriptor descriptor, EngineExecutionListener listener) {
+        // Prefer JUnit 6 factory via reflection so linking this method never requires Platform 6.
+        try {
+            Class<?> storeClass =
+                    Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
+            Class<?> cancelClass = Class.forName("org.junit.platform.engine.CancellationToken");
+            Constructor<?> storeCtor = storeClass.getConstructor(storeClass);
+            Object parentStore = storeCtor.newInstance(new Object[] {null});
+            Object store = storeClass.getMethod("newChild").invoke(parentStore);
+            Object cancel = cancelClass.getMethod("disabled").invoke(null);
+            Object outDir = outputDirectoryCreator();
+            Method create = ExecutionRequest.class.getMethod(
+                    "create",
+                    TestDescriptor.class,
+                    EngineExecutionListener.class,
+                    ConfigurationParameters.class,
+                    Class.forName("org.junit.platform.engine.OutputDirectoryCreator"),
+                    storeClass,
+                    cancelClass);
+            return (ExecutionRequest)
+                    create.invoke(null, descriptor, listener, EmptyConfigParams.INSTANCE, outDir, store, cancel);
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
+            // JUnit 5.x: 3-arg constructor (Platform 1.x / Jupiter 5.x — Spring Boot 3 BOMs).
+            return new ExecutionRequest(descriptor, listener, EmptyConfigParams.INSTANCE);
+        }
+    }
+
     private record Args(Path scanClasspath, String filter, boolean listOnly, boolean pull, int workerId) {
 
         static Args parse(String[] argv) {
@@ -266,63 +331,7 @@ public final class TestRunner implements Plugin {
         }
     }
 
-    // --- inner helpers -------------------------------------------------------
-
-    /** Minimal {@link org.junit.platform.engine.EngineDiscoveryRequest} backed by fixed lists. */
-    private static final class SimpleDiscoveryRequest implements org.junit.platform.engine.EngineDiscoveryRequest {
-        private final List<org.junit.platform.engine.DiscoverySelector> selectors;
-        private final List<org.junit.platform.engine.DiscoveryFilter<?>> filters;
-
-        SimpleDiscoveryRequest(
-                List<org.junit.platform.engine.DiscoverySelector> selectors,
-                List<org.junit.platform.engine.DiscoveryFilter<?>> filters) {
-            this.selectors = selectors;
-            this.filters = filters;
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public <T extends org.junit.platform.engine.DiscoverySelector> List<T> getSelectorsByType(Class<T> type) {
-            return selectors.stream().filter(type::isInstance).map(type::cast).toList();
-        }
-
-        @Override
-        @SuppressWarnings("unchecked")
-        public <T extends org.junit.platform.engine.DiscoveryFilter<?>> List<T> getFiltersByType(Class<T> type) {
-            return filters.stream().filter(type::isInstance).map(type::cast).toList();
-        }
-
-        @Override
-        public org.junit.platform.engine.ConfigurationParameters getConfigurationParameters() {
-            return EmptyConfigParams.INSTANCE;
-        }
-
-        /** JUnit 6.x: provide a no-op creator so Jupiter doesn't fall through to the default throw. */
-        @Override
-        public org.junit.platform.engine.OutputDirectoryCreator getOutputDirectoryCreator() {
-            return NoOpOutputDirectoryCreator.INSTANCE;
-        }
-    }
-
-    /** No-op {@link org.junit.platform.engine.OutputDirectoryCreator} — added in JUnit 6.x. */
-    private static final class NoOpOutputDirectoryCreator implements org.junit.platform.engine.OutputDirectoryCreator {
-        static final NoOpOutputDirectoryCreator INSTANCE = new NoOpOutputDirectoryCreator();
-        private static final java.nio.file.Path TMP =
-                java.nio.file.Path.of(System.getProperty("java.io.tmpdir", "/tmp"));
-
-        @Override
-        public java.nio.file.Path getRootDirectory() {
-            return TMP;
-        }
-
-        @Override
-        public java.nio.file.Path createOutputDirectory(org.junit.platform.engine.TestDescriptor descriptor) {
-            return null; // no per-test output directory
-        }
-    }
-
-    /** ConfigurationParameters implementation that returns empty/false for all keys. */
-    private static final class EmptyConfigParams implements org.junit.platform.engine.ConfigurationParameters {
+    private static final class EmptyConfigParams implements ConfigurationParameters {
         static final EmptyConfigParams INSTANCE = new EmptyConfigParams();
 
         @Override
