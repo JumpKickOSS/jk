@@ -30,7 +30,8 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   (`~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
   **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
-  **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=cores, `1`=serial, `N`=cap),
+  **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
+  cgroup quota when present else `availableProcessors()`, `1`=serial, `N`=cap — JK-1084),
   still RAM-clamped by `PluginSlots`. Do not grow the engine default toward multi-GiB “just
   in case”; CI may raise `max-heap-mb` when needed.
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent

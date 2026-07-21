@@ -86,12 +86,16 @@ live worker JVMs (`HeapPlan`).
 
 | Value | Meaning |
 |---|---|
-| omit / `0` | All cores (default) |
+| omit / `0` | All **effective** cores (default) |
 | `1` | Serial (`-j1`) |
 | `N` | Cap at N concurrent modules |
 
+**Effective cores** (JK-1084): cgroup CPU quota when readable (Docker/k8s `cpu.max` /
+cfs_quota), else `Runtime.availableProcessors()`. So `jobs = 0` on a 2-CPU container uses 2,
+not the host’s 64. Memory is still free-RAM / HeapPlan — not a second memory probe.
+
 ```bash
-jk build              # parallel, up to cores (and free RAM)
+jk build              # parallel, up to effective cores (and free RAM)
 jk build -j1          # serial
 jk build -j4          # at most 4 modules at once
 jk build -w 2         # 2 test-runner JVMs *per module* (within -j)

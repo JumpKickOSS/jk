@@ -11,11 +11,14 @@ import java.util.function.IntSupplier;
  * <p>Semantics (same for CLI {@code -j}/{@code --jobs}, {@code [engine] jobs}, {@code JK_JOBS}):
  *
  * <ul>
- *   <li><b>absent / default</b> — all cores ({@link Runtime#availableProcessors()})
- *   <li><b>0</b> — all cores (explicit)
+ *   <li><b>absent / default</b> — all effective cores ({@link AvailableCpus#count()})
+ *   <li><b>0</b> — all effective cores (explicit)
  *   <li><b>1</b> — serial
  *   <li><b>N &gt; 1</b> — cap at N
  * </ul>
+ *
+ * <p>{@link AvailableCpus} prefers cgroup CPU quota (containers) over a bare host
+ * {@link Runtime#availableProcessors()} when the quota is readable (JK-1084).
  *
  * <p>Always resolves to a positive concurrency. Free-RAM may still reduce live worker JVMs via
  * {@code HeapPlan}/{@code PluginSlots}; this value is the <em>requested</em> ceiling.
@@ -29,7 +32,7 @@ public final class Jobs {
      * negative → cores (invalid treated as default).
      */
     public static int effective(Integer spec) {
-        return effective(spec, () -> Math.max(1, Runtime.getRuntime().availableProcessors()));
+        return effective(spec, AvailableCpus::count);
     }
 
     /** As {@link #effective(Integer)} with an injectable core count (tests). */
