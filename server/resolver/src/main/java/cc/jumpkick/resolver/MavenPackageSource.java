@@ -219,7 +219,7 @@ public final class MavenPackageSource implements PackageSource {
         }
         List<Term> immutable = List.copyOf(out);
         depsCache.put(key, immutable);
-        prefetchVersionsAsync(immutable);
+        prefetchTransitiveAsync(immutable);
         return immutable;
     }
 
@@ -275,15 +275,40 @@ public final class MavenPackageSource implements PackageSource {
         return String.join(",", excl.stream().sorted().toList());
     }
 
-    private void prefetchVersionsAsync(List<Term> deps) {
+    /**
+     * Speculative I/O for children of a just-expanded package (JK-1088):
+     *
+     * <ul>
+     *   <li>When a child has an exact or soft-prefer pin, prefetch that GAV's <b>POM</b> (and let
+     *       {@link EffectivePomBuilder} warm its cache) so the next decision hits local-first.
+     *   <li>When the child needs a full version list (open range, no prefer), prefetch
+     *       maven-metadata as before.
+     * </ul>
+     */
+    private void prefetchTransitiveAsync(List<Term> deps) {
         for (Term dep : deps) {
             String pkg = dep.pkg();
+            String pin = dep.versions().asExactSingleton().or(() -> preferredVersion(pkg)).orElse(null);
+            if (pin != null) {
+                Coordinate child = withVersion(pkg, pin);
+                JkThreads.io().execute(() -> {
+                    try {
+                        prefetchSlots.acquire();
+                        try {
+                            // Raw POM into repos/<name>/ only — avoid synchronized EffectivePomBuilder
+                            // so sibling prefetches stay parallel. Parent chains still walk on first
+                            // real build(); local-first then makes those cheap.
+                            repos.tryFetchPom(child);
+                        } finally {
+                            prefetchSlots.release();
+                        }
+                    } catch (Exception ignored) {
+                        // best-effort; sync path surfaces real failures
+                    }
+                });
+                continue;
+            }
             if (versionCache.containsKey(pkg)) continue;
-            // Soft-prefer pins let the solver seed a singleton without metadata — do not
-            // eagerly fetch maven-metadata for those GAs (JK-1088).
-            if (preferredVersion(pkg).isPresent()) continue;
-            // Exact child constraints do not need a version index on the happy path either.
-            if (dep.versions().asExactSingleton().isPresent()) continue;
             JkThreads.io().execute(() -> {
                 try {
                     prefetchSlots.acquire();
