@@ -21,16 +21,23 @@ After `jk build` / `jk test`, open `target/jk-chrome-profile.json` in Perfetto o
 Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremental-zinc-decision.md)
 (JK-1046 — stay on ABI; Zinc deferred).
 
-## Warm pool go/no-go (ticket-1030 / JK-1049)
+## Warm pool / AOT go-no-go (ticket-1030 / JK-1049)
 
-**Decision: DEFER** (reaffirmed 2026-07-21 on **Temurin 25**) — see [warm-pool-bench.md](warm-pool-bench.md).
+**Decision: DEFER warm pool**; **keep PluginAot for `java …` workers**. See [warm-pool-bench.md](warm-pool-bench.md).
 
-- **Graal is ineligible** for worker AOT (`PluginAot.eligible`); measure with `--jdk temurin-25`.
-- Temurin rebuild: AOT-on **~496 ms** vs AOT-off **~485 ms** (n=7) — **no clear AOT win**.
-- Both arms are **cold forks**; warm *pool* is not on main and must beat AOT-on HotSpot.
+| Process | Temurin AOT-on vs off |
+|---------|------------------------|
+| Bare `javac` | ~noise (496 vs 485 ms full rebuild) |
+| **`java … java-compiler` PluginMain** | **~1.7×** (172 vs 299 ms microbench) |
+| **`java … kotlin-compiler` PluginMain** | modest/noise on hello-kotlin |
+
+- **Graal host is ineligible** for worker AOT. Engine + workers need HotSpot 25+ (Temurin).
+- ForkedJavac now maps AOT like kotlinc (was missing).
 
 ```bash
-JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project
+JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project   # bare javac path
+./scripts/plugin-worker-aot-bench.sh kotlin /path/to/hello-kotlin
+./gradlew :engine:test --tests ForkedJavacAotBenchTest -Dorg.gradle.java.home=$HOME/.sdkman/candidates/java/25.0.3-tem
 ```
 
 ## Engine heap monorepo (JK-1075)

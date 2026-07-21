@@ -35,25 +35,58 @@ So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was 
 
 There is no “warm process” arm without a prototype. **A** is “cold process start, AOT-accelerated”; **B** is “cold process start, no AOT.”
 
-## 2026-07-21 — Temurin 25.0.3 (`25.0.3-tem`)
+## Process shapes (what AOT can attach to)
 
-**Fixture:** `jk-examples/examples/spring-boot-hello`  
-**Command:** `jk build --skip-tests --rebuild --jdk temurin-25` (n=7, median of CLI “took”)  
-**Compiler process (ps):**  
-`/…/25.0.3-tem/bin/javac … -J-XX:AOTCache=…/javac-9ae6aacc8f2c4999.aot` when AOT on.
+| Path | Process | AOT today | Typical when |
+|------|---------|-----------|----------------|
+| Bare **`javac`** | `javac -J-XX:AOTCache=…` | yes (`PluginAot.javacFlags`) | Default Java compile (no source-gen AP) |
+| **`java … PluginMain`** java-compiler | ToolProvider/javac *inside* worker | yes (`javaCompilerFlags`, wired 2026-07-21) | After project proves source-generating APs |
+| **`java … PluginMain`** kotlin-compiler | Kotlin Build Tools API | yes (`kotlincFlags`) | All Kotlin compiles |
+| Engine itself | `java -cp jk-engine.jar` | separate engine `.aot` | Always |
 
-| Arm | Median wall | Raw (ms) |
-|-----|-------------:|----------|
-| **A — Temurin + AOT map** | **496 ms** | 473–528 |
-| **B — Temurin, AOT off** | **485 ms** | 478–500 |
+**Hypothesis (confirmed for java-compiler worker):** AOT helps **`java …` worker JVMs** more than the thin **`javac`** launcher. Bare-javac AOT is noise; plugin-worker AOT can cut cold start.
 
-**Delta: AOT ≈ flat / slightly slower (~2%) on this fixture — modest at best; no clear win.**
+## 2026-07-21 — Temurin 25.0.3 results
 
-Training: first Temurin compile after deleting `javac-*.aot` produced a new cache within ~2s (background trainer).
+### A. Bare `javac` (spring-boot-hello full rebuild)
 
-### Earlier invalid Graal runs (for the record)
+CLI median n=7, `--rebuild --jdk temurin-25`. Process: `…/temurin…/bin/javac -J-XX:AOTCache=…`.
 
-When the toolchain was Graal, AOT-on vs AOT-off medians were ~612 vs ~621 ms — both pure cold forks; treat as **void**.
+| Arm | Median |
+|-----|--------:|
+| AOT-on | **496 ms** |
+| AOT-off | **485 ms** |
+
+**No clear win** (noise / slightly against AOT).
+
+### B. `java … jk-java-compiler` PluginMain (microbench)
+
+`ForkedJavacAotBenchTest` on **Temurin** host (Gradle `-Dorg.gradle.java.home=…/25.0.3-tem`), n=7 after train:
+
+| Arm | Median worker wall |
+|-----|-------------------:|
+| AOT-on | **172 ms** |
+| AOT-off | **299 ms** |
+
+**~1.7× faster with AOT** (~42% less wall). Samples: on 130–243; off 247–418.  
+stderr: `AOT cache ready for java-compiler worker (TEMURIN 25.0.3)`.
+
+Same microbench on **Graal** host: ~252 vs ~249 ms (void — ineligible).
+
+### C. `java … jk-kotlin-compiler` PluginMain (hello-kotlin)
+
+Chrome `compile-kotlin` duration, 3× `--rebuild --jdk temurin-25` after train:
+
+| Arm | compile-kotlin (approx) |
+|-----|------------------------:|
+| AOT-on | **486–497 ms** |
+| AOT-off | **495–509 ms** |
+
+**Modest / noise** on this tiny project (full pipeline ~500–600 ms). Larger Kotlin modules may show more; re-run with a fatter corpus if needed.
+
+### Earlier invalid Graal bare-javac runs
+
+~612 vs ~621 ms — both pure cold forks; **void**.
 
 ## Decision: **DEFER warm pool** (reaffirmed)
 

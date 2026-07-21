@@ -102,33 +102,55 @@ public final class PluginAot {
         return List.of();
     }
 
-    // ---- kotlinc plugin -------------------------------------------------------------------
+    // ---- plugin workers (java -cp … PluginMain) -------------------------------------------
 
     /**
-     * JVM flags to prepend to the kotlinc plugin's {@code java} spawn: {@code -XX:AOTCache=…} when a
-     * cache exists for (host JDK, effective GC, plugin classpath), else empty — kicking off the
-     * caller-supplied trainer in the background when the host qualifies. The classpath is part of
-     * the key because the Kotlin compiler IS the plugin's app classpath: a Kotlin-version bump must
-     * retrain. Never blocks, never throws.
+     * JVM flags for a forked plugin worker ({@code java … -cp <plugin> PluginMain …}): {@code
+     * -XX:AOTCache=…} when a cache exists for (host JDK, GC, classpath + tool tag), else empty —
+     * and kick off a background trainer when the host is HotSpot 25+. The classpath is part of the
+     * key because the plugin <em>is</em> the app (Kotlin compiler, java-compiler ToolProvider host,
+     * …). Never blocks, never throws.
+     *
+     * <p>{@code tool} is a short prefix ({@code kotlinc}, {@code java-compiler}) so caches do not
+     * collide across plugin kinds that share a jar path shape.
      */
-    public static List<String> kotlincFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
+    public static List<String> pluginWorkerFlags(
+            String tool, Path javaHome, String workerClasspath, TrainerCommand trainer) {
         if (!enabled() || javaHome == null) return List.of();
         try {
             JdkId id = jdkId(javaHome);
             if (id == null) return List.of();
-            String gc = effectiveGc(JvmOptions.batchFlags(1)); // must match javaCommand, the actual spawn
-            Path cache = dir().resolve("kotlinc-" + key(id, gc, workerClasspath) + ".aot");
+            String gc = effectiveGc(JvmOptions.batchFlags(1)); // must match javaCommand / PluginLoader
+            String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
+            Path cache = dir().resolve(prefix + "-" + key(id, gc, workerClasspath) + ".aot");
             if (Files.exists(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             if (eligible(id) && !Files.exists(noaotMarker(cache))) {
-                trainAsync("kotlinc worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
+                trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
             }
         } catch (RuntimeException e) {
             // Same contract as javacFlags: never let the accelerator fail the build.
         }
         return List.of();
+    }
+
+    /**
+     * JVM flags to prepend to the kotlinc plugin's {@code java} spawn. Delegates to {@link
+     * #pluginWorkerFlags} with tool tag {@code kotlinc}.
+     */
+    public static List<String> kotlincFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
+        return pluginWorkerFlags("kotlinc", javaHome, workerClasspath, trainer);
+    }
+
+    /**
+     * JVM flags for the {@code jk-java-compiler} plugin spawn ({@code java -cp worker PluginMain}).
+     * This is the path that hosts ToolProvider/javac <em>inside</em> a short-lived JVM — distinct
+     * from bare {@link #javacFlags} on the {@code javac} launcher. Tool tag {@code java-compiler}.
+     */
+    public static List<String> javaCompilerFlags(Path javaHome, String workerClasspath, TrainerCommand trainer) {
+        return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, trainer);
     }
 
     // ---- keying ---------------------------------------------------------------------------

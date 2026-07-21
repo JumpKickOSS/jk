@@ -78,13 +78,17 @@ public final class ForkedJavac {
             // classpath travels in the spec, not on the plugin's classpath), so its own
             // jar is the whole classpath.
             boolean win = HostPlatform.isWindows();
-            Path javaExe =
-                    cc.jumpkick.jdk.JavaHomes.runningJavaHome().resolve("bin").resolve(win ? "java.exe" : "java");
+            Path hostJavaHome = cc.jumpkick.jdk.JavaHomes.runningJavaHome();
+            Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+            String workerCp = req.workerJar().toString();
+            // AOT for this *java* process (ToolProvider host) — not bare `javac` launcher AOT.
+            List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
+                    hostJavaHome,
+                    workerCp,
+                    (aotOutput, scratch) -> trainerCommand(req, hostJavaHome, aotOutput, scratch)));
+            jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
             List<String> command = cc.jumpkick.engine.plugin.PluginLoader.command(
-                    javaExe,
-                    req.workerJar().toString(),
-                    cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1),
-                    List.of("@" + spec.toAbsolutePath()));
+                    javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
             int exit = new cc.jumpkick.engine.plugin.PluginClient(PREFIX)
                     .on(PluginProtocol.DIAGNOSTIC, json -> {
                         String file = Jsonl.str(json, "file");
@@ -124,5 +128,40 @@ public final class ForkedJavac {
         Path spec = Files.createTempFile("jk-javac-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
         return spec;
+    }
+
+    /**
+     * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
+     * compile, recording with {@code -XX:AOTCacheOutput} while compiling a synthetic Hello.java.
+     */
+    private static List<String> trainerCommand(Request req, Path hostJavaHome, Path aotOutput, Path scratch)
+            throws IOException {
+        Path src = scratch.resolve("Hello.java");
+        Files.writeString(
+                src,
+                """
+                package demo;
+                public class Hello {
+                  public static void main(String[] args) {
+                    System.out.println("jk-java-compiler aot train");
+                  }
+                }
+                """);
+        Path classes = scratch.resolve("out");
+        Files.createDirectories(classes);
+        SpecWriter sw = new SpecWriter()
+                .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
+                .configInt("release", req.release() > 0 ? req.release() : 25)
+                .layout(Map.of("classesDir", classes, "sourceOutput", scratch.resolve("gen")))
+                .source(src);
+        Path trainSpec = scratch.resolve("train.spec");
+        Files.write(trainSpec, sw.lines(), StandardCharsets.UTF_8);
+        List<String> jvmFlags = new ArrayList<>();
+        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
+        jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
+        boolean win = HostPlatform.isWindows();
+        Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        return cc.jumpkick.engine.plugin.PluginLoader.command(
+                javaExe, req.workerJar().toString(), jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
     }
 }
