@@ -58,8 +58,22 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 |---|---|
 | Full `./gradlew test` | Nested CLI/engine suites and worker wiring |
 | `./gradlew dist` / `nativeCompile` | Until `jk release` ships |
-| `./gradlew installLocal` | Until `jk plugin install-local` / release side-load |
+| `./gradlew installLocal` | Prefer `jk plugin install-local` after `jk build` for workspace workers |
 | Most `plugins/*` | Until they join the workspace with `jk.toml` |
+
+## Side-load workers (no Gradle)
+
+After `jk build` produces assembly jars under `plugins/*/target/`:
+
+```bash
+jk plugin install-local
+# or: jk plugin install-local --modules test-runner,java-compiler
+# or: jk plugin install-local --dry-run
+```
+
+Copies each PluginMain assembly jar into
+`~/.jk/cache/repos/local/cc/jumpkick/jk-<name>/<ver>/` (same layout as Gradle
+`installLocal`) so the engine can locate workers.
 
 ## Roadmap (summary)
 

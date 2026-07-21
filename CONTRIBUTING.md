@@ -86,7 +86,7 @@ The client never embeds the engine (ticket-1020). Spawning uses
 |---|---|
 | `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
 | `./gradlew dist` / `nativeCompile` | Native-image + fat engine jar packaging |
-| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` (PluginJar.locate) |
+| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
 | Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
 
 ### Per-OS CI (JK-1073)
