@@ -30,3 +30,9 @@ compiler pool until a worktree prototype beats **AOT-on** forks on wall time *an
 **Decision: keep 256 MiB default** — peak ~36 MiB heap on a 200-module `build --skip-tests`
 (~15% of cap). See [engine-heap-monorepo.md](engine-heap-monorepo.md). Re-measure with
 `scripts/heap-monorepo-measure.sh`.
+
+## Action-key source hashing (JK-1068)
+
+`ActionKey` routes source (and plugin jar) content through `FileHashMemo`: thread-local walk
+cache (one content read per path per thread for key + why-rebuilt snapshot) plus settled
+disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path + SHA-256 hex).

@@ -66,4 +66,47 @@ class FileHashMemoTest {
             assertThat(FileHashMemo.lookup(f, size, settled)).isEqualTo("jar:settled");
         });
     }
+
+    @Test
+    void contentHash_reads_bytes_once_per_thread_walk(@TempDir Path dir) throws Exception {
+        Path f = Files.writeString(dir.resolve("Src.java"), "class Src {}");
+        long mtime = System.currentTimeMillis() - 60_000;
+        Files.setLastModifiedTime(f, java.nio.file.attribute.FileTime.fromMillis(mtime));
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.clearThreadCache();
+                FileHashMemo.resetStats();
+                String a = FileHashMemo.contentHash(f);
+                String b = FileHashMemo.contentHash(f);
+                assertThat(a).isEqualTo(b);
+                assertThat(FileHashMemo.contentHashInvocations()).isEqualTo(2);
+                assertThat(FileHashMemo.contentReads()).as("second call must not re-read").isEqualTo(1);
+                assertThat(FileHashMemo.threadHits()).isEqualTo(1);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Test
+    void contentHash_same_size_mtime_tick_still_sees_rewrite_via_thread_or_rehash(@TempDir Path dir)
+            throws Exception {
+        // Same class of bug as CasPrewriter: same-size rewrite within one mtime tick must not
+        // serve a stale hex from the disk memo alone. contentHash always re-stats; if mtime+size
+        // match disk memo it would be wrong — settle window forces re-hash for fresh files.
+        Path f = Files.writeString(dir.resolve("Same.java"), "AAAAAA");
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.clearThreadCache();
+                String first = FileHashMemo.contentHash(f);
+                Files.writeString(f, "BBBBBB"); // same length
+                FileHashMemo.clearThreadCache(); // new walk (simulates next poll)
+                // Fresh mtime → disk memo ignored → content re-read
+                String second = FileHashMemo.contentHash(f);
+                assertThat(second).isNotEqualTo(first);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 }

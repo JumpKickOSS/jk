@@ -7,18 +7,98 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Disk memo {@code (path, size, mtime) → content fingerprint} under {@code <cache>/hash-memo/}.
- * Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after settle.
- * Fail open (re-hash) on any I/O error.
+ * Content fingerprints for source/input files (JK-1068).
+ *
+ * <ul>
+ *   <li><b>Thread-local walk cache</b> — each absolute path is content-hashed at most once per
+ *       thread (so {@code ActionKey.forJavac} + {@code snapshotInputs} share one walk).
+ *   <li><b>Disk memo</b> — {@code (path, size, mtime) → hex} under {@code <cache>/hash-memo/}.
+ *       Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after
+ *       settle. Fail open (re-hash) on any I/O error.
+ * </ul>
  */
 public final class FileHashMemo {
 
     /** Distrust stat-identity for files modified within this window (mtime-granularity guard). */
     private static final long SETTLE_MS = 2_000;
 
+    /** Absolute-path → hex for the current thread (request / pipeline worker). */
+    private static final ThreadLocal<Map<String, String>> THREAD_CACHE =
+            ThreadLocal.withInitial(HashMap::new);
+
+    private static final AtomicLong CONTENT_HASH_INVOCATIONS = new AtomicLong();
+    private static final AtomicLong THREAD_HITS = new AtomicLong();
+    private static final AtomicLong DISK_HITS = new AtomicLong();
+    private static final AtomicLong CONTENT_READS = new AtomicLong();
+
     private FileHashMemo() {}
+
+    /**
+     * SHA-256 hex of {@code file}'s contents, using thread-local then disk memo when safe. Streams
+     * the file (never slurp) on a miss. IOException propagates (caller decides).
+     */
+    public static String contentHash(Path file) throws IOException {
+        CONTENT_HASH_INVOCATIONS.incrementAndGet();
+        Path abs = file.toAbsolutePath().normalize();
+        long size = Files.size(abs);
+        long mtime = Files.getLastModifiedTime(abs).toMillis();
+        // Key includes size+mtime so a same-path rewrite never hits a stale thread entry.
+        String tkey = abs + "\0" + size + "\0" + mtime;
+        Map<String, String> thread = THREAD_CACHE.get();
+        String cached = thread.get(tkey);
+        if (cached != null) {
+            THREAD_HITS.incrementAndGet();
+            return cached;
+        }
+
+        String token = lookup(abs, size, mtime);
+        if (token != null) {
+            DISK_HITS.incrementAndGet();
+            thread.put(tkey, token);
+            return token;
+        }
+
+        CONTENT_READS.incrementAndGet();
+        token = Hashing.sha256Hex(abs);
+        store(abs, size, mtime, token);
+        thread.put(tkey, token);
+        return token;
+    }
+
+    /** Drop this thread's walk cache (tests / long-lived worker threads). */
+    public static void clearThreadCache() {
+        THREAD_CACHE.remove();
+    }
+
+    /** Test seam: total {@link #contentHash} calls since process start (or last {@link #resetStats}). */
+    public static long contentHashInvocations() {
+        return CONTENT_HASH_INVOCATIONS.get();
+    }
+
+    public static long threadHits() {
+        return THREAD_HITS.get();
+    }
+
+    public static long diskHits() {
+        return DISK_HITS.get();
+    }
+
+    public static long contentReads() {
+        return CONTENT_READS.get();
+    }
+
+    /** Test seam. */
+    public static void resetStats() {
+        CONTENT_HASH_INVOCATIONS.set(0);
+        THREAD_HITS.set(0);
+        DISK_HITS.set(0);
+        CONTENT_READS.set(0);
+    }
 
     /**
      * The memoized fingerprint token for {@code file}, or {@code null} when absent, stale, or not

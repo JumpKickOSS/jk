@@ -5,7 +5,6 @@ import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,17 +40,8 @@ public final class ActionKey {
         opts.sort(Comparator.naturalOrder());
         sb.append(String.join(",", opts)).append('\n');
 
-        // Sources: include path + content hash so renaming or editing both
-        // invalidate the key.
-        List<Path> sortedSources = new ArrayList<>(request.sources());
-        sortedSources.sort(Comparator.comparing(Path::toString));
-        for (Path src : sortedSources) {
-            sb.append("source:")
-                    .append(src.toAbsolutePath().normalize())
-                    .append(':')
-                    .append(Hashing.sha256Hex(Files.readAllBytes(src)))
-                    .append('\n');
-        }
+        // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
+        appendSources(sb, request.sources());
 
         // Classpath: CAS paths already include the content hash in their layout.
         List<Path> cp = new ArrayList<>(request.classpath());
@@ -97,21 +87,13 @@ public final class ActionKey {
             sb.append("plugin:")
                     .append(plugin.id())
                     .append(':')
-                    .append(Hashing.sha256Hex(plugin.jar()))
+                    .append(FileHashMemo.contentHash(plugin.jar()))
                     .append(':')
                     .append(String.join(",", plugin.options()))
                     .append('\n');
         }
 
-        List<Path> sortedSources = new ArrayList<>(request.sources());
-        sortedSources.sort(Comparator.comparing(Path::toString));
-        for (Path src : sortedSources) {
-            sb.append("source:")
-                    .append(src.toAbsolutePath().normalize())
-                    .append(':')
-                    .append(Hashing.sha256Hex(Files.readAllBytes(src)))
-                    .append('\n');
-        }
+        appendSources(sb, request.sources());
 
         List<Path> cp = new ArrayList<>(request.classpath());
         cp.addAll(request.workerClasspath());
@@ -139,11 +121,18 @@ public final class ActionKey {
         return Hashing.sha256Hex(sb.toString());
     }
 
-    /** Snapshot of inputs that produced an action — for {@code jk why-rebuilt} diffs. */
+    /**
+     * Snapshot of inputs that produced an action — for {@code jk why-rebuilt} diffs. Source hashes
+     * reuse {@link FileHashMemo#contentHash} so a prior {@link #forJavac} on the same thread does
+     * not re-read file bytes.
+     */
     public static Map<String, String> snapshotInputs(CompileRequest request) throws IOException {
         Map<String, String> result = new LinkedHashMap<>();
-        for (Path src : request.sources()) {
-            result.put(src.toAbsolutePath().normalize().toString(), Hashing.sha256Hex(Files.readAllBytes(src)));
+        List<Path> sortedSources = new ArrayList<>(request.sources());
+        sortedSources.sort(Comparator.comparing(Path::toString));
+        for (Path src : sortedSources) {
+            Path abs = src.toAbsolutePath().normalize();
+            result.put(abs.toString(), FileHashMemo.contentHash(abs));
         }
         for (Path cp : request.classpath()) {
             // For classpath jars we record the path; the CAS layout encodes content.
@@ -155,6 +144,16 @@ public final class ActionKey {
         result.put("release", Integer.toString(request.release()));
         result.put("options", String.join(",", request.extraOptions()));
         return result;
+    }
+
+    /** Sorted source lines for action material — one content hash per path via {@link FileHashMemo}. */
+    private static void appendSources(StringBuilder sb, List<Path> sources) throws IOException {
+        List<Path> sortedSources = new ArrayList<>(sources);
+        sortedSources.sort(Comparator.comparing(Path::toString));
+        for (Path src : sortedSources) {
+            Path abs = src.toAbsolutePath().normalize();
+            sb.append("source:").append(abs).append(':').append(FileHashMemo.contentHash(abs)).append('\n');
+        }
     }
 
     /**

@@ -29,6 +29,39 @@ class ActionKeyTest {
     }
 
     @Test
+    void forJavac_then_snapshotInputs_hashes_each_source_once(@TempDir Path tempDir) throws IOException {
+        Path src = tempDir.resolve("Hello.java");
+        Files.writeString(src, "class Hello {}");
+        long mtime = System.currentTimeMillis() - 60_000;
+        Files.setLastModifiedTime(src, java.nio.file.attribute.FileTime.fromMillis(mtime));
+        CompileRequest request = CompileRequest.builder()
+                .sources(List.of(src))
+                .outputDir(tempDir.resolve("out"))
+                .release(25)
+                .build();
+        Path cache = tempDir.resolve("cache");
+        Files.createDirectories(cache);
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withCacheDir(cache),
+                () -> {
+                    try {
+                        FileHashMemo.clearThreadCache();
+                        FileHashMemo.resetStats();
+                        String key = ActionKey.forJavac("compile-main", request, "0.1.0");
+                        var snap = ActionKey.snapshotInputs(request);
+                        assertThat(key).isNotBlank();
+                        assertThat(snap).containsKey(src.toAbsolutePath().normalize().toString());
+                        assertThat(FileHashMemo.contentReads())
+                                .as("forJavac + snapshotInputs share one content read")
+                                .isEqualTo(1);
+                        assertThat(FileHashMemo.threadHits()).isGreaterThanOrEqualTo(1);
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+    }
+
+    @Test
     void editing_a_source_changes_the_key(@TempDir Path tempDir) throws IOException {
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
