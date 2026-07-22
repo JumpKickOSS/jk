@@ -156,7 +156,8 @@ public final class JUnitLauncher {
         Objects.requireNonNull(runtimeClasspath, "runtimeClasspath");
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(listener, "listener");
-        if (workers < 1) throw new IllegalArgumentException("workers must be >= 1");
+        // workers: 0 = auto (Mill-like min(jobs, classes) + heap clamp); ≥1 = explicit.
+        if (workers < 0) throw new IllegalArgumentException("workers must be >= 0 (0 = auto)");
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
         this.testEnv = testEnv == null ? Map.of() : Map.copyOf(testEnv);
 
@@ -168,10 +169,21 @@ public final class JUnitLauncher {
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
-        if (workers == 1) {
+        int resolvedWorkers = workers;
+        List<String> preDiscovered = null;
+        if (workers == 0) {
+            // Discover once so auto can size the pool; reuse the list when W>1.
+            preDiscovered = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
+        } else if (workers > 1) {
+            resolvedWorkers = TestWorkers.resolve(workers, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
+        }
+
+        if (resolvedWorkers <= 1) {
             return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir);
         }
-        return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir);
+        return runParallel(
+                javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered);
     }
 
     // -------- single-worker ---------------------------------------------
@@ -226,14 +238,29 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             Path testResultsDir)
             throws IOException, InterruptedException {
-        // 1. Discovery — one fork, list-only mode, harvest class FQCNs.
-        List<String> classes = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+        return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir, null);
+    }
+
+    private TestSummary runParallel(
+            Path javaBinary,
+            String classpath,
+            Path testClassesDir,
+            int workers,
+            TestProgressListener listener,
+            Path testResultsDir,
+            List<String> preDiscovered)
+            throws IOException, InterruptedException {
+        // 1. Discovery — one fork, list-only mode, harvest class FQCNs (skip if auto already did).
+        List<String> classes = preDiscovered != null
+                ? preDiscovered
+                : discoverClasses(javaBinary, classpath, testClassesDir, listener);
         if (classes.isEmpty()) {
             return new TestSummary(0, 0, 0, 0, List.of());
         }
         // Don't waste workers on small suites — N workers > N classes leaves
         // some idle waiting for a class that'll never come.
         int actualWorkers = Math.min(workers, classes.size());
+        actualWorkers = TestWorkers.clampByHeap(actualWorkers);
 
         // One shared report per format — all worker threads write into them (both are thread-safe).
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;

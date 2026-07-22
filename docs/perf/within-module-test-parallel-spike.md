@@ -1,6 +1,6 @@
 # Within-module JVM test parallelism spike (JK-1087)
 
-**Date:** 2026-07-20 · **Decision: GO for opt-in `-w`; NO-GO for default raise**
+**Date:** 2026-07-20 · **Updated 2026-07-22: default auto `-w0` (B3)**
 
 Companion: [test-parallelization.md](test-parallelization.md) (JK-1086 Phase A).
 
@@ -8,13 +8,14 @@ Companion: [test-parallelization.md](test-parallelization.md) (JK-1086 Phase A).
 
 | Mill stage | Mill behavior | jk today |
 |------------|---------------|----------|
-| Serial | One process, classes sequential | `-w1` (default) — `JUnitLauncher.runSingle` |
+| Serial | One process, classes sequential | **`-w1`** — `JUnitLauncher.runSingle` |
 | Module sharding | Parallel across modules | `-j` + optional `--parallel-tests` |
 | Static class groups | Fixed groups → N processes | Not productized (user would hand-split) |
-| Dynamic sharding | Pool of `NUM` processes pull classes | **`-w N`** — discover + `ConcurrentLinkedDeque` pull-queue |
+| Dynamic sharding | Pool of `NUM` processes pull classes | **`-w0` auto** or **`-w N`** — discover + pull-queue |
+| Auto process count | `min(jobs, #classes)` | **`TestWorkers.auto`** + `HeapPlan` clamp |
 | Biased dynamic | Prefer first process per module | Cross-module scheduler concern → **not** 1087 |
 
-**Conclusion:** For a **single module**, jk’s `-w N` is already Mill **dynamic class sharding** (pull-queue workers, class-level work units). Gaps vs Mill product quality: sandbox isolation, duration-aware bias, multi-module process reuse (Phase B/C of 1086).
+**Conclusion:** Within-module path matches Mill dynamic sharding; default is now **auto** (B3), not forced serial.
 
 ## Spike method
 
@@ -46,16 +47,17 @@ Ideal wall for 24 × 200 ms pure sleep ≈ 4.8 s serial; with overhead (disc
 
 ## Decisions
 
-### GO (ship as product story)
+### GO (shipped)
 
-1. **Treat `-w N` as supported Mill-class within-module parallel** — already implemented; document in guide + this note.
-2. **Keep default `-w1`** — opt-in only until isolation (Phase B) is real.
-3. **CI / monorepo may set `-w`** when suites are hermetic.
+1. **`-w N`** — Mill-class within-module parallel (pull-queue).
+2. **Default `-w0` (auto)** — `min(jobs, classCount)` + heap clamp (B3); use **`-w1`** for serial.
+3. **Per-worker temp** when W>1 (B1).
+4. **Guide recipes** (B2).
 
 ### NO-GO (for now)
 
-1. **Do not raise default workers** (would multiply RSS and flake classes: ports, temp, statics).
-2. **Do not implement Mill biased multi-module scheduling here** — that couples to `--parallel-tests` policy (1086 Phase C).
+1. **Do not default-on `--parallel-tests`** — isolation / flake budget (Phase C).
+2. **Do not implement Mill biased multi-module scheduling here** — couples to parallel-tests policy.
 3. **No second flag** for class parallel — `-w` is enough.
 
 ### Follow-up (implementation, not blocking 1087)

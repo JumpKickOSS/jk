@@ -49,7 +49,11 @@ public final class TestCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value("<N>", "Test-runner JVMs to fork per module (within -j). Default 1.", "-w", "--workers"),
+                Opt.value(
+                        "<N>",
+                        "Test-runner JVMs per module (class pull-queue). 0=auto min(jobs,classes) (default); 1=serial.",
+                        "-w",
+                        "--workers"),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -93,7 +97,8 @@ public final class TestCommand implements CliCommand {
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
-        int workerCount = workers != null && workers > 0 ? workers : 1;
+        // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
+        int workerCount = workers != null ? Math.max(0, workers) : 0;
 
         // Selective tests: --modules and/or --affected-since (intersection when both).
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {

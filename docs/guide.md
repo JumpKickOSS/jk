@@ -97,10 +97,11 @@ Unpinned `latest` selection still prefers the newest **stable** over a newer pre
 Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
 the conservative path.
 
-### Parallelism (`-j` / jobs)
+### Parallelism (`-j` jobs, `-w` test workers)
 
-One Mill-shaped knob for concurrent modules/workers (JK-1082). Free RAM may still reduce
-live worker JVMs (`HeapPlan`).
+Mill-shaped knobs (JK-1082 / JK-1087). Free RAM may still reduce live worker JVMs (`HeapPlan`).
+
+#### Module graph (`-j` / `--jobs`)
 
 | Value | Meaning |
 |---|---|
@@ -110,19 +111,7 @@ live worker JVMs (`HeapPlan`).
 
 **Effective cores** (JK-1084): cgroup CPU quota when readable (Docker/k8s `cpu.max` /
 cfs_quota), else `Runtime.availableProcessors()`. So `jobs = 0` on a 2-CPU container uses 2,
-not the host’s 64. Memory is still free-RAM / HeapPlan — not a second memory probe.
-
-```bash
-jk build              # parallel, up to effective cores (and free RAM)
-jk build -j1          # serial
-jk build -j4          # at most 4 modules at once
-jk build -w 2         # 2 test-runner JVMs *per module* (class pull-queue; default 1)
-jk build --parallel-tests   # also run tests across modules concurrently (opt-in)
-```
-
-Within a module, `-w N` is Mill-style **dynamic class sharding**: discover test classes, then N
-forked runners pull classes until empty (JK-1087). Default remains **1** (isolation / RSS).
-Cross-module test concurrency stays opt-in (`--parallel-tests`).
+not the host’s 64.
 
 | Layer | Setting |
 |---|---|
@@ -131,6 +120,61 @@ Cross-module test concurrency stays opt-in (`--parallel-tests`).
 | Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
 
 There is no separate `--parallel` / `--no-parallel` (removed; use `-j` / `-j1`).
+
+#### Within-module tests (`-w` / `--workers`) — Mill class sharding
+
+Discover test classes, then fork N runners that **pull** classes until empty (same idea as Mill
+`testParallelism` + `min(jobs, #classes)`).
+
+| Value | Meaning |
+|---|---|
+| omit / `0` | **Auto** (default): `min(jobs, classCount)`, then heap-clamped |
+| `1` | One test JVM (serial within the module) |
+| `N` | Cap at N runners (still ≤ class count; heap-clamped) |
+
+When `W > 1`, each runner gets its own `java.io.tmpdir` (isolation).
+
+#### Cross-module tests (`--parallel-tests`)
+
+By default only **one module runs tests at a time** (shared ports / temp / statics). Opt in to
+overlap module suites:
+
+```bash
+jk test --parallel-tests
+```
+
+#### Mill-like recipes
+
+```bash
+# Default: parallel compile (-j=cores); auto within-module test workers; serial across modules
+jk test
+
+# Closest to Mill defaults: cores for everything + cross-module tests too
+jk test -j0 -w0 --parallel-tests
+# -w0 is the default; write it only for clarity
+
+# Serial within-module (debug flakes / one JVM)
+jk test -w1
+
+# Cap class-shard pool without touching module concurrency
+jk test -w4
+
+# Build with tests, auto workers, modules serial for run-tests
+jk build
+
+# CI self-host (often also JK_AOT_TRAIN=off)
+export JK_AOT_TRAIN=off
+jk test -j0 --parallel-tests
+```
+
+| Axis | Default | Mill analogue |
+|---|---|---|
+| Module graph | `-j0` (cores) | `--jobs 0` |
+| Within-suite JVMs | `-w0` auto `min(jobs, classes)` | `testParallelism=true` |
+| Cross-module tests | serial | tasks share the jobs pool |
+| RAM veto | `HeapPlan` shrinks W | process count vs machine |
+
+Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 
 ### Lock-time trust
 

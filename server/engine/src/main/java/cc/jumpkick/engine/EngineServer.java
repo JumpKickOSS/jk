@@ -1274,7 +1274,7 @@ public final class EngineServer implements AutoCloseable {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
             String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            int workers = Jsonl.intValue(requestLine, "workers", 1);
+            int workers = Jsonl.intValue(requestLine, "workers", 0); // 0 = auto at run-tests
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -1666,7 +1666,7 @@ public final class EngineServer implements AutoCloseable {
                     plan,
                     entryDir,
                     cache,
-                    Jsonl.intValue(requestLine, "workers", 1),
+                    Jsonl.intValue(requestLine, "workers", 0),
                     etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
                     Jsonl.str(requestLine, "profile"),
                     Jsonl.bool(requestLine, "skipTests", false),
@@ -1695,7 +1695,8 @@ public final class EngineServer implements AutoCloseable {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
             String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            int workers = Jsonl.intValue(requestLine, "workers", 1);
+            // 0 = auto (JUnitLauncher resolves min(jobs, classes) + heap clamp).
+            int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
             boolean offline = Jsonl.bool(requestLine, "offline", false);
@@ -1706,7 +1707,7 @@ public final class EngineServer implements AutoCloseable {
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
             Path lockFile = entryDir.resolve("jk.lock");
-            int workerCount = Math.max(1, workers);
+            int workerCount = Math.max(0, workers);
 
             int estimatedTestCount =
                     cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/java"))
@@ -1790,7 +1791,7 @@ public final class EngineServer implements AutoCloseable {
             String entryDirStr = Jsonl.str(requestLine, "dir");
             String cacheStr = Jsonl.str(requestLine, "cache");
             String jdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            int workers = Jsonl.intValue(requestLine, "workers", 1);
+            int workers = Jsonl.intValue(requestLine, "workers", 0);
             String profile = Jsonl.str(requestLine, "profile");
             boolean skipTests = Jsonl.bool(requestLine, "skipTests", false);
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
@@ -1802,7 +1803,7 @@ public final class EngineServer implements AutoCloseable {
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
             Path lockFile = entryDir.resolve("jk.lock");
-            int workerCount = Math.max(1, workers);
+            int workerCount = Math.max(0, workers);
 
             int estimatedTestCount = skipTests
                     ? 0

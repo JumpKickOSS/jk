@@ -48,7 +48,11 @@ public final class BuildCommand implements CliCommand {
     public List<Opt> options() {
         List<Opt> opts = new java.util.ArrayList<>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value("<N>", "Test-runner JVMs to fork per module (within -j). Default 1.", "-w", "--workers"),
+                Opt.value(
+                        "<N>",
+                        "Test-runner JVMs per module when tests run. 0=auto min(jobs,classes) (default); 1=serial.",
+                        "-w",
+                        "--workers"),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -344,7 +348,7 @@ public final class BuildCommand implements CliCommand {
                         entryBuild,
                         cache,
                         jdksDir,
-                        workers != null ? workers : 1,
+                        workers != null ? Math.max(0, workers) : 0,
                         profileName,
                         buildOpts.skipTests,
                         global.verbose,
@@ -475,7 +479,7 @@ public final class BuildCommand implements CliCommand {
                         entryBuild,
                         cache,
                         jdksDir,
-                        workers != null ? workers : 1,
+                        workers != null ? Math.max(0, workers) : 0,
                         profileName,
                         buildOpts.skipTests,
                         global.verbose,
@@ -694,7 +698,7 @@ public final class BuildCommand implements CliCommand {
                             dir,
                             cache,
                             jdksDir,
-                            workers != null ? workers : 1,
+                            workers != null ? Math.max(0, workers) : 0,
                             profileName,
                             buildOpts.skipTests,
                             global.verbose,

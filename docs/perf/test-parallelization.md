@@ -9,7 +9,7 @@
 |---------|-----|
 | **`-j` / jobs** = effective cores | Module graph parallel is Mill-shaped and already shipped (JK-1082 / 1084). |
 | **Cross-module tests serial** | Hermeticity: shared ports, temp dirs, statics, DB. Opt-in: `--parallel-tests`. |
-| **`-w` / workers = 1** | One test JVM per module unless the user asks for more. |
+| **`-w` / workers = 0 (auto)** | `min(jobs, classCount)` + `HeapPlan` clamp (Mill `testSubprocessCount`). Explicit `-w1` = serial. |
 | **Do not default-on `--parallel-tests`** | Until isolation contract + measured monorepo win (Phase B/C). Prefer green over flaky speed. |
 
 CI may opt in via flags/env without changing laptop defaults.
@@ -30,7 +30,7 @@ jk’s gap is **(2)** product quality + **(3)** policy — not inventing a secon
 |-------|----------|------|
 | Cross-module test gate | Serial unless `Session.parallelTests` | `BuildPipelines` test gate; CLI `--parallel-tests` |
 | Module concurrency | `-j` / `Jobs` / cgroup cores | `Jobs`, `AvailableCpus`, scheduler width |
-| Per-module workers | `-w` default 1; `>1` = discovery + pull-queue JVMs | `JUnitLauncher` (`runSingle` / `runParallel`) |
+| Per-module workers | `-w` default **0 (auto)**; explicit `≥1`; pull-queue when W>1 | `TestWorkers` + `JUnitLauncher` |
 | Class distribution | Concurrent deque of FQCNs (pull); min(workers, classCount) | `JUnitLauncher.runParallel` |
 | RAM | Peak JVMs ≈ `modules×workers` if parallel-tests else `max(modules, workers)`; `HeapPlan` veto | `HeapPlan.requestedJvms` |
 | Engine heap | Thin coordinator (~256 MiB); workers own cost | JK-1075 |
@@ -116,9 +116,9 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 
 | # | Story | Outcome |
 |---|--------|---------|
-| B1 | Per-worker temp isolation (`W>1`) | Done (engine `JUnitLauncher`) |
-| B2 | Guide: how to run Mill-like `jk test -j0 -wN --parallel-tests` | Docs |
-| B3 | Auto `-w` policy (min(jobs, classes), HeapPlan clamp) | Default closer to Mill |
+| B1 | Per-worker temp isolation (`W>1`) | Done |
+| B2 | Guide: Mill-like recipes | Done (`docs/guide.md` Parallelism) |
+| B3 | Auto `-w` = min(jobs, classes) + heap clamp | Done (`TestWorkers`, default `-w0`) |
 | B4 | Serial tag / suite opt-out | Hermetic suites stay green |
 | C1 | Monorepo measure + CI profile | Data-driven default-on decision |
 | C2 | Default `--parallel-tests` (or CI-only) | Cross-module Mill/Gradle-parallel parity |
