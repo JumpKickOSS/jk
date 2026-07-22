@@ -675,7 +675,8 @@ public record JkBuild(
 
     /**
      * Optional {@code [build]} block: order-only deps, test plugin jars, lint, Kotlin plugins,
-     * KSP options, and extra source roots — never on a classpath or lockfile.
+     * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
+     * lockfile.
      */
     public record Build(
             List<String> orderAfter,
@@ -683,9 +684,11 @@ public record JkBuild(
             boolean lint,
             List<KotlinPluginDecl> kotlinPlugins,
             List<String> kspOptions,
-            List<String> extraSrc) {
+            List<String> extraSrc,
+            /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
+            Integer testWorkers) {
 
-        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of());
+        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -693,6 +696,7 @@ public record JkBuild(
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
+            if (testWorkers != null && testWorkers < 0) testWorkers = 0;
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -700,7 +704,16 @@ public record JkBuild(
             if (dirs.isEmpty()) return this;
             var all = new java.util.ArrayList<>(extraSrc);
             all.addAll(dirs);
-            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all);
+            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers);
+        }
+
+        /**
+         * Effective test-worker request for this module: module pin wins when set (hermetic
+         * opt-out); otherwise the CLI/global value ({@code 0} = auto).
+         */
+        public int effectiveTestWorkers(int cliOrGlobal) {
+            if (testWorkers != null) return testWorkers;
+            return Math.max(0, cliOrGlobal);
         }
 
         /** {@code orderAfter} plus every {@code testPluginJars} module, de-duplicated. */

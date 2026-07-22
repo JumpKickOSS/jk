@@ -1892,7 +1892,10 @@ public final class BuildPipelines {
                         runtimeCp.add(kotlinStdlib(ctx, cas));
                     }
 
-                    TestProgressListener listener = TestSupport.bridgeListener(ctx, in.workerCount(), in.verbose());
+                    // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
+                    // opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
+                    int testWorkers = projectUnderTest.build().effectiveTestWorkers(in.workerCount());
+                    TestProgressListener listener = TestSupport.bridgeListener(ctx, testWorkers, in.verbose());
                     TestSummary result;
                     // Serialize test execution across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures.
@@ -1905,7 +1908,7 @@ public final class BuildPipelines {
                                         ctx.require(TEST_CLASSES),
                                         runtimeCp,
                                         in.cache(),
-                                        in.workerCount(),
+                                        testWorkers,
                                         workerJars,
                                         testEnv,
                                         listener,

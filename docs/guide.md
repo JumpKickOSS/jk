@@ -174,6 +174,26 @@ jk test -j0 --parallel-tests
 | Cross-module tests | serial | tasks share the jobs pool |
 | RAM veto | `HeapPlan` shrinks W | process count vs machine |
 
+#### Per-module serial opt-out (hermetic suites)
+
+Modules that cannot share a JVM (fixed ports, statics, nested engines) pin workers in
+`jk.toml` — same role as Mill’s `def testParallelism = false`:
+
+```toml
+# Prefer the [test] table (Mill-shaped):
+[test]
+workers = 1          # serial within this module
+# parallel = false   # alias for workers = 1
+
+# Or under [build]:
+# [build]
+# test-workers = 1
+# test-parallel = false
+```
+
+The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0 --parallel-tests` stays
+safe for known hermetic modules. Use `-w1` on the CLI for a one-off serial run of everything.
+
 Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 
 ### Lock-time trust

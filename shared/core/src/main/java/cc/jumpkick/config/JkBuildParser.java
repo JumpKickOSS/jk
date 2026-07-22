@@ -140,7 +140,8 @@ public final class JkBuildParser {
                     build.lint(),
                     kotlinPlugins,
                     build.kspOptions(),
-                    build.extraSrc());
+                    build.extraSrc(),
+                    build.testWorkers());
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
@@ -1371,6 +1372,7 @@ public final class JkBuildParser {
                 "image",
                 "build",
                 "format",
+                "test",
                 "variants",
                 "libraries",
                 "jvm",
@@ -1456,59 +1458,96 @@ public final class JkBuildParser {
         return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, always));
     }
 
-    /** Optional {@code [build]} table; absent → {@link JkBuild.Build#EMPTY}. */
+    /**
+     * Optional {@code [build]} and/or {@code [test]} tables. Either may appear alone: a lone
+     * {@code [test] workers = 1} is enough for Mill-style serial opt-out without a {@code [build]}
+     * block. Absent both → {@link JkBuild.Build#EMPTY}.
+     */
     private static JkBuild.Build parseBuild(TomlTable root) {
         TomlTable build = root.getTable("build");
-        if (build == null) return JkBuild.Build.EMPTY;
+        TomlTable test = root.getTable("test");
+        if (build == null && test == null) return JkBuild.Build.EMPTY;
+
         List<String> orderAfter = new ArrayList<>();
-        TomlArray arr = build.getArray("order-after");
-        if (arr != null) {
-            for (int i = 0; i < arr.size(); i++) {
-                Object val = arr.get(i);
-                if (!(val instanceof String s))
-                    throw new JkBuildParseException("[build].order-after must be an array of strings");
-                if (!s.isBlank()) orderAfter.add(s);
-            }
-        }
         List<String> testPluginJars = new ArrayList<>();
-        TomlArray twj = build.getArray("test-plugin-jars");
-        if (twj != null) {
-            for (int i = 0; i < twj.size(); i++) {
-                Object val = twj.get(i);
-                if (!(val instanceof String s))
-                    throw new JkBuildParseException("[build].test-plugin-jars must be an array of strings");
-                if (!s.isBlank()) testPluginJars.add(s);
-            }
-        }
-        // `lint` defaults on (surface deprecation/unchecked); `lint = false`
-        // suppresses jk's default javac lint flags for users who don't want it.
-        boolean lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
-        // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
-        // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
-        // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
+        boolean lint = true;
         List<String> kspOptions = new ArrayList<>();
-        TomlArray kspOpts = build.getArray("ksp-options");
-        if (kspOpts != null) {
-            for (int i = 0; i < kspOpts.size(); i++) {
-                Object val = kspOpts.get(i);
-                if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
-                    throw new JkBuildParseException("[build].ksp-options must be an array of key=value strings");
-                }
-                kspOptions.add(s);
-            }
-        }
-        // [build] extra-src — additional module-relative source roots (variant overlays append).
         List<String> extraSrc = new ArrayList<>();
-        TomlArray es = build.getArray("extra-src");
-        if (es != null) {
-            for (int i = 0; i < es.size(); i++) {
-                Object val = es.get(i);
-                if (!(val instanceof String s) || s.isBlank())
-                    throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
-                extraSrc.add(s);
+        Integer testWorkers = null;
+
+        if (build != null) {
+            TomlArray arr = build.getArray("order-after");
+            if (arr != null) {
+                for (int i = 0; i < arr.size(); i++) {
+                    Object val = arr.get(i);
+                    if (!(val instanceof String s))
+                        throw new JkBuildParseException("[build].order-after must be an array of strings");
+                    if (!s.isBlank()) orderAfter.add(s);
+                }
+            }
+            TomlArray twj = build.getArray("test-plugin-jars");
+            if (twj != null) {
+                for (int i = 0; i < twj.size(); i++) {
+                    Object val = twj.get(i);
+                    if (!(val instanceof String s))
+                        throw new JkBuildParseException("[build].test-plugin-jars must be an array of strings");
+                    if (!s.isBlank()) testPluginJars.add(s);
+                }
+            }
+            // `lint` defaults on (surface deprecation/unchecked); `lint = false`
+            // suppresses jk's default javac lint flags for users who don't want it.
+            lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
+            // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
+            // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
+            // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
+            TomlArray kspOpts = build.getArray("ksp-options");
+            if (kspOpts != null) {
+                for (int i = 0; i < kspOpts.size(); i++) {
+                    Object val = kspOpts.get(i);
+                    if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
+                        throw new JkBuildParseException(
+                                "[build].ksp-options must be an array of key=value strings");
+                    }
+                    kspOptions.add(s);
+                }
+            }
+            // [build] extra-src — additional module-relative source roots (variant overlays append).
+            TomlArray es = build.getArray("extra-src");
+            if (es != null) {
+                for (int i = 0; i < es.size(); i++) {
+                    Object val = es.get(i);
+                    if (!(val instanceof String s) || s.isBlank())
+                        throw new JkBuildParseException(
+                                "[build].extra-src must be an array of directory strings");
+                    extraSrc.add(s);
+                }
+            }
+            // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = auto; omit = CLI).
+            // [build] test-parallel = false is an alias for test-workers = 1 (Mill testParallelism=false).
+            if (build.contains("test-workers")) {
+                Long n = build.getLong("test-workers");
+                if (n == null) throw new JkBuildParseException("[build].test-workers must be an integer >= 0");
+                if (n < 0) throw new JkBuildParseException("[build].test-workers must be >= 0");
+                testWorkers = n.intValue();
+            }
+            if (Boolean.FALSE.equals(build.getBoolean("test-parallel"))) {
+                testWorkers = 1;
             }
         }
-        return new JkBuild.Build(orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc);
+
+        // Optional [test] table (Mill-shaped): workers / parallel override [build] pins when set.
+        if (test != null) {
+            if (test.contains("workers")) {
+                Long n = test.getLong("workers");
+                if (n == null) throw new JkBuildParseException("[test].workers must be an integer >= 0");
+                if (n < 0) throw new JkBuildParseException("[test].workers must be >= 0");
+                testWorkers = n.intValue();
+            }
+            if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
+                testWorkers = 1;
+            }
+        }
+        return new JkBuild.Build(orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc, testWorkers);
     }
 
     /**

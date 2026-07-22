@@ -40,3 +40,7 @@ main-class = "cc.jumpkick.cli.Jk"
 # Opt-in so `jk native` / workspace cascade actually run native-image (not just compile).
 [native]
 always = true
+
+# Nested engines / shared sockets: keep within-module tests serial (Mill testParallelism=false).
+[test]
+workers = 1

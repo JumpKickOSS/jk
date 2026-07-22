@@ -59,7 +59,9 @@ jobs:
           # Side-load pure-jk assembly workers (also covered by installLocal above).
           jk plugin install-local
           # Full pure-jk suite including clients/cli (nested engines use isolated JK_STATE_DIR).
-          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          # -j0 / -w0 defaults: cores + auto within-module workers (Mill-like). Cross-module
+          # --parallel-tests stays off until Phase C isolation budget is measured.
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
           # Ship layout: native job has Graal — stage native CLI when present; dry-run plan first.
           jk release --skip-tests --dry-run
           jk release --skip-tests
@@ -94,7 +96,7 @@ jobs:
           jk build --skip-tests
           jk plugin install-local
           # Same pure-jk suite as native job; release stages bootstrap client (no Graal).
-          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
           jk release --skip-tests --skip-native --dry-run
           jk release --skip-tests --skip-native
 

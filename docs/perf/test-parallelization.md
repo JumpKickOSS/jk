@@ -95,11 +95,11 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 ## Phase B checklist (isolation — ship next)
 
 - [x] Per-worker `java.io.tmpdir` (+ `TMPDIR`) when `W > 1` (`JUnitLauncher.driveWorker`)  
+- [x] Auto default `-w = min(jobs, classCount)` + `HeapPlan` clamp (`TestWorkers`, default `-w0`)  
+- [x] Module serial opt-out: `[test] workers=1` / `parallel=false` (or `[build] test-workers`)  
 - [ ] Document sandbox contract for suite authors (ports, temp, statics) in guide  
 - [ ] Optional port-range helper / documented convention for fixed-port tests  
-- [ ] Failure lines always include module (+ class when sharded)  
-- [ ] Optional “serial” tag / config for known bad suites  
-- [ ] Auto default `-w = min(jobs, classCount)` (or capped) once isolation is trusted — **Mill parity**
+- [ ] Failure lines always include module (+ class when sharded)
 
 ## Phase C checklist (cross-module defaults)
 
@@ -119,7 +119,7 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 | B1 | Per-worker temp isolation (`W>1`) | Done |
 | B2 | Guide: Mill-like recipes | Done (`docs/guide.md` Parallelism) |
 | B3 | Auto `-w` = min(jobs, classes) + heap clamp | Done (`TestWorkers`, default `-w0`) |
-| B4 | Serial tag / suite opt-out | Hermetic suites stay green |
+| B4 | Module serial opt-out (`[test] workers=1`) | Done |
 | C1 | Monorepo measure + CI profile | Data-driven default-on decision |
 | C2 | Default `--parallel-tests` (or CI-only) | Cross-module Mill/Gradle-parallel parity |
 
