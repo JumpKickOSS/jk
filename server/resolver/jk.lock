@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.10.0-SNAPSHOT"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.0-SNAPSHOT", sha256 = "4dee464d1744472b9823c3a8ca19bf0d03126b79e6b023964d588608f2f2461d" }
+jk = { version = "0.10.0-SNAPSHOT", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"

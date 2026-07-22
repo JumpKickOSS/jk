@@ -55,9 +55,10 @@ jobs:
           jk build --skip-tests
           # Side-load pure-jk assembly workers (also covered by installLocal above).
           jk plugin install-local
-          # Curated suite: shared/* + server libs (engine/cli nested suites stay on Gradle).
-          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
-          jk release --skip-tests --jvm --dry-run
+          # Green pure-jk suite: libraries + plugins + engine. clients/cli stays on Gradle —
+          # its suite forks nested engines and hangs when run as a workspace module under jk test.
+          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,plugins/*'
+          jk release --skip-tests --skip-native --dry-run
 
   # ticket-1020: thin client + engine jar (no monolyth, no Graal).
   self-host-jvm:
@@ -86,8 +87,8 @@ jobs:
           jk lock
           jk build --skip-tests
           jk plugin install-local
-          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
-          jk release --skip-tests --jvm --dry-run
+          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,plugins/*'
+          jk release --skip-tests --skip-native --dry-run
 
   # ticket-1038: multi-module sample with reinstalled thin client (no Graal required).
   showcase:

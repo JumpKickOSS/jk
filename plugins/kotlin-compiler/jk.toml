@@ -19,6 +19,10 @@ kotlin-build-tools-api = { group = "org.jetbrains.kotlin", name = "kotlin-build-
 kotlin-stdlib          = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib",          version = "2.4.0" }
 
 [test-dependencies]
+# BTA must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
+# KotlinCompiler (Plugin SPI) and must load it without ClassNotFoundException.
+kotlin-build-tools-api  = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "2.4.0" }
+kotlin-stdlib           = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib",          version = "2.4.0" }
 assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

@@ -207,7 +207,7 @@ public final class TestRunner implements Plugin {
                             .map(type::cast)
                             .toList();
                 }
-                case "getConfigurationParameters" -> EmptyConfigParams.INSTANCE;
+                case "getConfigurationParameters" -> SystemPropertyConfigParams.INSTANCE;
                 case "getOutputDirectoryCreator" -> outputDirectoryCreator();
                 case "getDiscoveryListener" -> discoveryListenerNoOp(method.getReturnType());
                 case "equals" -> proxy == args[0];
@@ -285,11 +285,11 @@ public final class TestRunner implements Plugin {
                     Class.forName("org.junit.platform.engine.OutputDirectoryCreator"),
                     storeClass,
                     cancelClass);
-            return (ExecutionRequest)
-                    create.invoke(null, descriptor, listener, EmptyConfigParams.INSTANCE, outDir, store, cancel);
+            return (ExecutionRequest) create.invoke(
+                    null, descriptor, listener, SystemPropertyConfigParams.INSTANCE, outDir, store, cancel);
         } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
             // JUnit 5.x: 3-arg constructor (Platform 1.x / Jupiter 5.x — Spring Boot 3 BOMs).
-            return new ExecutionRequest(descriptor, listener, EmptyConfigParams.INSTANCE);
+            return new ExecutionRequest(descriptor, listener, SystemPropertyConfigParams.INSTANCE);
         }
     }
 
@@ -328,22 +328,61 @@ public final class TestRunner implements Plugin {
         }
     }
 
-    private static final class EmptyConfigParams implements ConfigurationParameters {
-        static final EmptyConfigParams INSTANCE = new EmptyConfigParams();
+    /**
+     * JUnit configuration that honors {@code -Djunit.*} system properties and classpath {@code
+     * junit-platform.properties}. The previous empty stub ignored TempDir strategy/factory settings
+     * used by CLI integration tests (nested engines hardlink into {@code @TempDir} trees).
+     */
+    private static final class SystemPropertyConfigParams implements ConfigurationParameters {
+        static final SystemPropertyConfigParams INSTANCE = new SystemPropertyConfigParams();
+
+        private final java.util.Map<String, String> fromFile = loadPlatformProperties();
 
         @Override
         public java.util.Optional<String> get(String key) {
+            if (key == null) return java.util.Optional.empty();
+            String sys = System.getProperty(key);
+            if (sys != null && !sys.isBlank()) return java.util.Optional.of(sys);
+            String file = fromFile.get(key);
+            if (file != null && !file.isBlank()) return java.util.Optional.of(file);
             return java.util.Optional.empty();
         }
 
         @Override
         public java.util.Optional<Boolean> getBoolean(String key) {
-            return java.util.Optional.empty();
+            return get(key).map(v -> {
+                String s = v.trim();
+                if (s.equalsIgnoreCase("true") || s.equals("1")) return true;
+                if (s.equalsIgnoreCase("false") || s.equals("0")) return false;
+                return Boolean.parseBoolean(s);
+            });
         }
 
         @Override
         public java.util.Set<String> keySet() {
-            return java.util.Set.of();
+            var keys = new java.util.LinkedHashSet<>(fromFile.keySet());
+            for (var e : System.getProperties().entrySet()) {
+                String k = String.valueOf(e.getKey());
+                if (k.startsWith("junit.")) keys.add(k);
+            }
+            return keys;
+        }
+
+        private static java.util.Map<String, String> loadPlatformProperties() {
+            var map = new java.util.LinkedHashMap<String, String>();
+            try (var in = Thread.currentThread()
+                    .getContextClassLoader()
+                    .getResourceAsStream("junit-platform.properties")) {
+                if (in == null) return map;
+                var props = new java.util.Properties();
+                props.load(in);
+                for (String name : props.stringPropertyNames()) {
+                    map.put(name, props.getProperty(name));
+                }
+            } catch (Exception ignored) {
+                // best-effort — system properties alone still apply
+            }
+            return map;
         }
     }
 }

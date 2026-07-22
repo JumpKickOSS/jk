@@ -43,10 +43,10 @@ jk lock
 jk build --skip-tests
 jk plugin install-local
 
-# Curated unit suite (verified green; engine/cli nested suites stay on Gradle for now)
-jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+# Pure-jk unit suite (includes clients/cli — nested engines use isolated JK_STATE_DIR)
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
 
-jk release --skip-tests --jvm
+jk release --skip-tests
 ./install.sh target/dist/jk
 ```
 
@@ -57,9 +57,8 @@ and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
 
 | Modules | Under `jk test` |
 |---|---|
-| `shared/*`, `server/io`, `server/resolver`, `server/toolchain` | **Green** dogfood / CI |
-| `server/engine`, `clients/cli` | Prefer `./gradlew :engine:test :cli:test` (nested worker wiring) |
-| `plugins/*` | Light unit tests OK if present; heavy integration still Gradle |
+| `shared/*`, `server/{io,resolver,toolchain,engine}`, `plugins/*` | **Green** dogfood / CI |
+| `clients/cli` | Pure-jk: isolated `JK_STATE_DIR` + `-Djk.engine.jar` so nested engines do not kill the host |
 
 ## Default repositories
 
@@ -90,11 +89,17 @@ Copies each PluginMain assembly jar into
 
 ## Ship layout (`jk release` / `jk dist`)
 
-After a bootstrap `jk` is on PATH:
+JumpKick’s ship shape is fixed: **native CLI** + **JVM engine** jar + PluginMain workers.
+There is no `--native` / `--jvm` mode switch.
+
+After a bootstrap `jk` is on PATH (GraalVM on PATH for the native step):
 
 ```bash
-jk release --skip-tests --jvm
-# alias: jk dist --skip-tests --jvm
+jk release --skip-tests
+# alias: jk dist --skip-tests
+# If no native CLI is present yet and clients/cli has [native] always = true,
+# release runs `jk native --skip-tests` first. Use --skip-native to stage the
+# currently running jk as a bootstrap client only.
 ./install.sh target/dist/jk
 ```
 
@@ -102,14 +107,14 @@ Produces:
 
 ```text
 target/dist/
-  jk                         # running client (--jvm) or native binary (--native)
+  jk                         # native CLI (preferred) or bootstrap client
   lib/
-    jk-engine-<version>.jar  # engine assembly (includes web SPA)
+    jk-engine-<version>.jar  # JVM engine assembly (includes web SPA)
 ```
 
 Also runs `jk plugin install-local` for workspace PluginMain workers.
 
-Flags: `--out <dir>`, `--skip-tests`, `--native`, `--jvm`, `--dry-run`, `--modules <sel>`.
+Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <sel>`.
 
 ## Roadmap (summary)
 
@@ -119,6 +124,8 @@ Flags: `--out <dir>`, `--skip-tests`, `--native`, `--jvm`, `--dry-run`, `--modul
 4. ~~`jk release` / `jk dist`~~ (done)
 5. ~~All first-party plugins on the workspace~~ (done)
 6. ~~Curated `jk test` + CI self-host dogfood~~ (done: shared/* + server libs)
-7. Full engine/cli under `jk test`; native client via `jk native` in release CI
+7. ~~Engine + plugins under pure-jk `jk test`~~ (done)
+8. ~~Native CLI via `jk native` / `jk release` (auto-native when eligible)~~ (done)
+9. ~~`clients/cli` under pure-jk `jk test` (nested-engine isolation)~~ (done)
 
 Details: session plan *Self-host JumpKick in ../jk-jk*.

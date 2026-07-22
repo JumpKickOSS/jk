@@ -61,8 +61,8 @@ export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install l
 jk lock
 jk build --skip-tests
 jk plugin install-local
-jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
-jk release --skip-tests --jvm
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+jk release --skip-tests
 ```
 
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
@@ -75,12 +75,12 @@ ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
 "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 
-# 2) Same dogfood as (A)
+# 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
 jk build --skip-tests
 jk plugin install-local
-jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
-jk release --skip-tests --jvm
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+jk release --skip-tests --skip-native
 ```
 
 The client never embeds the engine (ticket-1020). Spawning uses
@@ -91,12 +91,11 @@ The client never embeds the engine (ticket-1020). Spawning uses
 | `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
 | `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
-| Nested `:cli:test` / full suite wiring | Still Gradle-centric for some hermetic suite flags |
 
-Dogfood ship layout (after bootstrap `jk` on PATH):
+Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
 
 ```bash
-jk release --skip-tests --jvm    # alias: jk dist
+jk release --skip-tests    # native CLI + JVM engine + workers; alias: jk dist
 ./install.sh target/dist/jk
 ```
 
@@ -141,9 +140,8 @@ engine only when delete fails). Full `./gradlew test` is longer. Use module filt
 re-run full `./gradlew test` before merge to `main`. Shared dep cache:
 `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
-Prefer `jk build --skip-tests` plus the curated `jk test --modules 'shared/*,…'`
-filter for dogfood; keep `./gradlew :engine:test` / `:cli:test` for nested suites
-(Gradle still wires some hermetic suite flags).
+Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
+for dogfood; keep `./gradlew :cli:test` for the CLI integration suite (nested engines).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
 

@@ -35,22 +35,47 @@ public final class JUnitLauncher {
     private static final String RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
 
     /**
-     * {@code jk.<worker>.plugin.jar} overrides handed to the test JVM so tests that fork a
-     * first-party plugin (e.g. the git client) locate its jar by path. Mirrors what Gradle's test
-     * config provides; under {@code jk build} the {@code run-tests} step resolves the freshly-built
-     * sibling plugin jars (built before this module via the {@code [build.embed-sha]} order-after
-     * edges) and passes them here. Empty when none are built (e.g. a scoped single-module build) —
-     * tests then fall back to CAS-by-sha.
+     * {@code jk.<worker>.plugin.jar} (and {@code jk.engine.jar}) overrides handed to the test JVM so
+     * tests that fork a first-party plugin or materialize the engine locate jars by path. Mirrors
+     * what Gradle's test config provides; under {@code jk build} the {@code run-tests} step resolves
+     * the freshly-built sibling jars and passes them here. Empty when none are built (e.g. a scoped
+     * single-module build) — tests then fall back to CAS-by-sha.
      */
     private Map<String, String> workerJarProps = Map.of();
 
     /**
+     * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
+     * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}.
+     */
+    private Map<String, String> testEnv = Map.of();
+
+    /**
      * Worker JVM flags: the heap/GC tuning, the {@code jk.plugin.class} selector for the runner, and
-     * any {@code jk.<worker>.plugin.jar} overrides.
+     * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency) {
         List<String> flags = new ArrayList<>(cc.jumpkick.engine.plugin.JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
+        // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
+        // EngineTestExtension — match Gradle's :cli:test jvmArgs / systemProperty setup.
+        if (!testEnv.isEmpty()) {
+            flags.add("--enable-native-access=ALL-UNNAMED");
+            flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
+            // Match Gradle :cli:test — force soft-fail TempDir strategy + short /tmp factory.
+            // Nested engines hardlink into @TempDir caches; macOS then fails Standard delete and
+            // marks the test failed on cleanup even when assertions passed. Soft-fail strategy +
+            // NEVER cleanup mode keep the suite green (dirs are under /tmp and ephemeral).
+            flags.add(
+                    "-Djunit.jupiter.tempdir.deletion.strategy.default=cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
+            flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=never");
+            String jkHome = testEnv.get("JK_HOME");
+            if (jkHome != null && !jkHome.isBlank()) {
+                // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).
+                Path shared = Path.of(jkHome).getParent().resolve("test-shared-cache");
+                flags.add("-Djk.test.cache.dir=" + shared);
+            }
+        }
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
         return flags;
     }
@@ -75,7 +100,8 @@ public final class JUnitLauncher {
             Map<String, String> workerJarProps,
             TestProgressListener listener)
             throws IOException, InterruptedException {
-        return run(javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, listener, null);
+        return run(
+                javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, Map.of(), listener, null);
     }
 
     /**
@@ -93,6 +119,34 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             Path testResultsDir)
             throws IOException, InterruptedException {
+        return run(
+                javaHome,
+                testClassesDir,
+                runtimeClasspath,
+                cacheRoot,
+                workers,
+                workerJarProps,
+                Map.of(),
+                listener,
+                testResultsDir);
+    }
+
+    /**
+     * As {@link #run(Path, Path, List, Path, int, Map, TestProgressListener, Path)} with {@code
+     * testEnv} merged into the test JVM environment (isolated {@code JK_HOME}/{@code JK_STATE_DIR}
+     * for nested-engine suites).
+     */
+    public TestSummary run(
+            Path javaHome,
+            Path testClassesDir,
+            List<Path> runtimeClasspath,
+            Path cacheRoot,
+            int workers,
+            Map<String, String> workerJarProps,
+            Map<String, String> testEnv,
+            TestProgressListener listener,
+            Path testResultsDir)
+            throws IOException, InterruptedException {
         Objects.requireNonNull(javaHome, "javaHome");
         Objects.requireNonNull(testClassesDir, "testClassesDir");
         Objects.requireNonNull(runtimeClasspath, "runtimeClasspath");
@@ -100,6 +154,7 @@ public final class JUnitLauncher {
         Objects.requireNonNull(listener, "listener");
         if (workers < 1) throw new IllegalArgumentException("workers must be >= 1");
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
+        this.testEnv = testEnv == null ? Map.of() : Map.copyOf(testEnv);
 
         Path runnerJar = locateRunner(cacheRoot);
         var classpathBase = new LinkedHashSet<Path>();
@@ -133,6 +188,7 @@ public final class JUnitLauncher {
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
                 List.of("--scan-classpath=" + testClassesDir),
+                testEnv,
                 aggregator::accept,
                 line -> {
                     crash.add(line);
@@ -298,6 +354,7 @@ public final class JUnitLauncher {
                     runnerFlags(totalWorkers),
                     PROTOCOL_PREFIX,
                     args,
+                    testEnv,
                     handler,
                     passthrough);
         } catch (IOException e) {
@@ -324,6 +381,7 @@ public final class JUnitLauncher {
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
                 List.of("--list-only", "--scan-classpath=" + testClassesDir),
+                testEnv,
                 json -> {
                     String event = Jsonl.str(json, "event");
                     if ("discovered".equals(event)) {

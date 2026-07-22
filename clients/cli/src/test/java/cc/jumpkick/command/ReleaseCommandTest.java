@@ -139,8 +139,8 @@ class ReleaseCommandTest {
     }
 
     /**
-     * Minimal engine workspace: compile + assembly + stage. Client is the running JVM binary
-     * ({@code ProcessHandle}), which is enough to exercise the dist layout rename.
+     * Minimal engine workspace: compile + assembly + stage. With no CLI module / native binary,
+     * the running {@code jk} is staged as the bootstrap client — enough to exercise the dist layout.
      */
     @Test
     void stages_renamed_engine_assembly_into_out_lib(@TempDir Path dir) throws Exception {
@@ -190,12 +190,14 @@ class ReleaseCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
+            // No CLI module → stages the running jk as bootstrap client + engine assembly.
+            // --skip-native avoids a Graal build for this unit fixture.
             exit = Jk.execute(
                     "release",
                     "-C",
                     dir.toString(),
                     "--skip-tests",
-                    "--jvm",
+                    "--skip-native",
                     "--out",
                     outDir.toString());
         } finally {

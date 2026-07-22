@@ -1818,8 +1818,16 @@ public final class BuildPipelines {
                     // Plugin jars handed to the test JVM ([build.test-plugin-jars]) —
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
+                    JkBuild projectUnderTest = ctx.require(PROJECT);
                     Map<String, String> workerJars = workerJarProps(
-                            in.dir(), ctx.require(PROJECT).build().testPluginJars());
+                            in.dir(), projectUnderTest.build().testPluginJars());
+                    // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
+                    // so EngineTestExtension cannot kill the host engine running this test step.
+                    Map<String, String> testEnv = Map.of();
+                    if (needsNestedEngineIsolation(projectUnderTest)) {
+                        enrichCliTestProps(in.dir(), workerJars);
+                        testEnv = nestedEngineTestEnv(in.dir());
+                    }
 
                     // Incremental test skip: a content key over every input that affects
                     // the outcome — own main output, test sources, the *content* of the
@@ -1899,6 +1907,7 @@ public final class BuildPipelines {
                                         in.cache(),
                                         in.workerCount(),
                                         workerJars,
+                                        testEnv,
                                         listener,
                                         ctx.require(LAYOUT).testResultsDir());
                     } catch (InterruptedException e) {
@@ -3345,6 +3354,70 @@ public final class BuildPipelines {
             }
         }
         return props;
+    }
+
+    /**
+     * CLI integration suite: tests spawn a real engine via the wire and register {@code
+     * EngineTestExtension}, which force-stops the engine after each class. Under pure-jk {@code jk
+     * test} that must not share the host engine's {@code JK_STATE_DIR} (host would die mid-suite).
+     */
+    static boolean needsNestedEngineIsolation(JkBuild project) {
+        if (project == null || project.project() == null) return false;
+        String name = project.project().name();
+        if ("jk-cli".equals(name)) return true;
+        return "cc.jumpkick.cli.Jk".equals(project.mainClass());
+    }
+
+    /**
+     * Resolve engine assembly + every first-party worker jar so CLI tests match Gradle's {@code
+     * -Djk.engine.jar} / {@code -Djk.*.plugin.jar} wiring.
+     */
+    static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
+        Map<String, Path> siblings = siblingMainJars(moduleDir);
+        Path engine = siblings.get("jk-engine");
+        if (engine == null) engine = siblings.get("engine");
+        if (engine != null && Files.isRegularFile(engine)) {
+            props.put("jk.engine.jar", engine.toAbsolutePath().toString());
+        }
+        for (PluginJar w : PluginJar.values()) {
+            if (props.containsKey(w.jarProperty())) continue;
+            Path jar = siblings.get(w.artifactId());
+            if (jar == null && w.artifactId().startsWith("jk-")) {
+                jar = siblings.get(w.artifactId().substring(3));
+            }
+            if (jar != null && Files.isRegularFile(jar)) {
+                props.put(w.jarProperty(), jar.toAbsolutePath().toString());
+            } else {
+                Path located = w.locateOrNull(new Cas(cc.jumpkick.util.JkDirs.cache()));
+                if (located != null) props.put(w.jarProperty(), located.toString());
+            }
+        }
+    }
+
+    /**
+     * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
+     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real {@code
+     * JK_CACHE_DIR} / {@code ~/.jk/cache} so install-local workers remain visible.
+     */
+    static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
+        Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
+        Files.createDirectories(jkHome);
+        String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
+                + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);
+        Path stateDir = Path.of("/tmp", "jk-cli-" + runId);
+        Files.createDirectories(stateDir);
+        Map<String, String> env = new LinkedHashMap<>();
+        env.put("JK_HOME", jkHome.toAbsolutePath().toString());
+        env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
+        // Prefer the host CAS so plugins/deps materialize once; VersionStore still uses JK_HOME.
+        Path hostCache = cc.jumpkick.util.JkDirs.cache();
+        env.put("JK_CACHE_DIR", hostCache.toAbsolutePath().toString());
+        env.put("JK_STREAM_IDLE_MS", "45000");
+        env.put("TERM", "xterm-256color");
+        env.put("CI", "false");
+        // Clear NO_COLOR so TUI ANSI assertions match Gradle's deterministic setup.
+        env.put("NO_COLOR", "");
+        return env;
     }
 
     /**
