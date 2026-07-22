@@ -119,6 +119,28 @@ class SelfHostingTomlTest {
     }
 
     @Test
+    void root_declares_central_and_google_repositories() throws Exception {
+        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        assertThat(root.repositories()).extracting(r -> r.name()).contains("central", "google");
+    }
+
+    @Test
+    void web_module_is_resources_library() throws Exception {
+        JkBuild web = JkBuildParser.parse(REPO.resolve("clients/web/jk.toml"));
+        assertThat(web.project().name()).isEqualTo("jk-web");
+        assertThat(web.mainClass()).isNull();
+        assertThat(web.assembly()).isFalse();
+    }
+
+    @Test
+    void android_plugin_declares_google_maven_for_apksig() throws Exception {
+        JkBuild android = JkBuildParser.parse(REPO.resolve("plugins/android/jk.toml"));
+        assertThat(android.repositories()).extracting(r -> r.name()).contains("google");
+        assertThat(android.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+                .contains("com.android.tools.build:apksig");
+    }
+
+    @Test
     void every_workspace_module_has_a_parseable_jk_toml() throws Exception {
         JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
         for (String module : root.workspace().modules()) {

@@ -50,4 +50,21 @@ class RepoGroupBuilderTest {
                 .extracting(RepositorySpec::name)
                 .containsExactly("central", "internal", "google");
     }
+
+    @Test
+    void default_remote_repos_constant_is_central_then_google() {
+        assertThat(RepoGroupBuilder.DEFAULT_REMOTE_REPOS)
+                .containsExactly(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+        assertThat(RepositorySpec.GOOGLE_MAVEN.url().toString()).contains("google");
+    }
+
+    @Test
+    void only_google_declared_still_appends_central() {
+        Map<String, RepositorySpec> byName = new LinkedHashMap<>();
+        byName.put("google", RepositorySpec.GOOGLE_MAVEN);
+        List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
+        assertThat(effective)
+                .extracting(RepositorySpec::name)
+                .containsExactly("google", "central");
+    }
 }
