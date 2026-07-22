@@ -104,7 +104,10 @@ Engine hosts HTTP (loopback) with:
 - `GET /api/status`, `GET /api/events` (SSE), `POST /api/build`, …
 - SSE: `event: <type>` + `data: <json>` — types include `request-start`, `step-start`, `step-finish`, `pipeline-progress`, `eta`, `diagnostic`, module events, …
 
-**Convergence goal:** SSE `data` objects should use the same field names as JSONL where they describe the same thing (`step`, `phase`, `status`, `numerator`/`denominator`, `test`, `exceptionClass`, …). Full identity is a follow-up; do not fork new names without updating this doc.
+**Convergence:** SSE `data` objects carry `schema: 1` and a `type` field matching CLI JSONL where
+they describe the same fact (`step-start`, `step-finish`, `progress`, `error`/`diagnostic`, plus
+`step`, `phase`, `status`, `numerator`/`denominator`, `test`, `exceptionClass`). The SSE *event*
+name may stay SPA-oriented (`pipeline-progress`, `diagnostic`); agents should prefer `data.type`.
 
 ### MCP (engine-hosted, JK-1095)
 
@@ -117,8 +120,9 @@ Same HTTP server and lifecycle as the web UI:
 | Auth | `Authorization: Bearer <token>` (always required) |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
-**Tools (MVP):** `jk_status`, `jk_build` (async → `requestId`), `jk_project`, `jk_history`.  
-Live progress: **`GET /api/events`** (SSE). Tool JSON uses `schema` + `type` like the rest of the machine model.
+**Tools:** `jk_status`, `jk_build`, `jk_test`, `jk_lock` (async → `requestId`), `jk_cancel`,
+`jk_project`, `jk_history`. Live progress: **`GET /api/events`** (SSE). Tool JSON uses `schema` +
+`type` like the rest of the machine model.
 
 ```bash
 # Example: list tools (token from ~/.jk/state/…/http-token or status URL fragment)

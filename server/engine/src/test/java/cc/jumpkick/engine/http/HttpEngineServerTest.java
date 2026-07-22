@@ -59,12 +59,30 @@ class HttpEngineServerTest {
                 stateDir.resolve("builds").resolve("journal"));
     }
 
-    /** The stub {@link BuildTrigger}: records the dir, returns a fixed id, rejects "reject me". */
-    private long stubTrigger(String dir) {
-        if (dir.contains("reject")) throw new IllegalArgumentException("no jk.toml in " + dir);
-        triggeredDirs.add(dir);
-        return 7;
-    }
+    /** Stub {@link EngineHttpJobs}: records the dir, returns a fixed id, rejects "reject me". */
+    private final EngineHttpJobs stubJobs = new EngineHttpJobs() {
+        @Override
+        public long triggerBuild(String dir) {
+            if (dir.contains("reject")) throw new IllegalArgumentException("no jk.toml in " + dir);
+            triggeredDirs.add(dir);
+            return 7;
+        }
+
+        @Override
+        public long triggerTest(String dir) {
+            return triggerBuild(dir);
+        }
+
+        @Override
+        public long triggerLock(String dir) {
+            return triggerBuild(dir);
+        }
+
+        @Override
+        public boolean cancel(long requestId) {
+            return requestId == 7L;
+        }
+    };
 
     @BeforeEach
     void start() throws IOException {
@@ -85,7 +103,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 events,
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 () -> metricsRows,
                 () -> cacheSnapshot,
@@ -201,7 +219,7 @@ class HttpEngineServerTest {
                 "0.10.0-SNAPSHOT",
                 () -> SNAPSHOT,
                 new HttpEvents(),
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,
@@ -507,7 +525,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 events,
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,
@@ -542,7 +560,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 events,
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,
@@ -569,7 +587,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 events,
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,
@@ -594,7 +612,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 new HttpEvents(),
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,
@@ -688,7 +706,7 @@ class HttpEngineServerTest {
                 "9.9.9-test",
                 () -> SNAPSHOT,
                 new HttpEvents(),
-                this::stubTrigger,
+                stubJobs,
                 testJournal(),
                 java.util.List::of,
                 () -> EMPTY_CACHE,

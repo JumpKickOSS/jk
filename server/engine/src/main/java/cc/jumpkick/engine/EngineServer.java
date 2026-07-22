@@ -31,6 +31,7 @@ import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
+import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedReader;
@@ -1057,9 +1058,12 @@ public final class EngineServer implements AutoCloseable {
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
         if (!eventsWanted()) return;
+        // Field names align with CLI JsonlShape (schema + type + step + phase).
         publishEvent(
                 "step-start",
                 cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "step-start")
                         .put("requestId", requestId)
                         .put("dir", dir)
                         .put("step", step)
@@ -1071,6 +1075,8 @@ public final class EngineServer implements AutoCloseable {
         publishEvent(
                 "step-finish",
                 cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "step-finish")
                         .put("requestId", requestId)
                         .put("dir", dir)
                         .put("step", step)
@@ -1103,9 +1109,12 @@ public final class EngineServer implements AutoCloseable {
         int shown = Math.min(errors.size(), MAX_DIAGNOSTIC_EVENTS);
         for (int i = 0; i < shown; i++) {
             PipelineResult.Diagnostic d = errors.get(i);
+            // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
             publishEvent(
                     "diagnostic",
                     cc.jumpkick.engine.http.JsonOut.object()
+                            .put("schema", 1)
+                            .put("type", "error")
                             .put("requestId", requestId)
                             .put("dir", dir)
                             .put("step", d.step())
@@ -1157,9 +1166,12 @@ public final class EngineServer implements AutoCloseable {
      */
     private void publishPipelineProgress(long requestId, String dir, PipelineView view) {
         if (!eventsWanted()) return;
+        // Same numerator/denominator as CLI JsonlShape progress; type "progress" for agents.
         publishEvent(
                 "pipeline-progress",
                 cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "progress")
                         .put("requestId", requestId)
                         .put("dir", dir)
                         .put("numerator", view.numerator())
@@ -1176,6 +1188,8 @@ public final class EngineServer implements AutoCloseable {
         publishEvent(
                 "eta",
                 cc.jumpkick.engine.http.JsonOut.object()
+                        .put("schema", 1)
+                        .put("type", "eta")
                         .put("requestId", requestId)
                         .put("millis", millis));
     }
@@ -3691,7 +3705,7 @@ public final class EngineServer implements AutoCloseable {
                 version,
                 this::statusSnapshot,
                 httpEvents,
-                this::triggerHttpBuild,
+                httpJobs(),
                 journal,
                 () -> BuildMetrics.load(metricsFile).entries(),
                 () -> cc.jumpkick.engine.http.CacheSnapshot.capture(cc.jumpkick.util.JkDirs.cache()),
@@ -3708,11 +3722,43 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
+    /** HTTP/MCP job cancel tokens and runner threads (JK-1095 / JK-1096). */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Session.CancelToken> httpCancelTokens =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private final java.util.concurrent.ConcurrentHashMap<Long, Thread> httpJobThreads =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private cc.jumpkick.engine.http.EngineHttpJobs httpJobs() {
+        return new cc.jumpkick.engine.http.EngineHttpJobs() {
+            @Override
+            public long triggerBuild(String dir) {
+                return triggerHttpWorkspace(dir, "build", /* skipTests */ false);
+            }
+
+            @Override
+            public long triggerTest(String dir) {
+                // Full workspace job with tests (skipTests=false); kind=test for journal/SSE.
+                return triggerHttpWorkspace(dir, "test", /* skipTests */ false);
+            }
+
+            @Override
+            public long triggerLock(String dir) {
+                return triggerHttpLock(dir);
+            }
+
+            @Override
+            public boolean cancel(long requestId) {
+                return cancelHttpJob(requestId);
+            }
+        };
+    }
+
     /**
-     * {@code POST /api/build}: start a {@link BuildService#buildWorkspace} and return a request id
-     * immediately. Progress is SSE-only.
+     * {@code POST /api/build} / MCP {@code jk_build}/{@code jk_test}: start a workspace job and
+     * return a request id immediately. Progress is SSE-only.
      */
-    private long triggerHttpBuild(String dirStr) {
+    private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests) {
         if (draining) {
             throw new IllegalStateException("engine is shutting down");
         }
@@ -3725,16 +3771,24 @@ public final class EngineServer implements AutoCloseable {
         }
         long eventRequestId = requestIds.incrementAndGet();
         long startMillis = clockMillis.getAsLong();
-        publishRequestStart(eventRequestId, "build", entryDir.toString());
-        registerAccumulator(eventRequestId, "build", entryDir.toString(), "web");
+        Session.CancelToken cancelToken = Session.CancelToken.live();
+        httpCancelTokens.put(eventRequestId, cancelToken);
+        publishRequestStart(eventRequestId, kind, entryDir.toString());
+        registerAccumulator(eventRequestId, kind, entryDir.toString(), "web");
         notePipelineStarted();
-        Thread.ofVirtual().name("jk-engine-http-build-", 0).start(() -> {
+        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).start(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
+            JobWorkers.open(eventRequestId);
             boolean success = false;
+            boolean cancelled = false;
             try {
-                success = runHttpBuild(entryDir);
+                success = runHttpWorkspace(entryDir, skipTests, cancelToken);
+                cancelled = cancelToken.cancelled() && !success;
             } finally {
+                JobWorkers.close();
+                httpCancelTokens.remove(eventRequestId);
+                httpJobThreads.remove(eventRequestId);
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
                 maybeIdleBoundaryGc();
@@ -3743,19 +3797,87 @@ public final class EngineServer implements AutoCloseable {
                         "request-finish",
                         cc.jumpkick.engine.http.JsonOut.object()
                                 .put("requestId", eventRequestId)
-                                .put("kind", "build")
+                                .put("kind", kind)
                                 .put("dir", entryDir.toString())
                                 .put("success", success)
-                                .put("cancelled", false)
+                                .put("cancelled", cancelled)
                                 .put("millis", elapsedMillis));
-                writeJournal(eventRequestId, false, elapsedMillis);
+                writeJournal(eventRequestId, cancelled, elapsedMillis);
             }
         });
+        httpJobThreads.put(eventRequestId, t);
         return eventRequestId;
     }
 
-    /** The build body of {@link #triggerHttpBuild} — {@link #runBuild} with defaults, hub-only events. */
-    private boolean runHttpBuild(Path entryDir) {
+    private long triggerHttpLock(String dirStr) {
+        if (draining) {
+            throw new IllegalStateException("engine is shutting down");
+        }
+        Path entryDir = Path.of(dirStr);
+        if (!entryDir.isAbsolute()) {
+            throw new IllegalArgumentException("dir must be an absolute path");
+        }
+        if (!Files.isRegularFile(entryDir.resolve("jk.toml"))) {
+            throw new IllegalArgumentException("no jk.toml in " + entryDir);
+        }
+        long eventRequestId = requestIds.incrementAndGet();
+        long startMillis = clockMillis.getAsLong();
+        Session.CancelToken cancelToken = Session.CancelToken.live();
+        httpCancelTokens.put(eventRequestId, cancelToken);
+        publishRequestStart(eventRequestId, "lock", entryDir.toString());
+        registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
+        notePipelineStarted();
+        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).start(() -> {
+            cacheGate.readLock().lock();
+            currentEventRequestId.set(eventRequestId);
+            JobWorkers.open(eventRequestId);
+            boolean success = false;
+            boolean cancelled = false;
+            try {
+                success = runHttpLock(entryDir, cancelToken);
+                cancelled = cancelToken.cancelled() && !success;
+            } finally {
+                JobWorkers.close();
+                httpCancelTokens.remove(eventRequestId);
+                httpJobThreads.remove(eventRequestId);
+                currentEventRequestId.remove();
+                cacheGate.readLock().unlock();
+                maybeIdleBoundaryGc();
+                long elapsedMillis = clockMillis.getAsLong() - startMillis;
+                publishEvent(
+                        "request-finish",
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("requestId", eventRequestId)
+                                .put("kind", "lock")
+                                .put("dir", entryDir.toString())
+                                .put("success", success)
+                                .put("cancelled", cancelled)
+                                .put("millis", elapsedMillis));
+                writeJournal(eventRequestId, cancelled, elapsedMillis);
+            }
+        });
+        httpJobThreads.put(eventRequestId, t);
+        return eventRequestId;
+    }
+
+    private boolean cancelHttpJob(long requestId) {
+        Session.CancelToken token = httpCancelTokens.get(requestId);
+        if (token == null) return false;
+        token.cancel();
+        JobWorkers.shutdownForRequest(requestId, JobWorkers.cancelGraceMs());
+        Thread runner = httpJobThreads.get(requestId);
+        if (runner != null) {
+            try {
+                runner.interrupt();
+            } catch (RuntimeException ignored) {
+                // best-effort
+            }
+        }
+        return true;
+    }
+
+    /** Workspace build/test body for HTTP/MCP — hub-only events. */
+    private boolean runHttpWorkspace(Path entryDir, boolean skipTests, Session.CancelToken cancelToken) {
         try {
             JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
             Path cache = cc.jumpkick.util.JkDirs.cache();
@@ -3767,7 +3889,7 @@ public final class EngineServer implements AutoCloseable {
                     jdksDir,
                     Runtime.getRuntime().availableProcessors(), // the shared plan's own worst-case cap
                     null,
-                    false,
+                    skipTests,
                     false,
                     0,
                     null, // engine forecasts dirty modules
@@ -3776,7 +3898,8 @@ public final class EngineServer implements AutoCloseable {
             Session session = Session.defaults()
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache)
-                    .withJdksDir(jdksDir);
+                    .withJdksDir(jdksDir)
+                    .withCancel(cancelToken);
             WorkspaceResult result =
                     SessionContext.where(session, () -> BuildService.buildWorkspace(req, hubListener()));
             accOutcome(eventRequestId(), result.success(), result.exitCode());
@@ -3787,10 +3910,79 @@ public final class EngineServer implements AutoCloseable {
             }
             return result.success();
         } catch (Exception e) {
-            log.accept("jk engine: http-triggered build of " + entryDir + " failed: " + e.getMessage());
+            log.accept("jk engine: http-triggered job of " + entryDir + " failed: " + e.getMessage());
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
             return false;
         }
+    }
+
+    private boolean runHttpLock(Path entryDir, Session.CancelToken cancelToken) {
+        try {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            JkBuild effective = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            Session session = Session.defaults()
+                    .withWorkingDir(entryDir)
+                    .withCacheDir(cache)
+                    .withCancel(cancelToken);
+            cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.LockPipelines.lockPipeline(
+                    entryDir,
+                    effective,
+                    cache,
+                    null,
+                    java.util.List.of(),
+                    true,
+                    false,
+                    ResolveObserver.NOOP,
+                    null);
+            pipeline.addListener(singlePipelineHubListener(entryDir.toString()));
+            cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
+            accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
+            if (!result.success()) {
+                for (var d : result.errors().stream().limit(5).toList()) {
+                    publishRequestError(eventRequestId(), entryDir.toString(), d.message());
+                }
+            }
+            return result.success();
+        } catch (Exception e) {
+            log.accept("jk engine: http-triggered lock of " + entryDir + " failed: " + e.getMessage());
+            publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
+            return false;
+        }
+    }
+
+    /** Pipeline events for a single HTTP lock job → SSE hub. */
+    private PipelineListener singlePipelineHubListener(String dir) {
+        long eventRequestId = eventRequestId();
+        return new PipelineListener() {
+            @Override
+            public void pipelineStart(PipelineView view) {
+                publishPipelineProgress(eventRequestId, dir, view);
+            }
+
+            @Override
+            public void progress(String step, int delta, PipelineView view) {
+                publishPipelineProgress(eventRequestId, dir, view);
+            }
+
+            @Override
+            public void tickUpdate(String step, int delta, PipelineView view) {
+                publishPipelineProgress(eventRequestId, dir, view);
+            }
+
+            @Override
+            public void stepStart(String step, cc.jumpkick.plugin.build.Phase phase, int ticks) {
+                publishStepStart(eventRequestId, dir, step, phaseWire(phase));
+            }
+
+            @Override
+            public void stepFinish(
+                    String step,
+                    cc.jumpkick.plugin.build.Phase phase,
+                    cc.jumpkick.run.StepStatus status,
+                    Duration duration) {
+                publishStepFinish(eventRequestId, dir, step, phaseWire(phase), status.name());
+            }
+        };
     }
 
     /** Module/pipeline events to the dashboard hub only — the HTTP trigger's counterpart of {@link #wireListener}. */

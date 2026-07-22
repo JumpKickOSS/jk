@@ -49,7 +49,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
     private final HttpEvents events;
-    private final BuildTrigger buildTrigger;
+    private final EngineHttpJobs jobs;
     private final cc.jumpkick.engine.journal.BuildJournal journal;
     private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
@@ -76,7 +76,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * @param version the engine version, used for classpath-asset {@code ETag}s
      * @param status supplies the vitals {@code GET /api/status} reports, fresh per request
      * @param events the hub {@code GET /api/events} streams from ({@code EngineServer} publishes)
-     * @param buildTrigger runs {@code POST /api/build}'s build engine-side
+     * @param jobs async build/test/lock/cancel for HTTP + MCP (JK-1095)
      * @param metrics supplies the running build aggregates {@code GET /api/metrics} reports, fresh
      *     per request (the engine's {@code BuildMetrics} store)
      * @param cache supplies the cache breakdown {@code GET /api/cache} reports, fresh per request
@@ -90,7 +90,7 @@ public final class HttpEngineServer implements AutoCloseable {
             String version,
             Supplier<StatusSnapshot> status,
             HttpEvents events,
-            BuildTrigger buildTrigger,
+            EngineHttpJobs jobs,
             cc.jumpkick.engine.journal.BuildJournal journal,
             Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
             Supplier<CacheSnapshot> cache,
@@ -103,7 +103,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.logFile = logFile;
         this.status = status;
         this.events = events;
-        this.buildTrigger = buildTrigger;
+        this.jobs = jobs;
         this.journal = journal;
         this.metrics = metrics;
         this.cache = cache;
@@ -111,7 +111,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.engineVersion = version;
         this.mcp = new McpHandler(
                 status,
-                buildTrigger,
+                jobs,
                 this::projectMap,
                 () -> journal.rawRecords(200),
                 version);
@@ -558,7 +558,7 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         long requestId;
         try {
-            requestId = buildTrigger.trigger(dir);
+            requestId = jobs.triggerBuild(dir);
         } catch (IllegalStateException e) {
             // Engine is draining (graceful shutdown in progress) — refuse new builds.
             exchange.getResponseHeaders().set("Retry-After", "1");

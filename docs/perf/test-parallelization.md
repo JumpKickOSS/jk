@@ -153,3 +153,4 @@ MODULES='shared/*,server/io,server/resolver,server/toolchain,server/engine,clien
 - Engine: `JUnitLauncher`, `BuildPipelines` test gate, `HeapPlan.requestedJvms`  
 - Jobs: `Jobs`, `AvailableCpus` (JK-1082 / 1084)  
 - Mill: https://mill-build.org/blog/11-jvm-test-parallelism.html  
+- **JUnit vs `-w`:** [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md) (JK-1092)

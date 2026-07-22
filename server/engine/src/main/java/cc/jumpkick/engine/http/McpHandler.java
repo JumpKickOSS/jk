@@ -29,19 +29,19 @@ public final class McpHandler {
     public static final String SERVER_NAME = "jk-engine";
 
     private final Supplier<StatusSnapshot> status;
-    private final BuildTrigger buildTrigger;
+    private final EngineHttpJobs jobs;
     private final Function<String, Map<String, Object>> projectLookup;
     private final Supplier<List<String>> historyRaw;
     private final String version;
 
     public McpHandler(
             Supplier<StatusSnapshot> status,
-            BuildTrigger buildTrigger,
+            EngineHttpJobs jobs,
             Function<String, Map<String, Object>> projectLookup,
             Supplier<List<String>> historyRaw,
             String version) {
         this.status = Objects.requireNonNull(status);
-        this.buildTrigger = Objects.requireNonNull(buildTrigger);
+        this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
         this.historyRaw = Objects.requireNonNull(historyRaw);
         this.version = version == null ? "0" : version;
@@ -157,6 +157,33 @@ public final class McpHandler {
                                 "description",
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
+                "jk_test",
+                "Start tests for dir (async workspace job with tests; journal kind test). Progress on "
+                        + "GET /api/events. Returns requestId.",
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Absolute path to project or workspace root (jk.toml)")))));
+        tools.add(tool(
+                "jk_lock",
+                "Resolve dependencies and write jk.lock for dir (async). Progress on GET /api/events.",
+                objectSchema(Map.of(
+                        "dir",
+                        Map.of(
+                                "type",
+                                "string",
+                                "description",
+                                "Absolute path containing jk.toml")))));
+        tools.add(tool(
+                "jk_cancel",
+                "Cancel an in-flight HTTP/MCP job by requestId (grace then force workers; JK-1096).",
+                objectSchema(Map.of(
+                        "requestId",
+                        Map.of("type", "integer", "description", "Id returned by jk_build / jk_test / jk_lock")))));
+        tools.add(tool(
                 "jk_project",
                 "Parse project metadata from dir/jk.toml (coord, description).",
                 objectSchema(Map.of(
@@ -185,7 +212,10 @@ public final class McpHandler {
         Object payload =
                 switch (name) {
                     case "jk_status" -> statusPayload();
-                    case "jk_build" -> buildPayload(args);
+                    case "jk_build" -> jobPayload("build", args, jobs::triggerBuild);
+                    case "jk_test" -> jobPayload("test", args, jobs::triggerTest);
+                    case "jk_lock" -> jobPayload("lock", args, jobs::triggerLock);
+                    case "jk_cancel" -> cancelPayload(args);
                     case "jk_project" -> projectPayload(args);
                     case "jk_history" -> historyPayload(args);
                     default -> throw new McpError(-32602, "unknown tool: " + name);
@@ -212,27 +242,43 @@ public final class McpHandler {
         return m;
     }
 
-    private Map<String, Object> buildPayload(Map<String, Object> args) {
+    private Map<String, Object> jobPayload(
+            String kind, Map<String, Object> args, java.util.function.Function<String, Long> trigger) {
         String dir = string(args.get("dir"));
-        if (dir == null || dir.isBlank()) throw new McpError(-32602, "jk_build requires arguments.dir");
+        if (dir == null || dir.isBlank()) throw new McpError(-32602, "requires arguments.dir");
         try {
-            long requestId = buildTrigger.trigger(dir);
+            long requestId = trigger.apply(dir);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("schema", 1);
-            m.put("type", "build-accepted");
+            m.put("type", kind + "-accepted");
+            m.put("kind", kind);
             m.put("requestId", requestId);
             m.put("dir", dir);
             m.put("events", "/api/events");
             m.put(
                     "note",
-                    "Build started asynchronously. Stream SSE at GET /api/events for progress "
-                            + "(same conceptual events as CLI --output json).");
+                    "Job started asynchronously. Stream SSE at GET /api/events for progress "
+                            + "(same conceptual events as CLI --output json). Cancel with jk_cancel.");
             return m;
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());
         } catch (IllegalArgumentException e) {
             throw new McpError(-32602, e.getMessage());
         }
+    }
+
+    private Map<String, Object> cancelPayload(Map<String, Object> args) {
+        Object raw = args.get("requestId");
+        if (!(raw instanceof Number n)) throw new McpError(-32602, "jk_cancel requires arguments.requestId");
+        long id = n.longValue();
+        boolean ok = jobs.cancel(id);
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("schema", 1);
+        m.put("type", "cancel");
+        m.put("requestId", id);
+        m.put("cancelled", ok);
+        if (!ok) m.put("note", "unknown or already finished requestId");
+        return m;
     }
 
     private Map<String, Object> projectPayload(Map<String, Object> args) {

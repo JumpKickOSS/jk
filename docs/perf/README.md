@@ -56,7 +56,9 @@ disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path 
 **Within-module:** default `-w0` auto + per-module `[test] workers=1` opt-out (B1–B4).  
 **Cross-module:** default **on** (C2); opt out with `--serial-tests` / `--no-parallel-tests`.  
 See [test-parallelization.md](test-parallelization.md) (Mill map, RAM model, C1 measure ~40% wall win
-on `shared/*`). Re-measure: `scripts/test-parallel-measure.sh`.
+on `shared/*`). Re-measure: `scripts/test-parallel-measure.sh`.  
+**JUnit in-process parallel vs `-w`:** [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md)
+(JK-1092 — do not stack).
 
 ## Within-module test workers (JK-1087)
 

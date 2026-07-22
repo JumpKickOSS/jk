@@ -11,6 +11,28 @@ import org.junit.jupiter.api.Test;
 /** JK-1095 — MCP JSON-RPC tools without a full HTTP bind. */
 class McpHandlerTest {
 
+    private final EngineHttpJobs jobs = new EngineHttpJobs() {
+        @Override
+        public long triggerBuild(String dir) {
+            return 42L;
+        }
+
+        @Override
+        public long triggerTest(String dir) {
+            return 43L;
+        }
+
+        @Override
+        public long triggerLock(String dir) {
+            return 44L;
+        }
+
+        @Override
+        public boolean cancel(long requestId) {
+            return requestId == 42L;
+        }
+    };
+
     private final McpHandler mcp = new McpHandler(
             () -> new StatusSnapshot(
                     "0.10.0-SNAPSHOT",
@@ -25,7 +47,7 @@ class McpHandlerTest {
                     /* aotTrainingPid */ 0,
                     /* cores */ 8,
                     16L << 30),
-            dir -> 42L,
+            jobs,
             dir -> Map.of("coord", "com.example:demo", "description", "hi"),
             () -> List.of("{\"id\":\"abc\",\"ok\":true}"),
             "0.10.0-SNAPSHOT");
@@ -56,7 +78,14 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> tools = (List<Map<String, Object>>) result.get("tools");
         assertThat(tools.stream().map(t -> t.get("name")).toList())
-                .contains("jk_status", "jk_build", "jk_project", "jk_history");
+                .contains(
+                        "jk_status",
+                        "jk_build",
+                        "jk_test",
+                        "jk_lock",
+                        "jk_cancel",
+                        "jk_project",
+                        "jk_history");
     }
 
     @Test
@@ -83,9 +112,33 @@ class McpHandlerTest {
         Map<String, Object> resp = (Map<String, Object>) MiniJson.parse(body);
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) resp.get("result");
+        @SuppressWarnings("unchecked")
         String text = (String) ((List<Map<String, Object>>) result.get("content")).getFirst().get("text");
         assertThat(text).contains("\"requestId\":42");
         assertThat(text).contains("\"type\":\"build-accepted\"");
+    }
+
+    @Test
+    void tools_call_test_lock_cancel() {
+        String testBody = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+        // Nested tool payload is JSON-escaped inside content[].text
+        assertThat(testBody).contains("test-accepted");
+        assertThat(testBody).contains("requestId");
+        assertThat(testBody).contains("43");
+
+        String lockBody = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":6,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_lock\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
+        assertThat(lockBody).contains("lock-accepted");
+        assertThat(lockBody).contains("44");
+
+        String cancelBody = mcp.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_cancel\",\"arguments\":{\"requestId\":42}}}");
+        assertThat(cancelBody).contains("cancelled");
+        assertThat(cancelBody).contains("true");
     }
 
     @Test
