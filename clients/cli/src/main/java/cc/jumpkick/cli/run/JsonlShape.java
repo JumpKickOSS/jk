@@ -10,102 +10,110 @@ import java.time.Instant;
 
 /**
  * Stable wire format for pipeline events as one-JSON-object-per-line text. Shared by {@link
- * JsonlListener} (writes to stdout for {@code --output json}) and {@link EventLogListener} (writes
- * to {@code <cacheRoot>/runs/<ts>.jsonl} always). Centralising the shape here means anyone parsing
- * jk's event stream has one schema to keep compatible with, no matter which channel they read it
- * from.
+ * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link EventLogListener}
+ * (always-on under the cache run log). Centralising the shape here means agents, CI, and future MCP
+ * tools share one schema — see {@code docs/machine-output.md}.
+ *
+ * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
  */
 final class JsonlShape {
 
+    /** Bump only on breaking field renames/removals. Additive fields stay on the same version. */
+    static final int SCHEMA = 1;
+
     private JsonlShape() {}
 
+    /** Shared prefix: schema + ts + type. */
+    private static StringBuilder open(String type) {
+        return new StringBuilder(96)
+                .append("{\"schema\":")
+                .append(SCHEMA)
+                .append(",\"ts\":")
+                .append(nowMillis())
+                .append(",\"type\":")
+                .append(js(type));
+    }
+
     static String pipelineStart(PipelineView v) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"pipeline-start\""
-                + ",\"pipeline\":"
-                + js(v.pipelineName())
-                + ",\"denominator\":"
-                + v.denominator()
-                + ",\"steps\":"
-                + v.stepsTotal()
-                + "}";
+        return open("pipeline-start")
+                .append(",\"pipeline\":")
+                .append(js(v.pipelineName()))
+                .append(",\"denominator\":")
+                .append(v.denominator())
+                .append(",\"steps\":")
+                .append(v.stepsTotal())
+                .append('}')
+                .toString();
     }
 
     static String stepStart(String step, String phase, int ticks) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"step-start\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"phase\":"
-                + js(phase)
-                + ",\"ticks\":"
-                + ticks
-                + "}";
+        return open("step-start")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"phase\":")
+                .append(js(phase))
+                .append(",\"ticks\":")
+                .append(ticks)
+                .append('}')
+                .toString();
     }
 
     static String progress(String step, int delta, PipelineView v) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"progress\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"delta\":"
-                + delta
-                + ",\"numerator\":"
-                + v.numerator()
-                + ",\"denominator\":"
-                + v.denominator()
-                + "}";
+        return open("progress")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"delta\":")
+                .append(delta)
+                .append(",\"numerator\":")
+                .append(v.numerator())
+                .append(",\"denominator\":")
+                .append(v.denominator())
+                .append('}')
+                .toString();
     }
 
     static String tickUpdate(String step, int delta, PipelineView v) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"tick-update\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"delta\":"
-                + delta
-                + ",\"denominator\":"
-                + v.denominator()
-                + "}";
+        return open("tick-update")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"delta\":")
+                .append(delta)
+                .append(",\"denominator\":")
+                .append(v.denominator())
+                .append('}')
+                .toString();
     }
 
     static String label(String step, String label) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"label\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"label\":"
-                + js(label)
-                + "}";
+        return open("label")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"label\":")
+                .append(js(label))
+                .append('}')
+                .toString();
     }
 
     static String output(String step, String line) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"output\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"line\":"
-                + js(line)
-                + "}";
+        return open("output")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"line\":")
+                .append(js(line))
+                .append('}')
+                .toString();
     }
 
     static String warn(String step, String code, String msg) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"warn\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"code\":"
-                + js(code)
-                + ",\"message\":"
-                + js(msg)
-                + "}";
+        return open("warn")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"code\":")
+                .append(js(code))
+                .append(",\"message\":")
+                .append(js(msg))
+                .append('}')
+                .toString();
     }
 
     static String error(String step, String code, String msg) {
@@ -118,50 +126,47 @@ final class JsonlShape {
      * the wire without bloating the common diagnostic shape.
      */
     static String error(String step, String code, String msg, String test, String exceptionClass) {
-        StringBuilder sb = new StringBuilder("{\"ts\":")
-                .append(nowMillis())
-                .append(",\"type\":\"error\"")
+        StringBuilder sb = open("error")
                 .append(",\"step\":")
                 .append(js(step))
                 .append(",\"code\":")
                 .append(js(code))
                 .append(",\"message\":")
                 .append(js(msg));
-        if (!test.isEmpty()) sb.append(",\"test\":").append(js(test));
-        if (!exceptionClass.isEmpty()) sb.append(",\"exceptionClass\":").append(js(exceptionClass));
-        return sb.append("}").toString();
+        if (test != null && !test.isEmpty()) sb.append(",\"test\":").append(js(test));
+        if (exceptionClass != null && !exceptionClass.isEmpty())
+            sb.append(",\"exceptionClass\":").append(js(exceptionClass));
+        return sb.append('}').toString();
     }
 
     static String stepFinish(String step, String phase, StepStatus status, Duration duration) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"step-finish\""
-                + ",\"step\":"
-                + js(step)
-                + ",\"phase\":"
-                + js(phase)
-                + ",\"status\":"
-                + js(status.name())
-                + ",\"duration_ms\":"
-                + duration.toMillis()
-                + "}";
+        return open("step-finish")
+                .append(",\"step\":")
+                .append(js(step))
+                .append(",\"phase\":")
+                .append(js(phase))
+                .append(",\"status\":")
+                .append(js(status.name()))
+                .append(",\"duration_ms\":")
+                .append(duration.toMillis())
+                .append('}')
+                .toString();
     }
 
     static String pipelineFinish(PipelineResult r) {
-        return "{\"ts\":"
-                + nowMillis()
-                + ",\"type\":\"pipeline-finish\""
-                + ",\"pipeline\":"
-                + js(r.pipelineName())
-                + ",\"success\":"
-                + r.success()
-                + ",\"duration_ms\":"
-                + r.duration().toMillis()
-                + ",\"warnings\":"
-                + r.warnings().size()
-                + ",\"errors\":"
-                + r.errors().size()
-                + "}";
+        return open("pipeline-finish")
+                .append(",\"pipeline\":")
+                .append(js(r.pipelineName()))
+                .append(",\"success\":")
+                .append(r.success())
+                .append(",\"duration_ms\":")
+                .append(r.duration().toMillis())
+                .append(",\"warnings\":")
+                .append(r.warnings().size())
+                .append(",\"errors\":")
+                .append(r.errors().size())
+                .append('}')
+                .toString();
     }
 
     /**

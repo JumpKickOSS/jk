@@ -32,7 +32,7 @@ public final class PipelineConsole {
         VERBOSE,
         /** Silent (today's {@code --quiet}, or interactive pipelines). */
         QUIET,
-        /** JSONL to stdout (today's {@code --output json}). */
+        /** Live JSONL to stdout ({@code --output json} or {@code jsonl}; identical). */
         JSON
     }
 

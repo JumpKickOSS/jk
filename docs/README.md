@@ -5,6 +5,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 | Doc | Audience |
 |---|---|
 | [**User guide**](guide.md) | Day-to-day use: projects, deps, lockfile, JDK, workspaces, migration |
+| [**Machine / agent output**](machine-output.md) | JSONL events, web SSE, verbose, MCP plan, agent recipe |
 | [**Architecture**](architecture.md) | How jk is built: client/engine split, modules, resolution, caching |
 | [**Plugins**](plugins.md) | Authoring first-party-style build plugins |
 | [**Feature PRDs**](features/README.md) | Design freezes for tickets (catalogs, BOMs, starters, …) |

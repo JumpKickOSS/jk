@@ -359,15 +359,30 @@ jk native                    # GraalVM native-image
 jk verify                    # rebuild in a scratch dir and compare hashes
 ```
 
-Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
+### Machine / agent output (JSONL)
+
+Human TTY mode stays terse and visual. **Agents, scripts, and CI should not scrape it.**
+
+```bash
+jk build --output json …     # live JSONL on stdout (one object per line)
+jk test  --output jsonl …    # identical to json — both mean live events
+export JK_OUTPUT=json        # same for any command that uses PipelineConsole
+```
+
+- **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
+  errors with structured test fields, step/pipeline finish). Not a single end-of-run blob.
+- Every line includes `"schema":1`, `"ts"`, `"type"`. See [machine-output.md](machine-output.md) for
+  the full event table and how it aligns with the web SSE API and future MCP.
+- Post-hoc summary still lands in `target/.jk-cli/<ts>/details.json` (below). Deep timings:
+  `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
 
 The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
-error red), not `jk <command>: …` log prefixes. Agents should use `--json`, BSP, or the engine
-wire — not scrape prose. Opt out of rich chrome with `NO_COLOR`, `--no-ansi`, or
-`JK_NERDFONT=false`. Full charter and migration tickets live on the org board (kanartist
-**JK-1076**–**JK-1081**).
+error red), not `jk <command>: …` log prefixes. Agents should use **`--output json`/`jsonl`**,
+BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrome with `NO_COLOR`,
+`--no-ansi`, or `JK_NERDFONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
+surface: [machine-output.md](machine-output.md).
 
 ```bash
 # Detect Nerd Font support once; writes ~/.jk/config.toml [global].nerdfont

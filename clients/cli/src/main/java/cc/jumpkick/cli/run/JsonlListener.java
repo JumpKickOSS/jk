@@ -10,8 +10,9 @@ import java.io.PrintStream;
 import java.time.Duration;
 
 /**
- * Emit one JSON object per event to stdout. Triggered by {@code --output json}; consumed by CI
- * scripts, log aggregators, and other tooling. Wire format is defined by {@link JsonlShape}.
+ * Emit one JSON object per event to stdout. Triggered by {@code --output json} or {@code jsonl}
+ * (identical). Consumed by agents, CI, and tooling. Wire format: {@link JsonlShape} — see {@code
+ * docs/machine-output.md}.
  */
 public final class JsonlListener implements PipelineListener {
 
