@@ -101,9 +101,7 @@ public final class PublishPipelines {
                             ? req.jarPath()
                             : project.assembly() ? layout.assemblyJar() : layout.mainJar();
                     if (!Files.exists(jar)) {
-                        ctx.error(
-                                "missing-jar",
-                                "jar not found at " + jar + " — run `jk build` first or pass --jar.");
+                        ctx.error("missing-jar", "jar not found at " + jar + " — run `jk build` first or pass --jar.");
                         throw new RuntimeException("missing jar");
                     }
                     ctx.put(PROJECT, project);

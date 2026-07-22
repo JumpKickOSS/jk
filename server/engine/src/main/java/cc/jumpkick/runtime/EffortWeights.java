@@ -28,12 +28,14 @@ public final class EffortWeights {
     static final int RESTORE = 3;
     /** Cold static reservation for test JVM fork + framework init. */
     static final int TEST_STARTUP = 15;
+
     static final int TEST_METHOD = 8;
     /**
      * Learnable fixed floor for run-tests — must stay below typical hot-suite residual so samples
      * are not dropped (unlike the larger cold {@link #TEST_STARTUP}).
      */
     static final int TEST_STARTUP_FLOOR = 2;
+
     static final int COMPILE_FLOOR = 2;
     static final int ARTIFACT_FETCH = 8;
 

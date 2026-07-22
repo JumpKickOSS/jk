@@ -92,10 +92,52 @@ class SelfHostingTomlTest {
                         "shared/toolchain-jdk",
                         "server/toolchain",
                         "shared/wire",
+                        "clients/web",
                         "server/engine",
                         "clients/cli",
                         "plugins/test-runner",
-                        "plugins/java-compiler");
+                        "plugins/java-compiler",
+                        "plugins/kotlin-compiler",
+                        "plugins/auditor",
+                        "plugins/publisher",
+                        "plugins/image-builder",
+                        "plugins/compat-bridge",
+                        "plugins/formatter",
+                        "plugins/spring-boot",
+                        "plugins/android",
+                        "plugins/protobuf",
+                        "plugins/shrink");
+    }
+
+    @Test
+    void engine_is_assembly_app_and_depends_on_web() throws Exception {
+        JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
+        assertThat(engine.assembly()).isTrue();
+        assertThat(engine.mainClass()).isEqualTo("cc.jumpkick.engine.EngineMain");
+        assertThat(engine.dependencies().of(Scope.MAIN).stream().map(d -> d.library()).toList())
+                .contains("jk-web");
+    }
+
+    @Test
+    void root_declares_central_and_google_repositories() throws Exception {
+        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        assertThat(root.repositories()).extracting(r -> r.name()).contains("central", "google");
+    }
+
+    @Test
+    void web_module_is_resources_library() throws Exception {
+        JkBuild web = JkBuildParser.parse(REPO.resolve("clients/web/jk.toml"));
+        assertThat(web.project().name()).isEqualTo("jk-web");
+        assertThat(web.mainClass()).isNull();
+        assertThat(web.assembly()).isFalse();
+    }
+
+    @Test
+    void android_plugin_declares_google_maven_for_apksig() throws Exception {
+        JkBuild android = JkBuildParser.parse(REPO.resolve("plugins/android/jk.toml"));
+        assertThat(android.repositories()).extracting(r -> r.name()).contains("google");
+        assertThat(android.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+                .contains("com.android.tools.build:apksig");
     }
 
     @Test
@@ -117,13 +159,26 @@ class SelfHostingTomlTest {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.assembly()).as(module).isTrue();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
-            assertThat(p.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+            assertThat(p.dependencies().of(Scope.MAIN).stream()
+                            .map(d -> d.module())
+                            .toList())
                     .as(module)
                     .contains("cc.jumpkick:jk-plugin-api");
         }
         // test-runner keeps the JDK-17 floor for the user's forked test JVM.
         JkBuild runner = JkBuildParser.parse(REPO.resolve("plugins/test-runner/jk.toml"));
         assertThat(runner.project().javaRelease()).isEqualTo(17);
+    }
+
+    @Test
+    void all_first_party_plugin_modules_are_plugin_main_assemblies() throws Exception {
+        JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
+        for (String module : root.workspace().modules()) {
+            if (!module.startsWith("plugins/")) continue;
+            JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
+            assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
+            assertThat(p.assemblyMode().isBundled()).as(module).isTrue();
+        }
     }
 
     @Test

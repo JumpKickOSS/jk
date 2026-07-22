@@ -51,7 +51,10 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value(
+                                "<dir>",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
                         .hide(),
@@ -142,7 +145,8 @@ public final class ToolInstallCommand implements CliCommand {
         if (classified instanceof cc.jumpkick.tool.ToolTarget.Directory dir) {
             Path projectDir = base.resolve(dir.path()).toAbsolutePath().normalize();
             if (!Files.isRegularFile(projectDir.resolve("jk.toml"))) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project."));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Tool", "no jk.toml in " + projectDir + " — a directory target must be a jk project."));
                 return Exit.CONFIG;
             }
             return appInstallDelegate().runProjectInstallPipeline(projectDir, "install");
@@ -200,7 +204,7 @@ public final class ToolInstallCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
         ToolEnv env;
-                cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
+        cc.jumpkick.cli.engine.EngineClient.ToolResolveOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runToolResolve(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -251,7 +255,10 @@ public final class ToolInstallCommand implements CliCommand {
         if (gated != null) return gated;
         if (!r.arguments().isEmpty()) {
             // Default arguments can't ride a launcher's "$@" cleanly yet.
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Tool", "warning — this alias declares default arguments," + " which installed launchers do not honor yet."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Tool",
+                    "warning — this alias declares default arguments,"
+                            + " which installed launchers do not honor yet."));
         }
         if (binName == null || binName.isBlank()) binName = aliasName;
         String ref = r.scriptRef();
@@ -312,7 +319,7 @@ public final class ToolInstallCommand implements CliCommand {
         PipelineConsole.Mode consoleMode = PipelineConsole.modeFor(global);
 
         cc.jumpkick.cli.engine.EngineClient.ScriptPrepareOutcome prep;
-                try {
+        try {
             prep = cc.jumpkick.cli.engine.EngineClient.runScriptPrepare(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ScriptPrepareRequest(

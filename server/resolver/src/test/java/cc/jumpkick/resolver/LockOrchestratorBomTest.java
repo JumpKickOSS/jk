@@ -389,7 +389,8 @@ class LockOrchestratorBomTest {
                 .orElseThrow();
         assertThat(jupiter.version()).isEqualTo("6.1.0"); // latest stable the repo offers
         assertThat(jupiter.scopes()).contains(Scope.TEST);
-        assertThat(lock.artifacts()).anyMatch(p -> p.packageKey().equals("org.junit.platform:junit-platform-launcher:jar:"));
+        assertThat(lock.artifacts())
+                .anyMatch(p -> p.packageKey().equals("org.junit.platform:junit-platform-launcher:jar:"));
     }
 
     @Test

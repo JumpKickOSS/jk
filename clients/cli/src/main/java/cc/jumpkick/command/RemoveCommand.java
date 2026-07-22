@@ -72,7 +72,8 @@ public final class RemoveCommand implements CliCommand {
         }
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", "--test / --runtime / --provided / --processor are mutually exclusive"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Remove", "--test / --runtime / --provided / --processor are mutually exclusive"));
             return Exit.USAGE;
         }
         Scope scope = test

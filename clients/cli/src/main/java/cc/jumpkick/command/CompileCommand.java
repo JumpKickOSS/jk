@@ -42,8 +42,7 @@ public final class CompileCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide()));
+                cc.jumpkick.cli.CommonOpts.cacheDir()));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -65,7 +64,7 @@ public final class CompileCommand implements CliCommand {
         String target = BuildCommand.buildTarget(buildFile, dir);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
-                // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
+        // Engine-hosted: same pipeline as CompilePipelines; listener chosen when the step list
         // arrives over the socket.
         var session = cc.jumpkick.config.SessionContext.current();
         try {

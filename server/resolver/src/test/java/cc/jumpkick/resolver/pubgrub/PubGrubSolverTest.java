@@ -7,7 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 class PubGrubSolverTest {
@@ -31,6 +33,121 @@ class PubGrubSolverTest {
                 solver.solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.exact("1.0"))));
 
         assertThat(solution).containsOnly(Map.entry("root", "1.0"), Map.entry("leaf", "1.0"));
+    }
+
+    @Test
+    void exact_constraint_skips_versions_lookup() throws Exception {
+        AtomicInteger versionsCalls = new AtomicInteger();
+        PackageSource inner = InMemoryPackageSource.builder()
+                .version("leaf", "1.0")
+                .version("leaf", "2.0")
+                .build();
+        PackageSource src = counting(inner, versionsCalls, null);
+
+        Map<String, String> solution =
+                new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.exact("1.0"))));
+
+        assertThat(solution).containsEntry("leaf", "1.0");
+        assertThat(versionsCalls.get()).isZero();
+    }
+
+    @Test
+    void preferred_version_skips_versions_lookup_on_happy_path() throws Exception {
+        AtomicInteger versionsCalls = new AtomicInteger();
+        PackageSource inner = InMemoryPackageSource.builder()
+                .version("widget", "1.0")
+                .version("widget", "2.0")
+                .version("widget", "3.0")
+                .build();
+        PackageSource src = counting(inner, versionsCalls, Map.of("widget", "2.0"));
+
+        // Open constraint (highest-wins style) + soft-prefer pin → seed 2.0 without metadata.
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
+
+        assertThat(solution).containsEntry("widget", "2.0");
+        assertThat(versionsCalls.get()).isZero();
+    }
+
+    @Test
+    void preferred_version_expands_when_pin_pom_unavailable() throws Exception {
+        AtomicInteger versionsCalls = new AtomicInteger();
+        PackageSource inner = new PackageSource() {
+            private final PackageSource data = InMemoryPackageSource.builder()
+                    .version("widget", "1.0")
+                    .version("widget", "2.0")
+                    .version("widget", "3.0")
+                    .build();
+
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                return data.versions(pkg);
+            }
+
+            @Override
+            public Optional<String> preferredVersion(String pkg) {
+                return Optional.of("3.0");
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                if ("widget".equals(pkg) && "3.0".equals(version)) {
+                    throw new VersionUnavailableException("3.0 yanked");
+                }
+                return data.dependencies(pkg, version);
+            }
+        };
+        PackageSource src = counting(inner, versionsCalls, null);
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("1.0", true))));
+
+        // Soft-prefer 3.0 fails; expand + highest-wins among remaining → 2.0.
+        assertThat(solution).containsEntry("widget", "2.0");
+        assertThat(versionsCalls.get()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void preferred_outside_constraint_loads_full_versions() throws Exception {
+        AtomicInteger versionsCalls = new AtomicInteger();
+        PackageSource inner = InMemoryPackageSource.builder()
+                .version("widget", "1.0")
+                .version("widget", "2.0")
+                .version("widget", "3.0")
+                .build();
+        // Prefer 1.0 but constraint is >= 2.0 — seed would project empty; expand immediately.
+        PackageSource src = counting(inner, versionsCalls, Map.of("widget", "1.0"));
+
+        Map<String, String> solution = new PubGrubSolver(src)
+                .solve("root", "1.0", List.of(Term.positive("widget", VersionSet.atLeast("2.0", true))));
+
+        assertThat(solution).containsEntry("widget", "3.0");
+        assertThat(versionsCalls.get()).isGreaterThanOrEqualTo(1);
+    }
+
+    /** Wraps {@code inner}; counts {@link PackageSource#versions} and optionally injects prefs. */
+    private static PackageSource counting(
+            PackageSource inner, AtomicInteger versionsCalls, Map<String, String> preferredOrNull) {
+        return new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                versionsCalls.incrementAndGet();
+                return inner.versions(pkg);
+            }
+
+            @Override
+            public Optional<String> preferredVersion(String pkg) {
+                if (preferredOrNull != null && preferredOrNull.containsKey(pkg)) {
+                    return Optional.of(preferredOrNull.get(pkg));
+                }
+                return inner.preferredVersion(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return inner.dependencies(pkg, version);
+            }
+        };
     }
 
     @Test

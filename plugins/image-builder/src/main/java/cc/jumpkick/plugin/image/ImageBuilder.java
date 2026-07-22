@@ -2,7 +2,6 @@
 package cc.jumpkick.plugin.image;
 
 import cc.jumpkick.image.ImageConfig;
-
 import com.google.cloud.tools.jib.api.CacheDirectoryCreationException;
 import com.google.cloud.tools.jib.api.Containerizer;
 import com.google.cloud.tools.jib.api.DockerDaemonImage;

@@ -12,13 +12,13 @@ class WireEnvelopeGoldenTest {
 
     @Test
     void hello_and_ack_carry_version_and_proto() {
-        String hello = EngineProtocol.hello("0.10.0-SNAPSHOT", "connect");
+        String hello = EngineProtocol.hello("0.10.1", "connect");
         assertThat(hello).contains("\"t\":\"hello\"");
         assertThat(hello).contains("\"version\":");
         assertThat(hello).contains("\"proto\":" + EngineProtocol.PROTOCOL);
         assertThat(hello).contains("\"purpose\":\"connect\"");
 
-        String ack = EngineProtocol.helloAck("0.10.0-SNAPSHOT", 1L, 100L, false, "bid");
+        String ack = EngineProtocol.helloAck("0.10.1", 1L, 100L, false, "bid");
         assertThat(ack).contains("\"t\":\"hello-ack\"");
         assertThat(ack).contains("\"startedAt\":");
         assertThat(ack).contains("\"proto\":" + EngineProtocol.PROTOCOL);

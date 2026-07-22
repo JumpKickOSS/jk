@@ -9,7 +9,7 @@ default.
 |---|---|---|---|
 | **Thin jar** | default | `jk build` | no |
 | **Assembly jar** | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` | no |
-| **Shrunk jar** | `[shrink]` table (+ shrink plugin) | `jk build` | yes (opt-in) |
+| **Shrunk jar** | `[application] assembly = "shrink"` | `jk assembly` / `jk build` | yes (opt-in) |
 | **Spring Boot jar** | spring-boot plugin | `jk build` | plugin-owned |
 
 ## Thin jar (default)
@@ -37,6 +37,27 @@ jk assembly   # alias: jk assemble — errors with a one-line fix if assembly is
 jk build      # same packaging graph when assembly = true
 ```
 
+### One-off CLI override (`--fat` / `--shrink`)
+
+You can package without (or against) `jk.toml` for a single run:
+
+```bash
+jk assembly --fat                 # fat jar this run only
+jk assembly --shrink              # R8 this run only
+jk assembly --shrink --write-config   # R8 + surgically set assembly = "shrink" in jk.toml
+jk assembly --fat --write-config      # fat + assembly = true
+```
+
+| Flag | Effect |
+|---|---|
+| `--fat` | Override packaging to classic assembly jar for **this invocation** |
+| `--shrink` | Override packaging to R8 shrink packager for **this invocation** |
+| `--write-config` | With `--fat` or `--shrink`, surgically edit `[application].assembly` in `jk.toml` (creates the table if missing; leaves `main` and other keys alone). Never rewrites the whole file. |
+
+One-offs print a loud note that the mode is not persisted (unless you pass `--write-config`). CLI
+overrides ride the client→engine session envelope and are included in packaging action-cache keys
+(`packaging:fat` / `packaging:<packager>`), so fat and shrink never cache-collide.
+
 **Merge rules** (engine `AssemblyPackager`):
 
 - Concatenate `META-INF/services/*`
@@ -56,15 +77,23 @@ Sample: [examples/assembly-app/](examples/assembly-app/).
 ```toml
 [application]
 main = "com.example.App"
-
-[shrink]
-# optional: obfuscate = false   # default
-# optional: keep = ["-keep class com.example.** { *; }"]
-# optional: keep-files = ["proguard-rules.pro"]
+assembly = "shrink"   # R8 over classes + runtime closure → small fat jar
 ```
 
-Enable the first-party shrink plugin (see plugin docs / workspace conventions). Build summary
-labels size before → after. **Not** on by default.
+Optional keep rules / R8 version still live under `[shrink]` when you need them:
+
+```toml
+[shrink]
+# keep = ["-keep class com.example.** { *; }"]
+# keep-files = ["proguard-rules.pro"]
+# obfuscate = false   # default
+```
+
+A bare `[shrink]` table (without `assembly = "shrink"`) still enables the packager for
+backward compatibility. Prefer `assembly = "shrink"`. Build labels size before → after.
+
+Try without editing the file first: `jk assembly --shrink`. Persist with
+`jk assembly --shrink --write-config`.
 
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 

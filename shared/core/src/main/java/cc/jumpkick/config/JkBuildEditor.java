@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.tomlj.Toml;
@@ -395,6 +397,63 @@ public final class JkBuildEditor {
         if (!name.matches("[A-Za-z][A-Za-z0-9_-]*")) {
             throw new IllegalArgumentException("dependency name must match [A-Za-z][A-Za-z0-9_-]* (got: " + name + ")");
         }
+    }
+
+    /**
+     * Set {@code [application].assembly} surgically: {@code true}, {@code "shrink"}, or remove the
+     * key when {@link JkBuild.AssemblyMode#OFF}. Creates {@code [application]} if missing. Leaves
+     * other keys in the table (e.g. {@code main}) intact. Does not remove a legacy {@code [shrink]}
+     * table.
+     */
+    public static String setAssemblyMode(String content, JkBuild.AssemblyMode mode) {
+        Objects.requireNonNull(mode, "mode");
+        List<String> lines = splitPreservingTerminator(content);
+        Pattern appHeader = Pattern.compile("^\\s*\\[application]\\s*$");
+        Pattern assemblyKey = Pattern.compile("^(\\s*)assembly\\s*=");
+        int header = -1;
+        for (int i = 0; i < lines.size(); i++) {
+            if (appHeader.matcher(lines.get(i)).matches()) {
+                header = i;
+                break;
+            }
+        }
+        String assignment =
+                switch (mode) {
+                    case FAT -> "assembly = true";
+                    case SHRINK -> "assembly = \"shrink\"";
+                    case OFF -> null;
+                };
+        if (header < 0) {
+            if (assignment == null) return content; // nothing to remove
+            ensureTrailingBlankLine(lines);
+            lines.add("[application]");
+            lines.add(assignment);
+            return validated(join(lines));
+        }
+        int end = endOfTable(lines, header);
+        int existing = -1;
+        for (int i = header + 1; i < end; i++) {
+            if (assemblyKey.matcher(lines.get(i)).find()) {
+                existing = i;
+                break;
+            }
+        }
+        if (assignment == null) {
+            if (existing >= 0) lines.remove(existing);
+            return validated(join(lines));
+        }
+        // Preserve indentation of existing assembly line when present.
+        String line = assignment;
+        if (existing >= 0) {
+            Matcher m = assemblyKey.matcher(lines.get(existing));
+            if (m.find()) line = m.group(1) + assignment;
+            lines.set(existing, line);
+        } else {
+            int insertAt = end;
+            while (insertAt > header + 1 && lines.get(insertAt - 1).isBlank()) insertAt--;
+            lines.add(insertAt, line);
+        }
+        return validated(join(lines));
     }
 
     private static String validated(String text) {

@@ -28,7 +28,10 @@ import java.util.Optional;
  */
 public final class CliSessionTranscript {
 
-    /** Bump when the JSON shape changes in a breaking way. */
+    /**
+     * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release schema churn (see
+     * {@code docs/architecture.md} schema freeze). Additive fields only.
+     */
     public static final int SCHEMA = 1;
 
     public static final String REL_ROOT = "target/.jk-cli";
@@ -64,11 +67,7 @@ public final class CliSessionTranscript {
         if (disabled()) return null;
         try {
             Instant started = Instant.now();
-            Path dir = projectDir
-                    .toAbsolutePath()
-                    .normalize()
-                    .resolve(REL_ROOT)
-                    .resolve(DIR_TS.format(started));
+            Path dir = projectDir.toAbsolutePath().normalize().resolve(REL_ROOT).resolve(DIR_TS.format(started));
             Files.createDirectories(dir);
             Path file = dir.resolve(FILE_NAME);
             List<String> args = argv == null || argv.isEmpty() ? List.of(command) : List.copyOf(argv);

@@ -1,0 +1,26 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-android"
+version     = "0.10.1"
+description = "jk-android: Android packaging plugin worker."
+jdk         = 25
+java        = 25
+
+# apksig lives on Google Maven (not Central's stale 2.3.0). Module lock uses this table.
+[repositories]
+central = "https://repo.maven.apache.org/maven2/"
+google  = "https://dl.google.com/dl/android/maven2/"
+
+[application]
+main     = "cc.jumpkick.plugin.process.PluginMain"
+assembly = true
+
+[dependencies]
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.1" }
+apksig        = { group = "com.android.tools.build", name = "apksig", version = "=8.7.3" }
+asm           = { group = "org.ow2.asm", name = "asm", version = "9.10.1" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

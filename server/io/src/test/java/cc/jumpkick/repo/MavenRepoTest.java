@@ -206,6 +206,25 @@ class MavenRepoTest {
     }
 
     @Test
+    void online_warm_fetch_uses_local_store_without_network(@TempDir Path tempDir) throws Exception {
+        // JK-1088: second online fetch of the same GAV should not re-HTTP.
+        byte[] pom = "<project><modelVersion>4.0.0</modelVersion></project>".getBytes(StandardCharsets.UTF_8);
+        serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
+        // Checksum sidecars (optional) — miss is OK for TOFU
+        Cas cas = new Cas(tempDir);
+        Coordinate coord = Coordinate.of("com.example", "widget", "1.0");
+        MavenRepo repo = new MavenRepo("test", base, new Http(), cas);
+        MavenRepo.Fetched first = repo.fetchPom(coord);
+        assertThat(first.sha256()).isEqualTo(Hashing.sha256Hex(pom));
+
+        server.stop(0); // any further network would fail
+        MavenRepo warm = new MavenRepo("test", base, new Http(), cas);
+        MavenRepo.Fetched second = warm.fetchPom(coord);
+        assertThat(second.sha256()).isEqualTo(first.sha256());
+        assertThat(Files.readAllBytes(second.cachePath())).isEqualTo(pom);
+    }
+
+    @Test
     void offline_fetch_of_unindexed_coord_is_not_found(@TempDir Path tempDir) {
         goOffline();
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));

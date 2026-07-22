@@ -29,7 +29,9 @@ public record Session(
         CancelToken cancel,
         // Variant selection + client-resolved env (env: indirection for signing secrets).
         String variant,
-        java.util.Map<String, String> clientEnv) {
+        java.util.Map<String, String> clientEnv,
+        /** CLI packaging override: empty, {@code fat}, or {@code shrink} ({@code jk assembly --shrink}). */
+        String assemblyOverride) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -39,6 +41,7 @@ public record Session(
         cancel = (cancel == null) ? CancelToken.NONE : cancel;
         variant = (variant == null) ? "" : variant;
         clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? java.util.Map.of() : java.util.Map.copyOf(clientEnv);
+        assemblyOverride = (assemblyOverride == null || assemblyOverride.isBlank()) ? "" : assemblyOverride.trim();
     }
 
     /** A copy carrying the given variant selection + client-resolved env. */
@@ -54,7 +57,8 @@ public record Session(
                 parallelTests,
                 cancel,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     /**
@@ -116,7 +120,8 @@ public record Session(
                 false,
                 CancelToken.live(),
                 "",
-                null);
+                null,
+                "");
     }
 
     public Session withConfig(JkConfig newConfig) {
@@ -131,7 +136,8 @@ public record Session(
                 parallelTests,
                 cancel,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withWorkingDir(Path dir) {
@@ -146,17 +152,40 @@ public record Session(
                 parallelTests,
                 cancel,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withCacheDir(Path dir) {
         return new Session(
-                config, workingDir, dir, jdksDir, jvm, jdkSpec, graalSpec, parallelTests, cancel, variant, clientEnv);
+                config,
+                workingDir,
+                dir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withJdksDir(Path dir) {
         return new Session(
-                config, workingDir, cacheDir, dir, jvm, jdkSpec, graalSpec, parallelTests, cancel, variant, clientEnv);
+                config,
+                workingDir,
+                cacheDir,
+                dir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withJvm(PluginTuning tuning) {
@@ -171,7 +200,8 @@ public record Session(
                 parallelTests,
                 cancel,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     /** The top-tier JDK / GraalVM selection ({@code --jdk} / {@code --graal}); blanks normalize to null. */
@@ -187,12 +217,44 @@ public record Session(
                 parallelTests,
                 cancel,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     public Session withParallelTests(boolean enabled) {
         return new Session(
-                config, workingDir, cacheDir, jdksDir, jvm, jdkSpec, graalSpec, enabled, cancel, variant, clientEnv);
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                enabled,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride);
+    }
+
+    /**
+     * CLI packaging override for this invocation only ({@code fat} / {@code shrink} / empty).
+     * Does not rewrite {@code jk.toml}.
+     */
+    public Session withAssemblyOverride(String mode) {
+        return new Session(
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                mode);
     }
 
     /** A copy carrying the given cancellation token ({@code null} → {@link CancelToken#NONE}). */
@@ -208,7 +270,8 @@ public record Session(
                 parallelTests,
                 token,
                 variant,
-                clientEnv);
+                clientEnv,
+                assemblyOverride);
     }
 
     private static String blankToNull(String s) {

@@ -96,7 +96,8 @@ public final class AssemblyPackager {
 
             // 3. Merged multi-entry META-INF files (services, Spring handlers, …).
             for (Map.Entry<String, ByteArrayOutputStream> e : merged.entrySet()) {
-                DeterministicJar.writeEntry(jos, e.getKey(), e.getValue().toByteArray(), request.timestampEpochSeconds());
+                DeterministicJar.writeEntry(
+                        jos, e.getKey(), e.getValue().toByteArray(), request.timestampEpochSeconds());
                 written.add(e.getKey());
             }
 

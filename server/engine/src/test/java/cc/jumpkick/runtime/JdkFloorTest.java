@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
@@ -68,34 +70,38 @@ class JdkFloorTest {
                 """);
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
-                project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        assertThat(lock.run().errors()).isEmpty();
+        // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
+        Session nested = Session.defaults().withCacheDir(cache);
+        SessionContext.runWhere(nested, () -> {
+            Pipeline lock = LockPipelines.lockPipeline(
+                    project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+            assertThat(lock.run().errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
-                project,
-                1,
-                1,
-                null,
-                null,
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                java.util.Set.of(),
-                cc.jumpkick.config.SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
-        for (PipelineResult.Diagnostic d : result.errors()) {
-            System.out.println("DIAG [" + d.step() + "]: " + d.message());
-        }
-        assertThat(result.errors()).isEmpty();
-        assertThat(result.success())
-                .as("jdk=17 pinned Kotlin project builds and its test passes")
-                .isTrue();
+            BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+                    project,
+                    cache,
+                    project.resolve("jk.toml"),
+                    project.resolve("jk.lock"),
+                    project,
+                    1,
+                    1,
+                    null,
+                    null,
+                    /* skipTests */ false,
+                    false,
+                    false,
+                    false,
+                    java.util.Set.of(),
+                    nested);
+            Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
+            PipelineResult result = pipeline.run();
+            for (PipelineResult.Diagnostic d : result.errors()) {
+                System.out.println("DIAG [" + d.step() + "]: " + d.message());
+            }
+            assertThat(result.errors()).isEmpty();
+            assertThat(result.success())
+                    .as("jdk=17 pinned Kotlin project builds and its test passes")
+                    .isTrue();
+        });
     }
 }

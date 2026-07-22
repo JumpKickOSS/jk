@@ -77,7 +77,8 @@ public final class KmpRedirects {
             GradleModuleMetadata gmm =
                     GradleModuleMetadata.parse(moduleHit.get().fetched().cachePath());
             return gmm.runtimeRedirect(jvmEnvironment).map(target -> {
-                String selected = PackageId.ofGa(target.group() + ":" + target.module()).key();
+                String selected =
+                        PackageId.ofGa(target.group() + ":" + target.module()).key();
                 for (String sibling : gmm.redirectTargetModules()) {
                     String siblingKey = PackageId.ofGa(sibling).key();
                     if (!siblingKey.equals(selected)) droppedSiblings.put(siblingKey, selected);

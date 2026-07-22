@@ -167,7 +167,8 @@ public final class AddCommand implements CliCommand {
     private Scope resolveScope() {
         int selected = (test ? 1 : 0) + (runtime ? 1 : 0) + (provided ? 1 : 0) + (processor ? 1 : 0);
         if (selected > 1) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", "--test / --runtime / --provided / --processor are mutually exclusive"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Add", "--test / --runtime / --provided / --processor are mutually exclusive"));
             return null;
         }
         return test
@@ -212,12 +213,14 @@ public final class AddCommand implements CliCommand {
         Path target = cwd.resolve(raw).normalize();
         Path targetToml = target.resolve("jk.toml");
         if (!Files.exists(targetToml)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Add", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(target)));
             return Exit.CONFIG;
         }
         var module = BuildCommand.projectInfoOrNull(target);
         if (module == null) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", "could not read " + cc.jumpkick.cli.PathDisplay.styledRaw(targetToml)));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Add", "could not read " + cc.jumpkick.cli.PathDisplay.styledRaw(targetToml)));
             return 1;
         }
         String group = module.group();
@@ -250,10 +253,12 @@ public final class AddCommand implements CliCommand {
         Path rootToml = root.resolve("jk.toml");
         try {
             if (!target.startsWith(root)) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", raw
-                        + " is outside the workspace root "
-                        + root
-                        + "; added the dependency but not registering it as a module."));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Add",
+                        raw
+                                + " is outside the workspace root "
+                                + root
+                                + "; added the dependency but not registering it as a module."));
             } else if (Files.exists(rootToml)
                     && (BuildCommand.projectInfoOrNull(root) != null
                             && BuildCommand.projectInfoOrNull(root).workspaceRoot())) {
@@ -266,7 +271,8 @@ public final class AddCommand implements CliCommand {
                 }
             }
         } catch (RuntimeException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", "could not register workspace module: " + e.getMessage()));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Add", "could not register workspace module: " + e.getMessage()));
         }
         return 0;
     }
@@ -310,7 +316,8 @@ public final class AddCommand implements CliCommand {
         // Validate: all three coordinates are required.
         if (group == null || artifact == null || version == null) {
             if (!isJar) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", "--group, --name, and --ver are required for non-JAR files"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Add", "--group, --name, and --ver are required for non-JAR files"));
             } else {
                 StringBuilder msg = new StringBuilder("jk add: could not detect");
                 if (group == null) msg.append(" group");

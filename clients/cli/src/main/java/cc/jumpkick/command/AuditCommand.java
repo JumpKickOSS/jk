@@ -57,12 +57,14 @@ public final class AuditCommand implements CliCommand {
         Path projectDir = global.workingDir();
         Path lockPath = projectDir.resolve("jk.lock");
         if (!Files.exists(lockPath)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Audit", "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                    + " (run `jk lock` first)."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Audit",
+                    "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir) + " (run `jk lock` first)."));
             return Exit.CONFIG;
         }
         if (global.offline) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Audit", "--offline is set; OSV queries require network access."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Audit", "--offline is set; OSV queries require network access."));
             return 1;
         }
         Path cache = JkDirs.cache();
@@ -80,7 +82,7 @@ public final class AuditCommand implements CliCommand {
         };
 
         PipelineResult result;
-                try {
+        try {
             result = cc.jumpkick.cli.engine.EngineClient.runAudit(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.AuditRequest(
@@ -101,7 +103,8 @@ public final class AuditCommand implements CliCommand {
 
         List<AuditReport.Finding> blocking = report.filterAtLeast(threshold);
         if (!blocking.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Audit", blocking.size() + " finding(s) at or above " + threshold + " — failing."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Audit", blocking.size() + " finding(s) at or above " + threshold + " — failing."));
             return 1;
         }
         return 0;

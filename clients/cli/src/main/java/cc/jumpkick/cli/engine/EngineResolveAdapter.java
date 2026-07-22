@@ -223,8 +223,7 @@ final class EngineResolveAdapter {
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
                     case EngineProtocol.LOCK_PACKAGE ->
-                        handler.onPackage(
-                                Jsonl.str(line, "dir"), Jsonl.str(line, "name"), Jsonl.str(line, "version"));
+                        handler.onPackage(Jsonl.str(line, "dir"), Jsonl.str(line, "name"), Jsonl.str(line, "version"));
                     case EngineProtocol.PIPELINE_FINISH -> {
                         PipelineResult result = new PipelineResult(
                                 pipelineName,
@@ -284,8 +283,7 @@ final class EngineResolveAdapter {
             case EngineProtocol.PROGRESS ->
                 listener.progress(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
             case EngineProtocol.TICK_UPDATE ->
-                listener.tickUpdate(
-                        Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                listener.tickUpdate(Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
             case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
             case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
             case EngineProtocol.WARN ->

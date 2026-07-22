@@ -189,6 +189,7 @@ public final class GlobalConfig {
             String url;
             Optional<RepoCredential> credential = Optional.empty();
             Optional<ObjectStoreConfig> objectStore = Optional.empty();
+            List<String> groups = List.of();
             try {
                 if (value instanceof String s) {
                     url = s;
@@ -198,10 +199,15 @@ public final class GlobalConfig {
                     url = u;
                     credential = RepositoryToml.credential(t, LENIENT_INTERP);
                     objectStore = RepositoryToml.objectStore(t, LENIENT_INTERP);
+                    try {
+                        groups = RepositoryToml.groups(t, "repositories." + name);
+                    } catch (RuntimeException ignored) {
+                        groups = List.of(); // lenient: bad groups array skipped
+                    }
                 } else {
                     continue; // unexpected type — skip leniently
                 }
-                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore));
+                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore, groups));
             } catch (RuntimeException ignored) {
                 // malformed URL or env var — skip this entry leniently
             }

@@ -34,7 +34,8 @@ public final class DeactivateCommand implements CliCommand {
     public int run(Invocation in) {
         String name = in.value("shell").orElseGet(() -> System.getenv("__JK_SHELL"));
         if (name == null || name.isBlank()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deactivate", "no active shell (re-run from a `jk activate`'d shell)"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Deactivate", "no active shell (re-run from a `jk activate`'d shell)"));
             return Exit.USAGE;
         }
         var shell = Shell.byName(name);

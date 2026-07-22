@@ -98,7 +98,7 @@ public final class MvnCommand implements CliCommand {
             throws IOException, InterruptedException {
         String tool = isGradle ? "gradle" : "mvn";
         HostedEvents.Provision p;
-                try {
+        try {
             p = cc.jumpkick.cli.engine.EngineClient.provision(
                     cc.jumpkick.engine.EnginePaths.current(), cache, projectDir, toolsRoot, noDiscover, isGradle);
         } catch (IOException e) {

@@ -37,7 +37,8 @@ class EngineServerTest {
     private Path shortTempDir() throws IOException {
         // Prefer /tmp: macOS default TMPDIR is under /var/folders/... and with Java's long
         // createTempDirectory suffix the UDS path (…/engine/<key>.genN.sock) exceeds sun_path (~104).
-        Path root = Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
+        Path root =
+                Files.isDirectory(Path.of("/tmp")) ? Path.of("/tmp") : Path.of(System.getProperty("java.io.tmpdir"));
         Path dir = Files.createTempDirectory(root, "jkd-");
         tempDirs.add(dir);
         return dir;

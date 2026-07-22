@@ -7,8 +7,14 @@ import cc.jumpkick.cache.Cas;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -173,8 +179,7 @@ class ActionCacheTest {
     }
 
     @Test
-    void restore_after_smaller_source_set_does_not_leave_stale_classes(@TempDir Path tempDir)
-            throws IOException {
+    void restore_after_smaller_source_set_does_not_leave_stale_classes(@TempDir Path tempDir) throws IOException {
         // Invariant: variant / shrink source set — stale classes from prior output are wiped.
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
@@ -209,11 +214,10 @@ class ActionCacheTest {
 
         int threads = 8;
         int rounds = 40;
-        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
-        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
-        java.util.concurrent.atomic.AtomicReference<Throwable> fail =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        java.util.List<java.util.concurrent.Future<?>> futures = new java.util.ArrayList<>();
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        CountDownLatch start = new CountDownLatch(1);
+        AtomicReference<Throwable> fail = new AtomicReference<>();
+        List<Future<?>> futures = new ArrayList<>();
         for (int t = 0; t < threads; t++) {
             final int id = t;
             futures.add(pool.submit(() -> {

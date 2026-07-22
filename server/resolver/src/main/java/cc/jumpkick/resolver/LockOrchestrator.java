@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
+import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -13,6 +14,7 @@ import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.Pom;
 import cc.jumpkick.repo.RepoGroup;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
@@ -28,6 +30,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * End-to-end lock: {@link JkBuild} → three independent scope solves (main / test / processor) →
@@ -194,11 +200,13 @@ public final class LockOrchestrator {
         Map<String, String> prefs = new HashMap<>();
         for (Lockfile.Artifact pkg : existing.artifacts()) {
             // Prefer main-scoped rows over test-only / processor-only duals.
-            boolean specializedOnly = pkg.scopes().stream()
-                            .allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
-                    && pkg.scopes().stream().noneMatch(MAIN_SCOPES::contains);
+            boolean specializedOnly =
+                    pkg.scopes().stream().allMatch(s -> s == Scope.PROCESSOR || s == Scope.TEST || s == Scope.TEST_DEV)
+                            && pkg.scopes().stream().noneMatch(MAIN_SCOPES::contains);
             String key = pkg.packageKey();
-            String ga = PackageId.isMavenPackageKey(pkg.name()) ? PackageId.parse(pkg.name()).ga() : pkg.name();
+            String ga = PackageId.isMavenPackageKey(pkg.name())
+                    ? PackageId.parse(pkg.name()).ga()
+                    : pkg.name();
             if (specializedOnly) {
                 prefs.putIfAbsent(key, pkg.version());
                 prefs.putIfAbsent(ga, pkg.version());
@@ -258,8 +266,7 @@ public final class LockOrchestrator {
             }
         }
         // Cross-package features on path= libraries (ticket-1006): pull their optional deps.
-        CrossPackageFeatures.Result cross =
-                CrossPackageFeatures.expand(projectDir, mainDeduped.values());
+        CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
         this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
             mainDeduped.putIfAbsent(extra.module(), extra);
@@ -277,6 +284,7 @@ public final class LockOrchestrator {
 
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
+        // JK-1088: one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         collectBomConstraints(project, pomBuilder, bomConstraints, constraintProvenance);
 
@@ -289,25 +297,50 @@ public final class LockOrchestrator {
         List<Dependency> processorRoots = materializePlatformManaged(processorDeclared, bomConstraints);
 
         KmpRedirects kmp = new KmpRedirects(repos, jvmEnvironment);
+        // Shared package source across main/test/processor so version/deps caches survive scope splits.
+        MavenPackageSource sharedSource = resolverOverride != null
+                ? null
+                : new MavenPackageSource(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp);
 
-        Resolution mainResolution = resolveGroup(mainRoots, bomConstraints, lockedVersionPrefs, kmp);
+        // Progress budget: graph phase + materialize phase (≈2× package count). Grow estimate as we go.
+        int declared = mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size();
+        int estimate = Math.max(10, declared * 12);
+        observer.onTotal(estimate * 2);
+        observer.onPhase("Resolving dependency graph…");
+
+        // JK-1091: live graph ticks during PubGrub decisions (not only post-scope).
+        Set<String> graphSeen = new LinkedHashSet<>();
+        Resolution mainResolution = resolveGroup(
+                mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder, observer, graphSeen, estimate);
+        noteGraph(observer, mainResolution, graphSeen, estimate);
         Map<String, String> testPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(testPrefs, mainResolution);
-        Resolution testResolution = resolveGroup(testRoots, bomConstraints, testPrefs, kmp);
+        Resolution testResolution = resolveGroup(
+                testRoots, bomConstraints, testPrefs, kmp, sharedSource, pomBuilder, observer, graphSeen, estimate);
+        noteGraph(observer, testResolution, graphSeen, estimate);
         Map<String, String> processorPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(processorPrefs, mainResolution);
         putVersions(processorPrefs, testResolution);
-        Resolution processorResolution = resolveGroup(processorRoots, bomConstraints, processorPrefs, kmp);
+        Resolution processorResolution = resolveGroup(
+                processorRoots,
+                bomConstraints,
+                processorPrefs,
+                kmp,
+                sharedSource,
+                pomBuilder,
+                observer,
+                graphSeen,
+                estimate);
+        noteGraph(observer, processorResolution, graphSeen, estimate);
 
-        observer.onTotal(mainResolution.modules().size()
-                + testResolution.modules().size()
-                + processorResolution.modules().size()
-                + fileDeps.size());
+        int uniquePackages = graphSeen.size() + fileDeps.size();
+        // Exact remaining budget for jar materialization (+ any under-estimated graph ticks).
+        observer.onTotal(Math.max(estimate * 2, graphSeen.size() + uniquePackages));
+        observer.onPhase("Downloading " + uniquePackages + " artifacts…");
 
         Map<String, EnumSet<Scope>> mainTags = tagScopes(project, mainResolution, MAIN_SCOPES, false);
         Map<String, EnumSet<Scope>> testTags = tagScopes(project, testResolution, TEST_SCOPES, true);
-        Map<String, EnumSet<Scope>> processorTags =
-                tagScopes(project, processorResolution, PROCESSOR_SCOPES, false);
+        Map<String, EnumSet<Scope>> processorTags = tagScopes(project, processorResolution, PROCESSOR_SCOPES, false);
 
         MavenRepo first = repos.repos().getFirst();
         String fallbackSource = first.name() + "+" + first.baseUrl();
@@ -321,18 +354,72 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        for (var e : modByKey.entrySet()) {
+        // Parallel jar materialize (HostRateLimiter + io pool). Progress ticks on *completion*
+        // order (JK-1091) via a queue drained on this thread so wedge/UI stays single-threaded;
+        // lock rows are still assembled in declaration order.
+        List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
+        HostRateLimiter limiter = HostRateLimiter.shared();
+        int n = ordered.size();
+        Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
+        BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
+        for (int i = 0; i < n; i++) {
+            final int idx = i;
+            var e = ordered.get(i);
             EnumSet<Scope> tags = tagsByKey.get(e.getKey());
-            packages.add(toArtifact(
-                    e.getValue(),
-                    tags,
-                    kmp,
-                    pomBuilder,
-                    fallbackSource,
-                    bomConstraints,
-                    constraintProvenance,
-                    observer));
+            CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    return limiter.run(
+                                            first.baseUrl(),
+                                            () -> toArtifact(
+                                                    e.getValue(),
+                                                    tags,
+                                                    kmp,
+                                                    pomBuilder,
+                                                    fallbackSource,
+                                                    bomConstraints,
+                                                    constraintProvenance,
+                                                    ResolveObserver.NOOP));
+                                } catch (IOException | InterruptedException ex) {
+                                    throw new CompletionException(ex);
+                                }
+                            },
+                            JkThreads.io())
+                    .whenComplete((art, ex) -> {
+                        if (ex != null) {
+                            doneQ.offer(MaterializeDone.fail(ex));
+                        } else {
+                            var mod = e.getValue();
+                            doneQ.offer(MaterializeDone.ok(idx, art, displayModule(mod.module()), mod.version()));
+                        }
+                    });
         }
+        int received = 0;
+        while (received < n) {
+            MaterializeDone d;
+            try {
+                d = doneQ.take();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw ie;
+            }
+            if (d.error != null) {
+                Throwable c = d.error.getCause() != null ? d.error.getCause() : d.error;
+                if (c instanceof CompletionException ce && ce.getCause() != null) c = ce.getCause();
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
+                }
+                if (c instanceof RuntimeException re) throw re;
+                if (c instanceof Error err) throw err;
+                throw new IOException(c);
+            }
+            arts[d.index] = d.artifact;
+            observer.onPackage(d.module, d.version);
+            received++;
+        }
+        for (Lockfile.Artifact art : arts) packages.add(art);
 
         for (Dependency dep : fileDeps) {
             String version = dep.version() instanceof VersionSelector.Exact ex
@@ -368,8 +455,7 @@ public final class LockOrchestrator {
         };
     }
 
-    private static List<Dependency> splitFile(
-            LinkedHashMap<String, Dependency> deduped, List<Dependency> fileDeps) {
+    private static List<Dependency> splitFile(LinkedHashMap<String, Dependency> deduped, List<Dependency> fileDeps) {
         List<Dependency> out = new ArrayList<>();
         for (Dependency d : deduped.values()) {
             if (d.isFile()) {
@@ -387,17 +473,64 @@ public final class LockOrchestrator {
         }
     }
 
+    /**
+     * Catch-up graph progress for any packages not already ticked live during the solve (JK-1088 /
+     * JK-1091). {@code seen} keys are display modules (same as live decision ticks).
+     */
+    private static void noteGraph(ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
+        for (Resolution.ResolvedModule mod : resolution.modules().values()) {
+            String display = displayModule(mod.module());
+            if (!seen.add(display)) continue;
+            observer.onGraphPackage(display, mod.version());
+            // Grow denominator if the graph outruns the initial estimate.
+            if (seen.size() > estimate) {
+                observer.onTotal(seen.size() * 2 + 16);
+            }
+        }
+    }
+
     private Resolution resolveGroup(
             List<Dependency> roots,
             Map<String, String> bomConstraints,
             Map<String, String> prefs,
-            KmpRedirects kmp)
+            KmpRedirects kmp,
+            MavenPackageSource sharedSource,
+            EffectivePomBuilder sharedPomBuilder,
+            ResolveObserver observer,
+            Set<String> graphSeen,
+            int estimate)
             throws IOException, InterruptedException {
         if (roots.isEmpty()) return new Resolution(Map.of());
-        Resolver r = resolverOverride != null
-                ? resolverOverride
-                : buildResolver(repos, bomConstraints, prefs, kmp);
+        if (resolverOverride != null) return resolverOverride.resolve(roots);
+        java.util.function.BiConsumer<String, String> liveGraph = (pkg, ver) -> {
+            // Solver keys are package-id; display as module for progress.
+            String mod = displayModule(pkg);
+            if (!graphSeen.add(mod)) return;
+            observer.onGraphPackage(mod, ver);
+            if (graphSeen.size() > estimate) {
+                observer.onTotal(graphSeen.size() * 2 + 16);
+            }
+        };
+        if (sharedSource != null && sharedPomBuilder != null) {
+            sharedSource.setLockedVersionPrefs(prefs);
+            PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
+            if (diagnosticPalette != null) r.palette = diagnosticPalette;
+            return r.resolve(roots);
+        }
+        PubGrubResolver r = buildResolver(repos, bomConstraints, prefs, kmp).withOnDecision(liveGraph);
+        if (diagnosticPalette != null) r.palette = diagnosticPalette;
         return r.resolve(roots);
+    }
+
+    /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
+    private record MaterializeDone(int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
+        static MaterializeDone ok(int index, Lockfile.Artifact art, String module, String version) {
+            return new MaterializeDone(index, art, module, version, null);
+        }
+
+        static MaterializeDone fail(Throwable error) {
+            return new MaterializeDone(-1, null, null, null, error);
+        }
     }
 
     /**
@@ -420,8 +553,8 @@ public final class LockOrchestrator {
             } else {
                 // If another version of this module already exists, keep this row's scopes
                 // specialized (don't leak MAIN onto a test-only dual).
-                boolean otherVersion = tagsByKey.keySet().stream()
-                        .anyMatch(k -> k.startsWith(mod.module() + "@") && !k.equals(key));
+                boolean otherVersion =
+                        tagsByKey.keySet().stream().anyMatch(k -> k.startsWith(mod.module() + "@") && !k.equals(key));
                 EnumSet<Scope> rowTags = EnumSet.copyOf(tags);
                 if (otherVersion) {
                     // Keep only scopes from this graph's tag set (already the case).
@@ -499,13 +632,7 @@ public final class LockOrchestrator {
                             + " — add a `version`, or import the BOM that pins it.");
                 }
                 roots.add(new Dependency(
-                        d.library(),
-                        d.module(),
-                        VersionSelector.parse("=" + managed),
-                        null,
-                        null,
-                        true,
-                        d.optional()));
+                        d.library(), d.module(), VersionSelector.parse("=" + managed), null, null, true, d.optional()));
             } else {
                 roots.add(d);
             }
@@ -531,7 +658,9 @@ public final class LockOrchestrator {
             }
             if (rootModules.isEmpty()) continue;
             for (String module : reachableFrom(rootModules, resolution)) {
-                tagsByModule.computeIfAbsent(module, k -> EnumSet.noneOf(Scope.class)).add(scope);
+                tagsByModule
+                        .computeIfAbsent(module, k -> EnumSet.noneOf(Scope.class))
+                        .add(scope);
             }
         }
         return tagsByModule;
@@ -558,7 +687,8 @@ public final class LockOrchestrator {
         try {
             if (!kmpAlias && "aar".equals(pomBuilder.build(coord).packaging())) {
                 coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
-                packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
+                packageName =
+                        PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
                 artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
             }
         } catch (Exception ignored) {
@@ -567,7 +697,8 @@ public final class LockOrchestrator {
 
         String source = fallbackSource;
         String checksum = null;
-        RepoGroup.RepoFetched hit = kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
+        RepoGroup.RepoFetched hit =
+                kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
@@ -584,9 +715,7 @@ public final class LockOrchestrator {
             pinnedBy = constraintProvenance.get(ga);
         }
         // Record activated cross-package features on the library row when present.
-        List<String> feat = crossPackageActivatedFeatures == null
-                ? null
-                : crossPackageActivatedFeatures.get(ga);
+        List<String> feat = crossPackageActivatedFeatures == null ? null : crossPackageActivatedFeatures.get(ga);
         if (feat == null && crossPackageActivatedFeatures != null) {
             feat = crossPackageActivatedFeatures.get(mod.module());
         }

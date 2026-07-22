@@ -43,7 +43,10 @@ public final class ImageCommand implements CliCommand {
                 Opt.value("<path>", "Write an OCI tarball instead of pushing.", "--tarball")
                         .withFallback(""),
                 Opt.value("<exe>", "Docker/Podman executable (default: auto-detect).", "--docker-executable"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+                Opt.value(
+                                "<dir>",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -87,7 +90,7 @@ public final class ImageCommand implements CliCommand {
 
         PipelineResult result;
         cc.jumpkick.run.TestSummary testResult;
-                // The wire has no real Pipeline, so the success tail renders from the structured fields the
+        // The wire has no real Pipeline, so the success tail renders from the structured fields the
         // terminal pipeline-finish carries — the summary holder is populated before the console
         // listener's own pipelineFinish fires, same holder pattern as TestCommand's hosted path.
         var session = cc.jumpkick.config.SessionContext.current();

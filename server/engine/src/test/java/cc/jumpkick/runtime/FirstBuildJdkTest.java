@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
@@ -61,34 +63,76 @@ class FirstBuildJdkTest {
                 """);
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
-        Pipeline lock = LockPipelines.lockPipeline(
-                project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-        assertThat(lock.run().errors()).isEmpty();
+        // Isolated session: under `jk test` the ambient SessionContext is the monorepo (jdk 25).
+        // Nested fixture pipelines must not inherit that pin or they skip the first-install path.
+        Session nested = Session.defaults().withCacheDir(cache).withJdksDir(freshJdks);
+        SessionContext.runWhere(nested, () -> {
+            Pipeline lock = LockPipelines.lockPipeline(
+                    project, parsed, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
+            assertThat(lock.run().errors()).isEmpty();
 
-        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
-                project,
-                cache,
-                project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
-                project,
-                1,
-                1,
-                null,
-                freshJdks, // EMPTY: the pin is not installed here — the first-run shape
-                /* skipTests */ false,
-                false,
-                false,
-                false,
-                java.util.Set.of(),
-                cc.jumpkick.config.SessionContext.current());
-        Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
-        PipelineResult result = pipeline.run();
-        for (PipelineResult.Diagnostic d : result.errors()) {
-            System.out.println("DIAG [" + d.step() + "]: " + d.message());
-        }
-        assertThat(result.errors()).isEmpty();
-        assertThat(result.success())
-                .as("first build with an uninstalled pin runs its test on the pinned JDK")
-                .isTrue();
+            BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+                    project,
+                    cache,
+                    project.resolve("jk.toml"),
+                    project.resolve("jk.lock"),
+                    project,
+                    1,
+                    1,
+                    null,
+                    freshJdks, // EMPTY: the pin is not installed here — the first-run shape
+                    /* skipTests */ false,
+                    false,
+                    false,
+                    false,
+                    java.util.Set.of(),
+                    nested);
+            Pipeline pipeline = BuildPipelines.coreBuilder(in).build();
+            PipelineResult result = pipeline.run();
+            StringBuilder dump = new StringBuilder();
+            for (PipelineResult.Diagnostic d : result.errors()) {
+                dump.append("DIAG [").append(d.step()).append("]: ").append(d.message()).append('\n');
+            }
+            pipeline.get(BuildPipelines.TEST_RESULT).ifPresent(ts -> {
+                dump.append("NESTED-SUMMARY total=")
+                        .append(ts.total())
+                        .append(" fail=")
+                        .append(ts.failed())
+                        .append(" ok=")
+                        .append(ts.succeeded())
+                        .append('\n');
+                for (var f : ts.failures()) {
+                    dump.append("NESTED-FAIL name=")
+                            .append(f.testName())
+                            .append(" ex=")
+                            .append(f.exceptionClass())
+                            .append(" msg=")
+                            .append(f.message())
+                            .append('\n')
+                            .append(f.details() == null ? "" : f.details())
+                            .append('\n');
+                }
+            });
+            try {
+                Path reports = project.resolve("target/reports/test-results");
+                if (Files.isDirectory(reports)) {
+                    try (var stream = Files.walk(reports, 2)) {
+                        for (Path p : stream.filter(x -> x.toString().endsWith(".xml")).toList()) {
+                            dump.append("NESTED-XML ")
+                                    .append(p.getFileName())
+                                    .append(":\n")
+                                    .append(Files.readString(p))
+                                    .append('\n');
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                dump.append("NESTED-DUMP failed: ").append(e).append('\n');
+            }
+            assertThat(result.errors()).as(dump.toString()).isEmpty();
+            assertThat(result.success())
+                    .as("first build with an uninstalled pin runs its test on the pinned JDK\n" + dump)
+                    .isTrue();
+        });
     }
 }

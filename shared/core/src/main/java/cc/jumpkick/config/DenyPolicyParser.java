@@ -48,9 +48,8 @@ public final class DenyPolicyParser {
         if (yankedRaw != null && !yankedRaw.isBlank()) {
             yanked = parseYanked(yankedRaw);
             if (yanked != DenyPolicy.YankedPolicy.ALLOW) {
-                throw new JkBuildParseException(
-                        "deny.yanked is not enforced yet (JK-1062). Omit deny.yanked, or set "
-                                + "`yanked = \"allow\"` until enforcement ships — silent no-op is not allowed.");
+                throw new JkBuildParseException("deny.yanked is not enforced yet (JK-1062). Omit deny.yanked, or set "
+                        + "`yanked = \"allow\"` until enforcement ships — silent no-op is not allowed.");
             }
         } else {
             // Unenforced default when only [deny.sources] is present.

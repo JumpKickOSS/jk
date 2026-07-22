@@ -227,5 +227,4 @@ public final class GlobalDefaultJdk {
                 : existing + (existing.endsWith("\n") ? "" : "\n") + line + "\n";
         Files.writeString(configFile, updated, StandardCharsets.UTF_8);
     }
-
 }

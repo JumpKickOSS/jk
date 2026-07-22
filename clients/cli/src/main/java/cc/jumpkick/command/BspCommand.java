@@ -45,8 +45,7 @@ public final class BspCommand implements CliCommand {
 
     @Override
     public List<Param> parameters() {
-        return List.of(Param.of(
-                "action", Arity.ZERO_OR_ONE, "install (write .bsp/jk.json) or serve (default: serve)"));
+        return List.of(Param.of("action", Arity.ZERO_OR_ONE, "install (write .bsp/jk.json) or serve (default: serve)"));
     }
 
     @Override
@@ -61,7 +60,8 @@ public final class BspCommand implements CliCommand {
             case "install" -> install(dir);
             case "serve", "run" -> serve(dir);
             default -> {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "expected install or serve (got " + action + ")"));
+                CliOutput.err(
+                        cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "expected install or serve (got " + action + ")"));
                 yield Exit.USAGE;
             }
         };
@@ -76,8 +76,7 @@ public final class BspCommand implements CliCommand {
         Files.createDirectories(bspDir);
         // Prefer the jk on PATH; IDE will spawn: jk bsp serve
         String argv0 = System.getenv().getOrDefault("JK_BIN", "jk");
-        String json =
-                """
+        String json = """
                 {
                   "name": "jk",
                   "version": "%s",
@@ -85,8 +84,7 @@ public final class BspCommand implements CliCommand {
                   "languages": ["java", "kotlin"],
                   "argv": ["%s", "bsp", "serve"]
                 }
-                """
-                        .formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
+                """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
         CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("BSP", "Wrote " + out));

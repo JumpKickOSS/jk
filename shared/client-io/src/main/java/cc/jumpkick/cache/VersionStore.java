@@ -88,7 +88,7 @@ public final class VersionStore {
     /**
      * Delete version {@code v}'s engine AOT artifacts ({@code engine-<v>-<16-hex-key>.*}) from the
      * shared {@code state/aot/} dir. The key-shape check keeps a version whose name extends this
-     * one ({@code 0.10.0} vs {@code 0.10.0-SNAPSHOT}) out of the blast radius.
+     * one ({@code 0.10.0} vs {@code 0.10.1}) out of the blast radius.
      */
     private static void deleteEngineAotFiles(Path aotDir, String v) {
         String prefix = "engine-" + v + "-";

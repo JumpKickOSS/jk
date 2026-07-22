@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.audit;
 
-import cc.jumpkick.audit.AuditReport;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.audit.AuditReport;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Scope;
 import com.sun.net.httpserver.HttpServer;

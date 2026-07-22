@@ -26,9 +26,10 @@ import java.util.concurrent.atomic.LongAdder;
 
 /**
  * Named DAG of {@link Step}s for one invocation: readiness-level scheduling, progress, diagnostics,
- * and a terminal {@link PipelineResult}. Cancellation is cooperative: a flag is set, futures are
- * cancelled after a short grace, but a running {@code supplyAsync} body is only stopped if it
- * polls the flag (see JK-1067 for stronger termination).
+ * and a terminal {@link PipelineResult}. Cancellation is cooperative at the step level: a flag is
+ * set, futures are cancelled after a short grace ({@link #COOPERATIVE_CANCEL_GRACE}). OS-level
+ * worker JVMs are shut down by the engine ({@code JobWorkers}, JK-1096): soft then force within
+ * ~500 ms — never hang.
  */
 public final class Pipeline {
 
@@ -359,9 +360,7 @@ public final class Pipeline {
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {
                 errors.add(new PipelineResult.Diagnostic(
-                        step.name(),
-                        cancel ? "cancelled" : "exception",
-                        diagnosticMessage(t)));
+                        step.name(), cancel ? "cancelled" : "exception", diagnosticMessage(t)));
             }
             StepStatus terminal = cancel ? StepStatus.CANCELLED : StepStatus.FAIL;
             statuses.put(step.name(), terminal);

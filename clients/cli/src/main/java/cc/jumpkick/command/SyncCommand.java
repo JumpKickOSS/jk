@@ -44,11 +44,7 @@ public final class SyncCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value(
-                                "<dir>",
-                                "Override the jk cache directory. Default: $JK_CACHE_DIR or ~/.cache/jk.",
-                                "--cache-dir")
-                        .hide(),
+                cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
                         .hide(),
                 Opt.value("<url>", "Override declared repos with a single URL (for tests).", "--repo-url")
@@ -90,7 +86,8 @@ public final class SyncCommand implements CliCommand {
                     m -> CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", m)),
                     true);
         } catch (Exception e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Sync", (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage())));
             return 1;
         }
 

@@ -24,12 +24,17 @@ public record WorkspaceRequest(
         boolean applyMemoryPlan,
         // True: freshen workspace lock before build; false: use pin verbatim (e.g. jk verify).
         boolean freshenLock,
+        /**
+         * When true, each module's pipeline is {@code testOnly} (parse → sync → compile main/test →
+         * run-tests, no package) — same shape as {@code jk test}. HTTP/MCP {@code jk_test} uses this.
+         */
+        boolean testOnly,
         // Variant selection ("" / "release" / "release|tier=free").
         String variant,
         // Client shell env for env:-indirected plugin config.
         Map<String, String> clientEnv) {
 
-    /** Defaults variant to empty and clientEnv to empty. */
+    /** Defaults testOnly=false, variant empty, clientEnv empty. */
     public WorkspaceRequest(
             Path entryDir,
             JkBuild entryBuild,
@@ -56,6 +61,7 @@ public record WorkspaceRequest(
                 dirtyHint,
                 applyMemoryPlan,
                 freshenLock,
+                false,
                 "",
                 Map.of());
     }
@@ -75,7 +81,28 @@ public record WorkspaceRequest(
                 dirtyHint,
                 applyMemoryPlan,
                 freshenLock,
+                testOnly,
                 variant == null ? "" : variant,
                 clientEnv == null ? Map.of() : clientEnv);
+    }
+
+    /** Copy with {@link #testOnly()} set (HTTP/MCP {@code jk_test} true test-only path). */
+    public WorkspaceRequest withTestOnly(boolean testOnly) {
+        return new WorkspaceRequest(
+                entryDir,
+                entryBuild,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                dirtyHint,
+                applyMemoryPlan,
+                freshenLock,
+                testOnly,
+                variant,
+                clientEnv);
     }
 }

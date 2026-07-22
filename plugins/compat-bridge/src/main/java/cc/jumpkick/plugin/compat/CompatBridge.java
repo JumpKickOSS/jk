@@ -6,7 +6,6 @@ import cc.jumpkick.compat.InstalledTool;
 import cc.jumpkick.compat.ToolDistribution;
 import cc.jumpkick.compat.ToolProvisioning;
 import cc.jumpkick.compat.ToolRegistry;
-
 import cc.jumpkick.gradle.GradleImporter;
 import cc.jumpkick.gradle.GradleResolver;
 import cc.jumpkick.http.Http;

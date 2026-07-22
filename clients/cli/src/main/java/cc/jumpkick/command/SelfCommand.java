@@ -70,8 +70,7 @@ public final class SelfCommand extends GroupCommand {
             boolean nerd;
             String reason;
             if (in.isSet("nerd") && in.isSet("no-nerd")) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Self", "cannot combine --nerd and --no-nerd"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Self", "cannot combine --nerd and --no-nerd"));
                 return Exit.USAGE;
             }
             if (in.isSet("nerd")) {
@@ -88,12 +87,7 @@ public final class SelfCommand extends GroupCommand {
             Path cfg = JkDirs.userConfigFile();
             cc.jumpkick.config.UserConfigEditor.setNerdfont(cfg, nerd);
             // Invalidate any process-local config memo so subsequent calls see the write.
-            String msg = "Nerd Font glyphs "
-                    + (nerd ? "enabled" : "disabled")
-                    + " ("
-                    + reason
-                    + ") → "
-                    + cfg;
+            String msg = "Nerd Font glyphs " + (nerd ? "enabled" : "disabled") + " (" + reason + ") → " + cfg;
             CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", msg));
             return 0;
         }

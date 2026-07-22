@@ -44,18 +44,24 @@ public final class EngineRotateTokenCommand implements CliCommand {
         try {
             java.nio.file.Files.deleteIfExists(paths.httpToken());
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Engine", "could not remove the token file (" + e.getMessage() + ")"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Engine", "could not remove the token file (" + e.getMessage() + ")"));
             return Exit.SOFTWARE;
         }
         // A running engine still holds the old token in memory — stop it so the old value is
         // genuinely revoked, not just replaced on disk. The next command respawns and mints fresh.
         if (EngineClient.ping(cc.jumpkick.engine.EnginePaths.activeSocket(paths))
                 && !EngineClient.stop(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Engine", "token file removed, but stopping the running engine failed;" + " run 'jk engine stop' so the old token stops being accepted"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Engine",
+                    "token file removed, but stopping the running engine failed;"
+                            + " run 'jk engine stop' so the old token stops being accepted"));
             return Exit.SOFTWARE;
         }
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "token rotated." + " The next command spawns an engine with a fresh token —"
-                + " run 'jk engine status' for the new dashboard URL."));
+        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                "Engine",
+                "token rotated." + " The next command spawns an engine with a fresh token —"
+                        + " run 'jk engine status' for the new dashboard URL."));
         return Exit.SUCCESS;
     }
 }

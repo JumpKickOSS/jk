@@ -457,8 +457,7 @@ public final class GradleImporter {
             // version. jk models it as platform-managed; [spring-boot] (or an explicit
             // [platform-dependencies] BOM) supplies the pin at resolve time.
             String shortName = shortNameFor(coord).orElse(parts[1]);
-            byScope.computeIfAbsent(scope, s -> new ArrayList<>())
-                    .add(Dependency.platformManaged(shortName, coord));
+            byScope.computeIfAbsent(scope, s -> new ArrayList<>()).add(Dependency.platformManaged(shortName, coord));
             return;
         }
         if (parts.length < 3) {
@@ -535,9 +534,7 @@ public final class GradleImporter {
             String bundle = rest.substring("bundles.".length());
             Optional<GradleVersionCatalog.BundleResolution> resolved = catalog.resolveBundle(bundle);
             if (resolved.isEmpty()) {
-                report.error("bundle `"
-                        + accessor
-                        + "` was not found in the version catalog; dropped.");
+                report.error("bundle `" + accessor + "` was not found in the version catalog; dropped.");
                 return;
             }
             GradleVersionCatalog.BundleResolution br = resolved.get();
@@ -549,9 +546,7 @@ public final class GradleImporter {
                         + "` was not found in [libraries] (or had no resolvable module); skipped.");
             }
             if (br.isEmpty()) {
-                report.error("bundle `"
-                        + accessor
-                        + "` expanded to no libraries; dropped.");
+                report.error("bundle `" + accessor + "` expanded to no libraries; dropped.");
                 return;
             }
             for (String coord : br.coordinates()) {

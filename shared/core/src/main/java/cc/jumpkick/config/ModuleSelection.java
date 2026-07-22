@@ -6,7 +6,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -48,8 +47,7 @@ public final class ModuleSelection {
      * {@code affectedSince}. When both are set, the result is their <strong>intersection</strong>.
      * When neither is set, returns {@code null} (caller should not filter).
      */
-    public static Result resolveOptional(
-            Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
+    public static Result resolveOptional(Path entryDir, JkBuild entryBuild, String modulesSpec, String affectedSince) {
         Result modules = null;
         if (modulesSpec != null && !modulesSpec.isBlank()) {
             modules = resolve(entryDir, entryBuild, modulesSpec);
@@ -190,7 +188,8 @@ public final class ModuleSelection {
             switch (c) {
                 case '*' -> re.append(".*");
                 case '?' -> re.append('.');
-                case '.', '(', ')', '+', '|', '^', '$', '[', ']', '{', '}', '\\' -> re.append('\\').append(c);
+                case '.', '(', ')', '+', '|', '^', '$', '[', ']', '{', '}', '\\' ->
+                    re.append('\\').append(c);
                 default -> re.append(c);
             }
         }

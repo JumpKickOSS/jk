@@ -7,6 +7,7 @@ import cc.jumpkick.compile.CompileRequest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -33,7 +34,7 @@ class ActionKeyTest {
         Path src = tempDir.resolve("Hello.java");
         Files.writeString(src, "class Hello {}");
         long mtime = System.currentTimeMillis() - 60_000;
-        Files.setLastModifiedTime(src, java.nio.file.attribute.FileTime.fromMillis(mtime));
+        Files.setLastModifiedTime(src, FileTime.fromMillis(mtime));
         CompileRequest request = CompileRequest.builder()
                 .sources(List.of(src))
                 .outputDir(tempDir.resolve("out"))
@@ -42,15 +43,15 @@ class ActionKeyTest {
         Path cache = tempDir.resolve("cache");
         Files.createDirectories(cache);
         cc.jumpkick.config.SessionContext.runWhere(
-                cc.jumpkick.config.Session.defaults().withCacheDir(cache),
-                () -> {
+                cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
                     try {
                         FileHashMemo.clearThreadCache();
                         FileHashMemo.resetStats();
                         String key = ActionKey.forJavac("compile-main", request, "0.1.0");
                         var snap = ActionKey.snapshotInputs(request);
                         assertThat(key).isNotBlank();
-                        assertThat(snap).containsKey(src.toAbsolutePath().normalize().toString());
+                        assertThat(snap)
+                                .containsKey(src.toAbsolutePath().normalize().toString());
                         assertThat(FileHashMemo.contentReads())
                                 .as("forJavac + snapshotInputs share one content read")
                                 .isEqualTo(1);

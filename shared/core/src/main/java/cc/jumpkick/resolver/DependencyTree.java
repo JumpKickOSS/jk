@@ -209,9 +209,23 @@ public final class DependencyTree {
                 .append('\n');
 
         List<String> roots = collectRoots(project);
+        Set<String> platformMods = platformModules(project);
+        Map<String, String> declared = declaredVersions(project, java.util.Arrays.asList(Scope.values()));
         Set<String> seen = new HashSet<>();
         for (int i = 0; i < roots.size(); i++) {
-            renderNode(byModule, roots.get(i), 0, maxDepth, i == roots.size() - 1, "", styling, seen, out);
+            String root = roots.get(i);
+            renderNode(
+                    byModule,
+                    root,
+                    0,
+                    maxDepth,
+                    i == roots.size() - 1,
+                    "",
+                    styling,
+                    seen,
+                    out,
+                    declared.get(root),
+                    platformMods.contains(root));
         }
         return out.toString();
     }
@@ -584,6 +598,9 @@ public final class DependencyTree {
 
         Map<String, Lockfile.Artifact> byModule = lock == null ? Map.of() : indexByModule(lock);
         Map<String, Dependency> composite = Map.of();
+        // Declared versions (and which modules are PLATFORM-only pins / BOMs).
+        Map<String, String> declaredVersions = declaredVersions(project, scopes);
+        Set<String> platformModules = platformModules(project);
         List<String> mods = scopes.stream()
                 .flatMap(s -> project.dependencies().of(s).stream())
                 .map(Dependency::module)
@@ -591,8 +608,9 @@ public final class DependencyTree {
                 .sorted()
                 .toList();
         for (int di = 0; di < mods.size(); di++) {
+            String mod = mods.get(di);
             renderDep(
-                    mods.get(di),
+                    mod,
                     composite,
                     byModule,
                     dir,
@@ -604,8 +622,42 @@ public final class DependencyTree {
                     modules,
                     seenModules,
                     seenDirs,
-                    out);
+                    out,
+                    declaredVersions.get(mod),
+                    platformModules.contains(mod));
         }
+    }
+
+    /** Concrete version literals from declared deps in {@code scopes} (Exact / caret-tilde anchors). */
+    private static Map<String, String> declaredVersions(JkBuild project, List<Scope> scopes) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (Scope s : scopes) {
+            for (Dependency d : project.dependencies().of(s)) {
+                String v = versionLiteral(d.version());
+                if (v != null) out.putIfAbsent(d.module(), v);
+            }
+        }
+        return out;
+    }
+
+    private static Set<String> platformModules(JkBuild project) {
+        return project.dependencies().of(Scope.PLATFORM).stream()
+                .map(Dependency::module)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+    }
+
+    /**
+     * Concrete version from a selector when one is known (platform BOMs must pin). {@code null} for
+     * {@code latest} / empty.
+     */
+    private static String versionLiteral(cc.jumpkick.model.VersionSelector sel) {
+        if (sel == null) return null;
+        return switch (sel) {
+            case cc.jumpkick.model.VersionSelector.Exact e -> e.version();
+            case cc.jumpkick.model.VersionSelector.Caret c -> c.version();
+            case cc.jumpkick.model.VersionSelector.Tilde t -> t.version();
+            default -> null;
+        };
     }
 
     /**
@@ -654,12 +706,22 @@ public final class DependencyTree {
         }
         if (sections.isEmpty()) return;
 
+        Set<String> platformMods = platformModules(project);
+        Map<String, String> declared = declaredVersions(project, sections);
         if (stack) {
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (Scope s : sections) {
                 for (String m : directModules(project, s)) {
-                    collectFlat(m, composite, byModule, Map.of(), visited, collected);
+                    collectFlat(
+                            m,
+                            composite,
+                            byModule,
+                            Map.of(),
+                            visited,
+                            collected,
+                            declared.get(m),
+                            platformMods.contains(m));
                 }
             }
             renderFlatSection(badgeRow(sections, styling), true, collected, "", styling, out);
@@ -670,7 +732,15 @@ public final class DependencyTree {
             Map<String, FlatDep> collected = new TreeMap<>();
             Set<String> visited = new HashSet<>();
             for (String m : directModules(project, s)) {
-                collectFlat(m, composite, byModule, Map.of(), visited, collected);
+                collectFlat(
+                        m,
+                        composite,
+                        byModule,
+                        Map.of(),
+                        visited,
+                        collected,
+                        declared.get(m),
+                        s == Scope.PLATFORM || platformMods.contains(m));
             }
             renderFlatSection(
                     styling.scopeBadge().apply(scopeLabel(s)), si == sections.size() - 1, collected, "", styling, out);
@@ -759,6 +829,18 @@ public final class DependencyTree {
             Map<String, String> byName,
             Set<String> visited,
             Map<String, FlatDep> out) {
+        collectFlat(module, composite, byModule, byName, visited, out, null, false);
+    }
+
+    private static void collectFlat(
+            String module,
+            Map<String, Dependency> composite,
+            Map<String, Lockfile.Artifact> byModule,
+            Map<String, String> byName,
+            Set<String> visited,
+            Map<String, FlatDep> out,
+            String declaredVersion,
+            boolean platformPin) {
 
         if (Dependency.isWorkspaceRef(module)) {
             String name = Dependency.workspaceName(module);
@@ -768,12 +850,16 @@ public final class DependencyTree {
         if (!visited.add(module)) return;
         Lockfile.Artifact pkg = byModule.get(module);
         if (pkg == null) {
-            putFlat(out, new FlatDep(module, null, MISSING_SUFFIX));
+            if (platformPin) {
+                putFlat(out, new FlatDep(module, declaredVersion, " (platform)"));
+            } else {
+                putFlat(out, new FlatDep(module, null, MISSING_SUFFIX));
+            }
             return;
         }
         putFlat(out, new FlatDep(module, pkg.version(), ""));
         for (String child : pkg.deps()) {
-            collectFlat(stripVersion(child), composite, byModule, byName, visited, out);
+            collectFlat(stripVersion(child), composite, byModule, byName, visited, out, null, false);
         }
     }
 
@@ -835,7 +921,9 @@ public final class DependencyTree {
             Map<String, String> modules,
             Set<String> seenModules,
             Set<String> seenDirs,
-            StringBuilder out) {
+            StringBuilder out,
+            String declaredVersion,
+            boolean platformPin) {
 
         if (Dependency.isWorkspaceRef(module)) {
             // Workspace sibling (a `<name>.workspace = true` dep) — already shown
@@ -851,7 +939,18 @@ public final class DependencyTree {
                     .append('\n');
             return;
         }
-        renderNode(byModule, module, depth, maxDepth, isLast, prefix, styling, seenModules, out);
+        renderNode(
+                byModule,
+                module,
+                depth,
+                maxDepth,
+                isLast,
+                prefix,
+                styling,
+                seenModules,
+                out,
+                declaredVersion,
+                platformPin);
     }
 
     /**
@@ -880,6 +979,25 @@ public final class DependencyTree {
             Styling styling,
             Set<String> seen,
             StringBuilder out) {
+        renderNode(byModule, module, depth, maxDepth, isLast, prefix, styling, seen, out, null, false);
+    }
+
+    /**
+     * @param declaredVersion version from jk.toml when known (platform BOMs)
+     * @param platformPin true when this module is a PLATFORM BOM / pin source — not a lock jar row
+     */
+    private static void renderNode(
+            Map<String, Lockfile.Artifact> byModule,
+            String module,
+            int depth,
+            int maxDepth,
+            boolean isLast,
+            String prefix,
+            Styling styling,
+            Set<String> seen,
+            StringBuilder out,
+            String declaredVersion,
+            boolean platformPin) {
 
         Lockfile.Artifact pkg = byModule.get(module);
         // module may be GA or full package key (g:a:type:classifier); display as GA.
@@ -901,12 +1019,23 @@ public final class DependencyTree {
             artifactId = colon > 0 ? module.substring(colon + 1) : "";
         }
 
+        // Platform BOMs are pin sources (pinned-by on managed jars), not lock [[artifact]] rows.
+        // Prefer declared version; never mark them "(missing)" solely because the lock has no BOM jar.
+        String displayVersion = pkg != null ? pkg.version() : (platformPin ? declaredVersion : null);
+        boolean missing = pkg == null && !platformPin;
+
         // ╰─ for the last child (rounded arc); ├─ for the rest.
         // Standard "rounded tree" convention used by eza, tre, etc.
         String connector = isLast ? "╰─ " : "├─ ";
-        String coord = pkg != null
-                ? groupId + ":" + artifactId + ":" + pkg.version()
-                : groupId + ":" + artifactId + MISSING_SUFFIX;
+        String coord;
+        if (displayVersion != null) {
+            coord = groupId + ":" + artifactId + ":" + displayVersion;
+            if (platformPin && pkg == null) coord = coord + " (platform)";
+        } else if (missing) {
+            coord = groupId + ":" + artifactId + MISSING_SUFFIX;
+        } else {
+            coord = groupId + ":" + artifactId + " (platform)";
+        }
 
         if (!seen.add(module)) {
             // Already shown higher up — dim the WHOLE row (connector + coord + ⎋)
@@ -917,14 +1046,26 @@ public final class DependencyTree {
             return;
         }
 
-        String label = pkg != null
-                ? formatCoord(groupId, artifactId, pkg.version(), styling)
-                // No version available — "group:artifact (missing)", marker unstyled.
-                : styling.group().apply(groupId) + ":" + styling.artifact().apply(artifactId) + MISSING_SUFFIX;
+        String label;
+        if (displayVersion != null) {
+            label = formatCoord(groupId, artifactId, displayVersion, styling);
+            if (platformPin && pkg == null) {
+                label = label + styling.rail().apply(" (platform)");
+            }
+        } else if (missing) {
+            // No version available — "group:artifact (missing)", marker unstyled.
+            label = styling.group().apply(groupId) + ":" + styling.artifact().apply(artifactId) + MISSING_SUFFIX;
+        } else {
+            label = styling.group().apply(groupId)
+                    + ":"
+                    + styling.artifact().apply(artifactId)
+                    + styling.rail().apply(" (platform)");
+        }
 
         out.append(prefix).append(styling.rail().apply(connector)).append(label).append('\n');
 
-        if (pkg == null || depth >= maxDepth) return;
+        // Platform pin sources are leaves in the tree (no jar deps to expand).
+        if (pkg == null || depth >= maxDepth || platformPin) return;
 
         String childPrefix = prefix + styling.rail().apply(isLast ? "   " : "│  ");
         List<String> children =
@@ -939,7 +1080,9 @@ public final class DependencyTree {
                     childPrefix,
                     styling,
                     seen,
-                    out);
+                    out,
+                    null,
+                    false);
         }
     }
 

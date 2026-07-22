@@ -26,9 +26,7 @@ public final class TerminalSignals {
             Class<?> handlerClass = Class.forName("sun.misc.SignalHandler");
             Object signal = signalClass.getConstructor(String.class).newInstance(name);
             Object handler = java.lang.reflect.Proxy.newProxyInstance(
-                    handlerClass.getClassLoader(),
-                    new Class<?>[] {handlerClass},
-                    (proxy, method, args) -> null);
+                    handlerClass.getClassLoader(), new Class<?>[] {handlerClass}, (proxy, method, args) -> null);
             signalClass.getMethod("handle", signalClass, handlerClass).invoke(null, signal, handler);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             // No-op: PosixDetach + process-group isolation is the primary defense.

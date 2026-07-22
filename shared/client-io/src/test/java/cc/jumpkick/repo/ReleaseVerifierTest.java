@@ -16,6 +16,13 @@ import org.junit.jupiter.api.Test;
 class ReleaseVerifierTest {
 
     @Test
+    void baked_in_release_key_is_present_and_parseable() {
+        assertThat(ReleaseVerifier.BUILT_IN_KEY).isNotBlank();
+        ReleaseVerifier v = ReleaseVerifier.current(List.of());
+        assertThat(v.available()).isTrue();
+    }
+
+    @Test
     void signature_verifies_against_a_trusted_key_and_tampering_is_fatal() throws Exception {
         KeyPair pair = KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
         byte[] sums = "abc123  jk-engine-1.0.0.jar\n".getBytes(StandardCharsets.UTF_8);

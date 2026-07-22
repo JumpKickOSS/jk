@@ -3,6 +3,7 @@ package cc.jumpkick.resolver.pubgrub;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * What the solver sees of the dependency universe: a list of available versions per package and the
@@ -17,6 +18,16 @@ public interface PackageSource {
      *     PubGrub picks the first version that satisfies the active constraints.
      */
     List<String> versions(String pkg) throws IOException, InterruptedException;
+
+    /**
+     * Soft-prefer pin for {@code pkg} when known (BOM or prior lock), without consulting
+     * maven-metadata. Empty when the source has no preference. The solver may seed a singleton
+     * universe from this and only call {@link #versions} if that pin fails or cannot satisfy
+     * constraints (JK-1088 lazy universe).
+     */
+    default Optional<String> preferredVersion(String pkg) {
+        return Optional.empty();
+    }
 
     /**
      * @return dependency edges of {@code (pkg, version)} as {@link Term}s. Each Term gives a

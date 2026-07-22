@@ -1,60 +1,55 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.cli.run;
+package cc.jumpkick.runtime;
 
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Shared Chrome Trace Event writer for one invocation (single module or whole workspace). Thread-safe
- * event append; {@link #flush()} writes a loadable JSON array for Perfetto / {@code chrome://tracing}.
+ * Chrome Trace Event writer for one engine request (single module or workspace). The engine owns
+ * this so every client (CLI, web, IDE) gets the same per-run timeline without re-implementing
+ * capture (JK-1023; write moved off the CLI).
  *
- * <p>Disable with {@code JK_CHROME_PROFILE=off}. Override path with {@code JK_CHROME_PROFILE=<file>}.
- * Default path: {@code <project>/out/jk-chrome-profile.json}.
+ * <p>Default path: {@code <project>/target/jk-chrome-profile.json} (canonical build output dir).
+ * Disable with request {@code noTimeline=true} or env {@code JK_CHROME_PROFILE=off}. Override path
+ * with {@code JK_CHROME_PROFILE=<file>}.
+ *
+ * <p>Spans use the pipeline's measured {@link java.time.Duration} (same numbers as {@link
+ * BuildMetrics}), placed with {@link System#nanoTime()} at step finish so concurrent modules
+ * align on one clock.
  */
 public final class ChromeTimeline {
 
-    private static final String ENV = "JK_CHROME_PROFILE";
-    private static final String DEFAULT_REL = "out/jk-chrome-profile.json";
-
-    /** Per-thread disable for {@code --no-timeline} (does not mutate process env). */
-    private static final ThreadLocal<Boolean> DISABLED = ThreadLocal.withInitial(() -> false);
+    static final String ENV = "JK_CHROME_PROFILE";
+    /** Under {@link cc.jumpkick.layout.BuildLayout}'s module output root ({@code target/}). */
+    static final String DEFAULT_REL = "target/jk-chrome-profile.json";
 
     private final Path file;
-    private final long originNanos;
     private final List<Event> events = new CopyOnWriteArrayList<>();
     private final Map<String, Integer> tids = new ConcurrentHashMap<>();
     private final AtomicInteger nextTid = new AtomicInteger(1);
 
     private ChromeTimeline(Path file) {
         this.file = file;
-        this.originNanos = System.nanoTime();
-    }
-
-    /** Disable chrome timeline for this thread until {@link #clearDisabled()}. */
-    public static void disableForThread() {
-        DISABLED.set(true);
-    }
-
-    public static void clearDisabled() {
-        DISABLED.remove();
     }
 
     /**
-     * Open a session for {@code projectDir}, or {@code null} when disabled / path unusable.
-     * Never throws.
+     * Open a session for {@code projectDir}, or {@code null} when disabled / path unusable. Never
+     * throws.
+     *
+     * @param projectDir entry/workspace root (timeline file under its {@code target/})
+     * @param noTimeline request flag (CLI {@code --no-timeline})
      */
-    public static ChromeTimeline open(Path projectDir) {
-        if (projectDir == null) return null;
-        if (Boolean.TRUE.equals(DISABLED.get())) return null;
+    public static ChromeTimeline open(Path projectDir, boolean noTimeline) {
+        if (noTimeline || projectDir == null) return null;
         String env = System.getenv(ENV);
         if (env != null && (env.isBlank() || "off".equalsIgnoreCase(env) || "0".equals(env))) {
             return null;
@@ -71,47 +66,58 @@ public final class ChromeTimeline {
         }
     }
 
-    /**
-     * One-line discoverability after a successful flush: path + how to open + how to disable.
-     * Writes to stderr so it does not pollute {@code --output json} stdout.
-     */
-    public static void announceWritten(Path file) {
-        if (file == null) return;
-        System.err.println(
-                "Timeline: "
-                        + file
-                        + "  (Perfetto or chrome://tracing; CI: archive this file. Disable: --no-timeline or JK_CHROME_PROFILE=off)");
+    /** Convenience when timeline is enabled. */
+    public static ChromeTimeline open(Path projectDir) {
+        return open(projectDir, false);
     }
 
     public Path file() {
         return file;
     }
 
-    /** Record a complete span ({@code ph:X}) for one step. */
-    public void complete(String module, String step, String status, long startNanos, long endNanos) {
-        long s = Math.max(0, startNanos - originNanos);
-        long e = Math.max(s, endNanos - originNanos);
-        int tid = tids.computeIfAbsent(module == null || module.isBlank() ? "_" : module, k -> nextTid.getAndIncrement());
-        events.add(new Event(module, step, status, s / 1000L, Math.max(0, (e - s) / 1000L), tid));
+    /**
+     * Record a complete span ({@code ph:X}) using the pipeline duration and finish-time nano clock.
+     *
+     * @param module track label (coord or module path)
+     * @param step step name
+     * @param status SUCCESS / SKIPPED / FAIL / …
+     * @param durationMillis pipeline wall time for this step (same as metrics)
+     */
+    public void complete(String module, String step, String status, long durationMillis) {
+        long end = System.nanoTime();
+        long durNanos = Math.max(0L, durationMillis) * 1_000_000L;
+        completeNanos(module, step, status, end - durNanos, end);
     }
 
-    /** Best-effort write; never throws. Returns the path written, or empty. */
-    public java.util.Optional<Path> flush() {
+    /** Absolute nano times (wall); origin is min start across events at flush. */
+    void completeNanos(String module, String step, String status, long startNanos, long endNanos) {
+        long start = startNanos;
+        long end = Math.max(startNanos, endNanos);
+        int tid =
+                tids.computeIfAbsent(module == null || module.isBlank() ? "_" : module, k -> nextTid.getAndIncrement());
+        events.add(new Event(module, step, status, start, end, tid));
+    }
+
+    /** Best-effort write; never throws. */
+    public Optional<Path> flush() {
         try {
             List<Event> snapshot = new ArrayList<>(events);
+            long origin = snapshot.stream().mapToLong(e -> e.startNanos).min().orElse(0L);
             StringBuilder sb = new StringBuilder(256 + snapshot.size() * 96);
             sb.append("[\n");
             for (int i = 0; i < snapshot.size(); i++) {
                 Event ev = snapshot.get(i);
+                long tsUs = Math.max(0L, (ev.startNanos - origin) / 1000L);
+                long durUs = Math.max(0L, (ev.endNanos - ev.startNanos) / 1000L);
                 if (i > 0) sb.append(",\n");
                 sb.append("  {\"name\":")
                         .append(json(ev.step))
                         .append(",\"cat\":")
                         .append(json(ev.module))
                         .append(",\"ph\":\"X\",\"ts\":")
-                        .append(ev.tsUs)
+                        .append(tsUs)
                         .append(",\"dur\":")
-                        .append(ev.durUs)
+                        .append(durUs)
                         .append(",\"pid\":1,\"tid\":")
                         .append(ev.tid)
                         .append(",\"args\":{\"status\":")
@@ -120,17 +126,10 @@ public final class ChromeTimeline {
             }
             sb.append("\n]\n");
             AtomicWrites.replace(file, sb.toString());
-            return java.util.Optional.of(file);
+            return Optional.of(file);
         } catch (RuntimeException | IOException e) {
-            return java.util.Optional.empty();
+            return Optional.empty();
         }
-    }
-
-    /** Flush then announce the path (discoverability for humans and CI logs). */
-    public java.util.Optional<Path> flushAndAnnounce() {
-        java.util.Optional<Path> written = flush();
-        written.ifPresent(ChromeTimeline::announceWritten);
-        return written;
     }
 
     private static String json(String s) {
@@ -155,5 +154,5 @@ public final class ChromeTimeline {
         return b.toString();
     }
 
-    private record Event(String module, String step, String status, long tsUs, long durUs, int tid) {}
+    private record Event(String module, String step, String status, long startNanos, long endNanos, int tid) {}
 }

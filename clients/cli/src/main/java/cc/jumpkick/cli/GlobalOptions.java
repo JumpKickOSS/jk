@@ -35,6 +35,9 @@ public final class GlobalOptions {
     /** {@code --no-ansi} — declared as a global; read here so command code never misses it. */
     public boolean noAnsi;
 
+    /** {@code --no-timeline} — skip engine chrome-trace write under {@code target/}. */
+    public boolean noTimeline;
+
     /** {@code --jdk <spec>} / {@code --graal <spec>}: the top JDK / GraalVM resolution tier. */
     public String jdk;
 
@@ -43,16 +46,19 @@ public final class GlobalOptions {
     public String output;
 
     /**
-     * True when the user asked for {@code --output json} (or set {@code JK_OUTPUT=json}). Commands
-     * may use this to suppress their own human-readable summary lines so the JSONL stream stays
-     * machine-parseable.
+     * True when the user asked for machine-readable <strong>live JSONL</strong> on stdout: {@code
+     * --output json}, {@code --output jsonl}, or env {@code JK_OUTPUT=json|jsonl}. Both names mean
+     * the same stream (one JSON object per line, flushed live) — see {@code docs/machine-output.md}.
+     * Commands should suppress human wedge/summary lines so the stream stays parseable.
      */
     public boolean outputIsJson() {
         String resolved = output;
-        if (resolved == null) {
+        if (resolved == null || resolved.isBlank()) {
             resolved = System.getenv("JK_OUTPUT");
         }
-        return resolved != null && resolved.equalsIgnoreCase("json");
+        if (resolved == null || resolved.isBlank()) return false;
+        String r = resolved.trim();
+        return r.equalsIgnoreCase("json") || r.equalsIgnoreCase("jsonl");
     }
 
     public Path configFile;
@@ -117,6 +123,9 @@ public final class GlobalOptions {
         g.rebuild = in.isSet("rebuild");
         g.noProgress = in.isSet("no-progress");
         g.noAnsi = in.isSet("no-ansi");
+        g.noTimeline = in.isSet("no-timeline");
+        // Engine-owned chrome profile; CLI only forwards the preference on the wire.
+        cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
@@ -170,7 +179,11 @@ public final class GlobalOptions {
                 Opt.flag("Redo this build's work (skip jk's caches) without re-fetching deps", "--rebuild"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
                 Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
-                Opt.value("<FORMAT>", "Output format: text (default) or json", "--output"),
+                Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
+                Opt.value(
+                        "<FORMAT>",
+                        "Output format: text (default), or json/jsonl (identical live JSONL event stream for agents/CI)",
+                        "--output"),
                 Opt.value("<FILE>", "Use this jk.toml for configuration", "--config-file"),
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
                 Opt.value("<DIR>", "Change to this directory before running", "-C", "--directory"),
@@ -194,8 +207,6 @@ public final class GlobalOptions {
      */
     public int jobsEffective() {
         return cc.jumpkick.config.Jobs.resolve(
-                java.util.Optional.ofNullable(jobs),
-                cc.jumpkick.config.JkEngineConfig.resolve(),
-                System::getenv);
+                java.util.Optional.ofNullable(jobs), cc.jumpkick.config.JkEngineConfig.resolve(), System::getenv);
     }
 }

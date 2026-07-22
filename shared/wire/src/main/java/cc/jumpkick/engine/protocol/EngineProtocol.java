@@ -106,6 +106,12 @@ public final class EngineProtocol {
     public static final String WORKSPACE_FINISH = "workspace-finish";
 
     /**
+     * Server → client: chrome timeline written under the project's {@code target/} (or override).
+     * Path is absolute. Engine owns the file; clients only announce or archive.
+     */
+    public static final String TIMELINE = "timeline";
+
+    /**
      * Server → client transport/control error envelope ({@code code} + {@code message}). Not the
      * result-payload {@code errors[]} on finish messages (those are command output).
      */
@@ -116,6 +122,7 @@ public final class EngineProtocol {
     public static final String ERR_VERSION_SKEW = "version-skew";
     /** Engine is draining after {@link #SHUTDOWN}; job refused. */
     public static final String ERR_SHUTTING_DOWN = "shutting-down";
+
     public static final String ERR_AUTH = "auth";
     /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
     public static final String ERR_DEADLINE = "deadline";
@@ -432,10 +439,12 @@ public final class EngineProtocol {
      * heap from the runtime, {@code rssBytes} from the OS ({@code -1} where it exposes none). The
      * http fields describe the embedded HTTP server ({@code docs/http.md}): {@code httpUrl} is
      * non-null while it's serving, {@code httpError} when the {@code [http]} table is enabled but
-     * the server failed to start; both null means disabled. (Keys are always emitted — the
-     * protocol has ONE null convention: key present, value null.) {@code aotTrainingPid} is the
-     * engine's sidecar AOT trainer while one is running, {@code -1} otherwise — the client never
-     * talks to that process, it only reports it (docs/architecture.md).
+     * the server failed to start; both null means disabled. {@code mcpUrl} is the HTTP base without a
+     * trailing slash plus {@code /mcp} when HTTP is up (JK-1095), else null. (Keys are always
+     * emitted — the protocol has ONE null convention: key present, value null.) {@code
+     * aotTrainingPid} is the engine's sidecar AOT trainer while one is running, {@code -1}
+     * otherwise — the client never talks to that process, it only reports it
+     * (docs/architecture.md).
      */
     public static String statusAck(
             String version,
@@ -451,41 +460,22 @@ public final class EngineProtocol {
             long aotTrainingPid,
             String httpUrl,
             String httpError) {
-        return "{\"t\":\""
-                + STATUS_ACK
-                + "\",\"version\":"
-                + Jsonl.quote(version)
-                + ",\"pid\":"
-                + pid
-                + ",\"startedAt\":"
-                + startedAtMillis
-                + ",\"proto\":"
-                + PROTOCOL
-                + ",\"activeRequests\":"
-                + activeRequests
-                + ",\"activePipelines\":"
-                + activePipelines
-                + ",\"draining\":"
-                + draining
-                + ",\"heapUsedBytes\":"
-                + heapUsedBytes
-                + ",\"heapCommittedBytes\":"
-                + heapCommittedBytes
-                + ",\"heapMaxBytes\":"
-                + heapMaxBytes
-                + ",\"rssBytes\":"
-                + rssBytes
-                + ",\"aotTrainingPid\":"
-                + aotTrainingPid
-                + ",\"httpUrl\":"
-                + Jsonl.quote(httpUrl)
-                + ",\"httpError\":"
-                + Jsonl.quote(httpError)
-                + ",\"peakActiveRequests\":"
-                + activeRequests
-                + ",\"peakActivePipelines\":"
-                + activePipelines
-                + "}";
+        return statusAck(
+                version,
+                pid,
+                startedAtMillis,
+                activeRequests,
+                activePipelines,
+                draining,
+                heapUsedBytes,
+                heapCommittedBytes,
+                heapMaxBytes,
+                rssBytes,
+                aotTrainingPid,
+                httpUrl,
+                httpError,
+                activeRequests,
+                activePipelines);
     }
 
     /**
@@ -508,6 +498,7 @@ public final class EngineProtocol {
             String httpError,
             int peakActiveRequests,
             int peakActivePipelines) {
+        String mcpUrl = mcpUrlFromHttp(httpUrl);
         return "{\"t\":\""
                 + STATUS_ACK
                 + "\",\"version\":"
@@ -538,11 +529,24 @@ public final class EngineProtocol {
                 + Jsonl.quote(httpUrl)
                 + ",\"httpError\":"
                 + Jsonl.quote(httpError)
+                + ",\"mcpUrl\":"
+                + Jsonl.quote(mcpUrl)
                 + ",\"peakActiveRequests\":"
                 + peakActiveRequests
                 + ",\"peakActivePipelines\":"
                 + peakActivePipelines
                 + "}";
+    }
+
+    /**
+     * Derive MCP endpoint URL from the HTTP base. Strips trailing slashes so {@code
+     * http://host:port/} becomes {@code http://host:port/mcp}, never {@code //mcp}.
+     */
+    static String mcpUrlFromHttp(String httpUrl) {
+        if (httpUrl == null || httpUrl.isBlank()) return null;
+        String base = httpUrl;
+        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        return base.isEmpty() ? null : base + "/mcp";
     }
 
     public static String shutdown() {
@@ -583,6 +587,8 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean freshenLock) {
+        // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
+        // a false default here (Jsonl.bool takes the first key match).
         return "{\"t\":\""
                 + BUILD_REQUEST
                 + "\",\"dir\":"
@@ -626,6 +632,24 @@ public final class EngineProtocol {
             boolean verbose,
             boolean offline,
             boolean force) {
+        return testRequest(dir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+    }
+
+    /**
+     * Start a single-project test run. {@code parallelTests} lifts the engine's cross-module test
+     * gate when several test-requests overlap (workspace {@code jk test --parallel-tests}).
+     */
+    public static String testRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            boolean parallelTests) {
+        // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"t\":\""
                 + TEST_REQUEST
                 + "\",\"dir\":"
@@ -644,6 +668,8 @@ public final class EngineProtocol {
                 + offline
                 + ",\"force\":"
                 + force
+                + ",\"parallelTests\":"
+                + parallelTests
                 + "}";
     }
 
@@ -658,6 +684,7 @@ public final class EngineProtocol {
             boolean verbose,
             boolean offline,
             boolean force) {
+        // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"t\":\""
                 + SINGLE_BUILD_REQUEST
                 + "\",\"dir\":"
@@ -679,6 +706,11 @@ public final class EngineProtocol {
                 + ",\"force\":"
                 + force
                 + "}";
+    }
+
+    /** Notify client that a chrome timeline file was written (absolute path). */
+    public static String timeline(String absolutePath) {
+        return "{\"t\":\"" + TIMELINE + "\",\"path\":" + Jsonl.quote(absolutePath) + "}";
     }
 
     /**
@@ -1268,9 +1300,7 @@ public final class EngineProtocol {
     }
 
     public static String whyRequest(String dir, String query) {
-        return "{\"t\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
-                + ",\"query\":" + Jsonl.quote(query)
-                + "}";
+        return "{\"t\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query) + "}";
     }
 
     public static String ideModelRequest(String dir, String cache, String jdksDir) {
@@ -1670,8 +1700,7 @@ public final class EngineProtocol {
 
     /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link #LOCK_MODULE}). */
     public static String lockModule(String dir, String coord) {
-        return "{\"t\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord)
-                + "}";
+        return "{\"t\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord) + "}";
     }
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
@@ -1949,8 +1978,7 @@ public final class EngineProtocol {
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
-        return "{\"t\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message)
-                + "}";
+        return "{\"t\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */
@@ -2180,7 +2208,7 @@ public final class EngineProtocol {
             String variant,
             java.util.Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t) {
-        return withSession(request, variant, clientEnv, t, false);
+        return withSession(request, variant, clientEnv, t, false, false);
     }
 
     /** As above, additionally carrying the session's {@code rebuild} distrust flag when set. */
@@ -2190,6 +2218,35 @@ public final class EngineProtocol {
             java.util.Map<String, String> clientEnv,
             cc.jumpkick.config.PluginTuning t,
             boolean rebuild) {
+        return withSession(request, variant, clientEnv, t, rebuild, false);
+    }
+
+    /**
+     * As above, with {@code noTimeline} (skip chrome profile write). {@code rebuild} distrusts action
+     * cache; {@code noTimeline} is independent.
+     */
+    public static String withSession(
+            String request,
+            String variant,
+            java.util.Map<String, String> clientEnv,
+            cc.jumpkick.config.PluginTuning t,
+            boolean rebuild,
+            boolean noTimeline) {
+        return withSession(request, variant, clientEnv, t, rebuild, noTimeline, null);
+    }
+
+    /**
+     * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code shrink}) for
+     * {@code jk assembly --shrink} one-offs.
+     */
+    public static String withSession(
+            String request,
+            String variant,
+            java.util.Map<String, String> clientEnv,
+            cc.jumpkick.config.PluginTuning t,
+            boolean rebuild,
+            boolean noTimeline,
+            String assemblyOverride) {
         if (request == null
                 || request.length() < 2
                 || request.charAt(0) != '{'
@@ -2203,11 +2260,14 @@ public final class EngineProtocol {
                         || t.gc() != null
                         || t.stringDedup() != null
                         || !t.extraArgs().isEmpty());
-        if (!hasVariant && !hasEnv && !hasJvm && !rebuild) return request;
+        boolean hasAssembly = assemblyOverride != null && !assemblyOverride.isBlank();
+        if (!hasVariant && !hasEnv && !hasJvm && !rebuild && !noTimeline && !hasAssembly) return request;
         StringBuilder b = new StringBuilder(request.substring(0, request.length() - 1));
         if (rebuild) b.append(",\"rebuild\":true");
+        if (noTimeline) b.append(",\"noTimeline\":true");
         if (hasVariant) b.append(",\"variant\":").append(Jsonl.quote(variant));
         if (hasEnv) b.append(",\"env\":").append(Jsonl.map(clientEnv));
+        if (hasAssembly) b.append(",\"assemblyOverride\":").append(Jsonl.quote(assemblyOverride));
         if (hasJvm) {
             if (t.maxRamPercent() != null)
                 b.append(",\"jvmMaxRam\":\"").append(t.maxRamPercent()).append('\"');
@@ -2217,6 +2277,12 @@ public final class EngineProtocol {
             if (!t.extraArgs().isEmpty()) b.append(",\"jvmArgs\":").append(quoteArray(t.extraArgs()));
         }
         return b.append('}').toString();
+    }
+
+    /** Decode {@code assemblyOverride} from a session envelope ({@code fat}/{@code shrink}/empty). */
+    public static String assemblyOverrideOf(String request) {
+        String v = Jsonl.str(request, "assemblyOverride");
+        return v == null ? "" : v;
     }
 
     /**

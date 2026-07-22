@@ -123,8 +123,7 @@ public final class BuildLogicSupport {
         List<String> sourceTokens = new ArrayList<>();
         sourceTokens.add("dir:" + projectDir.relativize(c.logicDir()));
         for (Path src : sources) {
-            sourceTokens.add(
-                    "src:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
+            sourceTokens.add("src:" + c.logicDir().relativize(src) + ":" + Hashing.sha256Hex(Files.readAllBytes(src)));
         }
         sourceTokens.add("anchor:" + anchor.name());
 
@@ -181,8 +180,8 @@ public final class BuildLogicSupport {
 
     private record RegisteredTask(String name, String kind, BuildLogicTask task) {}
 
-    private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(
-            Config c, Path logicClasses, Path apiCp) throws IOException {
+    private static Map<BuildLogicAnchor, List<RegisteredTask>> discoverTasks(Config c, Path logicClasses, Path apiCp)
+            throws IOException {
         Map<BuildLogicAnchor, List<RegisteredTask>> out = new EnumMap<>(BuildLogicAnchor.class);
         for (BuildLogicAnchor a : BuildLogicAnchor.values()) {
             out.put(a, new ArrayList<>());
@@ -212,9 +211,7 @@ public final class BuildLogicSupport {
                 } catch (ClassNotFoundException | NoClassDefFoundError e) {
                     continue;
                 }
-                if (clazz.isInterface()
-                        || clazz.isEnum()
-                        || !BuildLogicContributor.class.isAssignableFrom(clazz)) {
+                if (clazz.isInterface() || clazz.isEnum() || !BuildLogicContributor.class.isAssignableFrom(clazz)) {
                     continue;
                 }
                 try {
@@ -251,11 +248,10 @@ public final class BuildLogicSupport {
         }
 
         if (nameAnchors.isEmpty()) {
-            throw new IllegalStateException(
-                    "[build] logic has no tasks — implement "
-                            + BuildLogicContributor.class.getName()
-                            + " or provide a *Build / *BuildMain with public static void main"
-                            + " (or set [build].logic-main)");
+            throw new IllegalStateException("[build] logic has no tasks — implement "
+                    + BuildLogicContributor.class.getName()
+                    + " or provide a *Build / *BuildMain with public static void main"
+                    + " (or set [build].logic-main)");
         }
         return out;
     }
@@ -297,7 +293,8 @@ public final class BuildLogicSupport {
 
     private static List<String> listClassNames(Path classes) throws IOException {
         try (Stream<Path> s = Files.walk(classes)) {
-            return s.filter(p -> p.toString().endsWith(".class") && !p.getFileName().toString().contains("$"))
+            return s.filter(p -> p.toString().endsWith(".class")
+                            && !p.getFileName().toString().contains("$"))
                     .map(p -> classes.relativize(p)
                             .toString()
                             .replace('/', '.')
@@ -316,7 +313,8 @@ public final class BuildLogicSupport {
     private static List<Path> listJava(Path root) throws IOException {
         List<Path> out = new ArrayList<>();
         try (Stream<Path> s = Files.walk(root)) {
-            s.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p)).forEach(out::add);
+            s.filter(p -> p.toString().endsWith(".java") && Files.isRegularFile(p))
+                    .forEach(out::add);
         }
         out.sort(Comparator.comparing(Path::toString));
         return out;
@@ -371,14 +369,7 @@ public final class BuildLogicSupport {
             cp = cp + java.io.File.pathSeparator + apiCp;
         }
         ProcessBuilder pb = new ProcessBuilder(
-                javaBin,
-                "-cp",
-                cp,
-                main,
-                "--project",
-                projectDir.toString(),
-                "--out",
-                outDir.toString());
+                javaBin, "-cp", cp, main, "--project", projectDir.toString(), "--out", outDir.toString());
         pb.redirectErrorStream(true);
         Process p = pb.start();
         String log = new String(p.getInputStream().readAllBytes());

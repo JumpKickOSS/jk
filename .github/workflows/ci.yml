@@ -46,13 +46,25 @@ jobs:
         run: |
           ./gradlew dist installLocal --no-daemon
           ./install.sh build/dist/jk
-          echo "$HOME/.jk/versions/0.10.0-SNAPSHOT/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.jk/versions/0.10.1/bin" >> "$GITHUB_PATH"
 
-      - name: jk lock + build --skip-tests
+      - name: jk lock + build + install-local + library tests
+        env:
+          # Nested engines / short-lived workers: no AOT train-on-miss (still use caches if present).
+          JK_AOT_TRAIN: off
         run: |
           jk --version
           jk lock
           jk build --skip-tests
+          # Side-load pure-jk assembly workers (also covered by installLocal above).
+          jk plugin install-local
+          # Full pure-jk suite including clients/cli (nested engines use isolated JK_STATE_DIR).
+          # C2: cross-module parallel is the product default; -j0 -w0 explicit for clarity.
+          # Hermetic modules pin [test] workers=1 (e.g. clients/cli).
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          # Ship layout: native job has Graal — stage native CLI when present; dry-run plan first.
+          jk release --skip-tests --dry-run
+          jk release --skip-tests
 
   # ticket-1020: thin client + engine jar (no monolyth, no Graal).
   self-host-jvm:
@@ -75,11 +87,18 @@ jobs:
           "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
           echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
 
-      - name: jk lock + build --skip-tests
+      - name: jk lock + build + install-local + library tests
+        env:
+          JK_AOT_TRAIN: off
         run: |
           jk --version
           jk lock
           jk build --skip-tests
+          jk plugin install-local
+          # Same pure-jk suite as native job (C2 default parallel tests); release stages bootstrap client.
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          jk release --skip-tests --skip-native --dry-run
+          jk release --skip-tests --skip-native
 
   # ticket-1038: multi-module sample with reinstalled thin client (no Graal required).
   showcase:

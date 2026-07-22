@@ -77,7 +77,41 @@ public final class EngineClient {
             long rssBytes,
             long aotTrainingPid,
             String httpUrl,
-            String httpError) {
+            String httpError,
+            /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null (JK-1095). */
+            String mcpUrl) {
+
+        /** Compat: older status without mcpUrl. */
+        public Status(
+                String version,
+                long pid,
+                long startedAtMillis,
+                int activeRequests,
+                int activePipelines,
+                boolean draining,
+                long heapUsedBytes,
+                long heapCommittedBytes,
+                long heapMaxBytes,
+                long rssBytes,
+                long aotTrainingPid,
+                String httpUrl,
+                String httpError) {
+            this(
+                    version,
+                    pid,
+                    startedAtMillis,
+                    activeRequests,
+                    activePipelines,
+                    draining,
+                    heapUsedBytes,
+                    heapCommittedBytes,
+                    heapMaxBytes,
+                    rssBytes,
+                    aotTrainingPid,
+                    httpUrl,
+                    httpError,
+                    httpUrl != null ? httpUrl + "/mcp" : null);
+        }
 
         /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
         public boolean httpEnabled() {
@@ -130,6 +164,9 @@ public final class EngineClient {
                     EngineProtocol.hello(cc.jumpkick.cli.Jk.VERSION, "probe")); // handshake first, response discarded
             String ack = exchange(ch, EngineProtocol.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
+            String httpUrl = Jsonl.str(ack, "httpUrl");
+            String mcpUrl = Jsonl.str(ack, "mcpUrl");
+            if (mcpUrl == null && httpUrl != null) mcpUrl = httpUrl + "/mcp";
             return Optional.of(new Status(
                     Jsonl.str(ack, "version"),
                     Jsonl.longValue(ack, "pid", -1),
@@ -142,8 +179,9 @@ public final class EngineClient {
                     Jsonl.longValue(ack, "heapMaxBytes", -1),
                     Jsonl.longValue(ack, "rssBytes", -1),
                     Jsonl.longValue(ack, "aotTrainingPid", -1),
-                    Jsonl.str(ack, "httpUrl"),
-                    Jsonl.str(ack, "httpError")));
+                    httpUrl,
+                    Jsonl.str(ack, "httpError"),
+                    mcpUrl));
         } catch (IOException e) {
             return Optional.empty();
         }
@@ -238,7 +276,8 @@ public final class EngineClient {
     static long readPidFile(Path pidFile) {
         try {
             if (!Files.isRegularFile(pidFile)) return -1;
-            String first = Files.readString(pidFile).lines().findFirst().orElse("").trim();
+            String first =
+                    Files.readString(pidFile).lines().findFirst().orElse("").trim();
             if (first.isEmpty()) return -1;
             return Long.parseLong(first);
         } catch (IOException | NumberFormatException e) {
@@ -346,7 +385,21 @@ public final class EngineClient {
             String profile,
             boolean verbose,
             boolean offline,
-            boolean force) {}
+            boolean force,
+            boolean parallelTests) {
+        /** Backward-compatible ctor: serial cross-module gate. */
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                Path jdksDir,
+                int workers,
+                String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force) {
+            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+        }
+    }
 
     /**
      * Run a single project's test pipeline against the engine (Step 3) — see {@link
@@ -1098,9 +1151,7 @@ public final class EngineClient {
                 (type, line) -> {});
         String checkout = Jsonl.str(finish.finishLine(), "gitCheckout");
         return new GitFetchOutcome(
-                finish.result(),
-                checkout != null ? Path.of(checkout) : null,
-                Jsonl.str(finish.finishLine(), "gitSha"));
+                finish.result(), checkout != null ? Path.of(checkout) : null, Jsonl.str(finish.finishLine(), "gitSha"));
     }
 
     // ---- hosted long-tail commands ----------------------------------------------------------------
@@ -1469,8 +1520,7 @@ public final class EngineClient {
     private static EngineTarget resolveEngineTarget(EnginePaths.Paths paths, String clientVersion) throws IOException {
         // Engine spawn is java -cp jk-engine.jar EngineMain (or JK_ENGINE_EXE). The client binary
         // path is only needed for cache-prune re-invocation elsewhere — not for the daemon spawn.
-        Optional<EngineArtifact> resolved =
-                resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
+        Optional<EngineArtifact> resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         // Self-heal a missing jar: the slim client never hosts the engine; download when allowed.
         if (resolved.isEmpty()
                 && EngineJarFetcher.applicable(
@@ -1481,10 +1531,9 @@ public final class EngineClient {
             EngineJarFetcher.fetch(EngineJarFetcher.releasesBase(), clientVersion);
             resolved = resolveEngineArtifact(System.getenv("JK_ENGINE_EXE"), clientVersion);
         }
-        EngineArtifact engine = resolved.orElseThrow(() -> new IOException(
-                "no build engine for jk " + clientVersion
-                        + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
-                        + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
+        EngineArtifact engine = resolved.orElseThrow(() -> new IOException("no build engine for jk " + clientVersion
+                + " — materialize it (`./install.sh build/dist/jk` or `jk self materialize …`),"
+                + " download a release (`jk self update`), or set JK_ENGINE_EXE"));
         if (engine.kind() != EngineArtifact.Kind.JAR) {
             return new EngineTarget(engine, null, false, null, false);
         }
@@ -1494,13 +1543,18 @@ public final class EngineClient {
         return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot, marker);
     }
 
-    /** AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code .noaot} marker uses AOT. */
+    /**
+     * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code .noaot} marker uses
+     * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled()} is
+     * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache.
+     */
     static AotMode chooseAotMode(EngineTarget t) {
         if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
         if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
         if (t.noAotMarker()) return AotMode.NONE;
-        if (t.aotCache() == null || !Files.exists(t.aotCache())) return AotMode.TRAIN;
-        return AotMode.USE;
+        if (t.aotCache() != null && Files.exists(t.aotCache())) return AotMode.USE;
+        if (!cc.jumpkick.util.AotSettings.trainingEnabled()) return AotMode.NONE;
+        return AotMode.TRAIN;
     }
 
     /**
@@ -1686,7 +1740,7 @@ public final class EngineClient {
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: VersionStore.prune retires a version's caches with the version, and
         // the sweep below stays within one version so side-by-side installs never thrash
-        // each other's caches. Worker caches (javac-/kotlinc-) have no version dimension.
+        // each other's caches. Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
         try {
             Files.createDirectories(aotDir);
@@ -1697,7 +1751,7 @@ public final class EngineClient {
         Path cache = aotDir.resolve(stem + ".aot");
         // Sweep THIS version's other keys — the cache, the JEP 514 ".aot.config" recording
         // intermediate, and any ".noaot" marker. The "<16-hex>." shape check keeps a version
-        // whose name extends ours ("0.10.0" vs "0.10.0-SNAPSHOT") out of the blast radius.
+        // whose name extends ours ("0.10.0" vs "0.10.1") out of the blast radius.
         String versionPrefix = "engine-" + version + "-";
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
             for (Path p : entries) {
@@ -1785,9 +1839,13 @@ public final class EngineClient {
                 }
                 // Forward plugin-jar location overrides (e.g. -Djk.test.runner.jar=… from Gradle
                 // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
+                // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
-                    if (!key.startsWith("jk.") || !key.endsWith(".jar")) continue;
+                    if (!key.startsWith("jk.")) continue;
+                    boolean jarOverride = key.endsWith(".jar");
+                    boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
+                    if (!jarOverride && !aotSwitch) continue;
                     String val = String.valueOf(e.getValue());
                     if (val == null || val.isBlank()) continue;
                     command.add("-D" + key + "=" + val);

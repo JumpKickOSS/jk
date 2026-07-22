@@ -165,6 +165,13 @@ public final class MavenRepo {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
         }
+        // JK-1088: warm re-lock — serve immutable GAV paths from repos/<name>/ without re-HTTP.
+        // --force always revalidates from the network (checksums re-checked).
+        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        if (mirror && !force) {
+            Optional<Fetched> local = tryLocalMirror(coord, relativePath);
+            if (local.isPresent()) return local.get();
+        }
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
         // Stream the body straight into the CAS, hashing as it flows, so a
@@ -200,6 +207,31 @@ public final class MavenRepo {
         return new Fetched(uri, stored.path(), stored.sha256(), stored.size());
     }
 
+    /**
+     * If {@code repos/<name>/} already has a fully materialised artifact (sidecar + bytes), return
+     * it as a {@link Fetched} without network I/O. Empty when absent / unreadable.
+     */
+    private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
+        Optional<Path> path = repoStore.locate(relativePath);
+        if (path.isEmpty()) return Optional.empty();
+        try {
+            // Prefer store sidecar when present; otherwise hash once (immutable GAV).
+            String sha = repoStore.storedSha256(relativePath).orElseGet(() -> {
+                try {
+                    return Hashing.sha256Hex(Files.readAllBytes(path.get()));
+                } catch (IOException e) {
+                    return "";
+                }
+            });
+            if (sha.isBlank()) return Optional.empty();
+            long size = Files.size(path.get());
+            URI uri = baseUrl.resolve(relativePath);
+            return Optional.of(new Fetched(uri, path.get(), sha, size));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
     /** How many mirrored artifacts were pinned without an upstream .sha256/.sha1 this run. */
     public int missingUpstreamChecksums() {
         return missingUpstreamChecksums.get();
@@ -209,12 +241,11 @@ public final class MavenRepo {
         String scheme = baseUrl.getScheme();
         if (scheme == null || !"http".equalsIgnoreCase(scheme)) return;
         if (!httpWarned.compareAndSet(false, true)) return;
-        System.err.println(
-                "jk: warning: repository `"
-                        + name
-                        + "` uses plaintext http:// ("
-                        + baseUrl
-                        + ") — lock-time fetches can be MITM'd; prefer https");
+        System.err.println("jk: warning: repository `"
+                + name
+                + "` uses plaintext http:// ("
+                + baseUrl
+                + ") — lock-time fetches can be MITM'd; prefer https");
     }
 
     /**
@@ -228,17 +259,16 @@ public final class MavenRepo {
             String expected = normalizeChecksum(new String(sha256Side.get(), java.nio.charset.StandardCharsets.UTF_8));
             if (isHexChecksum(expected, 64)) {
                 if (!expected.equalsIgnoreCase(actualSha256)) {
-                    throw new ChecksumMismatchException(
-                            "upstream checksum mismatch for "
-                                    + coord
-                                    + " from "
-                                    + name
-                                    + " ("
-                                    + relativePath
-                                    + "): expected sha256 "
-                                    + expected
-                                    + " but got "
-                                    + actualSha256);
+                    throw new ChecksumMismatchException("upstream checksum mismatch for "
+                            + coord
+                            + " from "
+                            + name
+                            + " ("
+                            + relativePath
+                            + "): expected sha256 "
+                            + expected
+                            + " but got "
+                            + actualSha256);
                 }
                 return;
             }
@@ -251,17 +281,16 @@ public final class MavenRepo {
                 Path blob = cas.pathFor(actualSha256);
                 String actualSha1 = Hashing.hashHex("SHA-1", Files.readAllBytes(blob));
                 if (!expected.equalsIgnoreCase(actualSha1)) {
-                    throw new ChecksumMismatchException(
-                            "upstream checksum mismatch for "
-                                    + coord
-                                    + " from "
-                                    + name
-                                    + " ("
-                                    + relativePath
-                                    + "): expected sha1 "
-                                    + expected
-                                    + " but got "
-                                    + actualSha1);
+                    throw new ChecksumMismatchException("upstream checksum mismatch for "
+                            + coord
+                            + " from "
+                            + name
+                            + " ("
+                            + relativePath
+                            + "): expected sha1 "
+                            + expected
+                            + " but got "
+                            + actualSha1);
                 }
                 return;
             }

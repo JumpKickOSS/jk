@@ -120,10 +120,12 @@ public final class PublishCommand implements CliCommand {
         // reference a coordinate no consumer can resolve. Refuse before any upload —
         // `jk export` warn-and-skips for the same reason.
         for (String pathDep : info.pathDeps()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Publish", "`" + pathDep
-                    + "` is a path dependency — path deps are consume-only and cannot be"
-                    + " published. Promote it to a [workspace] module or a published"
-                    + " coordinate first."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Publish",
+                    "`" + pathDep
+                            + "` is a path dependency — path deps are consume-only and cannot be"
+                            + " published. Promote it to a [workspace] module or a published"
+                            + " coordinate first."));
             return Exit.CONFIG;
         }
 
@@ -140,7 +142,7 @@ public final class PublishCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         PipelineResult result;
         int files;
-                cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
+        cc.jumpkick.cli.engine.EngineClient.PublishOutcome outcome;
         try {
             outcome = cc.jumpkick.cli.engine.EngineClient.runPublish(
                     cc.jumpkick.engine.EnginePaths.current(),

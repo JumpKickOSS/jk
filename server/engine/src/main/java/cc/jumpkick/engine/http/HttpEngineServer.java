@@ -49,12 +49,15 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Path logFile;
     private final Supplier<StatusSnapshot> status;
     private final HttpEvents events;
-    private final BuildTrigger buildTrigger;
+    private final EngineHttpJobs jobs;
+    private final ProgressTokenRegistry progressTokens;
     private final cc.jumpkick.engine.journal.BuildJournal journal;
     private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
+    private final McpHandler mcp;
+    private final String engineVersion;
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
@@ -74,7 +77,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * @param version the engine version, used for classpath-asset {@code ETag}s
      * @param status supplies the vitals {@code GET /api/status} reports, fresh per request
      * @param events the hub {@code GET /api/events} streams from ({@code EngineServer} publishes)
-     * @param buildTrigger runs {@code POST /api/build}'s build engine-side
+     * @param jobs async build/test/lock/cancel for HTTP + MCP (JK-1095)
      * @param metrics supplies the running build aggregates {@code GET /api/metrics} reports, fresh
      *     per request (the engine's {@code BuildMetrics} store)
      * @param cache supplies the cache breakdown {@code GET /api/cache} reports, fresh per request
@@ -88,7 +91,7 @@ public final class HttpEngineServer implements AutoCloseable {
             String version,
             Supplier<StatusSnapshot> status,
             HttpEvents events,
-            BuildTrigger buildTrigger,
+            EngineHttpJobs jobs,
             cc.jumpkick.engine.journal.BuildJournal journal,
             Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics,
             Supplier<CacheSnapshot> cache,
@@ -101,11 +104,20 @@ public final class HttpEngineServer implements AutoCloseable {
         this.logFile = logFile;
         this.status = status;
         this.events = events;
-        this.buildTrigger = buildTrigger;
+        this.jobs = jobs;
         this.journal = journal;
         this.metrics = metrics;
         this.cache = cache;
         this.log = log != null ? log : s -> {};
+        this.engineVersion = version;
+        this.progressTokens = new ProgressTokenRegistry();
+        this.mcp = new McpHandler(
+                status,
+                jobs,
+                this::projectMap,
+                () -> journal.rawRecords(200),
+                version,
+                progressTokens);
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
@@ -266,6 +278,17 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
+        if (path.equals("/mcp") || path.startsWith("/mcp/")) {
+            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
+            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
+                    && !tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"))) {
+                exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
+                sendText(exchange, 401, "missing or invalid bearer token\n");
+                return;
+            }
+            handleMcp(exchange);
+            return;
+        }
         if (path.equals("/api") || path.startsWith("/api/")) {
             if (!authorized(exchange)) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
@@ -276,6 +299,137 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
+    }
+
+    /**
+     * MCP Streamable-HTTP style: {@code POST /mcp} with JSON-RPC body; {@code GET /mcp} with {@code
+     * Accept: text/event-stream} opens an SSE progress stream ({@code notifications/jk/event});
+     * otherwise GET returns a small discovery document.
+     */
+    private void handleMcp(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        if (method.equals("GET") || method.equals("HEAD")) {
+            if (method.equals("GET") && acceptsEventStream(exchange)) {
+                handleMcpEvents(exchange);
+                return;
+            }
+            sendJson(
+                    exchange,
+                    200,
+                    JsonOut.object()
+                            .put("schema", 1)
+                            .put("type", "mcp-discovery")
+                            .put("protocolVersion", McpHandler.PROTOCOL_VERSION)
+                            .put("server", McpHandler.SERVER_NAME)
+                            .put("version", engineVersion)
+                            .put("endpoint", "POST /mcp")
+                            .put("events", "/api/events")
+                            .put(
+                                    "mcpEvents",
+                                    "GET /mcp (Accept: text/event-stream); optional ?requestId=N or "
+                                            + "?progressToken=T")
+                            .put(
+                                    "instructions",
+                                    "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
+                                            + "Bearer token required. Live progress: GET /mcp with "
+                                            + "Accept: text/event-stream (optional ?requestId= or "
+                                            + "?progressToken=) or GET /api/events (dashboard SSE).")
+                            .toString());
+            return;
+        }
+        if (!method.equals("POST")) {
+            exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST");
+            sendText(exchange, 405, "method not allowed\n");
+            return;
+        }
+        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String response = mcp.handleBody(body);
+        if (response == null || response.isEmpty()) {
+            // JSON-RPC notification — accepted, no body.
+            exchange.sendResponseHeaders(202, -1);
+            return;
+        }
+        sendJson(exchange, 200, response);
+    }
+
+    /**
+     * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
+     * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
+     * requestId} (engine job id) or {@code progressToken} (bound from tools/call {@code
+     * _meta.progressToken}).
+     */
+    private void handleMcpEvents(HttpExchange exchange) throws IOException {
+        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getQuery());
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (filter != null) {
+            exchange.getResponseHeaders().set("X-Jk-Request-Id", Long.toString(filter));
+        }
+        exchange.sendResponseHeaders(200, 0);
+        var out = exchange.getResponseBody();
+        String hello =
+                filter == null
+                        ? ": mcp-events connected\n\n"
+                        : ": mcp-events connected requestId=" + filter + "\n\n";
+        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
+            out.write(hello.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            while (true) {
+                String frame = subscription.next(heartbeatMillis);
+                out.write((frame != null ? frame : ": heartbeat\n\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            // client closed
+        }
+    }
+
+    /**
+     * Resolve optional SSE filter from query string. {@code requestId} wins over {@code
+     * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
+     * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
+     */
+    Long resolveMcpEventFilter(String query) {
+        String rid = queryParam(query, "requestId");
+        if (rid != null && !rid.isBlank()) {
+            try {
+                return Long.parseLong(rid.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        String tok = queryParam(query, "progressToken");
+        if (tok != null && !tok.isBlank()) {
+            Long bound = progressTokens.resolve(tok.trim());
+            // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
+            // on a later reconnect, or the agent switches to ?requestId=.
+            return bound != null ? bound : -1L;
+        }
+        return null;
+    }
+
+    private static boolean acceptsEventStream(HttpExchange exchange) {
+        String accept = exchange.getRequestHeaders().getFirst("Accept");
+        if (accept == null || accept.isBlank()) return false;
+        return accept.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream");
+    }
+
+    /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
+    private java.util.Map<String, Object> projectMap(String dir) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("dir", dir);
+        try {
+            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
+                    .project();
+            m.put("coord", project.group() + ":" + project.name());
+            if (project.description() != null) m.put("description", project.description());
+            m.put("version", project.version());
+        } catch (Exception ignored) {
+            // missing/unparseable jk.toml
+        }
+        return m;
     }
 
     /**
@@ -335,6 +489,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
+                // url() already ends with /; avoid //mcp in status/mcpUrl.
+                .put("mcpUrl", url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
                 .put("webRoot", webRoot.toString())
                 .toString();
@@ -481,7 +637,7 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         long requestId;
         try {
-            requestId = buildTrigger.trigger(dir);
+            requestId = jobs.triggerBuild(dir);
         } catch (IllegalStateException e) {
             // Engine is draining (graceful shutdown in progress) — refuse new builds.
             exchange.getResponseHeaders().set("Retry-After", "1");

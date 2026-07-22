@@ -1,0 +1,476 @@
+version = 1
+generated-by = "jk 0.10.1"
+resolution-algorithm = "pubgrub-v1"
+jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-annotations:jar:"
+version  = "2.22"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-core:jar:"
+version  = "2.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:941ff029bcdb93e83d209ce516c1a7fb8bbac07d0a2fa122f5bf194b2cd7b4f4"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.core:jackson-databind:jar:"
+version  = "2.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:7dcd7e53bec1f56c7ad278bd1ca0840bebcc595d61ce44d6a8439abb75b965b2"
+scopes   = ["main"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
+]
+
+[[artifact]]
+name     = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:"
+version  = "2.22.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:85da45b7e5e565418963ff8f0dcb184365b0557c15468933f4318dde5c3ce845"
+scopes   = ["main"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
+  "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+]
+
+[[artifact]]
+name     = "com.google.api:api-common:jar:"
+version  = "2.65.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c89999349fe57e863d1fc51057a7316e986eed4a9e93afcc51709bebf4b5815f"
+scopes   = ["main"]
+deps = [
+  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "javax.annotation:javax.annotation-api:jar:@1.3.2",
+]
+
+[[artifact]]
+name     = "com.google.auth:google-auth-library-credentials:jar:"
+version  = "1.49.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a32008bf4643ccabfa5da38f1b40f047675e739a32447a58203ea52f2b3866ca"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.auth:google-auth-library-oauth2-http:jar:"
+version  = "1.49.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1aed82b028537e7cb38815df5b5ee10fe3f2203a742cfbc417ae51e9a4315c47"
+scopes   = ["main"]
+deps = [
+  "com.google.api:api-common:jar:@2.65.0",
+  "com.google.auth:google-auth-library-credentials:jar:@1.49.0",
+  "com.google.auto.value:auto-value-annotations:jar:@1.11.1",
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.http-client:google-http-client-gson:jar:@2.2.0",
+  "com.google.http-client:google-http-client:jar:@2.2.0",
+]
+
+[[artifact]]
+name     = "com.google.auto.value:auto-value-annotations:jar:"
+version  = "1.11.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6c61a11420a5cddf3313888e9d335d5eedfbeb9a8da26591470fbfe61f5bf859"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.cloud.tools:jib-build-plan:jar:"
+version  = "0.4.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9b74d6be551b8bf079d711148769150d566512db5a50b1e9c7c445c69c08d182"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.cloud.tools:jib-core:jar:"
+version  = "0.28.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:575adde5886ea9b5e741b855c2f029485a4f0ca29b9ce12fa4850208622ebc87"
+scopes   = ["main"]
+deps = [
+  "com.fasterxml.jackson.core:jackson-databind:jar:@2.22.1",
+  "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.1",
+  "com.google.auth:google-auth-library-oauth2-http:jar:@1.49.0",
+  "com.google.cloud.tools:jib-build-plan:jar:@0.4.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.http-client:google-http-client-apache-v2:jar:@2.2.0",
+  "com.google.http-client:google-http-client:jar:@2.2.0",
+  "org.apache.commons:commons-compress:jar:@1.28.0",
+  "org.ow2.asm:asm:jar:@9.10.1",
+]
+
+[[artifact]]
+name     = "com.google.code.findbugs:jsr305:jar:"
+version  = "3.0.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.code.gson:gson:jar:"
+version  = "2.14.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2cbd119bf1961c28788310963dc80ba65f58cdeec1dd139c8bdb1240faa2c36f"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.errorprone:error_prone_annotations:jar:"
+version  = "2.50.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:4667724877f1d37a689202da191e23efa7657c62eef93ccdac406eccfe5cdd0a"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.guava:failureaccess:jar:"
+version  = "1.0.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:cbfc3906b19b8f55dd7cfd6dfe0aa4532e834250d7f080bd8d211a3e246b59cb"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.guava:guava:jar:"
+version  = "33.6.0-jre"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:dc573e1fca4fd5454f4a5fd3d7da2df03002876a4175bafc14a95980dd7713b3"
+scopes   = ["main"]
+deps = [
+  "com.google.guava:failureaccess:jar:@1.0.3",
+  "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
+  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "org.jspecify:jspecify:jar:@1.0.0",
+]
+
+[[artifact]]
+name     = "com.google.guava:listenablefuture:jar:"
+version  = "9999.0-empty-to-avoid-conflict-with-guava"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b372a037d4230aa57fbeffdef30fd6123f9c0c2db85d0aced00c91b974f33f99"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "com.google.http-client:google-http-client-apache-v2:jar:"
+version  = "2.2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:aa62efa466a08426bfdf1dfac22b76738075057aa09f44324a569585a92c1441"
+scopes   = ["main"]
+deps = [
+  "com.google.http-client:google-http-client:jar:@2.2.0",
+  "org.apache.httpcomponents:httpclient:jar:@4.5.14",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+
+[[artifact]]
+name     = "com.google.http-client:google-http-client-gson:jar:"
+version  = "2.2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3242dc7e91d355d118a355c5d586271bedfeb84c3f2f6fa2f3b9b42503a4dc59"
+scopes   = ["main"]
+deps = [
+  "com.google.code.gson:gson:jar:@2.14.0",
+  "com.google.http-client:google-http-client:jar:@2.2.0",
+]
+
+[[artifact]]
+name     = "com.google.http-client:google-http-client:jar:"
+version  = "2.2.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:36cea7079c550aeb12fa7366a1ae65d503eaf15bcfc4f50124fde2a8f784e568"
+scopes   = ["main"]
+deps = [
+  "com.google.code.findbugs:jsr305:jar:@3.0.2",
+  "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "com.google.j2objc:j2objc-annotations:jar:@3.1",
+  "io.grpc:grpc-context:jar:@1.82.2",
+  "io.opencensus:opencensus-api:jar:@0.31.1",
+  "io.opencensus:opencensus-contrib-http-util:jar:@0.31.1",
+  "org.apache.httpcomponents:httpclient:jar:@4.5.14",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+
+[[artifact]]
+name     = "com.google.j2objc:j2objc-annotations:jar:"
+version  = "3.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:84d3a150518485f8140ea99b8a985656749629f6433c92b80c75b36aba3b099b"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "commons-codec:commons-codec:jar:"
+version  = "1.22.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d164fe79f262c32d9b18a0b5b2d317d1c27653d5e98fd2b998c24bf901c72ce4"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "commons-io:commons-io:jar:"
+version  = "2.22.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2b9a7b1f726fb86216dbd2c8321eabe0221dbd5b1be81c18e1cb53811b104758"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "io.grpc:grpc-api:jar:"
+version  = "1.82.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:038b8bb47dfd61ac580e4c270ffb03f153ee8d62491a7276ef51658ed6482d56"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "io.grpc:grpc-context:jar:"
+version  = "1.82.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:88b6370ecedb73ef5f9dd0d30f7e1464a81c079ea0c957ed742109225b55ea04"
+scopes   = ["main"]
+deps = [
+  "io.grpc:grpc-api:jar:@1.82.2",
+]
+
+[[artifact]]
+name     = "io.opencensus:opencensus-api:jar:"
+version  = "0.31.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:f1474d47f4b6b001558ad27b952e35eda5cc7146788877fc52938c6eba24b382"
+scopes   = ["main"]
+deps = [
+  "io.grpc:grpc-context:jar:@1.82.2",
+]
+
+[[artifact]]
+name     = "io.opencensus:opencensus-contrib-http-util:jar:"
+version  = "0.31.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:3ea995b55a4068be22989b70cc29a4d788c2d328d1d50613a7a9afd13fdd2d0a"
+scopes   = ["main"]
+deps = [
+  "com.google.guava:guava:jar:@33.6.0-jre",
+  "io.opencensus:opencensus-api:jar:@0.31.1",
+]
+
+[[artifact]]
+name     = "javax.annotation:javax.annotation-api:jar:"
+version  = "1.3.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e04ba5195bcd555dc95650f7cc614d151e4bcd52d29a10b8aa2197f3ab89ab9b"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "net.bytebuddy:byte-buddy:jar:"
+version  = "1.18.11-jdk5"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:a178d5a44788a8461bc0b1cfb484aa69657077ba24d36438a1098e2e02efd2f0"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.antlr:antlr4-runtime:jar:"
+version  = "4.13.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:dd3e8a13a2d669bf84fb8d834de35ce4875f27157698d206241ec8488aadcaf7"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.apache.commons:commons-compress:jar:"
+version  = "1.28.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e1522945218456f3649a39bc4afd70ce4bd466221519dba7d378f2141a4642ca"
+scopes   = ["main"]
+deps = [
+  "commons-codec:commons-codec:jar:@1.22.0",
+  "commons-io:commons-io:jar:@2.22.0",
+  "org.apache.commons:commons-lang3:jar:@3.20.0",
+]
+
+[[artifact]]
+name     = "org.apache.commons:commons-lang3:jar:"
+version  = "3.20.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:69e5c9fa35da7a51a5fd2099dfe56a2d8d32cf233e2f6d770e796146440263f4"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.apache.httpcomponents:httpclient:jar:"
+version  = "4.5.14"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c8bc7e1c51a6d4ce72f40d2ebbabf1c4b68bfe76e732104b04381b493478e9d6"
+scopes   = ["main"]
+deps = [
+  "commons-codec:commons-codec:jar:@1.22.0",
+  "org.apache.httpcomponents:httpcore:jar:@4.4.16",
+]
+
+[[artifact]]
+name     = "org.apache.httpcomponents:httpcore:jar:"
+version  = "4.4.16"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:6c9b3dd142a09dc468e23ad39aad6f75a0f2b85125104469f026e52a474e464f"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.apache.maven:maven-artifact:jar:"
+version  = "3.9.16"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:54cc1c1ef932e3d4a903352111b42b4d3c3ed8e7a1d0de73b625309d9c3ad3e8"
+scopes   = ["main"]
+deps = [
+  "org.codehaus.plexus:plexus-utils:jar:@4.0.3",
+]
+
+[[artifact]]
+name     = "org.apiguardian:apiguardian-api:jar:"
+version  = "1.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:b509448ac506d607319f182537f0b35d71007582ec741832a1f111e5b5b70b38"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.assertj:assertj-core:jar:"
+version  = "3.27.7"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c4a445426c3c2861666863b842cc4ec7bbb1c4226fefd370b6d2fe83d6c4ff0f"
+scopes   = ["test"]
+deps = [
+  "net.bytebuddy:byte-buddy:jar:@1.18.11-jdk5",
+]
+
+[[artifact]]
+name     = "org.checkerframework:checker-qual:jar:"
+version  = "4.2.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:d0831f48bf587787bd29a0574692a4e2c494acc15112a4396c71b45f553d73c6"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.codehaus.plexus:plexus-utils:jar:"
+version  = "4.0.3"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:421ff6ed146c53a9d4eaade8f629b52b12af7187101f1bd06c2c64e904019f3c"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.jspecify:jspecify:jar:"
+version  = "1.0.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+scopes   = ["main", "test"]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-api:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:e60794b7d94e03c4bca1c0833cfca18762da5eaac0a61b16281cbbb708103e4c"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-engine:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:57227ce289ed84ab205136997d2e5117f6cc695a16b7e235d59f70cdf33c3d7a"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.2",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter-params:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:c1ed2164f6ba388518757b38f219dbe350ac098afcd126cbcbd6256fb99666ae"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
+]
+
+[[artifact]]
+name     = "org.junit.jupiter:junit-jupiter:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:2a7877196573a1d32fa726313deffdde2e90cca764647e605093020b08973616"
+scopes   = ["test"]
+deps = [
+  "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
+  "org.junit.jupiter:junit-jupiter-engine:jar:@6.1.2",
+  "org.junit.jupiter:junit-jupiter-params:jar:@6.1.2",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-commons:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a92a"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-engine:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:484e90828846ad6b88efe226b6fe014a75941b32b226e914d9a7758802f46f91"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.junit.platform:junit-platform-commons:jar:@6.1.2",
+  "org.opentest4j:opentest4j:jar:@1.3.0",
+]
+
+[[artifact]]
+name     = "org.junit.platform:junit-platform-launcher:jar:"
+version  = "6.1.2"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:858197212c1b2acc257c9eec9b450a31923c61c1bc61e66acf0057d57bbe577a"
+scopes   = ["test"]
+deps = [
+  "org.apiguardian:apiguardian-api:jar:@1.1.2",
+  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.junit.platform:junit-platform-engine:jar:@6.1.2",
+]
+
+[[artifact]]
+name     = "org.opentest4j:opentest4j:jar:"
+version  = "1.3.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:48e2df636cab6563ced64dcdff8abb2355627cb236ef0bf37598682ddf742f1b"
+scopes   = ["test"]
+
+[[artifact]]
+name     = "org.ow2.asm:asm:jar:"
+version  = "9.10.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:ed825d10ab1399c8c0cb669e688cf0c8c82629b4c8399b58352b68e92ca10fcb"
+scopes   = ["main"]
+
+[[artifact]]
+name     = "org.tomlj:tomlj:jar:"
+version  = "1.1.1"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:383b7c66966c42ee4913ec977a7b6573631866bddc5318ec4a6215b688dd0d6c"
+scopes   = ["main"]
+deps = [
+  "org.antlr:antlr4-runtime:jar:@4.13.2",
+  "org.checkerframework:checker-qual:jar:@4.2.1",
+]

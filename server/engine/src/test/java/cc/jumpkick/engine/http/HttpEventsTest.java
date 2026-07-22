@@ -66,4 +66,49 @@ class HttpEventsTest {
         hub.publish("request-start", JsonOut.object().put("requestId", 1));
         assertThat(s.next(10)).isNull();
     }
+
+    @Test
+    void mcp_style_frames_are_jsonrpc_notifications() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
+            hub.publish("step-start", JsonOut.object().put("step", "compile").put("schema", 1));
+            String frame = s.next(1000);
+            assertThat(frame).contains("event: message");
+            assertThat(frame).contains("notifications/jk/event");
+            assertThat(frame).contains("\"event\":\"step-start\"");
+            assertThat(frame).contains("\"step\":\"compile\"");
+        }
+    }
+
+    @Test
+    void dashboard_and_mcp_subscribers_coexist() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription dash = hub.subscribe(HttpEvents.FrameStyle.DASHBOARD);
+                HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
+            hub.publish("module-finish", JsonOut.object().put("coord", "a:b").put("success", true));
+            assertThat(dash.next(1000)).contains("event: module-finish");
+            assertThat(mcp.next(1000)).contains("notifications/jk/event");
+        }
+    }
+
+    @Test
+    void request_id_filter_drops_other_jobs() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription only2 = hub.subscribe(HttpEvents.FrameStyle.MCP, 2L);
+                HttpEvents.Subscription all = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
+            hub.publish("step-start", JsonOut.object().put("requestId", 1).put("step", "a"));
+            hub.publish("step-start", JsonOut.object().put("requestId", 2).put("step", "b"));
+            assertThat(only2.next(1000)).contains("\"requestId\":2");
+            assertThat(only2.next(50)).isNull(); // job 1 never arrives
+            assertThat(all.next(1000)).contains("\"requestId\":1");
+            assertThat(all.next(1000)).contains("\"requestId\":2");
+        }
+    }
+
+    @Test
+    void extract_request_id_from_payload() {
+        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}")).isEqualTo(42L);
+        assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
+        assertThat(HttpEvents.extractRequestId(null)).isNull();
+    }
 }

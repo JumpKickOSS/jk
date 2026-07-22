@@ -69,7 +69,7 @@ public final class RunCommand {
 
         PipelineResult result;
         cc.jumpkick.run.TestSummary testResult;
-                // Engine-hosted build half (SINGLE_BUILD_REQUEST, skipTests); exec below owns the TTY.
+        // Engine-hosted build half (SINGLE_BUILD_REQUEST, skipTests); exec below owns the TTY.
         var session = cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
         try {
@@ -152,14 +152,15 @@ public final class RunCommand {
         cc.jumpkick.engine.protocol.PluginCommandReport report;
         try {
             report = cc.jumpkick.cli.engine.EngineClient.pluginCommand(
-                            cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
+                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cache, command, appArgs);
         } catch (Exception e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.SOFTWARE;
         }
         if (!report.found()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "the packaging plugin declares deploy command `" + command + "` but does not"
-                    + " register it"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Run",
+                    "the packaging plugin declares deploy command `" + command + "` but does not" + " register it"));
             return Exit.SOFTWARE;
         }
         if (report.error() != null) {
@@ -177,7 +178,7 @@ public final class RunCommand {
     private cc.jumpkick.engine.protocol.ExecPlan execPlan(Path projectDir) throws IOException {
         if (cachedPlan == null) {
             cachedPlan = cc.jumpkick.cli.engine.EngineClient.execPlan(
-                            cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
+                    cc.jumpkick.engine.EnginePaths.current(), projectDir, cacheDir(), "run", null, null);
         }
         // Checked on every access: the memoized plan may be an error plan (the console's
         // tail closure swallows the first throw; the exec path must still see it).

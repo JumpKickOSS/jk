@@ -1,14 +1,18 @@
 [project]
 group    = "cc.jumpkick"
 name     = "jk"
-version  = "0.10.0-SNAPSHOT"
+version  = "0.10.1"
 description = "A modern build tool for Java and Kotlin."
 jdk      = 25
 java     = 25
 
+# Explicit baseline remotes (also the product default after F6). Google hosts apksig / AndroidX / R8.
+[repositories]
+central = "https://repo.maven.apache.org/maven2/"
+google  = "https://dl.google.com/dl/android/maven2/"
+
 # Module order is declaration preference only; build order is dependency-first.
-# Phase 2: thin first-party workers (test-runner, java-compiler) are workspace modules
-# with assembly + PluginMain. Remaining plugins/* stay Gradle-only (fat workers / installLocal).
+# First-party workers are workspace modules with assembly + PluginMain.
 [workspace]
 modules = [
   "shared/plugin-sdk",
@@ -20,8 +24,19 @@ modules = [
   "shared/toolchain-jdk",
   "server/toolchain",
   "shared/wire",
+  "clients/web",
   "server/engine",
   "clients/cli",
   "plugins/test-runner",
   "plugins/java-compiler",
+  "plugins/kotlin-compiler",
+  "plugins/auditor",
+  "plugins/publisher",
+  "plugins/image-builder",
+  "plugins/compat-bridge",
+  "plugins/formatter",
+  "plugins/spring-boot",
+  "plugins/android",
+  "plugins/protobuf",
+  "plugins/shrink",
 ]

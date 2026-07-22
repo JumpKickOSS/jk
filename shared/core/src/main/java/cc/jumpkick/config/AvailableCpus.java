@@ -34,7 +34,10 @@ public final class AvailableCpus {
 
     /** Positive core count for jobs default / {@code jobs = 0}. */
     public static int count() {
-        return count(SYS_FS_CGROUP, PROC_SELF_CGROUP, () -> Math.max(1, Runtime.getRuntime().availableProcessors()));
+        return count(
+                SYS_FS_CGROUP,
+                PROC_SELF_CGROUP,
+                () -> Math.max(1, Runtime.getRuntime().availableProcessors()));
     }
 
     /**
@@ -68,7 +71,9 @@ public final class AvailableCpus {
         if (v2 > 0) return v2;
         String rel = processCgroupRelative(procSelfCgroup);
         if (rel != null && !rel.isEmpty() && !rel.equals("/")) {
-            Path nested = cgroupRoot.resolve(rel.startsWith("/") ? rel.substring(1) : rel).resolve("cpu.max");
+            Path nested = cgroupRoot
+                    .resolve(rel.startsWith("/") ? rel.substring(1) : rel)
+                    .resolve("cpu.max");
             v2 = readCpuMax(nested);
             if (v2 > 0) return v2;
         }

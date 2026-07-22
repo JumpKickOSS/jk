@@ -80,7 +80,7 @@ class CachePruneSchedulerTest {
         Path bin = home.resolve("bin");
         Files.createDirectories(lib);
         Files.createDirectories(bin);
-        Path jar = lib.resolve("jk-engine-0.10.0-SNAPSHOT.jar");
+        Path jar = lib.resolve("jk-engine-0.10.1.jar");
         Files.writeString(jar, "fake");
         Path script = bin.resolve("jk");
         Files.writeString(script, "#!/bin/sh\n");
@@ -107,7 +107,8 @@ class CachePruneSchedulerTest {
         Path bat = bin.resolve("jk.bat");
         Files.writeString(bat, "@echo off\n");
 
-        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(lib.resolve("app.jar").toString()))
+        assertThat(CachePruneScheduler.resolveFromJvmInstallLayout(
+                        lib.resolve("app.jar").toString()))
                 .contains(bat.toAbsolutePath().toString());
     }
 }

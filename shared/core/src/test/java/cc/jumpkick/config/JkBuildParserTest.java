@@ -94,6 +94,54 @@ class JkBuildParserTest {
     }
 
     @Test
+    void parses_test_workers_pin_and_parallel_false_alias() {
+        assertThat(JkBuildParser.parse(PROJECT).build().testWorkers()).isNull();
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [build]
+                test-workers = 1
+                """)
+                        .build()
+                        .testWorkers())
+                .isEqualTo(1);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [build]
+                test-parallel = false
+                """)
+                        .build()
+                        .testWorkers())
+                .isEqualTo(1);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                workers = 2
+                """)
+                        .build()
+                        .testWorkers())
+                .isEqualTo(2);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [test]
+                parallel = false
+                """)
+                        .build()
+                        .testWorkers())
+                .isEqualTo(1);
+        assertThat(JkBuildParser.parse(PROJECT + """
+
+                [build]
+                test-workers = 4
+
+                [test]
+                parallel = false
+                """)
+                        .build()
+                        .effectiveTestWorkers(0))
+                .isEqualTo(1);
+    }
+
+    @Test
     void parses_optional_description() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 description = "A widget for widgeting."
@@ -863,6 +911,28 @@ class JkBuildParserTest {
     }
 
     @Test
+    void parses_repository_exclusive_groups() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.central]
+                url = "https://repo.maven.apache.org/maven2/"
+
+                [repositories.internal]
+                url = "https://repo.acme.com/maven"
+                groups = ["com.acme", "com.acme.*"]
+                """);
+        var internal = parsed.repositories().stream()
+                .filter(r -> r.name().equals("internal"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(internal.groups()).containsExactly("com.acme", "com.acme.*");
+        var central = parsed.repositories().stream()
+                .filter(r -> r.name().equals("central"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(central.groups()).isEmpty();
+    }
+
+    @Test
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]
@@ -1337,6 +1407,46 @@ class JkBuildParserTest {
         assertThat(parsed.isApplication()).isTrue();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.assembly()).isTrue();
+        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+    }
+
+    @Test
+    void application_assembly_shrink_enables_shrink_plugin_without_table() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        assertThat(parsed.isApplication()).isTrue();
+        assertThat(parsed.assembly()).isFalse();
+        assertThat(parsed.assemblyShrink()).isTrue();
+        assertThat(parsed.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(parsed.pluginConfig("shrink")).isPresent();
+    }
+
+    @Test
+    void application_assembly_rejects_unknown_string() {
+        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + "\n[application]\nassembly = \"shadow\"\n"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("assembly");
+    }
+
+    @Test
+    void assembly_mode_override_injects_shrink_plugin() {
+        JkBuild base = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\n");
+        assertThat(base.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.OFF);
+        JkBuild shrunk = JkBuildParser.withAssemblyModeOverride(base, JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrunk.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(shrunk.pluginConfig("shrink")).isPresent();
+        assertThat(JkBuildParser.parseAssemblyOverride("fat")).isEqualTo(JkBuild.AssemblyMode.FAT);
+        assertThat(JkBuildParser.parseAssemblyOverride("shrink")).isEqualTo(JkBuild.AssemblyMode.SHRINK);
+        assertThat(JkBuildParser.parseAssemblyOverride("")).isNull();
+    }
+
+    @Test
+    void assembly_mode_override_fat_strips_shrink_plugin() {
+        JkBuild shrink = JkBuildParser.parse(PROJECT + "\n[application]\nmain = \"demo.App\"\nassembly = \"shrink\"\n");
+        assertThat(shrink.pluginConfig("shrink")).isPresent();
+        JkBuild fat = JkBuildParser.withAssemblyModeOverride(shrink, JkBuild.AssemblyMode.FAT);
+        assertThat(fat.assemblyMode()).isEqualTo(JkBuild.AssemblyMode.FAT);
+        assertThat(fat.assembly()).isTrue();
+        assertThat(fat.pluginConfig("shrink")).isEmpty();
     }
 
     @Test

@@ -234,7 +234,8 @@ public final class OutdatedPipelines {
                 out.putIfAbsent(a.packageKey(), a.version());
                 try {
                     if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
-                        out.putIfAbsent(cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
+                        out.putIfAbsent(
+                                cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
                     }
                 } catch (RuntimeException ignored) {
                     // non-Maven lock name

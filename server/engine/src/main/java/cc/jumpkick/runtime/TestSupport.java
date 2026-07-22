@@ -70,7 +70,11 @@ public final class TestSupport {
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
         for (TestSummary.Failure f : failures) {
             out.add("");
-            out.add("  FAILED  " + f.testName());
+            // JK-1094: module :: display [wN] so parallel monorepo flakes are locatable.
+            out.add("  FAILED  " + f.headline());
+            if (f.className() != null && !f.className().isBlank() && !f.headline().contains(f.className())) {
+                out.add("    class: " + f.className());
+            }
             if (f.details() != null && !f.details().isBlank()) {
                 for (String line : f.details().split("\n", -1)) {
                     if (!line.isEmpty()) out.add("    " + line);
@@ -98,6 +102,16 @@ public final class TestSupport {
      * 100% on success.
      */
     public static TestProgressListener bridgeListener(StepContext ctx, int workerCount, boolean verbose) {
+        return bridgeListener(ctx, workerCount, verbose, "");
+    }
+
+    /**
+     * As {@link #bridgeListener(StepContext, int, boolean)} with a module coord for labels / failure
+     * diagnostics (JK-1094).
+     */
+    public static TestProgressListener bridgeListener(
+            StepContext ctx, int workerCount, boolean verbose, String moduleLabel) {
+        String module = moduleLabel == null ? "" : moduleLabel.trim();
         return new TestProgressListener() {
             @Override
             public void onTestFinished(
@@ -110,7 +124,7 @@ public final class TestSupport {
                     int workerId) {
                 if (!isTest) return;
                 if (wasStatic) ctx.progress(1);
-                ctx.label(display);
+                ctx.label(progressLabel(module, display, workerId, workerCount));
             }
 
             @Override
@@ -127,10 +141,8 @@ public final class TestSupport {
                 // diagnostic still flows to JSON consumers, but the human listeners
                 // suppress it so the same failure isn't printed twice. Test *infra*
                 // errors (interrupt/IO) keep code "test" and still surface in text mode.
-                //
-                // Pass the test name and exception class as discrete fields rather
-                // than gluing them into the message — JSON consumers get them apart.
-                ctx.error("test-failure", message, display, exClass);
+                String label = progressLabel(module, display, workerId, workerCount);
+                ctx.error("test-failure", message, label, exClass);
             }
 
             @Override
@@ -139,9 +151,29 @@ public final class TestSupport {
                 // view via the step context — only :cli owns the actual streams.
                 if (!verbose) return;
                 String prefix = workerCount > 1 ? "[w" + workerId + "] " : "";
+                if (!module.isEmpty()) prefix = "[" + module + "] " + prefix;
                 ctx.output(prefix + line);
             }
+
+            @Override
+            public void onWarning(String code, String message) {
+                ctx.warn(code == null || code.isBlank() ? "test" : code, message);
+            }
         };
+    }
+
+    /** Progress / failure label: optional module and worker id. */
+    static String progressLabel(String module, String display, int workerId, int workerCount) {
+        String d = display == null ? "" : display;
+        StringBuilder sb = new StringBuilder();
+        if (module != null && !module.isBlank()) {
+            sb.append(module).append(" :: ");
+        }
+        sb.append(d);
+        if (workerCount > 1 && workerId > 0) {
+            sb.append("  [w").append(workerId).append(']');
+        }
+        return sb.toString();
     }
 
     /**

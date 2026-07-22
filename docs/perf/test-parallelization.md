@@ -8,11 +8,9 @@
 | Default | Why |
 |---------|-----|
 | **`-j` / jobs** = effective cores | Module graph parallel is Mill-shaped and already shipped (JK-1082 / 1084). |
-| **Cross-module tests serial** | Hermeticity: shared ports, temp dirs, statics, DB. Opt-in: `--parallel-tests`. |
-| **`-w` / workers = 1** | One test JVM per module unless the user asks for more. |
-| **Do not default-on `--parallel-tests`** | Until isolation contract + measured monorepo win (Phase B/C). Prefer green over flaky speed. |
-
-CI may opt in via flags/env without changing laptop defaults.
+| **Cross-module tests parallel** | C2: default on after C1 measure (~40% wall on `shared/*`) + module `[test] workers=1` opt-out. Use `--serial-tests` to serialize. |
+| **`-w` / workers = 0 (auto)** | `min(jobs, classCount)` + `HeapPlan` clamp (Mill `testSubprocessCount`). Explicit `-w1` = serial. |
+| **Opt-out first-class** | `--serial-tests` / `--no-parallel-tests`; per-module `[test] workers=1` / `parallel=false`. |
 
 ## Mill model (what we are matching)
 
@@ -30,7 +28,7 @@ jk’s gap is **(2)** product quality + **(3)** policy — not inventing a secon
 |-------|----------|------|
 | Cross-module test gate | Serial unless `Session.parallelTests` | `BuildPipelines` test gate; CLI `--parallel-tests` |
 | Module concurrency | `-j` / `Jobs` / cgroup cores | `Jobs`, `AvailableCpus`, scheduler width |
-| Per-module workers | `-w` default 1; `>1` = discovery + pull-queue JVMs | `JUnitLauncher` (`runSingle` / `runParallel`) |
+| Per-module workers | `-w` default **0 (auto)**; explicit `≥1`; pull-queue when W>1 | `TestWorkers` + `JUnitLauncher` |
 | Class distribution | Concurrent deque of FQCNs (pull); min(workers, classCount) | `JUnitLauncher.runParallel` |
 | RAM | Peak JVMs ≈ `modules×workers` if parallel-tests else `max(modules, workers)`; `HeapPlan` veto | `HeapPlan.requestedJvms` |
 | Engine heap | Thin coordinator (~256 MiB); workers own cost | JK-1075 |
@@ -92,22 +90,62 @@ No-go: any of the above fail → keep opt-in; ship isolation first (Phase B).
 
 Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigation/spike; this epic owns policy for cross-module defaults and the isolation contract checklist.
 
-## Phase B checklist (not started)
+## Phase B checklist (isolation — ship next)
 
-- [ ] Document sandbox contract for suite authors (ports, temp, statics)  
-- [ ] Per-worker temp (and optional port range) when `W > 1`  
-- [ ] Failure lines always include module (+ class when sharded)  
-- [ ] Optional “serial” tag / config for known bad suites  
+- [x] Per-worker `java.io.tmpdir` (+ `TMPDIR`) when `W > 1` (`JUnitLauncher.driveWorker`)  
+- [x] Auto default `-w = min(jobs, classCount)` + `HeapPlan` clamp (`TestWorkers`, default `-w0`)  
+- [x] Module serial opt-out: `[test] workers=1` / `parallel=false` (or `[build] test-workers`)  
+- [x] Document sandbox contract for suite authors (ports, temp, statics) in guide  
+- [ ] Optional port-range helper / documented convention for fixed-port tests  
+- [x] Failure lines always include module (+ class when sharded / worker when W>1)
 
-## Phase C checklist (not started)
+## Phase C checklist (cross-module defaults)
 
-- [ ] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline)  
-- [ ] Only then consider default `--parallel-tests` or config profile for CI  
-- [ ] Opt-out path remains first-class  
+- [x] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline) — see **C1 measure** below  
+- [x] CI profile: pure-jk self-host uses `-j0 -w0` (+ optional explicit `--parallel-tests`) + `JK_AOT_TRAIN=off`  
+- [x] Default-on cross-module parallel tests (C2) with `--serial-tests` opt-out  
+- [x] Opt-out path remains first-class (`-w1`, `--serial-tests`, `[test] workers=1`)
 
 ## Explicit defer (Phase B/C)
 
-**Defer default-on cross-module test parallel indefinitely** until JK-1087 spike + Phase B isolation land and Phase C numbers clear the go criteria above. Current opt-in flags stay.
+**Defer default-on cross-module test parallel** until Phase B isolation + Phase C numbers clear the go criteria. **Raise default `-w` only after per-worker temp (and flake data) land.** Current opt-in flags stay.
+
+### Story board (implementation order)
+
+| # | Story | Outcome |
+|---|--------|---------|
+| B1 | Per-worker temp isolation (`W>1`) | Done |
+| B2 | Guide: Mill-like recipes | Done (`docs/guide.md` Parallelism) |
+| B3 | Auto `-w` = min(jobs, classes) + heap clamp | Done (`TestWorkers`, default `-w0`) |
+| B4 | Module serial opt-out (`[test] workers=1`) | Done |
+| C1 | Monorepo measure + CI profile | Done (measure + CI opt-in) |
+| C2 | Default cross-module parallel tests | Done (default on; `--serial-tests` opt-out) |
+
+## C1 measure (2026-07-22)
+
+**Method:** `scripts/test-parallel-measure.sh` with `MODULES='shared/*'`, `EXTRA_ARGS='--no-progress --rebuild'`,
+`JK_AOT_TRAIN=off`. Host: Darwin arm64, 12 cores. Thin client + engine jar after B4/C1 wiring
+(`jk test --parallel-tests` now parses; multi-module selection runs concurrent `runTest` with the
+engine test gate lifted).
+
+| config | wall s | notes |
+|--------|--------|-------|
+| `-j0 -w1` | **21** | serial within-module |
+| `-j0 -w0` (auto, serial modules) | **25** | auto workers; TEST_GATE still serial across modules |
+| `-j0 -w0 --parallel-tests` | **15** | **~40% wall win** vs serial-modules auto |
+
+GO wall criterion (≥20%): **met** on this suite → **C2 shipped**: cross-module parallel is the
+product default; hermetic modules pin `[test] workers = 1` (e.g. `clients/cli`); full serial gate
+via `--serial-tests`.
+
+Re-run:
+
+```bash
+MODULES='shared/*' EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+# fuller monorepo (matches CI filter):
+MODULES='shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*' \
+  EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+```
 
 ## Refs
 
@@ -115,3 +153,4 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 - Engine: `JUnitLauncher`, `BuildPipelines` test gate, `HeapPlan.requestedJvms`  
 - Jobs: `Jobs`, `AvailableCpus` (JK-1082 / 1084)  
 - Mill: https://mill-build.org/blog/11-jvm-test-parallelism.html  
+- **JUnit vs `-w`:** [junit-parallel-vs-jk-workers.md](junit-parallel-vs-jk-workers.md) (JK-1092)

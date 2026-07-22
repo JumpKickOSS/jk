@@ -84,8 +84,7 @@ public final class AffectedModules {
         for (var e : edges.entrySet()) {
             Path dependent = e.getKey().toAbsolutePath().normalize();
             for (Path prereq : e.getValue()) {
-                reverse
-                        .computeIfAbsent(prereq.toAbsolutePath().normalize(), k -> new LinkedHashSet<>())
+                reverse.computeIfAbsent(prereq.toAbsolutePath().normalize(), k -> new LinkedHashSet<>())
                         .add(dependent);
             }
         }

@@ -72,7 +72,9 @@ class VariantSelectionTest {
         for (CliCommand cmd : cc.jumpkick.cli.CommandDispatch.commands()) {
             found |= declaresRepeatableWith(cmd);
         }
-        assertThat(found).as("at least one registered command declares repeatable --with").isTrue();
+        assertThat(found)
+                .as("at least one registered command declares repeatable --with")
+                .isTrue();
     }
 
     private static boolean declaresRepeatableWith(CliCommand cmd) {

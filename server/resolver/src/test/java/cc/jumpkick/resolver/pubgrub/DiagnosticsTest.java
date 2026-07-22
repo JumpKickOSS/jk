@@ -63,8 +63,7 @@ class DiagnosticsTest {
     void renders_unknown_package() {
         PackageSource src = InMemoryPackageSource.builder().build();
         try {
-            new PubGrubSolver(src)
-                    .solve("root", "1.0", List.of(Term.positive("missing:lib", VersionSet.exact("1.0"))));
+            new PubGrubSolver(src).solve("root", "1.0", List.of(Term.positive("missing:lib", VersionSet.exact("1.0"))));
             fail("expected UnsatisfiableException");
         } catch (UnsatisfiableException e) {
             String rendered = Diagnostics.render(e.rootCause());

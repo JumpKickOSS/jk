@@ -19,9 +19,7 @@ class CrossPackageFeaturesTest {
     void enabling_feature_pulls_library_optional_dep(@TempDir Path dir) throws Exception {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "widget"
@@ -36,8 +34,8 @@ class CrossPackageFeaturesTest {
                 mysql = { deps = ["mysql"] }
                 """);
 
-        Dependency consumer = Dependency.pathByName("widget", new PathSource("widget"))
-                .withFeatures(List.of("mysql"), false);
+        Dependency consumer =
+                Dependency.pathByName("widget", new PathSource("widget")).withFeatures(List.of("mysql"), false);
 
         CrossPackageFeatures.Result r = CrossPackageFeatures.expand(dir, List.of(consumer));
         assertThat(r.extraRoots()).containsKey("com.mysql:mysql-connector-j");
@@ -48,9 +46,7 @@ class CrossPackageFeaturesTest {
     void default_features_false_withholds_defaults(@TempDir Path dir) throws Exception {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "widget"
@@ -64,8 +60,8 @@ class CrossPackageFeaturesTest {
                 extra-feat = { deps = ["extra"] }
                 """);
 
-        Dependency consumer = Dependency.pathByName("widget", new PathSource("widget"))
-                .withFeatures(List.of(), false);
+        Dependency consumer =
+                Dependency.pathByName("widget", new PathSource("widget")).withFeatures(List.of(), false);
 
         CrossPackageFeatures.Result r = CrossPackageFeatures.expand(dir, List.of(consumer));
         assertThat(r.extraRoots()).isEmpty();
@@ -76,9 +72,7 @@ class CrossPackageFeaturesTest {
     void unknown_feature_errors(@TempDir Path dir) throws Exception {
         Path lib = dir.resolve("widget");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "widget"
@@ -88,8 +82,8 @@ class CrossPackageFeaturesTest {
                 default = []
                 """);
 
-        Dependency consumer = Dependency.pathByName("widget", new PathSource("widget"))
-                .withFeatures(List.of("nope"), true);
+        Dependency consumer =
+                Dependency.pathByName("widget", new PathSource("widget")).withFeatures(List.of("nope"), true);
 
         assertThatThrownBy(() -> CrossPackageFeatures.expand(dir, List.of(consumer)))
                 .isInstanceOf(IllegalArgumentException.class)

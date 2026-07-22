@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -46,7 +47,25 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return PluginProcess.run(command(javaExe, classpath, jvmFlags, args), prefix, onProtocol, onPassthrough);
+        return run(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
+    }
+
+    /**
+     * As {@link #run(Path, String, List, String, List, Consumer, Consumer)}, adding {@code extraEnv}
+     * to the child process environment (e.g. isolated {@code JK_STATE_DIR} for nested-engine tests).
+     */
+    public static int run(
+            Path javaExe,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            Map<String, String> extraEnv,
+            Consumer<String> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        return PluginProcess.run(
+                command(javaExe, classpath, jvmFlags, args), extraEnv, prefix, onProtocol, onPassthrough);
     }
 
     /**
@@ -63,7 +82,25 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return PluginProcess.converse(command(javaExe, classpath, jvmFlags, args), prefix, onProtocol, onPassthrough);
+        return converse(javaExe, classpath, jvmFlags, prefix, args, Map.of(), onProtocol, onPassthrough);
+    }
+
+    /**
+     * As {@link #converse(Path, String, List, String, List, BiConsumer, Consumer)}, adding {@code
+     * extraEnv} to the child process environment.
+     */
+    public static int converse(
+            Path javaExe,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            Map<String, String> extraEnv,
+            BiConsumer<String, PluginProcess.Conversation> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        return PluginProcess.converse(
+                command(javaExe, classpath, jvmFlags, args), extraEnv, prefix, onProtocol, onPassthrough);
     }
 
     /**

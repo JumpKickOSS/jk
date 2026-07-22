@@ -52,8 +52,7 @@ public final class ShowCommand implements CliCommand {
             return Exit.USAGE;
         }
         try {
-            return TasksCommand.showOrInspect(
-                    "show", in.positionals().getFirst(), in, startDir, proj.buildFile());
+            return TasksCommand.showOrInspect("show", in.positionals().getFirst(), in, startDir, proj.buildFile());
         } catch (IllegalStateException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Show", e.getMessage()));
             return Exit.CONFIG;

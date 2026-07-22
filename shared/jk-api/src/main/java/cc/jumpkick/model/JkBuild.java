@@ -130,6 +130,54 @@ public record JkBuild(
                 variants);
     }
 
+    /** This build without the plugin config {@code id} (no-op when absent). */
+    public JkBuild withoutPluginConfig(String id) {
+        if (id == null || !pluginConfigs.containsKey(id)) return this;
+        Map<String, PluginConfig> next = new LinkedHashMap<>(pluginConfigs);
+        next.remove(id);
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                application,
+                nativeConfig,
+                next,
+                build,
+                format,
+                variants);
+    }
+
+    /**
+     * Override {@code [application].assembly} for this in-memory build (CLI {@code --fat}/{@code
+     * --shrink}). Does not rewrite {@code jk.toml}. Caller must ensure the shrink plugin config is
+     * present when {@code mode == SHRINK} (see {@code JkBuildParser.ensureShrinkForAssemblyMode}).
+     */
+    public JkBuild withAssemblyMode(AssemblyMode mode) {
+        AssemblyMode m = mode == null ? AssemblyMode.OFF : mode;
+        Application app = application.orElse(new Application(null, AssemblyMode.OFF));
+        if (app.assembly() == m) return this;
+        return new JkBuild(
+                project,
+                dependencies,
+                repositories,
+                profiles,
+                features,
+                workspace,
+                manifest,
+                plugins,
+                Optional.of(new Application(app.main(), m)),
+                nativeConfig,
+                pluginConfigs,
+                build,
+                format,
+                variants);
+    }
+
     /** This build with its {@code [build]} block replaced — the variant extra-src fold point. */
     public JkBuild withBuild(Build build) {
         return new JkBuild(
@@ -176,9 +224,24 @@ public record JkBuild(
     /** The built-in spring-boot plugin's id / table name. */
     public static final String SPRING_BOOT_ID = "spring-boot";
 
-    /** {@code [application].assembly} — bundle an all-in-one assembly jar. */
+    /**
+     * {@code [application].assembly} packaging mode: off, fat assembly jar, or R8 shrink packager.
+     */
+    public AssemblyMode assemblyMode() {
+        return application.map(Application::assembly).orElse(AssemblyMode.OFF);
+    }
+
+    /**
+     * True when a classic fat assembly jar is requested ({@code assembly = true}). False for {@code
+     * assembly = "shrink"} (that path uses the shrink packager on the main artifact instead).
+     */
     public boolean assembly() {
-        return application.map(Application::assembly).orElse(false);
+        return assemblyMode() == AssemblyMode.FAT;
+    }
+
+    /** True when {@code assembly = "shrink"} (or equivalent) is set. */
+    public boolean assemblyShrink() {
+        return assemblyMode() == AssemblyMode.SHRINK;
     }
 
     /** {@code [native].graal} — the GraalVM spec {@code jk native} uses, or {@code null} if unset. */
@@ -558,12 +621,41 @@ public record JkBuild(
     }
 
     /**
-     * {@code [application]} block. Presence alone marks an application; absent means library.
+     * How {@code [application].assembly} packages the app.
+     *
+     * <ul>
+     *   <li>{@link #OFF} — thin main jar only
+     *   <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assembly})
+     *   <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
+     * </ul>
      */
-    public record Application(String main, boolean assembly) {
+    public enum AssemblyMode {
+        OFF,
+        FAT,
+        SHRINK;
+
+        /** Fat or shrink — some form of bundled runtime packaging is requested. */
+        public boolean isBundled() {
+            return this != OFF;
+        }
+    }
+
+    /**
+     * {@code [application]} block. Presence alone marks an application; absent means library.
+     *
+     * @param assembly packaging mode ({@link AssemblyMode#FAT} / {@link AssemblyMode#SHRINK} /
+     *     {@link AssemblyMode#OFF})
+     */
+    public record Application(String main, AssemblyMode assembly) {
 
         public Application {
             if (main != null && main.isBlank()) main = null;
+            if (assembly == null) assembly = AssemblyMode.OFF;
+        }
+
+        /** Convenience for importers: {@code true} → fat assembly, {@code false} → off. */
+        public Application(String main, boolean fatAssembly) {
+            this(main, fatAssembly ? AssemblyMode.FAT : AssemblyMode.OFF);
         }
     }
 
@@ -583,7 +675,8 @@ public record JkBuild(
 
     /**
      * Optional {@code [build]} block: order-only deps, test plugin jars, lint, Kotlin plugins,
-     * KSP options, and extra source roots — never on a classpath or lockfile.
+     * KSP options, extra source roots, and per-module test worker pin — never on a classpath or
+     * lockfile.
      */
     public record Build(
             List<String> orderAfter,
@@ -591,9 +684,11 @@ public record JkBuild(
             boolean lint,
             List<KotlinPluginDecl> kotlinPlugins,
             List<String> kspOptions,
-            List<String> extraSrc) {
+            List<String> extraSrc,
+            /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
+            Integer testWorkers) {
 
-        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of());
+        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -601,6 +696,7 @@ public record JkBuild(
             kotlinPlugins = kotlinPlugins == null ? List.of() : List.copyOf(kotlinPlugins);
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
+            if (testWorkers != null && testWorkers < 0) testWorkers = 0;
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -608,7 +704,16 @@ public record JkBuild(
             if (dirs.isEmpty()) return this;
             var all = new java.util.ArrayList<>(extraSrc);
             all.addAll(dirs);
-            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all);
+            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers);
+        }
+
+        /**
+         * Effective test-worker request for this module: module pin wins when set (hermetic
+         * opt-out); otherwise the CLI/global value ({@code 0} = auto).
+         */
+        public int effectiveTestWorkers(int cliOrGlobal) {
+            if (testWorkers != null) return testWorkers;
+            return Math.max(0, cliOrGlobal);
         }
 
         /** {@code orderAfter} plus every {@code testPluginJars} module, de-duplicated. */

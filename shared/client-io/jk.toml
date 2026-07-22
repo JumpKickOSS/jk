@@ -1,13 +1,13 @@
 [project]
 group    = "cc.jumpkick"
 name     = "jk-client-io"
-version  = "0.10.0-SNAPSHOT"
+version  = "0.10.1"
 description = "jk client I/O: plain-JDK HTTP, forge auth, credential files, CAS read/link surface."
 jdk      = 25
 java     = 25
 
 [dependencies]
-jk-core = { group = "cc.jumpkick", name = "jk-core", version = "0.10.0-SNAPSHOT" }
+jk-core = { group = "cc.jumpkick", name = "jk-core", version = "0.10.1" }
 
 [test-dependencies]
 assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }

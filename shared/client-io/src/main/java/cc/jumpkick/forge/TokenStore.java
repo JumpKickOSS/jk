@@ -73,5 +73,4 @@ public final class TokenStore {
         }
         return sb.toString();
     }
-
 }

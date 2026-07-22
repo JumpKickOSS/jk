@@ -25,6 +25,7 @@ public final class StepNames {
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
     /** SPI BEFORE_PACKAGE anchor (JK-1044 / JK-1061). */
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
+
     public static final String ENSURE_JDK = "ensure-jdk";
     public static final String FETCH_CATALOG = "fetch-catalog";
     public static final String FETCH_GIT = "fetch-git";

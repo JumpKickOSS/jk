@@ -18,14 +18,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()}. BOM/lock soft-prefer front-loads candidates; POM exclusions
- * strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no soft-prefer pin is known. BOM/lock soft-prefer
+ * front-loads candidates (and seeds lazy singleton universes via {@link #preferredVersion}); POM
+ * exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -39,8 +41,8 @@ public final class MavenPackageSource implements PackageSource {
     private final Map<String, String> bomConstraints;
     private final KmpRedirects kmp;
 
-    /** Locked versions from a prior lock file — preferred but NOT hard-pinned. */
-    private final Map<String, String> lockedVersionPrefs;
+    /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
+    private volatile Map<String, String> lockedVersionPrefs;
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     /**
@@ -98,15 +100,42 @@ public final class MavenPackageSource implements PackageSource {
         this.kmp = Objects.requireNonNull(kmp, "kmp");
     }
 
+    /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
+    public void setLockedVersionPrefs(Map<String, String> prefs) {
+        this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(prefs, "prefs"));
+    }
+
+    /**
+     * Lock pin wins over BOM pin (same order as {@link #versions} soft-prefer). Used by the solver to
+     * seed a lazy singleton universe without maven-metadata (JK-1088).
+     */
+    @Override
+    public Optional<String> preferredVersion(String pkg) {
+        String ga = PackageId.parse(pkg).ga();
+        String lock = firstNonBlank(lockedVersionPrefs.get(pkg), lockedVersionPrefs.get(ga));
+        if (lock != null) return Optional.of(lock);
+        String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
+        if (bom != null) return Optional.of(bom);
+        return Optional.empty();
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) return a;
+        if (b != null && !b.isBlank()) return b;
+        return null;
+    }
+
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
+
         List<String> available = repos.availableVersions(withVersion(pkg, "any"));
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
+        // Soft-prefer keeps the full list (Gradle platform() parity — pin first, backtrack if needed).
         String ga = PackageId.parse(pkg).ga();
         preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
@@ -160,7 +189,8 @@ public final class MavenPackageSource implements PackageSource {
         Set<String> kmpDropped = Set.of();
         if (kmpSelection.isPresent()) {
             var target = kmpSelection.get().target();
-            String targetPkg = PackageId.ofGa(target.group() + ":" + target.module()).key();
+            String targetPkg =
+                    PackageId.ofGa(target.group() + ":" + target.module()).key();
             if (!isExcluded(targetPkg, excl)) {
                 out.add(Term.positive(targetPkg, VersionSet.exact(target.version())));
                 // Cascade parent exclusions onto the redirect target.
@@ -190,7 +220,7 @@ public final class MavenPackageSource implements PackageSource {
         }
         List<Term> immutable = List.copyOf(out);
         depsCache.put(key, immutable);
-        prefetchVersionsAsync(immutable);
+        prefetchTransitiveAsync(immutable);
         return immutable;
     }
 
@@ -213,7 +243,9 @@ public final class MavenPackageSource implements PackageSource {
      */
     static boolean isExcluded(String packageKey, Set<String> exclusions) {
         if (exclusions == null || exclusions.isEmpty()) return false;
-        String ga = PackageId.isMavenPackageKey(packageKey) ? PackageId.parse(packageKey).ga() : packageKey;
+        String ga = PackageId.isMavenPackageKey(packageKey)
+                ? PackageId.parse(packageKey).ga()
+                : packageKey;
         if (exclusions.contains(ga) || exclusions.contains(packageKey)) return true;
         // Wildcard forms stored as "group:*", "*:artifact", "*:*"
         int colon = ga.indexOf(':');
@@ -246,9 +278,41 @@ public final class MavenPackageSource implements PackageSource {
         return String.join(",", excl.stream().sorted().toList());
     }
 
-    private void prefetchVersionsAsync(List<Term> deps) {
+    /**
+     * Speculative I/O for children of a just-expanded package (JK-1088):
+     *
+     * <ul>
+     *   <li>When a child has an exact or soft-prefer pin, prefetch that GAV's <b>POM</b> (and let
+     *       {@link EffectivePomBuilder} warm its cache) so the next decision hits local-first.
+     *   <li>When the child needs a full version list (open range, no prefer), prefetch
+     *       maven-metadata as before.
+     * </ul>
+     */
+    private void prefetchTransitiveAsync(List<Term> deps) {
         for (Term dep : deps) {
             String pkg = dep.pkg();
+            String pin = dep.versions()
+                    .asExactSingleton()
+                    .or(() -> preferredVersion(pkg))
+                    .orElse(null);
+            if (pin != null) {
+                Coordinate child = withVersion(pkg, pin);
+                JkThreads.io().execute(() -> {
+                    try {
+                        prefetchSlots.acquire();
+                        try {
+                            // Full effective POM (parents + BOM imports). Builder is concurrent-safe
+                            // (JK-1090) so sibling prefetches walk chains in parallel.
+                            pomBuilder.build(child);
+                        } finally {
+                            prefetchSlots.release();
+                        }
+                    } catch (Exception ignored) {
+                        // best-effort; sync path surfaces real failures
+                    }
+                });
+                continue;
+            }
             if (versionCache.containsKey(pkg)) continue;
             JkThreads.io().execute(() -> {
                 try {

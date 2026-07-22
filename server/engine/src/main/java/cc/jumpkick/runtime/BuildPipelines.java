@@ -2,14 +2,15 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
-import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
@@ -115,7 +116,7 @@ public final class BuildPipelines {
      * Process-wide gate that serializes the {@code run-tests} step across concurrently-built units
      * (parallel workspace module builds). Tests commonly contend on shared resources — ports, lock
      * files, fixtures — so they run one at a time by default; the request's {@link
-     * cc.jumpkick.config.Session#parallelTests()} ({@code --parallel-tests}) lifts the gate.
+     * cc.jumpkick.config.Session#parallelTests()} (default on; {@code --serial-tests} holds the gate).
      *
      * <p>The gate itself remains a per-invocation shared primitive (one process, one build at a
      * time in the CLI); a per-session gate is part of the M1c server-hardening remainder.
@@ -255,6 +256,7 @@ public final class BuildPipelines {
     static final int W_SOURCES = 3;
     /** Always-run tail for a fully-cached module (token touch, not full static weight). */
     static final int W_CACHED_TOUCH = 1;
+
     static final int W_NATIVE = 90;
 
     /** Core build steps plus assembly/native tails from {@code jk.toml}. */
@@ -285,6 +287,10 @@ public final class BuildPipelines {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
+            // CLI packaging override (jk assembly --shrink / --fat) wins over jk.toml for this run.
+            // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
+            // pipeline outside SessionContext.where.
+            jkBuild = applyAssemblyOverride(jkBuild, in.session());
             // Variant overlays fold into plugin configs HERE, so describe keys, contribution
             // predicates, step/packager action keys, and plugin specs all see one flat effective
             // config (parameterized pipelines, not configured objects).
@@ -1812,8 +1818,16 @@ public final class BuildPipelines {
                     // Plugin jars handed to the test JVM ([build.test-plugin-jars]) —
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
+                    JkBuild projectUnderTest = ctx.require(PROJECT);
                     Map<String, String> workerJars = workerJarProps(
-                            in.dir(), ctx.require(PROJECT).build().testPluginJars());
+                            in.dir(), projectUnderTest.build().testPluginJars());
+                    // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
+                    // so EngineTestExtension cannot kill the host engine running this test step.
+                    Map<String, String> testEnv = Map.of();
+                    if (needsNestedEngineIsolation(projectUnderTest)) {
+                        enrichCliTestProps(in.dir(), workerJars);
+                        testEnv = nestedEngineTestEnv(in.dir());
+                    }
 
                     // Incremental test skip: a content key over every input that affects
                     // the outcome — own main output, test sources, the *content* of the
@@ -1878,7 +1892,14 @@ public final class BuildPipelines {
                         runtimeCp.add(kotlinStdlib(ctx, cas));
                     }
 
-                    TestProgressListener listener = TestSupport.bridgeListener(ctx, in.workerCount(), in.verbose());
+                    // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
+                    // opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
+                    int testWorkers = projectUnderTest.build().effectiveTestWorkers(in.workerCount());
+                    String moduleLabel = projectUnderTest.project().group()
+                            + ":"
+                            + projectUnderTest.project().name();
+                    TestProgressListener listener =
+                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel);
                     TestSummary result;
                     // Serialize test execution across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures.
@@ -1886,13 +1907,15 @@ public final class BuildPipelines {
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
                         result = new JUnitLauncher()
+                                .withModuleLabel(moduleLabel)
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),
                                         runtimeCp,
                                         in.cache(),
-                                        in.workerCount(),
+                                        testWorkers,
                                         workerJars,
+                                        testEnv,
                                         listener,
                                         ctx.require(LAYOUT).testResultsDir());
                     } catch (InterruptedException e) {
@@ -2371,6 +2394,8 @@ public final class BuildPipelines {
         tokens.add("facts:" + project.project().group() + ":"
                 + project.project().name() + ":" + project.project().version() + ":" + startClass);
         tokens.add("manifest:" + project.manifest());
+        // Packager identity (e.g. shrink vs boot) so CLI packaging overrides cannot cache-collide.
+        tokens.add("packaging:" + decls.packager().name());
         // The packager's CODE is an input, same as plugin steps (see pluginStepStep).
         tokens.add(
                 "worker:" + cc.jumpkick.task.ClasspathFingerprint.entry(PluginBuild.workerJarFor(active, in.cache())));
@@ -2624,7 +2649,7 @@ public final class BuildPipelines {
      */
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
         try {
-            JkBuild project = JkBuildParser.parse(in.buildFile());
+            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
                 b.addStep(assemblyStep(in.cache(), in.lockFile()));
             }
@@ -2633,6 +2658,23 @@ public final class BuildPipelines {
             }
         } catch (Exception ignored) {
         }
+    }
+
+    /**
+     * Apply {@link cc.jumpkick.config.Session#assemblyOverride()} (CLI {@code --fat}/{@code --shrink})
+     * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session()}
+     * over ambient {@link SessionContext} so single-build pipeline construction (outside {@code
+     * SessionContext.where}) still sees the wire override.
+     */
+    static JkBuild applyAssemblyOverride(JkBuild build, cc.jumpkick.config.Session session) {
+        String raw = session != null ? session.assemblyOverride() : "";
+        if (raw == null || raw.isBlank()) {
+            raw = SessionContext.current().assemblyOverride();
+        }
+        if (raw == null || raw.isBlank()) return build;
+        JkBuild.AssemblyMode mode = JkBuildParser.parseAssemblyOverride(raw);
+        if (mode == null) return build;
+        return JkBuildParser.withAssemblyModeOverride(build, mode);
     }
 
     // ---- tail steps ----------------------------------------------------
@@ -2682,7 +2724,8 @@ public final class BuildPipelines {
                             "classes:" + cc.jumpkick.task.ClasspathFingerprint.entry(classes),
                             "deps:" + cc.jumpkick.task.ClasspathFingerprint.of(depJars),
                             "main:" + (project.mainClass() == null ? "" : project.mainClass()),
-                            "manifest:" + project.manifest());
+                            "manifest:" + project.manifest(),
+                            "packaging:fat"); // distinct from shrink / thin package-jar
                     String shTask = ActionKey.qualifiedTaskId(StepNames.PACKAGE_ASSEMBLY, assemblyJar);
                     String shKey =
                             ActionKey.forArtifact(shTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
@@ -3319,6 +3362,72 @@ public final class BuildPipelines {
             }
         }
         return props;
+    }
+
+    /**
+     * CLI integration suite: tests spawn a real engine via the wire and register {@code
+     * EngineTestExtension}, which force-stops the engine after each class. Under pure-jk {@code jk
+     * test} that must not share the host engine's {@code JK_STATE_DIR} (host would die mid-suite).
+     */
+    static boolean needsNestedEngineIsolation(JkBuild project) {
+        if (project == null || project.project() == null) return false;
+        String name = project.project().name();
+        if ("jk-cli".equals(name)) return true;
+        return "cc.jumpkick.cli.Jk".equals(project.mainClass());
+    }
+
+    /**
+     * Resolve engine assembly + every first-party worker jar so CLI tests match Gradle's {@code
+     * -Djk.engine.jar} / {@code -Djk.*.plugin.jar} wiring.
+     */
+    static void enrichCliTestProps(Path moduleDir, Map<String, String> props) throws IOException {
+        Map<String, Path> siblings = siblingMainJars(moduleDir);
+        Path engine = siblings.get("jk-engine");
+        if (engine == null) engine = siblings.get("engine");
+        if (engine != null && Files.isRegularFile(engine)) {
+            props.put("jk.engine.jar", engine.toAbsolutePath().toString());
+        }
+        for (PluginJar w : PluginJar.values()) {
+            if (props.containsKey(w.jarProperty())) continue;
+            Path jar = siblings.get(w.artifactId());
+            if (jar == null && w.artifactId().startsWith("jk-")) {
+                jar = siblings.get(w.artifactId().substring(3));
+            }
+            if (jar != null && Files.isRegularFile(jar)) {
+                props.put(w.jarProperty(), jar.toAbsolutePath().toString());
+            } else {
+                Path located = w.locateOrNull(new Cas(cc.jumpkick.util.JkDirs.cache()));
+                if (located != null) props.put(w.jarProperty(), located.toString());
+            }
+        }
+    }
+
+    /**
+     * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
+     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real {@code
+     * JK_CACHE_DIR} / {@code ~/.jk/cache} so install-local workers remain visible.
+     */
+    static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
+        Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
+        Files.createDirectories(jkHome);
+        String runId = Long.toString(System.currentTimeMillis(), 36) + "-"
+                + Integer.toHexString(System.identityHashCode(moduleDir) & 0xffff);
+        Path stateDir = Path.of("/tmp", "jk-cli-" + runId);
+        Files.createDirectories(stateDir);
+        Map<String, String> env = new LinkedHashMap<>();
+        env.put("JK_HOME", jkHome.toAbsolutePath().toString());
+        env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
+        // Prefer the host CAS so plugins/deps materialize once; VersionStore still uses JK_HOME.
+        Path hostCache = cc.jumpkick.util.JkDirs.cache();
+        env.put("JK_CACHE_DIR", hostCache.toAbsolutePath().toString());
+        env.put("JK_STREAM_IDLE_MS", "45000");
+        env.put("TERM", "xterm-256color");
+        env.put("CI", "false");
+        // Clear NO_COLOR so TUI ANSI assertions match Gradle's deterministic setup.
+        env.put("NO_COLOR", "");
+        // Nested engines + workers: train-on-miss is pure overhead under the suite.
+        env.put("JK_AOT_TRAIN", "off");
+        return env;
     }
 
     /**

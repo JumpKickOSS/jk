@@ -54,7 +54,8 @@ class PrivatePluginPathTest {
         Path project = Files.createDirectories(tmp.resolve("proj"));
         // Path is relative to the project; jar lives outside the monorepo-style tree.
         Path relVendor = project.relativize(jar);
-        Files.writeString(project.resolve("jk.toml"), """
+        Files.writeString(
+                project.resolve("jk.toml"), """
                 [project]
                 name = "demo"
                 group = "com.demo"
@@ -86,13 +87,14 @@ class PrivatePluginPathTest {
                         List.of(new Lockfile.PluginEntry("path:acme", "local", "sha256:" + hex))),
                 project.resolve("jk.lock"));
         PluginDescriptorOps.materialize(project, hex, casJar);
-        assertThat(PluginDescriptorOps.ensureMaterialized(project, tmp.resolve("cache"))).isFalse();
+        assertThat(PluginDescriptorOps.ensureMaterialized(project, tmp.resolve("cache")))
+                .isFalse();
 
         build = JkBuildParser.reparse(project.resolve("jk.toml"));
         assertThat(build.pluginConfig("acme")).isPresent();
-        assertThat(build.pluginConfig("acme").orElseThrow().bool("widgets", false)).isTrue();
-        assertThat(PluginContributions.javacArgs(build, project, Set.of()))
-                .contains("-Aacme.widgets=true");
+        assertThat(build.pluginConfig("acme").orElseThrow().bool("widgets", false))
+                .isTrue();
+        assertThat(PluginContributions.javacArgs(build, project, Set.of())).contains("-Aacme.widgets=true");
     }
 
     @Test
@@ -127,21 +129,13 @@ class PrivatePluginPathTest {
                 [plugins]
                 acme = { path = "%s", sha256 = "%s" }
                 """.formatted(
-                project.relativize(jar).toString().replace('\\', '/'),
-                "0000000000000000000000000000000000000000000000000000000000000000"));
+                        project.relativize(jar).toString().replace('\\', '/'),
+                        "0000000000000000000000000000000000000000000000000000000000000000"));
 
         JkBuild build = JkBuildParser.parse(project.resolve("jk.toml"));
         // Drive lock-plugins via the real pipeline helper used by jk lock.
         var result = LockPipelines.lockPipeline(
-                        project,
-                        build,
-                        tmp.resolve("cache"),
-                        null,
-                        List.of(),
-                        true,
-                        false,
-                        ResolveObserver.NOOP,
-                        null)
+                        project, build, tmp.resolve("cache"), null, List.of(), true, false, ResolveObserver.NOOP, null)
                 .run();
         assertThat(result.success()).isFalse();
         assertThat(result.errors().toString()).containsIgnoringCase("sha256");

@@ -53,7 +53,10 @@ public final class IdeCommand implements CliCommand {
             opts.add(Opt.flag("Only generate IntelliJ IDEA files (.idea/ + *.iml).", "--idea"));
             opts.add(Opt.flag("Only generate VS Code files (.vscode/ + Eclipse metadata).", "--vscode"));
         }
-        opts.add(Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
+        opts.add(Opt.value(
+                        "<dir>",
+                        "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                        "--cache-dir")
                 .hide());
         opts.add(Opt.value("<dir>", "Override the JDK install root (for tests).", "--jdks-dir")
                 .hide());

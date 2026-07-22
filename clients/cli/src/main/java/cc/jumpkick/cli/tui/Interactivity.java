@@ -126,14 +126,17 @@ public final class Interactivity {
      * at which point {@code sharedTerminal != terminal} makes this a no-op.
      */
     private static void installRestoreHook(Terminal terminal, Attributes saved) {
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            synchronized (Interactivity.class) {
-                if (sharedTerminal == terminal) {
-                    terminal.setAttributes(saved);
-                    terminal.flush();
-                }
-            }
-        }, "jk-terminal-restore"));
+        Runtime.getRuntime()
+                .addShutdownHook(new Thread(
+                        () -> {
+                            synchronized (Interactivity.class) {
+                                if (sharedTerminal == terminal) {
+                                    terminal.setAttributes(saved);
+                                    terminal.flush();
+                                }
+                            }
+                        },
+                        "jk-terminal-restore"));
     }
 
     /**

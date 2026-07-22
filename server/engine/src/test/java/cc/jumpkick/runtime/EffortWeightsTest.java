@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
@@ -98,12 +99,19 @@ class EffortWeightsTest {
     }
 
     @Test
-    void learned_prefers_module_history_then_cross_module_median_then_static(@TempDir Path cache) {
+    void learned_prefers_module_history_then_cross_module_median_then_static(@TempDir Path cache)
+            throws Exception {
         int staticWeight = EffortWeights.runTestsWeight(100); // 15 + 100*8 = 815
+        // Isolate from the host's real ~/.jk metrics history (dogfood pollutes defaultFile).
+        Path metricsFile = cache.resolve("metrics-empty.json");
+        Files.writeString(metricsFile, "{}");
+        BuildMetrics.clearMemo();
+        BuildMetrics emptyMetrics = BuildMetrics.load(metricsFile);
 
         // (3) Truly cold — no run-tests recorded anywhere → exact Step-1 static.
         StepTimings.clearMemo();
-        assertThat(EffortWeights.learned(StepTimings.load(cache), "/m/x", "run-tests", 100, staticWeight))
+        assertThat(EffortWeights.learned(
+                        StepTimings.load(cache), emptyMetrics, "/m/x", "run-tests", 100, staticWeight, List.of()))
                 .isEqualTo(staticWeight);
 
         // A fast suite on a *different* module teaches the ledger ~0.7 weight/test.
@@ -114,14 +122,16 @@ class EffortWeightsTest {
         // (2) A never-built module borrows the cross-module rate, not the hot static. The learned
         // reconstruction adds the small learnable TEST_STARTUP_FLOOR, NOT the larger cold TEST_STARTUP
         // guess — that decoupling is what lets a fast suite learn a rate below the old 15-unit floor.
-        int crossModule = EffortWeights.learned(t, "/m/never", "run-tests", 100, staticWeight);
+        int crossModule =
+                EffortWeights.learned(t, emptyMetrics, "/m/never", "run-tests", 100, staticWeight, List.of());
         assertThat(crossModule).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 0.7 * 100)); // 72
         assertThat(crossModule).isLessThan(staticWeight);
 
         // (1) A module with its own history uses that, ignoring the cross-module rate.
         StepTimings.clearMemo();
         StepTimings.record(cache, List.of(new StepTimings.Sample("/m/seen", "run-tests", 2.0)), 0.4, 2L);
-        int own = EffortWeights.learned(StepTimings.load(cache), "/m/seen", "run-tests", 100, staticWeight);
+        int own = EffortWeights.learned(
+                StepTimings.load(cache), emptyMetrics, "/m/seen", "run-tests", 100, staticWeight, List.of());
         // EWMA: 0.4*2 + 0.6*0.7 = 1.22 → round(2 + 122) = 124
         assertThat(own).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 1.22 * 100));
     }

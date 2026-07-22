@@ -114,10 +114,12 @@ public final class JdkInstallCommand implements CliCommand {
         this.cacheFile = in.value("cache-file").map(Path::of).orElse(null);
 
         if (!HostPlatform.supported()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "host " + System.getProperty("os.name")
-                    + "/"
-                    + System.getProperty("os.arch")
-                    + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JDK",
+                    "host " + System.getProperty("os.name")
+                            + "/"
+                            + System.getProperty("os.arch")
+                            + " is not covered by the JetBrains JDK feed. Set JAVA_HOME explicitly."));
             return 1;
         }
         String os = HostPlatform.currentOs();
@@ -135,7 +137,10 @@ public final class JdkInstallCommand implements CliCommand {
         // Pre-pipeline sanity: when no spec and no TTY, we can't go further.
         boolean haveSpec = spec != null && !spec.isBlank();
         if (!haveSpec && !isInteractiveTerminal()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "stdin is not a TTY — pass `lts` / `latest` " + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JDK",
+                    "stdin is not a TTY — pass `lts` / `latest` "
+                            + "or a <spec> (e.g. `jk jdk install temurin-21`) or run interactively."));
             return Exit.USAGE;
         }
 
@@ -194,18 +199,20 @@ public final class JdkInstallCommand implements CliCommand {
                     ctx.put(ENTRY, entry);
                     ctx.put(WANT_DEFAULT, wantDefault);
                     if (global != null && global.verbose) {
-                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "resolved spec='" + effective
-                                + "' to "
-                                + entry.installFolderName()
-                                + " ("
-                                + entry.vendor()
-                                + " "
-                                + entry.product()
-                                + ", "
-                                + os
-                                + "/"
-                                + arch
-                                + ")"));
+                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                                "JDK",
+                                "resolved spec='" + effective
+                                        + "' to "
+                                        + entry.installFolderName()
+                                        + " ("
+                                        + entry.vendor()
+                                        + " "
+                                        + entry.product()
+                                        + ", "
+                                        + os
+                                        + "/"
+                                        + arch
+                                        + ")"));
                     }
                     ctx.progress(1);
                 })
@@ -368,12 +375,9 @@ public final class JdkInstallCommand implements CliCommand {
         if (resolved == null) {
             // A keyword resolved to nothing: lts/stable with no LTS major, or
             // `native` with no Oracle GraalVM, for this host.
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JDK", "could not resolve `" + raw.trim()
-                    + "` against the JetBrains feed for "
-                    + os
-                    + "/"
-                    + arch
-                    + "."));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JDK",
+                    "could not resolve `" + raw.trim() + "` against the JetBrains feed for " + os + "/" + arch + "."));
         }
         return resolved;
     }

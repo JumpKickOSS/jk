@@ -56,8 +56,7 @@ class GradleImporterCatalogTest {
                 .isTrue();
 
         List<Dependency> test = build.dependencies().of(Scope.TEST);
-        assertThat(test.stream().map(Dependency::module).toList())
-                .contains("org.junit.jupiter:junit-jupiter");
+        assertThat(test.stream().map(Dependency::module).toList()).contains("org.junit.jupiter:junit-jupiter");
 
         Dependency guava = main.stream()
                 .filter(d -> d.module().equals("com.google.guava:guava"))
@@ -81,7 +80,10 @@ class GradleImporterCatalogTest {
                 """;
 
         GradleImporter.Result result = GradleImporter.importFromString(script, "app", cat);
-        assertThat(result.report().issues().stream().map(i -> i.message()).toList().toString())
+        assertThat(result.report().issues().stream()
+                        .map(i -> i.message())
+                        .toList()
+                        .toString())
                 .contains("not found");
         assertThat(result.report().hasErrors()).isTrue();
         // guava still imported
@@ -95,9 +97,7 @@ class GradleImporterCatalogTest {
     void import_from_disk_reads_libs_versions_toml(@TempDir Path tmp) throws Exception {
         Path gradle = tmp.resolve("gradle");
         Files.createDirectories(gradle);
-        Files.writeString(
-                gradle.resolve("libs.versions.toml"),
-                """
+        Files.writeString(gradle.resolve("libs.versions.toml"), """
                 [versions]
                 leaf = "1.0"
 
@@ -105,9 +105,7 @@ class GradleImporterCatalogTest {
                 leaf = { module = "com.foo:leaf", version.ref = "leaf" }
                 """);
         Path script = tmp.resolve("build.gradle.kts");
-        Files.writeString(
-                script,
-                """
+        Files.writeString(script, """
                 plugins { java }
                 dependencies {
                     implementation(libs.leaf)
@@ -133,11 +131,13 @@ class GradleImporterCatalogTest {
                 }
                 """;
         GradleImporter.Result result = GradleImporter.importFromString(script, "app", cat);
-        assertThat(result.report().issues().stream().map(i -> i.message()).toList().toString())
+        assertThat(result.report().issues().stream()
+                        .map(i -> i.message())
+                        .toList()
+                        .toString())
                 .contains("version.ref");
         // Still imported as platform-managed version-less GA.
         assertThat(result.jkBuild().dependencies().of(Scope.MAIN))
                 .anyMatch(d -> d.module().equals("com.example:orphan") && d.isPlatformManaged());
     }
 }
-

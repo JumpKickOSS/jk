@@ -23,6 +23,9 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 - Do not grow unbounded product docs — keep the public set small ([docs/README.md](docs/README.md)).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
 - Do not leave long historical essays in code comments; keep Javadocs tight — let the code speak.
+- **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk.lock`, wire
+  `proto`, JSONL/`details.json` `schema`, REST/SSE, MCP, etc. Additive fields only; no version
+  churn noise without public users. See [docs/architecture.md](docs/architecture.md#schema-freeze-until-10).
 
 ## Tech stack
 

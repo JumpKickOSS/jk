@@ -15,6 +15,25 @@ Developer builds from this repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 State and cache live under `~/.jk/` (`JK_HOME` relocates the whole tree).
 
+| Env / flag | Effect |
+|------------|--------|
+| `JK_HOME` | Root of jk’s on-disk tree (default `~/.jk`): cache, state, engine socket, bin, lib, jdks |
+| `JK_CACHE_DIR` | Download / action cache only (CAS: `repos/`, `sha256/`, `metadata/`). Default `$JK_HOME/cache` |
+| `JK_AOT_TRAIN=off` | Skip AOT **train-on-miss** (engine sidecar + plugin workers); still **use** existing `.aot` caches. Default on for live engines; CI / short-lived builds usually set `off`. Also `-Djk.aot.train=off`. |
+| `JK_WORKER_AOT=off` | Plugin workers only: no AOT map **and** no train (`-Djk.worker.aot=off`). Control arm for benches. |
+| `JK_CANCEL_GRACE_MS` | Shared cancel window for **all** forked workers (default **500 ms** total, then force). Not per-worker. Max env clamp 5000. Cancel never hangs. |
+| `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; **passed to the resident engine** on the wire |
+
+Cold resolve tests without wiping your real cache:
+
+```bash
+COLD=$(mktemp -d /tmp/jk-cold-XXXX)
+jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
+# inspect: ls "$COLD/repos" "$COLD/sha256"
+```
+
+The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
+
 ## Projects and `jk.toml`
 
 ```bash
@@ -79,10 +98,11 @@ Unpinned `latest` selection still prefers the newest **stable** over a newer pre
 Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
 the conservative path.
 
-### Parallelism (`-j` / jobs)
+### Parallelism (`-j` jobs, `-w` test workers)
 
-One Mill-shaped knob for concurrent modules/workers (JK-1082). Free RAM may still reduce
-live worker JVMs (`HeapPlan`).
+Mill-shaped knobs (JK-1082 / JK-1087). Free RAM may still reduce live worker JVMs (`HeapPlan`).
+
+#### Module graph (`-j` / `--jobs`)
 
 | Value | Meaning |
 |---|---|
@@ -92,19 +112,7 @@ live worker JVMs (`HeapPlan`).
 
 **Effective cores** (JK-1084): cgroup CPU quota when readable (Docker/k8s `cpu.max` /
 cfs_quota), else `Runtime.availableProcessors()`. So `jobs = 0` on a 2-CPU container uses 2,
-not the host’s 64. Memory is still free-RAM / HeapPlan — not a second memory probe.
-
-```bash
-jk build              # parallel, up to effective cores (and free RAM)
-jk build -j1          # serial
-jk build -j4          # at most 4 modules at once
-jk build -w 2         # 2 test-runner JVMs *per module* (class pull-queue; default 1)
-jk build --parallel-tests   # also run tests across modules concurrently (opt-in)
-```
-
-Within a module, `-w N` is Mill-style **dynamic class sharding**: discover test classes, then N
-forked runners pull classes until empty (JK-1087). Default remains **1** (isolation / RSS).
-Cross-module test concurrency stays opt-in (`--parallel-tests`).
+not the host’s 64.
 
 | Layer | Setting |
 |---|---|
@@ -113,6 +121,127 @@ Cross-module test concurrency stays opt-in (`--parallel-tests`).
 | Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
 
 There is no separate `--parallel` / `--no-parallel` (removed; use `-j` / `-j1`).
+
+#### Within-module tests (`-w` / `--workers`) — Mill class sharding
+
+Discover test classes, then fork N runners that **pull** classes until empty (same idea as Mill
+`testParallelism` + `min(jobs, #classes)`).
+
+| Value | Meaning |
+|---|---|
+| omit / `0` | **Auto** (default): `min(jobs, classCount)`, then heap-clamped |
+| `1` | One test JVM (serial within the module) |
+| `N` | Cap at N runners (still ≤ class count; heap-clamped) |
+
+When `W > 1`, each runner gets its own `java.io.tmpdir` (isolation).
+
+#### Cross-module tests (default on; `--serial-tests` to opt out)
+
+By default **module suites overlap** (C2 — Mill/Gradle-shaped; C1 measured ~40% wall win on
+`shared/*`). Hermetic modules pin `[test] workers = 1`. To serialize the whole monorepo’s
+run-tests gate (shared ports / temp / statics debugging):
+
+```bash
+jk test --serial-tests
+# alias: --no-parallel-tests
+```
+
+`--parallel-tests` remains accepted (affirmative no-op; default is already on).
+
+#### Mill-like recipes
+
+```bash
+# Default: parallel compile (-j=cores); auto within-module workers; parallel across modules
+jk test
+
+# Explicit Mill-shaped (same as default; flags for clarity)
+jk test -j0 -w0 --parallel-tests
+
+# Serial within-module (debug flakes / one JVM per module)
+jk test -w1
+
+# Serialize cross-module run-tests only (within-module still auto)
+jk test --serial-tests
+
+# Cap class-shard pool without touching module concurrency
+jk test -w4
+
+# Build with tests (same parallel-test default as jk test)
+jk build
+
+# CI / dogfood: often also JK_AOT_TRAIN=off
+export JK_AOT_TRAIN=off
+jk test -j0 -w0
+```
+
+| Axis | Default | Mill analogue |
+|---|---|---|
+| Module graph | `-j0` (cores) | `--jobs 0` |
+| Within-suite JVMs | `-w0` auto `min(jobs, classes)` | `testParallelism=true` |
+| Cross-module tests | **parallel** (opt out: `--serial-tests`) | tasks share the jobs pool |
+| RAM veto | `HeapPlan` shrinks W | process count vs machine |
+
+#### Per-module serial opt-out (hermetic suites)
+
+Modules that cannot share a JVM (fixed ports, statics, nested engines) pin workers in
+`jk.toml` — same role as Mill’s `def testParallelism = false`:
+
+```toml
+# Prefer the [test] table (Mill-shaped):
+[test]
+workers = 1          # serial within this module
+# parallel = false   # alias for workers = 1
+
+# Or under [build]:
+# [build]
+# test-workers = 1
+# test-parallel = false
+```
+
+The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0` (default parallel modules)
+stays safe for known hermetic suites. Use `-w1` for one JVM per module, or `--serial-tests` to
+serialize the whole workspace run-tests gate.
+
+#### Test isolation contract (suite authors)
+
+Defaults assume tests are **hermetic enough to share a machine** with other modules’ suites and
+(when `W > 1`) other worker JVMs in the same module. jk already provides:
+
+| Isolation | When |
+|-----------|------|
+| Separate forked test JVMs | Always (tests never run in the engine process) |
+| Per-worker `java.io.tmpdir` + `TMPDIR` | When within-module `W > 1` |
+| Optional nested-engine env isolation | `jk-cli` suite (fixed by product; not general) |
+
+**You still must avoid:**
+
+- **Fixed ports** (HTTP, gRPC, DB) shared across tests or modules — allocate free ports, or pin
+  `[test] workers = 1` and/or run with `--serial-tests` while debugging.
+- **Shared mutable statics / singletons** that assume a single suite order.
+- **Writing outside worker temp** into a shared project path without coordination.
+- **Assuming one JVM for the whole monorepo** — cross-module parallel is the default.
+
+**When in doubt:**
+
+```toml
+[test]
+workers = 1   # this module serial within itself
+```
+
+```bash
+jk test --serial-tests   # whole workspace: one module’s tests at a time
+jk test -w1              # every module: one test JVM
+export JK_AOT_TRAIN=off  # CI / short-lived engines (skip train-on-miss)
+```
+
+Failure lines include **module** (and **worker** when `W > 1`) so parallel flakes are locatable.
+
+**JUnit Platform in-process parallel** (`junit.jupiter.execution.parallel.enabled`) is separate from
+jk `-w` process workers. Prefer one layer: multi-worker `-w` *or* Jupiter parallel with **`-w1`**.
+When both are active (`W>1` plus Jupiter parallel on the test classpath), jk emits a **warn**
+(`jupiter-parallel`). Details: [junit-parallel-vs-jk-workers.md](perf/junit-parallel-vs-jk-workers.md).
+
+Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 
 ### Lock-time trust
 
@@ -177,9 +306,11 @@ and Latest.
 mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
-Platform BOMs (`[platform-dependencies]`) are **recommendations** (Gradle `platform()` style):
-the pin is preferred first; a stricter transitive floor may lift past it. Use an exact or
-caret/tilde version on the BOM itself — not `latest`.
+Platform BOMs (`[platform-dependencies]` / `[spring-boot] version`) are **recommendations**
+(Gradle `platform()` style): the pin is preferred first; a stricter transitive floor may lift
+past it. Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a
+**pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree`
+shows it under the platform section with its version and a `(platform)` tag, not as missing.
 
 Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub prose on conflict.
 Main, test, and processor graphs are solved separately so annotation-processor constraints
@@ -191,8 +322,11 @@ do not force main classpath versions.
 |---|---|---|
 | Thin jar | default | `jk build` |
 | Assembly jar | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
-| Shrunk jar | `[shrink]` (+ shrink plugin) | `jk build` (size before→after in labels) |
+| Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
+
+One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
+`--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
 [features/packaging.md](features/packaging.md). Samples:
@@ -201,10 +335,11 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 ```toml
 [application]
 main = "com.example.App"
-assembly = true    # assembly jar — jk assembly / jk assemble
+assembly = true       # fat jar — jk assembly / jk assemble
+# assembly = "shrink" # R8 small fat jar — same commands
 ```
 
-R8 is **opt-in** via `[shrink]` only — never the default.
+R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
 
 ## Common commands
 
@@ -215,7 +350,8 @@ jk outdated                  # check for newer deps (read-only; see lockfile sec
 jk update                    # re-resolve within ranges (rewrites jk.lock)
 jk compile                   # type-check
 jk build                     # package (thin, assembly, shrink, or Boot per config)
-jk assembly                  # assembly jar (alias: assemble; requires assembly = true)
+jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
+jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…
 jk clean
@@ -229,15 +365,31 @@ jk native                    # GraalVM native-image
 jk verify                    # rebuild in a scratch dir and compare hashes
 ```
 
-Machine-readable output: `--output json` (or `jsonl`) on commands that support it.
+### Machine / agent output (JSONL)
+
+Human TTY mode stays terse and visual. **Agents, scripts, and CI should not scrape it.**
+
+```bash
+jk build --output json …     # live JSONL on stdout (one object per line)
+jk test  --output jsonl …    # identical to json — both mean live events
+export JK_OUTPUT=json        # same for any command that uses PipelineConsole
+```
+
+- **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
+  errors with structured test fields, step/pipeline finish). Not a single end-of-run blob.
+- Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
+  version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
+  with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
+- Post-hoc summary still lands in `target/.jk-cli/<ts>/details.json` (below). Deep timings:
+  `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
 
 The terminal is for people. Prefer settled **CommandWedge** chips (success green / work blue /
-error red), not `jk <command>: …` log prefixes. Agents should use `--json`, BSP, or the engine
-wire — not scrape prose. Opt out of rich chrome with `NO_COLOR`, `--no-ansi`, or
-`JK_NERDFONT=false`. Full charter and migration tickets live on the org board (kanartist
-**JK-1076**–**JK-1081**).
+error red), not `jk <command>: …` log prefixes. Agents should use **`--output json`/`jsonl`**,
+BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrome with `NO_COLOR`,
+`--no-ansi`, or `JK_NERDFONT=false`. Full charter: kanartist **JK-1076**–**JK-1081**; machine
+surface: [machine-output.md](machine-output.md).
 
 ```bash
 # Detect Nerd Font support once; writes ~/.jk/config.toml [global].nerdfont
@@ -320,19 +472,15 @@ jk tasks show package-jar --modules 'libs/*'
 
 ### Build timeline (chrome tracing)
 
-Every `jk build` / `jk test` writes a Chrome Trace Event file at
-`out/jk-chrome-profile.json` (under the project or workspace root) and prints a one-line
-**Timeline:** path on stderr when the file is written. Open it in Perfetto or
-`chrome://tracing` to see step durations and parallel modules. **CI tip:** archive
-`out/jk-chrome-profile.json` as a build artifact.
+Every `jk build` / `jk test` has the **engine** write a Chrome Trace Event file at
+`target/jk-chrome-profile.json` (no terminal noise). Spans use the same step durations as
+build metrics. Open the file in Perfetto or `chrome://tracing`. **CI tip:** archive that
+path as a build artifact.
 
 ```bash
-# disable for one run
-jk build --no-timeline
-# or via env
-JK_CHROME_PROFILE=off jk build
-# custom path
-JK_CHROME_PROFILE=/tmp/trace.json jk build
+jk build --no-timeline              # skip the file (global flag)
+JK_CHROME_PROFILE=off jk build      # same via env
+JK_CHROME_PROFILE=/tmp/trace.json jk build   # custom path
 ```
 
 ### Project build logic (`.jk-build/`)
@@ -539,8 +687,35 @@ jk auth login                  # GitHub / GitLab / Gitea / Bitbucket
 # repositories in jk.toml or ~/.jk/config.toml — credentials via env / keychain / settings.xml
 ```
 
-Maven Central is default. Corporate mirrors, forge package registries, S3/MinIO, and GCS
-are supported. Prefer `auth = "env:TOKEN"` over secrets in TOML.
+Maven Central and Google Maven are the default remotes (Central first, then Google) so
+AndroidX / R8 / apksig resolve without a per-project `[repositories]` table. Local lookup
+still prefers CAS, per-repo mirrors under the cache, and `~/.m2` before the network. Corporate
+mirrors, forge package registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"`
+over secrets in TOML.
+
+### Exclusive groups (dependency-confusion defense)
+
+When you declare an **internal** repository next to a public one, bind internal Maven namespaces
+so versions of those coordinates are **never** discovered or fetched from other remotes:
+
+```toml
+[repositories.central]
+url = "https://repo.maven.apache.org/maven2/"
+
+[repositories.internal]
+url = "https://repo.acme.com/maven"
+# Exact group or prefix.* (group + subpackages). Matching GAs only resolve from this repo
+# (and any other repo that also lists the same group).
+groups = ["com.acme", "com.acme.*"]
+```
+
+- **Bound group** → solver only sees versions from claiming repos (a higher version planted on
+  Central cannot win at `jk lock` / `jk update`).
+- **Unbound group** → all remotes union as before.
+- **Already locked** artifacts keep their lockfile source pin until you re-resolve that line
+  (`jk update` re-opens discovery for updated/new deps).
+- If you configure **multiple repositories without any `groups`**, jk **warns once** per lock
+  (still resolves). Add exclusive bindings for internal namespaces.
 
 ## Wrapper
 

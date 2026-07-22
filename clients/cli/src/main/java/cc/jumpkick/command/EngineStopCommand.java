@@ -65,7 +65,8 @@ public final class EngineStopCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         if (!PipelineConsole.isInteractiveTerminal()) {
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)"));
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                    "Engine", "shutdown scheduled (" + jobs + " job" + (jobs == 1 ? "" : "s") + " will finish first)"));
             return Exit.SUCCESS;
         }
         return drainOnTty(paths, jobs, started);

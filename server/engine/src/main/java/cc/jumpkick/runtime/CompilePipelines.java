@@ -3,6 +3,7 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.run.Pipeline;
 import java.nio.file.Path;
+import java.util.Set;
 
 /** {@code jk compile}: {@link BuildPipelines} in compile-only mode (no resources/tests/package). */
 public final class CompilePipelines {
@@ -27,7 +28,7 @@ public final class CompilePipelines {
                 verbose, /* testOnly */
                 false, /* compileOnly */
                 true,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         return BuildPipelines.coreBuilder(inputs).build();
     }

@@ -47,4 +47,26 @@ class TestFailureRenderingTest {
         assertThat(lines).anyMatch(l -> l.contains("FAILED  (test run)"));
         assertThat(String.join("\n", lines)).contains("runner exited 1");
     }
+
+    @Test
+    void headline_includes_module_and_worker() {
+        var f = new TestSummary.Failure(
+                "FooTest > bar()",
+                "java.lang.AssertionError",
+                "nope",
+                "java.lang.AssertionError: nope",
+                "cc.jumpkick:jk-core",
+                "cc.jumpkick.FooTest",
+                2);
+        assertThat(f.headline()).isEqualTo("cc.jumpkick:jk-core :: FooTest > bar()  [w2]");
+        List<String> lines = TestSupport.renderFailures(new TestSummary(1, 0, 1, 0, List.of(f)));
+        assertThat(lines).anyMatch(l -> l.contains("FAILED  cc.jumpkick:jk-core :: FooTest > bar()  [w2]"));
+    }
+
+    @Test
+    void progressLabel_formats_module_and_worker() {
+        assertThat(TestSupport.progressLabel("cc.jumpkick:core", "Foo > t()", 2, 4))
+                .isEqualTo("cc.jumpkick:core :: Foo > t()  [w2]");
+        assertThat(TestSupport.progressLabel("", "Foo > t()", 0, 1)).isEqualTo("Foo > t()");
+    }
 }

@@ -16,9 +16,7 @@ class CrossPackageFeaturesParseTest {
     @Test
     void parses_features_and_default_features_on_dep(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "com.acme"
                 name = "app"
@@ -39,9 +37,7 @@ class CrossPackageFeaturesParseTest {
     @Test
     void absent_feature_keys_mean_no_selection(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "com.acme"
                 name = "app"

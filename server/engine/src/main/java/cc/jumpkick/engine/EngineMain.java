@@ -69,8 +69,7 @@ public final class EngineMain {
             cc.jumpkick.config.JkEngineConfig config = cc.jumpkick.config.JkEngineConfig.resolve();
             cc.jumpkick.config.JkHttpConfig httpConfig =
                     cc.jumpkick.config.JkHttpConfig.resolve().orElse(null);
-            EngineServer server =
-                    new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
+            EngineServer server = new EngineServer(paths, config, httpConfig, JkVersion.VERSION, System.err::println);
             // The spawner asks for an AOT cache with -Djk.aot.train.output=<path> when none exists
             // yet (see EngineClient.spawn). The server invokes the factory only after WINNING its
             // election — a losing redundant spawn never trains — and owns the child end-to-end.

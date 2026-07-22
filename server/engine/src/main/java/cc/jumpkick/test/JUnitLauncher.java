@@ -9,8 +9,10 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,22 +37,58 @@ public final class JUnitLauncher {
     private static final String RUNNER_PLUGIN_CLASS = "cc.jumpkick.testrunner.TestRunner";
 
     /**
-     * {@code jk.<worker>.plugin.jar} overrides handed to the test JVM so tests that fork a
-     * first-party plugin (e.g. the git client) locate its jar by path. Mirrors what Gradle's test
-     * config provides; under {@code jk build} the {@code run-tests} step resolves the freshly-built
-     * sibling plugin jars (built before this module via the {@code [build.embed-sha]} order-after
-     * edges) and passes them here. Empty when none are built (e.g. a scoped single-module build) —
-     * tests then fall back to CAS-by-sha.
+     * {@code jk.<worker>.plugin.jar} (and {@code jk.engine.jar}) overrides handed to the test JVM so
+     * tests that fork a first-party plugin or materialize the engine locate jars by path. Mirrors
+     * what Gradle's test config provides; under {@code jk build} the {@code run-tests} step resolves
+     * the freshly-built sibling jars and passes them here. Empty when none are built (e.g. a scoped
+     * single-module build) — tests then fall back to CAS-by-sha.
      */
     private Map<String, String> workerJarProps = Map.of();
 
     /**
+     * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
+     * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}.
+     */
+    private Map<String, String> testEnv = Map.of();
+
+    /** Module coord for failure lines (e.g. {@code cc.jumpkick:jk-core}); empty when unknown. */
+    private String moduleLabel = "";
+
+    /** JK-1094: prefix failure / progress labels with this module coordinate. */
+    public JUnitLauncher withModuleLabel(String moduleLabel) {
+        this.moduleLabel = moduleLabel == null ? "" : moduleLabel.trim();
+        return this;
+    }
+
+    /**
      * Worker JVM flags: the heap/GC tuning, the {@code jk.plugin.class} selector for the runner, and
-     * any {@code jk.<worker>.plugin.jar} overrides.
+     * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
      */
     private List<String> runnerFlags(int concurrency) {
         List<String> flags = new ArrayList<>(cc.jumpkick.engine.plugin.JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
+        // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
+        flags.add("-Djk.aot.train=off");
+        // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
+        // EngineTestExtension — match Gradle's :cli:test jvmArgs / systemProperty setup.
+        if (!testEnv.isEmpty()) {
+            flags.add("--enable-native-access=ALL-UNNAMED");
+            flags.add("-Djunit.jupiter.extensions.autodetection.enabled=true");
+            // Match Gradle :cli:test — force soft-fail TempDir strategy + short /tmp factory.
+            // Nested engines hardlink into @TempDir caches; macOS then fails Standard delete and
+            // marks the test failed on cleanup even when assertions passed. Soft-fail strategy +
+            // NEVER cleanup mode keep the suite green (dirs are under /tmp and ephemeral).
+            flags.add(
+                    "-Djunit.jupiter.tempdir.deletion.strategy.default=cc.jumpkick.cli.engine.JkTempDirDeletionStrategy");
+            flags.add("-Djunit.jupiter.tempdir.factory.default=cc.jumpkick.cli.engine.JkTempDirFactory");
+            flags.add("-Djunit.jupiter.tempdir.cleanup.mode.default=never");
+            String jkHome = testEnv.get("JK_HOME");
+            if (jkHome != null && !jkHome.isBlank()) {
+                // Sibling of test-jk-home: <module>/target/test-shared-cache (SharedTestCache).
+                Path shared = Path.of(jkHome).getParent().resolve("test-shared-cache");
+                flags.add("-Djk.test.cache.dir=" + shared);
+            }
+        }
         workerJarProps.forEach((prop, jar) -> flags.add("-D" + prop + "=" + jar));
         return flags;
     }
@@ -75,7 +113,8 @@ public final class JUnitLauncher {
             Map<String, String> workerJarProps,
             TestProgressListener listener)
             throws IOException, InterruptedException {
-        return run(javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, listener, null);
+        return run(
+                javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, Map.of(), listener, null);
     }
 
     /**
@@ -93,13 +132,43 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             Path testResultsDir)
             throws IOException, InterruptedException {
+        return run(
+                javaHome,
+                testClassesDir,
+                runtimeClasspath,
+                cacheRoot,
+                workers,
+                workerJarProps,
+                Map.of(),
+                listener,
+                testResultsDir);
+    }
+
+    /**
+     * As {@link #run(Path, Path, List, Path, int, Map, TestProgressListener, Path)} with {@code
+     * testEnv} merged into the test JVM environment (isolated {@code JK_HOME}/{@code JK_STATE_DIR}
+     * for nested-engine suites).
+     */
+    public TestSummary run(
+            Path javaHome,
+            Path testClassesDir,
+            List<Path> runtimeClasspath,
+            Path cacheRoot,
+            int workers,
+            Map<String, String> workerJarProps,
+            Map<String, String> testEnv,
+            TestProgressListener listener,
+            Path testResultsDir)
+            throws IOException, InterruptedException {
         Objects.requireNonNull(javaHome, "javaHome");
         Objects.requireNonNull(testClassesDir, "testClassesDir");
         Objects.requireNonNull(runtimeClasspath, "runtimeClasspath");
         Objects.requireNonNull(cacheRoot, "cacheRoot");
         Objects.requireNonNull(listener, "listener");
-        if (workers < 1) throw new IllegalArgumentException("workers must be >= 1");
+        // workers: 0 = auto (Mill-like min(jobs, classes) + heap clamp); ≥1 = explicit.
+        if (workers < 0) throw new IllegalArgumentException("workers must be >= 0 (0 = auto)");
         this.workerJarProps = workerJarProps == null ? Map.of() : Map.copyOf(workerJarProps);
+        this.testEnv = testEnv == null ? Map.of() : Map.copyOf(testEnv);
 
         Path runnerJar = locateRunner(cacheRoot);
         var classpathBase = new LinkedHashSet<Path>();
@@ -109,10 +178,28 @@ public final class JUnitLauncher {
         String classpath = joinClasspath(classpathBase);
         Path javaBinary = javaBinary(javaHome);
 
-        if (workers == 1) {
+        int resolvedWorkers = workers;
+        List<String> preDiscovered = null;
+        if (workers == 0) {
+            // Discover once so auto can size the pool; reuse the list when W>1.
+            preDiscovered = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+            resolvedWorkers = TestWorkers.resolve(0, preDiscovered.size(), TestWorkers.effectiveJobs());
+        } else if (workers > 1) {
+            resolvedWorkers = TestWorkers.resolve(workers, Integer.MAX_VALUE, TestWorkers.effectiveJobs());
+        }
+
+        if (resolvedWorkers <= 1) {
             return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir);
         }
-        return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir);
+        // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
+        List<Path> cpForDetect = new ArrayList<>();
+        cpForDetect.add(testClassesDir);
+        if (runtimeClasspath != null) cpForDetect.addAll(runtimeClasspath);
+        if (JupiterParallelDetect.enabled(cpForDetect)) {
+            listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
+        }
+        return runParallel(
+                javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered);
     }
 
     // -------- single-worker ---------------------------------------------
@@ -122,7 +209,7 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = testResultsDir != null ? new MarkdownTestReport() : null;
-        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md);
+        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
         // Capture the worker's non-protocol output so a hard crash (uncaught
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
@@ -133,6 +220,7 @@ public final class JUnitLauncher {
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
                 List.of("--scan-classpath=" + testClassesDir),
+                testEnv,
                 aggregator::accept,
                 line -> {
                     crash.add(line);
@@ -166,14 +254,29 @@ public final class JUnitLauncher {
             TestProgressListener listener,
             Path testResultsDir)
             throws IOException, InterruptedException {
-        // 1. Discovery — one fork, list-only mode, harvest class FQCNs.
-        List<String> classes = discoverClasses(javaBinary, classpath, testClassesDir, listener);
+        return runParallel(javaBinary, classpath, testClassesDir, workers, listener, testResultsDir, null);
+    }
+
+    private TestSummary runParallel(
+            Path javaBinary,
+            String classpath,
+            Path testClassesDir,
+            int workers,
+            TestProgressListener listener,
+            Path testResultsDir,
+            List<String> preDiscovered)
+            throws IOException, InterruptedException {
+        // 1. Discovery — one fork, list-only mode, harvest class FQCNs (skip if auto already did).
+        List<String> classes = preDiscovered != null
+                ? preDiscovered
+                : discoverClasses(javaBinary, classpath, testClassesDir, listener);
         if (classes.isEmpty()) {
             return new TestSummary(0, 0, 0, 0, List.of());
         }
         // Don't waste workers on small suites — N workers > N classes leaves
         // some idle waiting for a class that'll never come.
         int actualWorkers = Math.min(workers, classes.size());
+        actualWorkers = TestWorkers.clampByHeap(actualWorkers);
 
         // One shared report per format — all worker threads write into them (both are thread-safe).
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
@@ -189,7 +292,7 @@ public final class JUnitLauncher {
             final int workerId = w + 1;
             final int idx = w;
             List<String> args = List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir);
-            var agg = new ResultAggregator(listener, workerId, xml, md);
+            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel);
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
@@ -235,7 +338,14 @@ public final class JUnitLauncher {
                     0,
                     1,
                     0,
-                    List.of(new TestSummary.Failure("(test run)", "", "runner exited " + worstExit, crash.toString())));
+                    List.of(new TestSummary.Failure(
+                            "(test run)",
+                            "",
+                            "runner exited " + worstExit,
+                            crash.toString(),
+                            moduleLabel,
+                            "",
+                            0)));
         }
         if (xml != null) {
             try {
@@ -291,13 +401,29 @@ public final class JUnitLauncher {
         };
 
         try {
+            // Mill-class isolation: each worker gets its own java.io.tmpdir when W>1.
+            List<String> flags = new ArrayList<>(runnerFlags(totalWorkers));
+            Map<String, String> env = testEnv;
+            if (totalWorkers > 1) {
+                try {
+                    Path tmp = Files.createTempDirectory("jk-tw-" + workerId + "-");
+                    flags.add("-Djava.io.tmpdir=" + tmp);
+                    env = new LinkedHashMap<>(testEnv);
+                    env.put("TMPDIR", tmp.toString());
+                    env.put("TMP", tmp.toString());
+                    env.put("TEMP", tmp.toString());
+                } catch (IOException ignored) {
+                    // best-effort isolation
+                }
+            }
             return cc.jumpkick.engine.plugin.PluginLoader.converse(
                     javaBinary,
                     classpath,
                     // N test JVMs run at once → divide the heap cap by N so they fit.
-                    runnerFlags(totalWorkers),
+                    flags,
                     PROTOCOL_PREFIX,
                     args,
+                    env,
                     handler,
                     passthrough);
         } catch (IOException e) {
@@ -324,13 +450,13 @@ public final class JUnitLauncher {
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
                 List.of("--list-only", "--scan-classpath=" + testClassesDir),
+                testEnv,
                 json -> {
                     String event = Jsonl.str(json, "event");
                     if ("discovered".equals(event)) {
                         classes.add(Jsonl.str(json, "class"));
                     } else if ("discovery_total".equals(event)) {
-                        listener.onDiscoveryTotal(
-                                Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
+                        listener.onDiscoveryTotal(Jsonl.intValue(json, "classes", 0), Jsonl.intValue(json, "tests", 0));
                     }
                 },
                 null);
@@ -395,6 +521,7 @@ public final class JUnitLauncher {
         private final int workerId;
         private final XmlTestReport xmlReport;
         private final MarkdownTestReport mdReport;
+        private final String moduleLabel;
         private long succeeded;
         private long failed;
         private long skipped;
@@ -408,19 +535,29 @@ public final class JUnitLauncher {
 
         /** Test-friendly ctor: no listener, no worker id, no reports. */
         ResultAggregator() {
-            this(TestProgressListener.noop(), 0, null, null);
+            this(TestProgressListener.noop(), 0, null, null, "");
         }
 
         ResultAggregator(TestProgressListener listener, int workerId) {
-            this(listener, workerId, null, null);
+            this(listener, workerId, null, null, "");
         }
 
         ResultAggregator(
                 TestProgressListener listener, int workerId, XmlTestReport xmlReport, MarkdownTestReport mdReport) {
+            this(listener, workerId, xmlReport, mdReport, "");
+        }
+
+        ResultAggregator(
+                TestProgressListener listener,
+                int workerId,
+                XmlTestReport xmlReport,
+                MarkdownTestReport mdReport,
+                String moduleLabel) {
             this.listener = listener;
             this.workerId = workerId;
             this.xmlReport = xmlReport;
             this.mdReport = mdReport;
+            this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         }
 
         synchronized void accept(String json) {
@@ -502,7 +639,15 @@ public final class JUnitLauncher {
             // The runner emits the full stack trace under "stack"; keep it so the
             // build can print it (we used to read only class + message).
             String stack = throwableJson != null ? Jsonl.str(throwableJson, "stack") : null;
-            failures.add(new TestSummary.Failure(display, exClass, message, stack == null ? "" : stack));
+            String className = classFromUniqueId(id);
+            failures.add(new TestSummary.Failure(
+                    display,
+                    exClass,
+                    message,
+                    stack == null ? "" : stack,
+                    moduleLabel,
+                    className,
+                    workerId));
             listener.onFailure(id, display, exClass, message, workerId);
         }
 
@@ -542,7 +687,10 @@ public final class JUnitLauncher {
                                 "(test run)",
                                 "",
                                 "runner exited " + exitCode,
-                                crashOutput == null ? "" : crashOutput)));
+                                crashOutput == null ? "" : crashOutput,
+                                moduleLabel,
+                                "",
+                                workerId)));
             }
             return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
         }
@@ -552,6 +700,17 @@ public final class JUnitLauncher {
             long total = succeeded + failed + skipped;
             return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
         }
+    }
+
+    /** Parse JUnit Platform unique id fragment {@code [class:fqcn]}. */
+    static String classFromUniqueId(String id) {
+        if (id == null || id.isBlank()) return "";
+        int i = id.indexOf("[class:");
+        if (i < 0) return "";
+        int start = i + "[class:".length();
+        int end = id.indexOf(']', start);
+        if (end < 0) return "";
+        return id.substring(start, end).trim();
     }
 
     /**

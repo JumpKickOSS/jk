@@ -19,11 +19,13 @@ import java.util.List;
 public final class ReleaseVerifier {
 
     /**
-     * The baked-in release public key (base64 X.509/SPKI Ed25519). Empty until the first signed
-     * release ships — an empty key set means "verification unavailable", which callers treat as
-     * fatal for release-version fetches and as expected for -SNAPSHOT dev flows.
+     * Baked-in JumpKick release public key (base64 X.509/SPKI Ed25519, JK-1066). The matching
+     * private key is held only as the GitHub Actions secret {@code JK_RELEASE_SIGNING_KEY}
+     * (PKCS#8 base64) and used by {@code scripts/sign-release.sh} on tag builds. Empty string
+     * would mean "verification unavailable" — do not clear without rotating to a replacement.
      */
-    public static final String BUILT_IN_KEY = "";
+    public static final String BUILT_IN_KEY =
+            "MCowBQYDK2VwAyEAJMjkVY8egU7YDTJGcLs/LQC8e11cwJ8cYflpdjuUcAo=";
 
     private final List<PublicKey> trusted;
 

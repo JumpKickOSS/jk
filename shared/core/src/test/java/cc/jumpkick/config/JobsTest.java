@@ -3,6 +3,7 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -38,9 +39,9 @@ class JobsTest {
 
     @Test
     void from_toml_jobs() throws Exception {
-        var dir = java.nio.file.Files.createTempDirectory("jk-jobs");
+        var dir = Files.createTempDirectory("jk-jobs");
         var toml = dir.resolve("config.toml");
-        java.nio.file.Files.writeString(toml, "[engine]\nmax-heap-mb = 256\njobs = 2\n");
+        Files.writeString(toml, "[engine]\nmax-heap-mb = 256\njobs = 2\n");
         JkEngineConfig c = JkEngineConfig.fromToml(toml);
         assertThat(c.jobs()).isEqualTo(2);
         assertThat(Jobs.effective(c.jobs(), () -> 8)).isEqualTo(2);

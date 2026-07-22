@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
@@ -25,23 +26,28 @@ public final class EngineTestSupport {
     private EngineTestSupport() {}
 
     /**
-     * Idempotent materialize of the Gradle-provided {@code -Djk.engine.jar} into VersionStore under
-     * the test {@code JK_HOME}.
+     * Idempotent materialize of the engine assembly into VersionStore under the test {@code
+     * JK_HOME}. Prefers {@code -Djk.engine.jar} (Gradle / pure-jk run-tests); falls back to a
+     * workspace-relative assembly jar so a miswired fork fails with a path hint rather than a bare
+     * missing-property error.
      */
     public static void ensureEngineMaterialized() {
         if (MATERIALIZED.get()) return;
         synchronized (MATERIALIZED) {
             if (MATERIALIZED.get()) return;
-            String jarProp = System.getProperty("jk.engine.jar");
-            if (jarProp == null || jarProp.isBlank()) {
+            Path engineJar = resolveEngineJar();
+            if (engineJar == null || !Files.isRegularFile(engineJar)) {
                 throw new IllegalStateException(
-                        "jk.engine.jar system property is not set — :cli tests must dependsOn(:engine:shadowJar)");
-            }
-            Path engineJar = Path.of(jarProp);
-            if (!Files.isRegularFile(engineJar)) {
-                throw new IllegalStateException("engine jar not found: " + engineJar);
+                        "jk.engine.jar system property is not set (and no workspace engine assembly found) — "
+                                + "CLI tests need -Djk.engine.jar=… (Gradle :engine:shadowJar / pure-jk nested isolation)");
             }
             try {
+                // Ensure UDS parent exists (pure-jk isolation creates it once; do not rely on a
+                // previous class having left it intact).
+                String state = System.getenv("JK_STATE_DIR");
+                if (state != null && !state.isBlank()) {
+                    Files.createDirectories(Path.of(state));
+                }
                 VersionStore store = VersionStore.current();
                 if (store.resolve(JkVersion.VERSION).isEmpty()) {
                     Path cacheRoot = JkDirs.cache();
@@ -54,6 +60,24 @@ public final class EngineTestSupport {
             }
             MATERIALIZED.set(true);
         }
+    }
+
+    /** {@code -Djk.engine.jar} or common workspace assembly locations relative to user.dir. */
+    static Path resolveEngineJar() {
+        String jarProp = System.getProperty("jk.engine.jar");
+        if (jarProp != null && !jarProp.isBlank()) {
+            Path p = Path.of(jarProp);
+            if (Files.isRegularFile(p)) return p;
+        }
+        Path cwd = Path.of(System.getProperty("user.dir", "."));
+        // clients/cli cwd when running under Gradle; monorepo root under pure-jk module tests.
+        for (Path cand : List.of(
+                cwd.resolve("server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"),
+                cwd.resolve("../server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"),
+                cwd.resolve("../../server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"))) {
+            if (Files.isRegularFile(cand)) return cand.normalize();
+        }
+        return null;
     }
 
     /** Force-stop the engine if running (no state-dir cleanup). Safe when already stopped. */
@@ -78,12 +102,23 @@ public final class EngineTestSupport {
     }
 
     /**
-     * Force-stop any engine serving this test process's {@link EnginePaths} and best-effort delete
-     * the short {@code JK_STATE_DIR} (UDS parent). Safe when no engine is running.
+     * Force-stop any engine serving this test process's {@link EnginePaths}. Safe when no engine is
+     * running.
+     *
+     * <p>Does <strong>not</strong> delete {@code JK_STATE_DIR}: the suite shares one short state
+     * dir for the whole JVM (Gradle and pure-jk). Deleting it after every class left later tests
+     * with a missing UDS parent and {@code no build engine} / exit 70 under pure-jk. Suite-end
+     * cleanup is the test task's job ({@code /tmp/jk-cli-*} is ephemeral).
      */
     public static void stopEngineAndRelease() {
         stopEngineOnly();
-        // Release the short state dir so concurrent suites / next runs don't collide.
+    }
+
+    /**
+     * Best-effort delete of an isolated {@code /tmp/jk-cli-*} state dir (suite-end / manual). Not
+     * used between classes.
+     */
+    public static void deleteIsolatedStateDirIfPresent() {
         String state = System.getenv("JK_STATE_DIR");
         if (state != null && !state.isBlank() && state.startsWith("/tmp/jk-cli-")) {
             deleteRecursively(Path.of(state));

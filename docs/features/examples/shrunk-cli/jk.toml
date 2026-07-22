@@ -7,8 +7,9 @@ java = 25
 
 [application]
 main = "demo.Cli"
+# R8 small fat jar (runtime deps + shrink). Prefer this over a bare [shrink] table.
+assembly = "shrink"
 
-# Opt-in R8 shrink packager (first-party jk-shrink). Builds a smaller executable jar.
-[shrink]
-# optional: keep = ["-keep class demo.** { *; }"]
-# optional: keep-files = ["proguard-rules.pro"]
+# Optional keep rules still use the [shrink] table when you need them:
+# [shrink]
+# keep = ["-keep class demo.** { *; }"]

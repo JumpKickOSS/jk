@@ -1,0 +1,194 @@
+# JK-1066 — tag-triggered release build + sign for jumpkick.build layout.
+#
+# Trigger: push tag v0.10.1 (or any vX.Y.Z matching JkVersion without the v).
+#
+# Secrets:
+#   JK_RELEASE_SIGNING_KEY     — PKCS#8 base64 Ed25519 private key (required for .sig)
+#   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jkbuild-releases
+#   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
+#
+# Hosting: objects in GCS; public CDN will be Firebase later. Path:
+#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/VERSION
+# Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (no v prefix), e.g. 0.10.1'
+        required: true
+        default: '0.10.1'
+
+env:
+  TERM: xterm-256color
+
+jobs:
+  build:
+    name: ${{ matrix.arch_label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch_label: linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch_label: linux-aarch64
+          - os: macos-13
+            arch_label: macos-x86_64
+          - os: macos-14
+            arch_label: macos-aarch64
+          - os: windows-latest
+            arch_label: windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Building release $VER (${{ matrix.arch_label }})"
+
+      - name: Dist (native + engine)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew clean dist --no-daemon
+          ls -la build/dist
+          ls -la build/dist/lib || true
+
+      - name: Assemble + sign release dir
+        shell: bash
+        env:
+          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh
+          OUT="build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+          scripts/assemble-release-dir.sh "$OUT"
+          ls -la "$OUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.JK_VERSION }}-${{ matrix.arch_label }}
+          path: build/release/${{ env.JK_VERSION }}-${{ matrix.arch_label }}/
+          if-no-files-found: error
+
+  publish:
+    name: Merge + publish to GCS
+    needs: build
+    runs-on: ubuntu-latest
+    # Run after matrix finishes; publish whatever platform artifacts succeeded.
+    if: ${{ always() && !cancelled() }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: staging
+          pattern: release-*
+          merge-multiple: false
+
+      - name: Flatten into version directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="$JK_VERSION"
+          mkdir -p "out/${VER}" "out/latest"
+          # Copy every file from every platform dir (skip nested SHA256SUMS until recompute).
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              SHA256SUMS|SHA256SUMS.sig) continue ;;
+            esac
+            cp -f "$f" "out/${VER}/$base"
+          done < <(find staging -type f -print0)
+          (
+            cd "out/${VER}"
+            rm -f SHA256SUMS SHA256SUMS.sig
+            if command -v sha256sum >/dev/null; then sha256sum * >SHA256SUMS
+            else shasum -a 256 * >SHA256SUMS
+            fi
+          )
+          printf '%s\n' "$VER" > out/latest/VERSION
+          echo "=== out/${VER} ==="
+          ls -la "out/${VER}"
+          echo "VERSION=$(cat out/latest/VERSION)"
+
+      - name: Re-sign combined SHA256SUMS
+        shell: bash
+        env:
+          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
+            echo "JK_RELEASE_SIGNING_KEY missing — combined sums unsigned"
+            exit 1
+          fi
+          chmod +x scripts/sign-release.sh
+          scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
+          ls -la "out/${JK_VERSION}/SHA256SUMS"*
+
+      - name: Upload merged release tree (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.JK_VERSION }}-merged
+          path: out/
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload to GCS
+        env:
+          BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="$JK_VERSION"
+          if [[ -z "${BUCKET:-}" ]]; then
+            echo "JK_RELEASE_GCS_BUCKET empty"
+            exit 1
+          fi
+          gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
+            "gs://${BUCKET}/releases/latest/VERSION"
+          echo "Published:"
+          echo "  gs://${BUCKET}/releases/${VER}/"
+          echo "  gs://${BUCKET}/releases/latest/VERSION"
+          echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/VERSION"
+          gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
+          gsutil cat "gs://${BUCKET}/releases/latest/VERSION"

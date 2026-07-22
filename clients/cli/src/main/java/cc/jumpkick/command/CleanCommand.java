@@ -46,8 +46,7 @@ public final class CleanCommand implements CliCommand {
         return List.of(
                 Opt.flag("Delete only build/ intermediates; keep artifacts.", "--keep-artifacts"),
                 Opt.flag("GC the shared cache: purge blobs idle 90+ days.", "--cache"),
-                Opt.value("<dir>", "Override the jk cache directory.", "--cache-dir")
-                        .hide());
+                cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
     @Override
@@ -110,7 +109,7 @@ public final class CleanCommand implements CliCommand {
         long purgedBlobs;
         long freedBytes;
         long repoLinksRemoved;
-                // Hosted: the spinner stays client-side (the pipeline has no per-file progress worth a
+        // Hosted: the spinner stays client-side (the pipeline has no per-file progress worth a
         // bar); the counts ride the terminal pipeline-finish.
         var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
         try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Collecting cache...")) {
@@ -122,7 +121,8 @@ public final class CleanCommand implements CliCommand {
                     (external, pipelines) -> {},
                     summary);
             if (!result.success() || summary[0] == null) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Clean", "cache GC failed — run `jk engine status` for details"));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "Clean", "cache GC failed — run `jk engine status` for details"));
                 return;
             }
         }

@@ -5,6 +5,7 @@ import cc.jumpkick.resolver.Versions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -42,6 +43,15 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
     /** True iff this is the universe set. */
     default boolean isAll() {
         return false;
+    }
+
+    /**
+     * When this set is a single concrete version (closed point range {@code [v,v]}), that version;
+     * otherwise empty. Used by the solver to seed a singleton {@link VersionUniverse} without
+     * fetching maven-metadata (JK-1088).
+     */
+    default Optional<String> asExactSingleton() {
+        return Optional.empty();
     }
 
     /** True iff this set is a (non-strict) subset of {@code other}. */
@@ -188,6 +198,14 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
                 if (cmp > 0 || (cmp == 0 && !maxInclusive)) return false;
             }
             return true;
+        }
+
+        @Override
+        public Optional<String> asExactSingleton() {
+            if (min != null && max != null && minInclusive && maxInclusive && min.equals(max)) {
+                return Optional.of(min);
+            }
+            return Optional.empty();
         }
 
         @Override

@@ -156,8 +156,7 @@ public final class PluginProcess {
                         throw new IOException(
                                 "plugin pipe closed while waiting (interrupted); partial exit unknown", e);
                     }
-                    throw new IOException(
-                            "plugin pipe closed (worker exit " + exit + "): " + e.getMessage(), e);
+                    throw new IOException("plugin pipe closed (worker exit " + exit + "): " + e.getMessage(), e);
                 }
                 throw e;
             }
@@ -186,4 +185,3 @@ public final class PluginProcess {
                 || lower.contains("broken pipe");
     }
 }
-

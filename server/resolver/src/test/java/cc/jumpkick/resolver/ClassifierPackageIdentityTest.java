@@ -32,7 +32,8 @@ class ClassifierPackageIdentityTest {
                 .build();
 
         PubGrubResolver resolver = new PubGrubResolver(source, null);
-        Resolution r = resolver.resolve(List.of(Dependency.of("app", "com.example:app", VersionSelector.parse("=1.0"))));
+        Resolution r =
+                resolver.resolve(List.of(Dependency.of("app", "com.example:app", VersionSelector.parse("=1.0"))));
 
         assertThat(r.modules()).containsKeys(root, plain, linux);
         assertThat(r.modules().get(plain).version()).isEqualTo("4.1.100.Final");

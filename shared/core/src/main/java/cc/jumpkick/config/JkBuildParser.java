@@ -127,6 +127,8 @@ public final class JkBuildParser {
         Optional<JkBuild.NativeConfig> nativeConfig = parseNativeConfig(result);
         List<PluginDescriptor> installedManifests = PluginTableRegistry.manifestsFor(moduleDir, plugins);
         Map<String, PluginConfig> pluginConfigs = parsePluginTables(result, installedManifests);
+        // assembly = "shrink" enables the shrink packager without requiring an empty [shrink] table.
+        pluginConfigs = ensureShrinkForAssemblyMode(application, pluginConfigs, installedManifests);
         checkUnownedTables(result, moduleDir, plugins, installedManifests);
         deps = withPlatformContributions(deps, project, nativeConfig.isPresent(), pluginConfigs, installedManifests);
         JkBuild.Build build = parseBuild(result);
@@ -138,7 +140,8 @@ public final class JkBuildParser {
                     build.lint(),
                     kotlinPlugins,
                     build.kspOptions(),
-                    build.extraSrc());
+                    build.extraSrc(),
+                    build.testWorkers());
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
@@ -669,7 +672,8 @@ public final class JkBuildParser {
         // (coord / git / path / workspace / sha256) since it's applied to the
         // parsed result regardless of source.
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
-        Dependency dep = parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
+        Dependency dep =
+                parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
         // Cross-package features (ticket-1006): only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
@@ -1034,6 +1038,7 @@ public final class JkBuildParser {
             String url;
             Optional<RepoCredential> credential = Optional.empty();
             Optional<ObjectStoreConfig> objectStore = Optional.empty();
+            List<String> groups = List.of();
             if (value instanceof String s) {
                 url = s;
             } else if (value instanceof TomlTable t) {
@@ -1044,12 +1049,17 @@ public final class JkBuildParser {
                 url = u;
                 credential = RepositoryToml.credential(t, strictInterp(name));
                 objectStore = RepositoryToml.objectStore(t, strictInterp(name));
+                try {
+                    groups = RepositoryToml.groups(t, "repositories." + name);
+                } catch (IllegalArgumentException e) {
+                    throw new JkBuildParseException(e.getMessage(), e);
+                }
             } else {
                 throw new JkBuildParseException(
                         "repositories." + name + " must be a URL string or an inline table with `url`");
             }
             try {
-                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore));
+                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore, groups));
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);
             }
@@ -1236,8 +1246,34 @@ public final class JkBuildParser {
         TomlTable application = root.getTable("application");
         if (application == null) return Optional.empty();
         String main = application.getString("main");
-        boolean assembly = Boolean.TRUE.equals(application.getBoolean("assembly"));
-        return Optional.of(new JkBuild.Application(main, assembly));
+        return Optional.of(new JkBuild.Application(main, parseAssemblyMode(application)));
+    }
+
+    /**
+     * {@code assembly = true} → fat jar; {@code assembly = "shrink"} → R8 packager; absent/false →
+     * off. Also accepts {@code "fat"} / {@code "assembly"} as synonyms for true.
+     */
+    private static JkBuild.AssemblyMode parseAssemblyMode(TomlTable application) {
+        if (!application.contains("assembly")) return JkBuild.AssemblyMode.OFF;
+        if (application.isBoolean("assembly")) {
+            return Boolean.TRUE.equals(application.getBoolean("assembly"))
+                    ? JkBuild.AssemblyMode.FAT
+                    : JkBuild.AssemblyMode.OFF;
+        }
+        if (application.isString("assembly")) {
+            String raw = application.getString("assembly");
+            String s = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
+            return switch (s) {
+                case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
+                case "true", "fat", "assembly", "on" -> JkBuild.AssemblyMode.FAT;
+                case "false", "off", "none", "thin" -> JkBuild.AssemblyMode.OFF;
+                default ->
+                    throw new JkBuildParseException(
+                            "[application].assembly must be true, false, or \"shrink\" (got \"" + raw + "\")");
+            };
+        }
+        throw new JkBuildParseException(
+                "[application].assembly must be true, false, or \"shrink\" (got a non-bool/string value)");
     }
 
     /** Schema-validate each installed plugin's owned table into a {@link PluginConfig}. */
@@ -1249,6 +1285,80 @@ public final class JkBuildParser {
             out.put(manifest.id(), PluginTableRegistry.validate(manifest, table));
         }
         return out;
+    }
+
+    /**
+     * When {@code [application] assembly = "shrink"} and no {@code [shrink]} table is present, inject
+     * shrink plugin defaults so the shrunk-jar packager activates.
+     */
+    private static Map<String, PluginConfig> ensureShrinkForAssemblyMode(
+            Optional<JkBuild.Application> application,
+            Map<String, PluginConfig> pluginConfigs,
+            List<PluginDescriptor> installed) {
+        if (application.isEmpty() || application.get().assembly() != JkBuild.AssemblyMode.SHRINK) {
+            return pluginConfigs;
+        }
+        return ensureShrinkPluginConfig(pluginConfigs, installed);
+    }
+
+    /**
+     * Apply a CLI packaging override over a parsed build for this invocation only.
+     *
+     * <ul>
+     *   <li>{@link JkBuild.AssemblyMode#SHRINK} — set assembly mode and inject shrink defaults when
+     *       missing
+     *   <li>{@link JkBuild.AssemblyMode#FAT} / {@link JkBuild.AssemblyMode#OFF} — set mode and drop
+     *       the shrink plugin config so a prior {@code assembly = "shrink"} or bare {@code [shrink]}
+     *       cannot still own packaging for this run
+     * </ul>
+     */
+    public static JkBuild withAssemblyModeOverride(JkBuild build, JkBuild.AssemblyMode mode) {
+        Objects.requireNonNull(build, "build");
+        if (mode == null) return build;
+        JkBuild next = build.withAssemblyMode(mode);
+        if (mode == JkBuild.AssemblyMode.SHRINK) {
+            if (next.pluginConfig("shrink").isPresent()) return next;
+            Map<String, PluginConfig> configs = ensureShrinkPluginConfig(
+                    next.pluginConfigs(), PluginTableRegistry.manifestsFor(null, next.plugins()));
+            PluginConfig shrink = configs.get("shrink");
+            return shrink == null ? next : next.withPluginConfig(shrink);
+        }
+        // FAT / OFF: CLI override must not leave the shrink packager active.
+        return next.withoutPluginConfig("shrink");
+    }
+
+    private static Map<String, PluginConfig> ensureShrinkPluginConfig(
+            Map<String, PluginConfig> pluginConfigs, List<PluginDescriptor> installed) {
+        if (pluginConfigs.containsKey("shrink")) return pluginConfigs;
+        PluginDescriptor shrink = null;
+        for (PluginDescriptor m : installed) {
+            if ("shrink".equals(m.id()) || "shrink".equals(m.table())) {
+                shrink = m;
+                break;
+            }
+        }
+        if (shrink == null) {
+            shrink = PluginTableRegistry.byTable("shrink").orElse(null);
+        }
+        if (shrink == null) {
+            throw new JkBuildParseException(
+                    "assembly = \"shrink\" requires the built-in shrink plugin (not installed)");
+        }
+        TomlTable empty = Objects.requireNonNull(Toml.parse("[shrink]\n").getTable("shrink"));
+        Map<String, PluginConfig> out = new LinkedHashMap<>(pluginConfigs);
+        out.put(shrink.id(), PluginTableRegistry.validate(shrink, empty));
+        return out;
+    }
+
+    /** Parse CLI / wire override: empty → null (no override), {@code fat}/{@code shrink}. */
+    public static JkBuild.AssemblyMode parseAssemblyOverride(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            case "fat", "true", "assembly" -> JkBuild.AssemblyMode.FAT;
+            case "shrink", "shrunk", "r8" -> JkBuild.AssemblyMode.SHRINK;
+            case "off", "false", "none", "thin" -> JkBuild.AssemblyMode.OFF;
+            default -> throw new IllegalArgumentException("unknown assembly override: " + raw + " (want fat|shrink)");
+        };
     }
 
     /** Core top-level tables; anything else must be owned by an installed plugin. */
@@ -1268,6 +1378,7 @@ public final class JkBuildParser {
                 "image",
                 "build",
                 "format",
+                "test",
                 "variants",
                 "libraries",
                 "jvm",
@@ -1353,59 +1464,96 @@ public final class JkBuildParser {
         return Optional.of(new JkBuild.NativeConfig(mainClass, name, args, graal, always));
     }
 
-    /** Optional {@code [build]} table; absent → {@link JkBuild.Build#EMPTY}. */
+    /**
+     * Optional {@code [build]} and/or {@code [test]} tables. Either may appear alone: a lone
+     * {@code [test] workers = 1} is enough for Mill-style serial opt-out without a {@code [build]}
+     * block. Absent both → {@link JkBuild.Build#EMPTY}.
+     */
     private static JkBuild.Build parseBuild(TomlTable root) {
         TomlTable build = root.getTable("build");
-        if (build == null) return JkBuild.Build.EMPTY;
+        TomlTable test = root.getTable("test");
+        if (build == null && test == null) return JkBuild.Build.EMPTY;
+
         List<String> orderAfter = new ArrayList<>();
-        TomlArray arr = build.getArray("order-after");
-        if (arr != null) {
-            for (int i = 0; i < arr.size(); i++) {
-                Object val = arr.get(i);
-                if (!(val instanceof String s))
-                    throw new JkBuildParseException("[build].order-after must be an array of strings");
-                if (!s.isBlank()) orderAfter.add(s);
-            }
-        }
         List<String> testPluginJars = new ArrayList<>();
-        TomlArray twj = build.getArray("test-plugin-jars");
-        if (twj != null) {
-            for (int i = 0; i < twj.size(); i++) {
-                Object val = twj.get(i);
-                if (!(val instanceof String s))
-                    throw new JkBuildParseException("[build].test-plugin-jars must be an array of strings");
-                if (!s.isBlank()) testPluginJars.add(s);
-            }
-        }
-        // `lint` defaults on (surface deprecation/unchecked); `lint = false`
-        // suppresses jk's default javac lint flags for users who don't want it.
-        boolean lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
-        // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
-        // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
-        // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
+        boolean lint = true;
         List<String> kspOptions = new ArrayList<>();
-        TomlArray kspOpts = build.getArray("ksp-options");
-        if (kspOpts != null) {
-            for (int i = 0; i < kspOpts.size(); i++) {
-                Object val = kspOpts.get(i);
-                if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
-                    throw new JkBuildParseException("[build].ksp-options must be an array of key=value strings");
-                }
-                kspOptions.add(s);
-            }
-        }
-        // [build] extra-src — additional module-relative source roots (variant overlays append).
         List<String> extraSrc = new ArrayList<>();
-        TomlArray es = build.getArray("extra-src");
-        if (es != null) {
-            for (int i = 0; i < es.size(); i++) {
-                Object val = es.get(i);
-                if (!(val instanceof String s) || s.isBlank())
-                    throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
-                extraSrc.add(s);
+        Integer testWorkers = null;
+
+        if (build != null) {
+            TomlArray arr = build.getArray("order-after");
+            if (arr != null) {
+                for (int i = 0; i < arr.size(); i++) {
+                    Object val = arr.get(i);
+                    if (!(val instanceof String s))
+                        throw new JkBuildParseException("[build].order-after must be an array of strings");
+                    if (!s.isBlank()) orderAfter.add(s);
+                }
+            }
+            TomlArray twj = build.getArray("test-plugin-jars");
+            if (twj != null) {
+                for (int i = 0; i < twj.size(); i++) {
+                    Object val = twj.get(i);
+                    if (!(val instanceof String s))
+                        throw new JkBuildParseException("[build].test-plugin-jars must be an array of strings");
+                    if (!s.isBlank()) testPluginJars.add(s);
+                }
+            }
+            // `lint` defaults on (surface deprecation/unchecked); `lint = false`
+            // suppresses jk's default javac lint flags for users who don't want it.
+            lint = !Boolean.FALSE.equals(build.getBoolean("lint"));
+            // [build] ksp-options — project-declared KSP processor options (`key=value`; Room's
+            // room.schemaLocation is the canonical consumer). Plugin manifests contribute theirs
+            // via [[contribute.compiler-args]] ksp; this is the project-owned lane.
+            TomlArray kspOpts = build.getArray("ksp-options");
+            if (kspOpts != null) {
+                for (int i = 0; i < kspOpts.size(); i++) {
+                    Object val = kspOpts.get(i);
+                    if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
+                        throw new JkBuildParseException(
+                                "[build].ksp-options must be an array of key=value strings");
+                    }
+                    kspOptions.add(s);
+                }
+            }
+            // [build] extra-src — additional module-relative source roots (variant overlays append).
+            TomlArray es = build.getArray("extra-src");
+            if (es != null) {
+                for (int i = 0; i < es.size(); i++) {
+                    Object val = es.get(i);
+                    if (!(val instanceof String s) || s.isBlank())
+                        throw new JkBuildParseException(
+                                "[build].extra-src must be an array of directory strings");
+                    extraSrc.add(s);
+                }
+            }
+            // [build] test-workers — pin within-module test JVMs (1 = serial; 0 = auto; omit = CLI).
+            // [build] test-parallel = false is an alias for test-workers = 1 (Mill testParallelism=false).
+            if (build.contains("test-workers")) {
+                Long n = build.getLong("test-workers");
+                if (n == null) throw new JkBuildParseException("[build].test-workers must be an integer >= 0");
+                if (n < 0) throw new JkBuildParseException("[build].test-workers must be >= 0");
+                testWorkers = n.intValue();
+            }
+            if (Boolean.FALSE.equals(build.getBoolean("test-parallel"))) {
+                testWorkers = 1;
             }
         }
-        return new JkBuild.Build(orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc);
+
+        // Optional [test] table (Mill-shaped): workers / parallel override [build] pins when set.
+        if (test != null) {
+            if (test.contains("workers")) {
+                Long n = test.getLong("workers");
+                if (n == null) throw new JkBuildParseException("[test].workers must be an integer >= 0");
+                if (n < 0) throw new JkBuildParseException("[test].workers must be >= 0");
+                testWorkers = n.intValue();
+            }
+            if (Boolean.FALSE.equals(test.getBoolean("parallel"))) {
+                testWorkers = 1;
+            }
+        }
+        return new JkBuild.Build(orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc, testWorkers);
     }
 
     /**
@@ -1473,8 +1621,7 @@ public final class JkBuildParser {
             if (coordinate != null && !coordinate.isBlank()) {
                 String[] parts = coordinate.split(":", -1);
                 if (parts.length != 3 || parts[0].isBlank() || parts[1].isBlank() || parts[2].isBlank()) {
-                    throw new JkBuildParseException(
-                            "plugins." + alias + ".coordinate must be group:artifact:version");
+                    throw new JkBuildParseException("plugins." + alias + ".coordinate must be group:artifact:version");
                 }
                 if (group == null || group.isBlank()) group = parts[0];
                 if (name == null || name.isBlank()) name = parts[1];

@@ -26,9 +26,7 @@ public final class UserConfigEditor {
     public static Path setNerdfont(Path configFile, boolean enabled) throws IOException {
         Path parent = configFile.getParent();
         if (parent != null) Files.createDirectories(parent);
-        String text = Files.isRegularFile(configFile)
-                ? Files.readString(configFile, StandardCharsets.UTF_8)
-                : "";
+        String text = Files.isRegularFile(configFile) ? Files.readString(configFile, StandardCharsets.UTF_8) : "";
         String value = enabled ? "true" : "false";
         String updated = upsertNerdfont(text, value);
         Files.writeString(configFile, updated, StandardCharsets.UTF_8);
@@ -44,8 +42,7 @@ public final class UserConfigEditor {
         }
         if (toml.contains("[global]")) {
             // Insert after [global] header line
-            return toml.replaceFirst(
-                    "(?m)^(\\[global\\][^\\n]*\\n)", "$1nerdfont = " + trueOrFalse + "\n");
+            return toml.replaceFirst("(?m)^(\\[global\\][^\\n]*\\n)", "$1nerdfont = " + trueOrFalse + "\n");
         }
         String block = "[global]\nnerdfont = " + trueOrFalse + "\n";
         if (toml.isBlank()) return block;

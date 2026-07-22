@@ -13,6 +13,7 @@ class PluginProcessPipeTest {
         assertThat(PluginProcess.isPipeClosed(new IOException("closed"))).isTrue();
         assertThat(PluginProcess.isPipeClosed(new IOException("Stream closed"))).isTrue();
         assertThat(PluginProcess.isPipeClosed(new IOException("Broken pipe"))).isTrue();
-        assertThat(PluginProcess.isPipeClosed(new IOException("something else"))).isFalse();
+        assertThat(PluginProcess.isPipeClosed(new IOException("something else")))
+                .isFalse();
     }
 }

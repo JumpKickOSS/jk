@@ -2,6 +2,7 @@
 package cc.jumpkick.repo;
 
 import cc.jumpkick.model.Coordinate;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -12,12 +13,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Builds {@link EffectivePom}s: parent-chain merge, BOM import inlining, version backfill. Depth
- * capped at {@value #MAX_DEPTH}.
+ * capped at {@value #MAX_DEPTH}. Cache is concurrent so lock-time parallel materialize and parallel
+ * BOM-import expansion (JK-1090) can share one builder safely.
  */
 public final class EffectivePomBuilder {
 
@@ -25,7 +30,7 @@ public final class EffectivePomBuilder {
     private static final Pattern PROPERTY_REF = Pattern.compile("\\$\\{([^}]+)\\}");
 
     private final RepoGroup repos;
-    private final Map<String, EffectivePom> cache = new HashMap<>();
+    private final Map<String, EffectivePom> cache = new ConcurrentHashMap<>();
 
     public EffectivePomBuilder(MavenRepo repo) {
         this(RepoGroup.of(repo));
@@ -35,7 +40,14 @@ public final class EffectivePomBuilder {
         this.repos = Objects.requireNonNull(repos, "repos");
     }
 
+    /**
+     * Build (or return cached) effective POM. Concurrent-safe via {@link ConcurrentHashMap} cache;
+     * each call uses its own cycle-detection set so sibling BOM imports can expand in parallel.
+     */
     public EffectivePom build(Coordinate coord) throws IOException, InterruptedException {
+        String key = coord.toGav();
+        EffectivePom hit = cache.get(key);
+        if (hit != null) return hit;
         return buildInternal(coord, new HashSet<>(), 0);
     }
 
@@ -45,7 +57,8 @@ public final class EffectivePomBuilder {
             throw new PomParseException("POM parent / BOM chain deeper than " + MAX_DEPTH + " at " + coord);
         }
         String key = coord.toGav();
-        if (cache.containsKey(key)) return cache.get(key);
+        EffectivePom cached = cache.get(key);
+        if (cached != null) return cached;
         if (!visiting.add(key)) {
             throw new PomParseException("cycle in POM chain at " + key + " (already visiting: " + visiting + ")");
         }
@@ -86,15 +99,26 @@ public final class EffectivePomBuilder {
         props.put("project.version", version);
         props.put("project.packaging", child.packaging());
 
-        // 3. Managed deps — parent first, then child. BOM imports get expanded recursively.
+        // 3. Managed deps — parent first, then child in declaration order (later wins via dedupe).
+        // BOM imports: prefetch/expand unique BOM POMs in parallel (JK-1090), then splice results
+        // back in original order so override semantics stay Maven-correct.
         List<Pom.Dep> mergedManaged = new ArrayList<>();
         if (parent != null) mergedManaged.addAll(parent.managedDependencies());
+        List<Coordinate> bomCoordsOrdered = new ArrayList<>();
         for (Pom.Dep dep : child.managedDependencies()) {
             if (isBomImport(dep)) {
-                EffectivePom bom = buildInternal(
-                        Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props)),
-                        visiting,
-                        depth + 1);
+                bomCoordsOrdered.add(Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props)));
+            }
+        }
+        Map<String, EffectivePom> bomsByGav = buildBomImportsParallel(bomCoordsOrdered, visiting, depth + 1);
+        for (Pom.Dep dep : child.managedDependencies()) {
+            if (isBomImport(dep)) {
+                Coordinate bomCoord = Coordinate.of(dep.groupId(), dep.artifactId(), substitute(dep.version(), props));
+                EffectivePom bom = bomsByGav.get(bomCoord.toGav());
+                if (bom == null) {
+                    // Should not happen; fall back to serial expand.
+                    bom = buildInternal(bomCoord, visiting, depth + 1);
+                }
                 mergedManaged.addAll(bom.managedDependencies());
             } else {
                 mergedManaged.add(dep);
@@ -131,6 +155,57 @@ public final class EffectivePomBuilder {
     }
 
     // --- merge helpers -----------------------------------------------------
+
+    /**
+     * Expand unique {@code import}-scoped BOM POMs keyed by GAV. One unique BOM stays on the caller
+     * thread; several run on {@link JkThreads#io()} with independent cycle sets (JK-1090).
+     */
+    private Map<String, EffectivePom> buildBomImportsParallel(
+            List<Coordinate> bomCoords, Set<String> visiting, int depth) throws IOException, InterruptedException {
+        // Dedupe while preserving first-seen order.
+        LinkedHashMap<String, Coordinate> unique = new LinkedHashMap<>();
+        for (Coordinate c : bomCoords) {
+            unique.putIfAbsent(c.toGav(), c);
+        }
+        if (unique.isEmpty()) return Map.of();
+        if (unique.size() == 1) {
+            Coordinate only = unique.values().iterator().next();
+            return Map.of(only.toGav(), buildInternal(only, visiting, depth));
+        }
+        Map<String, CompletableFuture<EffectivePom>> futures = new LinkedHashMap<>();
+        for (var e : unique.entrySet()) {
+            Set<String> childVisiting = new HashSet<>(visiting);
+            Coordinate bomCoord = e.getValue();
+            futures.put(
+                    e.getKey(),
+                    CompletableFuture.supplyAsync(
+                            () -> {
+                                try {
+                                    return buildInternal(bomCoord, childVisiting, depth);
+                                } catch (IOException | InterruptedException ex) {
+                                    throw new CompletionException(ex);
+                                }
+                            },
+                            JkThreads.io()));
+        }
+        Map<String, EffectivePom> out = new LinkedHashMap<>();
+        for (var e : futures.entrySet()) {
+            try {
+                out.put(e.getKey(), e.getValue().join());
+            } catch (CompletionException ex) {
+                Throwable c = ex.getCause() != null ? ex.getCause() : ex;
+                if (c instanceof IOException io) throw io;
+                if (c instanceof InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw ie;
+                }
+                if (c instanceof RuntimeException re) throw re;
+                if (c instanceof Error err) throw err;
+                throw new IOException(c);
+            }
+        }
+        return out;
+    }
 
     private static boolean isBomImport(Pom.Dep dep) {
         return "import".equals(dep.scope()) && "pom".equals(dep.type());

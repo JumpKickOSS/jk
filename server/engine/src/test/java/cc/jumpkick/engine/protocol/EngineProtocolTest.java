@@ -64,6 +64,17 @@ class EngineProtocolTest {
                 "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, "http://127.0.0.1:8910/", null);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "httpError")).isNull();
+        // Trailing slash on httpUrl must not produce //mcp
+        assertThat(Jsonl.str(json, "mcpUrl")).isEqualTo("http://127.0.0.1:8910/mcp");
+    }
+
+    @Test
+    void mcp_url_strips_trailing_slashes() {
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910/"))
+                .isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910"))
+                .isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp(null)).isNull();
     }
 
     @Test
@@ -114,9 +125,18 @@ class EngineProtocolTest {
     }
 
     @Test
+    void with_session_carries_assembly_override() {
+        String base = EngineProtocol.ping();
+        assertThat(EngineProtocol.assemblyOverrideOf(base)).isEmpty();
+        String line = EngineProtocol.withSession(base, null, null, null, false, false, "shrink");
+        assertThat(EngineProtocol.assemblyOverrideOf(line)).isEqualTo("shrink");
+        String fat = EngineProtocol.withSession(base, null, null, null, false, false, "fat");
+        assertThat(EngineProtocol.assemblyOverrideOf(fat)).isEqualTo("fat");
+    }
+
+    @Test
     void goal_finish_carries_its_kind_discriminator() {
-        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind"))
-                .isEqualTo("build");
+        assertThat(Jsonl.str(EngineProtocol.pipelineFinish("/w", true), "kind")).isEqualTo("build");
         assertThat(Jsonl.str(EngineProtocol.pipelineFinishSync("/w", true, 3, 4), "kind"))
                 .isEqualTo("sync");
         assertThat(Jsonl.str(EngineProtocol.pipelineFinishLock("/w", true, 1, 2, 3), "kind"))

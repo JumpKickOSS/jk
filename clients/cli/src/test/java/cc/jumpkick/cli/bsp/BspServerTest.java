@@ -23,12 +23,10 @@ class BspServerTest {
 
     @Test
     void extractTargetUris_finds_fragments() {
-        String json =
-                """
+        String json = """
                 {"params":{"targets":[{"uri":"file:///tmp/ws#api"},{"uri":"file:///tmp/ws#worker"}]}}
                 """;
-        assertThat(BspServer.extractTargetUris(json))
-                .contains("file:///tmp/ws#api", "file:///tmp/ws#worker");
+        assertThat(BspServer.extractTargetUris(json)).contains("file:///tmp/ws#api", "file:///tmp/ws#worker");
     }
 
     @Test
@@ -42,9 +40,7 @@ class BspServerTest {
 
     @Test
     void initialize_advertises_test_provider(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -64,9 +60,7 @@ class BspServerTest {
 
     @Test
     void buildTargets_includes_canTest_capabilities(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -78,13 +72,9 @@ class BspServerTest {
         IdeEngineClient ide = IdeEngineClient.open(dir, cache, null);
         ide.connect();
 
-        String session = frame(init(1))
-                + frame(
-                        """
+        String session = frame(init(1)) + frame("""
                         {"jsonrpc":"2.0","id":2,"method":"workspace/buildTargets","params":{}}
-                        """)
-                + frame(shutdown(3))
-                + frame(exit());
+                        """) + frame(shutdown(3)) + frame(exit());
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
         String responses = out.toString(StandardCharsets.UTF_8);
@@ -96,9 +86,7 @@ class BspServerTest {
     @Test
     void buildTarget_test_returns_statusCode(@TempDir Path dir) throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -106,9 +94,7 @@ class BspServerTest {
                 jdk = 25
                 java = 25
                 """);
-        Files.writeString(
-                src.resolve("App.java"),
-                """
+        Files.writeString(src.resolve("App.java"), """
                 package t;
                 public class App {
                   public static int one() { return 1; }
@@ -118,13 +104,9 @@ class BspServerTest {
         IdeEngineClient ide = IdeEngineClient.open(dir, cache, null);
         ide.connect();
 
-        String session = frame(init(1))
-                + frame(
-                        """
+        String session = frame(init(1)) + frame("""
                         {"jsonrpc":"2.0","id":2,"method":"buildTarget/test","params":{"targets":[{"uri":"file://x#root"}]}}
-                        """)
-                + frame(shutdown(3))
-                + frame(exit());
+                        """) + frame(shutdown(3)) + frame(exit());
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         new BspServer(ide, new ByteArrayInputStream(session.getBytes(StandardCharsets.UTF_8)), out).serve();
         String responses = out.toString(StandardCharsets.UTF_8);
@@ -134,9 +116,7 @@ class BspServerTest {
 
     @Test
     void multi_header_content_length_is_read(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -144,11 +124,9 @@ class BspServerTest {
                 jdk = 25
                 """);
         IdeEngineClient ide = IdeEngineClient.open(dir, dir.resolve("cache"), null);
-        String body =
-                """
+        String body = """
                 {"jsonrpc":"2.0","id":1,"method":"build/initialize","params":{}}
-                """
-                        .trim();
+                """.trim();
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         String framed = "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\n"
                 + "Content-Length: "

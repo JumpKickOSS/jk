@@ -39,13 +39,15 @@ JDK (the pin above qualifies).
 Full `./gradlew build` hits Maven Central; avoid rate-limited environments for the
 full suite.
 
-### Self-host (phase 2) — workspace modules + thin workers with jk
+### Self-host (phase 2+) — workspace modules + thin workers with jk
+
+Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
+Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
-`server/`, `clients/`, and thin workers under `plugins/test-runner` +
-`plugins/java-compiler`). Those two workers package as **shadow jars** with
-`Main-Class = PluginMain` (plugin-sdk shaded in). Other `plugins/*` stay Gradle-only
-(fat workers + `installLocal`).
+`server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
+`server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers package as
+**assembly jars** with `Main-Class = PluginMain`. Side-load with `jk plugin install-local`.
 
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
@@ -53,11 +55,14 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 # 1) Produce a local JumpKick + side-load worker jars into ~/.jk/cache
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install layout
+export PATH="$HOME/.jk/versions/0.10.1/bin:$PATH"   # or your install layout
 
-# 2) Lock + compile/package workspace modules (no Gradle for javac)
+# 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
 jk build --skip-tests
+jk plugin install-local
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+jk release --skip-tests
 ```
 
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
@@ -70,9 +75,12 @@ ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
 "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 
-# 2) Same dogfood as (A)
+# 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
 jk build --skip-tests
+jk plugin install-local
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+jk release --skip-tests --skip-native
 ```
 
 The client never embeds the engine (ticket-1020). Spawning uses
@@ -81,9 +89,15 @@ The client never embeds the engine (ticket-1020). Spawning uses
 | Still Gradle | Why |
 |---|---|
 | `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
-| `./gradlew dist` / `nativeCompile` | Native-image + fat engine jar packaging |
-| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` (PluginJar.locate) |
-| Most `plugins/*` (not test-runner / java-compiler) | Fat workers without workspace manifests yet |
+| `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
+| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
+
+Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
+
+```bash
+jk release --skip-tests    # native CLI + JVM engine + workers; alias: jk dist
+./install.sh target/dist/jk
+```
 
 ### Per-OS CI (JK-1073)
 
@@ -126,9 +140,8 @@ engine only when delete fails). Full `./gradlew test` is longer. Use module filt
 re-run full `./gradlew test` before merge to `main`. Shared dep cache:
 `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
-Prefer `jk build --skip-tests` for the documented dogfood path; keep
-`./gradlew :engine:test` / `:cli:test` for the full nested suites (Gradle wires
-worker jars via configurations).
+Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
+for dogfood; keep `./gradlew :cli:test` for the CLI integration suite (nested engines).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
 

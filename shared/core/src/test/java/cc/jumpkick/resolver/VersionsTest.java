@@ -146,15 +146,8 @@ class VersionsTest {
 
     @Test
     void release_synonyms_and_calendar_versions_are_stable() {
-        for (String v : new String[] {
-            "1.0.Final",
-            "1.0.RELEASE",
-            "1.0-GA",
-            "1.0.GA",
-            "2024.01",
-            "2024.1.0",
-            "32.1.3-jre"
-        }) {
+        for (String v :
+                new String[] {"1.0.Final", "1.0.RELEASE", "1.0-GA", "1.0.GA", "2024.01", "2024.1.0", "32.1.3-jre"}) {
             assertThat(Versions.isStable(v)).as(v).isTrue();
         }
     }
