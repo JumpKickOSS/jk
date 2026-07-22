@@ -4,14 +4,12 @@
 #
 # Secrets:
 #   JK_RELEASE_SIGNING_KEY     — PKCS#8 base64 Ed25519 private key (required for .sig)
-#   JK_RELEASE_GCS_BUCKET      — optional; GCS bucket name (no gs://), e.g. jumpkick-releases
-#   JK_RELEASE_GCS_SA_JSON     — optional; GCP service-account JSON for gsutil upload
-#                                (roles: storage.objectAdmin on the bucket)
+#   JK_RELEASE_GCS_BUCKET      — GCS bucket name (no gs://), e.g. jkbuild-releases
+#   JK_RELEASE_GCS_SA_JSON     — GCP service-account JSON (storage.objectAdmin on the bucket)
 #
-# Hosting: objects live in GCS; public CDN is Firebase (jumpkick.build). Upload path is
+# Hosting: objects in GCS; public CDN will be Firebase later. Path:
 #   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/VERSION
-#
-# Until GCS secrets exist, each matrix job still builds/signs and uploads a workflow artifact.
+# Public HTTPS (until Firebase): https://storage.googleapis.com/$BUCKET/releases/…
 
 name: Release
 
@@ -19,32 +17,33 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (no v prefix), e.g. 0.10.1'
+        required: true
+        default: '0.10.1'
 
 env:
   TERM: xterm-256color
 
 jobs:
   build:
-    name: Build ${{ matrix.os }} ${{ matrix.arch_label }}
+    name: ${{ matrix.arch_label }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             arch_label: linux-x86_64
-            java_dist: graalvm
           - os: ubuntu-24.04-arm
             arch_label: linux-aarch64
-            java_dist: graalvm
           - os: macos-13
             arch_label: macos-x86_64
-            java_dist: graalvm
           - os: macos-14
             arch_label: macos-aarch64
-            java_dist: graalvm
           - os: windows-latest
             arch_label: windows-x86_64
-            java_dist: graalvm
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -55,54 +54,36 @@ jobs:
           distribution: 'graalvm'
           github-token: ${{ secrets.GITHUB_TOKEN }}
           cache: 'gradle'
-        continue-on-error: true
 
-      - uses: actions/setup-java@v4
-        if: failure()
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
-
-      - name: Resolve version from tag
+      - name: Resolve version
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
           echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
           echo "Building release $VER (${{ matrix.arch_label }})"
 
       - name: Dist (native + engine)
         shell: bash
         run: |
-          ./gradlew clean dist --no-daemon || ./gradlew :engine:shadowJar --no-daemon
-          # If nativeCompile is unavailable, assemble engine-only for later merge.
-          ls -la build/dist || true
-          ls -la server/engine/build/libs || true
-          mkdir -p build/dist/lib
-          if [[ ! -f build/dist/lib/jk-engine-*.jar ]] 2>/dev/null; then
-            cp server/engine/build/libs/jk-engine-*.jar build/dist/lib/ 2>/dev/null || true
-          fi
+          set -euo pipefail
+          ./gradlew clean dist --no-daemon
+          ls -la build/dist
+          ls -la build/dist/lib || true
 
       - name: Assemble + sign release dir
         shell: bash
         env:
           JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
         run: |
+          set -euo pipefail
           chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh
-          if [[ -f build/dist/jk || -f build/dist/jk.exe ]]; then
-            scripts/assemble-release-dir.sh "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
-          else
-            echo "No native binary — packaging engine jar only"
-            mkdir -p "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
-            cp build/dist/lib/jk-engine-*.jar "build/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-engine-${JK_VERSION}.jar" 2>/dev/null || \
-              cp server/engine/build/libs/jk-engine-*.jar "build/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-engine-${JK_VERSION}.jar"
-            (cd "build/release/${JK_VERSION}-${{ matrix.arch_label }}" && (shasum -a 256 * >SHA256SUMS || sha256sum * >SHA256SUMS))
-            if [[ -n "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
-              scripts/sign-release.sh "build/release/${JK_VERSION}-${{ matrix.arch_label }}/SHA256SUMS"
-            fi
-          fi
-          ls -la "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+          OUT="build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+          scripts/assemble-release-dir.sh "$OUT"
+          ls -la "$OUT"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
@@ -112,29 +93,45 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Merge + publish pointer
+    name: Merge + publish to GCS
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ always() && needs.build.result == 'success' }}
+    # Run after matrix finishes; publish whatever platform artifacts succeeded.
+    if: ${{ always() && !cancelled() }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download all platform artifacts
+      - name: Resolve version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ inputs.version }}"
+          else
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Download platform artifacts
         uses: actions/download-artifact@v4
         with:
           path: staging
           pattern: release-*
+          merge-multiple: false
 
       - name: Flatten into version directory
         shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
-          mkdir -p "out/${VER}"
-          # Merge all platform files; last engine jar wins (should be identical).
-          find staging -type f \( -name 'jk-*' -o -name 'jk-engine-*.jar' -o -name 'SHA256SUMS*' \) -exec cp -n {} "out/${VER}/" \; 2>/dev/null || true
-          find staging -type f -exec cp {} "out/${VER}/" \; 2>/dev/null || true
-          # Recompute combined SHA256SUMS over the merged set (exclude old SUMS/sig).
+          set -euo pipefail
+          VER="$JK_VERSION"
+          mkdir -p "out/${VER}" "out/latest"
+          # Copy every file from every platform dir (skip nested SHA256SUMS until recompute).
+          while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            case "$base" in
+              SHA256SUMS|SHA256SUMS.sig) continue ;;
+            esac
+            cp -f "$f" "out/${VER}/$base"
+          done < <(find staging -type f -print0)
           (
             cd "out/${VER}"
             rm -f SHA256SUMS SHA256SUMS.sig
@@ -142,54 +139,56 @@ jobs:
             else shasum -a 256 * >SHA256SUMS
             fi
           )
-          echo "$VER" > out/latest/VERSION
-          ls -laR out
+          printf '%s\n' "$VER" > out/latest/VERSION
+          echo "=== out/${VER} ==="
+          ls -la "out/${VER}"
+          echo "VERSION=$(cat out/latest/VERSION)"
 
       - name: Re-sign combined SHA256SUMS
         shell: bash
         env:
           JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
-          if [[ -n "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
-            chmod +x scripts/sign-release.sh
-            scripts/sign-release.sh "out/${VER}/SHA256SUMS"
-          else
+          set -euo pipefail
+          if [[ -z "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
             echo "JK_RELEASE_SIGNING_KEY missing — combined sums unsigned"
+            exit 1
           fi
+          chmod +x scripts/sign-release.sh
+          scripts/sign-release.sh "out/${JK_VERSION}/SHA256SUMS"
+          ls -la "out/${JK_VERSION}/SHA256SUMS"*
 
-      - name: Upload merged release tree
+      - name: Upload merged release tree (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ github.ref_name }}-merged
+          name: release-${{ env.JK_VERSION }}-merged
           path: out/
 
-      # Gate publish inside the step (empty secrets must not fail the job).
-      - name: Upload to GCS (Firebase CDN origin)
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Upload to GCS
         env:
           BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
-          SA_JSON: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${BUCKET:-}" || -z "${SA_JSON:-}" ]]; then
-            echo "JK_RELEASE_GCS_BUCKET / JK_RELEASE_GCS_SA_JSON not set — skip GCS publish"
-            exit 0
+          VER="$JK_VERSION"
+          if [[ -z "${BUCKET:-}" ]]; then
+            echo "JK_RELEASE_GCS_BUCKET empty"
+            exit 1
           fi
-          TAG="${GITHUB_REF_NAME}"
-          VER="${TAG#v}"
-          # google-github-actions/setup-gcloud installs gcloud + gsutil on the runner.
-          curl -fsSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$RUNNER_TEMP" >/dev/null
-          export PATH="$RUNNER_TEMP/google-cloud-sdk/bin:$PATH"
-          echo "$SA_JSON" > "$RUNNER_TEMP/gcs-sa.json"
-          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/gcs-sa.json" --quiet
-          # Public objects for install.sh / self-update; Firebase CDN fronts jumpkick.build.
           gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
           gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
             "gs://${BUCKET}/releases/latest/VERSION"
-          # Prefer uniform bucket-level public access in GCP console; ACL ch is best-effort.
-          gsutil -m acl ch -u AllUsers:R "gs://${BUCKET}/releases/${VER}/**" 2>/dev/null || true
-          gsutil acl ch -u AllUsers:R "gs://${BUCKET}/releases/latest/VERSION" 2>/dev/null || true
-          rm -f "$RUNNER_TEMP/gcs-sa.json"
-          echo "Published gs://${BUCKET}/releases/${VER}/ and latest/VERSION"
+          echo "Published:"
+          echo "  gs://${BUCKET}/releases/${VER}/"
+          echo "  gs://${BUCKET}/releases/latest/VERSION"
+          echo "  https://storage.googleapis.com/${BUCKET}/releases/latest/VERSION"
+          gsutil ls -l "gs://${BUCKET}/releases/${VER}/"
+          gsutil cat "gs://${BUCKET}/releases/latest/VERSION"
