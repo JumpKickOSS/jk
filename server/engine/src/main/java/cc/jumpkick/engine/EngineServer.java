@@ -839,11 +839,12 @@ public final class EngineServer implements AutoCloseable {
             runnerRef.set(started);
             // Keep-alive + optional wall deadline while the job runs (ticket-1051 / JK-1067).
             // Client stream idle (JK_STREAM_IDLE_MS) resets on each heartbeat line. On deadline:
-            // cancel cooperatively, destroyForcibly registered workers, then the connection thread
-            // bounds its wait (deadline + grace) so activePipelines / drain can complete.
+            // cancel + worker shutdown (grace→force) + interrupt runner; connection join is bounded.
+            // User cancel / EOF (JK-1096): same worker policy with a short cancel grace — never hang.
             long heartbeatMs = jobHeartbeatMs();
             long deadlineMs = jobDeadlineMs();
             long graceMs = jobDeadlineGraceMs();
+            long cancelGraceMs = JobWorkers.cancelGraceMs();
             if (heartbeatMs > 0 || deadlineMs > 0) {
                 heartbeatThread = Thread.ofVirtual().name("jk-job-watchdog", 0).start(() -> {
                     long start = clockMillis.getAsLong();
@@ -875,30 +876,47 @@ public final class EngineServer implements AutoCloseable {
                 String line;
                 while (done.getCount() > 0 && (line = reader.readLine()) != null) {
                     if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
-                        cancelToken.cancel();
+                        // Explicit cancel: cooperative flag + schedule worker grace→force (JK-1096).
+                        beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
                     }
                 }
                 if (done.getCount() > 0) {
-                    cancelToken.cancel(); // EOF: the client disconnected — best-effort cancel
+                    // EOF / client gone mid-job — same bounded cancel path (Ctrl-C halt, kill -9 client).
+                    beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
                 }
             } catch (IOException ignored) {
-                cancelToken.cancel();
+                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
             }
             try {
-                // Bound the join when a wall deadline is set so a wedged runner cannot hang the
-                // connection forever (and block draining / cache maintenance accounting).
+                // Bound the join so a wedged runner cannot hang the connection forever.
                 if (deadlineMs > 0) {
                     long elapsed = clockMillis.getAsLong() - eventStartMillis;
                     long budget = Math.max(1L, deadlineMs + graceMs - elapsed);
                     if (!done.await(budget, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                         enforceDeadline(eventRequestId, cancelToken, runnerRef.get(), writer, deadlineMs);
                         // Last chance for the runner to unwind after worker kill / interrupt.
-                        if (!done.await(Math.min(graceMs, 5_000L), java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        // Cap hard so UX never waits the full 30s grace when the job is deadlocked.
+                        long lastChance = Math.min(graceMs, Math.max(cancelGraceMs + 200L, 1_000L));
+                        if (!done.await(lastChance, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                             log.accept("jk engine: job "
                                     + eventRequestId
                                     + " still running after deadline+"
-                                    + graceMs
+                                    + lastChance
                                     + "ms grace — abandoned; workers killed");
+                        }
+                    }
+                } else if (cancelToken.cancelled() && done.getCount() > 0) {
+                    // User cancel without wall deadline: join only for cancelGrace + small buffer.
+                    long joinBudget = cancelGraceMs + 500L;
+                    if (!done.await(joinBudget, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        JobWorkers.shutdownForRequest(eventRequestId, 0L);
+                        interruptRunner(runnerRef.get());
+                        if (!done.await(200L, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                            log.accept("jk engine: job "
+                                    + eventRequestId
+                                    + " still running after cancel+"
+                                    + joinBudget
+                                    + "ms — abandoned; workers force-killed");
                         }
                     }
                 } else {
@@ -909,7 +927,8 @@ public final class EngineServer implements AutoCloseable {
             }
         } finally {
             if (heartbeatThread != null) heartbeatThread.interrupt();
-            JobWorkers.destroyForRequest(eventRequestId);
+            // Belts: any leftover workers die now (grace 0 — request is ending).
+            JobWorkers.shutdownForRequest(eventRequestId, 0L);
             JobWorkers.clear(eventRequestId);
             if (pipeline) maybeIdleBoundaryGc();
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
@@ -930,8 +949,42 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Cooperative cancel + kill forked workers + interrupt the runner (JK-1067). Idempotent; safe
-     * from the watchdog and the connection thread.
+     * User / EOF cancel (JK-1096): set cooperative flag and shut down workers with a short
+     * grace→force window on a helper thread so the connection reader is not blocked. Idempotent.
+     */
+    private void beginUserCancel(
+            long eventRequestId,
+            Session.CancelToken cancelToken,
+            java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
+            long cancelGraceMs) {
+        cancelToken.cancel();
+        Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
+            int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
+            interruptRunner(runnerRef.get());
+            if (killed > 0) {
+                log.accept("jk engine: cancel job "
+                        + eventRequestId
+                        + " — shut down "
+                        + killed
+                        + " worker process(es) (grace "
+                        + cancelGraceMs
+                        + "ms)");
+            }
+        });
+    }
+
+    private static void interruptRunner(Thread runnerThread) {
+        if (runnerThread == null) return;
+        try {
+            runnerThread.interrupt();
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+    }
+
+    /**
+     * Wall-deadline kill (JK-1067 / JK-1096): cooperative cancel + worker grace→force + interrupt
+     * runner. Idempotent; safe from the watchdog and the connection thread.
      */
     private void enforceDeadline(
             long eventRequestId,
@@ -940,14 +993,9 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer,
             long deadlineMs) {
         cancelToken.cancel();
-        int killed = JobWorkers.destroyForRequest(eventRequestId);
-        if (runnerThread != null) {
-            try {
-                runnerThread.interrupt();
-            } catch (RuntimeException ignored) {
-                // best-effort
-            }
-        }
+        // Soft then force within cancel grace (not the 30s join grace).
+        int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
+        interruptRunner(runnerThread);
         sendQuiet(
                 writer,
                 EngineProtocol.error(

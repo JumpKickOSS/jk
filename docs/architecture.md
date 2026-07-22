@@ -47,16 +47,19 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 | **Probe** (`ping` / `hello` / `status`) | One request/reply | ~2s client watchdog |
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
 | **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async jobs run | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
-| **Job wall deadline** (ticket-1051 / JK-1067) | Cancel token + kill registered worker processes + interrupt runner; connection join bounded by deadline + grace; `error` code `deadline` | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**) |
+| **Job wall deadline** (ticket-1051 / JK-1067) | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
+| **User cancel / EOF** (JK-1096) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 
 If a stream goes idle, the client fails closed with a clear error (tune with `JK_STREAM_IDLE_MS`;
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
-When a deadline fires, the engine does **not** only set a cooperative flag: it
-`destroyForcibly`s forked plugin/test worker JVMs registered for that request so a hung child
-cannot pin the runner (and cache maintenance) forever.
+
+**Worker cancel contract (JK-1096):** registered plugin/test JVMs get `Process.destroy()`
+(SIGTERM), then after `JK_CANCEL_GRACE_MS` any survivors are `destroyForcibly()`. Plugins must
+treat a **sub-second** window as all they get to flush state. Cancel always finishes; the
+connection thread never `await`s unboundedly on a cancelled job.
 
 ```bash
 jk engine start | status | stop

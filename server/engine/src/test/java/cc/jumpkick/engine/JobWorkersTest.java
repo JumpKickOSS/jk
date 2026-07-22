@@ -82,4 +82,33 @@ class JobWorkersTest {
             JobWorkers.clear(req);
         }
     }
+
+    @Test
+    void shutdown_with_grace_terminates_and_does_not_hang() throws Exception {
+        long req = 99L;
+        JobWorkers.open(req);
+        // Ignore SIGTERM-friendly process: sleep still exits on destroy() on macOS/Linux.
+        Process p = new ProcessBuilder("sleep", "120").start();
+        try {
+            JobWorkers.register(p);
+            long t0 = System.nanoTime();
+            int killed = JobWorkers.shutdownForRequest(req, 300L);
+            long ms = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - t0);
+            assertThat(killed).isEqualTo(1);
+            assertThat(p.isAlive()).isFalse();
+            // Must not wait far past grace (poll + force); allow generous CI slack.
+            assertThat(ms).isLessThan(3_000L);
+            assertThat(JobWorkers.trackedCount(req)).isEqualTo(0);
+        } finally {
+            if (p.isAlive()) p.destroyForcibly();
+            JobWorkers.close();
+            JobWorkers.clear(req);
+        }
+    }
+
+    @Test
+    void cancel_grace_default_is_sub_second() {
+        assertThat(JobWorkers.DEFAULT_CANCEL_GRACE_MS).isEqualTo(500L);
+        assertThat(JobWorkers.cancelGraceMs()).isBetween(0L, 5_000L);
+    }
 }

@@ -21,6 +21,7 @@ State and cache live under `~/.jk/` (`JK_HOME` relocates the whole tree).
 | `JK_CACHE_DIR` | Download / action cache only (CAS: `repos/`, `sha256/`, `metadata/`). Default `$JK_HOME/cache` |
 | `JK_AOT_TRAIN=off` | Skip AOT **train-on-miss** (engine sidecar + plugin workers); still **use** existing `.aot` caches. Default on for live engines; CI / short-lived builds usually set `off`. Also `-Djk.aot.train=off`. |
 | `JK_WORKER_AOT=off` | Plugin workers only: no AOT map **and** no train (`-Djk.worker.aot=off`). Control arm for benches. |
+| `JK_CANCEL_GRACE_MS` | Soft-kill window for forked workers on cancel (default **500**; then force). Cancel never hangs. |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; **passed to the resident engine** on the wire |
 
 Cold resolve tests without wiping your real cache:

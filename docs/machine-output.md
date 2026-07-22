@@ -25,7 +25,7 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 | 4 | `details.json` remains post-hoc summary (same fields where applicable) | **Existing** (JK-1079); keep aligned |
 | 5 | Always-on run log JSONL under cache (`EventLogListener`) | **Existing** — same shape as stdout JSONL |
 | 6 | Engine MCP adapter (thin, discoverable like web) | **Backlog [JK-1095](https://github.com/jkbuild/kanartist)** |
-| 7 | Robust cancel (graceful → hard kill; never hang) | **Backlog [JK-1096](https://github.com/jkbuild/kanartist)** (P1) |
+| 7 | Robust cancel (graceful → hard kill; never hang) | **Done (JK-1096)** — `JobWorkers.shutdownForRequest` + bounded cancel join |
 
 ## Unified information model
 
@@ -147,9 +147,16 @@ When you add information (e.g. module on a test failure):
 6. [ ] MCP tool schema when MCP exists  
 7. [ ] This doc’s table row if a new **type** appears  
 
-## Cancel (related; separate ticket)
+## Cancel (JK-1096)
 
-Ctrl-C / cancel must be **reliable and non-hanging**: cooperative window (sub-second for workers/plugins to flush), then forced kill. Never block forever. See kanartist ticket **JK-1096** (robust cancel). UX timeout must stay small so the terminal does not feel wedged.
+| Knob | Default | Role |
+|------|---------|------|
+| `JK_CANCEL_GRACE_MS` | **500** | Soft `destroy()` then force-kill workers; clamped 0…5000 |
+| Join after user cancel | grace + 500 ms | Connection thread abandons if runner still stuck |
+| Pipeline step cancel | 200 ms | `Future.cancel` after cooperative flag |
+
+Policy: **always terminates; never hangs.** Plugins/workers must anticipate a short cancel window
+(save state in well under a second). See [architecture.md](architecture.md) liveness table.
 
 ## Refs
 
