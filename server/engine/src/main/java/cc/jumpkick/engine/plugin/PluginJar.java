@@ -2,9 +2,15 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.repo.RepoArtifactStore;
+import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -12,8 +18,9 @@ import java.util.List;
 
 /**
  * Registry of jk's child-JVM plugin jars. Locates each by Maven coordinate
- * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then
- * {@code repos/local/}, then {@code repos/central/} under the jk cache.
+ * ({@code cc.jumpkick:<artifactId>:<version>}), in order: {@code -D} jar property, then local cache
+ * stores ({@code repos/local}, {@code repos/jumpkick}, {@code repos/central}), then a one-shot
+ * fetch from the official JumpKick Maven repository into {@code repos/jumpkick/}.
  */
 public enum PluginJar {
     TEST_RUNNER("jk-test-runner", "jk.test.runner.jar", ":test-runner:installLocal"),
@@ -28,6 +35,9 @@ public enum PluginJar {
     ANDROID("jk-android", "jk.android.plugin.jar", ":android:installLocal"),
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
     SHRINK("jk-shrink", "jk.shrink.plugin.jar", ":shrink:installLocal");
+
+    /** Cache store + remote repo name for the official first-party Maven repo. */
+    public static final String OFFICIAL_REPO = "jumpkick";
 
     private final String artifactId;
     private final String jarProperty;
@@ -58,14 +68,14 @@ public enum PluginJar {
      * The m2-layout relative path for this plugin at its current version.
      * E.g. {@code cc/jumpkick/jk-formatter/0.10.1/jk-formatter-0.10.1.jar}.
      */
-    private String relativePath() {
+    public String relativePath() {
         String version = JkVersion.VERSION;
         return "cc/jumpkick/" + artifactId + "/" + version + "/" + artifactId + "-" + version + ".jar";
     }
 
     /**
-     * Locate the plugin jar: {@code -D<jarProperty>} override first, then {@code repos/local/},
-     * then {@code repos/central/}. Throws {@link PluginJarNotFoundException} with side-load
+     * Locate the plugin jar: {@code -D<jarProperty>} override first, then cache stores, then fetch
+     * from the official JumpKick repo. Throws {@link PluginJarNotFoundException} with side-load
      * instructions if none resolves.
      */
     public Path locate(Cas cas) {
@@ -82,15 +92,76 @@ public enum PluginJar {
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();
 
-        for (String repoName : List.of("local", "central")) {
+        for (String repoName : List.of("local", OFFICIAL_REPO, "central")) {
             RepoArtifactStore store = new RepoArtifactStore(cacheRoot, repoName);
             var result = store.locate(relPath);
             if (result.isPresent()) return result.get();
-            // Record the path that was checked (the artifact path, not the sidecar)
             checked.add(cacheRoot.resolve("repos").resolve(repoName).resolve(relPath));
         }
 
+        // First-run / clean cache: pull from the official Maven layout on GCS (or JK_OFFICIAL_REPO_URL).
+        try {
+            Path fetched = fetchOfficial(cas, relPath);
+            if (fetched != null) return fetched;
+        } catch (Exception e) {
+            throw new PluginJarNotFoundException(
+                    artifactId,
+                    coordinate,
+                    checked,
+                    jarProperty,
+                    "official fetch failed: " + e.getMessage());
+        }
+
         throw new PluginJarNotFoundException(artifactId, coordinate, checked, jarProperty);
+    }
+
+    /**
+     * Download {@code relPath} (+ optional {@code .sha256}) from the official repo into
+     * {@code repos/jumpkick/}. Returns the local path or {@code null} if the remote 404s.
+     */
+    static Path fetchOfficial(Cas cas, String relPath) throws IOException, InterruptedException {
+        URI base = officialRepoBase();
+        URI jarUri = base.resolve(relPath);
+        Http http = new Http();
+        HttpResponse<byte[]> jarResp;
+        try {
+            jarResp = http.get(jarUri);
+        } catch (IOException e) {
+            return null;
+        }
+        if (jarResp.statusCode() == 404) return null;
+        if (jarResp.statusCode() < 200 || jarResp.statusCode() >= 300) {
+            throw new IOException("GET " + jarUri + " → HTTP " + jarResp.statusCode());
+        }
+        byte[] bytes = jarResp.body();
+        String sha = Hashing.sha256Hex(bytes);
+        // Prefer published sidecar when present
+        try {
+            HttpResponse<byte[]> sumResp = http.get(URI.create(jarUri + ".sha256"));
+            if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
+                String published = new String(sumResp.body()).strip().split("\\s+")[0];
+                if (published.length() == 64 && !published.equalsIgnoreCase(sha)) {
+                    throw new IOException("checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+                }
+                if (published.length() == 64) sha = published.toLowerCase();
+            }
+        } catch (IOException ignored) {
+            // sidecar optional for fetch; we still pin what we hashed
+        }
+        Path casBlob = cas.put(bytes, sha);
+        RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
+        store.materialize(relPath, casBlob, sha);
+        return store.locate(relPath).orElseThrow();
+    }
+
+    /** Base URL ending in {@code /} for the official first-party Maven repo. */
+    public static URI officialRepoBase() {
+        String env = System.getenv("JK_OFFICIAL_REPO_URL");
+        if (env != null && !env.isBlank()) {
+            return URI.create(env.endsWith("/") ? env : env + "/");
+        }
+        // Prefer jumpkick.build once DNS works (Firebase redirects to GCS); GCS origin always works.
+        return RepositorySpec.JUMPKICK.url();
     }
 
     /** Locate using the default jk CAS ({@code $JK_CACHE_DIR}). */

@@ -13,7 +13,12 @@ public final class PluginJarNotFoundException extends RuntimeException {
     private final String jarProperty;
 
     PluginJarNotFoundException(String artifactId, String coordinate, List<Path> pathsChecked, String jarProperty) {
-        super(buildMessage(artifactId, coordinate, pathsChecked, jarProperty));
+        this(artifactId, coordinate, pathsChecked, jarProperty, null);
+    }
+
+    PluginJarNotFoundException(
+            String artifactId, String coordinate, List<Path> pathsChecked, String jarProperty, String detail) {
+        super(buildMessage(artifactId, coordinate, pathsChecked, jarProperty, detail));
         this.artifactId = artifactId;
         this.coordinate = coordinate;
         this.pathsChecked = List.copyOf(pathsChecked);
@@ -21,7 +26,7 @@ public final class PluginJarNotFoundException extends RuntimeException {
     }
 
     private static String buildMessage(
-            String artifactId, String coordinate, List<Path> pathsChecked, String jarProperty) {
+            String artifactId, String coordinate, List<Path> pathsChecked, String jarProperty, String detail) {
         var sb = new StringBuilder();
         sb.append(artifactId)
                 .append(".jar not found for coordinate ")
@@ -31,8 +36,12 @@ public final class PluginJarNotFoundException extends RuntimeException {
         for (Path p : pathsChecked) {
             sb.append("  ").append(p).append('\n');
         }
+        if (detail != null && !detail.isBlank()) {
+            sb.append(detail).append('\n');
+        }
         sb.append("Run `./gradlew :").append(artifactId.replace("jk-", "")).append(":installLocal`");
         sb.append(" or set -D").append(jarProperty).append(" to override.");
+        sb.append("\nOfficial repo: https://jumpkick.build/repo/ (GCS: storage.googleapis.com/jkbuild-releases/repo/)");
         return sb.toString();
     }
 

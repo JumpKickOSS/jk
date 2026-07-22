@@ -30,6 +30,16 @@
         "source": "/releases/:path*",
         "destination": "https://storage.googleapis.com/jkbuild-releases/releases/:path*",
         "type": 302
+      },
+      {
+        "source": "/repo",
+        "destination": "https://storage.googleapis.com/jkbuild-releases/repo/",
+        "type": 302
+      },
+      {
+        "source": "/repo/:path*",
+        "destination": "https://storage.googleapis.com/jkbuild-releases/repo/:path*",
+        "type": 302
       }
     ],
     "rewrites": [

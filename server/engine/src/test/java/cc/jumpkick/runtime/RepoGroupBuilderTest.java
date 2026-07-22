@@ -13,19 +13,22 @@ import org.junit.jupiter.api.Test;
 class RepoGroupBuilderTest {
 
     @Test
-    void empty_declaration_defaults_to_central_then_google() {
+    void empty_declaration_defaults_to_jumpkick_central_google() {
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(Map.of());
-        assertThat(effective).containsExactly(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+        assertThat(effective)
+                .containsExactly(
+                        RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+        assertThat(RepositorySpec.JUMPKICK.groups()).contains("cc.jumpkick", "build.jumpkick.*");
     }
 
     @Test
-    void partial_list_appends_missing_public_baseline() {
+    void partial_list_prepends_jumpkick_and_appends_missing_public_baseline() {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         byName.put("corp", new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
         assertThat(effective)
                 .extracting(RepositorySpec::name)
-                .containsExactly("corp", "central", "google");
+                .containsExactly("jumpkick", "corp", "central", "google");
     }
 
     @Test
@@ -36,36 +39,42 @@ class RepoGroupBuilderTest {
         byName.put("google", customGoogle);
         byName.put("central", RepositorySpec.MAVEN_CENTRAL);
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
-        assertThat(effective).containsExactly(customGoogle, RepositorySpec.MAVEN_CENTRAL);
-        assertThat(effective.getFirst().url()).hasToString("https://dl.google.com/dl/android/maven2/");
+        assertThat(effective)
+                .extracting(RepositorySpec::name)
+                .containsExactly("jumpkick", "google", "central");
+        assertThat(effective.stream().filter(r -> r.name().equals("google")).findFirst())
+                .get()
+                .extracting(RepositorySpec::url)
+                .hasToString("https://dl.google.com/dl/android/maven2/");
     }
 
     @Test
-    void project_order_is_preserved_when_appending_defaults() {
+    void project_order_keeps_jumpkick_first_among_builtins() {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         byName.put("central", RepositorySpec.MAVEN_CENTRAL);
         byName.put("internal", new RepositorySpec("internal", URI.create("https://internal.example/")));
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
         assertThat(effective)
                 .extracting(RepositorySpec::name)
-                .containsExactly("central", "internal", "google");
+                .containsExactly("jumpkick", "central", "internal", "google");
     }
 
     @Test
-    void default_remote_repos_constant_is_central_then_google() {
+    void default_remote_repos_includes_jumpkick_first() {
         assertThat(RepoGroupBuilder.DEFAULT_REMOTE_REPOS)
-                .containsExactly(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+                .containsExactly(
+                        RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
         assertThat(RepositorySpec.GOOGLE_MAVEN.url().toString()).contains("google");
     }
 
     @Test
-    void only_google_declared_still_appends_central() {
+    void only_google_declared_still_appends_central_and_jumpkick() {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         byName.put("google", RepositorySpec.GOOGLE_MAVEN);
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
         assertThat(effective)
                 .extracting(RepositorySpec::name)
-                .containsExactly("google", "central");
+                .containsExactly("jumpkick", "google", "central");
     }
 
     @Test

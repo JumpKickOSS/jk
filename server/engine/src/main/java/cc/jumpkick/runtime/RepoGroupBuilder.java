@@ -21,18 +21,21 @@ import java.util.Map;
 
 /**
  * Builds a {@link RepoGroup} from project/global repositories (project wins on name clash),
- * optional test {@code --repo-url} override, else the public baseline pair Maven Central then
- * Google Maven. Shares one {@link Http} and {@link Cas} across the resulting repos.
+ * optional test {@code --repo-url} override, else the public baseline: JumpKick first-party
+ * (exclusive {@code cc.jumpkick.*} / {@code build.jumpkick.*}), then Maven Central, then Google
+ * Maven. Shares one {@link Http} and {@link Cas} across the resulting repos.
  *
  * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
- * remotes in declaration order. Built-in defaults are Central first, Google second so R8 /
- * AndroidX coords resolve without a per-project {@code [repositories]} table.
+ * remotes in declaration order.
  */
 public final class RepoGroupBuilder {
 
-    /** Public baseline when neither project nor global config declares repositories. */
-    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS =
-            List.of(RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+    /**
+     * Built-in remotes when the project declares none (and always appended if missing). JumpKick
+     * is first so exclusive groups take effect before Central can confuse first-party coords.
+     */
+    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS = List.of(
+            RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
 
     private RepoGroupBuilder() {}
 
@@ -99,16 +102,28 @@ public final class RepoGroupBuilder {
     }
 
     /**
-     * Project/global specs first (insertion order); append each missing built-in default so a
-     * corporate-only list still has a public baseline (Central, then Google).
+     * Project/global specs first (insertion order); ensure JumpKick + Central + Google are present
+     * (JumpKick always first among the built-ins when we prepend missing first-party exclusive).
      */
     static List<RepositorySpec> effectiveRepos(Map<String, RepositorySpec> byName) {
         if (byName.isEmpty()) {
             return DEFAULT_REMOTE_REPOS;
         }
-        List<RepositorySpec> effective = new ArrayList<>(byName.values());
+        List<RepositorySpec> effective = new ArrayList<>();
+        // Prefer an explicit project "jumpkick" entry; otherwise prepend the official one so
+        // exclusive first-party groups always bind before Central.
+        if (byName.containsKey(RepositorySpec.JUMPKICK.name())) {
+            effective.add(byName.get(RepositorySpec.JUMPKICK.name()));
+        } else {
+            effective.add(RepositorySpec.JUMPKICK);
+        }
+        for (RepositorySpec s : byName.values()) {
+            if (!RepositorySpec.JUMPKICK.name().equals(s.name())) {
+                effective.add(s);
+            }
+        }
         for (RepositorySpec builtin : DEFAULT_REMOTE_REPOS) {
-            if (!byName.containsKey(builtin.name())) {
+            if (!byName.containsKey(builtin.name()) && !RepositorySpec.JUMPKICK.name().equals(builtin.name())) {
                 effective.add(builtin);
             }
         }
