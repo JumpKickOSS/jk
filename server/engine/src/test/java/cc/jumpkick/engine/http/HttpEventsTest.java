@@ -90,4 +90,25 @@ class HttpEventsTest {
             assertThat(mcp.next(1000)).contains("notifications/jk/event");
         }
     }
+
+    @Test
+    void request_id_filter_drops_other_jobs() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription only2 = hub.subscribe(HttpEvents.FrameStyle.MCP, 2L);
+                HttpEvents.Subscription all = hub.subscribe(HttpEvents.FrameStyle.MCP, null)) {
+            hub.publish("step-start", JsonOut.object().put("requestId", 1).put("step", "a"));
+            hub.publish("step-start", JsonOut.object().put("requestId", 2).put("step", "b"));
+            assertThat(only2.next(1000)).contains("\"requestId\":2");
+            assertThat(only2.next(50)).isNull(); // job 1 never arrives
+            assertThat(all.next(1000)).contains("\"requestId\":1");
+            assertThat(all.next(1000)).contains("\"requestId\":2");
+        }
+    }
+
+    @Test
+    void extract_request_id_from_payload() {
+        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}")).isEqualTo(42L);
+        assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
+        assertThat(HttpEvents.extractRequestId(null)).isNull();
+    }
 }

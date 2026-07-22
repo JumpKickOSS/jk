@@ -146,6 +146,38 @@ class McpHandlerTest {
     }
 
     @Test
+    void tools_call_binds_progress_token() {
+        ProgressTokenRegistry tokens = new ProgressTokenRegistry();
+        McpHandler withTokens = new McpHandler(
+                () -> new StatusSnapshot(
+                        "0.10.0-SNAPSHOT",
+                        1L,
+                        System.currentTimeMillis() - 5_000,
+                        0,
+                        0,
+                        1L << 20,
+                        2L << 20,
+                        256L << 20,
+                        -1L,
+                        0,
+                        8,
+                        16L << 30),
+                jobs,
+                dir -> Map.of("coord", "com.example:demo"),
+                List::of,
+                "0.10.0-SNAPSHOT",
+                tokens);
+        String body = withTokens.handleBody(
+                "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","
+                        + "\"params\":{\"name\":\"jk_build\",\"arguments\":{\"dir\":\"/tmp/demo\"},"
+                        + "\"_meta\":{\"progressToken\":\"tok-1\"}}}");
+        assertThat(body).contains("progressToken");
+        assertThat(body).contains("tok-1");
+        assertThat(tokens.resolve("tok-1")).isEqualTo(42L);
+        assertThat(body).contains("requestId=42");
+    }
+
+    @Test
     void unknown_method_is_json_rpc_error() {
         String body = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"nope\"}");
         @SuppressWarnings("unchecked")

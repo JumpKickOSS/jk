@@ -19,7 +19,8 @@ import java.util.function.Supplier;
  *
  * <p>Tools project the same facts as CLI JSONL / {@code /api/*} (status, build trigger, project
  * metadata, history). Live progress: {@code GET /mcp} with {@code Accept: text/event-stream}
- * (MCP {@code notifications/jk/event}) or dashboard {@code GET /api/events} — see {@code
+ * (MCP {@code notifications/jk/event}); filter with {@code ?requestId=} or {@code
+ * ?progressToken=} (bound from tools/call {@code _meta.progressToken}). See {@code
  * docs/machine-output.md}.
  */
 public final class McpHandler {
@@ -34,6 +35,7 @@ public final class McpHandler {
     private final Function<String, Map<String, Object>> projectLookup;
     private final Supplier<List<String>> historyRaw;
     private final String version;
+    private final ProgressTokenRegistry progressTokens;
 
     public McpHandler(
             Supplier<StatusSnapshot> status,
@@ -41,11 +43,22 @@ public final class McpHandler {
             Function<String, Map<String, Object>> projectLookup,
             Supplier<List<String>> historyRaw,
             String version) {
+        this(status, jobs, projectLookup, historyRaw, version, new ProgressTokenRegistry());
+    }
+
+    public McpHandler(
+            Supplier<StatusSnapshot> status,
+            EngineHttpJobs jobs,
+            Function<String, Map<String, Object>> projectLookup,
+            Supplier<List<String>> historyRaw,
+            String version,
+            ProgressTokenRegistry progressTokens) {
         this.status = Objects.requireNonNull(status);
         this.jobs = Objects.requireNonNull(jobs);
         this.projectLookup = Objects.requireNonNull(projectLookup);
         this.historyRaw = Objects.requireNonNull(historyRaw);
         this.version = version == null ? "0" : version;
+        this.progressTokens = progressTokens == null ? new ProgressTokenRegistry() : progressTokens;
     }
 
     /**
@@ -139,9 +152,10 @@ public final class McpHandler {
         result.put(
                 "instructions",
                 "JumpKick engine MCP. Prefer tools for multi-turn agent work. Live build progress: "
-                        + "GET /mcp with Accept: text/event-stream (notifications/jk/event) or "
-                        + "GET /api/events (dashboard SSE). One-shot CLI: jk … --output json. "
-                        + "See docs/machine-output.md.");
+                        + "GET /mcp with Accept: text/event-stream (notifications/jk/event); "
+                        + "filter with ?requestId=N or ?progressToken=T (pass _meta.progressToken on "
+                        + "tools/call). Or GET /api/events (dashboard SSE). One-shot CLI: jk … "
+                        + "--output json. See docs/machine-output.md.");
         return result;
     }
 
@@ -155,7 +169,8 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_build",
                 "Start a workspace/module build for dir (async). Returns requestId; stream progress "
-                        + "via GET /mcp (Accept: text/event-stream) or GET /api/events. Same as POST /api/build.",
+                        + "via GET /mcp?requestId=N (or ?progressToken=T with _meta.progressToken) "
+                        + "Accept: text/event-stream. Same as POST /api/build.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -166,7 +181,7 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_test",
                 "Start a true test-only job for dir (async; compile + tests, no package — same as "
-                        + "jk test). Journal kind test. Progress on GET /mcp event-stream. Returns requestId.",
+                        + "jk test). Journal kind test. Progress: GET /mcp?requestId=N. Returns requestId.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -176,7 +191,7 @@ public final class McpHandler {
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk.lock for dir (async). Progress on GET /mcp event-stream.",
+                "Resolve dependencies and write jk.lock for dir (async). Progress: GET /mcp?requestId=N.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -215,19 +230,30 @@ public final class McpHandler {
         @SuppressWarnings("unchecked")
         Map<String, Object> args =
                 params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
+        String progressToken = progressTokenOf(params);
 
         Object payload =
                 switch (name) {
                     case "jk_status" -> statusPayload();
-                    case "jk_build" -> jobPayload("build", args, jobs::triggerBuild);
-                    case "jk_test" -> jobPayload("test", args, jobs::triggerTest);
-                    case "jk_lock" -> jobPayload("lock", args, jobs::triggerLock);
+                    case "jk_build" -> jobPayload("build", args, jobs::triggerBuild, progressToken);
+                    case "jk_test" -> jobPayload("test", args, jobs::triggerTest, progressToken);
+                    case "jk_lock" -> jobPayload("lock", args, jobs::triggerLock, progressToken);
                     case "jk_cancel" -> cancelPayload(args);
                     case "jk_project" -> projectPayload(args);
                     case "jk_history" -> historyPayload(args);
                     default -> throw new McpError(-32602, "unknown tool: " + name);
                 };
         return toolResult(MiniJson.write(payload), false);
+    }
+
+    /** MCP progress token from {@code params._meta.progressToken} (string or number). */
+    private static String progressTokenOf(Map<String, Object> params) {
+        Object meta = params.get("_meta");
+        if (!(meta instanceof Map<?, ?> m)) return null;
+        Object tok = m.get("progressToken");
+        if (tok == null) return null;
+        String s = String.valueOf(tok).trim();
+        return s.isEmpty() || "null".equals(s) ? null : s;
     }
 
     private Map<String, Object> statusPayload() {
@@ -250,11 +276,15 @@ public final class McpHandler {
     }
 
     private Map<String, Object> jobPayload(
-            String kind, Map<String, Object> args, java.util.function.Function<String, Long> trigger) {
+            String kind,
+            Map<String, Object> args,
+            java.util.function.Function<String, Long> trigger,
+            String progressToken) {
         String dir = string(args.get("dir"));
         if (dir == null || dir.isBlank()) throw new McpError(-32602, "requires arguments.dir");
         try {
             long requestId = trigger.apply(dir);
+            if (progressToken != null) progressTokens.bind(progressToken, requestId);
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("schema", 1);
             m.put("type", kind + "-accepted");
@@ -262,12 +292,16 @@ public final class McpHandler {
             m.put("requestId", requestId);
             m.put("dir", dir);
             m.put("events", "/api/events");
-            m.put("mcpEvents", "GET /mcp");
+            m.put("mcpEvents", "GET /mcp?requestId=" + requestId);
+            if (progressToken != null) {
+                m.put("progressToken", progressToken);
+                m.put("mcpEventsByToken", "GET /mcp?progressToken=" + progressToken);
+            }
             m.put(
                     "note",
-                    "Job started asynchronously. Stream progress via GET /mcp with Accept: "
-                            + "text/event-stream (notifications/jk/event) or GET /api/events. "
-                            + "Cancel with jk_cancel.");
+                    "Job started asynchronously. Stream progress via GET /mcp?requestId="
+                            + requestId
+                            + " (Accept: text/event-stream) or GET /api/events. Cancel with jk_cancel.");
             return m;
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());

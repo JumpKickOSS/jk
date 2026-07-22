@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
@@ -34,6 +35,9 @@ import java.util.List;
  * numerator, each failure becomes a {@code ctx.error}, discovery grows the denominator.
  */
 public final class TestCommand implements CliCommand {
+
+    /** Serializes workspace JSONL envelope lines when modules run in parallel. */
+    private static final Object JSONL_LOCK = new Object();
 
     @Override
     public String name() {
@@ -223,6 +227,10 @@ public final class TestCommand implements CliCommand {
      * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs —
      * not the whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code
      * --serial-tests} runs modules one at a time.
+     *
+     * <p>With {@code --output json}/{@code jsonl}, emits {@code workspace-start} / {@code
+     * module-start} / {@code module-finish} / {@code workspace-finish} around each module's pipeline
+     * JSONL (same envelope as multi-module {@code jk build --output json}).
      */
     private int runWorkspaceTests(
             Path entryDir,
@@ -233,48 +241,65 @@ public final class TestCommand implements CliCommand {
             throws IOException, InterruptedException {
         List<Path> modules = new ArrayList<>(dirtyDirs);
         if (modules.isEmpty()) return 0;
-        if (!parallelTests || modules.size() == 1) {
-            int worst = 0;
-            for (Path mod : modules) {
-                int code = runOneModuleTest(mod, cache, workerCount);
-                if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
-            }
-            return worst;
-        }
-        int width = Math.max(1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
-        var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
-            Thread t = new Thread(r, "jk-test-module");
-            t.setDaemon(true);
-            return t;
-        });
+        boolean json = global != null && global.outputIsJson();
+        long start = System.nanoTime();
+        if (json) emitJsonl(JsonlShape.workspaceStart(modules.size()));
+        int worst = 0;
         try {
-            List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
-            for (Path mod : modules) {
-                futures.add(pool.submit(() -> runOneModuleTest(mod, cache, workerCount)));
+            if (!parallelTests || modules.size() == 1) {
+                for (Path mod : modules) {
+                    int code = runOneModuleTest(mod, cache, workerCount, json);
+                    if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
+                }
+            } else {
+                int width =
+                        Math.max(1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
+                var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
+                    Thread t = new Thread(r, "jk-test-module");
+                    t.setDaemon(true);
+                    return t;
+                });
+                try {
+                    List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
+                    for (Path mod : modules) {
+                        futures.add(pool.submit(() -> runOneModuleTest(mod, cache, workerCount, json)));
+                    }
+                    for (var f : futures) {
+                        int code = f.get();
+                        if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
+                    }
+                } catch (java.util.concurrent.ExecutionException e) {
+                    Throwable c = e.getCause() != null ? e.getCause() : e;
+                    if (!json) {
+                        CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", c.getMessage()));
+                    }
+                    if (session != null) session.error(String.valueOf(c.getMessage()));
+                    worst = Exit.SOFTWARE;
+                } finally {
+                    pool.shutdown();
+                }
             }
-            int worst = 0;
-            for (var f : futures) {
-                int code = f.get();
-                if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
-            }
-            return worst;
-        } catch (java.util.concurrent.ExecutionException e) {
-            Throwable c = e.getCause() != null ? e.getCause() : e;
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", c.getMessage()));
-            if (session != null) session.error(String.valueOf(c.getMessage()));
-            return Exit.SOFTWARE;
         } finally {
-            pool.shutdown();
+            if (json) {
+                long ms = (System.nanoTime() - start) / 1_000_000;
+                emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()));
+            }
         }
+        return worst;
     }
 
-    private int runOneModuleTest(Path mod, Path cache, int workerCount) {
+    private int runOneModuleTest(Path mod, Path cache, int workerCount, boolean json) {
         TestSummary[] testResultHolder = new TestSummary[1];
         ConsoleSpec spec = new ConsoleSpec(
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        if (json) {
+            emitJsonl(JsonlShape.moduleStart(mod.toString(), module));
+        }
+        long t0 = System.nanoTime();
         PipelineResult result;
+        int code;
         try {
             result = cc.jumpkick.cli.engine.EngineClient.runTest(
                     cc.jumpkick.engine.EnginePaths.current(),
@@ -290,19 +315,34 @@ public final class TestCommand implements CliCommand {
                             parallelTests),
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
+            if (session != null) {
+                session.module(module).absorb(result);
+            }
+            if (result.success()) code = 0;
+            else if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) code = 4;
+            else code = 1;
         } catch (IOException e) {
-            synchronized (TestCommand.class) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
+            if (!json) {
+                synchronized (TestCommand.class) {
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
+                }
             }
             if (session != null) session.error(mod + ": " + e.getMessage());
-            return Exit.SOFTWARE;
+            code = Exit.SOFTWARE;
         }
-        if (session != null) {
-            session.module(module).absorb(result);
+        if (json) {
+            long ms = (System.nanoTime() - t0) / 1_000_000;
+            boolean ok = code == 0;
+            emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, ok, ms));
         }
-        if (result.success()) return 0;
-        if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) return 4;
-        return 1;
+        return code;
+    }
+
+    private static void emitJsonl(String line) {
+        synchronized (JSONL_LOCK) {
+            System.out.println(line);
+            System.out.flush();
+        }
     }
 
     /**

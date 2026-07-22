@@ -128,8 +128,17 @@ Same HTTP server and lifecycle as the web UI:
 **Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer
 token — Streamable-HTTP style. Each frame is `event: message` with JSON-RPC
 `notifications/jk/event` and params matching engine facts (`event` = dashboard type name plus the
-same fields as SSE `data`). Dashboard alias: **`GET /api/events`**. Tool JSON uses `schema` +
-`type` like the rest of the machine model.
+same fields as SSE `data`).
+
+**Filter one job** (recommended when the engine may run concurrent jobs):
+
+| Query | Effect |
+|-------|--------|
+| `?requestId=N` | Only events whose payload has that `requestId` (from the tool result) |
+| `?progressToken=T` | Same, after tools/call with `"_meta":{"progressToken":"T"}` binds T→requestId |
+
+Unfiltered `GET /mcp` still receives every job. Dashboard alias: **`GET /api/events`**. Tool JSON
+uses `schema` + `type` like the rest of the machine model.
 
 ```bash
 # Example: list tools (token from ~/.jk/state/…/http-token or status URL fragment)
@@ -137,8 +146,9 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   "$MCP_URL"
 
-# Live progress on the MCP endpoint (notifications/jk/event):
-curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' "$MCP_URL"
+# Live progress for one job:
+curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' \
+  "$MCP_URL?requestId=$REQUEST_ID"
 ```
 
 ## Agent recipe (recommended)
@@ -149,9 +159,9 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 # or: JK_OUTPUT=jsonl jk build
 
 # Multi-turn agents: MCP on the engine (jk engine status → MCP URL + token)
-# Live build progress: GET /mcp Accept: text/event-stream  (or GET /api/events)
+# Live build progress: GET /mcp?requestId=N Accept: text/event-stream  (or GET /api/events)
 
-# Workspace builds emit module-start / module-finish / workspace-* around step events.
+# Workspace build/test emit module-start / module-finish / workspace-* around step events.
 
 # Exit code still meaningful (0 ok, non-zero fail).
 # Parse stdout as NDJSON; look for type=pipeline-finish / error / step-finish.

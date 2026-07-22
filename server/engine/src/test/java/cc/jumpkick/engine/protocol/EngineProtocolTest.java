@@ -64,6 +64,17 @@ class EngineProtocolTest {
                 "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, "http://127.0.0.1:8910/", null);
         assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
         assertThat(Jsonl.str(json, "httpError")).isNull();
+        // Trailing slash on httpUrl must not produce //mcp
+        assertThat(Jsonl.str(json, "mcpUrl")).isEqualTo("http://127.0.0.1:8910/mcp");
+    }
+
+    @Test
+    void mcp_url_strips_trailing_slashes() {
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910/"))
+                .isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910"))
+                .isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp(null)).isNull();
     }
 
     @Test

@@ -439,11 +439,12 @@ public final class EngineProtocol {
      * heap from the runtime, {@code rssBytes} from the OS ({@code -1} where it exposes none). The
      * http fields describe the embedded HTTP server ({@code docs/http.md}): {@code httpUrl} is
      * non-null while it's serving, {@code httpError} when the {@code [http]} table is enabled but
-     * the server failed to start; both null means disabled. {@code mcpUrl} is {@code httpUrl +
-     * "/mcp"} when HTTP is up (JK-1095), else null. (Keys are always emitted — the protocol has ONE
-     * null convention: key present, value null.) {@code aotTrainingPid} is the engine's sidecar AOT
-     * trainer while one is running, {@code -1} otherwise — the client never talks to that process,
-     * it only reports it (docs/architecture.md).
+     * the server failed to start; both null means disabled. {@code mcpUrl} is the HTTP base without a
+     * trailing slash plus {@code /mcp} when HTTP is up (JK-1095), else null. (Keys are always
+     * emitted — the protocol has ONE null convention: key present, value null.) {@code
+     * aotTrainingPid} is the engine's sidecar AOT trainer while one is running, {@code -1}
+     * otherwise — the client never talks to that process, it only reports it
+     * (docs/architecture.md).
      */
     public static String statusAck(
             String version,
@@ -497,7 +498,7 @@ public final class EngineProtocol {
             String httpError,
             int peakActiveRequests,
             int peakActivePipelines) {
-        String mcpUrl = httpUrl != null && !httpUrl.isBlank() ? httpUrl + "/mcp" : null;
+        String mcpUrl = mcpUrlFromHttp(httpUrl);
         return "{\"t\":\""
                 + STATUS_ACK
                 + "\",\"version\":"
@@ -535,6 +536,17 @@ public final class EngineProtocol {
                 + ",\"peakActivePipelines\":"
                 + peakActivePipelines
                 + "}";
+    }
+
+    /**
+     * Derive MCP endpoint URL from the HTTP base. Strips trailing slashes so {@code
+     * http://host:port/} becomes {@code http://host:port/mcp}, never {@code //mcp}.
+     */
+    static String mcpUrlFromHttp(String httpUrl) {
+        if (httpUrl == null || httpUrl.isBlank()) return null;
+        String base = httpUrl;
+        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        return base.isEmpty() ? null : base + "/mcp";
     }
 
     public static String shutdown() {

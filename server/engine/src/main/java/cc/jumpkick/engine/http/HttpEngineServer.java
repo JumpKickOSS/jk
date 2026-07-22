@@ -50,6 +50,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Supplier<StatusSnapshot> status;
     private final HttpEvents events;
     private final EngineHttpJobs jobs;
+    private final ProgressTokenRegistry progressTokens;
     private final cc.jumpkick.engine.journal.BuildJournal journal;
     private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
@@ -109,12 +110,14 @@ public final class HttpEngineServer implements AutoCloseable {
         this.cache = cache;
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
+        this.progressTokens = new ProgressTokenRegistry();
         this.mcp = new McpHandler(
                 status,
                 jobs,
                 this::projectMap,
                 () -> journal.rawRecords(200),
-                version);
+                version,
+                progressTokens);
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
@@ -321,13 +324,16 @@ public final class HttpEngineServer implements AutoCloseable {
                             .put("version", engineVersion)
                             .put("endpoint", "POST /mcp")
                             .put("events", "/api/events")
-                            .put("mcpEvents", "GET /mcp (Accept: text/event-stream)")
+                            .put(
+                                    "mcpEvents",
+                                    "GET /mcp (Accept: text/event-stream); optional ?requestId=N or "
+                                            + "?progressToken=T")
                             .put(
                                     "instructions",
                                     "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
                                             + "Bearer token required. Live progress: GET /mcp with "
-                                            + "Accept: text/event-stream (MCP notifications/jk/event) or "
-                                            + "GET /api/events (dashboard SSE).")
+                                            + "Accept: text/event-stream (optional ?requestId= or "
+                                            + "?progressToken=) or GET /api/events (dashboard SSE).")
                             .toString());
             return;
         }
@@ -348,15 +354,25 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
-     * events with {@code notifications/jk/event} JSON-RPC bodies.
+     * events with {@code notifications/jk/event} JSON-RPC bodies. Optional query filters: {@code
+     * requestId} (engine job id) or {@code progressToken} (bound from tools/call {@code
+     * _meta.progressToken}).
      */
     private void handleMcpEvents(HttpExchange exchange) throws IOException {
+        Long filter = resolveMcpEventFilter(exchange.getRequestURI().getQuery());
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        if (filter != null) {
+            exchange.getResponseHeaders().set("X-Jk-Request-Id", Long.toString(filter));
+        }
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP)) {
-            out.write(": mcp-events connected\n\n".getBytes(StandardCharsets.UTF_8));
+        String hello =
+                filter == null
+                        ? ": mcp-events connected\n\n"
+                        : ": mcp-events connected requestId=" + filter + "\n\n";
+        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
+            out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
             while (true) {
                 String frame = subscription.next(heartbeatMillis);
@@ -368,6 +384,30 @@ public final class HttpEngineServer implements AutoCloseable {
         } catch (IOException e) {
             // client closed
         }
+    }
+
+    /**
+     * Resolve optional SSE filter from query string. {@code requestId} wins over {@code
+     * progressToken}. An unknown progress token filters to a never-matching id (no wrong-job
+     * leakage); open SSE after tools/call returns, or use {@code requestId} from the tool result.
+     */
+    Long resolveMcpEventFilter(String query) {
+        String rid = queryParam(query, "requestId");
+        if (rid != null && !rid.isBlank()) {
+            try {
+                return Long.parseLong(rid.trim());
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        String tok = queryParam(query, "progressToken");
+        if (tok != null && !tok.isBlank()) {
+            Long bound = progressTokens.resolve(tok.trim());
+            // -1 never appears as a real requestId; filtered stream stays quiet until bind lands
+            // on a later reconnect, or the agent switches to ?requestId=.
+            return bound != null ? bound : -1L;
+        }
+        return null;
     }
 
     private static boolean acceptsEventStream(HttpExchange exchange) {
