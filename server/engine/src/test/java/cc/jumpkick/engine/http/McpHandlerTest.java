@@ -66,6 +66,10 @@ class McpHandlerTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> info = (Map<String, Object>) result.get("serverInfo");
         assertThat(info.get("name")).isEqualTo("jk-engine");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> caps = (Map<String, Object>) result.get("capabilities");
+        assertThat(caps).containsKey("experimental");
+        assertThat(String.valueOf(result.get("instructions"))).contains("text/event-stream");
     }
 
     @Test

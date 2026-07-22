@@ -154,6 +154,11 @@ public final class TestSupport {
                 if (!module.isEmpty()) prefix = "[" + module + "] " + prefix;
                 ctx.output(prefix + line);
             }
+
+            @Override
+            public void onWarning(String code, String message) {
+                ctx.warn(code == null || code.isBlank() ? "test" : code, message);
+            }
         };
     }
 

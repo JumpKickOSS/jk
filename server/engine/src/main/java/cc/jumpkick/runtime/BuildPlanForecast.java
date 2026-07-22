@@ -117,11 +117,30 @@ public final class BuildPlanForecast {
             boolean skipTests,
             boolean verbose,
             Set<Path> projectModules) {
+        return inputsFor(dir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules, false);
+    }
+
+    /**
+     * As {@link #inputsFor(Path, Path, int, Path, String, boolean, boolean, Set)} with {@code
+     * testOnly} — when true, pipelines stop before packaging ({@code jk test} / MCP {@code jk_test}).
+     */
+    public static BuildPipelines.Inputs inputsFor(
+            Path dir,
+            Path cache,
+            int workers,
+            Path jdksDir,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            Set<Path> projectModules,
+            boolean testOnly) {
         Path buildFile = dir.resolve("jk.toml");
         Path lockFile = dir.resolve("jk.lock");
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
-        int estimatedTestCount = skipTests ? 0 : TestSupport.estimateTestCount(dir.resolve("src/test/java"));
+        // testOnly still runs tests (never skip).
+        boolean skip = testOnly ? false : skipTests;
+        int estimatedTestCount = skip ? 0 : TestSupport.estimateTestCount(dir.resolve("src/test/java"));
         return new BuildPipelines.Inputs(
                         dir,
                         cache,
@@ -132,9 +151,9 @@ public final class BuildPlanForecast {
                         estimatedTestCount,
                         profile,
                         jdksDir,
-                        skipTests,
+                        skip,
                         verbose,
-                        false,
+                        testOnly,
                         false,
                         java.util.Set.of(),
                         cc.jumpkick.config.SessionContext.current())

@@ -191,6 +191,13 @@ public final class JUnitLauncher {
         if (resolvedWorkers <= 1) {
             return runSingle(javaBinary, classpath, testClassesDir, listener, testResultsDir);
         }
+        // W>1 + Jupiter in-process parallel is a known double-parallelism footgun.
+        List<Path> cpForDetect = new ArrayList<>();
+        cpForDetect.add(testClassesDir);
+        if (runtimeClasspath != null) cpForDetect.addAll(runtimeClasspath);
+        if (JupiterParallelDetect.enabled(cpForDetect)) {
+            listener.onWarning("jupiter-parallel", JupiterParallelDetect.stackWarning(resolvedWorkers));
+        }
         return runParallel(
                 javaBinary, classpath, testClassesDir, resolvedWorkers, listener, testResultsDir, preDiscovered);
     }

@@ -3733,13 +3733,13 @@ public final class EngineServer implements AutoCloseable {
         return new cc.jumpkick.engine.http.EngineHttpJobs() {
             @Override
             public long triggerBuild(String dir) {
-                return triggerHttpWorkspace(dir, "build", /* skipTests */ false);
+                return triggerHttpWorkspace(dir, "build", /* skipTests */ false, /* testOnly */ false);
             }
 
             @Override
             public long triggerTest(String dir) {
-                // Full workspace job with tests (skipTests=false); kind=test for journal/SSE.
-                return triggerHttpWorkspace(dir, "test", /* skipTests */ false);
+                // True test-only: same graph as build, each module uses testOnly pipelines (no package).
+                return triggerHttpWorkspace(dir, "test", /* skipTests */ false, /* testOnly */ true);
             }
 
             @Override
@@ -3756,9 +3756,10 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * {@code POST /api/build} / MCP {@code jk_build}/{@code jk_test}: start a workspace job and
-     * return a request id immediately. Progress is SSE-only.
+     * return a request id immediately. Progress is SSE (dashboard {@code /api/events} or MCP {@code
+     * GET /mcp} event-stream).
      */
-    private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests) {
+    private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
         if (draining) {
             throw new IllegalStateException("engine is shutting down");
         }
@@ -3783,7 +3784,7 @@ public final class EngineServer implements AutoCloseable {
             boolean success = false;
             boolean cancelled = false;
             try {
-                success = runHttpWorkspace(entryDir, skipTests, cancelToken);
+                success = runHttpWorkspace(entryDir, skipTests, testOnly, cancelToken);
                 cancelled = cancelToken.cancelled() && !success;
             } finally {
                 JobWorkers.close();
@@ -3877,24 +3878,26 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /** Workspace build/test body for HTTP/MCP — hub-only events. */
-    private boolean runHttpWorkspace(Path entryDir, boolean skipTests, Session.CancelToken cancelToken) {
+    private boolean runHttpWorkspace(
+            Path entryDir, boolean skipTests, boolean testOnly, Session.CancelToken cancelToken) {
         try {
             JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
             Path cache = cc.jumpkick.util.JkDirs.cache();
             Path jdksDir = cc.jumpkick.util.JkDirs.jdks();
             WorkspaceRequest req = new WorkspaceRequest(
-                    entryDir,
-                    entryBuild,
-                    cache,
-                    jdksDir,
-                    Runtime.getRuntime().availableProcessors(), // the shared plan's own worst-case cap
-                    null,
-                    skipTests,
-                    false,
-                    0,
-                    null, // engine forecasts dirty modules
-                    false, // this engine plans memory once at startup, not per request
-                    true); // auto-freshen a stale lock, like jk build
+                            entryDir,
+                            entryBuild,
+                            cache,
+                            jdksDir,
+                            Runtime.getRuntime().availableProcessors(), // the shared plan's own worst-case cap
+                            null,
+                            skipTests,
+                            false,
+                            0,
+                            null, // engine forecasts dirty modules
+                            false, // this engine plans memory once at startup, not per request
+                            true) // auto-freshen a stale lock, like jk build
+                    .withTestOnly(testOnly);
             Session session = Session.defaults()
                     .withWorkingDir(entryDir)
                     .withCacheDir(cache)

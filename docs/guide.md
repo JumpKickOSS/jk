@@ -237,8 +237,9 @@ export JK_AOT_TRAIN=off  # CI / short-lived engines (skip train-on-miss)
 Failure lines include **module** (and **worker** when `W > 1`) so parallel flakes are locatable.
 
 **JUnit Platform in-process parallel** (`junit.jupiter.execution.parallel.enabled`) is separate from
-jk `-w` forks. Prefer process sharding (`-w`); if you enable Jupiter parallel, keep **`-w1`**.
-Do not stack both. Details: [docs/perf/junit-parallel-vs-jk-workers.md](perf/junit-parallel-vs-jk-workers.md).
+jk `-w` process workers. Prefer one layer: multi-worker `-w` *or* Jupiter parallel with **`-w1`**.
+When both are active (`W>1` plus Jupiter parallel on the test classpath), jk emits a **warn**
+(`jupiter-parallel`). Details: [junit-parallel-vs-jk-workers.md](perf/junit-parallel-vs-jk-workers.md).
 
 Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 

@@ -42,6 +42,23 @@ class JsonlShapeTest {
         assertThat(PipelineConsole.modeFor(optsWithOutput("json"))).isEqualTo(PipelineConsole.Mode.JSON);
     }
 
+    @Test
+    void workspace_module_events_include_coords() {
+        String start = JsonlShape.moduleStart("/w/core", "com.example:core");
+        assertThat(start).contains("\"type\":\"module-start\"");
+        assertThat(start).contains("\"dir\":\"/w/core\"");
+        assertThat(start).contains("\"coord\":\"com.example:core\"");
+        String finish = JsonlShape.moduleFinish("/w/core", "com.example:core", true, 42);
+        assertThat(finish).contains("\"type\":\"module-finish\"");
+        assertThat(finish).contains("\"success\":true");
+        assertThat(finish).contains("\"duration_ms\":42");
+        String ws = JsonlShape.workspaceStart(3);
+        assertThat(ws).contains("\"type\":\"workspace-start\"");
+        assertThat(ws).contains("\"modules\":3");
+        String done = JsonlShape.workspaceFinish(true, 100, 3);
+        assertThat(done).contains("\"type\":\"workspace-finish\"");
+    }
+
     private static GlobalOptions optsWithOutput(String output) {
         // Minimal Invocation stand-in: GlobalOptions.from needs a real Invocation.
         // Set field directly for unit isolation.

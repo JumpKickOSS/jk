@@ -92,9 +92,12 @@ jk test -w1
 # + junit-platform.properties in the project if desired
 ```
 
-## Follow-up code?
+## Stacking warn (shipped)
 
-**None required.** Optional later (not filed): warn when both `W>1` and Jupiter parallel properties are detected on the test classpath — nice-to-have only.
+When resolved workers are **&gt; 1** and Jupiter parallel is enabled on the test classpath
+(`junit-platform.properties` or system property `junit.jupiter.execution.parallel.enabled=true`),
+`JUnitLauncher` emits a pipeline **warn** (`code=jupiter-parallel`) describing the double-parallelism
+risk. Detection: `JupiterParallelDetect`. Does not fail the run.
 
 ## Refs
 

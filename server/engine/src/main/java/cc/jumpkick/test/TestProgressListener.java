@@ -58,6 +58,12 @@ public interface TestProgressListener {
     /** Detailed failure information from a FAILED finish (class + message + flattened stack). */
     default void onFailure(String id, String display, String exClass, String message, int workerId) {}
 
+    /**
+     * Soft advisory from the launcher (e.g. W&gt;1 stacked with Jupiter in-process parallel). Does
+     * not fail the run; surfaces as a pipeline warn when bridged.
+     */
+    default void onWarning(String code, String message) {}
+
     /** Singleton no-op listener for callers that don't want a UI. */
     static TestProgressListener noop() {
         return new TestProgressListener() {};

@@ -18,7 +18,8 @@ import java.util.function.Supplier;
  * are {@code application/json}. Same bearer-token policy as other mutating engine HTTP endpoints.
  *
  * <p>Tools project the same facts as CLI JSONL / {@code /api/*} (status, build trigger, project
- * metadata, history). Live progress remains {@code GET /api/events} (SSE) — see {@code
+ * metadata, history). Live progress: {@code GET /mcp} with {@code Accept: text/event-stream}
+ * (MCP {@code notifications/jk/event}) or dashboard {@code GET /api/events} — see {@code
  * docs/machine-output.md}.
  */
 public final class McpHandler {
@@ -123,6 +124,11 @@ public final class McpHandler {
     private Map<String, Object> initialize(Map<String, Object> params) {
         Map<String, Object> caps = new LinkedHashMap<>();
         caps.put("tools", Map.of("listChanged", false));
+        // Streamable-HTTP progress: GET /mcp with Accept: text/event-stream.
+        caps.put("logging", Map.of());
+        Map<String, Object> experimental = new LinkedHashMap<>();
+        experimental.put("jk/events", Map.of("sse", "GET /mcp", "notification", "notifications/jk/event"));
+        caps.put("experimental", experimental);
         Map<String, Object> serverInfo = new LinkedHashMap<>();
         serverInfo.put("name", SERVER_NAME);
         serverInfo.put("version", version);
@@ -133,7 +139,8 @@ public final class McpHandler {
         result.put(
                 "instructions",
                 "JumpKick engine MCP. Prefer tools for multi-turn agent work. Live build progress: "
-                        + "subscribe to GET /api/events (SSE). One-shot CLI: jk … --output json. "
+                        + "GET /mcp with Accept: text/event-stream (notifications/jk/event) or "
+                        + "GET /api/events (dashboard SSE). One-shot CLI: jk … --output json. "
                         + "See docs/machine-output.md.");
         return result;
     }
@@ -148,7 +155,7 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_build",
                 "Start a workspace/module build for dir (async). Returns requestId; stream progress "
-                        + "on GET /api/events (SSE). Same as POST /api/build.",
+                        + "via GET /mcp (Accept: text/event-stream) or GET /api/events. Same as POST /api/build.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -158,8 +165,8 @@ public final class McpHandler {
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
                 "jk_test",
-                "Start tests for dir (async workspace job with tests; journal kind test). Progress on "
-                        + "GET /api/events. Returns requestId.",
+                "Start a true test-only job for dir (async; compile + tests, no package — same as "
+                        + "jk test). Journal kind test. Progress on GET /mcp event-stream. Returns requestId.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -169,7 +176,7 @@ public final class McpHandler {
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk.lock for dir (async). Progress on GET /api/events.",
+                "Resolve dependencies and write jk.lock for dir (async). Progress on GET /mcp event-stream.",
                 objectSchema(Map.of(
                         "dir",
                         Map.of(
@@ -255,10 +262,12 @@ public final class McpHandler {
             m.put("requestId", requestId);
             m.put("dir", dir);
             m.put("events", "/api/events");
+            m.put("mcpEvents", "GET /mcp");
             m.put(
                     "note",
-                    "Job started asynchronously. Stream SSE at GET /api/events for progress "
-                            + "(same conceptual events as CLI --output json). Cancel with jk_cancel.");
+                    "Job started asynchronously. Stream progress via GET /mcp with Accept: "
+                            + "text/event-stream (notifications/jk/event) or GET /api/events. "
+                            + "Cancel with jk_cancel.");
             return m;
         } catch (IllegalStateException e) {
             throw new McpError(-32000, e.getMessage());

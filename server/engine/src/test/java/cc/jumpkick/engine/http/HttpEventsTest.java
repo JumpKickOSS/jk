@@ -66,4 +66,28 @@ class HttpEventsTest {
         hub.publish("request-start", JsonOut.object().put("requestId", 1));
         assertThat(s.next(10)).isNull();
     }
+
+    @Test
+    void mcp_style_frames_are_jsonrpc_notifications() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription s = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
+            hub.publish("step-start", JsonOut.object().put("step", "compile").put("schema", 1));
+            String frame = s.next(1000);
+            assertThat(frame).contains("event: message");
+            assertThat(frame).contains("notifications/jk/event");
+            assertThat(frame).contains("\"event\":\"step-start\"");
+            assertThat(frame).contains("\"step\":\"compile\"");
+        }
+    }
+
+    @Test
+    void dashboard_and_mcp_subscribers_coexist() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        try (HttpEvents.Subscription dash = hub.subscribe(HttpEvents.FrameStyle.DASHBOARD);
+                HttpEvents.Subscription mcp = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
+            hub.publish("module-finish", JsonOut.object().put("coord", "a:b").put("success", true));
+            assertThat(dash.next(1000)).contains("event: module-finish");
+            assertThat(mcp.next(1000)).contains("notifications/jk/event");
+        }
+    }
 }

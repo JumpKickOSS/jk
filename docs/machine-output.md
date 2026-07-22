@@ -31,19 +31,20 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 
 All machine surfaces should carry **the same conceptual events**. Framing differs:
 
-| Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools) |
-|---------|--------------------|----------------------------|-----------------|--------------|
-| Request / session start | `pipeline-start` (per pipeline) | `request-start` | `▶ pipeline (N steps)` | tool result / notification |
+| Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools / SSE) |
+|---------|--------------------|----------------------------|-----------------|-------------------|
+| Request / session start | `pipeline-start` (per pipeline); workspace: `workspace-start` | `request-start` | `▶ pipeline (N steps)` | tool result / `notifications/jk/event` |
 | Step start | `step-start` | `step-start` | `· phase/step (ticks: N)` | notification |
-| Progress ticks | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | optional stream |
+| Progress ticks | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | notification |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
-| User/compiler output | `output` | `output` | printed lines | resource / log |
+| User/compiler output | `output` | `output` | printed lines | notification |
 | Warning | `warn` | (diagnostic-like) | bang line | notification |
 | Error / test failure | `error` (+ `test`, `exceptionClass`) | `diagnostic` | FAILED lines / stacks | tool error + structured fields |
 | Step end | `step-finish` | `step-finish` | `✓/✗ step took …` | notification |
 | Pipeline end | `pipeline-finish` | module/request finish | wedge chip | tool result |
 | Plan / ETA | (wire → engine; extend JSONL) | `plan`, `eta` | explain / bar countdown | tools |
-| Module (workspace) | (workspace CLI path) | `module-start` / `module-finish` | completion lines | tools |
+| Module (workspace) | `module-start` / `module-finish` (+ nested step JSONL) | `module-start` / `module-finish` | completion lines | same events on MCP SSE |
+| Workspace end | `workspace-finish` | `request-finish` | summary chip | notification |
 
 **Rule:** when adding a new fact (module coord, worker id, ETA), add it once to the **shared conceptual model**, then project into JSONL fields, SSE `data`, verbose text, and MCP tools — do not invent parallel schemas.
 
@@ -121,8 +122,13 @@ Same HTTP server and lifecycle as the web UI:
 | Auth | `Authorization: Bearer <token>` (always required) |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
-**Tools:** `jk_status`, `jk_build`, `jk_test`, `jk_lock` (async → `requestId`), `jk_cancel`,
-`jk_project`, `jk_history`. Live progress: **`GET /api/events`** (SSE). Tool JSON uses `schema` +
+**Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only pipelines — no package), `jk_lock`
+(async → `requestId`), `jk_cancel`, `jk_project`, `jk_history`.
+
+**Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer
+token — Streamable-HTTP style. Each frame is `event: message` with JSON-RPC
+`notifications/jk/event` and params matching engine facts (`event` = dashboard type name plus the
+same fields as SSE `data`). Dashboard alias: **`GET /api/events`**. Tool JSON uses `schema` +
 `type` like the rest of the machine model.
 
 ```bash
@@ -130,6 +136,9 @@ Same HTTP server and lifecycle as the web UI:
 curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   "$MCP_URL"
+
+# Live progress on the MCP endpoint (notifications/jk/event):
+curl -sSN -H "Authorization: Bearer $TOKEN" -H 'Accept: text/event-stream' "$MCP_URL"
 ```
 
 ## Agent recipe (recommended)
@@ -140,7 +149,9 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 # or: JK_OUTPUT=jsonl jk build
 
 # Multi-turn agents: MCP on the engine (jk engine status → MCP URL + token)
-# Live build progress: GET /api/events (SSE)
+# Live build progress: GET /mcp Accept: text/event-stream  (or GET /api/events)
+
+# Workspace builds emit module-start / module-finish / workspace-* around step events.
 
 # Exit code still meaningful (0 ok, non-zero fail).
 # Parse stdout as NDJSON; look for type=pipeline-finish / error / step-finish.

@@ -16,13 +16,13 @@ import java.time.Instant;
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
  */
-final class JsonlShape {
+public final class JsonlShape {
 
     /**
      * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release version churn (see
      * {@code docs/architecture.md} schema freeze). Additive fields only.
      */
-    static final int SCHEMA = 1;
+    public static final int SCHEMA = 1;
 
     private JsonlShape() {}
 
@@ -168,6 +168,50 @@ final class JsonlShape {
                 .append(r.warnings().size())
                 .append(",\"errors\":")
                 .append(r.errors().size())
+                .append('}')
+                .toString();
+    }
+
+    /** Workspace graph planned — agents learn module count before any module pipeline. */
+    public static String workspaceStart(int modules) {
+        return open("workspace-start").append(",\"modules\":").append(modules).append('}').toString();
+    }
+
+    /** Workspace graph finished (all modules done or aborted on graph error). */
+    public static String workspaceFinish(boolean success, long durationMs, int modules) {
+        return open("workspace-finish")
+                .append(",\"success\":")
+                .append(success)
+                .append(",\"duration_ms\":")
+                .append(durationMs)
+                .append(",\"modules\":")
+                .append(modules)
+                .append('}')
+                .toString();
+    }
+
+    /** A workspace module is about to run its pipeline (brackets nested step events). */
+    public static String moduleStart(String dir, String coord) {
+        return open("module-start")
+                .append(",\"dir\":")
+                .append(js(dir))
+                .append(",\"coord\":")
+                .append(js(coord))
+                .append('}')
+                .toString();
+    }
+
+    /** A workspace module finished (success or failure). */
+    public static String moduleFinish(String dir, String coord, boolean success, long durationMs) {
+        return open("module-finish")
+                .append(",\"dir\":")
+                .append(js(dir))
+                .append(",\"coord\":")
+                .append(js(coord))
+                .append(",\"success\":")
+                .append(success)
+                .append(",\"duration_ms\":")
+                .append(durationMs)
                 .append('}')
                 .toString();
     }

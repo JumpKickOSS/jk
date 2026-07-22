@@ -299,12 +299,17 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * MCP Streamable-HTTP style: {@code POST /mcp} with JSON-RPC body; {@code GET /mcp} returns a
-     * small discovery document (endpoint + tools summary) for humans/agents probing the URL.
+     * MCP Streamable-HTTP style: {@code POST /mcp} with JSON-RPC body; {@code GET /mcp} with {@code
+     * Accept: text/event-stream} opens an SSE progress stream ({@code notifications/jk/event});
+     * otherwise GET returns a small discovery document.
      */
     private void handleMcp(HttpExchange exchange) throws IOException {
         String method = exchange.getRequestMethod();
         if (method.equals("GET") || method.equals("HEAD")) {
+            if (method.equals("GET") && acceptsEventStream(exchange)) {
+                handleMcpEvents(exchange);
+                return;
+            }
             sendJson(
                     exchange,
                     200,
@@ -316,10 +321,13 @@ public final class HttpEngineServer implements AutoCloseable {
                             .put("version", engineVersion)
                             .put("endpoint", "POST /mcp")
                             .put("events", "/api/events")
+                            .put("mcpEvents", "GET /mcp (Accept: text/event-stream)")
                             .put(
                                     "instructions",
                                     "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
-                                            + "Bearer token required. Live progress: SSE GET /api/events.")
+                                            + "Bearer token required. Live progress: GET /mcp with "
+                                            + "Accept: text/event-stream (MCP notifications/jk/event) or "
+                                            + "GET /api/events (dashboard SSE).")
                             .toString());
             return;
         }
@@ -336,6 +344,36 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         sendJson(exchange, 200, response);
+    }
+
+    /**
+     * MCP progress SSE: same hub as {@code /api/events}, framed as Streamable-HTTP {@code message}
+     * events with {@code notifications/jk/event} JSON-RPC bodies.
+     */
+    private void handleMcpEvents(HttpExchange exchange) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
+        exchange.getResponseHeaders().set("Cache-Control", "no-store");
+        exchange.sendResponseHeaders(200, 0);
+        var out = exchange.getResponseBody();
+        try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP)) {
+            out.write(": mcp-events connected\n\n".getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            while (true) {
+                String frame = subscription.next(heartbeatMillis);
+                out.write((frame != null ? frame : ": heartbeat\n\n").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (IOException e) {
+            // client closed
+        }
+    }
+
+    private static boolean acceptsEventStream(HttpExchange exchange) {
+        String accept = exchange.getRequestHeaders().getFirst("Accept");
+        if (accept == null || accept.isBlank()) return false;
+        return accept.toLowerCase(java.util.Locale.ROOT).contains("text/event-stream");
     }
 
     /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
@@ -411,7 +449,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
-                .put("mcpUrl", url() != null ? url() + "/mcp" : null)
+                // url() already ends with /; avoid //mcp in status/mcpUrl.
+                .put("mcpUrl", url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
                 .put("webRoot", webRoot.toString())
                 .toString();
