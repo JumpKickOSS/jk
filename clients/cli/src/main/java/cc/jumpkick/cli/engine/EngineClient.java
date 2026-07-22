@@ -77,7 +77,41 @@ public final class EngineClient {
             long rssBytes,
             long aotTrainingPid,
             String httpUrl,
-            String httpError) {
+            String httpError,
+            /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null (JK-1095). */
+            String mcpUrl) {
+
+        /** Compat: older status without mcpUrl. */
+        public Status(
+                String version,
+                long pid,
+                long startedAtMillis,
+                int activeRequests,
+                int activePipelines,
+                boolean draining,
+                long heapUsedBytes,
+                long heapCommittedBytes,
+                long heapMaxBytes,
+                long rssBytes,
+                long aotTrainingPid,
+                String httpUrl,
+                String httpError) {
+            this(
+                    version,
+                    pid,
+                    startedAtMillis,
+                    activeRequests,
+                    activePipelines,
+                    draining,
+                    heapUsedBytes,
+                    heapCommittedBytes,
+                    heapMaxBytes,
+                    rssBytes,
+                    aotTrainingPid,
+                    httpUrl,
+                    httpError,
+                    httpUrl != null ? httpUrl + "/mcp" : null);
+        }
 
         /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
         public boolean httpEnabled() {
@@ -130,6 +164,9 @@ public final class EngineClient {
                     EngineProtocol.hello(cc.jumpkick.cli.Jk.VERSION, "probe")); // handshake first, response discarded
             String ack = exchange(ch, EngineProtocol.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
+            String httpUrl = Jsonl.str(ack, "httpUrl");
+            String mcpUrl = Jsonl.str(ack, "mcpUrl");
+            if (mcpUrl == null && httpUrl != null) mcpUrl = httpUrl + "/mcp";
             return Optional.of(new Status(
                     Jsonl.str(ack, "version"),
                     Jsonl.longValue(ack, "pid", -1),
@@ -142,8 +179,9 @@ public final class EngineClient {
                     Jsonl.longValue(ack, "heapMaxBytes", -1),
                     Jsonl.longValue(ack, "rssBytes", -1),
                     Jsonl.longValue(ack, "aotTrainingPid", -1),
-                    Jsonl.str(ack, "httpUrl"),
-                    Jsonl.str(ack, "httpError")));
+                    httpUrl,
+                    Jsonl.str(ack, "httpError"),
+                    mcpUrl));
         } catch (IOException e) {
             return Optional.empty();
         }

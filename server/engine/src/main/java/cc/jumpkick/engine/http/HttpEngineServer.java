@@ -55,6 +55,8 @@ public final class HttpEngineServer implements AutoCloseable {
     private final Supplier<CacheSnapshot> cache;
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
+    private final McpHandler mcp;
+    private final String engineVersion;
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
@@ -106,6 +108,13 @@ public final class HttpEngineServer implements AutoCloseable {
         this.metrics = metrics;
         this.cache = cache;
         this.log = log != null ? log : s -> {};
+        this.engineVersion = version;
+        this.mcp = new McpHandler(
+                status,
+                buildTrigger,
+                this::projectMap,
+                () -> journal.rawRecords(200),
+                version);
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
@@ -266,6 +275,17 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
+        if (path.equals("/mcp") || path.startsWith("/mcp/")) {
+            // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
+            if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
+                    && !tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"))) {
+                exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
+                sendText(exchange, 401, "missing or invalid bearer token\n");
+                return;
+            }
+            handleMcp(exchange);
+            return;
+        }
         if (path.equals("/api") || path.startsWith("/api/")) {
             if (!authorized(exchange)) {
                 exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
@@ -276,6 +296,62 @@ public final class HttpEngineServer implements AutoCloseable {
             return;
         }
         staticContent.serve(exchange); // static is never token-gated — the dashboard shell has no secrets
+    }
+
+    /**
+     * MCP Streamable-HTTP style: {@code POST /mcp} with JSON-RPC body; {@code GET /mcp} returns a
+     * small discovery document (endpoint + tools summary) for humans/agents probing the URL.
+     */
+    private void handleMcp(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        if (method.equals("GET") || method.equals("HEAD")) {
+            sendJson(
+                    exchange,
+                    200,
+                    JsonOut.object()
+                            .put("schema", 1)
+                            .put("type", "mcp-discovery")
+                            .put("protocolVersion", McpHandler.PROTOCOL_VERSION)
+                            .put("server", McpHandler.SERVER_NAME)
+                            .put("version", engineVersion)
+                            .put("endpoint", "POST /mcp")
+                            .put("events", "/api/events")
+                            .put(
+                                    "instructions",
+                                    "JSON-RPC 2.0 POST. Methods: initialize, tools/list, tools/call, ping. "
+                                            + "Bearer token required. Live progress: SSE GET /api/events.")
+                            .toString());
+            return;
+        }
+        if (!method.equals("POST")) {
+            exchange.getResponseHeaders().set("Allow", "GET, HEAD, POST");
+            sendText(exchange, 405, "method not allowed\n");
+            return;
+        }
+        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String response = mcp.handleBody(body);
+        if (response == null || response.isEmpty()) {
+            // JSON-RPC notification — accepted, no body.
+            exchange.sendResponseHeaders(202, -1);
+            return;
+        }
+        sendJson(exchange, 200, response);
+    }
+
+    /** Project metadata for MCP {@code jk_project} (same parse as GET /api/project). */
+    private java.util.Map<String, Object> projectMap(String dir) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("dir", dir);
+        try {
+            var project = cc.jumpkick.config.JkBuildParser.parse(Path.of(dir).resolve("jk.toml"))
+                    .project();
+            m.put("coord", project.group() + ":" + project.name());
+            if (project.description() != null) m.put("description", project.description());
+            m.put("version", project.version());
+        } catch (Exception ignored) {
+            // missing/unparseable jk.toml
+        }
+        return m;
     }
 
     /**
@@ -335,6 +411,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
+                .put("mcpUrl", url() != null ? url() + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
                 .put("webRoot", webRoot.toString())
                 .toString();

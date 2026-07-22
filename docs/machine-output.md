@@ -24,7 +24,7 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 | 3 | Versioned shared pipeline event shape (`JsonlShape`, `schema: 1`) | **Shipped** (CLI); align web/MCP over time |
 | 4 | `details.json` remains post-hoc summary (same fields where applicable) | **Existing** (JK-1079); keep aligned |
 | 5 | Always-on run log JSONL under cache (`EventLogListener`) | **Existing** — same shape as stdout JSONL |
-| 6 | Engine MCP adapter (thin, discoverable like web) | **Backlog [JK-1095](https://github.com/jkbuild/kanartist)** |
+| 6 | Engine MCP adapter (thin, discoverable like web) | **Done (JK-1095)** — `POST /mcp`, tools, status `mcpUrl` |
 | 7 | Robust cancel (graceful → hard kill; never hang) | **Done (JK-1096)** — `JobWorkers.shutdownForRequest` + bounded cancel join |
 
 ## Unified information model

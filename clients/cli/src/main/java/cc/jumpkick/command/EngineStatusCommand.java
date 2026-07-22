@@ -73,6 +73,7 @@ public final class EngineStatusCommand implements CliCommand {
                     + ",\"aotTrainingPid\":" + s.aotTrainingPid()
                     + ",\"httpUrl\":" + (s.httpUrl() != null ? Jsonl.quote(s.httpUrl()) : "null")
                     + ",\"httpError\":" + (s.httpError() != null ? Jsonl.quote(s.httpError()) : "null")
+                    + ",\"mcpUrl\":" + (s.mcpUrl() != null ? Jsonl.quote(s.mcpUrl()) : "null")
                     + "}");
             return Exit.SUCCESS;
         }
@@ -98,6 +99,10 @@ public final class EngineStatusCommand implements CliCommand {
                 ? Ansi.hyperlink(http, Theme.colorize(http, Theme.active().path()))
                 : http;
         detail("Web UI", webUi);
+        if (s.mcpUrl() != null) {
+            String mcp = Theme.colorize(s.mcpUrl(), Theme.active().path());
+            detail("MCP", mcp + "  (POST JSON-RPC; Bearer token)");
+        }
         return Exit.SUCCESS;
     }
 
