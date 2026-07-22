@@ -57,8 +57,7 @@ and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
 
 | Modules | Under `jk test` |
 |---|---|
-| `shared/*`, `server/{io,resolver,toolchain,engine}`, `plugins/*` | **Green** dogfood / CI |
-| `clients/cli` | Pure-jk: isolated `JK_STATE_DIR` + `-Djk.engine.jar` so nested engines do not kill the host |
+| `shared/*`, `server/{io,resolver,toolchain,engine}`, `plugins/*`, `clients/cli` | **Green** dogfood / CI (CLI uses isolated nested engines) |
 
 ## Default repositories
 
@@ -69,7 +68,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 
 | Task | Why |
 |---|---|
-| Full `./gradlew test` | Nested CLI/engine suites and worker wiring |
+| Full `./gradlew test` | Bootstrap CI source of truth; pure-jk suite also covers monorepo modules |
 | `./gradlew dist` / `nativeCompile` | Bootstrap + native CI matrix; dogfood ship via `jk release` |
 | `./gradlew installLocal` | Prefer `jk plugin install-local` after `jk build` for workspace workers |
 
