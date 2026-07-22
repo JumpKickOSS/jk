@@ -97,6 +97,29 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 
 Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 
+### Schema freeze until 1.0
+
+**Until JumpKick 1.0 ships, do not rev schema / protocol version numbers.** Stay on **version 1**
+(or the field’s existing constant) for every external-ish format:
+
+| Surface | Field / constant | Pre-1.0 policy |
+|---------|------------------|----------------|
+| `jk.toml` | grammar / tables | Additive only; no version bump |
+| `jk.lock` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
+| Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
+| CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
+| Session transcripts | `details.json` `"schema"` | Stay on **1** |
+| REST `/api/*` | response shapes | Additive fields only |
+| SSE event `data` | `"schema"` | Stay on **1** |
+| MCP | `protocolVersion` / tool payloads | Stay on advertised **1**-era shape; no version churn |
+
+**Why:** there are no public users to protect yet. Version bumps create noise and force dual
+readers without benefit. Prefer **additive, backward-compatible** fields under the same version.
+Breaking renames/removals wait for an explicit 1.0 compatibility story.
+
+**Exception:** pure internal constants (metrics/journal experiments) may already differ; do not
+proliferate new schema versions. When in doubt, keep `1` and document the field in prose.
+
 ## Repository layout
 
 Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runtime modules:

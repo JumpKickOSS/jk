@@ -376,9 +376,9 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
 
 - **`json` and `jsonl` are the same mode:** a **live** event stream (phases, progress ticks, labels,
   errors with structured test fields, step/pipeline finish). Not a single end-of-run blob.
-- Every line includes `"schema":1`, `"ts"`, `"type"`. See [machine-output.md](machine-output.md) for
-  the full event table and how it aligns with the web SSE API and **MCP** (`POST /mcp` on the engine
-  HTTP URL; `jk engine status` prints **MCP**).
+- Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
+  version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
+  with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
 - Post-hoc summary still lands in `target/.jk-cli/<ts>/details.json` (below). Deep timings:
   `target/jk-chrome-profile.json`.
 

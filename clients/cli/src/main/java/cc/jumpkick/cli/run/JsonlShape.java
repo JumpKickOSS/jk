@@ -18,7 +18,10 @@ import java.time.Instant;
  */
 final class JsonlShape {
 
-    /** Bump only on breaking field renames/removals. Additive fields stay on the same version. */
+    /**
+     * Stay on {@code 1} until jk <strong>1.0</strong> — no pre-release version churn (see
+     * {@code docs/architecture.md} schema freeze). Additive fields only.
+     */
     static final int SCHEMA = 1;
 
     private JsonlShape() {}

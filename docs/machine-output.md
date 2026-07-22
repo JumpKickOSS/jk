@@ -57,7 +57,8 @@ export JK_OUTPUT=json         # or jsonl
 
 - **One JSON object per line**, flushed promptly (live).
 - Every object includes at least: `schema` (int), `ts` (epoch ms), `type` (string).
-- Current schema version: **`1`** (see `JsonlShape.SCHEMA` in the CLI).
+- Schema version: **`1`** forever until **jk 1.0** (see [architecture.md — Schema freeze](architecture.md#schema-freeze-until-10)).
+  Do **not** bump for additive fields. No pre-1.0 version churn.
 - Terminal human chrome is **suppressed** in this mode so stdout stays parseable.
 
 Example lines (illustrative):
@@ -157,12 +158,14 @@ Do **not** set `TERM=dumb` and scrape wedges. Do **not** use verbose as the prim
 When you add information (e.g. module on a test failure):
 
 1. [ ] Pipeline / engine model carries the fact  
-2. [ ] `JsonlShape` / JSONL fields (schema bump if breaking)  
+2. [ ] `JsonlShape` / JSONL fields (**additive only** — keep `schema: 1` until 1.0)  
 3. [ ] Web SSE payload fields (same names)  
 4. [ ] Verbose / failure headline text (human projection)  
 5. [ ] `details.json` if it is a post-hoc summary field  
-6. [ ] MCP tool schema when MCP exists  
+6. [ ] MCP tool payloads when MCP exists  
 7. [ ] This doc’s table row if a new **type** appears  
+
+Pre-1.0: **no schema version bumps** across jk.toml, lock, wire, REST, SSE, MCP — see architecture.
 
 ## Cancel (JK-1096)
 
