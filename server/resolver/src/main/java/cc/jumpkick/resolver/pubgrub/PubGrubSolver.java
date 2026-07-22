@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.BiConsumer;
 
 /**
  * PubGrub version solver: root deps + {@link PackageSource} → package → version map. Constraints
@@ -61,6 +62,12 @@ public class PubGrubSolver {
     private int decisionCount;
     private int loopCount;
 
+    /**
+     * Optional progress hook (JK-1091): fired after each successful non-root {@link
+     * PartialSolution#decide}. Listener must be cheap/thread-safe if shared.
+     */
+    private BiConsumer<String, String> onDecision;
+
     public PubGrubSolver(PackageSource source) {
         this(source, envMaxDecisions(), envTimeoutMs());
     }
@@ -74,6 +81,12 @@ public class PubGrubSolver {
         }
         this.maxDecisions = maxDecisions;
         this.deadlineNanos = timeoutMs <= 0 ? Long.MAX_VALUE : System.nanoTime() + timeoutMs * 1_000_000L;
+    }
+
+    /** Progress hook for live graph ticks during solve (LockOrchestrator / JK-1091). */
+    public PubGrubSolver withOnDecision(BiConsumer<String, String> onDecision) {
+        this.onDecision = onDecision;
+        return this;
     }
 
     private static int envMaxDecisions() {
@@ -336,6 +349,9 @@ public class PubGrubSolver {
             solution.decide(pkg, pick);
             decisionCount++;
             checkBudget();
+            if (onDecision != null) {
+                onDecision.accept(pkg, pick);
+            }
 
             Term decisionTerm = Term.positive(pkg, VersionSet.exact(pick));
             for (Term depTerm : deps) {

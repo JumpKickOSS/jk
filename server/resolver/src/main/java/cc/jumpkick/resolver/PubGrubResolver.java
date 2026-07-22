@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
 
 /** {@link Resolver} backed by {@link PubGrubSolver} — maps jk deps onto solver terms. */
 public final class PubGrubResolver implements Resolver {
@@ -35,6 +36,8 @@ public final class PubGrubResolver implements Resolver {
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional palette injected by the CLI so diagnostic colors match the live theme. */
     cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette; // package-private for LockOrchestrator
+    /** Optional live graph progress (package key, version) during PubGrub decisions (JK-1091). */
+    private BiConsumer<String, String> onDecision;
 
     public PubGrubResolver(MavenRepo repo) {
         this(RepoGroup.of(repo));
@@ -86,6 +89,12 @@ public final class PubGrubResolver implements Resolver {
         this.kmp = kmp == null ? KmpRedirects.NONE : kmp;
     }
 
+    /** JK-1091: fire during each PubGrub decision so lock progress can advance mid-scope. */
+    public PubGrubResolver withOnDecision(BiConsumer<String, String> onDecision) {
+        this.onDecision = onDecision;
+        return this;
+    }
+
     @Override
     public Resolution resolve(List<Dependency> roots) throws IOException, InterruptedException {
         List<Term> rootTerms = new ArrayList<>(roots.size());
@@ -103,7 +112,9 @@ public final class PubGrubResolver implements Resolver {
 
         Map<String, String> decisions;
         try {
-            decisions = new PubGrubSolver(source).solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            PubGrubSolver solver = new PubGrubSolver(source);
+            if (onDecision != null) solver.withOnDecision(onDecision);
+            decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
         } catch (UnsatisfiableException e) {
             boolean ansi =
                     System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;

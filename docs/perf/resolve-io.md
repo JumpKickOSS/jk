@@ -63,9 +63,16 @@ Exact pins **do not** need metadata on the happy path. Existence is proven by th
 ## Progress bar model
 
 - Initial ticks ≈ `max(10, declaredRoots × 12) × 2`
-- During graph: +1 tick per unique package decided; grow total if estimate undershoots
+- During graph: +1 tick per unique package **as PubGrub decides it** (JK-1091 live hooks; catch-up after each scope for any missed)
 - After graph: set total to graphTicks + packages for materialize
-- During materialize: +1 tick per package fetched/recorded
+- During materialize: +1 tick per package **when its jar fetch completes** (parallel workers; UI drained single-threaded; lock rows still ordered)
+
+### JK-1091 (live ticks)
+
+| Gap before | Fix |
+|------------|-----|
+| Graph bar jumped only after whole main/test/processor scope | `PubGrubSolver` decision callback → `onGraphPackage` mid-solve |
+| Download ticks lagged until join order caught up | Completion queue: tick on finish, assemble lock in stable order |
 
 ## Cache inventory
 
