@@ -25,7 +25,7 @@ Synthetic traditional project, **24** JUnit Jupiter classes each sleeping **200â
 jk test -w N --rebuild --no-progress
 ```
 
-Host: macOS (agent laptop), local `jk` 0.10.0-SNAPSHOT.
+Host: macOS (agent laptop), local `jk` 0.10.1.
 
 ## Wall time
 

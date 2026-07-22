@@ -9,6 +9,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 | [**Architecture**](architecture.md) | How jk is built: client/engine split, modules, resolution, caching |
 | [**Plugins**](plugins.md) | Authoring first-party-style build plugins |
 | [**Feature PRDs**](features/README.md) | Design freezes for tickets (catalogs, BOMs, starters, …) |
+| [**Releases**](releases.md) | Versioning, install layout, Ed25519 signing, tag CI (JK-1066) |
 
 Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` — local archive pointer [kanban/README.md](kanban/README.md).
 

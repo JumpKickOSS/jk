@@ -3,7 +3,7 @@
 **Audience:** JumpKick maintainers and agents.  
 **Purpose:** Where [Mill](https://mill-build.org) is stronger today, what that implies for product direction, and which Mill ideas are worth stealing vs deliberately not matching.  
 **Mill version reviewed:** 1.1.7 docs + main-branch source at `../mill` (com-lihaoyi/mill).  
-**JumpKick status:** pre-1.0 alpha (`0.10.0-SNAPSHOT`).  
+**JumpKick status:** pre-1.0 alpha (`0.10.1`).  
 **As of:** 2026-07-20 — reconciled after tickets 1023–1055 / 1035–1048 dogfood. Historical priority
 tables below may still list old `ticket-NNNN` paths (frozen archive); live board is kanartist `JK-NNNN`.
 

@@ -56,7 +56,7 @@ public enum PluginJar {
 
     /**
      * The m2-layout relative path for this plugin at its current version.
-     * E.g. {@code cc/jumpkick/jk-formatter/0.10.0-SNAPSHOT/jk-formatter-0.10.0-SNAPSHOT.jar}.
+     * E.g. {@code cc/jumpkick/jk-formatter/0.10.1/jk-formatter-0.10.1.jar}.
      */
     private String relativePath() {
         String version = JkVersion.VERSION;

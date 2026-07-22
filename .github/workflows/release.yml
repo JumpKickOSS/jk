@@ -1,0 +1,182 @@
+# JK-1066 — tag-triggered release build + sign for jumpkick.build layout.
+#
+# Trigger: push tag v0.10.1 (or any vX.Y.Z matching JkVersion without the v).
+#
+# Secrets:
+#   JK_RELEASE_SIGNING_KEY  — PKCS#8 base64 Ed25519 private key (required for .sig)
+#   JK_RELEASE_S3_BUCKET    — optional; when set, upload to s3://$bucket/releases/…
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION — for upload
+#
+# Until upload secrets exist, each matrix job uploads a signed (or unsigned) release
+# directory as a workflow artifact for staged verification.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  TERM: xterm-256color
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }} ${{ matrix.arch_label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch_label: linux-x86_64
+            java_dist: graalvm
+          - os: ubuntu-24.04-arm
+            arch_label: linux-aarch64
+            java_dist: graalvm
+          - os: macos-13
+            arch_label: macos-x86_64
+            java_dist: graalvm
+          - os: macos-14
+            arch_label: macos-aarch64
+            java_dist: graalvm
+          - os: windows-latest
+            arch_label: windows-x86_64
+            java_dist: graalvm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          cache: 'gradle'
+        continue-on-error: true
+
+      - uses: actions/setup-java@v4
+        if: failure()
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Resolve version from tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          echo "JK_VERSION=$VER" >> "$GITHUB_ENV"
+          echo "Building release $VER (${{ matrix.arch_label }})"
+
+      - name: Dist (native + engine)
+        shell: bash
+        run: |
+          ./gradlew clean dist --no-daemon || ./gradlew :engine:shadowJar --no-daemon
+          # If nativeCompile is unavailable, assemble engine-only for later merge.
+          ls -la build/dist || true
+          ls -la server/engine/build/libs || true
+          mkdir -p build/dist/lib
+          if [[ ! -f build/dist/lib/jk-engine-*.jar ]] 2>/dev/null; then
+            cp server/engine/build/libs/jk-engine-*.jar build/dist/lib/ 2>/dev/null || true
+          fi
+
+      - name: Assemble + sign release dir
+        shell: bash
+        env:
+          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+        run: |
+          chmod +x scripts/sign-release.sh scripts/assemble-release-dir.sh
+          if [[ -f build/dist/jk || -f build/dist/jk.exe ]]; then
+            scripts/assemble-release-dir.sh "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+          else
+            echo "No native binary — packaging engine jar only"
+            mkdir -p "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+            cp build/dist/lib/jk-engine-*.jar "build/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-engine-${JK_VERSION}.jar" 2>/dev/null || \
+              cp server/engine/build/libs/jk-engine-*.jar "build/release/${JK_VERSION}-${{ matrix.arch_label }}/jk-engine-${JK_VERSION}.jar"
+            (cd "build/release/${JK_VERSION}-${{ matrix.arch_label }}" && (shasum -a 256 * >SHA256SUMS || sha256sum * >SHA256SUMS))
+            if [[ -n "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
+              scripts/sign-release.sh "build/release/${JK_VERSION}-${{ matrix.arch_label }}/SHA256SUMS"
+            fi
+          fi
+          ls -la "build/release/${JK_VERSION}-${{ matrix.arch_label }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.JK_VERSION }}-${{ matrix.arch_label }}
+          path: build/release/${{ env.JK_VERSION }}-${{ matrix.arch_label }}/
+          if-no-files-found: error
+
+  publish:
+    name: Merge + publish pointer
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ always() && needs.build.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: staging
+          pattern: release-*
+
+      - name: Flatten into version directory
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          mkdir -p "out/${VER}"
+          # Merge all platform files; last engine jar wins (should be identical).
+          find staging -type f \( -name 'jk-*' -o -name 'jk-engine-*.jar' -o -name 'SHA256SUMS*' \) -exec cp -n {} "out/${VER}/" \; 2>/dev/null || true
+          find staging -type f -exec cp {} "out/${VER}/" \; 2>/dev/null || true
+          # Recompute combined SHA256SUMS over the merged set (exclude old SUMS/sig).
+          (
+            cd "out/${VER}"
+            rm -f SHA256SUMS SHA256SUMS.sig
+            if command -v sha256sum >/dev/null; then sha256sum * >SHA256SUMS
+            else shasum -a 256 * >SHA256SUMS
+            fi
+          )
+          echo "$VER" > out/latest/VERSION
+          ls -laR out
+
+      - name: Re-sign combined SHA256SUMS
+        shell: bash
+        env:
+          JK_RELEASE_SIGNING_KEY: ${{ secrets.JK_RELEASE_SIGNING_KEY }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          if [[ -n "${JK_RELEASE_SIGNING_KEY:-}" ]]; then
+            chmod +x scripts/sign-release.sh
+            scripts/sign-release.sh "out/${VER}/SHA256SUMS"
+          else
+            echo "JK_RELEASE_SIGNING_KEY missing — combined sums unsigned"
+          fi
+
+      - name: Upload merged release tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.ref_name }}-merged
+          path: out/
+
+      - name: Upload to jumpkick.build (optional)
+        if: ${{ secrets.JK_RELEASE_S3_BUCKET != '' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'auto' }}
+          BUCKET: ${{ secrets.JK_RELEASE_S3_BUCKET }}
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          if command -v aws >/dev/null 2>&1; then
+            aws s3 sync "out/${VER}/" "s3://${BUCKET}/releases/${VER}/" --acl public-read
+            aws s3 cp out/latest/VERSION "s3://${BUCKET}/releases/latest/VERSION" --acl public-read
+          else
+            echo "aws CLI not available — install in this step when enabling publish"
+            exit 1
+          fi

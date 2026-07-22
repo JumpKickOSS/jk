@@ -19,7 +19,7 @@ class PluginInstallLocalTest {
             [project]
             group = "cc.jumpkick"
             name = "jk-test-runner"
-            version = "0.10.0-SNAPSHOT"
+            version = "0.10.1"
             jdk = 25
             java = 25
             [application]
@@ -44,7 +44,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = mod.resolve("target/jk-test-runner-0.10.0-SNAPSHOT-assembly.jar");
+        Path jar = mod.resolve("target/jk-test-runner-0.10.1-assembly.jar");
         Files.writeString(jar, "fake-worker-jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -59,7 +59,7 @@ class PluginInstallLocalTest {
         }
         assertThat(exit).isZero();
         Path dest = cache.resolve(
-                "repos/local/cc/jumpkick/jk-test-runner/0.10.0-SNAPSHOT/jk-test-runner-0.10.0-SNAPSHOT.jar");
+                "repos/local/cc/jumpkick/jk-test-runner/0.10.1/jk-test-runner-0.10.1.jar");
         assertThat(dest).exists();
         assertThat(Files.readString(dest)).isEqualTo("fake-worker-jar");
         assertThat(Path.of(dest + ".sha256")).exists();
@@ -84,7 +84,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Files.writeString(mod.resolve("target/jk-test-runner-0.10.0-SNAPSHOT-assembly.jar"), "x");
+        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-assembly.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -131,7 +131,7 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-alpha"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 java = 25
                 [application]
@@ -144,15 +144,15 @@ class PluginInstallLocalTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-beta"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 assembly = true
                 """);
-        Files.writeString(a.resolve("target/jk-alpha-0.10.0-SNAPSHOT-assembly.jar"), "A");
-        Files.writeString(b.resolve("target/jk-beta-0.10.0-SNAPSHOT-assembly.jar"), "B");
+        Files.writeString(a.resolve("target/jk-alpha-0.10.1-assembly.jar"), "A");
+        Files.writeString(b.resolve("target/jk-beta-0.10.1-assembly.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",
@@ -164,9 +164,9 @@ class PluginInstallLocalTest {
                         "--modules",
                         "alpha"))
                 .isZero();
-        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-alpha/0.10.0-SNAPSHOT/jk-alpha-0.10.0-SNAPSHOT.jar"))
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-alpha/0.10.1/jk-alpha-0.10.1.jar"))
                 .exists();
-        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-beta/0.10.0-SNAPSHOT/jk-beta-0.10.0-SNAPSHOT.jar"))
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-beta/0.10.1/jk-beta-0.10.1.jar"))
                 .doesNotExist();
     }
 

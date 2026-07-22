@@ -1,7 +1,7 @@
 # Engine heap monorepo measure (JK-1075)
 
 **Date:** 2026-07-21 (UTC)  
-**Binary:** `jk 0.10.0-SNAPSHOT` (local install)  
+**Binary:** `jk 0.10.1` (local install)  
 **Harness:** `scripts/heap-monorepo-measure.sh` + polled `jk engine status --output json`  
 **Fixture:** 200 independent modules, one-line `Lib.java` each, workspace root, `jk build --skip-tests`  
 **Engine cap:** default `max-heap-mb = 256` (`heapMaxBytes` ≈ 247.5 MiB)

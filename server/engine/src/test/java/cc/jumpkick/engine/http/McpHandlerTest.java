@@ -35,7 +35,7 @@ class McpHandlerTest {
 
     private final McpHandler mcp = new McpHandler(
             () -> new StatusSnapshot(
-                    "0.10.0-SNAPSHOT",
+                    "0.10.1",
                     1L,
                     System.currentTimeMillis() - 5_000,
                     /* activeRequests */ 0,
@@ -50,7 +50,7 @@ class McpHandlerTest {
             jobs,
             dir -> Map.of("coord", "com.example:demo", "description", "hi"),
             () -> List.of("{\"id\":\"abc\",\"ok\":true}"),
-            "0.10.0-SNAPSHOT");
+            "0.10.1");
 
     @Test
     void initialize_returns_server_info() {
@@ -150,7 +150,7 @@ class McpHandlerTest {
         ProgressTokenRegistry tokens = new ProgressTokenRegistry();
         McpHandler withTokens = new McpHandler(
                 () -> new StatusSnapshot(
-                        "0.10.0-SNAPSHOT",
+                        "0.10.1",
                         1L,
                         System.currentTimeMillis() - 5_000,
                         0,
@@ -165,7 +165,7 @@ class McpHandlerTest {
                 jobs,
                 dir -> Map.of("coord", "com.example:demo"),
                 List::of,
-                "0.10.0-SNAPSHOT",
+                "0.10.1",
                 tokens);
         String body = withTokens.handleBody(
                 "{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\","

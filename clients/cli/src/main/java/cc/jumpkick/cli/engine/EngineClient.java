@@ -1751,7 +1751,7 @@ public final class EngineClient {
         Path cache = aotDir.resolve(stem + ".aot");
         // Sweep THIS version's other keys — the cache, the JEP 514 ".aot.config" recording
         // intermediate, and any ".noaot" marker. The "<16-hex>." shape check keeps a version
-        // whose name extends ours ("0.10.0" vs "0.10.0-SNAPSHOT") out of the blast radius.
+        // whose name extends ours ("0.10.0" vs "0.10.1") out of the blast radius.
         String versionPrefix = "engine-" + version + "-";
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
             for (Path p : entries) {

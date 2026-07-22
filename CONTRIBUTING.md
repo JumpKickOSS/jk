@@ -55,7 +55,7 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 # 1) Produce a local JumpKick + side-load worker jars into ~/.jk/cache
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install layout
+export PATH="$HOME/.jk/versions/0.10.1/bin:$PATH"   # or your install layout
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock

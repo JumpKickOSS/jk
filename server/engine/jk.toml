@@ -1,7 +1,7 @@
 [project]
 group       = "cc.jumpkick"
 name        = "jk-engine"
-version     = "0.10.0-SNAPSHOT"
+version     = "0.10.1"
 description = "jk build engine: BuildPipelines, plugin dispatch, action cache, compile/test machinery."
 jdk         = 25
 java        = 25
@@ -12,14 +12,14 @@ main     = "cc.jumpkick.engine.EngineMain"
 assembly = true
 
 [dependencies]
-jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.0-SNAPSHOT" }
-jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.0-SNAPSHOT" }
-jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.0-SNAPSHOT" }
-jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.0-SNAPSHOT" }
-jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.0-SNAPSHOT" }
-jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.0-SNAPSHOT" }
+jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.1" }
+jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.1" }
+jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.1" }
+jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.1" }
+jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.1" }
+jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.1" }
 # Dashboard static assets (classpath /web/*) — Gradle used runtimeOnly(project(":web")).
-jk-web        = { group = "cc.jumpkick", name = "jk-web",        version = "0.10.0-SNAPSHOT" }
+jk-web        = { group = "cc.jumpkick", name = "jk-web",        version = "0.10.1" }
 asm           = { group = "org.ow2.asm", name = "asm",            version = "9.10.1" }
 asm-tree      = { group = "org.ow2.asm", name = "asm-tree",       version = "9.10.1" }
 asm-commons   = { group = "org.ow2.asm", name = "asm-commons",    version = "9.10.1" }

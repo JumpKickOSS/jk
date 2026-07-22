@@ -1,7 +1,7 @@
 [project]
 group       = "cc.jumpkick"
 name        = "jk-plugin-api"
-version     = "0.10.0-SNAPSHOT"
+version     = "0.10.1"
 description = "jk Plugin SPI + HostEvent wire codec. Zero external dependencies (Gradle: no project deps)."
 jdk         = 25
 # SPI floor: workers shade this into jars that must load on the user's test JVM (JDK 17+).

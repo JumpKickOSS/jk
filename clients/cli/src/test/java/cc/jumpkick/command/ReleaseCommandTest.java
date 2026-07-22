@@ -80,7 +80,7 @@ class ReleaseCommandTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 [workspace]
                 modules = ["server/engine", "clients/cli"]
@@ -91,7 +91,7 @@ class ReleaseCommandTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 [application]
                 main = "cc.jumpkick.engine.EngineMain"
@@ -103,7 +103,7 @@ class ReleaseCommandTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 [application]
                 main = "cc.jumpkick.cli.Jk"
@@ -153,7 +153,7 @@ class ReleaseCommandTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 java = 25
                 [workspace]
@@ -165,7 +165,7 @@ class ReleaseCommandTest {
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
-                version = "0.10.0-SNAPSHOT"
+                version = "0.10.1"
                 jdk = 25
                 java = 25
                 [application]

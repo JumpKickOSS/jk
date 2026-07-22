@@ -1,7 +1,7 @@
 version = 1
-generated-by = "jk 0.10.0-SNAPSHOT"
+generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.0-SNAPSHOT", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
 
 [[artifact]]
 name     = "com.google.android:annotations:jar:"

@@ -22,7 +22,7 @@ plugins {
 // Coordinates + version must match cc.jumpkick.util.JkVersion.VERSION and the
 // cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).
 group = "cc.jumpkick"
-version = "0.10.0-SNAPSHOT"
+version = "0.10.1"
 
 val workerArtifact = "jk-${project.name}"
 
