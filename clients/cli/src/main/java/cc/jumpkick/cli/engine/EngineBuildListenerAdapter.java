@@ -139,7 +139,9 @@ final class EngineBuildListenerAdapter {
                             req.profile(),
                             req.verbose(),
                             req.offline(),
-                            req.force()),
+                            req.force(),
+                            req.parallelTests()
+                                    || SessionContext.current().parallelTests()),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),

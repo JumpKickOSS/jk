@@ -51,14 +51,17 @@ JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project   # bare jav
 cache (one content read per path per thread for key + why-rebuilt snapshot) plus settled
 disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path + SHA-256 hex).
 
-## Test parallelization (JK-1086 Phase A)
+## Test parallelization (JK-1086 Phase A → B/C)
 
-**Decision: keep cross-module tests opt-in; within-module Mill path → JK-1087.**  
-See [test-parallelization.md](test-parallelization.md) for Mill vs jk map, RAM model (`-j`×`-w`×`parallel-tests`), isolation checklist, and default-on go/no-go.
+**Within-module:** default `-w0` auto + per-module `[test] workers=1` opt-out (B1–B4).  
+**Cross-module:** laptop default still serial; **CI opts in** to `--parallel-tests` (C1). Laptop
+default-on deferred to C2 (flake budget).  
+See [test-parallelization.md](test-parallelization.md) (Mill map, RAM model, C1 measure ~40% wall win
+on `shared/*`). Re-measure: `scripts/test-parallel-measure.sh`.
 
 ## Within-module test workers (JK-1087)
 
-**Decision: GO for opt-in `-w N` (already dynamic class pull-queue); NO-GO for default raise.**  
+**Decision: GO for default auto `-w0` (B3); serial pin via `-w1` or `[test] workers=1`.**  
 Spike numbers: [within-module-test-parallel-spike.md](within-module-test-parallel-spike.md) (~2.4× wall at `-w4` on 24×200 ms classes; ~4× RSS).
 
 ## Resolve / lock I/O (JK-1088)

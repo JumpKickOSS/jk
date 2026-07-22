@@ -103,10 +103,10 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 
 ## Phase C checklist (cross-module defaults)
 
-- [ ] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline)  
-- [ ] CI profile: `-j0 -wN --parallel-tests` with measured flake budget  
-- [ ] Only then consider default-on `--parallel-tests` for laptop  
-- [ ] Opt-out path remains first-class (`-w1`, no parallel-tests)
+- [x] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline) — see **C1 measure** below  
+- [x] CI profile: pure-jk self-host uses `-j0 -w0 --parallel-tests` + `JK_AOT_TRAIN=off` (laptop default still serial modules)  
+- [ ] Only then consider default-on `--parallel-tests` for laptop (C2; needs multi-day flake budget)  
+- [x] Opt-out path remains first-class (`-w1`, no parallel-tests, `[test] workers=1`)
 
 ## Explicit defer (Phase B/C)
 
@@ -120,8 +120,34 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 | B2 | Guide: Mill-like recipes | Done (`docs/guide.md` Parallelism) |
 | B3 | Auto `-w` = min(jobs, classes) + heap clamp | Done (`TestWorkers`, default `-w0`) |
 | B4 | Module serial opt-out (`[test] workers=1`) | Done |
-| C1 | Monorepo measure + CI profile | Data-driven default-on decision |
+| C1 | Monorepo measure + CI profile | Done (measure + CI opt-in; laptop default still serial modules) |
 | C2 | Default `--parallel-tests` (or CI-only) | Cross-module Mill/Gradle-parallel parity |
+
+## C1 measure (2026-07-22)
+
+**Method:** `scripts/test-parallel-measure.sh` with `MODULES='shared/*'`, `EXTRA_ARGS='--no-progress --rebuild'`,
+`JK_AOT_TRAIN=off`. Host: Darwin arm64, 12 cores. Thin client + engine jar after B4/C1 wiring
+(`jk test --parallel-tests` now parses; multi-module selection runs concurrent `runTest` with the
+engine test gate lifted).
+
+| config | wall s | notes |
+|--------|--------|-------|
+| `-j0 -w1` | **21** | serial within-module |
+| `-j0 -w0` (auto, serial modules) | **25** | auto workers; TEST_GATE still serial across modules |
+| `-j0 -w0 --parallel-tests` | **15** | **~40% wall win** vs serial-modules auto |
+
+GO wall criterion (≥20%): **met** on this suite. **Not** flipping laptop default yet — need CI flake
+budget over multiple days (C2). CI self-host **opts in** to `--parallel-tests`; hermetic modules pin
+`[test] workers = 1` (e.g. `clients/cli`).
+
+Re-run:
+
+```bash
+MODULES='shared/*' EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+# fuller monorepo (matches CI filter):
+MODULES='shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*' \
+  EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+```
 
 ## Refs
 

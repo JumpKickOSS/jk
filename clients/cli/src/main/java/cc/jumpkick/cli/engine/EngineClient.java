@@ -347,7 +347,21 @@ public final class EngineClient {
             String profile,
             boolean verbose,
             boolean offline,
-            boolean force) {}
+            boolean force,
+            boolean parallelTests) {
+        /** Backward-compatible ctor: serial cross-module gate. */
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                Path jdksDir,
+                int workers,
+                String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force) {
+            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+        }
+    }
 
     /**
      * Run a single project's test pipeline against the engine (Step 3) — see {@link

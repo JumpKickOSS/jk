@@ -1701,6 +1701,7 @@ public final class EngineServer implements AutoCloseable {
             boolean verbose = Jsonl.bool(requestLine, "verbose", false);
             boolean offline = Jsonl.bool(requestLine, "offline", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
+            boolean parallelTests = Jsonl.bool(requestLine, "parallelTests", false);
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -1733,7 +1734,8 @@ public final class EngineServer implements AutoCloseable {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken)
-                    .withJvm(EngineProtocol.jvmTuning(requestLine));
+                    .withJvm(EngineProtocol.jvmTuning(requestLine))
+                    .withParallelTests(parallelTests);
 
             // The session rides Inputs EXPLICITLY (canonical constructor): the delegating
             // constructors capture SessionContext.current() at construction time, which here —

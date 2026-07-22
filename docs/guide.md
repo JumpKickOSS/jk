@@ -162,10 +162,11 @@ jk test -w4
 # Build with tests, auto workers, modules serial for run-tests
 jk build
 
-# CI self-host (often also JK_AOT_TRAIN=off)
+# CI self-host profile (C1): often also JK_AOT_TRAIN=off
 export JK_AOT_TRAIN=off
-jk test -j0 --parallel-tests
+jk test -j0 -w0 --parallel-tests
 ```
+
 
 | Axis | Default | Mill analogue |
 |---|---|---|

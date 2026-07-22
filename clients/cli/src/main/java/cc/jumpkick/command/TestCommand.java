@@ -54,6 +54,7 @@ public final class TestCommand implements CliCommand {
                         "Test-runner JVMs per module (class pull-queue). 0=auto min(jobs,classes) (default); 1=serial.",
                         "-w",
                         "--workers"),
+                Opt.flag("Run modules' tests concurrently too (cross-module). Default: off.", "--parallel-tests"),
                 cc.jumpkick.cli.CommonOpts.cacheDir(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
@@ -71,9 +72,11 @@ public final class TestCommand implements CliCommand {
 
     String profileName;
     Integer workers;
+    boolean parallelTests;
     Path cacheDir;
     Path jdksDir;
     GlobalOptions global;
+    int jobs;
     String affectedSince;
     String modulesSpec;
     private CliSessionTranscript session;
@@ -87,6 +90,11 @@ public final class TestCommand implements CliCommand {
         this.affectedSince = in.value("affected-since").orElse(null);
         this.modulesSpec = in.value("modules").orElse(null);
         this.global = GlobalOptions.from(in);
+        this.jobs = global.jobsEffective();
+        // Opt-in: overlap module suites. Default serializes run-tests (shared ports/locks).
+        this.parallelTests = in.isSet("parallel-tests");
+        cc.jumpkick.config.SessionContext.install(
+                cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -159,7 +167,8 @@ public final class TestCommand implements CliCommand {
                             // the session (not the Invocation) is their authority, exactly as
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
-                            cc.jumpkick.config.SessionContext.current().force()),
+                            cc.jumpkick.config.SessionContext.current().force(),
+                            parallelTests),
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
@@ -202,12 +211,18 @@ public final class TestCommand implements CliCommand {
             argv.add("--affected-since");
             argv.add(r);
         });
+        if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
+        in.value("workers").ifPresent(w -> {
+            argv.add("--workers");
+            argv.add(w);
+        });
         return argv;
     }
 
     /**
-     * Workspace selective tests: reuse the workspace build engine path with a dirty-module set and
-     * skip packaging (test-only pipelines).
+     * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs —
+     * not the whole graph). Serial by default; with {@code --parallel-tests}, modules overlap via a
+     * bounded pool ({@code -j} width).
      */
     private int runWorkspaceTests(
             Path entryDir,
@@ -216,43 +231,78 @@ public final class TestCommand implements CliCommand {
             int workerCount,
             java.util.Set<Path> dirtyDirs)
             throws IOException, InterruptedException {
-        // For v1, run sequential tests on each affected module via runTest.
-        int worst = 0;
-        for (Path mod : dirtyDirs) {
-            TestSummary[] testResultHolder = new TestSummary[1];
-            ConsoleSpec spec = new ConsoleSpec(
-                    "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
-            String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
-            PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-            PipelineResult result;
-            try {
-                result = cc.jumpkick.cli.engine.EngineClient.runTest(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.TestRequest(
-                                mod,
-                                cache,
-                                jdksDir,
-                                workerCount,
-                                profileName,
-                                global.verbose,
-                                cc.jumpkick.config.SessionContext.current().offline(),
-                                cc.jumpkick.config.SessionContext.current().force()),
-                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
-                        testResultHolder);
-            } catch (IOException e) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
-                if (session != null) session.error(mod + ": " + e.getMessage());
-                return Exit.SOFTWARE;
+        List<Path> modules = new ArrayList<>(dirtyDirs);
+        if (modules.isEmpty()) return 0;
+        if (!parallelTests || modules.size() == 1) {
+            int worst = 0;
+            for (Path mod : modules) {
+                int code = runOneModuleTest(mod, cache, workerCount);
+                if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
             }
-            if (session != null) {
-                session.module(module).absorb(result);
-            }
-            if (!result.success()) {
-                if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) worst = 4;
-                else if (worst == 0) worst = 1;
-            }
+            return worst;
         }
-        return worst;
+        int width = Math.max(1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
+            Thread t = new Thread(r, "jk-test-module");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            List<java.util.concurrent.Future<Integer>> futures = new ArrayList<>();
+            for (Path mod : modules) {
+                futures.add(pool.submit(() -> runOneModuleTest(mod, cache, workerCount)));
+            }
+            int worst = 0;
+            for (var f : futures) {
+                int code = f.get();
+                if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
+            }
+            return worst;
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable c = e.getCause() != null ? e.getCause() : e;
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", c.getMessage()));
+            if (session != null) session.error(String.valueOf(c.getMessage()));
+            return Exit.SOFTWARE;
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    private int runOneModuleTest(Path mod, Path cache, int workerCount) {
+        TestSummary[] testResultHolder = new TestSummary[1];
+        ConsoleSpec spec = new ConsoleSpec(
+                "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
+        String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
+        PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
+        PipelineResult result;
+        try {
+            result = cc.jumpkick.cli.engine.EngineClient.runTest(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.TestRequest(
+                            mod,
+                            cache,
+                            jdksDir,
+                            workerCount,
+                            profileName,
+                            global.verbose,
+                            cc.jumpkick.config.SessionContext.current().offline(),
+                            cc.jumpkick.config.SessionContext.current().force(),
+                            parallelTests),
+                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    testResultHolder);
+        } catch (IOException e) {
+            synchronized (TestCommand.class) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", mod + ": " + e.getMessage()));
+            }
+            if (session != null) session.error(mod + ": " + e.getMessage());
+            return Exit.SOFTWARE;
+        }
+        if (session != null) {
+            session.module(module).absorb(result);
+        }
+        if (result.success()) return 0;
+        if (testResultHolder[0] != null && !testResultHolder[0].allPassed()) return 4;
+        return 1;
     }
 
     /**

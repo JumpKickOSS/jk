@@ -635,6 +635,23 @@ public final class EngineProtocol {
             boolean verbose,
             boolean offline,
             boolean force) {
+        return testRequest(dir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+    }
+
+    /**
+     * Start a single-project test run. {@code parallelTests} lifts the engine's cross-module test
+     * gate when several test-requests overlap (workspace {@code jk test --parallel-tests}).
+     */
+    public static String testRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            boolean parallelTests) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"t\":\""
                 + TEST_REQUEST
@@ -654,6 +671,8 @@ public final class EngineProtocol {
                 + offline
                 + ",\"force\":"
                 + force
+                + ",\"parallelTests\":"
+                + parallelTests
                 + "}";
     }
 

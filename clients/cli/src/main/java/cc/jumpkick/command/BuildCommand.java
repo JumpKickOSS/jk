@@ -612,7 +612,8 @@ public final class BuildCommand implements CliCommand {
      * {@code group:artifact} plain with a strikethrough to mark it done, and the bright-black italic
      * {@code took …} suffix. A failed unit keeps the red cross and {@code — failed}.
      */
-    private static String completionLine(boolean ok, int index, int total, String coord, long millis) {
+    /** Module completion line shared by {@code jk build} and workspace {@code jk test}. */
+    static String completionLine(boolean ok, int index, int total, String coord, long millis) {
         var th = Theme.active();
         String mark = Theme.colorize(ok ? Glyphs.CHECK : Glyphs.CROSS, ok ? th.success() : th.error());
         StringBuilder sb = new StringBuilder();
