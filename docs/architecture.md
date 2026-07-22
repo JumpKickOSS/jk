@@ -56,10 +56,22 @@ If a stream goes idle, the client fails closed with a clear error (tune with `JK
 recover with `jk engine stop --force`). Heartbeats keep long quiet compiles honest against the
 idle timer. Huge monorepos leave `JK_ENGINE_JOB_DEADLINE_MS` at `0`; CI can set a wall cap.
 
-**Worker cancel contract (JK-1096):** registered plugin/test JVMs get `Process.destroy()`
-(SIGTERM), then after `JK_CANCEL_GRACE_MS` any survivors are `destroyForcibly()`. Plugins must
-treat a **sub-second** window as all they get to flush state. Cancel always finishes; the
+**Worker cancel contract (JK-1096):**
+
+1. **All** registered workers for the request get `Process.destroy()` first (tight loop — one
+   shared signal phase, not staggered).
+2. The engine waits **one** shared wall-clock grace (`JK_CANCEL_GRACE_MS`, default **500 ms** for
+   the whole set — **not** 500 ms × N workers).
+3. Survivors get `destroyForcibly()`.
+
+Plugins must treat that **shared sub-second** window as all they get. Cancel always finishes; the
 connection thread never `await`s unboundedly on a cancelled job.
+
+**Windows:** `Process.destroy()` is not SIGTERM; HotSpot typically terminates immediately (no
+portable graceful OS signal). The grace still bounds *our* wait; do not rely on Windows shutdown
+hooks after `destroy()`. Prefer cancel-token / stdin EOF where possible; force-kill is the portable
+last step. `JK_CANCEL_GRACE_MS` max **5000** is only an env safety clamp for misconfiguration — not
+the product default and not a per-worker budget.
 
 ```bash
 jk engine start | status | stop

@@ -107,8 +107,10 @@ class JobWorkersTest {
     }
 
     @Test
-    void cancel_grace_default_is_sub_second() {
+    void cancel_grace_default_is_sub_second_shared_not_per_worker() {
         assertThat(JobWorkers.DEFAULT_CANCEL_GRACE_MS).isEqualTo(500L);
-        assertThat(JobWorkers.cancelGraceMs()).isBetween(0L, 5_000L);
+        assertThat(JobWorkers.MAX_CANCEL_GRACE_MS).isEqualTo(5_000L);
+        // Default product path (env unset in unit tests): 500ms shared wall clock.
+        assertThat(JobWorkers.cancelGraceMs()).isEqualTo(500L);
     }
 }

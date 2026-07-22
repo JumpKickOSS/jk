@@ -151,12 +151,14 @@ When you add information (e.g. module on a test failure):
 
 | Knob | Default | Role |
 |------|---------|------|
-| `JK_CANCEL_GRACE_MS` | **500** | Soft `destroy()` then force-kill workers; clamped 0…5000 |
+| `JK_CANCEL_GRACE_MS` | **500** | Shared wall-clock after signalling **all** workers; then force-kill leftovers |
+| Env clamp max | **5000** | Safety only if someone sets a huge env value — not the default |
 | Join after user cancel | grace + 500 ms | Connection thread abandons if runner still stuck |
-| Pipeline step cancel | 200 ms | `Future.cancel` after cooperative flag |
+| Pipeline step cancel | 200 ms | In-process `Future.cancel` after cooperative flag |
 
-Policy: **always terminates; never hangs.** Plugins/workers must anticipate a short cancel window
-(save state in well under a second). See [architecture.md](architecture.md) liveness table.
+**Timeline (N workers):** `destroy()` all → wait ≤500 ms once → `destroyForcibly()` stragglers.  
+Not N×500 ms. **Windows:** no SIGTERM; `destroy()` is often already terminal — grace bounds the
+engine’s wait, not a guaranteed hook window. See [architecture.md](architecture.md).
 
 ## Refs
 
