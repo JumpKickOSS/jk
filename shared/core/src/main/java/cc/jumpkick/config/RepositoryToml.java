@@ -3,16 +3,19 @@ package cc.jumpkick.config;
 
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.ObjectStoreConfig;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
  * Shared {@code [repositories.<name>]} field parser ({@code ${ENV}} interpolation, credentials,
- * object-store). Callers supply missing-var policy via {@code resolveVar} (strict project vs
- * lenient global).
+ * object-store, exclusive {@code groups}). Callers supply missing-var policy via {@code
+ * resolveVar} (strict project vs lenient global).
  */
 public final class RepositoryToml {
 
@@ -70,5 +73,29 @@ public final class RepositoryToml {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * Exclusive Maven group bindings ({@code groups = ["com.acme", "com.acme.*"]}) for JK-1064.
+     * Empty when absent. Strict callers pass a path prefix for error messages; invalid types throw
+     * {@link IllegalArgumentException}.
+     */
+    public static List<String> groups(TomlTable t, String pathForErrors) {
+        if (t == null || !t.contains("groups")) return List.of();
+        Object raw = t.get("groups");
+        if (raw == null) return List.of();
+        if (!(raw instanceof TomlArray arr)) {
+            throw new IllegalArgumentException(
+                    pathForErrors + ".groups must be an array of strings (e.g. [\"com.acme\", \"com.acme.*\"])");
+        }
+        List<String> out = new ArrayList<>(arr.size());
+        for (int i = 0; i < arr.size(); i++) {
+            Object el = arr.get(i);
+            if (!(el instanceof String s) || s.isBlank()) {
+                throw new IllegalArgumentException(pathForErrors + ".groups[" + i + "] must be a non-empty string");
+            }
+            out.add(s.trim());
+        }
+        return List.copyOf(out);
     }
 }

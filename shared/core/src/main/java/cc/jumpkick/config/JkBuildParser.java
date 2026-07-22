@@ -1038,6 +1038,7 @@ public final class JkBuildParser {
             String url;
             Optional<RepoCredential> credential = Optional.empty();
             Optional<ObjectStoreConfig> objectStore = Optional.empty();
+            List<String> groups = List.of();
             if (value instanceof String s) {
                 url = s;
             } else if (value instanceof TomlTable t) {
@@ -1048,12 +1049,17 @@ public final class JkBuildParser {
                 url = u;
                 credential = RepositoryToml.credential(t, strictInterp(name));
                 objectStore = RepositoryToml.objectStore(t, strictInterp(name));
+                try {
+                    groups = RepositoryToml.groups(t, "repositories." + name);
+                } catch (IllegalArgumentException e) {
+                    throw new JkBuildParseException(e.getMessage(), e);
+                }
             } else {
                 throw new JkBuildParseException(
                         "repositories." + name + " must be a URL string or an inline table with `url`");
             }
             try {
-                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore));
+                result.add(new RepositorySpec(name, URI.create(url), credential, objectStore, groups));
             } catch (IllegalArgumentException e) {
                 throw new JkBuildParseException("repositories." + name + " has malformed URL: " + url, e);
             }

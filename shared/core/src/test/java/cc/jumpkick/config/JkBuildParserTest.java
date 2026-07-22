@@ -911,6 +911,28 @@ class JkBuildParserTest {
     }
 
     @Test
+    void parses_repository_exclusive_groups() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                [repositories.central]
+                url = "https://repo.maven.apache.org/maven2/"
+
+                [repositories.internal]
+                url = "https://repo.acme.com/maven"
+                groups = ["com.acme", "com.acme.*"]
+                """);
+        var internal = parsed.repositories().stream()
+                .filter(r -> r.name().equals("internal"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(internal.groups()).containsExactly("com.acme", "com.acme.*");
+        var central = parsed.repositories().stream()
+                .filter(r -> r.name().equals("central"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(central.groups()).isEmpty();
+    }
+
+    @Test
     void parses_inline_token_and_basic_credentials() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.ghp]

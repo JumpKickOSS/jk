@@ -693,6 +693,30 @@ still prefers CAS, per-repo mirrors under the cache, and `~/.m2` before the netw
 mirrors, forge package registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"`
 over secrets in TOML.
 
+### Exclusive groups (dependency-confusion defense)
+
+When you declare an **internal** repository next to a public one, bind internal Maven namespaces
+so versions of those coordinates are **never** discovered or fetched from other remotes:
+
+```toml
+[repositories.central]
+url = "https://repo.maven.apache.org/maven2/"
+
+[repositories.internal]
+url = "https://repo.acme.com/maven"
+# Exact group or prefix.* (group + subpackages). Matching GAs only resolve from this repo
+# (and any other repo that also lists the same group).
+groups = ["com.acme", "com.acme.*"]
+```
+
+- **Bound group** → solver only sees versions from claiming repos (a higher version planted on
+  Central cannot win at `jk lock` / `jk update`).
+- **Unbound group** → all remotes union as before.
+- **Already locked** artifacts keep their lockfile source pin until you re-resolve that line
+  (`jk update` re-opens discovery for updated/new deps).
+- If you configure **multiple repositories without any `groups`**, jk **warns once** per lock
+  (still resolves). Add exclusive bindings for internal namespaces.
+
 ## Wrapper
 
 ```bash

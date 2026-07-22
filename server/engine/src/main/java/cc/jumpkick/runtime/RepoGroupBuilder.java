@@ -61,6 +61,7 @@ public final class RepoGroupBuilder {
             // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
             // transparent for Maven Central, Google Maven, and other open mirrors.
             RepoCredentialResolver creds = new RepoCredentialResolver();
+            List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
             for (RepositorySpec spec : effective) {
                 RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
                 // Per-repo object-store config (region/endpoint/keys) flows to the
@@ -68,9 +69,33 @@ public final class RepoGroupBuilder {
                 RepoTransport transport = RepoTransports.forUrl(
                         spec.url(), http, spec.objectStore().orElse(ObjectStoreConfig.EMPTY));
                 repos.add(new MavenRepo(spec.name(), spec.url(), transport, cas, cred, mirrorToM2));
+                exclusiveGroups.add(spec.groups());
             }
+            maybeWarnMultiRepoWithoutBindings(effective);
+            return new RepoGroup(repos, exclusiveGroups);
         }
         return new RepoGroup(repos);
+    }
+
+    /**
+     * Once per {@link #buildFor} when the effective remote list has more than one repo and none
+     * declare exclusive {@code groups} (JK-1064). Soft warn — resolve still proceeds.
+     */
+    static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective) {
+        if (effective == null || effective.size() <= 1) return;
+        boolean any = false;
+        for (RepositorySpec s : effective) {
+            if (s.hasExclusiveGroups()) {
+                any = true;
+                break;
+            }
+        }
+        if (any) return;
+        System.err.println(
+                "jk: warning: multiple repositories configured without exclusive `groups` bindings "
+                        + "(dependency-confusion risk). Bind internal namespaces, e.g. "
+                        + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
+                        + "See the guide § Auth and repositories.");
     }
 
     /**

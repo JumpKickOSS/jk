@@ -67,4 +67,21 @@ class RepoGroupBuilderTest {
                 .extracting(RepositorySpec::name)
                 .containsExactly("google", "central");
     }
+
+    @Test
+    void multi_repo_without_groups_emits_warn() {
+        List<RepositorySpec> multi = List.of(
+                new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/")),
+                new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
+        // Smoke: does not throw; warn goes to stderr (once per call).
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(multi);
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(RepositorySpec.MAVEN_CENTRAL));
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(
+                new RepositorySpec(
+                        "internal",
+                        URI.create("https://i.example/"),
+                        java.util.Optional.empty(),
+                        java.util.Optional.empty(),
+                        List.of("com.acme"))));
+    }
 }
