@@ -116,7 +116,7 @@ public final class BuildPipelines {
      * Process-wide gate that serializes the {@code run-tests} step across concurrently-built units
      * (parallel workspace module builds). Tests commonly contend on shared resources — ports, lock
      * files, fixtures — so they run one at a time by default; the request's {@link
-     * cc.jumpkick.config.Session#parallelTests()} ({@code --parallel-tests}) lifts the gate.
+     * cc.jumpkick.config.Session#parallelTests()} (default on; {@code --serial-tests} holds the gate).
      *
      * <p>The gate itself remains a per-invocation shared primitive (one process, one build at a
      * time in the CLI); a per-session gate is part of the M1c server-hardening remainder.

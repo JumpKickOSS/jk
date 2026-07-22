@@ -8,11 +8,9 @@
 | Default | Why |
 |---------|-----|
 | **`-j` / jobs** = effective cores | Module graph parallel is Mill-shaped and already shipped (JK-1082 / 1084). |
-| **Cross-module tests serial** | Hermeticity: shared ports, temp dirs, statics, DB. Opt-in: `--parallel-tests`. |
+| **Cross-module tests parallel** | C2: default on after C1 measure (~40% wall on `shared/*`) + module `[test] workers=1` opt-out. Use `--serial-tests` to serialize. |
 | **`-w` / workers = 0 (auto)** | `min(jobs, classCount)` + `HeapPlan` clamp (Mill `testSubprocessCount`). Explicit `-w1` = serial. |
-| **Do not default-on `--parallel-tests`** | Until isolation contract + measured monorepo win (Phase B/C). Prefer green over flaky speed. |
-
-CI may opt in via flags/env without changing laptop defaults.
+| **Opt-out first-class** | `--serial-tests` / `--no-parallel-tests`; per-module `[test] workers=1` / `parallel=false`. |
 
 ## Mill model (what we are matching)
 
@@ -104,9 +102,9 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 ## Phase C checklist (cross-module defaults)
 
 - [x] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline) — see **C1 measure** below  
-- [x] CI profile: pure-jk self-host uses `-j0 -w0 --parallel-tests` + `JK_AOT_TRAIN=off` (laptop default still serial modules)  
-- [ ] Only then consider default-on `--parallel-tests` for laptop (C2; needs multi-day flake budget)  
-- [x] Opt-out path remains first-class (`-w1`, no parallel-tests, `[test] workers=1`)
+- [x] CI profile: pure-jk self-host uses `-j0 -w0` (+ optional explicit `--parallel-tests`) + `JK_AOT_TRAIN=off`  
+- [x] Default-on cross-module parallel tests (C2) with `--serial-tests` opt-out  
+- [x] Opt-out path remains first-class (`-w1`, `--serial-tests`, `[test] workers=1`)
 
 ## Explicit defer (Phase B/C)
 
@@ -120,8 +118,8 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 | B2 | Guide: Mill-like recipes | Done (`docs/guide.md` Parallelism) |
 | B3 | Auto `-w` = min(jobs, classes) + heap clamp | Done (`TestWorkers`, default `-w0`) |
 | B4 | Module serial opt-out (`[test] workers=1`) | Done |
-| C1 | Monorepo measure + CI profile | Done (measure + CI opt-in; laptop default still serial modules) |
-| C2 | Default `--parallel-tests` (or CI-only) | Cross-module Mill/Gradle-parallel parity |
+| C1 | Monorepo measure + CI profile | Done (measure + CI opt-in) |
+| C2 | Default cross-module parallel tests | Done (default on; `--serial-tests` opt-out) |
 
 ## C1 measure (2026-07-22)
 
@@ -136,9 +134,9 @@ engine test gate lifted).
 | `-j0 -w0` (auto, serial modules) | **25** | auto workers; TEST_GATE still serial across modules |
 | `-j0 -w0 --parallel-tests` | **15** | **~40% wall win** vs serial-modules auto |
 
-GO wall criterion (≥20%): **met** on this suite. **Not** flipping laptop default yet — need CI flake
-budget over multiple days (C2). CI self-host **opts in** to `--parallel-tests`; hermetic modules pin
-`[test] workers = 1` (e.g. `clients/cli`).
+GO wall criterion (≥20%): **met** on this suite → **C2 shipped**: cross-module parallel is the
+product default; hermetic modules pin `[test] workers = 1` (e.g. `clients/cli`); full serial gate
+via `--serial-tests`.
 
 Re-run:
 

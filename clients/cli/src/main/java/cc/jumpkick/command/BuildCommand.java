@@ -46,28 +46,27 @@ public final class BuildCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        List<Opt> opts = new java.util.ArrayList<>(List.of(
-                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
-                Opt.value(
-                        "<N>",
-                        "Test-runner JVMs per module when tests run. 0=auto min(jobs,classes) (default); 1=serial.",
-                        "-w",
-                        "--workers"),
-                cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
-                Opt.flag("Skip compiling and running tests.", "--skip-tests"),
-                Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"),
-                // Module concurrency is global -j/--jobs (JK-1082). --parallel/--no-parallel removed.
-                Opt.flag("Run modules' tests concurrently too (cross-module). Default: off.", "--parallel-tests"),
-                Opt.value(
-                        "<git-ref>",
-                        "Build only modules (and dependents) changed since this git ref.",
-                        "--affected-since"),
-                Opt.value(
-                        "<sel>",
-                        "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                        "--modules")));
+        List<Opt> opts = new java.util.ArrayList<>();
+        opts.add(Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"));
+        opts.add(Opt.value(
+                "<N>",
+                "Test-runner JVMs per module when tests run. 0=auto min(jobs,classes) (default); 1=serial.",
+                "-w",
+                "--workers"));
+        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(Opt.flag("Skip compiling and running tests.", "--skip-tests"));
+        opts.add(Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"));
+        // Module concurrency is global -j/--jobs (JK-1082). Cross-module tests default on (C2).
+        opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
+        opts.add(Opt.value(
+                "<git-ref>",
+                "Build only modules (and dependents) changed since this git ref.",
+                "--affected-since"));
+        opts.add(Opt.value(
+                "<sel>",
+                "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "--modules"));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -113,9 +112,8 @@ public final class BuildCommand implements CliCommand {
         this.aotCache = in.isSet("aot-cache");
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
-        // Opt-in: run modules' tests concurrently. Default serializes them
-        // (shared ports/locks/fixtures) — see BuildPipelines's test gate.
-        this.parallelTests = in.isSet("parallel-tests");
+        // C2: cross-module tests parallel by default; --serial-tests opts out (TEST_GATE).
+        this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
         this.affectedSince = in.value("affected-since").orElse(null);
         this.modulesSpec = in.value("modules").orElse(null);
         cc.jumpkick.config.SessionContext.install(
@@ -177,7 +175,8 @@ public final class BuildCommand implements CliCommand {
         argv.add("build");
         if (in.isSet("skip-tests")) argv.add("--skip-tests");
         if (in.isSet("aot-cache")) argv.add("--aot-cache");
-        if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
+        if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
+        else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         if (in.isSet("no-timeline")) argv.add("--no-timeline");
         in.value("profile").ifPresent(p -> {
             argv.add("--profile");

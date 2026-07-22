@@ -46,31 +46,31 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Build the plan instead of printing it (`jk build`).", "--run"),
-                Opt.flag(
-                        "Estimate ETA with modules' tests concurrent (cross-module). Default: off.",
-                        "--parallel-tests"),
-                // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
-                // means feeding the same inputs to the shared estimate (and, with --run, to build).
-                // Module concurrency: global -j/--jobs (JK-1082).
-                Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"),
-                Opt.value(
-                        "<N>",
-                        "Forecast with N test-runner JVMs per module (within -j). Default 1.",
-                        "-w",
-                        "--workers"),
-                Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
-                cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"),
-                Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"),
-                Opt.value(
-                        "<fmt>",
-                        "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
-                        "--graph"),
-                Opt.value("<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
+        var opts = new java.util.ArrayList<Opt>();
+        opts.add(Opt.flag("Build the plan instead of printing it (`jk build`).", "--run"));
+        opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
+        // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
+        // means feeding the same inputs to the shared estimate (and, with --run, to build).
+        // Module concurrency: global -j/--jobs (JK-1082).
+        opts.add(Opt.value(
+                "<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
+        opts.add(Opt.value(
+                "<N>",
+                "Forecast with N test-runner JVMs per module (within -j). Default 1.",
+                "-w",
+                "--workers"));
+        opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
+        opts.add(Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"));
+        opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"));
+        opts.add(Opt.value(
+                "<fmt>",
+                "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
+                "--graph"));
+        opts.add(Opt.value(
+                "<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
+        return opts;
     }
 
     @Override
@@ -110,7 +110,7 @@ public final class ExplainCommand implements CliCommand {
         // (jdksDir=null → full JDK probe chain, workers=1, skipTests=false) so a bare `jk explain`
         // predicts exactly what a bare `jk build` would do. Parsed before the engine round-trip:
         // they ride the explain request so the ETA is computed engine-side.
-        boolean parallelTests = in.isSet("parallel-tests");
+        boolean parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
         int jobs = global.jobsEffective();
         boolean serial = jobs == 1;
         int workers = in.value("workers").map(Integer::parseInt).orElse(1);

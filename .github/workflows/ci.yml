@@ -59,9 +59,9 @@ jobs:
           # Side-load pure-jk assembly workers (also covered by installLocal above).
           jk plugin install-local
           # Full pure-jk suite including clients/cli (nested engines use isolated JK_STATE_DIR).
-          # C1 CI profile: cores + auto within-module workers + cross-module --parallel-tests.
-          # Laptop default still serializes module suites; hermetic modules pin [test] workers=1.
-          jk test -j0 -w0 --parallel-tests --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          # C2: cross-module parallel is the product default; -j0 -w0 explicit for clarity.
+          # Hermetic modules pin [test] workers=1 (e.g. clients/cli).
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
           # Ship layout: native job has Graal — stage native CLI when present; dry-run plan first.
           jk release --skip-tests --dry-run
           jk release --skip-tests
@@ -95,8 +95,8 @@ jobs:
           jk lock
           jk build --skip-tests
           jk plugin install-local
-          # Same pure-jk suite as native job (C1: --parallel-tests); release stages bootstrap client.
-          jk test -j0 -w0 --parallel-tests --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
+          # Same pure-jk suite as native job (C2 default parallel tests); release stages bootstrap client.
+          jk test -j0 -w0 --modules 'shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*'
           jk release --skip-tests --skip-native --dry-run
           jk release --skip-tests --skip-native
 

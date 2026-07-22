@@ -56,8 +56,8 @@ Ideal wall for 24 × 200 ms pure sleep ≈ 4.8 s serial; with overhead (disc
 
 ### NO-GO (for now)
 
-1. **Do not default-on `--parallel-tests`** — isolation / flake budget (Phase C).
-2. **Do not implement Mill biased multi-module scheduling here** — couples to parallel-tests policy.
+1. ~~**Do not default-on `--parallel-tests`**~~ — **C2 shipped** (default on; `--serial-tests` opt-out).
+2. **Do not implement Mill biased multi-module scheduling here** — workspace scheduler owns that.
 3. **No second flag** for class parallel — `-w` is enough.
 
 ### Follow-up (implementation, not blocking 1087)

@@ -134,45 +134,50 @@ Discover test classes, then fork N runners that **pull** classes until empty (sa
 
 When `W > 1`, each runner gets its own `java.io.tmpdir` (isolation).
 
-#### Cross-module tests (`--parallel-tests`)
+#### Cross-module tests (default on; `--serial-tests` to opt out)
 
-By default only **one module runs tests at a time** (shared ports / temp / statics). Opt in to
-overlap module suites:
+By default **module suites overlap** (C2 — Mill/Gradle-shaped; C1 measured ~40% wall win on
+`shared/*`). Hermetic modules pin `[test] workers = 1`. To serialize the whole monorepo’s
+run-tests gate (shared ports / temp / statics debugging):
 
 ```bash
-jk test --parallel-tests
+jk test --serial-tests
+# alias: --no-parallel-tests
 ```
+
+`--parallel-tests` remains accepted (affirmative no-op; default is already on).
 
 #### Mill-like recipes
 
 ```bash
-# Default: parallel compile (-j=cores); auto within-module test workers; serial across modules
+# Default: parallel compile (-j=cores); auto within-module workers; parallel across modules
 jk test
 
-# Closest to Mill defaults: cores for everything + cross-module tests too
+# Explicit Mill-shaped (same as default; flags for clarity)
 jk test -j0 -w0 --parallel-tests
-# -w0 is the default; write it only for clarity
 
-# Serial within-module (debug flakes / one JVM)
+# Serial within-module (debug flakes / one JVM per module)
 jk test -w1
+
+# Serialize cross-module run-tests only (within-module still auto)
+jk test --serial-tests
 
 # Cap class-shard pool without touching module concurrency
 jk test -w4
 
-# Build with tests, auto workers, modules serial for run-tests
+# Build with tests (same parallel-test default as jk test)
 jk build
 
-# CI self-host profile (C1): often also JK_AOT_TRAIN=off
+# CI / dogfood: often also JK_AOT_TRAIN=off
 export JK_AOT_TRAIN=off
-jk test -j0 -w0 --parallel-tests
+jk test -j0 -w0
 ```
-
 
 | Axis | Default | Mill analogue |
 |---|---|---|
 | Module graph | `-j0` (cores) | `--jobs 0` |
 | Within-suite JVMs | `-w0` auto `min(jobs, classes)` | `testParallelism=true` |
-| Cross-module tests | serial | tasks share the jobs pool |
+| Cross-module tests | **parallel** (opt out: `--serial-tests`) | tasks share the jobs pool |
 | RAM veto | `HeapPlan` shrinks W | process count vs machine |
 
 #### Per-module serial opt-out (hermetic suites)
@@ -192,8 +197,9 @@ workers = 1          # serial within this module
 # test-parallel = false
 ```
 
-The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0 --parallel-tests` stays
-safe for known hermetic modules. Use `-w1` on the CLI for a one-off serial run of everything.
+The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0` (default parallel modules)
+stays safe for known hermetic suites. Use `-w1` for one JVM per module, or `--serial-tests` to
+serialize the whole workspace run-tests gate.
 
 Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 

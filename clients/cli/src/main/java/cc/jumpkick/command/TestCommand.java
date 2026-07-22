@@ -53,19 +53,18 @@ public final class TestCommand implements CliCommand {
                         "<N>",
                         "Test-runner JVMs per module (class pull-queue). 0=auto min(jobs,classes) (default); 1=serial.",
                         "-w",
-                        "--workers"),
-                Opt.flag("Run modules' tests concurrently too (cross-module). Default: off.", "--parallel-tests"),
-                cc.jumpkick.cli.CommonOpts.cacheDir(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
-                Opt.value(
-                        "<git-ref>",
-                        "Test only modules (and dependents) changed since this git ref.",
-                        "--affected-since"),
-                Opt.value(
-                        "<sel>",
-                        "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                        "--modules")));
+                        "--workers")));
+        opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
+        opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(Opt.value(
+                "<git-ref>",
+                "Test only modules (and dependents) changed since this git ref.",
+                "--affected-since"));
+        opts.add(Opt.value(
+                "<sel>",
+                "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "--modules"));
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -91,8 +90,8 @@ public final class TestCommand implements CliCommand {
         this.modulesSpec = in.value("modules").orElse(null);
         this.global = GlobalOptions.from(in);
         this.jobs = global.jobsEffective();
-        // Opt-in: overlap module suites. Default serializes run-tests (shared ports/locks).
-        this.parallelTests = in.isSet("parallel-tests");
+        // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
+        this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
         cc.jumpkick.config.SessionContext.install(
                 cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
         Path dir = global.workingDir();
@@ -211,7 +210,8 @@ public final class TestCommand implements CliCommand {
             argv.add("--affected-since");
             argv.add(r);
         });
-        if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
+        if (in.isSet("serial-tests") || in.isSet("no-parallel-tests")) argv.add("--serial-tests");
+        else if (in.isSet("parallel-tests")) argv.add("--parallel-tests");
         in.value("workers").ifPresent(w -> {
             argv.add("--workers");
             argv.add(w);
@@ -221,8 +221,8 @@ public final class TestCommand implements CliCommand {
 
     /**
      * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs —
-     * not the whole graph). Serial by default; with {@code --parallel-tests}, modules overlap via a
-     * bounded pool ({@code -j} width).
+     * not the whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code
+     * --serial-tests} runs modules one at a time.
      */
     private int runWorkspaceTests(
             Path entryDir,

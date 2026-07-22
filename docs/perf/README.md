@@ -54,8 +54,7 @@ disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path 
 ## Test parallelization (JK-1086 Phase A → B/C)
 
 **Within-module:** default `-w0` auto + per-module `[test] workers=1` opt-out (B1–B4).  
-**Cross-module:** laptop default still serial; **CI opts in** to `--parallel-tests` (C1). Laptop
-default-on deferred to C2 (flake budget).  
+**Cross-module:** default **on** (C2); opt out with `--serial-tests` / `--no-parallel-tests`.  
 See [test-parallelization.md](test-parallelization.md) (Mill map, RAM model, C1 measure ~40% wall win
 on `shared/*`). Re-measure: `scripts/test-parallel-measure.sh`.
 
