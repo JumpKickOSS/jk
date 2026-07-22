@@ -17,9 +17,23 @@ coordinates together (search for the old version string).
 
 | Layer | Role |
 |-------|------|
-| **GCS** | Object storage for release blobs (`gs://…/releases/<ver>/…`) |
-| **Firebase CDN** | Public edge for `https://jumpkick.build` (and `…/releases/…`) |
-| **install.sh** | Fetches `https://jumpkick.build/releases/latest/VERSION` then that version directory |
+| **GCS** | Object storage for release blobs (`gs://jkbuild-releases/releases/<ver>/…`) |
+| **Firebase CDN** | Public edge for `https://jumpkick.build` (wire later on Blaze) |
+| **install.sh** | Fetches `https://jumpkick.build/releases/…` once Firebase fronts the bucket |
+
+**Until Firebase Hosting is live**, the public HTTPS origin is:
+
+```text
+https://storage.googleapis.com/jkbuild-releases/releases/
+```
+
+Example install against GCS directly:
+
+```bash
+export JK_RELEASES_URL=https://storage.googleapis.com/jkbuild-releases/releases
+curl -fsSL https://jumpkick.build/install.sh | bash   # or install.sh from repo once URL is swapped
+# or: bash install.sh with JK_RELEASES_URL set
+```
 
 Layout under the bucket (and under the CDN path `/releases`):
 
