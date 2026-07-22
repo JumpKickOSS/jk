@@ -3417,6 +3417,8 @@ public final class BuildPipelines {
         env.put("CI", "false");
         // Clear NO_COLOR so TUI ANSI assertions match Gradle's deterministic setup.
         env.put("NO_COLOR", "");
+        // Nested engines + workers: train-on-miss is pure overhead under the suite.
+        env.put("JK_AOT_TRAIN", "off");
         return env;
     }
 

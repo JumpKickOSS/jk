@@ -9,8 +9,10 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.TestSummary;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -56,6 +58,8 @@ public final class JUnitLauncher {
     private List<String> runnerFlags(int concurrency) {
         List<String> flags = new ArrayList<>(cc.jumpkick.engine.plugin.JvmOptions.workerFlags(concurrency));
         flags.add("-Djk.plugin.class=" + RUNNER_PLUGIN_CLASS);
+        // Suite JVMs: no AOT train-on-miss (nested engines / compiler workers); still map caches.
+        flags.add("-Djk.aot.train=off");
         // CLI integration tests use FFM (EngineClient / MemoryProbe) and JUnit autodetection of
         // EngineTestExtension — match Gradle's :cli:test jvmArgs / systemProperty setup.
         if (!testEnv.isEmpty()) {
@@ -347,14 +351,29 @@ public final class JUnitLauncher {
         };
 
         try {
+            // Mill-class isolation: each worker gets its own java.io.tmpdir when W>1.
+            List<String> flags = new ArrayList<>(runnerFlags(totalWorkers));
+            Map<String, String> env = testEnv;
+            if (totalWorkers > 1) {
+                try {
+                    Path tmp = Files.createTempDirectory("jk-tw-" + workerId + "-");
+                    flags.add("-Djava.io.tmpdir=" + tmp);
+                    env = new LinkedHashMap<>(testEnv);
+                    env.put("TMPDIR", tmp.toString());
+                    env.put("TMP", tmp.toString());
+                    env.put("TEMP", tmp.toString());
+                } catch (IOException ignored) {
+                    // best-effort isolation
+                }
+            }
             return cc.jumpkick.engine.plugin.PluginLoader.converse(
                     javaBinary,
                     classpath,
                     // N test JVMs run at once → divide the heap cap by N so they fit.
-                    runnerFlags(totalWorkers),
+                    flags,
                     PROTOCOL_PREFIX,
                     args,
-                    testEnv,
+                    env,
                     handler,
                     passthrough);
         } catch (IOException e) {

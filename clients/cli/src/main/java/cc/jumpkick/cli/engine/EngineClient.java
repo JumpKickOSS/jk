@@ -1491,13 +1491,18 @@ public final class EngineClient {
         return new EngineTarget(engine, jdk.home(), isHotSpot(jdk.vendor()), aot, marker);
     }
 
-    /** AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code .noaot} marker uses AOT. */
+    /**
+     * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code .noaot} marker uses
+     * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled()} is
+     * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache.
+     */
     static AotMode chooseAotMode(EngineTarget t) {
         if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
         if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
         if (t.noAotMarker()) return AotMode.NONE;
-        if (t.aotCache() == null || !Files.exists(t.aotCache())) return AotMode.TRAIN;
-        return AotMode.USE;
+        if (t.aotCache() != null && Files.exists(t.aotCache())) return AotMode.USE;
+        if (!cc.jumpkick.util.AotSettings.trainingEnabled()) return AotMode.NONE;
+        return AotMode.TRAIN;
     }
 
     /**
@@ -1782,9 +1787,13 @@ public final class EngineClient {
                 }
                 // Forward plugin-jar location overrides (e.g. -Djk.test.runner.jar=… from Gradle
                 // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
+                // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train.
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
-                    if (!key.startsWith("jk.") || !key.endsWith(".jar")) continue;
+                    if (!key.startsWith("jk.")) continue;
+                    boolean jarOverride = key.endsWith(".jar");
+                    boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
+                    if (!jarOverride && !aotSwitch) continue;
                     String val = String.valueOf(e.getValue());
                     if (val == null || val.isBlank()) continue;
                     command.add("-D" + key + "=" + val);

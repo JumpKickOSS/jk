@@ -105,10 +105,24 @@ class EngineAotCacheTest {
         Path present = dir.resolve("engine-present.aot");
         Files.writeString(present, "cache");
 
-        assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, missing, false)))
-                .isEqualTo(AotMode.TRAIN);
-        assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, present, false)))
-                .isEqualTo(AotMode.USE);
+        String prev = System.getProperty("jk.aot.train");
+        try {
+            System.clearProperty("jk.aot.train");
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, missing, false)))
+                    .isEqualTo(AotMode.TRAIN);
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, present, false)))
+                    .isEqualTo(AotMode.USE);
+
+            System.setProperty("jk.aot.train", "off");
+            // No train-on-miss, but still map an existing cache.
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, missing, false)))
+                    .isEqualTo(AotMode.NONE);
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, present, false)))
+                    .isEqualTo(AotMode.USE);
+        } finally {
+            if (prev == null) System.clearProperty("jk.aot.train");
+            else System.setProperty("jk.aot.train", prev);
+        }
     }
 
     @Test

@@ -92,22 +92,36 @@ No-go: any of the above fail → keep opt-in; ship isolation first (Phase B).
 
 Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigation/spike; this epic owns policy for cross-module defaults and the isolation contract checklist.
 
-## Phase B checklist (not started)
+## Phase B checklist (isolation — ship next)
 
-- [ ] Document sandbox contract for suite authors (ports, temp, statics)  
-- [ ] Per-worker temp (and optional port range) when `W > 1`  
+- [x] Per-worker `java.io.tmpdir` (+ `TMPDIR`) when `W > 1` (`JUnitLauncher.driveWorker`)  
+- [ ] Document sandbox contract for suite authors (ports, temp, statics) in guide  
+- [ ] Optional port-range helper / documented convention for fixed-port tests  
 - [ ] Failure lines always include module (+ class when sharded)  
 - [ ] Optional “serial” tag / config for known bad suites  
+- [ ] Auto default `-w = min(jobs, classCount)` (or capped) once isolation is trusted — **Mill parity**
 
-## Phase C checklist (not started)
+## Phase C checklist (cross-module defaults)
 
 - [ ] Microbench / monorepo: serial vs `-wN` vs `--parallel-tests` (wall + RSS + timeline)  
-- [ ] Only then consider default `--parallel-tests` or config profile for CI  
-- [ ] Opt-out path remains first-class  
+- [ ] CI profile: `-j0 -wN --parallel-tests` with measured flake budget  
+- [ ] Only then consider default-on `--parallel-tests` for laptop  
+- [ ] Opt-out path remains first-class (`-w1`, no parallel-tests)
 
 ## Explicit defer (Phase B/C)
 
-**Defer default-on cross-module test parallel indefinitely** until JK-1087 spike + Phase B isolation land and Phase C numbers clear the go criteria above. Current opt-in flags stay.
+**Defer default-on cross-module test parallel** until Phase B isolation + Phase C numbers clear the go criteria. **Raise default `-w` only after per-worker temp (and flake data) land.** Current opt-in flags stay.
+
+### Story board (implementation order)
+
+| # | Story | Outcome |
+|---|--------|---------|
+| B1 | Per-worker temp isolation (`W>1`) | Done (engine `JUnitLauncher`) |
+| B2 | Guide: how to run Mill-like `jk test -j0 -wN --parallel-tests` | Docs |
+| B3 | Auto `-w` policy (min(jobs, classes), HeapPlan clamp) | Default closer to Mill |
+| B4 | Serial tag / suite opt-out | Hermetic suites stay green |
+| C1 | Monorepo measure + CI profile | Data-driven default-on decision |
+| C2 | Default `--parallel-tests` (or CI-only) | Cross-module Mill/Gradle-parallel parity |
 
 ## Refs
 

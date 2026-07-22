@@ -21,9 +21,9 @@ import java.util.concurrent.TimeUnit;
  * JEP 514 AOT caches for short-lived <em>{@code java … PluginMain}</em> workers (kotlin-compiler,
  * java-compiler ToolProvider host). <strong>Not</strong> used for bare {@code javac} launcher
  * forks — that path saw no win and no longer trains or maps caches. Background train on first miss;
- * later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin classpath. Kill
- * switch: {@code -Djk.worker.aot=off} / {@code JK_WORKER_AOT=off}. HotSpot 25+ only (Graal
- * ineligible).
+ * later forks map the cache. Key includes JDK home/vendor/version, GC, and plugin classpath.
+ * Switches: {@link cc.jumpkick.util.AotSettings} — {@code JK_WORKER_AOT=off} disables map+train;
+ * {@code JK_AOT_TRAIN=off} disables train-on-miss only. HotSpot 25+ only (Graal ineligible).
  */
 public final class PluginAot {
 
@@ -54,8 +54,12 @@ public final class PluginAot {
     }
 
     static boolean enabled() {
-        String prop = System.getProperty("jk.worker.aot", System.getenv().getOrDefault("JK_WORKER_AOT", ""));
-        return !"off".equalsIgnoreCase(prop);
+        return cc.jumpkick.util.AotSettings.workerAotEnabled();
+    }
+
+    /** Train-on-miss for workers; see {@link cc.jumpkick.util.AotSettings#trainingEnabled()}. */
+    static boolean trainingEnabled() {
+        return cc.jumpkick.util.AotSettings.trainingEnabled();
     }
 
     /** Where plugin AOT caches live: {@code <state>/aot/}. */
@@ -88,7 +92,7 @@ public final class PluginAot {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
-            if (eligible(id) && !Files.exists(noaotMarker(cache))) {
+            if (eligible(id) && trainingEnabled() && !Files.exists(noaotMarker(cache))) {
                 trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
             }
         } catch (RuntimeException e) {

@@ -1,7 +1,9 @@
 # Self-hosting JumpKick (`jk-jk`)
 
-Build JumpKick with JumpKick. Gradle remains the **bootstrap** and **parity oracle** until the
-pure-jk path covers ship layout (`jk release`) and the full suite.
+Build JumpKick with JumpKick. **Gradle and pure-jk coexist** in this tree for now: Gradle is
+bootstrap + parity oracle; day-to-day monorepo dogfood is pure-jk (`jk build` / `jk test` /
+`jk release`). A full cut-over (Gradle only in a sibling `jk-gradle` checkout, product tree
+Gradle-free) is **backlog** — see [Future cut-over](#future-cut-over-backlog).
 
 ## Worktree layout
 
@@ -9,8 +11,8 @@ Recommended dual-checkout setup:
 
 | Path | Role |
 |---|---|
-| `…/oss/jk` | Gradle bootstrap + product development on `main` |
-| `…/oss/jk-jk` | Git worktree on branch `self-host-jk-jk` — dogfood with `jk` only |
+| `…/oss/jk` | Primary product tree (Gradle + `jk.toml` dual-build) |
+| `…/oss/jk-jk` | Optional worktree for pure-jk-only dogfood |
 
 ```bash
 # From the primary clone (once):
@@ -64,13 +66,29 @@ and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
 With no `[repositories]` table, remotes are **Maven Central then Google Maven** (local CAS /
 `repos/*` / `~/.m2` still win first). R8 and Android coords do not need an extra google stanza.
 
-## Still Gradle
+## Still Gradle (by design, for now)
+
+Dual-build is intentional: the same sources build under Gradle **and** pure-jk. Do not remove
+Gradle files until the cut-over epic lands.
 
 | Task | Why |
 |---|---|
-| Full `./gradlew test` | Bootstrap CI source of truth; pure-jk suite also covers monorepo modules |
-| `./gradlew dist` / `nativeCompile` | Bootstrap + native CI matrix; dogfood ship via `jk release` |
-| `./gradlew installLocal` | Prefer `jk plugin install-local` after `jk build` for workspace workers |
+| Full `./gradlew test` | Parity oracle + bootstrap CI source of truth |
+| `./gradlew dist` / `nativeCompile` | Bootstrap binary when no prior `jk` install exists |
+| `./gradlew installLocal` | Or `jk plugin install-local` after pure-jk build |
+
+### Future cut-over (backlog)
+
+Not started — keep dual-build green until this epic is scheduled:
+
+1. **Bootstrap without in-tree Gradle** — install `jk` from a release (or a sibling `jk-gradle`
+   checkout) so a clean product tree never needs `./gradlew`.
+2. **CI primary = pure-jk** — Gradle job becomes optional `parity`.
+3. **Relocate Gradle** to `jk-gradle` (or a comparison repo) for oracle builds only.
+4. **Product tree Gradle-free** — delete `gradlew`, `buildSrc/`, module `build.gradle.kts`.
+
+Until then: pure-jk dogfood is required for product tickets that touch runtime; Gradle remains
+valid for bootstrap and comparison.
 
 ## Side-load workers (no Gradle)
 
@@ -115,6 +133,19 @@ Also runs `jk plugin install-local` for workspace PluginMain workers.
 
 Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <sel>`.
 
+## AOT during self-host / CI
+
+Live engines train AOT on miss by default. Nested engines under `jk test` and short-lived CI
+builds should not — use:
+
+```bash
+export JK_AOT_TRAIN=off   # train-on-miss off; still *use* existing caches
+# full worker AOT off (map + train): JK_WORKER_AOT=off
+```
+
+Pure-jk test forks set `-Djk.aot.train=off` automatically. For host engines in CI, export
+`JK_AOT_TRAIN=off` before the job starts (or restart the engine after exporting).
+
 ## Roadmap (summary)
 
 1. ~~Default Google Maven~~ (done)
@@ -126,5 +157,8 @@ Flags: `--out <dir>`, `--skip-tests`, `--skip-native`, `--dry-run`, `--modules <
 7. ~~Engine + plugins under pure-jk `jk test`~~ (done)
 8. ~~Native CLI via `jk native` / `jk release` (auto-native when eligible)~~ (done)
 9. ~~`clients/cli` under pure-jk `jk test` (nested-engine isolation)~~ (done)
+10. **Mill-class test parallelism** — isolation + default `-w` / `--parallel-tests` policy
+    ([test-parallelization.md](perf/test-parallelization.md))
+11. **Gradle cut-over** — backlog ([above](#future-cut-over-backlog))
 
 Details: session plan *Self-host JumpKick in ../jk-jk*.

@@ -49,6 +49,9 @@ jobs:
           echo "$HOME/.jk/versions/0.10.0-SNAPSHOT/bin" >> "$GITHUB_PATH"
 
       - name: jk lock + build + install-local + library tests
+        env:
+          # Nested engines / short-lived workers: no AOT train-on-miss (still use caches if present).
+          JK_AOT_TRAIN: off
         run: |
           jk --version
           jk lock
@@ -83,6 +86,8 @@ jobs:
           echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
 
       - name: jk lock + build + install-local + library tests
+        env:
+          JK_AOT_TRAIN: off
         run: |
           jk --version
           jk lock
