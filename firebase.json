@@ -1,0 +1,42 @@
+{
+  "hosting": {
+    "public": "hosting/public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "cleanUrls": true,
+    "trailingSlash": false,
+    "headers": [
+      {
+        "source": "/install.sh",
+        "headers": [
+          { "key": "Content-Type", "value": "text/x-shellscript; charset=utf-8" },
+          { "key": "Cache-Control", "value": "no-cache, max-age=0" }
+        ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "no-referrer-when-downgrade" }
+        ]
+      }
+    ],
+    "redirects": [
+      {
+        "source": "/releases",
+        "destination": "https://storage.googleapis.com/jkbuild-releases/releases/",
+        "type": 302
+      },
+      {
+        "source": "/releases/:path*",
+        "destination": "https://storage.googleapis.com/jkbuild-releases/releases/:path*",
+        "type": 302
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

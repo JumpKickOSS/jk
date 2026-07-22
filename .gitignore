@@ -61,3 +61,8 @@ Thumbs.db
 # IDE BSP launch config (local)
 .bsp/
 **/.bsp/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
