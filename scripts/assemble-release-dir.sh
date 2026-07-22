@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Assemble a versioned release directory from build/dist (JK-1066 layout for jumpkick.build).
+# Assemble a versioned release directory from build/dist (JK-1066 layout for
+# jumpkick.build via GCS + Firebase CDN).
 #
 # Expects a prior `./gradlew clean dist` (native client + engine jar under build/dist).
 #

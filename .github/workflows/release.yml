@@ -3,12 +3,15 @@
 # Trigger: push tag v0.10.1 (or any vX.Y.Z matching JkVersion without the v).
 #
 # Secrets:
-#   JK_RELEASE_SIGNING_KEY  — PKCS#8 base64 Ed25519 private key (required for .sig)
-#   JK_RELEASE_S3_BUCKET    — optional; when set, upload to s3://$bucket/releases/…
-#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION — for upload
+#   JK_RELEASE_SIGNING_KEY     — PKCS#8 base64 Ed25519 private key (required for .sig)
+#   JK_RELEASE_GCS_BUCKET      — optional; GCS bucket name (no gs://), e.g. jumpkick-releases
+#   JK_RELEASE_GCS_SA_JSON     — optional; GCP service-account JSON for gsutil upload
+#                                (roles: storage.objectAdmin on the bucket)
 #
-# Until upload secrets exist, each matrix job uploads a signed (or unsigned) release
-# directory as a workflow artifact for staged verification.
+# Hosting: objects live in GCS; public CDN is Firebase (jumpkick.build). Upload path is
+#   gs://$JK_RELEASE_GCS_BUCKET/releases/<ver>/… and …/releases/latest/VERSION
+#
+# Until GCS secrets exist, each matrix job still builds/signs and uploads a workflow artifact.
 
 name: Release
 
@@ -162,21 +165,31 @@ jobs:
           name: release-${{ github.ref_name }}-merged
           path: out/
 
-      - name: Upload to jumpkick.build (optional)
-        if: ${{ secrets.JK_RELEASE_S3_BUCKET != '' }}
+      # Gate publish inside the step (empty secrets must not fail the job).
+      - name: Upload to GCS (Firebase CDN origin)
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION || 'auto' }}
-          BUCKET: ${{ secrets.JK_RELEASE_S3_BUCKET }}
+          BUCKET: ${{ secrets.JK_RELEASE_GCS_BUCKET }}
+          SA_JSON: ${{ secrets.JK_RELEASE_GCS_SA_JSON }}
         shell: bash
         run: |
+          set -euo pipefail
+          if [[ -z "${BUCKET:-}" || -z "${SA_JSON:-}" ]]; then
+            echo "JK_RELEASE_GCS_BUCKET / JK_RELEASE_GCS_SA_JSON not set — skip GCS publish"
+            exit 0
+          fi
           TAG="${GITHUB_REF_NAME}"
           VER="${TAG#v}"
-          if command -v aws >/dev/null 2>&1; then
-            aws s3 sync "out/${VER}/" "s3://${BUCKET}/releases/${VER}/" --acl public-read
-            aws s3 cp out/latest/VERSION "s3://${BUCKET}/releases/latest/VERSION" --acl public-read
-          else
-            echo "aws CLI not available — install in this step when enabling publish"
-            exit 1
-          fi
+          # google-github-actions/setup-gcloud installs gcloud + gsutil on the runner.
+          curl -fsSL https://sdk.cloud.google.com | bash -s -- --disable-prompts --install-dir="$RUNNER_TEMP" >/dev/null
+          export PATH="$RUNNER_TEMP/google-cloud-sdk/bin:$PATH"
+          echo "$SA_JSON" > "$RUNNER_TEMP/gcs-sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/gcs-sa.json" --quiet
+          # Public objects for install.sh / self-update; Firebase CDN fronts jumpkick.build.
+          gsutil -m rsync -r -d "out/${VER}/" "gs://${BUCKET}/releases/${VER}/"
+          gsutil -h "Cache-Control:no-cache,max-age=0" cp out/latest/VERSION \
+            "gs://${BUCKET}/releases/latest/VERSION"
+          # Prefer uniform bucket-level public access in GCP console; ACL ch is best-effort.
+          gsutil -m acl ch -u AllUsers:R "gs://${BUCKET}/releases/${VER}/**" 2>/dev/null || true
+          gsutil acl ch -u AllUsers:R "gs://${BUCKET}/releases/latest/VERSION" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/gcs-sa.json"
+          echo "Published gs://${BUCKET}/releases/${VER}/ and latest/VERSION"

@@ -13,12 +13,20 @@ How JumpKick ships installable binaries (JK-1066). For day-to-day use see [guide
 Bump `JkVersion.VERSION`, Gradle `version` in plugin conventions, and workspace `jk.toml`
 coordinates together (search for the old version string).
 
-## Artifact layout (`https://jumpkick.build/releases`)
+## Hosting (GCS + Firebase CDN)
+
+| Layer | Role |
+|-------|------|
+| **GCS** | Object storage for release blobs (`gs://…/releases/<ver>/…`) |
+| **Firebase CDN** | Public edge for `https://jumpkick.build` (and `…/releases/…`) |
+| **install.sh** | Fetches `https://jumpkick.build/releases/latest/VERSION` then that version directory |
+
+Layout under the bucket (and under the CDN path `/releases`):
 
 ```text
 releases/
   latest/
-    VERSION                 # single line, e.g. 0.10.1
+    VERSION                 # single line, e.g. 0.10.1  (Cache-Control: no-cache)
   0.10.1/
     jk-linux-x86_64.xz
     jk-linux-aarch64.xz
@@ -32,6 +40,10 @@ releases/
 
 `install.sh` and self-update read `latest/VERSION`, then fetch **only** from that version
 directory so a mid-install publish cannot mix artifacts.
+
+Wire Firebase Hosting (or Firebase CDN / load balancer) so `jumpkick.build/releases/*` is
+served from the GCS prefix `releases/*` (custom domain + backend bucket, or Hosting rewrites
+to Cloud Storage — either is fine as long as the URL layout above is public HTTPS).
 
 ## Signing
 
@@ -51,18 +63,28 @@ Workflow: [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 1. Push tag `v0.10.1` (must match `JkVersion` without the `v` prefix, or set `JK_VERSION`).
 2. Matrix builds native client + engine jar per OS/arch.
 3. `scripts/assemble-release-dir.sh` produces per-platform dirs + `SHA256SUMS` + `.sig`.
-4. Upload to **jumpkick.build** object storage (configure secrets — see workflow comments).
-5. Update `latest/VERSION`.
+4. Merge job re-signs the combined tree, then **`gsutil rsync`** to GCS when secrets are set.
+5. Update `releases/latest/VERSION` (no-cache headers).
 
-### Required secrets (hosting)
+### Required secrets
 
 | Secret | Role |
 |--------|------|
-| `JK_RELEASE_SIGNING_KEY` | PKCS#8 base64 Ed25519 private key |
-| `JK_RELEASE_UPLOAD_*` | Provider-specific upload credentials (R2/S3/GCS — set when bucket exists) |
+| `JK_RELEASE_SIGNING_KEY` | PKCS#8 base64 Ed25519 private key (signing) |
+| `JK_RELEASE_GCS_BUCKET` | GCS bucket name only (no `gs://`), e.g. `jumpkick-releases` |
+| `JK_RELEASE_GCS_SA_JSON` | Service account JSON with object create/overwrite on that bucket |
 
-Until upload secrets exist, the workflow still **builds and signs** artifacts as workflow
-artifacts for a staged dry-run.
+Until GCS secrets exist, the workflow still **builds and signs** artifacts as GitHub Actions
+workflow artifacts for a staged dry-run.
+
+### Manual upload (ops)
+
+```bash
+# After assemble-release-dir.sh (or downloading the merged workflow artifact):
+gsutil -m rsync -r -d build/release/0.10.1/ gs://$BUCKET/releases/0.10.1/
+echo 0.10.1 | gsutil -h "Cache-Control:no-cache,max-age=0" cp - \
+  gs://$BUCKET/releases/latest/VERSION
+```
 
 ## Local dry-run
 
