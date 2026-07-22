@@ -51,6 +51,15 @@ public final class JUnitLauncher {
      */
     private Map<String, String> testEnv = Map.of();
 
+    /** Module coord for failure lines (e.g. {@code cc.jumpkick:jk-core}); empty when unknown. */
+    private String moduleLabel = "";
+
+    /** JK-1094: prefix failure / progress labels with this module coordinate. */
+    public JUnitLauncher withModuleLabel(String moduleLabel) {
+        this.moduleLabel = moduleLabel == null ? "" : moduleLabel.trim();
+        return this;
+    }
+
     /**
      * Worker JVM flags: the heap/GC tuning, the {@code jk.plugin.class} selector for the runner, and
      * any {@code jk.<worker>.plugin.jar} / {@code jk.engine.jar} overrides.
@@ -193,7 +202,7 @@ public final class JUnitLauncher {
             throws IOException, InterruptedException {
         XmlTestReport xml = testResultsDir != null ? new XmlTestReport() : null;
         MarkdownTestReport md = testResultsDir != null ? new MarkdownTestReport() : null;
-        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md);
+        var aggregator = new ResultAggregator(listener, /* workerId */ 0, xml, md, moduleLabel);
         // Capture the worker's non-protocol output so a hard crash (uncaught
         // throwable / System.exit before any test event) can be explained instead
         // of surfacing only as "runner exited N".
@@ -276,7 +285,7 @@ public final class JUnitLauncher {
             final int workerId = w + 1;
             final int idx = w;
             List<String> args = List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir);
-            var agg = new ResultAggregator(listener, workerId, xml, md);
+            var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel);
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
             captures.add(crash);
@@ -322,7 +331,14 @@ public final class JUnitLauncher {
                     0,
                     1,
                     0,
-                    List.of(new TestSummary.Failure("(test run)", "", "runner exited " + worstExit, crash.toString())));
+                    List.of(new TestSummary.Failure(
+                            "(test run)",
+                            "",
+                            "runner exited " + worstExit,
+                            crash.toString(),
+                            moduleLabel,
+                            "",
+                            0)));
         }
         if (xml != null) {
             try {
@@ -498,6 +514,7 @@ public final class JUnitLauncher {
         private final int workerId;
         private final XmlTestReport xmlReport;
         private final MarkdownTestReport mdReport;
+        private final String moduleLabel;
         private long succeeded;
         private long failed;
         private long skipped;
@@ -511,19 +528,29 @@ public final class JUnitLauncher {
 
         /** Test-friendly ctor: no listener, no worker id, no reports. */
         ResultAggregator() {
-            this(TestProgressListener.noop(), 0, null, null);
+            this(TestProgressListener.noop(), 0, null, null, "");
         }
 
         ResultAggregator(TestProgressListener listener, int workerId) {
-            this(listener, workerId, null, null);
+            this(listener, workerId, null, null, "");
         }
 
         ResultAggregator(
                 TestProgressListener listener, int workerId, XmlTestReport xmlReport, MarkdownTestReport mdReport) {
+            this(listener, workerId, xmlReport, mdReport, "");
+        }
+
+        ResultAggregator(
+                TestProgressListener listener,
+                int workerId,
+                XmlTestReport xmlReport,
+                MarkdownTestReport mdReport,
+                String moduleLabel) {
             this.listener = listener;
             this.workerId = workerId;
             this.xmlReport = xmlReport;
             this.mdReport = mdReport;
+            this.moduleLabel = moduleLabel == null ? "" : moduleLabel;
         }
 
         synchronized void accept(String json) {
@@ -605,7 +632,15 @@ public final class JUnitLauncher {
             // The runner emits the full stack trace under "stack"; keep it so the
             // build can print it (we used to read only class + message).
             String stack = throwableJson != null ? Jsonl.str(throwableJson, "stack") : null;
-            failures.add(new TestSummary.Failure(display, exClass, message, stack == null ? "" : stack));
+            String className = classFromUniqueId(id);
+            failures.add(new TestSummary.Failure(
+                    display,
+                    exClass,
+                    message,
+                    stack == null ? "" : stack,
+                    moduleLabel,
+                    className,
+                    workerId));
             listener.onFailure(id, display, exClass, message, workerId);
         }
 
@@ -645,7 +680,10 @@ public final class JUnitLauncher {
                                 "(test run)",
                                 "",
                                 "runner exited " + exitCode,
-                                crashOutput == null ? "" : crashOutput)));
+                                crashOutput == null ? "" : crashOutput,
+                                moduleLabel,
+                                "",
+                                workerId)));
             }
             return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
         }
@@ -655,6 +693,17 @@ public final class JUnitLauncher {
             long total = succeeded + failed + skipped;
             return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
         }
+    }
+
+    /** Parse JUnit Platform unique id fragment {@code [class:fqcn]}. */
+    static String classFromUniqueId(String id) {
+        if (id == null || id.isBlank()) return "";
+        int i = id.indexOf("[class:");
+        if (i < 0) return "";
+        int start = i + "[class:".length();
+        int end = id.indexOf(']', start);
+        if (end < 0) return "";
+        return id.substring(start, end).trim();
     }
 
     /**

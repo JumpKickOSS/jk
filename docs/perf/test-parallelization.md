@@ -95,9 +95,9 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 - [x] Per-worker `java.io.tmpdir` (+ `TMPDIR`) when `W > 1` (`JUnitLauncher.driveWorker`)  
 - [x] Auto default `-w = min(jobs, classCount)` + `HeapPlan` clamp (`TestWorkers`, default `-w0`)  
 - [x] Module serial opt-out: `[test] workers=1` / `parallel=false` (or `[build] test-workers`)  
-- [ ] Document sandbox contract for suite authors (ports, temp, statics) in guide  
+- [x] Document sandbox contract for suite authors (ports, temp, statics) in guide  
 - [ ] Optional port-range helper / documented convention for fixed-port tests  
-- [ ] Failure lines always include module (+ class when sharded)
+- [x] Failure lines always include module (+ class when sharded / worker when W>1)
 
 ## Phase C checklist (cross-module defaults)
 

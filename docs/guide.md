@@ -201,6 +201,40 @@ The module pin **wins** over CLI auto/`-w N` so monorepo `jk test -j0` (default 
 stays safe for known hermetic suites. Use `-w1` for one JVM per module, or `--serial-tests` to
 serialize the whole workspace run-tests gate.
 
+#### Test isolation contract (suite authors)
+
+Defaults assume tests are **hermetic enough to share a machine** with other modules’ suites and
+(when `W > 1`) other worker JVMs in the same module. jk already provides:
+
+| Isolation | When |
+|-----------|------|
+| Separate forked test JVMs | Always (tests never run in the engine process) |
+| Per-worker `java.io.tmpdir` + `TMPDIR` | When within-module `W > 1` |
+| Optional nested-engine env isolation | `jk-cli` suite (fixed by product; not general) |
+
+**You still must avoid:**
+
+- **Fixed ports** (HTTP, gRPC, DB) shared across tests or modules — allocate free ports, or pin
+  `[test] workers = 1` and/or run with `--serial-tests` while debugging.
+- **Shared mutable statics / singletons** that assume a single suite order.
+- **Writing outside worker temp** into a shared project path without coordination.
+- **Assuming one JVM for the whole monorepo** — cross-module parallel is the default.
+
+**When in doubt:**
+
+```toml
+[test]
+workers = 1   # this module serial within itself
+```
+
+```bash
+jk test --serial-tests   # whole workspace: one module’s tests at a time
+jk test -w1              # every module: one test JVM
+export JK_AOT_TRAIN=off  # CI / short-lived engines (skip train-on-miss)
+```
+
+Failure lines include **module** (and **worker** when `W > 1`) so parallel flakes are locatable.
+
 Details and isolation roadmap: [docs/perf/test-parallelization.md](perf/test-parallelization.md).
 
 ### Lock-time trust

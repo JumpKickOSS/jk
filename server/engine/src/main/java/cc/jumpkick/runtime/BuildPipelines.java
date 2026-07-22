@@ -1895,7 +1895,11 @@ public final class BuildPipelines {
                     // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
                     // opt-out (Mill testParallelism = false). 0 = auto min(jobs, classes).
                     int testWorkers = projectUnderTest.build().effectiveTestWorkers(in.workerCount());
-                    TestProgressListener listener = TestSupport.bridgeListener(ctx, testWorkers, in.verbose());
+                    String moduleLabel = projectUnderTest.project().group()
+                            + ":"
+                            + projectUnderTest.project().name();
+                    TestProgressListener listener =
+                            TestSupport.bridgeListener(ctx, testWorkers, in.verbose(), moduleLabel);
                     TestSummary result;
                     // Serialize test execution across concurrently-built units unless the
                     // user opted into parallel tests — shared ports/locks/fixtures.
@@ -1903,6 +1907,7 @@ public final class BuildPipelines {
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
                         result = new JUnitLauncher()
+                                .withModuleLabel(moduleLabel)
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),
