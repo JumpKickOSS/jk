@@ -31,7 +31,7 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 
 All machine surfaces should carry **the same conceptual events**. Framing differs:
 
-| Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (future) |
+| Concept | CLI JSONL (`type`) | Web SSE (`event` + `data`) | Verbose (human) | MCP (tools) |
 |---------|--------------------|----------------------------|-----------------|--------------|
 | Request / session start | `pipeline-start` (per pipeline) | `request-start` | `▶ pipeline (N steps)` | tool result / notification |
 | Step start | `step-start` | `step-start` | `· phase/step (ticks: N)` | notification |
@@ -106,16 +106,26 @@ Engine hosts HTTP (loopback) with:
 
 **Convergence goal:** SSE `data` objects should use the same field names as JSONL where they describe the same thing (`step`, `phase`, `status`, `numerator`/`denominator`, `test`, `exceptionClass`, …). Full identity is a follow-up; do not fork new names without updating this doc.
 
-### Future MCP (engine-hosted)
+### MCP (engine-hosted, JK-1095)
 
-Like **web**:
+Same HTTP server and lifecycle as the web UI:
 
-- Bundled with the engine process (not a second build engine).
-- Discoverable via `jk engine status` (URL or unix socket + token), same lifecycle as the dashboard.
-- Tools wrap existing services: build, test, lock, status, cancel, get failures, open details/timeline.
-- Tool results and streaming notifications **project the same event model** (JSONL types as notification payloads).
+| Item | Value |
+|------|--------|
+| Endpoint | `POST {httpUrl}/mcp` (JSON-RPC 2.0) |
+| Discovery | `GET {httpUrl}/mcp` |
+| Auth | `Authorization: Bearer <token>` (always required) |
+| CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
-MCP is **P2** after agents can rely on `--output json` live streams.
+**Tools (MVP):** `jk_status`, `jk_build` (async → `requestId`), `jk_project`, `jk_history`.  
+Live progress: **`GET /api/events`** (SSE). Tool JSON uses `schema` + `type` like the rest of the machine model.
+
+```bash
+# Example: list tools (token from ~/.jk/state/…/http-token or status URL fragment)
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+  "$MCP_URL"
+```
 
 ## Agent recipe (recommended)
 
@@ -123,6 +133,9 @@ MCP is **P2** after agents can rely on `--output json` live streams.
 # Live, parseable, no TUI scrape:
 jk test --output json --modules 'shared/*' 2>/dev/null
 # or: JK_OUTPUT=jsonl jk build
+
+# Multi-turn agents: MCP on the engine (jk engine status → MCP URL + token)
+# Live build progress: GET /api/events (SSE)
 
 # Exit code still meaningful (0 ok, non-zero fail).
 # Parse stdout as NDJSON; look for type=pipeline-finish / error / step-finish.
