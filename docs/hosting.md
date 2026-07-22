@@ -21,8 +21,10 @@ optional later if you want zero redirect hop.
 |-----|---------|
 | https://jkbuild.web.app | Site |
 | https://jkbuild.web.app/install.sh | Installer script |
-| https://jkbuild.web.app/releases/latest/VERSION | Redirect → GCS |
-| https://storage.googleapis.com/jkbuild-releases/releases/ | Direct GCS |
+| https://jkbuild.web.app/releases/latest/VERSION | Redirect → GCS releases |
+| https://jkbuild.web.app/repo/… | Redirect → official Maven repo |
+| https://storage.googleapis.com/jkbuild-releases/releases/ | Direct GCS releases |
+| https://storage.googleapis.com/jkbuild-releases/repo/ | Direct GCS Maven repo |
 
 ## DNS for `jumpkick.build` (you apply at the registrar)
 
