@@ -127,10 +127,6 @@ class PluginInstallLocalTest {
                 """);
         Files.writeString(
                 a.resolve("jk.toml"),
-                WORKER_TOML.replace("jk-test-runner", "jk-alpha").replace("test-runner", "alpha"));
-        // fix name properly
-        Files.writeString(
-                a.resolve("jk.toml"),
                 """
                 [project]
                 group = "cc.jumpkick"
