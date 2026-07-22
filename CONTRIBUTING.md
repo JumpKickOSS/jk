@@ -57,9 +57,12 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 ./install.sh build/dist/jk
 export PATH="$HOME/.jk/versions/0.10.0-SNAPSHOT/bin:$PATH"   # or your install layout
 
-# 2) Lock + compile/package workspace modules (no Gradle for javac)
+# 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
 jk build --skip-tests
+jk plugin install-local
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+jk release --skip-tests --jvm
 ```
 
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
@@ -75,6 +78,9 @@ export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
 # 2) Same dogfood as (A)
 jk lock
 jk build --skip-tests
+jk plugin install-local
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+jk release --skip-tests --jvm
 ```
 
 The client never embeds the engine (ticket-1020). Spawning uses
@@ -135,9 +141,9 @@ engine only when delete fails). Full `./gradlew test` is longer. Use module filt
 re-run full `./gradlew test` before merge to `main`. Shared dep cache:
 `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
-Prefer `jk build --skip-tests` for the documented dogfood path; keep
-`./gradlew :engine:test` / `:cli:test` for the full nested suites (Gradle wires
-worker jars via configurations).
+Prefer `jk build --skip-tests` plus the curated `jk test --modules 'shared/*,…'`
+filter for dogfood; keep `./gradlew :engine:test` / `:cli:test` for nested suites
+(Gradle still wires some hermetic suite flags).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
 

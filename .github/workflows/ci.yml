@@ -48,11 +48,16 @@ jobs:
           ./install.sh build/dist/jk
           echo "$HOME/.jk/versions/0.10.0-SNAPSHOT/bin" >> "$GITHUB_PATH"
 
-      - name: jk lock + build --skip-tests
+      - name: jk lock + build + install-local + library tests
         run: |
           jk --version
           jk lock
           jk build --skip-tests
+          # Side-load pure-jk assembly workers (also covered by installLocal above).
+          jk plugin install-local
+          # Curated suite: shared/* + server libs (engine/cli nested suites stay on Gradle).
+          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+          jk release --skip-tests --jvm --dry-run
 
   # ticket-1020: thin client + engine jar (no monolyth, no Graal).
   self-host-jvm:
@@ -75,11 +80,14 @@ jobs:
           "$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
           echo "$PWD/clients/cli/build/install/jk/bin" >> "$GITHUB_PATH"
 
-      - name: jk lock + build --skip-tests
+      - name: jk lock + build + install-local + library tests
         run: |
           jk --version
           jk lock
           jk build --skip-tests
+          jk plugin install-local
+          jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+          jk release --skip-tests --jvm --dry-run
 
   # ticket-1038: multi-module sample with reinstalled thin client (no Graal required).
   showcase:

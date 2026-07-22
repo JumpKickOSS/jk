@@ -41,10 +41,25 @@ Thin JVM alternative (no Graal): see [CONTRIBUTING.md](../CONTRIBUTING.md) path 
 cd ../jk-jk   # or stay in jk after install
 jk lock
 jk build --skip-tests
+jk plugin install-local
+
+# Curated unit suite (verified green; engine/cli nested suites stay on Gradle for now)
+jk test --modules 'shared/*,server/io,server/resolver,server/toolchain'
+
+jk release --skip-tests --jvm
+./install.sh target/dist/jk
 ```
 
 Current workspace: libraries, `clients/cli`, `clients/web`, `server/engine` (assembly fat jar),
 and **all** first-party `plugins/*` workers (`assembly` + `PluginMain`).
+
+### `jk test` coverage notes
+
+| Modules | Under `jk test` |
+|---|---|
+| `shared/*`, `server/io`, `server/resolver`, `server/toolchain` | **Green** dogfood / CI |
+| `server/engine`, `clients/cli` | Prefer `./gradlew :engine:test :cli:test` (nested worker wiring) |
+| `plugins/*` | Light unit tests OK if present; heavy integration still Gradle |
 
 ## Default repositories
 
@@ -56,7 +71,7 @@ With no `[repositories]` table, remotes are **Maven Central then Google Maven** 
 | Task | Why |
 |---|---|
 | Full `./gradlew test` | Nested CLI/engine suites and worker wiring |
-| `./gradlew dist` / `nativeCompile` | Until `jk release` ships |
+| `./gradlew dist` / `nativeCompile` | Bootstrap + native CI matrix; dogfood ship via `jk release` |
 | `./gradlew installLocal` | Prefer `jk plugin install-local` after `jk build` for workspace workers |
 
 ## Side-load workers (no Gradle)
@@ -103,6 +118,7 @@ Flags: `--out <dir>`, `--skip-tests`, `--native`, `--jvm`, `--dry-run`, `--modul
 3. ~~`jk plugin install-local`~~ (done)
 4. ~~`jk release` / `jk dist`~~ (done)
 5. ~~All first-party plugins on the workspace~~ (done)
-6. Expand `jk test`; cut over CI dogfood; native client via `jk native`
+6. ~~Curated `jk test` + CI self-host dogfood~~ (done: shared/* + server libs)
+7. Full engine/cli under `jk test`; native client via `jk native` in release CI
 
 Details: session plan *Self-host JumpKick in ../jk-jk*.
