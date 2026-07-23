@@ -154,8 +154,18 @@ public enum PluginJar {
         return store.locate(relPath).orElseThrow();
     }
 
+    /**
+     * System property override for {@link #officialRepoBase()} — used by hermetic tests so
+     * {@link #locate(Cas)} cannot soft-succeed via network when the local cache is empty.
+     */
+    public static final String OFFICIAL_REPO_URL_PROPERTY = "jk.official.repo.url";
+
     /** Base URL ending in {@code /} for the official first-party Maven repo. */
     public static URI officialRepoBase() {
+        String prop = System.getProperty(OFFICIAL_REPO_URL_PROPERTY);
+        if (prop != null && !prop.isBlank()) {
+            return URI.create(prop.endsWith("/") ? prop : prop + "/");
+        }
         String env = System.getenv("JK_OFFICIAL_REPO_URL");
         if (env != null && !env.isBlank()) {
             return URI.create(env.endsWith("/") ? env : env + "/");

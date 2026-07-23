@@ -212,12 +212,14 @@ class HttpEngineServerTest {
         // A -SNAPSHOT jar swap doesn't move the version-derived ETag, so snapshot builds must not
         // let the browser cache classpath assets — otherwise an upgraded engine serves last jar's
         // dashboard for up to an hour.
+        // Version string must end with -SNAPSHOT so StaticContent sets no-cache (release pins use
+        // max-age + ETag). The status supplier's own version field is unrelated.
         HttpEngineServer snapshot = new HttpEngineServer(
                 new JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString()),
                 webRoot,
                 stateDir.resolve("snap.http-token"),
                 stateDir.resolve("snap.log"),
-                "0.10.1",
+                "0.10.1-SNAPSHOT",
                 () -> SNAPSHOT,
                 new HttpEvents(),
                 stubJobs,
