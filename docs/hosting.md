@@ -2,6 +2,15 @@
 
 How `jumpkick.build` is wired (JK-1066 ops).
 
+## Production status
+
+**`https://jumpkick.build` is live** (Firebase Hosting custom domain: ownership + host active, TLS issued).
+
+- Site / install: `https://jumpkick.build/`, `https://jumpkick.build/install.sh`
+- Releases redirect: `https://jumpkick.build/releases/…` → GCS
+- Maven repo redirect: `https://jumpkick.build/repo/…` → GCS
+
+
 ## Architecture
 
 | Layer | What |
