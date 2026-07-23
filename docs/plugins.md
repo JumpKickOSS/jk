@@ -4,6 +4,12 @@ A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[android]`
 and shapes the standard commands around it. First-party examples live under
 [`plugins/`](../plugins/) (start with [`plugins/spring-boot`](../plugins/spring-boot)).
 
+**Who this is for (pre-1.0):** **first-party** plugins in this monorepo, and **private/
+vendored** plugin jars (path or Maven pin + required `sha256`). A public third-party
+authoring path is **deferred until ~1.0** when the plugin SPI freezes — `jk-plugin-sdk` is
+**not** published to Maven Central yet. Do not plan on consuming a released SDK coordinate
+from outside this tree until that lands.
+
 **The bar:** you declare *what*; jk owns *when* (ordering) and *whether it can be skipped*
 (caching / action keys). You do not hand-manage the content-addressed store.
 
@@ -22,8 +28,9 @@ scaffold/…              # optional templates for jk new / import
 - **Code layer** — runs in a **forked worker** over a JSONL protocol. The engine never
   classloads your classes.
 
-Compile against **`plugin-sdk`** (`jk-plugin-sdk`). Keep the worker at a JDK floor compatible
-with user projects (first-party workers target `--release 17` where they ride the user’s JVM).
+Compile against the in-tree **`plugin-sdk`** module (`shared/plugin-sdk`, artifact name
+`jk-plugin-sdk` when published later). Keep the worker at a JDK floor compatible with user
+projects (first-party workers target `--release 17` where they ride the user’s JVM).
 
 ## Manifest essentials
 
@@ -123,8 +130,12 @@ after compile, custom packagers). Important SPI notes:
 
 ## Distribution (today)
 
-First-party plugins ship inside the jk distribution and version with jk. A public marketplace
-is intentionally deferred.
+| Path | Status |
+|---|---|
+| **First-party** plugins under `plugins/` | Ship inside the jk dist; version with jk |
+| **Private / vendored** jars (`[plugins]` + `sha256`) | Supported now — see below |
+| **Public third-party** SDK on Maven | **Not available** until ~1.0 SPI freeze (JK-1074) |
+| **Plugin marketplace / registry** | Intentionally deferred (product anti-goal pre-freeze) |
 
 ### Private plugins (path or Maven pin)
 
@@ -157,7 +168,8 @@ acme-rules = { group = "com.acme", name = "acme-rules", version = "1.0.0",
 
 1. Jar root must contain `jk-plugin.toml` (`[plugin]` id/table/version + `[schema]` + optional
    `[[contribute.*]]` + optional `[code]` for a worker main).
-2. Compile against `jk-plugin-sdk`; never require engine classes on the plugin classpath.
+2. Compile against in-tree `plugin-sdk` (or a future published `jk-plugin-sdk` after ~1.0);
+   never require engine classes on the plugin classpath.
 3. Pin: `sha256sum vendor/your-plugin.jar` → paste into `sha256`.
 4. `jk lock` materializes the manifest under `target/plugin-manifests/<sha>.jk-plugin.toml`.
 5. Code layer: trust once, then worker forks use the locked CAS jar (action keys include jar hash).
