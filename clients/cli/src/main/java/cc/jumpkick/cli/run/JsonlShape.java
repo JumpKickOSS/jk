@@ -10,11 +10,14 @@ import java.time.Instant;
 
 /**
  * Stable wire format for pipeline events as one-JSON-object-per-line text. Shared by {@link
- * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link EventLogListener}
- * (always-on under the cache run log). Centralising the shape here means agents, CI, and future MCP
- * tools share one schema — see {@code docs/machine-output.md}.
+ * JsonlListener} (stdout for {@code --output json}/{@code jsonl}), {@link EventLogListener}
+ * (always-on under the cache run log), and {@link CliSessionTranscript} ({@code details.jsonl}).
+ * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
+ * {@code docs/machine-output.md}.
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
+ * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — JK-1117) via
+ * {@link #withProgress(String)}.
  */
 public final class JsonlShape {
 
@@ -35,6 +38,74 @@ public final class JsonlShape {
                 .append(nowMillis())
                 .append(",\"type\":")
                 .append(js(type));
+    }
+
+    /**
+     * Attach the aggregate {@code progress} percent rider from {@link LiveProgress} (JK-1117).
+     * Idempotent if the line already ends with a progress field. Returns {@code line} unchanged when
+     * null/blank or not a single JSON object.
+     */
+    public static String withProgress(String line) {
+        return withProgress(line, LiveProgress.get().percent());
+    }
+
+    /**
+     * Attach {@code progress} (0–100 or JSON {@code null}) before the final {@code }}. Additive only;
+     * does not add {@code progress_num}/{@code progress_den}.
+     */
+    public static String withProgress(String line, Double progress) {
+        if (line == null || line.isEmpty()) return line;
+        int end = line.length() - 1;
+        if (line.charAt(end) != '}') return line;
+        // Avoid double-append if a caller already decorated the line.
+        if (line.contains("\"progress\":")) return line;
+        StringBuilder sb = new StringBuilder(line.length() + 24);
+        sb.append(line, 0, end);
+        sb.append(",\"progress\":");
+        if (progress == null) {
+            sb.append("null");
+        } else {
+            double v = progress;
+            if (v < 0) v = 0;
+            if (v > 100) v = 100;
+            v = Math.round(v * 10.0) / 10.0;
+            if (v == Math.rint(v)) sb.append((long) v);
+            else sb.append(v);
+        }
+        sb.append('}');
+        return sb.toString();
+    }
+
+    /** Command session opened under {@code target/.jk-cli/…/details.jsonl}. */
+    public static String sessionStart(String command, java.util.List<String> argv) {
+        StringBuilder sb = open("session-start").append(",\"command\":").append(js(command));
+        sb.append(",\"argv\":[");
+        if (argv != null) {
+            for (int i = 0; i < argv.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(js(argv.get(i)));
+            }
+        }
+        return sb.append(']').append('}').toString();
+    }
+
+    /** Command session finished — exit code + wall duration (+ optional summary fields). */
+    public static String sessionFinish(int exit, long durationMs, String wedge, java.util.List<String> modules) {
+        StringBuilder sb = open("session-finish")
+                .append(",\"exit\":")
+                .append(exit)
+                .append(",\"duration_ms\":")
+                .append(durationMs);
+        if (wedge != null && !wedge.isBlank()) sb.append(",\"wedge\":").append(js(wedge));
+        if (modules != null && !modules.isEmpty()) {
+            sb.append(",\"modules\":[");
+            for (int i = 0; i < modules.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(js(modules.get(i)));
+            }
+            sb.append(']');
+        }
+        return sb.append('}').toString();
     }
 
     static String pipelineStart(PipelineView v) {

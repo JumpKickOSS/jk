@@ -132,7 +132,8 @@ public final class EventLogListener implements PipelineListener {
 
     private void line(String s) {
         try {
-            stream.println(s);
+            // Same progress rider as stdout / details.jsonl (JK-1117).
+            stream.println(JsonlShape.withProgress(s));
         } catch (RuntimeException ignored) {
             // Best-effort logging.
         }

@@ -415,8 +415,8 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
-- Post-hoc summary still lands in `target/.jk-cli/<ts>/details.json` (below). Deep timings:
-  `target/jk-chrome-profile.json`.
+- Session log (same JSONL shape, live append) lands in `target/.jk-cli/<ts>/details.jsonl`
+  (below). Deep timings: `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
 
@@ -435,22 +435,24 @@ jk self setup-terminal --no-nerd   # force off
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
 
-### Session transcripts (`details.json`)
+### Session transcripts (`details.jsonl`)
 
-`jk build` and `jk test` write a small, versioned session file by default:
+`jk build` and `jk test` write a **live** JSONL session log by default (same event shape as
+`--output json`/`jsonl`):
 
 ```text
-target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.json
+target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.jsonl
 ```
 
-Schema version is the top-level `schema` field (currently `1`). Contents include the
-command name, a compact argv snapshot, exit code, wall-clock duration, optional wedge
-summary, selected modules, pipeline steps, and key engine errors. The terminal stays
-terse; with `-v` / `--verbose`, jk prints a one-line `Details: <path>` pointer after the
-run.
+One JSON object per line (`schema: 1`), appended as events arrive — safe to `tail -F` mid-run.
+Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
+`session-start`, ends with `session-finish` (`exit`, duration, optional wedge/modules). The
+terminal stays terse; with `-v` / `--verbose`, jk prints `Details: <path>` when the session
+opens (and again at finish).
 
 Writing is best-effort: a missing project, full disk, or permission error never fails the
-user command. Disable with `JK_CLI_DETAILS=off` (or `0`).
+user command. Disable with `JK_CLI_DETAILS=off` (or `0`). See [machine-output.md](machine-output.md)
+for the materialize cadence (TTY ~80 ms paint; disk flush ≤2 s on hot ticks).
 
 ### Deny policy
 

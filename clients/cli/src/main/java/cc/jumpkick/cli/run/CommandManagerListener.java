@@ -71,6 +71,7 @@ public final class CommandManagerListener implements PipelineListener {
             cm.addStepLabeled(module, p.name(), display(p));
         }
         cm.progress(view.numerator(), view.denominator());
+        LiveProgress.get().update(view.numerator(), view.denominator());
         // Route step/process output above the pinned region for the pipeline's lifetime.
         capture = cm.captureOutput();
     }
@@ -101,11 +102,13 @@ public final class CommandManagerListener implements PipelineListener {
     @Override
     public void progress(String step, int delta, PipelineView view) {
         cm.progress(view.numerator(), view.denominator());
+        LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView view) {
         cm.progress(view.numerator(), view.denominator());
+        LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override

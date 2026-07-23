@@ -22,7 +22,9 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 | 1 | Document this model (this file + guide) | **This doc** |
 | 2 | `--output json` ≡ `jsonl` — live JSONL only (no single blob) | **Shipped** (`GlobalOptions` / `PipelineConsole`) |
 | 3 | Versioned shared pipeline event shape (`JsonlShape`, `schema: 1`) | **Shipped** (CLI); align web/MCP over time |
-| 4 | `details.json` remains post-hoc summary (same fields where applicable) | **Existing** (JK-1079); keep aligned |
+| 4 | `details.jsonl` incremental session log (same shape as stdout JSONL) | **Shipped** (JK-1116); supersedes end-only `details.json` |
+| 4b | Aggregate `progress` percent rider on JSONL lines | **Shipped** (JK-1117) |
+| 4c | Shared materialize cadence (TTY 80 ms / disk flush ≤2 s) | **Shipped** (JK-1118) |
 | 5 | Always-on run log JSONL under cache (`EventLogListener`) | **Existing** — same shape as stdout JSONL |
 | 6 | Engine MCP adapter (thin, discoverable like web) | **Done (JK-1095)** — `POST /mcp`, tools, status `mcpUrl` |
 | 7 | Robust cancel (graceful → hard kill; never hang) | **Done (JK-1096)** — `JobWorkers.shutdownForRequest` + bounded cancel join |
@@ -58,6 +60,10 @@ export JK_OUTPUT=json         # or jsonl
 
 - **One JSON object per line**, flushed promptly (live).
 - Every object includes at least: `schema` (int), `ts` (epoch ms), `type` (string).
+- Most lines also carry **`progress`**: aggregate workspace/pipeline percent **0–100** (or
+  `null` until known) matching the human bar model — **not** `progress_num`/`progress_den`
+  (JK-1117). Per-step `numerator`/`denominator` on `progress` / `tick-update` events stay
+  step-scoped and unchanged.
 - Schema version: **`1`** forever until **jk 1.0** (see [architecture.md — Schema freeze](architecture.md#schema-freeze-until-10)).
   Do **not** bump for additive fields. No pre-1.0 version churn.
 - Terminal human chrome is **suppressed** in this mode so stdout stays parseable.
@@ -65,25 +71,45 @@ export JK_OUTPUT=json         # or jsonl
 Example lines (illustrative):
 
 ```json
-{"schema":1,"ts":1721664000123,"type":"pipeline-start","pipeline":"test","denominator":42,"steps":3}
-{"schema":1,"ts":1721664000456,"type":"step-start","step":"run-tests","phase":"test","ticks":10}
-{"schema":1,"ts":1721664000789,"type":"label","step":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]"}
-{"schema":1,"ts":1721664000901,"type":"error","step":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError"}
-{"schema":1,"ts":1721664001000,"type":"pipeline-finish","pipeline":"test","success":false,"duration_ms":880,"warnings":0,"errors":1}
+{"schema":1,"ts":1721664000123,"type":"pipeline-start","pipeline":"test","denominator":42,"steps":3,"progress":12.5}
+{"schema":1,"ts":1721664000456,"type":"step-start","step":"run-tests","phase":"test","ticks":10,"progress":45}
+{"schema":1,"ts":1721664000789,"type":"label","step":"run-tests","label":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","progress":67.3}
+{"schema":1,"ts":1721664000901,"type":"error","step":"run-tests","code":"test-failure","message":"…","test":"cc.jumpkick:jk-core :: FooTest > bar()  [w2]","exceptionClass":"org.opentest4j.AssertionFailedError","progress":67.3}
+{"schema":1,"ts":1721664001000,"type":"pipeline-finish","pipeline":"test","success":false,"duration_ms":880,"warnings":0,"errors":1,"progress":100}
 ```
 
-Implementation: `clients/cli/.../JsonlListener` + `JsonlShape` (stdout); `EventLogListener` writes the **same shape** under the cache run log.
+Implementation: `JsonlListener` + `JsonlShape` (stdout); `EventLogListener` and
+`details.jsonl` write the **same shape** (with the same `progress` rider).
 
-### Post-hoc summary: `details.json`
+### Session log: `details.jsonl` (JK-1116)
 
 ```text
-target/.jk-cli/<utc-ts>/details.json
+target/.jk-cli/<utc-ts>/details.jsonl
 ```
 
-- Default **on**; disable with `JK_CLI_DETAILS=off`.
-- Schema field `schema` (currently `1`): command, argv, exit, durations, modules, steps, errors, wedge.
-- With `-v`, CLI prints `Details: <path>` after the run.
-- Agents: prefer **live JSONL during the run**; use `details.json` for offline triage and support.
+- Default **on**; disable with `JK_CLI_DETAILS=off` (or `0`).
+- **Same event shape** as `--output json`/`jsonl` (`JsonlShape`, `schema: 1`), one object per
+  line, **appended live** (safe to `tail -F` mid-run). Ends with a `session-finish` line
+  (`exit`, `duration_ms`, optional `wedge` / `modules`).
+- Opens with `session-start` (`command`, `argv`). With `-v`, CLI prints `Details: <path>` at
+  **open** (and again at finish).
+- Supersedes the end-only `details.json` blob (JK-1079). Prefer this path for offline triage
+  and support; agents watching a long build use the live file without waiting for process exit.
+
+### Materialize cadence (JK-1118)
+
+Live model updates on every meaningful event; sinks materialize under one policy:
+
+| Rule | Trigger | TTY paint | JSONL append (`--jsonl` + `details.jsonl`) |
+|------|---------|-----------|---------------------------------------------|
+| **M1** | Phase finish (preflight stage / pipeline phase) | next frame | **append + flush** |
+| **M2** | Test class finish (when wired) | optional | **append + flush** |
+| **M3** | Module / pipeline / command finish | yes | **append + flush** |
+| **M4** | Dirty heartbeat | **80 ms** (`TTY_FRAME_MS`) | **2 s** if dirty (`DISK_HEARTBEAT_MS`) |
+| **M5** | Hot ticks (`progress` / `tick-update` / `label` / `output`) | model + next frame | append line; flush ≤ M4 |
+
+Constants: `LiveProgress.TTY_FRAME_MS = 80`, `DISK_HEARTBEAT_MS = 2000`, `LINE_STALE_MS = 360`
+(process-output partial lines only).
 
 ### Deep timing: chrome timeline
 
@@ -97,7 +123,7 @@ Disable: `--no-timeline` / `JK_CHROME_PROFILE=off`. Linked from docs; not duplic
 
 - Human-oriented step lines and full output.
 - Must stay consistent with the **same facts** (module labels, failure module/worker, step names) but **not** become the agent API.
-- Points at `details.json` when available.
+- Points at `details.jsonl` when available.
 
 ### Web API / SSE
 
@@ -166,8 +192,8 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 # Exit code still meaningful (0 ok, non-zero fail).
 # Parse stdout as NDJSON; look for type=pipeline-finish / error / step-finish.
 
-# Offline:
-#   target/.jk-cli/<latest>/details.json
+# Offline / mid-run:
+#   target/.jk-cli/<latest>/details.jsonl   # tail -F during the run
 #   target/jk-chrome-profile.json
 #   <cache>/runs/*.jsonl   # EventLogListener copy of the stream
 ```
@@ -182,7 +208,7 @@ When you add information (e.g. module on a test failure):
 2. [ ] `JsonlShape` / JSONL fields (**additive only** — keep `schema: 1` until 1.0)  
 3. [ ] Web SSE payload fields (same names)  
 4. [ ] Verbose / failure headline text (human projection)  
-5. [ ] `details.json` if it is a post-hoc summary field  
+5. [ ] `details.jsonl` (same shape as stdout JSONL; additive `progress` rider)  
 6. [ ] MCP tool payloads when MCP exists  
 7. [ ] This doc’s table row if a new **type** appears  
 
@@ -203,7 +229,7 @@ engine’s wait, not a guaranteed hook window. See [architecture.md](architectur
 
 ## Refs
 
-- CLI: `JsonlListener`, `JsonlShape`, `PipelineConsole.Mode.JSON`, `EventLogListener`, `CliSessionTranscript`
+- CLI: `JsonlListener`, `JsonlShape`, `LiveProgress`, `PipelineConsole.Mode.JSON`, `EventLogListener`, `CliSessionTranscript`, `SessionMirrorListener`
 - Engine HTTP: `HttpEngineServer`, `HttpEvents`
 - Guide: [guide.md](guide.md) (CLI UX + machine output)
 - UX charter: kanartist JK-1076–1079

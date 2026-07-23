@@ -102,13 +102,19 @@ public final class AggregateContext {
     private void paint() {
         long execSum = completedBase;
         for (long v : moduleAdvanced.values()) execSum += v;
+        long num;
+        long den;
         if (executeCalibrated) {
-            long num = preflightNum + Math.min(execSum, total);
-            long den = PREFLIGHT_UNITS + total;
-            cm.progress(num, den <= 0 ? PREFLIGHT_UNITS : den);
+            num = preflightNum + Math.min(execSum, total);
+            den = PREFLIGHT_UNITS + total;
+            if (den <= 0) den = PREFLIGHT_UNITS;
         } else {
-            cm.progress(preflightNum, PREFLIGHT_UNITS);
+            num = preflightNum;
+            den = PREFLIGHT_UNITS;
         }
+        cm.progress(num, den);
+        // Same units as the TUI bar — agents read percent only (JK-1117).
+        LiveProgress.get().update(num, den);
     }
 
     /**

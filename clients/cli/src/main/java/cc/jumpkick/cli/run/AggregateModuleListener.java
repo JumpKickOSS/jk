@@ -176,7 +176,10 @@ public final class AggregateModuleListener implements PipelineListener {
         } else {
             // Uncalibrated caller (slice 0): fall back to live ticks against a
             // denominator that grows as modules start.
-            cm.progress(base + view.numerator(), base + view.denominator());
+            long num = base + view.numerator();
+            long den = base + view.denominator();
+            cm.progress(num, den);
+            LiveProgress.get().update(num, den);
         }
     }
 }

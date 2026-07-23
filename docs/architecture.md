@@ -132,7 +132,7 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 | `jk.lock` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
 | Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
 | CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
-| Session transcripts | `details.json` `"schema"` | Stay on **1** |
+| Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
 | REST `/api/*` | response shapes | Additive fields only |
 | SSE event `data` | `"schema"` | Stay on **1** |
 | MCP | `protocolVersion` / tool payloads | Stay on advertised **1**-era shape; no version churn |

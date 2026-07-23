@@ -12,7 +12,8 @@ import java.time.Duration;
 /**
  * Emit one JSON object per event to stdout. Triggered by {@code --output json} or {@code jsonl}
  * (identical). Consumed by agents, CI, and tooling. Wire format: {@link JsonlShape} — see {@code
- * docs/machine-output.md}.
+ * docs/machine-output.md}. Each line carries the aggregate {@code progress} rider (JK-1117) and is
+ * dual-written to the active {@link CliSessionTranscript} when present (JK-1116).
  */
 public final class JsonlListener implements PipelineListener {
 
@@ -24,63 +25,69 @@ public final class JsonlListener implements PipelineListener {
 
     @Override
     public void pipelineStart(PipelineView v) {
-        emit(JsonlShape.pipelineStart(v));
+        emit(JsonlShape.pipelineStart(v), true);
     }
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        emit(JsonlShape.stepStart(step, phase == null ? "" : phase.wireName(), ticks));
+        emit(JsonlShape.stepStart(step, phase == null ? "" : phase.wireName(), ticks), true);
     }
 
     @Override
     public void progress(String step, int delta, PipelineView v) {
-        emit(JsonlShape.progress(step, delta, v));
+        // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
+        LiveProgress.get().update(v.numerator(), v.denominator());
+        emit(JsonlShape.progress(step, delta, v), false);
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView v) {
-        emit(JsonlShape.tickUpdate(step, delta, v));
+        LiveProgress.get().update(v.numerator(), v.denominator());
+        emit(JsonlShape.tickUpdate(step, delta, v), false);
     }
 
     @Override
     public void label(String step, String label) {
-        emit(JsonlShape.label(step, label));
+        emit(JsonlShape.label(step, label), false);
     }
 
     @Override
     public void output(String step, String line) {
-        emit(JsonlShape.output(step, line));
+        emit(JsonlShape.output(step, line), false);
     }
 
     @Override
     public void warn(String step, String code, String msg) {
-        emit(JsonlShape.warn(step, code, msg));
+        emit(JsonlShape.warn(step, code, msg), true);
     }
 
     @Override
     public void error(String step, String code, String msg) {
-        emit(JsonlShape.error(step, code, msg));
+        emit(JsonlShape.error(step, code, msg), true);
     }
 
     @Override
     public void error(String step, String code, String msg, String test, String exClass) {
-        emit(JsonlShape.error(step, code, msg, test, exClass));
+        emit(JsonlShape.error(step, code, msg, test, exClass), true);
     }
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        emit(JsonlShape.stepFinish(step, phase == null ? "" : phase.wireName(), s, d));
+        emit(JsonlShape.stepFinish(step, phase == null ? "" : phase.wireName(), s, d), true);
     }
 
     @Override
     public void pipelineFinish(PipelineResult r) {
-        emit(JsonlShape.pipelineFinish(r));
+        emit(JsonlShape.pipelineFinish(r), true);
     }
 
-    private void emit(String line) {
+    private void emit(String line, boolean immediateSessionFlush) {
+        String decorated = JsonlShape.withProgress(line);
         synchronized (out) {
-            out.println(line);
+            out.println(decorated);
             out.flush();
         }
+        CliSessionTranscript session = CliSessionTranscript.active();
+        if (session != null) session.appendRaw(decorated, immediateSessionFlush);
     }
 }

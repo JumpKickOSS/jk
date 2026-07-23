@@ -22,7 +22,7 @@ import cc.jumpkick.config.GlobalConfig;
  * </table>
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
- * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.json).
+ * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
  */
 public final class CommandWedge {
 

@@ -5,9 +5,11 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.CompositePipelineListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -104,6 +106,7 @@ public final class TestCommand implements CliCommand {
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
+        if (session != null) session.announceIf(global != null && global.verbose);
         // No jk.lock guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
@@ -243,7 +246,7 @@ public final class TestCommand implements CliCommand {
         if (modules.isEmpty()) return 0;
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        if (json) emitJsonl(JsonlShape.workspaceStart(modules.size()));
+        emitJsonl(JsonlShape.workspaceStart(modules.size()), json);
         int worst = 0;
         try {
             if (!parallelTests || modules.size() == 1) {
@@ -280,10 +283,8 @@ public final class TestCommand implements CliCommand {
                 }
             }
         } finally {
-            if (json) {
-                long ms = (System.nanoTime() - start) / 1_000_000;
-                emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()));
-            }
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()), json);
         }
         return worst;
     }
@@ -294,9 +295,7 @@ public final class TestCommand implements CliCommand {
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        if (json) {
-            emitJsonl(JsonlShape.moduleStart(mod.toString(), module));
-        }
+        emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
         long t0 = System.nanoTime();
         PipelineResult result;
         int code;
@@ -313,7 +312,11 @@ public final class TestCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force(),
                             parallelTests),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                    steps -> {
+                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
+                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
+                        return CompositePipelineListener.of(new SessionMirrorListener(session), console);
+                    },
                     testResultHolder);
             if (session != null) {
                 session.module(module).absorb(result);
@@ -330,19 +333,20 @@ public final class TestCommand implements CliCommand {
             if (session != null) session.error(mod + ": " + e.getMessage());
             code = Exit.SOFTWARE;
         }
-        if (json) {
-            long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean ok = code == 0;
-            emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, ok, ms));
-        }
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, code == 0, ms), json);
         return code;
     }
 
-    private static void emitJsonl(String line) {
-        synchronized (JSONL_LOCK) {
-            System.out.println(line);
-            System.out.flush();
+    private static void emitJsonl(String line, boolean toStdout) {
+        String decorated = JsonlShape.withProgress(line);
+        if (toStdout) {
+            synchronized (JSONL_LOCK) {
+                System.out.println(decorated);
+                System.out.flush();
+            }
         }
+        CliSessionTranscript.appendActive(decorated);
     }
 
     /**

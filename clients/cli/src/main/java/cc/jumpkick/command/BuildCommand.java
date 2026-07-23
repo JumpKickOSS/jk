@@ -131,6 +131,7 @@ public final class BuildCommand implements CliCommand {
         this.variant = VariantSelection.install(in, startDir);
         this.clientEnv = cc.jumpkick.config.SessionContext.current().clientEnv();
         this.session = CliSessionTranscript.open(startDir, "build", buildArgv(in));
+        if (session != null) session.announceIf(global != null && global.verbose);
 
         // Workspace root or module → full workspace build in topological order.
         cc.jumpkick.engine.protocol.ProjectInfo peek = projectInfoOrNull(startDir);
@@ -169,7 +170,7 @@ public final class BuildCommand implements CliCommand {
         return CliSessionTranscript.finish(session, code, global != null && global.verbose);
     }
 
-    /** Compact argv snapshot for details.json (command + selection flags). */
+    /** Compact argv snapshot for details.jsonl (command + selection flags). */
     private List<String> buildArgv(Invocation in) {
         List<String> argv = new ArrayList<>();
         argv.add("build");
@@ -329,9 +330,7 @@ public final class BuildCommand implements CliCommand {
                         @Override
                         public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                             total[0] = plan.size();
-                            if (json) {
-                                emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()));
-                            }
+                            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), json);
                         }
 
                         @Override
@@ -342,9 +341,9 @@ public final class BuildCommand implements CliCommand {
                             // listener is actually driven by wire-replayed events either way.
                             var log = cc.jumpkick.cli.run.EventLogListener.open(
                                     m.cache(), m.pipeline().name());
+                            emitJsonl(
+                                    cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
-                                emitJsonl(cc.jumpkick.cli.run.JsonlShape.moduleStart(
-                                        m.dir().toString(), m.coord()));
                                 // Live step/progress events for agents (same shape as single-module jsonl).
                                 return cc.jumpkick.cli.run.CompositePipelineListener.of(
                                         new cc.jumpkick.cli.run.JsonlListener(System.out), log);
@@ -367,16 +366,18 @@ public final class BuildCommand implements CliCommand {
                                     buf.add("  " + Glyphs.CROSS + " " + step + ": " + message);
                                 }
                             };
-                            return cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, log);
+                            var mirror = sessionMirror();
+                            return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                                    cc.jumpkick.cli.run.CompositePipelineListener.of(outLis, mirror), log);
                         }
 
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            if (json) {
-                                emitJsonl(cc.jumpkick.cli.run.JsonlShape.moduleFinish(
-                                        o.dir().toString(), o.coord(), o.success(), o.millis()));
-                                return;
-                            }
+                            emitJsonl(
+                                    cc.jumpkick.cli.run.JsonlShape.moduleFinish(
+                                            o.dir().toString(), o.coord(), o.success(), o.millis()),
+                                    json);
+                            if (json) return;
                             List<String> buf = buffers.getOrDefault(o.dir(), List.of());
                             synchronized (OUT_LOCK) {
                                 for (String line : buf) CliOutput.out(line);
@@ -388,10 +389,10 @@ public final class BuildCommand implements CliCommand {
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
         } catch (java.io.IOException e) {
-            if (json) {
-                emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(
-                        false, (System.nanoTime() - start) / 1_000_000, total[0]));
-            }
+            emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(
+                            false, (System.nanoTime() - start) / 1_000_000, total[0]),
+                    json);
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             if (session != null) session.error(e.getMessage());
             return Exit.SOFTWARE;
@@ -402,9 +403,8 @@ public final class BuildCommand implements CliCommand {
             for (String err : result.errors()) session.error(err);
         }
         if (!result.errors().isEmpty()) {
-            if (json) {
-                emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]));
-            } else {
+            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
+            if (!json) {
                 for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             }
             // exitCode carries the engine's verdict: 2 for graph errors, 6 for an unsatisfiable
@@ -412,18 +412,14 @@ public final class BuildCommand implements CliCommand {
             return result.exitCode();
         }
         if (total[0] == 0) {
-            if (json) {
-                emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, 0));
-            } else {
-                CliOutput.out("(workspace declares no modules)");
-            }
+            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, 0), json);
+            if (!json) CliOutput.out("(workspace declares no modules)");
             if (session != null) session.wedge("workspace declares no modules");
             return 0;
         }
         if (!result.success()) {
-            if (json) {
-                emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]));
-            } else {
+            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
+            if (!json) {
                 result.modules().stream().filter(m -> !m.success()).findFirst().ifPresent(f -> {
                     String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", msg));
@@ -432,24 +428,33 @@ public final class BuildCommand implements CliCommand {
             }
             return result.exitCode();
         }
-        if (json) {
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]));
-            if (session != null) session.wedge(modulesTail(total[0], start));
-            return 0;
-        }
+        emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), json);
         String okTail = modulesTail(total[0], start);
+        if (session != null) session.wedge(okTail);
+        if (json) return 0;
         CliOutput.out(
                 PipelineWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
-        if (session != null) session.wedge(okTail);
         return 0;
     }
 
-    /** Emit one JSONL line to stdout (workspace agent path). Synchronized for parallel modules. */
-    private static void emitJsonl(String line) {
-        synchronized (OUT_LOCK) {
-            System.out.println(line);
-            System.out.flush();
+    /**
+     * Emit one JSONL line with progress rider. Always dual-writes to {@code details.jsonl}; prints to
+     * stdout only when {@code toStdout} (agent {@code --output json}/{@code jsonl}).
+     */
+    private static void emitJsonl(String line, boolean toStdout) {
+        String decorated = cc.jumpkick.cli.run.JsonlShape.withProgress(line);
+        if (toStdout) {
+            synchronized (OUT_LOCK) {
+                System.out.println(decorated);
+                System.out.flush();
+            }
         }
+        CliSessionTranscript.appendActive(decorated);
+    }
+
+    /** Session mirror for non-JSON engine-replayed pipelines (null when no session). */
+    private cc.jumpkick.cli.run.SessionMirrorListener sessionMirror() {
+        return session == null ? null : new cc.jumpkick.cli.run.SessionMirrorListener(session);
     }
 
     /**
@@ -508,6 +513,7 @@ public final class BuildCommand implements CliCommand {
                     for (var p : plan) tw += p.weight();
                     // Preflight reservation + execute weights; bar leaves 0% during plan prepare.
                     agg.calibrate(tw);
+                    emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), false);
                 }
 
                 @Override
@@ -528,11 +534,19 @@ public final class BuildCommand implements CliCommand {
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);
-                    return cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
+                    emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
+                    var mirror = sessionMirror();
+                    return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                            cc.jumpkick.cli.run.CompositePipelineListener.of(lis, mirror), log);
                 }
 
                 @Override
                 public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                    emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.moduleFinish(
+                                    o.dir().toString(), o.coord(), o.success(), o.millis()),
+                            false);
                     List<String> buf = buffers.getOrDefault(o.dir(), List.of());
                     String completion =
                             completionLine(o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
@@ -568,11 +582,13 @@ public final class BuildCommand implements CliCommand {
                 session.error(d.step(), d.code(), d.message());
             }
         }
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
         if (!result.errors().isEmpty()) {
             List<String> above = new ArrayList<>();
             for (String err : result.errors()) above.add(ConsoleSpec.errorLine("composite", err));
             view.finishPipelineFailure("dependency resolution failed", above);
             if (session != null) session.wedge("dependency resolution failed");
+            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
         }
@@ -592,6 +608,7 @@ public final class BuildCommand implements CliCommand {
             String failTail = failureTail(failedCoord, start);
             view.finishPipelineFailure(failTail, above);
             if (session != null) session.wedge(failTail);
+            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
             return result.exitCode();
         }
         // Empty execute plan (total==0) = engine found nothing dirty (JK-1106 single-RPC path).
@@ -601,6 +618,7 @@ public final class BuildCommand implements CliCommand {
                 : modulesTail(total[0], start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
+        emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
         return 0;
     }
 
