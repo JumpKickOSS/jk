@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
@@ -496,6 +497,33 @@ public final class PreflightMemo {
             }
         }
         return new PipelineShape(weight, testWeight, List.copyOf(steps));
+    }
+
+    /**
+     * JK-1115: wire-only {@link ModulePlan} from a warm shape memo — no real work steps. Used for an
+     * early {@code onPlan} so the aggregate bar can calibrate during prepare. Must never be
+     * executed; the real plan replaces it after prepare.
+     */
+    public static ModulePlan provisionalModulePlan(
+            BuildGraph.BuildUnit unit, PipelineShape shape, Path cache) {
+        Objects.requireNonNull(unit, "unit");
+        Objects.requireNonNull(shape, "shape");
+        cc.jumpkick.run.Pipeline.Builder b = cc.jumpkick.run.Pipeline.builder(unit.coord());
+        for (PipelineShape.StepShape s : shape.steps()) {
+            cc.jumpkick.plugin.build.Phase phase = null;
+            try {
+                phase = cc.jumpkick.plugin.build.Phase.fromWireOrNull(s.phase());
+            } catch (IllegalArgumentException ignored) {
+                // unknown phase wire name — leave unset
+            }
+            b.addStep(cc.jumpkick.run.Step.builder(s.name())
+                    .phase(phase)
+                    .ticks(0)
+                    .weight(0)
+                    .build());
+        }
+        // Empty-step pipeline is fine; ModulePlan.weight() carries the bar share.
+        return new ModulePlan(unit.dir(), unit.coord(), b.build(), shape.weight(), false, cache);
     }
 
     // -------------------------------------------------------------------------

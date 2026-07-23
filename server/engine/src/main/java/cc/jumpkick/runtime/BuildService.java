@@ -507,13 +507,15 @@ public final class BuildService {
         final int concurrency =
                 req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
 
-        // JK-1114: early ETA from shape memo (no pipeline assembly) so the countdown starts during
-        // prepare when every dirty module has a warm shape. Overwritten after prepare with accurate
-        // costs. Never under force/rebuild.
+        // JK-1114/1115: when every dirty module has a warm shape memo (and not force/rebuild):
+        //   • provisional onPlan — bar denominator calibrates during prepare
+        //   • early onEtaEstimate — countdown starts during prepare
+        // Both are overwritten after prepare with the real ModulePlans / costs.
         boolean distrustShape = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
         if (!distrustShape && !dirtyUnits.isEmpty()) {
             List<EffortWeights.ModuleCost> earlyCosts = new ArrayList<>();
+            List<ModulePlan> provisional = new ArrayList<>();
             boolean allShaped = true;
             for (BuildGraph.BuildUnit u : dirtyUnits) {
                 var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
@@ -526,11 +528,14 @@ public final class BuildService {
                         graph.edges().getOrDefault(u.dir(), Set.of()),
                         shape.get().weight(),
                         shape.get().testWeight()));
+                provisional.add(PreflightMemo.provisionalModulePlan(u, shape.get(), req.cache()));
             }
             if (allShaped) {
                 if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] early-eta from shape-memo dirty=" + dirtyUnits.size());
+                    System.err.println("[jk-perf] early-plan+eta from shape-memo dirty=" + dirtyUnits.size());
                 }
+                listener.onPlan(List.copyOf(provisional));
+                listener.onModuleGraph(graph.edges());
                 Set<Path> dirtyDirsOnly = new LinkedHashSet<>();
                 for (BuildGraph.BuildUnit u : dirtyUnits) dirtyDirsOnly.add(u.dir());
                 listener.onEtaEstimate(seedEta(

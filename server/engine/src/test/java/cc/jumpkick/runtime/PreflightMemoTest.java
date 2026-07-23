@@ -211,6 +211,28 @@ class PreflightMemoTest {
         assertThat(cost.dir()).isEqualTo(tmp);
     }
 
+    @Test
+    void provisionalModulePlan_carries_shape_weight_and_step_names(@TempDir Path tmp) throws Exception {
+        // JK-1115: early onPlan uses wire-only pipelines (no-op steps) + memo weight.
+        writeProject(tmp);
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
+        BuildGraph.BuildUnit u = graph.topoOrder().getFirst();
+        var shape = new PreflightMemo.PipelineShape(
+                77,
+                12,
+                java.util.List.of(
+                        new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
+                        new PreflightMemo.PipelineShape.StepShape("run-tests", "test")));
+        ModulePlan plan = PreflightMemo.provisionalModulePlan(u, shape, tmp.resolve("cache"));
+        assertThat(plan.weight()).isEqualTo(77);
+        assertThat(plan.coord()).isEqualTo(u.coord());
+        assertThat(plan.pipeline().steps()).hasSize(2);
+        assertThat(plan.pipeline().steps().getFirst().name()).isEqualTo("compile-java");
+        // Must not do real work if accidentally run.
+        assertThat(plan.pipeline().run().success()).isTrue();
+    }
+
     private static void writeProject(Path dir) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"),
