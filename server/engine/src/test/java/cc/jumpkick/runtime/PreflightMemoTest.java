@@ -170,6 +170,7 @@ class PreflightMemoTest {
         Path mod = tmp.toAbsolutePath().normalize();
         var shape = new PreflightMemo.PipelineShape(
                 42,
+                8,
                 java.util.List.of(
                         new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
                         new PreflightMemo.PipelineShape.StepShape("package-jar", "package")));
@@ -177,6 +178,7 @@ class PreflightMemoTest {
         Optional<PreflightMemo.PipelineShape> hit = PreflightMemo.tryLoadShape(tmp, mod, false);
         assertThat(hit).isPresent();
         assertThat(hit.get().weight()).isEqualTo(42);
+        assertThat(hit.get().testWeight()).isEqualTo(8);
         assertThat(hit.get().steps()).hasSize(2);
         assertThat(hit.get().steps().getFirst().name()).isEqualTo("compile-java");
     }
@@ -186,7 +188,7 @@ class PreflightMemoTest {
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
         PreflightMemo.storeShape(
-                tmp, mod, false, new PreflightMemo.PipelineShape(10, java.util.List.of()));
+                tmp, mod, false, new PreflightMemo.PipelineShape(10, 0, java.util.List.of()));
         Files.writeString(
                 tmp.resolve("jk.toml"),
                 """
@@ -198,6 +200,15 @@ class PreflightMemoTest {
                 java = 21
                 """);
         assertThat(PreflightMemo.tryLoadShape(tmp, mod, false)).isEmpty();
+    }
+
+    @Test
+    void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
+        // JK-1114: ETA path builds ModuleCost without assembling a pipeline.
+        var cost = EffortWeights.costOf(tmp, java.util.Set.of(), 100, 15);
+        assertThat(cost.weight()).isEqualTo(100);
+        assertThat(cost.testWeight()).isEqualTo(15);
+        assertThat(cost.dir()).isEqualTo(tmp);
     }
 
     private static void writeProject(Path dir) throws Exception {

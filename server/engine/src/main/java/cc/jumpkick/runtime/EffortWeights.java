@@ -391,6 +391,14 @@ public final class EffortWeights {
     }
 
     /**
+     * Module cost from pre-computed weights (JK-1114 shape memo / ETA-only path) — no pipeline
+     * assembly. {@code testWeight} is the serial {@code run-tests} slice; 0 when unknown.
+     */
+    public static ModuleCost costOf(Path dir, Set<Path> prereqs, int weight, int testWeight) {
+        return new ModuleCost(dir, prereqs, Math.max(0, weight), Math.max(0, testWeight));
+    }
+
+    /**
      * Estimate a build's wall-clock (ms) from per-module weights, honoring how {@code jk build}
      * actually schedules. Serial ({@code -j1}) sums every module's weight. The parallel
      * graph build overlaps independent modules, so the estimate is the largest of three lower bounds

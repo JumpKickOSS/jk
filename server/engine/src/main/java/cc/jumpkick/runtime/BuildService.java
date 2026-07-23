@@ -258,14 +258,37 @@ public final class BuildService {
             // borrows a learned rate from when it has no history of its own (EffortWeights.learned).
             Set<Path> projectModules = new HashSet<>();
             for (BuildPlan.Module m : plan.modules()) projectModules.add(m.dir());
+            boolean distrust = SessionContext.current().config().forceOr(false)
+                    || SessionContext.current().config().rebuildOr(false);
+            int shapeHits = 0;
             for (BuildPlan.Module m : plan.modules()) {
                 Path mdir = m.dir();
+                Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
+                // JK-1114: ETA-only — use shape memo and skip coreBuilder when warm.
+                if (!distrust && entryDir != null) {
+                    var shape = PreflightMemo.tryLoadShape(entryDir, mdir, skipTests);
+                    if (shape.isPresent()) {
+                        costs.add(EffortWeights.costOf(
+                                mdir, prereqs, shape.get().weight(), shape.get().testWeight()));
+                        shapeHits++;
+                        continue;
+                    }
+                }
                 BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
                 Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, m.dirty());
                 BuildPipelines.appendDeclaredTails(builder, inputs);
                 Pipeline pipeline = builder.build();
-                costs.add(EffortWeights.costOf(mdir, plan.edges().getOrDefault(mdir, Set.of()), pipeline));
+                int weight = pipeline.estimatedTotalWeight();
+                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline));
+                // Warm the shape memo for the next explain/build ETA path.
+                if (!distrust && entryDir != null) {
+                    PreflightMemo.storeShape(
+                            entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
+                }
+            }
+            if (Perf.ENABLED && shapeHits > 0) {
+                System.err.println("[jk-perf] estimateEta shape-hits=" + shapeHits + "/" + plan.modules().size());
             }
             int concurrency = serial
                     ? 1
@@ -479,6 +502,48 @@ public final class BuildService {
             else cleanUnits.add(u);
         }
 
+        int requestedJvms = HeapPlan.requestedJvms(width, req.workers() > 0 ? req.workers() : 1, parallelTests, cap);
+        // Clamp the ETA's module concurrency to the cap so a serial build (cap 1) estimates serially.
+        final int concurrency =
+                req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
+
+        // JK-1114: early ETA from shape memo (no pipeline assembly) so the countdown starts during
+        // prepare when every dirty module has a warm shape. Overwritten after prepare with accurate
+        // costs. Never under force/rebuild.
+        boolean distrustShape = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
+        if (!distrustShape && !dirtyUnits.isEmpty()) {
+            List<EffortWeights.ModuleCost> earlyCosts = new ArrayList<>();
+            boolean allShaped = true;
+            for (BuildGraph.BuildUnit u : dirtyUnits) {
+                var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
+                if (shape.isEmpty()) {
+                    allShaped = false;
+                    break;
+                }
+                earlyCosts.add(EffortWeights.costOf(
+                        u.dir(),
+                        graph.edges().getOrDefault(u.dir(), Set.of()),
+                        shape.get().weight(),
+                        shape.get().testWeight()));
+            }
+            if (allShaped) {
+                if (Perf.ENABLED) {
+                    System.err.println("[jk-perf] early-eta from shape-memo dirty=" + dirtyUnits.size());
+                }
+                Set<Path> dirtyDirsOnly = new LinkedHashSet<>();
+                for (BuildGraph.BuildUnit u : dirtyUnits) dirtyDirsOnly.add(u.dir());
+                listener.onEtaEstimate(seedEta(
+                        req.entryDir(),
+                        earlyCosts,
+                        dirtyDirsOnly,
+                        concurrency,
+                        parallelTests,
+                        req.cache(),
+                        req.jdksDir()));
+            }
+        }
+
         long tp = Perf.start();
         int nPrepare = dirtyUnits.size();
         listener.onPreflight(
@@ -502,21 +567,30 @@ public final class BuildService {
         listener.onModuleGraph(graph.edges());
 
         // ETA model (schedule-aware, per-module warm/cold rate) — engine knowledge, emitted as events.
+        // Prefer ModulePlan.weight() (may be shape-memo) over re-walking estimatedTotalWeight.
         long teta = Perf.start();
         Map<Path, EffortWeights.ModuleCost> costByDir = new LinkedHashMap<>();
         for (var e : plans.entrySet()) {
+            ModulePlan p = e.getValue();
+            int testW = 0;
+            for (var step : p.pipeline().steps()) {
+                if ("run-tests".equals(step.name())) {
+                    try {
+                        testW += step.estimateWeight();
+                    } catch (Exception ignored) {
+                        // best-effort
+                    }
+                }
+            }
             costByDir.put(
                     e.getKey(),
                     EffortWeights.costOf(
                             e.getKey(),
                             graph.edges().getOrDefault(e.getKey(), Set.of()),
-                            e.getValue().pipeline()));
+                            p.weight(),
+                            testW));
         }
         Perf.end("ws-eta-costs", teta);
-        int requestedJvms = HeapPlan.requestedJvms(width, req.workers() > 0 ? req.workers() : 1, parallelTests, cap);
-        // Clamp the ETA's module concurrency to the cap so a serial build (cap 1) estimates serially.
-        final int concurrency =
-                req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
         listener.onEtaEstimate(seedEta(
                 req.entryDir(),
                 new ArrayList<>(costByDir.values()),

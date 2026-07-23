@@ -338,12 +338,18 @@ public final class PreflightMemo {
     // -------------------------------------------------------------------------
 
     /**
-     * Static pipeline outline for one module: total weight + ordered step names/phases. Used to skip
-     * {@link cc.jumpkick.run.Pipeline#estimatedTotalWeight()} when the module's shape fingerprint
-     * is unchanged (toml/lock/skipTests/engine). Never used under force/rebuild.
+     * Static pipeline outline for one module: total weight, serial test-step weight, and step
+     * names/phases. Used to skip pipeline assembly on ETA-only paths (JK-1114) and to skip
+     * {@link cc.jumpkick.run.Pipeline#estimatedTotalWeight()} on prepare (JK-1113). Never trusted
+     * under force/rebuild.
      */
-    public record PipelineShape(int weight, List<StepShape> steps) {
+    public record PipelineShape(int weight, int testWeight, List<StepShape> steps) {
         public record StepShape(String name, String phase) {}
+
+        /** Backward-compat constructor when test weight is unknown. */
+        public PipelineShape(int weight, List<StepShape> steps) {
+            this(weight, 0, steps);
+        }
     }
 
     /**
@@ -380,28 +386,46 @@ public final class PreflightMemo {
             }
             if (!BuildIdentity.cacheKeyVersion().equals(gotVersion)) return Optional.empty();
 
-            // Format: shape\trel\tshapeFp\tweight\tname:phase,name:phase,...
+            // New: shape\trel\tfp\tweight\ttestWeight\tname:phase,...
+            // Old: shape\trel\tfp\tweight\tname:phase,...  (testWeight defaults 0)
             for (String line : lines) {
                 if (!line.startsWith("shape\t")) continue;
-                String[] p = line.split("\t", 5);
+                String[] p = line.split("\t", 6);
                 if (p.length < 4) continue;
                 if (!rel.equals(p[1])) continue;
                 if (!wantFp.equals(p[2])) return Optional.empty();
                 int weight = Integer.parseInt(p[3]);
-                List<PipelineShape.StepShape> steps = new ArrayList<>();
-                if (p.length >= 5 && !p[4].isBlank()) {
-                    for (String tok : p[4].split(",")) {
-                        int c = tok.indexOf(':');
-                        if (c < 0) steps.add(new PipelineShape.StepShape(tok, ""));
-                        else steps.add(new PipelineShape.StepShape(tok.substring(0, c), tok.substring(c + 1)));
+                int testWeight = 0;
+                String stepsField = "";
+                if (p.length >= 6) {
+                    testWeight = Integer.parseInt(p[4]);
+                    stepsField = p[5];
+                } else if (p.length == 5) {
+                    // Ambiguous: either old steps or new testWeight with empty steps.
+                    if (p[4].chars().allMatch(Character::isDigit)) {
+                        testWeight = Integer.parseInt(p[4]);
+                    } else {
+                        stepsField = p[4];
                     }
                 }
-                return Optional.of(new PipelineShape(weight, List.copyOf(steps)));
+                List<PipelineShape.StepShape> steps = parseStepField(stepsField);
+                return Optional.of(new PipelineShape(weight, testWeight, steps));
             }
             return Optional.empty();
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    private static List<PipelineShape.StepShape> parseStepField(String stepsField) {
+        List<PipelineShape.StepShape> steps = new ArrayList<>();
+        if (stepsField == null || stepsField.isBlank()) return List.of();
+        for (String tok : stepsField.split(",")) {
+            int c = tok.indexOf(':');
+            if (c < 0) steps.add(new PipelineShape.StepShape(tok, ""));
+            else steps.add(new PipelineShape.StepShape(tok.substring(0, c), tok.substring(c + 1)));
+        }
+        return List.copyOf(steps);
     }
 
     /** Upsert one module's pipeline shape into the shape memo. Best-effort. */
@@ -420,7 +444,16 @@ public final class PreflightMemo {
                 PipelineShape.StepShape s = shape.steps().get(i);
                 steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
             }
-            String newLine = "shape\t" + rel + "\t" + fp + "\t" + shape.weight() + "\t" + steps;
+            String newLine = "shape\t"
+                    + rel
+                    + "\t"
+                    + fp
+                    + "\t"
+                    + shape.weight()
+                    + "\t"
+                    + shape.testWeight()
+                    + "\t"
+                    + steps;
 
             Map<String, String> byRel = new LinkedHashMap<>();
             String gotVersion = BuildIdentity.cacheKeyVersion();
@@ -428,7 +461,7 @@ public final class PreflightMemo {
                 for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                     if (line.startsWith("schema=") || line.startsWith("cacheKeyVersion=")) continue;
                     if (line.startsWith("shape\t")) {
-                        String[] p = line.split("\t", 5);
+                        String[] p = line.split("\t", 3);
                         if (p.length >= 2) byRel.put(p[1], line);
                     }
                 }
@@ -445,16 +478,24 @@ public final class PreflightMemo {
         }
     }
 
-    /** Build a {@link PipelineShape} from an assembled pipeline (step names + total weight). */
+    /** Build a {@link PipelineShape} from an assembled pipeline (weights + step outline). */
     public static PipelineShape shapeOf(cc.jumpkick.run.Pipeline pipeline, int weight) {
         List<PipelineShape.StepShape> steps = new ArrayList<>();
+        int testWeight = 0;
         for (var s : pipeline.steps()) {
             String phase = s.phase()
                     .map(p -> p.name().toLowerCase(java.util.Locale.ROOT))
                     .orElse("");
             steps.add(new PipelineShape.StepShape(s.name(), phase));
+            if ("run-tests".equals(s.name())) {
+                try {
+                    testWeight += s.estimateWeight();
+                } catch (Exception ignored) {
+                    // best-effort
+                }
+            }
         }
-        return new PipelineShape(weight, List.copyOf(steps));
+        return new PipelineShape(weight, testWeight, List.copyOf(steps));
     }
 
     // -------------------------------------------------------------------------
