@@ -145,6 +145,36 @@ class CliSessionTranscriptTest {
     }
 
     @Test
+    void flush_is_line_bounded_lazy_lines_stay_off_disk(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build");
+        assertNotNull(session);
+        // session-start was flushed immediately — one complete line on disk.
+        List<String> onDisk = Files.readAllLines(session.file());
+        assertEquals(1, onDisk.size());
+        assertTrue(onDisk.get(0).contains("session-start"));
+        // Parse every on-disk line as JSON — no partial records.
+        for (String line : onDisk) {
+            MiniJson.parse(line);
+        }
+
+        // Lazy hot tick: must not appear on disk until flush/finish.
+        session.append(JsonlShape.label("compile", "buffered-only"), false);
+        List<String> still = Files.readAllLines(session.file());
+        assertEquals(1, still.size(), "lazy line must not partial-flush mid-record");
+        assertFalse(Files.readString(session.file()).contains("buffered-only"));
+
+        // Immediate semantic event drains pending complete records (label + step-finish).
+        session.append(JsonlShape.stepFinish("compile", "compile", StepStatus.SUCCESS, Duration.ofMillis(1)), true);
+        String after = Files.readString(session.file());
+        assertTrue(after.contains("buffered-only"));
+        assertTrue(after.contains("step-finish"));
+        for (String line : Files.readAllLines(session.file())) {
+            MiniJson.parse(line); // every flushed line is a complete JSON object
+        }
+        session.finish(0);
+    }
+
+    @Test
     void is_immediate_type_classifies_hot_ticks() {
         assertFalse(CliSessionTranscript.isImmediateType(
                 "{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));

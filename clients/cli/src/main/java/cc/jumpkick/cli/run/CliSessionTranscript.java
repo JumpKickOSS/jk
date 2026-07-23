@@ -3,9 +3,9 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.PipelineResult;
-import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +22,10 @@ import java.util.Optional;
  * Incremental CLI session transcript under {@code <project>/target/.jk-cli/<ts>/details.jsonl}
  * (JK-1116). Same event shape as {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema
  * 1), appended live so agents/CI can {@code tail -F} mid-run. Flush cadence: JK-1118.
+ *
+ * <p>Disk materialize is <strong>line-bounded</strong>: only complete newline-terminated records
+ * leave the pending buffer on flush. Partial lines never hit the file mid-write — incomplete
+ * records stay buffered until a later flush turn (or {@link #finish}).
  *
  * <p>Never throws into the user command path: open/append/finish failures are silent no-ops. Disable
  * with {@code JK_CLI_DETAILS=off} (or {@code 0}).
@@ -54,18 +58,24 @@ public final class CliSessionTranscript {
     private final List<String> argv;
     private final List<String> modules = new ArrayList<>();
     private final Object lock = new Object();
-    private BufferedWriter writer;
+    /** Unbuffered (or lightly buffered) file stream — we own record framing. */
+    private OutputStream out;
+    /**
+     * Complete records only ({@code …\n} each). Flushed as a unit so readers never observe a partial
+     * JSON line on disk.
+     */
+    private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
     private long lastFlushMs;
     private boolean dirty;
     private String wedgeSummary;
     private boolean closed;
 
-    private CliSessionTranscript(Path file, Instant started, String command, List<String> argv, BufferedWriter writer) {
+    private CliSessionTranscript(Path file, Instant started, String command, List<String> argv, OutputStream out) {
         this.file = file;
         this.started = started;
         this.command = command;
         this.argv = List.copyOf(argv);
-        this.writer = writer;
+        this.out = out;
         this.lastFlushMs = System.currentTimeMillis();
     }
 
@@ -88,10 +98,9 @@ public final class CliSessionTranscript {
             Files.createDirectories(dir);
             Path file = dir.resolve(FILE_NAME);
             List<String> args = argv == null || argv.isEmpty() ? List.of(command) : List.copyOf(argv);
-            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                    Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
-                    StandardCharsets.UTF_8));
-            CliSessionTranscript session = new CliSessionTranscript(file, started, command, args, writer);
+            // Raw stream: no BufferedWriter auto-flush mid-line when the internal buffer fills.
+            OutputStream out = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+            CliSessionTranscript session = new CliSessionTranscript(file, started, command, args, out);
             LiveProgress.get().clear();
             active = session;
             // session-start is metadata — no progress yet (null rider).
@@ -169,25 +178,46 @@ public final class CliSessionTranscript {
         appendRaw(JsonlShape.withProgress(line), immediateFlush);
     }
 
-    /** Append a fully-formed line (already has progress if desired). */
+    /**
+     * Append a fully-formed JSON object as one record. Strips any trailing CR/LF from {@code line},
+     * then enqueues exactly one {@code line + '\n'} into the pending buffer. Disk flush only writes
+     * complete pending records — never a partial line.
+     */
     public void appendRaw(String line, boolean immediateFlush) {
         if (line == null || line.isBlank()) return;
+        // Normalize: callers may pass a line that already ends with \n.
+        String record = line;
+        while (!record.isEmpty() && (record.charAt(record.length() - 1) == '\n' || record.charAt(record.length() - 1) == '\r')) {
+            record = record.substring(0, record.length() - 1);
+        }
+        if (record.isEmpty()) return;
+        byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
         synchronized (lock) {
-            if (closed || writer == null) return;
+            if (closed || out == null) return;
             try {
-                writer.write(line);
-                writer.newLine();
+                pending.write(bytes);
                 dirty = true;
                 long now = System.currentTimeMillis();
                 if (immediateFlush || now - lastFlushMs >= LiveProgress.DISK_HEARTBEAT_MS) {
-                    writer.flush();
-                    lastFlushMs = now;
-                    dirty = false;
+                    flushPending();
                 }
             } catch (IOException ignored) {
-                // Best-effort; leave writer for a later attempt or finish.
+                // Best-effort; leave pending for a later attempt or finish.
             }
         }
+    }
+
+    /**
+     * Write every complete pending record to the file, then flush the OS stream. Empty pending is a
+     * no-op. Never writes a non-newline-terminated fragment.
+     */
+    private void flushPending() throws IOException {
+        if (out == null || pending.size() == 0) return;
+        out.write(pending.toByteArray());
+        out.flush();
+        pending.reset();
+        lastFlushMs = System.currentTimeMillis();
+        dirty = false;
     }
 
     /**
@@ -213,8 +243,8 @@ public final class CliSessionTranscript {
     }
 
     /**
-     * Write {@code session-finish}, flush, and close. Never throws. Returns the path written, or empty
-     * on failure.
+     * Write {@code session-finish}, flush all pending complete records, and close. Never throws.
+     * Returns the path written, or empty on failure.
      */
     public Optional<Path> finish(int exitCode) {
         synchronized (lock) {
@@ -225,10 +255,17 @@ public final class CliSessionTranscript {
                 if (exitCode == 0) LiveProgress.get().setPercent(100.0);
                 String finishLine = JsonlShape.withProgress(JsonlShape.sessionFinish(
                         exitCode, durationMs, wedgeSummary == null ? null : stripAnsi(wedgeSummary), List.copyOf(modules)));
-                if (writer != null) {
-                    writer.write(finishLine);
-                    writer.newLine();
-                    writer.flush();
+                // Enqueue finish as a complete record, then drain pending.
+                if (out != null) {
+                    String record = finishLine;
+                    while (!record.isEmpty()
+                            && (record.charAt(record.length() - 1) == '\n'
+                                    || record.charAt(record.length() - 1) == '\r')) {
+                        record = record.substring(0, record.length() - 1);
+                    }
+                    pending.write((record + "\n").getBytes(StandardCharsets.UTF_8));
+                    dirty = true;
+                    flushPending();
                 }
                 return Optional.of(file);
             } catch (RuntimeException | IOException e) {
@@ -236,12 +273,12 @@ public final class CliSessionTranscript {
             } finally {
                 closed = true;
                 if (active == this) active = null;
-                if (writer != null) {
+                if (out != null) {
                     try {
-                        writer.close();
+                        out.close();
                     } catch (IOException ignored) {
                     }
-                    writer = null;
+                    out = null;
                 }
             }
         }
