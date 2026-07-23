@@ -77,6 +77,30 @@ the product default and not a per-worker budget.
 jk engine start | status | stop
 ```
 
+### Dashboard static assets (`web-root`)
+
+The engine HTTP server serves the dashboard from **disk first**, then classpath `/web`
+(in the engine jar). Disk paths are always `Cache-Control: no-cache`, so edits show up on
+refresh without reinstalling.
+
+| Source | Key |
+|---|---|
+| Env | `JK_HTTP_WEB_ROOT` (absolute path preferred) |
+| Config | `~/.jk/config.toml` → `[http] web-root` |
+| Default | `~/.jk/state/web` (relative to `JK_HOME`) |
+
+Point at the worktree for UI iteration:
+
+```bash
+export JK_HTTP_WEB_ROOT="$PWD/clients/web/src/main/resources/web"
+jk engine stop
+jk engine start
+# edit style.css / index.html / *.webp → hard-refresh the browser
+```
+
+Relative `web-root` values resolve against `~/.jk`. Only files present under the root are
+overridden; anything missing still falls through to the jar.
+
 Transport: Unix domain socket on macOS/Linux; loopback TCP + shared-secret token on Windows.
 Protocol is internal (same-version client/server), newline-delimited JSON.
 
