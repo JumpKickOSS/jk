@@ -810,24 +810,25 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * One phase chain row: running = pulse ● on blue chip + label pill; failed = ✘ on red chip +
-     * label pill. Success phases are not rendered (removed when they complete).
+     * One phase chain row: running / failed (success phases drop out when complete). Pills use the
+     * web step-node palette — dark tinted bg + bright state fg (JK-1111) — so they read distinct
+     * from solid CommandWedge chips.
      */
     private String renderPhaseRow(PhaseNode node) {
         if (node == null) return "";
         Theme t = Theme.active();
         if (node.state == PhaseState.FAILED) {
-            AttributedStyle body = t.pipelineFailureChip();
-            AttributedStyle caps = t.bright(t.pipelineFailColor());
-            AttributedStyle iconStyle = t.withBackground(t.bright(Rgb.hex(0xFFFFFF)), t.pipelineFailColor());
-            String icon = Theme.colorize(Glyphs.CROSS, iconStyle);
+            AttributedStyle body = t.phaseFailedPill();
+            AttributedStyle caps = t.bright(t.phaseFailedBg());
+            // Cross: bright err fg on dark err bg (same as the pill body).
+            String icon = Theme.colorize(Glyphs.CROSS, body);
             return " " + icon + Badge.pill(node.label, nerdfont, body, caps);
         }
-        // RUNNING: pulse circle on blue chip bg + label pill
-        AttributedStyle body = t.pipelineChip();
-        AttributedStyle caps = t.bright(t.planBadgeColor());
+        // RUNNING: pulse on deep blue + bright-blue-on-deep-blue label pill
+        AttributedStyle body = t.phaseRunningPill();
+        AttributedStyle caps = t.bright(t.phaseRunningBg());
         AttributedStyle pulse =
-                t.withBackground(pulseColors[frame % pulseColors.length], t.planBadgeColor());
+                t.withBackground(pulseColors[frame % pulseColors.length], t.phaseRunningBg());
         String icon = Theme.colorize(PULSE, pulse);
         return " " + icon + Badge.pill(node.label, nerdfont, body, caps);
     }

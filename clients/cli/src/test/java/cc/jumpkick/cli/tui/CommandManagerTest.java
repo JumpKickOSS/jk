@@ -241,6 +241,24 @@ class CommandManagerTest {
     }
 
     @Test
+    void phase_pills_use_dark_bg_bright_fg_not_solid_wedge_chips() {
+        // JK-1111: phase pills match web step-nodes (dark tint + bright fg), distinct from
+        // CommandWedge solid white-on-color chips.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile", "compile");
+        cm.stepDone("m", "test", false, "test");
+        var raw = cm.renderPipelineLines(120, 0);
+        String joined = String.join("\n", raw);
+        Theme t = Theme.active();
+        assertThat(joined).contains(Theme.colorize(" Compile ", t.phaseRunningPill()));
+        assertThat(joined).contains(Theme.colorize(" Test ", t.phaseFailedPill()));
+        // Must not use the solid CommandWedge chips for phase labels.
+        assertThat(joined).doesNotContain(Theme.colorize(" Compile ", t.pipelineChip()));
+        assertThat(joined).doesNotContain(Theme.colorize(" Test ", t.pipelineFailureChip()));
+    }
+
+    @Test
     void phase_chain_shows_running_and_failed_only_newest_first() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;
