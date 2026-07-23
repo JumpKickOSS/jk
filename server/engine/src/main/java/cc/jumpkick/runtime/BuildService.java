@@ -159,12 +159,31 @@ public final class BuildService {
      * test-stamp content hashing.
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests) {
+        return forecastDirtyDirs(graph, cache, skipTests, null);
+    }
+
+    /**
+     * As {@link #forecastDirtyDirs(BuildGraph.Result, Path, boolean)} with optional {@code entryDir}
+     * for the local preflight dirty memo (JK-1100). When {@code entryDir} is non-null and inputs are
+     * unchanged, returns the memoized dirty set without a full {@link BuildPlanForecast} walk.
+     */
+    public static Set<Path> forecastDirtyDirs(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --rebuild: every module runs — skip the expensive per-step forecast walk.
         if (SessionContext.current().config().rebuildOr(false)
                 || SessionContext.current().config().forceOr(false)) {
             return all;
+        }
+        if (entryDir != null) {
+            var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
+            if (memo.isPresent()) {
+                if (Perf.ENABLED) {
+                    System.err.println("[jk-perf] preflight-memo hit dirty=" + memo.get().size());
+                }
+                return memo.get();
+            }
         }
         try {
             Cas cas = new Cas(cache);
@@ -178,6 +197,9 @@ public final class BuildService {
                             System.err.println("[jk-perf] dirty " + m.coord() + " " + p.name() + " (" + p.text() + ")");
                     }
                 }
+            }
+            if (entryDir != null) {
+                PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty);
             }
             return dirty;
         } catch (RuntimeException e) {
@@ -330,7 +352,13 @@ public final class BuildService {
 
     /** {@link #forecastDirtyDirs(BuildGraph.Result, Path, boolean)} over a front-end-held {@link ResolvedGraph}. */
     public static Set<Path> forecastDirtyDirs(ResolvedGraph graph, Path cache, boolean skipTests) {
-        return forecastDirtyDirs(graph.graph(), cache, skipTests);
+        return forecastDirtyDirs(graph.graph(), cache, skipTests, null);
+    }
+
+    /** As {@link #forecastDirtyDirs(ResolvedGraph, Path, boolean)} with preflight memo root. */
+    public static Set<Path> forecastDirtyDirs(
+            ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastDirtyDirs(graph.graph(), cache, skipTests, entryDir);
     }
 
     // =========================================================================
@@ -405,16 +433,35 @@ public final class BuildService {
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) moduleDirs.add(u.dir());
         long tf = Perf.start();
-        // Client dirty hint (from one forecast) avoids a second full forecast walk (JK-1101).
+        // JK-1106: Checking runs inside this build request (no separate client forecast RPC).
+        // Client dirty hint (selection / force path) still avoids a second walk when provided.
         // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
-        Set<Path> dirty =
-                req.dirtyHint() != null ? req.dirtyHint() : forecastDirtyDirs(graph, req.cache(), req.skipTests());
+        // JK-1100: when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
+        Set<Path> dirty;
+        if (req.dirtyHint() != null) {
+            listener.onPreflight("checking", 0, 0, "Using dirty set…");
+            dirty = req.dirtyHint();
+            listener.onPreflight(
+                    "checking",
+                    1,
+                    1,
+                    dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
+        } else {
+            listener.onPreflight("checking", 0, 0, "Checking cache…");
+            dirty = forecastDirtyDirs(graph, req.cache(), req.skipTests(), req.entryDir());
+            listener.onPreflight(
+                    "checking",
+                    1,
+                    1,
+                    dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
+        }
         Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ",dirty=" + dirty.size() + ")", tf);
 
         // Each module's step durations feed one shared sink, folded into the learned ledger on success.
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());
-        // JK-1102: only fully prepare modules that will execute (dirty). Clean modules get a zero-weight
-        // placeholder — no EffortWeights.predict, no pipeline assembly, no schedule slot.
+        // JK-1102: only fully prepare modules that will execute (dirty). Clean modules skip prepare
+        // and schedule — prepare is pure pipeline assembly (parse + plugin describe + step list);
+        // real plugin work runs in steps. ensureMaterialized is idempotent CAS extract (JK-1107).
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
         for (BuildGraph.BuildUnit u : units) {
@@ -523,6 +570,12 @@ public final class BuildService {
             StepTimings.record(req.cache(), timingSamples, StepTimings.DEFAULT_ALPHA, System.currentTimeMillis());
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
+            // JK-1100: sources unchanged after a successful full forecast path ⇒ next cold process
+            // should see "all clean" without re-walking action keys. Dirty-hint paths (selection)
+            // leave the memo alone — we didn't recompute the whole graph's dirtiness.
+            if (req.dirtyHint() == null) {
+                PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of());
+            }
         }
         WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
         listener.onWorkspaceFinish(result);

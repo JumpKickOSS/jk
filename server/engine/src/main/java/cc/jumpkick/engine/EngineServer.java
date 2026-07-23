@@ -1672,7 +1672,8 @@ public final class EngineServer implements AutoCloseable {
                     return null;
                 }
                 List<String> dirty = new java.util.ArrayList<>();
-                for (Path d : BuildService.forecastDirtyDirs(graph, cache, skipTests)) dirty.add(d.toString());
+                for (Path d : BuildService.forecastDirtyDirs(graph, cache, skipTests, entryDir))
+                    dirty.add(d.toString());
                 boolean lockStale = BuildService.workspaceLockStale(entryDir, entryBuild, entryDir.resolve("jk.lock"));
                 sendQuiet(writer, EngineProtocol.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
                 return null;

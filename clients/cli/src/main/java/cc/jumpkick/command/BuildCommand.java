@@ -245,98 +245,45 @@ public final class BuildCommand implements CliCommand {
         AggregateContext earlyAgg = new AggregateContext(view);
         earlyAgg.preflight("checking", 0, 0, "Checking cache…");
 
-        // JK-1104: --force/--rebuild already means every module is dirty — skip the full client
-        // forecast walk. Engine treats force/rebuild as "all dirty" without per-step hashing.
-        boolean distrustCache = global.force || global.rebuild;
-        Set<Path> dirtyDirs;
-        boolean lockStale;
-        if (distrustCache
-                && affectedSince == null
-                && (modulesSpec == null || modulesSpec.isBlank())) {
-            earlyAgg.preflight("checking", 1, 1, "Force rebuild — skipping cache check");
-            dirtyDirs = null; // engine marks all modules dirty under force/rebuild
-            lockStale = false;
-            if (System.getenv("JK_PERF") != null) {
-                System.err.println("[jk-perf] client-forecast skipped (force/rebuild) "
-                        + (System.nanoTime() - buildStart) / 1_000_000 + "ms");
-            }
-        } else {
-            // Pre-flight forecast (engine-hosted) under the live region.
-            cc.jumpkick.runtime.BuildForecast forecast;
-            try {
-                forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
-                        cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
-            } catch (java.io.IOException e) {
-                view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
-                return Exit.SOFTWARE;
-            }
-            if (forecast.hasErrors()) {
-                for (String err : forecast.errors()) {
-                    view.writeAbove(ConsoleSpec.errorLine("composite", err));
-                }
-                view.finishPipelineFailure("dependency resolution failed", List.of());
-                return Exit.CONFIG;
-            }
-            if (forecast.empty()) {
-                view.finishPipelineSuccess("workspace declares no modules", List.of());
-                return 0;
-            }
-            dirtyDirs = forecast.dirtyDirs();
-            earlyAgg.preflight("checking", 1, 1, "Cache check done");
-            if (System.getenv("JK_PERF") != null) {
-                System.err.println("[jk-perf] client-forecast "
-                        + (System.nanoTime() - buildStart) / 1_000_000 + "ms dirty=" + dirtyDirs.size());
-            }
-            // Optional: --modules and/or --affected-since (intersection when both).
-            if ((affectedSince != null && !affectedSince.isBlank())
-                    || (modulesSpec != null && !modulesSpec.isBlank())) {
-                JkBuild buildForSelect = entryBuild;
-                if (buildForSelect == null) {
-                    try {
-                        buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                    } catch (Exception e) {
-                        view.finishPipelineFailure(
-                                "cannot load jk.toml for module selection: " + e.getMessage(), List.of());
-                        return Exit.CONFIG;
-                    }
-                }
-                var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                        entryDir, buildForSelect, modulesSpec, affectedSince);
-                if (selected != null && !selected.ok()) {
-                    view.finishPipelineFailure(selected.errorMessage(), List.of());
+        // JK-1106: live build uses a single engine request for Checking + Graph + Plan + execute.
+        // No separate client forecast RPC — the engine emits checking preflight and (when all clean)
+        // returns with an empty plan. --modules / --affected-since force-include those dirs as the
+        // dirty hint; --force/--rebuild leave the hint null so the engine marks everything dirty.
+        Set<Path> dirtyDirs = null;
+        if ((affectedSince != null && !affectedSince.isBlank())
+                || (modulesSpec != null && !modulesSpec.isBlank())) {
+            JkBuild buildForSelect = entryBuild;
+            if (buildForSelect == null) {
+                try {
+                    buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                } catch (Exception e) {
+                    view.finishPipelineFailure(
+                            "cannot load jk.toml for module selection: " + e.getMessage(), List.of());
                     return Exit.CONFIG;
                 }
-                if (selected != null && selected.moduleDirs().isEmpty()) {
-                    view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
-                    return 0;
-                }
-                if (selected != null) {
-                    Set<Path> restricted = new java.util.LinkedHashSet<>();
-                    for (Path d : dirtyDirs) {
-                        if (selected.moduleDirs().contains(d.toAbsolutePath().normalize()))
-                            restricted.add(d);
-                    }
-                    // Force-include selected modules even if forecast thinks they are cached.
-                    dirtyDirs = restricted.isEmpty() ? selected.moduleDirs() : restricted;
-                }
             }
-            // The forecast runs against the per-module locks; when the merged workspace lock is stale
-            // the engine will re-lock (freshenLock on the request) and the forecast may be wrong — so a
-            // stale lock disables the fully-cached shortcut AND the dirty hint (the engine re-forecasts
-            // after freshening).
-            lockStale = forecast.lockStale();
-            // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
-            if (forecast.fullyCached()
-                    && !global.force
-                    && !global.rebuild
-                    && affectedSince == null
-                    && (modulesSpec == null || modulesSpec.isBlank())) {
-                view.finishPipelineSuccess(upToDateTail("all modules", buildStart), List.of());
+            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                    entryDir, buildForSelect, modulesSpec, affectedSince);
+            if (selected != null && !selected.ok()) {
+                view.finishPipelineFailure(selected.errorMessage(), List.of());
+                return Exit.CONFIG;
+            }
+            if (selected != null && selected.moduleDirs().isEmpty()) {
+                view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
                 return 0;
             }
+            if (selected != null) {
+                // Force-include selected modules (engine still respects action cache unless --force).
+                dirtyDirs = selected.moduleDirs();
+            }
         }
-        // Work confirmed — engine preflight (lock/graph/plan) continues on the same TUI.
-        return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, lockStale);
+        if (System.getenv("JK_PERF") != null) {
+            System.err.println("[jk-perf] client-forecast skipped (single-rpc preflight) "
+                    + (System.nanoTime() - buildStart) / 1_000_000 + "ms"
+                    + (dirtyDirs != null ? " dirtyHint=" + dirtyDirs.size() : ""));
+        }
+        // lockStale unused: engine freshenLock + internal forecast owns Checking (JK-1106).
+        return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, false);
     }
 
     private String selectionEmptyMessage() {
@@ -647,8 +594,9 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge(failTail);
             return result.exitCode();
         }
-        // null dirtyDirs = force/rebuild path (JK-1104) — never "up to date".
-        String okTail = (dirtyDirs != null && dirtyDirs.isEmpty())
+        // Empty execute plan (total==0) = engine found nothing dirty (JK-1106 single-RPC path).
+        // Explicit empty dirtyHint is also up-to-date. Null dirtyDirs with work means force/rebuild.
+        String okTail = (total[0] == 0 || (dirtyDirs != null && dirtyDirs.isEmpty()))
                 ? upToDateTail("all modules", start)
                 : modulesTail(total[0], start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
