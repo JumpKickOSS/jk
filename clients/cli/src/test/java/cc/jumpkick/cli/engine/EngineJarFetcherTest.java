@@ -67,11 +67,23 @@ class EngineJarFetcherTest {
         return new cc.jumpkick.cache.VersionStore(root.resolve("versions"));
     }
 
+    /**
+     * Checksum-only verifier (no trusted keys). Production uses the baked-in release key; these
+     * unit tests exercise CAS materialize + SHA256SUMS parsing without signing fixtures.
+     */
+    private static cc.jumpkick.repo.ReleaseVerifier noSig() {
+        return cc.jumpkick.repo.ReleaseVerifier.of(java.util.List.of());
+    }
+
+    private Path fetch(Path root) throws IOException {
+        return EngineJarFetcher.fetch(base, VERSION, cas(root), store(root), null, noSig());
+    }
+
     @Test
     void fetch_verifies_and_materializes_cas_first(@TempDir Path root) throws Exception {
         var cas = cas(root);
         var store = store(root);
-        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, store, null);
+        Path installed = EngineJarFetcher.fetch(base, VERSION, cas, store, null, noSig());
 
         var m = store.resolve(VERSION).orElseThrow();
         assertThat(installed).isEqualTo(m.engineJar());
@@ -85,7 +97,7 @@ class EngineJarFetcherTest {
         jarBody = "tampered bytes".getBytes(StandardCharsets.UTF_8);
 
         var store = store(root);
-        assertThatThrownBy(() -> EngineJarFetcher.fetch(base, VERSION, cas(root), store, null))
+        assertThatThrownBy(() -> fetch(root))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("checksum mismatch");
         assertThat(store.resolve(VERSION)).isEmpty();
@@ -96,7 +108,7 @@ class EngineJarFetcherTest {
         sumsStatus = 404;
 
         var store = store(root);
-        assertThatThrownBy(() -> EngineJarFetcher.fetch(base, VERSION, cas(root), store, null))
+        assertThatThrownBy(() -> fetch(root))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("HTTP 404");
         assertThat(store.resolve(VERSION)).isEmpty();
@@ -106,7 +118,7 @@ class EngineJarFetcherTest {
     void checksums_without_an_entry_for_the_jar_refuses_to_install(@TempDir Path root) {
         sumsBody = "abc123  jk-linux-x86_64.xz\n".getBytes(StandardCharsets.UTF_8);
 
-        assertThatThrownBy(() -> EngineJarFetcher.fetch(base, VERSION, cas(root), store(root), null))
+        assertThatThrownBy(() -> fetch(root))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("no entry for jk-engine-1.2.3.jar");
     }
@@ -115,7 +127,7 @@ class EngineJarFetcherTest {
     void missing_jar_fails_with_the_url_and_status(@TempDir Path root) {
         jarStatus = 404;
 
-        assertThatThrownBy(() -> EngineJarFetcher.fetch(base, VERSION, cas(root), store(root), null))
+        assertThatThrownBy(() -> fetch(root))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("engine jar")
                 .hasMessageContaining("HTTP 404");

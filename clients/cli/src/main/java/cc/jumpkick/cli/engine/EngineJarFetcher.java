@@ -55,6 +55,27 @@ final class EngineJarFetcher {
             cc.jumpkick.cache.VersionStore store,
             Path clientBin)
             throws IOException {
+        return fetch(
+                releasesBase,
+                version,
+                cas,
+                store,
+                clientBin,
+                cc.jumpkick.repo.ReleaseVerifier.current(cc.jumpkick.config.GlobalConfig.releaseTrustedKeys()));
+    }
+
+    /**
+     * Fully injected variant for tests: pass {@link cc.jumpkick.repo.ReleaseVerifier#of} with no
+     * keys to exercise the checksum-only path without the baked-in release key.
+     */
+    static Path fetch(
+            URI releasesBase,
+            String version,
+            cc.jumpkick.cache.Cas cas,
+            cc.jumpkick.cache.VersionStore store,
+            Path clientBin,
+            cc.jumpkick.repo.ReleaseVerifier verifier)
+            throws IOException {
         String jarName = "jk-engine-" + version + ".jar";
         URI versionDir = URI.create(releasesBase.toString() + "/" + version + "/");
         Http http = new Http();
@@ -63,8 +84,7 @@ final class EngineJarFetcher {
         // Authenticity gate: when this host trusts any release key, the sums MUST carry a valid
         // signature (signature-then-hash) before any byte is used. Hosts with no keys proceed on
         // checksums alone.
-        var verifier = cc.jumpkick.repo.ReleaseVerifier.current(cc.jumpkick.config.GlobalConfig.releaseTrustedKeys());
-        if (verifier.available()) {
+        if (verifier != null && verifier.available()) {
             byte[] sig = get(http, versionDir.resolve("SHA256SUMS.sig"), "release signature");
             verifier.verify(sumsBytes, new String(sig, java.nio.charset.StandardCharsets.UTF_8));
         }
