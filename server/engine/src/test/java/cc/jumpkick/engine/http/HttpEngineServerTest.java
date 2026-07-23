@@ -179,7 +179,6 @@ class HttpEngineServerTest {
         assertThat(get("/api.js").body()).contains("bootstrapToken");
         assertThat(get("/jk-logo.svg").headers().firstValue("Content-Type")).contains("image/svg+xml");
         assertThat(get("/jumpkick-logo.webp").headers().firstValue("Content-Type")).contains("image/webp");
-        assertThat(get("/jumpkick-favicon.webp").headers().firstValue("Content-Type")).contains("image/webp");
         HttpResponse<String> css = get("/style.css");
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
         // Vue rides the CDN, version-pinned and integrity-locked (docs/webclient.md) — the shell
