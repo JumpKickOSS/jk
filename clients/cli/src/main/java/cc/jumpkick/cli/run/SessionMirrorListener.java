@@ -24,6 +24,7 @@ public final class SessionMirrorListener implements PipelineListener {
 
     @Override
     public void pipelineStart(PipelineView v) {
+        LiveProgress.get().update(v.numerator(), v.denominator());
         session.append(JsonlShape.pipelineStart(v), true);
     }
 
@@ -34,11 +35,13 @@ public final class SessionMirrorListener implements PipelineListener {
 
     @Override
     public void progress(String step, int delta, PipelineView v) {
+        LiveProgress.get().update(v.numerator(), v.denominator());
         session.append(JsonlShape.progress(step, delta, v), false);
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView v) {
+        LiveProgress.get().update(v.numerator(), v.denominator());
         session.append(JsonlShape.tickUpdate(step, delta, v), false);
     }
 
