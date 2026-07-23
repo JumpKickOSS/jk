@@ -764,6 +764,9 @@ public final class BuildService {
      * A separate EffortWeights walk for {@code fullyCached} was removed (JK-1101) — dirty modules are
      * never fully-cached for plan purposes; {@link BuildPipelines#coreBuilder} still predicts weights
      * once via its lazy plan supplier.
+     *
+     * <p>JK-1113: when the static pipeline shape fingerprint is warm and the session is not
+     * force/rebuild, reuse memoized {@code estimatedTotalWeight} (skip the parallel step estimate).
      */
     private static ModulePlan prepareModule(
             BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
@@ -784,8 +787,28 @@ public final class BuildService {
         Pipeline.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
         BuildPipelines.appendDeclaredTails(b, inputs);
         Pipeline pipeline = b.build();
+        boolean distrust =
+                SessionContext.current().config().forceOr(false)
+                        || SessionContext.current().config().rebuildOr(false);
+        int weight;
+        if (!distrust) {
+            var shapeHit = PreflightMemo.tryLoadShape(req.entryDir(), dir, req.skipTests());
+            if (shapeHit.isPresent()) {
+                weight = shapeHit.get().weight();
+                if (Perf.ENABLED) {
+                    System.err.println("[jk-perf] shape-memo hit " + u.coord() + " weight=" + weight);
+                }
+            } else {
+                weight = pipeline.estimatedTotalWeight();
+                PreflightMemo.storeShape(
+                        req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(pipeline, weight));
+            }
+        } else {
+            // Force/rebuild: never trust shape memo fullyCached/weights.
+            weight = pipeline.estimatedTotalWeight();
+        }
         // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
-        return new ModulePlan(u.dir(), u.coord(), pipeline, pipeline.estimatedTotalWeight(), false, req.cache());
+        return new ModulePlan(u.dir(), u.coord(), pipeline, weight, false, req.cache());
     }
 
     /** Run one module's pipeline, attaching the caller's per-module listener; map the result to an outcome. */
