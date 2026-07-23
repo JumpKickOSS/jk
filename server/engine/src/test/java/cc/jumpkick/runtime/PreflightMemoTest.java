@@ -15,7 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1100: local dirty-set memo hit/miss. */
+/** JK-1100/1108/1109: local dirty-set + graph memo. */
 class PreflightMemoTest {
 
     @AfterEach
@@ -37,13 +37,18 @@ class PreflightMemoTest {
     }
 
     @Test
-    void source_change_misses_memo(@TempDir Path tmp) throws Exception {
+    void source_content_change_misses_memo_even_if_size_unchanged(@TempDir Path tmp) throws Exception {
+        // JK-1108: content-hash fingerprints (default), not mtime/size alone.
         writeProject(tmp);
+        Path src = tmp.resolve("src/main/java/App.java");
+        // Pad so size can stay similar after edit
+        Files.writeString(src, "class App { int x = 1; }\n");
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         PreflightMemo.storeDirty(tmp, graph, false, Set.of());
 
-        Files.writeString(tmp.resolve("src/main/java/App.java"), "class App { int x = 2; }\n");
+        // Same length swap of digit — size may match; content hash must not.
+        Files.writeString(src, "class App { int x = 2; }\n");
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
     }
 
@@ -53,11 +58,9 @@ class PreflightMemoTest {
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         Session session = Session.defaults().withConfig(JkConfig.empty());
-        // First call: miss → compute (pessimistic empty cache → dirty) → store
         Set<Path> first = SessionContext.where(
                 session, () -> BuildService.forecastDirtyDirs(graph, tmp.resolve("cache"), false, tmp));
         assertThat(PreflightMemo.memoFile(tmp)).exists();
-        // Second call: hit — same set without needing action cache
         Set<Path> second = SessionContext.where(
                 session, () -> BuildService.forecastDirtyDirs(graph, tmp.resolve("cache"), false, tmp));
         assertThat(second).isEqualTo(first);
@@ -68,14 +71,23 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        // Stale "everything dirty" memo as if left from a pre-build forecast
         PreflightMemo.storeDirty(
                 tmp, graph, false, Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize()));
-        // Simulate post-success write (BuildService on full success)
         PreflightMemo.storeDirty(tmp, graph, false, Set.of());
         Optional<Set<Path>> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(hit).isPresent();
         assertThat(hit.get()).isEmpty();
+    }
+
+    @Test
+    void graph_structure_memo_matches_after_store(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        assertThat(PreflightMemo.graphStructureMatches(tmp, graph)).isFalse();
+        PreflightMemo.storeGraph(tmp, graph);
+        assertThat(PreflightMemo.graphStructureMatches(tmp, graph)).isTrue();
+        assertThat(PreflightMemo.graphMemoFile(tmp)).exists();
     }
 
     private static void writeProject(Path dir) throws Exception {

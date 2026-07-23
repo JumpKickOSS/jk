@@ -21,25 +21,30 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Machine-local preflight memo (JK-1100): caches the last dirty-set forecast so a cold engine
- * process can skip the expensive per-step {@link BuildPlanForecast} walk when module inputs are
- * unchanged. Stored under {@code <entry>/target/.jk/preflight/} — never git-committed; miss or
- * corrupt → full recompute (fail-open).
+ * Machine-local preflight memo (JK-1100+): caches dirty-set forecasts (and optionally graph
+ * structure) so a cold engine process can skip expensive walks when inputs are unchanged. Stored
+ * under {@code <entry>/target/.jk/preflight/} — never git-committed; miss or corrupt → full
+ * recompute (fail-open).
  *
- * <p>Key inputs per module: {@code jk.toml} + {@code jk.lock} content digests, source file
- * path/size/mtime inventory, skipTests, and {@link BuildIdentity#cacheKeyVersion()}. Force/rebuild
- * callers never consult this memo.
+ * <p>Schema 2 (JK-1108): per-module fingerprints use <strong>content hashes</strong> of sources
+ * (not mtime/size) so CI cache restores that preserve timestamps cannot false-hit. Set {@code
+ * JK_PREFLIGHT_MEMO_MTIME=1} for the legacy path/size/mtime inventory.
  */
 public final class PreflightMemo {
 
-    static final String SCHEMA = "1";
-    private static final String FILE_NAME = "dirty-memo.txt";
+    static final String SCHEMA = "2";
+    private static final String DIRTY_FILE = "dirty-memo.txt";
+    private static final String GRAPH_FILE = "graph-memo.txt";
 
     private PreflightMemo() {}
 
     /** {@code <entryDir>/target/.jk/preflight/dirty-memo.txt}. */
     public static Path memoFile(Path entryDir) {
-        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(FILE_NAME);
+        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(DIRTY_FILE);
+    }
+
+    public static Path graphMemoFile(Path entryDir) {
+        return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(GRAPH_FILE);
     }
 
     /**
@@ -55,8 +60,10 @@ public final class PreflightMemo {
             if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return Optional.empty();
             String wantVersion = BuildIdentity.cacheKeyVersion();
             String wantSkip = skipTests ? "1" : "0";
+            String wantMode = fingerprintMode();
             String gotVersion = null;
             String gotSkip = null;
+            String gotMode = null;
             Map<String, MemoRow> rows = new LinkedHashMap<>();
             for (String line : lines) {
                 if (line.isBlank() || line.startsWith("#")) continue;
@@ -69,12 +76,17 @@ public final class PreflightMemo {
                     gotSkip = line.substring("skipTests=".length());
                     continue;
                 }
+                if (line.startsWith("fpMode=")) {
+                    gotMode = line.substring("fpMode=".length());
+                    continue;
+                }
                 // relPath \t fingerprint \t dirty(0|1)
                 String[] parts = line.split("\t", 3);
                 if (parts.length != 3) return Optional.empty();
                 rows.put(parts[0], new MemoRow(parts[1], "1".equals(parts[2])));
             }
             if (!wantVersion.equals(gotVersion) || !wantSkip.equals(gotSkip)) return Optional.empty();
+            if (gotMode != null && !wantMode.equals(gotMode)) return Optional.empty();
 
             Path root = entryDir.toAbsolutePath().normalize();
             List<BuildGraph.BuildUnit> units = graph.topoOrder();
@@ -84,8 +96,7 @@ public final class PreflightMemo {
             Set<String> seen = new LinkedHashSet<>();
             for (BuildGraph.BuildUnit u : units) {
                 Path dir = u.dir().toAbsolutePath().normalize();
-                String rel = root.relativize(dir).toString().replace('\\', '/');
-                if (rel.isEmpty()) rel = ".";
+                String rel = relKey(root, dir);
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
                 String fp = fingerprintModule(dir, skipTests);
@@ -93,7 +104,6 @@ public final class PreflightMemo {
                 seen.add(rel);
                 if (row.dirty()) dirty.add(dir);
             }
-            // Extra memo rows not in graph → miss
             if (!seen.equals(rows.keySet())) return Optional.empty();
             return Optional.of(dirty);
         } catch (Exception e) {
@@ -112,34 +122,122 @@ public final class PreflightMemo {
             sb.append("schema=").append(SCHEMA).append('\n');
             sb.append("cacheKeyVersion=").append(BuildIdentity.cacheKeyVersion()).append('\n');
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
+            sb.append("fpMode=").append(fingerprintMode()).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 Path dir = u.dir().toAbsolutePath().normalize();
-                String rel = root.relativize(dir).toString().replace('\\', '/');
-                if (rel.isEmpty()) rel = ".";
+                String rel = relKey(root, dir);
                 String fp = fingerprintModule(dir, skipTests);
                 boolean isDirty = dirtyNorm.contains(dir);
                 sb.append(rel).append('\t').append(fp).append('\t').append(isDirty ? "1" : "0").append('\n');
             }
             AtomicWrites.replace(file, sb.toString());
         } catch (Exception ignored) {
-            // fail-open: next build recomputes
+            // fail-open
         }
     }
 
     /**
-     * Cheap input fingerprint: toml/lock content digests + source inventory (path, size, mtime).
-     * Deliberately not a full content hash of sources — matches incremental-build invalidation
-     * style; CI clock skew that preserves mtime+size can false-hit (same class of risk as many
-     * build tools); force/rebuild never uses the memo.
+     * Store a workspace graph snapshot (JK-1109 layer A): module dirs + prereq edges as relative
+     * paths, keyed by a workspace structure fingerprint. Best-effort.
+     */
+    public static void storeGraph(Path entryDir, BuildGraph.Result graph) {
+        if (graph == null || graph.hasErrors() || graph.topoOrder().isEmpty()) return;
+        try {
+            Path root = entryDir.toAbsolutePath().normalize();
+            Path file = graphMemoFile(entryDir);
+            Files.createDirectories(file.getParent());
+            StringBuilder sb = new StringBuilder();
+            sb.append("schema=").append(SCHEMA).append('\n');
+            sb.append("cacheKeyVersion=").append(BuildIdentity.cacheKeyVersion()).append('\n');
+            sb.append("structure=").append(structureFingerprint(entryDir, graph)).append('\n');
+            for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+                Path dir = u.dir().toAbsolutePath().normalize();
+                sb.append("unit\t").append(relKey(root, dir)).append('\t').append(u.coord()).append('\n');
+            }
+            for (var e : graph.edges().entrySet()) {
+                String from = relKey(root, e.getKey().toAbsolutePath().normalize());
+                for (Path prereq : e.getValue()) {
+                    String to = relKey(root, prereq.toAbsolutePath().normalize());
+                    sb.append("edge\t").append(from).append('\t').append(to).append('\n');
+                }
+            }
+            AtomicWrites.replace(file, sb.toString());
+        } catch (Exception ignored) {
+            // fail-open
+        }
+    }
+
+    /**
+     * When the workspace structure fingerprint matches, return true so callers can skip redundant
+     * work that depends only on topology (diagnostics / perf). Full {@link BuildGraph#resolve} is
+     * still required for {@link BuildGraph.BuildUnit} manifests — this is an advisory hit signal
+     * plus a place to hang future rebuild-from-memo.
+     */
+    public static boolean graphStructureMatches(Path entryDir, BuildGraph.Result graph) {
+        Path file = graphMemoFile(entryDir);
+        if (!Files.isRegularFile(file) || graph == null || graph.hasErrors()) return false;
+        try {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            if (lines.isEmpty() || !lines.getFirst().startsWith("schema=" + SCHEMA)) return false;
+            String want = structureFingerprint(entryDir, graph);
+            String gotVersion = null;
+            String gotStruct = null;
+            for (String line : lines) {
+                if (line.startsWith("cacheKeyVersion=")) gotVersion = line.substring("cacheKeyVersion=".length());
+                if (line.startsWith("structure=")) gotStruct = line.substring("structure=".length());
+            }
+            return BuildIdentity.cacheKeyVersion().equals(gotVersion) && want.equals(gotStruct);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Workspace structure key: ordered module rel paths + each module's jk.toml + jk.lock content
+     * digests (membership + edge inputs). Used to invalidate graph memo when modules are added or
+     * manifests/locks change.
+     */
+    static String structureFingerprint(Path entryDir, BuildGraph.Result graph) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            Path root = entryDir.toAbsolutePath().normalize();
+            for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+                Path dir = u.dir().toAbsolutePath().normalize();
+                feed(md, relKey(root, dir));
+                feedFile(md, dir.resolve("jk.toml"));
+                feedFile(md, dir.resolve("jk.lock"));
+            }
+            // Edges in stable order
+            List<String> edgeLines = new ArrayList<>();
+            for (var e : graph.edges().entrySet()) {
+                String from = relKey(root, e.getKey().toAbsolutePath().normalize());
+                List<String> prereqs = new ArrayList<>();
+                for (Path p : e.getValue()) prereqs.add(relKey(root, p.toAbsolutePath().normalize()));
+                prereqs.sort(String::compareTo);
+                for (String p : prereqs) edgeLines.add(from + "->" + p);
+            }
+            edgeLines.sort(String::compareTo);
+            for (String el : edgeLines) feed(md, el);
+            return HexFormat.of().formatHex(md.digest());
+        } catch (Exception e) {
+            return "err-" + System.nanoTime();
+        }
+    }
+
+    /**
+     * Input fingerprint for one module. Default (schema 2): content hash of each source file.
+     * {@code JK_PREFLIGHT_MEMO_MTIME=1}: path + size + mtime (faster, less CI-safe).
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             feed(md, "skip=" + (skipTests ? "1" : "0"));
+            feed(md, "mode=" + fingerprintMode());
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, moduleDir.resolve("jk.lock"));
+            boolean mtimeMode = useMtimeMode();
             List<Path> roots = new ArrayList<>();
             roots.add(moduleDir.resolve("src"));
             roots.add(moduleDir.resolve("test"));
@@ -154,8 +252,17 @@ public final class PreflightMemo {
                                 || name.endsWith(".kts")
                                 || name.endsWith(".proto")) {
                             feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
-                            feed(md, Long.toString(attrs.size()));
-                            feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
+                            if (mtimeMode) {
+                                feed(md, Long.toString(attrs.size()));
+                                feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
+                            } else {
+                                try {
+                                    md.update(Files.readAllBytes(file));
+                                    md.update((byte) 0);
+                                } catch (IOException e) {
+                                    feed(md, "unreadable");
+                                }
+                            }
                         }
                         return FileVisitResult.CONTINUE;
                     }
@@ -168,8 +275,23 @@ public final class PreflightMemo {
             }
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
-            return "err-" + System.nanoTime(); // unique → force miss
+            return "err-" + System.nanoTime();
         }
+    }
+
+    static String fingerprintMode() {
+        return useMtimeMode() ? "mtime" : "content";
+    }
+
+    /** {@code JK_PREFLIGHT_MEMO_MTIME=1} opts into path/size/mtime fingerprints. */
+    static boolean useMtimeMode() {
+        String v = System.getenv("JK_PREFLIGHT_MEMO_MTIME");
+        return v != null && (v.equals("1") || v.equalsIgnoreCase("true"));
+    }
+
+    private static String relKey(Path root, Path dir) {
+        String rel = root.relativize(dir).toString().replace('\\', '/');
+        return rel.isEmpty() ? "." : rel;
     }
 
     private static void feedFile(MessageDigest md, Path file) throws IOException {
@@ -177,7 +299,8 @@ public final class PreflightMemo {
             feed(md, "missing");
             return;
         }
-        feed(md, Files.readString(file, StandardCharsets.UTF_8));
+        md.update(Files.readAllBytes(file));
+        md.update((byte) 0);
     }
 
     private static void feed(MessageDigest md, String s) {

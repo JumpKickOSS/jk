@@ -23,8 +23,10 @@ import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.PipelineView;
 import cc.jumpkick.run.Step;
 import cc.jumpkick.run.TestSummary;
+import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.BuildService;
+import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ExplainPlan;
@@ -1929,6 +1931,22 @@ public final class EngineServer implements AutoCloseable {
                     cc.jumpkick.runtime.Calibration.refine(moduleMs / (double) barWeight, System.currentTimeMillis());
                 }
                 maybeEnqueuePrune(cache);
+            }
+            // JK-1110: single-module success → preflight dirty memo = all clean (parity with workspace).
+            if (result.success()
+                    && !SessionContext.current().config().rebuildOr(false)
+                    && !SessionContext.current().config().forceOr(false)) {
+                try {
+                    cc.jumpkick.model.JkBuild entry =
+                            cc.jumpkick.config.JkBuildParser.parse(Files.readString(buildFile));
+                    BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
+                    if (!g.hasErrors()) {
+                        PreflightMemo.storeDirty(entryDir, g, skipTests, java.util.Set.of());
+                        PreflightMemo.storeGraph(entryDir, g);
+                    }
+                } catch (Exception ignored) {
+                    // fail-open
+                }
             }
         } catch (Exception e) {
             sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));

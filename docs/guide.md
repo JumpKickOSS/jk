@@ -44,7 +44,7 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 |------|----------------|------------------------|
 | `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
 | `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
-| `target/.jk/` (per project) | Project-local engine state, including **preflight dirty memo** (`target/.jk/preflight/`) | **Yes** with the project workspace |
+| `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`target/.jk/preflight/dirty-memo.txt`, `graph-memo.txt`) | **Yes** with the project workspace |
 | `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
 | `jk.lock` | Resolved coords | **Commit** this (not a cache) |
 
@@ -65,6 +65,9 @@ Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates th
 
 Also set `JK_AOT_TRAIN=off` on short-lived CI engines (see table above). After restoring
 cache, a normal `jk build` should hit action cache for unchanged modules.
+
+Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
+faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
 
 ## Projects and `jk.toml`
 

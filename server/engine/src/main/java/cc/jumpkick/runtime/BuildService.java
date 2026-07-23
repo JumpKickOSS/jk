@@ -412,7 +412,17 @@ public final class BuildService {
             return r;
         }
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
-        listener.onPreflight("graph", 1, 1, units.size() + " modules");
+        // JK-1109: compare to prior structure memo before overwriting (fail-open).
+        boolean graphMemoHit = PreflightMemo.graphStructureMatches(req.entryDir(), graph);
+        PreflightMemo.storeGraph(req.entryDir(), graph);
+        if (Perf.ENABLED && graphMemoHit) {
+            System.err.println("[jk-perf] preflight-graph-memo structure-match units=" + units.size());
+        }
+        listener.onPreflight(
+                "graph",
+                1,
+                1,
+                units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
         if (units.isEmpty()) {
             WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
             listener.onWorkspaceFinish(r);
