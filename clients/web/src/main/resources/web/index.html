@@ -12,8 +12,7 @@
   <link rel="stylesheet" href="/style.css">
   <!-- Iconography is inline SVG via the <jk-icon> component (app.js) — no icon font, painted with
        currentColor so state/utility colours drive it. A few typographic separators (·, ›) and the
-       inline diagnostic ✘ stay as text (they sit in flowing mono runs). The only image asset is the
-       SVG brand mark. -->
+       inline diagnostic ✘ stay as text. Brand: jumpkick-logo.webp in the chrome; jk-logo.svg for the favicon. -->
   <!-- Version-pinned + SRI: a CDN compromise must not be able to script a page that can trigger
        builds. Update the integrity hash whenever the pin moves (docs/webclient.md). -->
   <script src="https://unpkg.com/vue@3.5.39/dist/vue.global.prod.js"
@@ -29,7 +28,7 @@
 <body>
   <div id="app" v-cloak>
     <header>
-      <img class="logo" src="/jk-logo.svg" alt="jk">
+      <img class="logo" src="/jumpkick-logo.webp" alt="JumpKick" width="200" height="200">
       <div class="brand">
         <div class="brand-top">
           <span class="brand-name">JumpKick</span>
@@ -409,7 +408,7 @@
     <div v-if="help" class="modal-bg" @click.self="help = false">
       <div class="modal about">
         <div class="modal-head">
-          <img class="about-logo" src="/jk-logo.svg" alt="">
+          <img class="about-logo" src="/jumpkick-logo.webp" alt="" width="200" height="200">
           <div>
             <div class="about-title">JumpKick Build Engine</div>
             <div class="about-sub">{{ versionPill() }}</div>

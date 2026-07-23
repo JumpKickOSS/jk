@@ -1,6 +1,6 @@
 # Packaging matrix (thin / fat / shrink / Boot)
 
-**Ticket:** [1032](../kanban/ticket-1032-assembly-packaging-depth.md)
+**Ticket:** JK-1032 ([kanartist](https://github.com/jkbuild/kanartist) project `jk`)
 
 JumpKick has **four** intentional packaging paths. Pick one product story; do not enable R8 by
 default.

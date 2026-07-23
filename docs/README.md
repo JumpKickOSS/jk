@@ -13,7 +13,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 | [**Hosting & CDN**](hosting.md) | Firebase Hosting + GCS releases, DNS for jumpkick.build |
 | [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`) for `cc.jumpkick` plugins |
 
-Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` — local archive pointer [kanban/README.md](kanban/README.md).
+Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
 
 Competitive notes (maintainers): [mill-comparison.md](mill-comparison.md) — adversarial gap analysis vs Mill.
 

@@ -125,14 +125,17 @@ header {
   z-index: 10;
 }
 
-/* Square "jk" CRT mark, sized to the taller bar with a soft cyan halo. */
+/* Pixel karateka mark (jumpkick-logo.webp @ 200×200 source). Display height fits the 64px
+ * header; width follows aspect ratio — do not re-encode the asset, only CSS scale. */
 .logo {
-  height: 40px;
-  width: 40px;
+  height: 44px;
+  width: auto;
+  max-height: 48px;
   display: block;
   flex: none;
-  border-radius: var(--r-md);
-  box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.22);
+  object-fit: contain;
+  /* subtle lift so the sprite reads on header-bg without a CRT tile */
+  filter: drop-shadow(0 0 10px rgba(var(--cn-rgb), 0.28));
 }
 
 /* brand: JumpKick + version pill, over a "Build Engine" subtitle */
@@ -1075,7 +1078,13 @@ nav button:hover::before,
 
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
-.about-logo { width: 40px; height: 40px; border-radius: var(--r-md); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.25); }
+.about-logo {
+  width: auto;
+  height: 48px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 0 10px rgba(var(--cn-rgb), 0.28));
+}
 .about-title { font: 700 15px var(--mono); color: var(--bright); }
 .about-sub { font: 600 11px var(--mono); color: var(--cn); }
 .about-dl {

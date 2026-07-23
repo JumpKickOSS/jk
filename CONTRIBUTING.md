@@ -194,7 +194,7 @@ See [docs/architecture.md](docs/architecture.md) for layering and process model,
 ## Docs and planning
 
 - Public docs live under [`docs/`](docs/README.md) (keep the set small and accurate).
-- Engineering board: **[kanartist](https://github.com/jkbuild/kanartist)** project `jk` (`JK-NNNN`). See root [`AGENTS.md`](AGENTS.md). The old [`docs/kanban/`](docs/kanban/README.md) tree is frozen/historical.
+- Engineering board: **[kanartist](https://github.com/jkbuild/kanartist)** project `jk` (`JK-NNNN`). Claim/work rules and Done criteria: root [`AGENTS.md`](AGENTS.md).
 
 ## License
 

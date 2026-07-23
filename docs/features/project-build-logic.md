@@ -1,9 +1,6 @@
 # Project build logic (`.jk-build/`)
 
-**Tickets:** JK-1026 (design), JK-1037 (MVP), JK-1039 (multi-task), **JK-1044** (graph SPI / anchors)  
-Historical snapshots: [1026](../kanban/ticket-1026-programmable-escape-hatch-design.md),
-[1037](../kanban/ticket-1037-programmable-escape-hatch-mvp.md),
-[1039](../kanban/ticket-1039-build-logic-graph-tasks.md).  
+**Tickets:** JK-1026 (design), JK-1037 (MVP), JK-1039 (multi-task), **JK-1044** (graph SPI / anchors) — [kanartist](https://github.com/jkbuild/kanartist) project `jk`  
 **Related:** [mill-comparison.md](../mill-comparison.md) §6
 
 ## Intent

@@ -74,7 +74,6 @@ Needs a GraalVM-capable JDK for `dist` (see [CONTRIBUTING.md](CONTRIBUTING.md) /
 - Protocol: that repo’s [`AGENTS.md`](https://github.com/jkbuild/kanartist/blob/main/AGENTS.md).
 - Tickets: `projects/jk/tickets/JK-NNNN-*.md` (status lives on the ticket file; board views are generated).
 - Sibling checkout assumed: `../kanartist` next to this repo (or set `KANARTIST_WORKSPACE_ROOT`).
-- **Do not** edit `docs/kanban/` for coordination — it is **frozen/historical** ([docs/kanban/README.md](docs/kanban/README.md)).
 
 ### Claim and ship a ticket
 
