@@ -51,6 +51,12 @@ public final class EngineProtocol {
     /** Client → server, on the same connection as an in-flight {@link #BUILD_REQUEST}: best-effort cancel. */
     public static final String BUILD_CANCEL = "build-cancel";
 
+    /**
+     * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst —
+     * lock freshen, graph, prepare-module, etc.
+     */
+    public static final String PREFLIGHT = "preflight";
+
     /** Server → client, repeated once per module: {@code onPlan}'s per-module identity/sizing. */
     public static final String PLAN_MODULE = "plan-module";
 
@@ -1401,6 +1407,24 @@ public final class EngineProtocol {
     }
 
     // ---- build events (server → client) ----------------------------------------------------------
+
+    /**
+     * Preflight progress: {@code stage} (checking|lock|graph|plan), stage-local {@code done}/{@code
+     * total} ({@code total == 0} = indeterminate), optional {@code label}.
+     */
+    public static String preflight(String stage, int done, int total, String label) {
+        return "{\"t\":\""
+                + PREFLIGHT
+                + "\",\"stage\":"
+                + Jsonl.quote(stage == null ? "" : stage)
+                + ",\"done\":"
+                + done
+                + ",\"total\":"
+                + total
+                + ",\"label\":"
+                + Jsonl.quote(label == null ? "" : label)
+                + "}";
+    }
 
     public static String planModule(String dir, String coord, String pipelineName, int weight, boolean fullyCached) {
         return "{\"t\":\""

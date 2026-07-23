@@ -34,6 +34,38 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 
 The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
 
+### CI: what to cache between jobs
+
+jk’s correctness does **not** depend on local caches — a cold machine with a valid
+`jk.lock` always rebuilds. Caching only speeds up **CAS downloads**, **action hits**, and
+(once present) local preflight memos. **Never commit** cache dirs to git.
+
+| Path | What it holds | Safe to restore in CI? |
+|------|----------------|------------------------|
+| `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
+| `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
+| `target/.jk/` (per project) | Project-local engine state (preflight memo when enabled) | **Yes** with the project workspace |
+| `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
+| `jk.lock` | Resolved coords | **Commit** this (not a cache) |
+
+**Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
+
+Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates the CAS restore:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: |
+      ~/.jk/cache
+      **/target/.jk
+    key: jk-${{ runner.os }}-${{ hashFiles('**/jk.lock') }}
+    restore-keys: |
+      jk-${{ runner.os }}-
+```
+
+Also set `JK_AOT_TRAIN=off` on short-lived CI engines (see table above). After restoring
+cache, a normal `jk build` should hit action cache for unchanged modules.
+
 ## Projects and `jk.toml`
 
 ```bash

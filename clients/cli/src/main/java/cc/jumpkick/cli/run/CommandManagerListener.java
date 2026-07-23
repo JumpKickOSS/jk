@@ -77,7 +77,7 @@ public final class CommandManagerListener implements PipelineListener {
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step);
+        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
     }
 
     @Override
@@ -88,6 +88,14 @@ public final class CommandManagerListener implements PipelineListener {
     @Override
     public void output(String step, String line) {
         cm.writeAbove(line);
+    }
+
+    @Override
+    public void error(String step, String code, String message) {
+        String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
+        cm.attachPhaseError(module, step, "", brief);
+        cm.writeAbove(
+                (code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
     }
 
     @Override
@@ -102,7 +110,7 @@ public final class CommandManagerListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS);
+        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
     }
 
     @Override

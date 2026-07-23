@@ -2983,6 +2983,11 @@ public final class EngineServer implements AutoCloseable {
                 new java.util.concurrent.ConcurrentHashMap<>();
         return new WorkspaceBuildListener() {
             @Override
+            public void onPreflight(String stage, int done, int total, String label) {
+                sendQuiet(writer, EngineProtocol.preflight(stage, done, total, label));
+            }
+
+            @Override
             public void onPlan(java.util.List<ModulePlan> plan) {
                 for (ModulePlan m : plan) {
                     String dir = m.dir().toString();

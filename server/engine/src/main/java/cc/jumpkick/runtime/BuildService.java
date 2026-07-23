@@ -16,6 +16,7 @@ import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
+import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +29,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Engine-side build facade for any front-end. Pure orchestration — nothing writes stdout/stderr;
@@ -156,7 +161,11 @@ public final class BuildService {
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
-        if (SessionContext.current().config().rebuildOr(false)) return all;
+        // --force / --rebuild: every module runs — skip the expensive per-step forecast walk.
+        if (SessionContext.current().config().rebuildOr(false)
+                || SessionContext.current().config().forceOr(false)) {
+            return all;
+        }
         try {
             Cas cas = new Cas(cache);
             ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
@@ -347,6 +356,7 @@ public final class BuildService {
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
+            listener.onPreflight("lock", 0, 0, "Refreshing workspace lock…");
             LockGuard guard = ensureWorkspaceLockFresh(req.entryDir(), req.entryBuild(), req.cache());
             if (guard.status() != 0) {
                 WorkspaceResult r = new WorkspaceResult(
@@ -357,7 +367,9 @@ public final class BuildService {
                 listener.onWorkspaceFinish(r);
                 return r;
             }
+            listener.onPreflight("lock", 1, 1, "Workspace lock ready");
         }
+        listener.onPreflight("graph", 0, 0, "Resolving module graph…");
         BuildGraph.Result graph;
         try {
             graph = BuildGraph.resolve(req.entryDir(), req.entryBuild());
@@ -372,6 +384,7 @@ public final class BuildService {
             return r;
         }
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
+        listener.onPreflight("graph", 1, 1, units.size() + " modules");
         if (units.isEmpty()) {
             WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
             listener.onWorkspaceFinish(r);
@@ -392,27 +405,42 @@ public final class BuildService {
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) moduleDirs.add(u.dir());
         long tf = Perf.start();
+        // Client dirty hint (from one forecast) avoids a second full forecast walk (JK-1101).
+        // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
         Set<Path> dirty =
                 req.dirtyHint() != null ? req.dirtyHint() : forecastDirtyDirs(graph, req.cache(), req.skipTests());
-        Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ")", tf);
+        Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ",dirty=" + dirty.size() + ")", tf);
 
         // Each module's step durations feed one shared sink, folded into the learned ledger on success.
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());
-        Map<Path, ModulePlan> plans = new LinkedHashMap<>();
-        long tp = Perf.start();
+        // JK-1102: only fully prepare modules that will execute (dirty). Clean modules get a zero-weight
+        // placeholder — no EffortWeights.predict, no pipeline assembly, no schedule slot.
+        List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
+        List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
         for (BuildGraph.BuildUnit u : units) {
-            ModulePlan p = prepareModule(u, req, moduleDirs, dirty.contains(u.dir()));
-            if (p == null) {
-                ModuleOutcome o = new ModuleOutcome(u.coord(), u.dir(), false, 2, 0);
-                listener.onModuleFinish(o);
-                WorkspaceResult r = new WorkspaceResult(false, 2, List.of(o), List.of());
-                listener.onWorkspaceFinish(r);
-                return r;
-            }
-            p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
-            plans.put(u.dir(), p);
+            if (dirty.contains(u.dir())) dirtyUnits.add(u);
+            else cleanUnits.add(u);
         }
-        Perf.end("ws-prepare-modules", tp);
+
+        long tp = Perf.start();
+        int nPrepare = dirtyUnits.size();
+        listener.onPreflight(
+                "plan", 0, Math.max(nPrepare, 1), nPrepare == 0 ? "Nothing to prepare" : "Preparing modules…");
+        Map<Path, ModulePlan> plans;
+        try {
+            plans = prepareModules(dirtyUnits, req, moduleDirs, listener, nPrepare, timingSamples);
+        } catch (PrepareFailed e) {
+            ModuleOutcome o = new ModuleOutcome(e.coord(), e.dir(), false, 2, 0);
+            listener.onModuleFinish(o);
+            WorkspaceResult r = new WorkspaceResult(false, 2, List.of(o), List.of());
+            listener.onWorkspaceFinish(r);
+            return r;
+        }
+        if (nPrepare == 0) {
+            listener.onPreflight("plan", 1, 1, "Nothing to prepare");
+        }
+        Perf.end("ws-prepare-modules(dirty=" + nPrepare + ",clean=" + cleanUnits.size() + ")", tp);
+        // Execute plan is dirty modules only — bar/ETA reserve real work, not clean skips.
         listener.onPlan(List.copyOf(plans.values()));
         listener.onModuleGraph(graph.edges());
 
@@ -441,42 +469,51 @@ public final class BuildService {
                 req.cache(),
                 req.jdksDir()));
 
-        Map<Path, Path> wsLinks = computeWorkspaceLinks(plans.keySet(), req.entryDir());
+        // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
+        Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
+        for (BuildGraph.BuildUnit u : cleanUnits) {
+            linkModuleArtifacts(u.dir(), wsLinks);
+        }
+
         List<ModuleOutcome> outcomes = Collections.synchronizedList(new ArrayList<>());
         List<Double> observedRates = Collections.synchronizedList(new ArrayList<>());
         long start = System.nanoTime();
         long tsched = Perf.start();
-        ModuleOutcome failure = WorkspaceScheduler.run(
-                units,
-                BuildGraph.BuildUnit::dir,
-                graph.edges(),
-                u -> runModule(plans.get(u.dir()), listener),
-                (ready, results, remaining) -> {
-                    for (int i = 0; i < results.size(); i++) {
-                        ModuleOutcome o = results.get(i);
-                        outcomes.add(o);
-                        if (!o.success()) return o; // fail-fast
-                        linkModuleArtifacts(ready.get(i).dir(), wsLinks);
-                        ModulePlan p = plans.get(ready.get(i).dir());
-                        // Skip fully-cached modules — their near-zero time isn't representative of work.
-                        if (p != null && !p.fullyCached() && p.weight() > 0 && o.millis() > 0)
-                            observedRates.add(o.millis() / (double) p.weight());
-                    }
-                    // Re-project remaining ETA from measured throughput: elapsed + reprojected remainder.
-                    Double liveMpw = medianRate(observedRates);
-                    if (liveMpw != null && !remaining.isEmpty()) {
-                        Set<Path> remDirs = new HashSet<>();
-                        for (BuildGraph.BuildUnit u : remaining) remDirs.add(u.dir());
-                        List<EffortWeights.ModuleCost> rem = new ArrayList<>();
-                        for (var ce : costByDir.entrySet()) if (remDirs.contains(ce.getKey())) rem.add(ce.getValue());
-                        long elapsed = (System.nanoTime() - start) / 1_000_000;
-                        listener.onEtaEstimate(elapsed
-                                + EffortWeights.scheduleMillis(
-                                        rem, concurrency, false, parallelTests, Math.round(liveMpw)));
-                    }
-                    return null;
-                },
-                req.maxModuleConcurrency());
+        ModuleOutcome failure = null;
+        if (!dirtyUnits.isEmpty()) {
+            failure = WorkspaceScheduler.run(
+                    dirtyUnits,
+                    BuildGraph.BuildUnit::dir,
+                    graph.edges(),
+                    u -> runModule(plans.get(u.dir()), listener),
+                    (ready, results, remaining) -> {
+                        for (int i = 0; i < results.size(); i++) {
+                            ModuleOutcome o = results.get(i);
+                            outcomes.add(o);
+                            if (!o.success()) return o; // fail-fast
+                            linkModuleArtifacts(ready.get(i).dir(), wsLinks);
+                            ModulePlan p = plans.get(ready.get(i).dir());
+                            // Skip fully-cached modules — their near-zero time isn't representative of work.
+                            if (p != null && !p.fullyCached() && p.weight() > 0 && o.millis() > 0)
+                                observedRates.add(o.millis() / (double) p.weight());
+                        }
+                        // Re-project remaining ETA from measured throughput: elapsed + reprojected remainder.
+                        Double liveMpw = medianRate(observedRates);
+                        if (liveMpw != null && !remaining.isEmpty()) {
+                            Set<Path> remDirs = new HashSet<>();
+                            for (BuildGraph.BuildUnit u : remaining) remDirs.add(u.dir());
+                            List<EffortWeights.ModuleCost> rem = new ArrayList<>();
+                            for (var ce : costByDir.entrySet())
+                                if (remDirs.contains(ce.getKey())) rem.add(ce.getValue());
+                            long elapsed = (System.nanoTime() - start) / 1_000_000;
+                            listener.onEtaEstimate(elapsed
+                                    + EffortWeights.scheduleMillis(
+                                            rem, concurrency, false, parallelTests, Math.round(liveMpw)));
+                        }
+                        return null;
+                    },
+                    req.maxModuleConcurrency());
+        }
         Perf.end("ws-schedule-run", tsched);
         boolean ok = failure == null;
         if (ok) {
@@ -490,6 +527,99 @@ public final class BuildService {
         WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
         listener.onWorkspaceFinish(result);
         return result;
+    }
+
+    /**
+     * Prepare pipelines for dirty modules only (JK-1102). When more than one module needs prepare and
+     * {@code JK_PREPARE_PARALLEL} is not {@code false}, prepares in parallel on {@link JkThreads#io()}
+     * (JK-1103). Dirty modules always {@code forceRebuild} the pipeline assembly path.
+     */
+    private static Map<Path, ModulePlan> prepareModules(
+            List<BuildGraph.BuildUnit> dirtyUnits,
+            WorkspaceRequest req,
+            Set<Path> moduleDirs,
+            WorkspaceBuildListener listener,
+            int nPrepare,
+            List<StepTimings.Sample> timingSamples) {
+        if (dirtyUnits.isEmpty()) return Map.of();
+        boolean parallel = nPrepare > 1 && prepareParallelEnabled();
+        if (!parallel) {
+            Map<Path, ModulePlan> plans = new LinkedHashMap<>();
+            int prepared = 0;
+            for (BuildGraph.BuildUnit u : dirtyUnits) {
+                ModulePlan p = prepareModule(u, req, moduleDirs, true);
+                prepared++;
+                listener.onPreflight(
+                        "plan",
+                        prepared,
+                        nPrepare,
+                        "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
+                if (p == null) throw new PrepareFailed(u.coord(), u.dir());
+                p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
+                plans.put(u.dir(), p);
+            }
+            return plans;
+        }
+        AtomicInteger prepared = new AtomicInteger();
+        Object preflightLock = new Object();
+        Map<Path, ModulePlan> plans = new ConcurrentHashMap<>();
+        List<CompletableFuture<Void>> futures = new ArrayList<>(dirtyUnits.size());
+        for (BuildGraph.BuildUnit u : dirtyUnits) {
+            futures.add(CompletableFuture.runAsync(
+                    () -> {
+                        ModulePlan p = prepareModule(u, req, moduleDirs, true);
+                        if (p == null) throw new PrepareFailed(u.coord(), u.dir());
+                        p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
+                        plans.put(u.dir(), p);
+                        int n = prepared.incrementAndGet();
+                        synchronized (preflightLock) {
+                            listener.onPreflight(
+                                    "plan",
+                                    n,
+                                    nPrepare,
+                                    "Preparing " + u.coord() + " (" + n + "/" + nPrepare + ")");
+                        }
+                    },
+                    JkThreads.io()));
+        }
+        try {
+            CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();
+        } catch (CompletionException e) {
+            Throwable c = e.getCause() != null ? e.getCause() : e;
+            if (c instanceof PrepareFailed pf) throw pf;
+            if (c instanceof RuntimeException re) throw re;
+            throw new RuntimeException(c);
+        }
+        // Preserve topo order of dirty units in the plan map for stable onPlan order.
+        Map<Path, ModulePlan> ordered = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit u : dirtyUnits) ordered.put(u.dir(), plans.get(u.dir()));
+        return ordered;
+    }
+
+    /** Parallel prepare is on by default; set {@code JK_PREPARE_PARALLEL=false} to force serial. */
+    private static boolean prepareParallelEnabled() {
+        String v = System.getenv("JK_PREPARE_PARALLEL");
+        return v == null || !v.equalsIgnoreCase("false");
+    }
+
+    /** Failed {@link #prepareModule} for a dirty unit — surfaces as exit 2 to the workspace caller. */
+    private static final class PrepareFailed extends RuntimeException {
+        private final String coord;
+        private final Path dir;
+
+        PrepareFailed(String coord, Path dir) {
+            super("prepare failed: " + coord);
+            this.coord = coord;
+            this.dir = dir;
+        }
+
+        String coord() {
+            return coord;
+        }
+
+        Path dir() {
+            return dir;
+        }
     }
 
     /**
@@ -564,7 +694,14 @@ public final class BuildService {
         return n % 2 == 1 ? sorted.get(n / 2) : (sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2.0;
     }
 
-    /** Assemble one module's pipeline + estimates (the headless counterpart of the CLI's prepareModule). */
+    /**
+     * Assemble one dirty module's pipeline + estimates. Only called for modules in the dirty set
+     * (JK-1102); clean modules never enter here. {@code forceRebuild} seeds {@link
+     * EffortWeights#predict} so bar weights don't collapse as fully-cached for upstream-dirty work.
+     * A separate EffortWeights walk for {@code fullyCached} was removed (JK-1101) — dirty modules are
+     * never fully-cached for plan purposes; {@link BuildPipelines#coreBuilder} still predicts weights
+     * once via its lazy plan supplier.
+     */
     private static ModulePlan prepareModule(
             BuildGraph.BuildUnit u, WorkspaceRequest req, Set<Path> moduleDirs, boolean forceRebuild) {
         Path dir = u.dir();
@@ -581,23 +718,11 @@ public final class BuildService {
                         moduleDirs,
                         req.testOnly())
                 .withVariant(req.variant(), req.clientEnv());
-        boolean fullyCached = false;
-        if (!forceRebuild) {
-            try {
-                Cas cas = new Cas(inputs.cache());
-                JkBuild build = JkBuildParser.parse(buildFile);
-                CompileSupport.Languages langs = CompileSupport.resolveLanguages(build.project(), dir);
-                boolean compact = CompileSupport.isSimpleLayout(build.project(), dir);
-                EffortWeights.Plan plan = EffortWeights.predict(inputs, cas, compact, langs.java(), langs.kotlin());
-                fullyCached = plan.fullyCached();
-            } catch (Exception ignored) {
-                // best-effort prediction; proceed normally
-            }
-        }
         Pipeline.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
         BuildPipelines.appendDeclaredTails(b, inputs);
         Pipeline pipeline = b.build();
-        return new ModulePlan(u.dir(), u.coord(), pipeline, pipeline.estimatedTotalWeight(), fullyCached, req.cache());
+        // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
+        return new ModulePlan(u.dir(), u.coord(), pipeline, pipeline.estimatedTotalWeight(), false, req.cache());
     }
 
     /** Run one module's pipeline, attaching the caller's per-module listener; map the result to an outcome. */

@@ -774,6 +774,12 @@ final class EngineBuildListenerAdapter {
                                 .build());
                     }
                 }
+                case EngineProtocol.PREFLIGHT ->
+                    listener.onPreflight(
+                            Jsonl.str(line, "stage"),
+                            Jsonl.intValue(line, "done", 0),
+                            Jsonl.intValue(line, "total", 0),
+                            Jsonl.str(line, "label"));
                 case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                 case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
                 case EngineProtocol.MODULE_START -> {

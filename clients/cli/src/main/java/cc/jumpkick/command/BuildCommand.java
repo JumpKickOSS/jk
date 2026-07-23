@@ -232,97 +232,111 @@ public final class BuildCommand implements CliCommand {
             return runWorkspaceHeadless(entryDir, entryBuild, cache);
         }
 
-        // Live path (AUTO / QUIET): resolve the graph and run the cache forecast
-        // *before* creating the CommandManager so a fully-cached build never
-        // flashes the animated spinner. The TUI is created only when there is
-        // confirmed work to do; for a cached build we print the chip line directly.
+        // Live path (AUTO / QUIET): open the TUI immediately so forecast + engine preflight are never
+        // silent. Fully-cached builds still settle to a success chip after Checking (no long flash).
         boolean animate = mode == PipelineConsole.Mode.AUTO && PipelineConsole.isInteractiveTerminal();
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
 
-        // Optimize/start the engine before the first engine touch (the forecast) and before the Build
-        // pipeline console, so a one-time AOT training shows the "Engine — optimizing…" wedge first and the
-        // Build TUI then takes over (never interleaved). A running engine makes this a fast no-op.
+        // Optimize/start the engine before forecast (may show engine wedge once); then Build TUI.
         cc.jumpkick.cli.engine.EnginePrewarm.ensure();
 
         long buildStart = System.nanoTime();
-        // Pre-flight forecast (engine-hosted; test bypass uses the in-process seam).
-        cc.jumpkick.runtime.BuildForecast forecast;
-        try {
-            forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
-                    cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
-        } catch (java.io.IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
-            return Exit.SOFTWARE;
-        }
-        if (forecast.hasErrors()) {
-            for (String err : forecast.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
-            CliOutput.err(
-                    cc.jumpkick.cli.tui.PipelineWedge.failureLine("Build", nerdfont, "dependency resolution failed"));
-            return Exit.CONFIG;
-        }
-        if (forecast.empty()) {
-            CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                    cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, "workspace declares no modules"));
-            return 0;
-        }
-        Set<Path> dirtyDirs = forecast.dirtyDirs();
-        if (System.getenv("JK_PERF") != null) {
-            System.err.println("[jk-perf] client-forecast " + (System.nanoTime() - buildStart) / 1_000_000 + "ms dirty="
-                    + dirtyDirs.size());
-        }
-        // Optional: --modules and/or --affected-since (intersection when both).
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            JkBuild buildForSelect = entryBuild;
-            if (buildForSelect == null) {
-                try {
-                    buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                } catch (Exception e) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                            "Build", "cannot load jk.toml for module selection: " + e.getMessage()));
-                    return Exit.CONFIG;
-                }
-            }
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                    entryDir, buildForSelect, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", selected.errorMessage()));
-                return Exit.CONFIG;
-            }
-            if (selected != null && selected.moduleDirs().isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, selectionEmptyMessage()));
-                return 0;
-            }
-            if (selected != null) {
-                Set<Path> restricted = new java.util.LinkedHashSet<>();
-                for (Path d : dirtyDirs) {
-                    if (selected.moduleDirs().contains(d.toAbsolutePath().normalize())) restricted.add(d);
-                }
-                // Force-include selected modules even if forecast thinks they are cached.
-                dirtyDirs = restricted.isEmpty() ? selected.moduleDirs() : restricted;
-            }
-        }
-        // The forecast runs against the per-module locks; when the merged workspace lock is stale
-        // the engine will re-lock (freshenLock on the request) and the forecast may be wrong — so a
-        // stale lock disables the fully-cached shortcut AND the dirty hint (the engine re-forecasts
-        // after freshening).
-        boolean lockStale = forecast.lockStale();
-        // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
-        if (forecast.fullyCached()
-                && !global.force
-                && !global.rebuild
+        CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
+        AggregateContext earlyAgg = new AggregateContext(view);
+        earlyAgg.preflight("checking", 0, 0, "Checking cache…");
+
+        // JK-1104: --force/--rebuild already means every module is dirty — skip the full client
+        // forecast walk. Engine treats force/rebuild as "all dirty" without per-step hashing.
+        boolean distrustCache = global.force || global.rebuild;
+        Set<Path> dirtyDirs;
+        boolean lockStale;
+        if (distrustCache
                 && affectedSince == null
                 && (modulesSpec == null || modulesSpec.isBlank())) {
-            // Fully cached — print chip line directly with no spinner ever created.
-            CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                    cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", nerdfont, upToDateTail("all modules", buildStart)));
-            return 0;
+            earlyAgg.preflight("checking", 1, 1, "Force rebuild — skipping cache check");
+            dirtyDirs = null; // engine marks all modules dirty under force/rebuild
+            lockStale = false;
+            if (System.getenv("JK_PERF") != null) {
+                System.err.println("[jk-perf] client-forecast skipped (force/rebuild) "
+                        + (System.nanoTime() - buildStart) / 1_000_000 + "ms");
+            }
+        } else {
+            // Pre-flight forecast (engine-hosted) under the live region.
+            cc.jumpkick.runtime.BuildForecast forecast;
+            try {
+                forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
+                        cc.jumpkick.engine.EnginePaths.current(), entryDir, cache, buildOpts.skipTests);
+            } catch (java.io.IOException e) {
+                view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
+                return Exit.SOFTWARE;
+            }
+            if (forecast.hasErrors()) {
+                for (String err : forecast.errors()) {
+                    view.writeAbove(ConsoleSpec.errorLine("composite", err));
+                }
+                view.finishPipelineFailure("dependency resolution failed", List.of());
+                return Exit.CONFIG;
+            }
+            if (forecast.empty()) {
+                view.finishPipelineSuccess("workspace declares no modules", List.of());
+                return 0;
+            }
+            dirtyDirs = forecast.dirtyDirs();
+            earlyAgg.preflight("checking", 1, 1, "Cache check done");
+            if (System.getenv("JK_PERF") != null) {
+                System.err.println("[jk-perf] client-forecast "
+                        + (System.nanoTime() - buildStart) / 1_000_000 + "ms dirty=" + dirtyDirs.size());
+            }
+            // Optional: --modules and/or --affected-since (intersection when both).
+            if ((affectedSince != null && !affectedSince.isBlank())
+                    || (modulesSpec != null && !modulesSpec.isBlank())) {
+                JkBuild buildForSelect = entryBuild;
+                if (buildForSelect == null) {
+                    try {
+                        buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+                    } catch (Exception e) {
+                        view.finishPipelineFailure(
+                                "cannot load jk.toml for module selection: " + e.getMessage(), List.of());
+                        return Exit.CONFIG;
+                    }
+                }
+                var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                        entryDir, buildForSelect, modulesSpec, affectedSince);
+                if (selected != null && !selected.ok()) {
+                    view.finishPipelineFailure(selected.errorMessage(), List.of());
+                    return Exit.CONFIG;
+                }
+                if (selected != null && selected.moduleDirs().isEmpty()) {
+                    view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
+                    return 0;
+                }
+                if (selected != null) {
+                    Set<Path> restricted = new java.util.LinkedHashSet<>();
+                    for (Path d : dirtyDirs) {
+                        if (selected.moduleDirs().contains(d.toAbsolutePath().normalize()))
+                            restricted.add(d);
+                    }
+                    // Force-include selected modules even if forecast thinks they are cached.
+                    dirtyDirs = restricted.isEmpty() ? selected.moduleDirs() : restricted;
+                }
+            }
+            // The forecast runs against the per-module locks; when the merged workspace lock is stale
+            // the engine will re-lock (freshenLock on the request) and the forecast may be wrong — so a
+            // stale lock disables the fully-cached shortcut AND the dirty hint (the engine re-forecasts
+            // after freshening).
+            lockStale = forecast.lockStale();
+            // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
+            if (forecast.fullyCached()
+                    && !global.force
+                    && !global.rebuild
+                    && affectedSince == null
+                    && (modulesSpec == null || modulesSpec.isBlank())) {
+                view.finishPipelineSuccess(upToDateTail("all modules", buildStart), List.of());
+                return 0;
+            }
         }
-        // Work confirmed — create the CommandManager now so the spinner starts the instant we know
-        // there's something to build. The engine (BuildService.buildWorkspace, invoked by
-        // runGraphLive) sizes the memory plan and drives the build; we pass the forecast as a hint.
-        CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
-        return runGraphLive(view, entryDir, entryBuild, cache, buildStart, dirtyDirs, lockStale);
+        // Work confirmed — engine preflight (lock/graph/plan) continues on the same TUI.
+        return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, lockStale);
     }
 
     private String selectionEmptyMessage() {
@@ -501,13 +515,13 @@ public final class BuildCommand implements CliCommand {
      */
     private int runGraphLive(
             CommandManager view,
+            AggregateContext agg,
             Path entryDir,
             JkBuild entryBuild,
             Path cache,
             long start,
             Set<Path> dirtyDirs,
             boolean lockStale) {
-        AggregateContext agg = new AggregateContext(view);
         Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
@@ -536,11 +550,17 @@ public final class BuildCommand implements CliCommand {
         try {
             cc.jumpkick.runtime.WorkspaceBuildListener liveListener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
+                public void onPreflight(String stage, int done, int totalUnits, String label) {
+                    agg.preflight(stage, done, totalUnits, label);
+                }
+
+                @Override
                 public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                     total[0] = plan.size();
                     long tw = 0;
                     for (var p : plan) tw += p.weight();
-                    agg.calibrate(tw); // bar calibrated to the whole-graph tick total
+                    // Preflight reservation + execute weights; bar leaves 0% during plan prepare.
+                    agg.calibrate(tw);
                 }
 
                 @Override
@@ -627,7 +647,10 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge(failTail);
             return result.exitCode();
         }
-        String okTail = dirtyDirs.isEmpty() ? upToDateTail("all modules", start) : modulesTail(total[0], start);
+        // null dirtyDirs = force/rebuild path (JK-1104) — never "up to date".
+        String okTail = (dirtyDirs != null && dirtyDirs.isEmpty())
+                ? upToDateTail("all modules", start)
+                : modulesTail(total[0], start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
         return 0;

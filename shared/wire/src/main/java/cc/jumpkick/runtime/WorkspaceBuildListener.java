@@ -16,6 +16,14 @@ public interface WorkspaceBuildListener {
     /** A no-op listener (a headless build that only wants the returned result). */
     WorkspaceBuildListener NOOP = new WorkspaceBuildListener() {};
 
+    /**
+     * Pre-execution workspace progress (lock freshen, graph resolve, prepare modules, …). {@code
+     * stage} is a stable wire key ({@code checking}, {@code lock}, {@code graph}, {@code plan});
+     * {@code done}/{@code total} are stage-local counters ({@code total == 0} means indeterminate);
+     * {@code label} is optional human text for the header. Emitted before {@link #onPlan}.
+     */
+    default void onPreflight(String stage, int done, int total, String label) {}
+
     /** The resolved modules in dependency order, each with its assembled pipeline + estimated weight. */
     default void onPlan(List<ModulePlan> plan) {}
 

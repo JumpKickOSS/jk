@@ -94,7 +94,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
             synchronized (lock) {
                 if (closed) break;
                 paint();
-                frame = (frame + 1) % Spinner.FRAMES.length;
+                frame = (frame + 1) % Spinner.PULSE_FRAMES;
             }
             try {
                 Thread.sleep(Spinner.FRAME_MS);
@@ -121,7 +121,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
                 "+" + fmtElapsed((System.nanoTime() - startNanos) / 1_000_000),
                 Theme.active().warning());
         String l1 = PipelineWedge.chipLine(
-                Spinner.FRAMES[frame],
+                Spinner.PULSE_GLYPH,
                 "Engine",
                 nerdfont,
                 "Draining " + n + " job" + (n == 1 ? "" : "s") + "… " + elapsed);

@@ -69,7 +69,7 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step);
+        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
     }
 
     @Override
@@ -99,6 +99,19 @@ public final class AggregateModuleListener implements PipelineListener {
         }
     }
 
+    @Override
+    public void error(String step, String code, String message) {
+        // Brief one-liner under the failed phase pill; full diagnostics still go above / to files.
+        String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
+        cm.attachPhaseError(module, step, "", brief);
+        emit(ProgressBarListener.renderDiagnostic(
+                Glyphs.CROSS + " Error",
+                cc.jumpkick.cli.theme.Theme.active().error().bold(),
+                step,
+                code,
+                message));
+    }
+
     /** Buffer (parallel) or write-above-now (serial), per {@link #bufferOutputInto}. */
     private void emit(String line) {
         if (outBuffer != null) {
@@ -122,7 +135,7 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS);
+        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
     }
 
     @Override

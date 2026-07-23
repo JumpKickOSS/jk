@@ -3,39 +3,46 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.theme.Gradient;
+import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.PrintStream;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Single-line animated spinner widget for indeterminate-progress CLI operations. Cycles through
- * {@code · ✢ ✳ ✶ ✻ ✽} on a daemon thread, one frame every {@value #FRAME_MS} ms. Each frame is
- * rendered in its own color along a magenta → orange gradient (the reverse of the {@code jk init}
- * title gradient).
+ * Single-line animated spinner for indeterminate CLI work. A solid circle glyph ({@value
+ * #PULSE_GLYPH}) <em>pulses</em> by lerping its foreground from white to a dim end color and back —
+ * the same breathing effect as the web dashboard's live indicators (no multi-glyph thrash).
  *
- * <p>Layout: {@code <frame> <message>} on the current line.
+ * <p>Layout: {@code <circle> <message>} on the current line.
  *
- * <p>The cursor is hidden between {@link #show(PrintStream, String)} and {@link #close()}. {@link
- * #update(String)} mutates the message displayed on the next tick; shrinking the message overwrites
- * the previous trailing chars with spaces (no further). Both {@code update} and {@code close} are
- * safe to call from any thread.
+ * <p>Cursor hidden between {@link #show} and {@link #close()}. Thread-safe {@link #update}/{@link
+ * #close}.
  */
 public final class Spinner implements AutoCloseable {
 
-    /** Animation frames, cycled in order. */
-    static final String[] FRAMES = {"·", "✶", "✸", "✹", "✺", "✹", "✷", "✶", "·"};
+    /** Solid circle used for the pulse animation (U+25CF). */
+    public static final String PULSE_GLYPH = "●";
 
-    /** Interval between frames. */
-    static final long FRAME_MS = 120L;
+    /**
+     * @deprecated Use {@link #PULSE_GLYPH}; kept as a single-frame array for older tests that index
+     *     {@code FRAMES[0]}.
+     */
+    @Deprecated
+    static final String[] FRAMES = {PULSE_GLYPH};
+
+    /** Frames in one full white→dim→white cycle (odd so the midpoint lands exactly on dim). */
+    static final int PULSE_FRAMES = 25;
+
+    /** Interval between pulse frames (~1.9s per full breath at 24 frames). */
+    static final long FRAME_MS = 80L;
+
+    /** Dim end of the pulse when the spinner sits on the terminal (not on a chip). */
+    static final Rgb PULSE_DIM = Rgb.hex(0x090C11); // web --bg
 
     private static final String HIDE_CURSOR = Ansi.HIDE_CURSOR;
     private static final String SHOW_CURSOR = Ansi.SHOW_CURSOR;
     private static final String CLEAR_LINE = Ansi.CLEAR_LINE;
 
-    // OSC 9;4 — taskbar/tab status indicator (ConEmu, Windows Terminal,
-    // WezTerm, ghostty, kitty ≥0.31, etc.). State 3 = indeterminate; the
-    // host can show a pulsing/marquee animation while we spin. State 0
-    // clears the indicator. Unsupported terminals swallow the sequence.
     static final String OSC_INDETERMINATE = Ansi.TASKBAR_INDETERMINATE;
     static final String OSC_CLEAR = Ansi.TASKBAR_CLEAR;
 
@@ -50,11 +57,6 @@ public final class Spinner implements AutoCloseable {
     private volatile boolean closed = false;
     private Thread animator;
 
-    /**
-     * Start a new spinner on the caller's current line, hiding the cursor. If the resolved config has
-     * {@code --no-progress}, returns a silent spinner that emits no animation and no terminal
-     * escapes.
-     */
     public static Spinner show(PrintStream out, String message) {
         Spinner s = new Spinner(out, message);
         s.start();
@@ -64,7 +66,7 @@ public final class Spinner implements AutoCloseable {
     Spinner(PrintStream out, String message) {
         this.out = out;
         this.message = message == null ? "" : message;
-        this.frameColors = buildGradient(FRAMES.length);
+        this.frameColors = buildPulseStyles(PULSE_FRAMES, PULSE_DIM);
         this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
     }
 
@@ -89,29 +91,24 @@ public final class Spinner implements AutoCloseable {
         }
     }
 
-    /** Update the message shown next to the spinner. Picked up on the next tick. */
     public void update(String message) {
         this.message = message == null ? "" : message;
     }
 
-    /** Render the current frame and advance. Package-private for testing. */
     void step() {
         synchronized (lock) {
             if (closed || silent) return;
             String currentMsg = message;
-            // Re-assert the indeterminate state on every tick — some hosts
-            // (and tab-switch / focus events) drop the indicator otherwise.
-            // Unsupported terminals swallow the OSC silently.
             out.print(OSC_INDETERMINATE);
             out.print("\r");
-            out.print(Theme.colorize(FRAMES[frame], frameColors[frame]));
+            out.print(Theme.colorize(PULSE_GLYPH, frameColors[frame]));
             out.print(" ");
             out.print(currentMsg);
             int shrink = lastMessage.length() - currentMsg.length();
             if (shrink > 0) out.print(" ".repeat(shrink));
             out.flush();
             lastMessage = currentMsg;
-            frame = (frame + 1) % FRAMES.length;
+            frame = (frame + 1) % PULSE_FRAMES;
         }
     }
 
@@ -122,7 +119,6 @@ public final class Spinner implements AutoCloseable {
         if (animator != null) animator.interrupt();
         if (silent) return;
         synchronized (lock) {
-            // Clear the spinner line so it doesn't linger in the transcript.
             out.print(CLEAR_LINE);
             out.print(OSC_CLEAR);
             out.print(SHOW_CURSOR);
@@ -130,14 +126,32 @@ public final class Spinner implements AutoCloseable {
         }
     }
 
-    static AttributedStyle[] buildGradient(int n) {
-        // Primary → accent (Jk Dark).
-        Gradient gradient = Theme.active().spinnerGradient();
+    /**
+     * Pulse styles: white at the ends of the cycle, {@code dim} at the midpoint (triangle wave on a
+     * white→dim gradient).
+     */
+    static AttributedStyle[] buildPulseStyles(int n, Rgb dim) {
+        Gradient gradient = new Gradient(Rgb.hex(0xFFFFFF), dim);
         AttributedStyle[] a = new AttributedStyle[n];
         for (int i = 0; i < n; i++) {
-            double t = n <= 1 ? 0.0 : (double) i / (n - 1);
-            a[i] = Theme.active().bright(gradient.at(t));
+            a[i] = Theme.active().bright(gradient.at(pulseWave(i, n)));
         }
         return a;
+    }
+
+    /** 0 at frame 0 and last, 1 at the midpoint — white→dim→white when used as gradient {@code t}. */
+    static double pulseWave(int frame, int n) {
+        if (n <= 1) return 0.0;
+        double t = (double) frame / (n - 1); // 0..1
+        return t <= 0.5 ? t * 2.0 : (1.0 - t) * 2.0;
+    }
+
+    /**
+     * @deprecated Prefer {@link #buildPulseStyles}; retained for callers that still expect a linear
+     *     gradient of length {@code n}.
+     */
+    @Deprecated
+    static AttributedStyle[] buildGradient(int n) {
+        return buildPulseStyles(n, PULSE_DIM);
     }
 }
