@@ -25,7 +25,7 @@ Humans never need to scrape the TUI. Agents never need to parse ANSI bars.
 | 4 | `details.jsonl` incremental session log (same shape as stdout JSONL) | **Shipped** (JK-1116); supersedes end-only `details.json` |
 | 4b | Aggregate `progress` percent rider on JSONL lines | **Shipped** (JK-1117) |
 | 4c | Shared materialize cadence (TTY 80 ms / disk flush ≤2 s) | **Shipped** (JK-1118) |
-| 8 | MCP SSE aggregate `progress` rider + rich agent context | **Backlog** (JK-1119) |
+| 8 | MCP SSE aggregate `progress` rider + rich agent context | **Shipped** (JK-1119) |
 | 5 | Always-on run log JSONL under cache (`EventLogListener`) | **Existing** — same shape as stdout JSONL |
 | 6 | Engine MCP adapter (thin, discoverable like web) | **Done (JK-1095)** — `POST /mcp`, tools, status `mcpUrl` |
 | 7 | Robust cancel (graceful → hard kill; never hang) | **Done (JK-1096)** — `JobWorkers.shutdownForRequest` + bounded cancel join |
@@ -155,7 +155,8 @@ Same HTTP server and lifecycle as the web UI:
 **Live progress (MCP SSE):** `GET {httpUrl}/mcp` with `Accept: text/event-stream` and bearer
 token — Streamable-HTTP style. Each frame is `event: message` with JSON-RPC
 `notifications/jk/event` and params matching engine facts (`event` = dashboard type name plus the
-same fields as SSE `data`).
+same fields as SSE `data`). Params also carry aggregate **`progress`** (0–100 or `null`) aligned
+with CLI JSONL / `details.jsonl` (JK-1119) — agents should not scrape TTY bars.
 
 **Filter one job** (recommended when the engine may run concurrent jobs):
 

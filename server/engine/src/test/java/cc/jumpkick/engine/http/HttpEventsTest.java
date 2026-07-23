@@ -71,12 +71,22 @@ class HttpEventsTest {
     void mcp_style_frames_are_jsonrpc_notifications() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
-            hub.publish("step-start", JsonOut.object().put("step", "compile").put("schema", 1));
+            hub.publish(
+                    "step-start",
+                    JsonOut.object()
+                            .put("schema", 1)
+                            .put("type", "step-start")
+                            .put("step", "compile")
+                            .put("progress", 42.5));
             String frame = s.next(1000);
             assertThat(frame).contains("event: message");
             assertThat(frame).contains("notifications/jk/event");
             assertThat(frame).contains("\"event\":\"step-start\"");
             assertThat(frame).contains("\"step\":\"compile\"");
+            // JK-1119: agents read aggregate percent without parsing TTY bars.
+            assertThat(frame).contains("\"progress\":42.5");
+            assertThat(frame).doesNotContain("progress_num");
+            assertThat(frame).doesNotContain("progress_den");
         }
     }
 

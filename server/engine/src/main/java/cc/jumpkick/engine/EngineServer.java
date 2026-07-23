@@ -121,6 +121,13 @@ public final class EngineServer implements AutoCloseable {
     /** Ids for {@code request-start}/{@code request-finish} events and {@code POST /api/build} acks. */
     private final java.util.concurrent.atomic.AtomicLong requestIds = new java.util.concurrent.atomic.AtomicLong();
 
+    /**
+     * Last aggregate {@code progress} percent (0–100) per request id for MCP/SSE riders (JK-1119).
+     * Updated from pipeline weights; attached to subsequent events until the request finishes.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Double> lastProgressByRequest =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Per-request journal accumulators; persisted at request-finish regardless of SSE subscribers. */
     private final java.util.concurrent.ConcurrentHashMap<Long, BuildAccumulator> accumulators =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -939,14 +946,20 @@ public final class EngineServer implements AutoCloseable {
             // build can look cancelled. Correct it once here for both the dashboard event and the
             // journal (a build that succeeded was not cancelled).
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
+            if (!cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
             publishEvent(
                     "request-finish",
-                    cc.jumpkick.engine.http.JsonOut.object()
-                            .put("requestId", eventRequestId)
-                            .put("kind", eventKind)
-                            .put("dir", eventDir)
-                            .put("cancelled", cancelled)
-                            .put("millis", elapsedMillis));
+                    withProgress(
+                            cc.jumpkick.engine.http.JsonOut.object()
+                                    .put("schema", 1)
+                                    .put("type", "request-finish")
+                                    .put("requestId", eventRequestId)
+                                    .put("kind", eventKind)
+                                    .put("dir", eventDir)
+                                    .put("cancelled", cancelled)
+                                    .put("millis", elapsedMillis),
+                            eventRequestId));
+            clearProgress(eventRequestId);
             writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
         }
     }
@@ -1036,6 +1049,34 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
+     * Attach aggregate {@code progress} (0–100 or null) matching CLI {@code LiveProgress} / JSONL
+     * rider (JK-1117/1119). When {@code numerator}/{@code denominator} are known, compute and store
+     * the percent for this request; otherwise reuse the last known value.
+     */
+    private cc.jumpkick.engine.http.JsonOut withProgress(
+            cc.jumpkick.engine.http.JsonOut payload, long requestId, long numerator, long denominator) {
+        if (requestId > 0 && denominator > 0) {
+            double raw = 100.0 * (double) numerator / (double) denominator;
+            if (raw < 0) raw = 0;
+            if (raw > 100) raw = 100;
+            double p = Math.round(raw * 10.0) / 10.0;
+            lastProgressByRequest.put(requestId, p);
+            return payload.put("progress", p);
+        }
+        return withProgress(payload, requestId);
+    }
+
+    /** Attach last known progress for {@code requestId}, or {@code null} if unknown. */
+    private cc.jumpkick.engine.http.JsonOut withProgress(cc.jumpkick.engine.http.JsonOut payload, long requestId) {
+        Double p = requestId > 0 ? lastProgressByRequest.get(requestId) : null;
+        return payload.putNullable("progress", p);
+    }
+
+    private void clearProgress(long requestId) {
+        if (requestId > 0) lastProgressByRequest.remove(requestId);
+    }
+
+    /**
      * {@code request-start}, enriched with the project's {@code group:name} coordinate when the
      * dir's {@code jk.toml} parses — the dashboard renders coordinates, not paths, when it can
      * (the design's coord coloring). Best-effort and only attempted with a subscriber connected.
@@ -1051,11 +1092,15 @@ public final class EngineServer implements AutoCloseable {
         }
         publishEvent(
                 "request-start",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("kind", kind)
-                        .put("dir", dir)
-                        .put("coord", coord));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "request-start")
+                                .put("requestId", requestId)
+                                .put("kind", kind)
+                                .put("dir", dir)
+                                .put("coord", coord),
+                        requestId));
     }
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
@@ -1063,27 +1108,31 @@ public final class EngineServer implements AutoCloseable {
         // Field names align with CLI JsonlShape (schema + type + step + phase).
         publishEvent(
                 "step-start",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "step-start")
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("step", step)
-                        .put("phase", phase));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "step-start")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("step", step)
+                                .put("phase", phase),
+                        requestId));
     }
 
     private void publishStepFinish(long requestId, String dir, String step, String phase, String status) {
         if (!eventsWanted()) return;
         publishEvent(
                 "step-finish",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "step-finish")
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("step", step)
-                        .put("phase", phase)
-                        .put("status", status));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "step-finish")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("step", step)
+                                .put("phase", phase)
+                                .put("status", status),
+                        requestId));
     }
 
     /** Wire spelling of a step's coarse {@link cc.jumpkick.plugin.build.Phase} — {@code ""} when unset. */
@@ -1095,11 +1144,15 @@ public final class EngineServer implements AutoCloseable {
         if (!eventsWanted()) return;
         publishEvent(
                 "output",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("step", step)
-                        .put("line", line));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "output")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("step", step)
+                                .put("line", line),
+                        requestId));
     }
 
     /** Failure detail is bounded on the wire: a compile explosion must not flood the event stream. */
@@ -1114,16 +1167,18 @@ public final class EngineServer implements AutoCloseable {
             // type "error" matches CLI JsonlShape; SSE event name stays "diagnostic" for the SPA.
             publishEvent(
                     "diagnostic",
-                    cc.jumpkick.engine.http.JsonOut.object()
-                            .put("schema", 1)
-                            .put("type", "error")
-                            .put("requestId", requestId)
-                            .put("dir", dir)
-                            .put("step", d.step())
-                            .put("code", d.code())
-                            .put("message", d.message())
-                            .put("test", d.test())
-                            .put("exceptionClass", d.exceptionClass()));
+                    withProgress(
+                            cc.jumpkick.engine.http.JsonOut.object()
+                                    .put("schema", 1)
+                                    .put("type", "error")
+                                    .put("requestId", requestId)
+                                    .put("dir", dir)
+                                    .put("step", d.step())
+                                    .put("code", d.code())
+                                    .put("message", d.message())
+                                    .put("test", d.test())
+                                    .put("exceptionClass", d.exceptionClass()),
+                            requestId));
         }
         if (errors.size() > shown) {
             publishRequestError(requestId, dir, "+ " + (errors.size() - shown) + " more errors — see the CLI output");
@@ -1135,14 +1190,18 @@ public final class EngineServer implements AutoCloseable {
         if (!eventsWanted() || message == null || message.isBlank()) return;
         publishEvent(
                 "diagnostic",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("step", "request")
-                        .put("code", "error")
-                        .put("message", message)
-                        .put("test", "")
-                        .put("exceptionClass", ""));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "error")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("step", "request")
+                                .put("code", "error")
+                                .put("message", message)
+                                .put("test", "")
+                                .put("exceptionClass", ""),
+                        requestId));
     }
 
     /**
@@ -1153,11 +1212,16 @@ public final class EngineServer implements AutoCloseable {
      */
     private void publishPlan(long requestId, long totalWeight) {
         if (!eventsWanted()) return;
+        // Plan seeds the bar denominator; progress is still preflight-only until execute ticks.
         publishEvent(
                 "plan",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("weight", totalWeight));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "plan")
+                                .put("requestId", requestId)
+                                .put("weight", totalWeight),
+                        requestId));
     }
 
     /**
@@ -1168,16 +1232,20 @@ public final class EngineServer implements AutoCloseable {
      */
     private void publishPipelineProgress(long requestId, String dir, PipelineView view) {
         if (!eventsWanted()) return;
-        // Same numerator/denominator as CLI JsonlShape progress; type "progress" for agents.
+        // Same numerator/denominator as CLI JsonlShape progress; additive progress % for agents (JK-1119).
         publishEvent(
                 "pipeline-progress",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "progress")
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("numerator", view.numerator())
-                        .put("denominator", view.denominator()));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "progress")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("numerator", view.numerator())
+                                .put("denominator", view.denominator()),
+                        requestId,
+                        view.numerator(),
+                        view.denominator()));
     }
 
     /**
@@ -1189,11 +1257,13 @@ public final class EngineServer implements AutoCloseable {
         if (!eventsWanted()) return;
         publishEvent(
                 "eta",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("schema", 1)
-                        .put("type", "eta")
-                        .put("requestId", requestId)
-                        .put("millis", millis));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "eta")
+                                .put("requestId", requestId)
+                                .put("millis", millis),
+                        requestId));
     }
 
     /**
@@ -3091,32 +3161,46 @@ public final class EngineServer implements AutoCloseable {
         if (!eventsWanted()) return;
         publishEvent(
                 "module-start",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("coord", coord));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "module-start")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("coord", coord),
+                        requestId));
     }
 
     private void publishModuleFinish(long requestId, String dir, String coord, boolean success, long millis) {
         if (!eventsWanted()) return;
         publishEvent(
                 "module-finish",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("coord", coord)
-                        .put("success", success)
-                        .put("millis", millis));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "module-finish")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("coord", coord)
+                                .put("success", success)
+                                .put("millis", millis),
+                        requestId));
     }
 
     private void publishPipelineFinish(long requestId, String dir, boolean success) {
         if (!eventsWanted()) return;
+        if (success && requestId > 0) lastProgressByRequest.put(requestId, 100.0);
         publishEvent(
                 "pipeline-finish",
-                cc.jumpkick.engine.http.JsonOut.object()
-                        .put("requestId", requestId)
-                        .put("dir", dir)
-                        .put("success", success));
+                withProgress(
+                        cc.jumpkick.engine.http.JsonOut.object()
+                                .put("schema", 1)
+                                .put("type", "pipeline-finish")
+                                .put("requestId", requestId)
+                                .put("dir", dir)
+                                .put("success", success),
+                        requestId));
+        clearProgress(requestId);
     }
 
     // ---- build-history journal capture (docs: state/builds) ---------------------
@@ -3818,15 +3902,21 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate.readLock().unlock();
                 maybeIdleBoundaryGc();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
+                if (success) lastProgressByRequest.put(eventRequestId, 100.0);
                 publishEvent(
                         "request-finish",
-                        cc.jumpkick.engine.http.JsonOut.object()
-                                .put("requestId", eventRequestId)
-                                .put("kind", kind)
-                                .put("dir", entryDir.toString())
-                                .put("success", success)
-                                .put("cancelled", cancelled)
-                                .put("millis", elapsedMillis));
+                        withProgress(
+                                cc.jumpkick.engine.http.JsonOut.object()
+                                        .put("schema", 1)
+                                        .put("type", "request-finish")
+                                        .put("requestId", eventRequestId)
+                                        .put("kind", kind)
+                                        .put("dir", entryDir.toString())
+                                        .put("success", success)
+                                        .put("cancelled", cancelled)
+                                        .put("millis", elapsedMillis),
+                                eventRequestId));
+                clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
             }
         });
@@ -3869,15 +3959,21 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate.readLock().unlock();
                 maybeIdleBoundaryGc();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
+                if (success) lastProgressByRequest.put(eventRequestId, 100.0);
                 publishEvent(
                         "request-finish",
-                        cc.jumpkick.engine.http.JsonOut.object()
-                                .put("requestId", eventRequestId)
-                                .put("kind", "lock")
-                                .put("dir", entryDir.toString())
-                                .put("success", success)
-                                .put("cancelled", cancelled)
-                                .put("millis", elapsedMillis));
+                        withProgress(
+                                cc.jumpkick.engine.http.JsonOut.object()
+                                        .put("schema", 1)
+                                        .put("type", "request-finish")
+                                        .put("requestId", eventRequestId)
+                                        .put("kind", "lock")
+                                        .put("dir", entryDir.toString())
+                                        .put("success", success)
+                                        .put("cancelled", cancelled)
+                                        .put("millis", elapsedMillis),
+                                eventRequestId));
+                clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
             }
         });

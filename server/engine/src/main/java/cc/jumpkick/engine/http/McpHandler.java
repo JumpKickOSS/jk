@@ -153,6 +153,8 @@ public final class McpHandler {
                 "instructions",
                 "JumpKick engine MCP. Prefer tools for multi-turn agent work. Live build progress: "
                         + "GET /mcp with Accept: text/event-stream (notifications/jk/event); "
+                        + "each event params object carries aggregate progress (0–100 or null) plus "
+                        + "step/module/error fields aligned with CLI JSONL. "
                         + "filter with ?requestId=N or ?progressToken=T (pass _meta.progressToken on "
                         + "tools/call). Or GET /api/events (dashboard SSE). One-shot CLI: jk … "
                         + "--output json. See docs/machine-output.md.");

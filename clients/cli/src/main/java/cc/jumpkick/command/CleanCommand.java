@@ -205,20 +205,49 @@ public final class CleanCommand implements CliCommand {
         }
     }
 
+    /**
+     * Delete {@code root} depth-first. Retries a few times when the tree is racing the engine
+     * (e.g. {@code target/.jk/preflight} rewritten mid-walk) so {@code jk clean} does not exit 1
+     * on a transient {@link java.nio.file.DirectoryNotEmptyException}.
+     */
     private static void deleteRecursively(Path root, long[] stats) throws IOException {
         if (!Files.exists(root)) return;
-        try (Stream<Path> stream = Files.walk(root)) {
-            stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    if (Files.isRegularFile(p)) {
-                        stats[1] += Files.size(p);
-                        stats[0]++;
-                    }
-                    Files.deleteIfExists(p);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
+        IOException last = null;
+        for (int attempt = 0; attempt < 4; attempt++) {
+            try {
+                try (Stream<Path> stream = Files.walk(root)) {
+                    stream.sorted(Comparator.reverseOrder()).forEach(p -> {
+                        try {
+                            if (Files.isRegularFile(p)) {
+                                stats[1] += Files.size(p);
+                                stats[0]++;
+                            }
+                            Files.deleteIfExists(p);
+                        } catch (IOException e) {
+                            throw new UncheckedIOException(e);
+                        }
+                    });
                 }
-            });
+                return;
+            } catch (UncheckedIOException e) {
+                last = e.getCause() instanceof IOException io ? io : new IOException(e);
+                // Brief pause so a concurrent preflight/memo write can finish before we re-walk.
+                try {
+                    Thread.sleep(25L * (attempt + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw last;
+                }
+            } catch (IOException e) {
+                last = e;
+                try {
+                    Thread.sleep(25L * (attempt + 1));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw last;
+                }
+            }
         }
+        if (last != null) throw last;
     }
 }
