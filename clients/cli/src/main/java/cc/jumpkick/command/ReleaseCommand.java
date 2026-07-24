@@ -298,7 +298,8 @@ public final class ReleaseCommand implements CliCommand {
             return stream
                     .filter(p -> {
                         String n = p.getFileName().toString();
-                        return n.endsWith("-assembly.jar") && n.contains("engine");
+                        // Engine fat jars (Gradle shadow / jk -all) must not ship as a lib dep.
+                        return (n.endsWith("-assembly.jar") || n.endsWith("-all.jar")) && n.contains("engine");
                     })
                     .findFirst()
                     .orElse(null);

@@ -65,6 +65,7 @@ class BuildLayoutTest {
 
         assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target/lib"));
         assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3.jar"));
+        assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-all.jar"));
         assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-sources.jar"));
         assertThat(layout.javadocJar()).isEqualTo(dir.resolve("target/lib/widget-1.2.3-javadoc.jar"));
         assertThat(layout.nativeBinary()).isEqualTo(dir.resolve("target/lib/widget"));
@@ -83,6 +84,8 @@ class BuildLayoutTest {
 
         assertThat(layout.artifactDir()).isEqualTo(dir.resolve("target"));
         assertThat(layout.mainJar()).isEqualTo(dir.resolve("target/widget-1.2.3.jar"));
+        // Fat jar uses the -all classifier (not -assembly).
+        assertThat(layout.assemblyJar()).isEqualTo(dir.resolve("target/widget-1.2.3-all.jar"));
         assertThat(layout.sourcesJar()).isEqualTo(dir.resolve("target/widget-1.2.3-sources.jar"));
         assertThat(layout.nativeBinary()).isEqualTo(dir.resolve("target/widget"));
         assertThat(layout.ociImageTar()).isEqualTo(dir.resolve("target/widget.oci.tar"));

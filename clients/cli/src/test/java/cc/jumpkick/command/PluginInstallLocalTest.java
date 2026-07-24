@@ -44,7 +44,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = mod.resolve("target/jk-test-runner-0.10.1-assembly.jar");
+        Path jar = mod.resolve("target/jk-test-runner-0.10.1-all.jar");
         Files.writeString(jar, "fake-worker-jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -84,7 +84,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-assembly.jar"), "x");
+        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-all.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -151,8 +151,8 @@ class PluginInstallLocalTest {
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 assembly = true
                 """);
-        Files.writeString(a.resolve("target/jk-alpha-0.10.1-assembly.jar"), "A");
-        Files.writeString(b.resolve("target/jk-beta-0.10.1-assembly.jar"), "B");
+        Files.writeString(a.resolve("target/jk-alpha-0.10.1-all.jar"), "A");
+        Files.writeString(b.resolve("target/jk-beta-0.10.1-all.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",

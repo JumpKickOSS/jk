@@ -37,7 +37,7 @@ class AssemblyPackagerTest {
             putEntry(jos, "META-INF/FOO.RSA", "signature");
         }
 
-        Path out = tmp.resolve("app-assembly.jar");
+        Path out = tmp.resolve("app-all.jar");
         new AssemblyPackager()
                 .packageAssembly(new AssemblyPackager.AssemblyRequest(
                         classes, List.of(dep), out, "app.Main", Map.of("Implementation-Title", "app"), 0L));
@@ -125,14 +125,14 @@ class AssemblyPackagerTest {
             putEntry(jos, "lib/Helper.class", "LIBHELPER");
         }
 
-        Path a = tmp.resolve("a-assembly.jar");
+        Path a = tmp.resolve("a-all.jar");
         new AssemblyPackager()
                 .packageAssembly(
                         new AssemblyPackager.AssemblyRequest(classes, List.of(dep), a, "app.Main", Map.of(), 0L));
         // The freshness stamp's content changes every build; the fat jar must
         // not bundle it (and the manifest must be pinned), or the jar churns.
         Files.writeString(classes.resolve(".jstamp"), "stamp-run-2-different");
-        Path b = tmp.resolve("b-assembly.jar");
+        Path b = tmp.resolve("b-all.jar");
         new AssemblyPackager()
                 .packageAssembly(
                         new AssemblyPackager.AssemblyRequest(classes, List.of(dep), b, "app.Main", Map.of(), 0L));

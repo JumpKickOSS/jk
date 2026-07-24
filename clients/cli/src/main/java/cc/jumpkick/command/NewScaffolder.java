@@ -323,7 +323,7 @@ public final class NewScaffolder {
                 ```
                 jk build
                 ```
-                Produces `target/%1$s-0.1.0-assembly.jar` — the fat jar with `jk-plugin.toml` at its root.
+                Produces `target/%1$s-0.1.0-all.jar` — the fat jar with `jk-plugin.toml` at its root.
 
                 ## Publish, declare, trust
                 ```

@@ -211,7 +211,7 @@ class ReleaseCommandTest {
         assertThat(engineOut).exists();
         assertThat(outDir.resolve("jk")).exists();
         assertThat(combined).contains("distribution ready");
-        // Must not ship the -assembly.jar filename in lib/
+        // Must not ship the fat-jar filename (-all / legacy -assembly) in lib/
         assertThat(Files.list(outDir.resolve("lib")).map(p -> p.getFileName().toString()).toList())
                 .containsExactly("jk-engine-" + JkVersion.VERSION + ".jar");
     }

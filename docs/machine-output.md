@@ -133,10 +133,22 @@ Engine hosts HTTP (loopback) with:
 - `GET /api/status`, `GET /api/events` (SSE), `POST /api/build`, …
 - SSE: `event: <type>` + `data: <json>` — types include `request-start`, `step-start`, `step-finish`, `pipeline-progress`, `eta`, `diagnostic`, module events, …
 
-**Convergence:** SSE `data` objects carry `schema: 1` and a `type` field matching CLI JSONL where
-they describe the same fact (`step-start`, `step-finish`, `progress`, `error`/`diagnostic`, plus
-`step`, `phase`, `status`, `numerator`/`denominator`, `test`, `exceptionClass`). The SSE *event*
-name may stay SPA-oriented (`pipeline-progress`, `diagnostic`); agents should prefer `data.type`.
+**Convergence (one conceptual model):** SSE `data`, MCP `notifications/jk/event` params, CLI
+JSONL, and (additively) the client↔engine wire all carry the same facts where they describe the
+same work:
+
+| Field | Meaning |
+|-------|---------|
+| `schema` | Always `1` until jk 1.0 |
+| `type` | Conceptual event name (`step-start`, `progress`, `error`, …) |
+| `progress` | Aggregate % 0–100 or `null` (JK-1117/1119) — **not** `progress_num`/`progress_den` |
+| `step` / `phase` / `status` / `dir` / `coord` | Same names across surfaces |
+| `numerator` / `denominator` | Step-scoped weights (progress events); optional beside the % rider |
+| `test` / `exceptionClass` | Structured failure fields |
+
+The SSE *event* name may stay SPA-oriented (`pipeline-progress`, `diagnostic`); agents should
+prefer `data.type`. Wire frames still use historic `t` and also emit `type` + `schema` +
+`progress` additively so parsers can converge.
 
 ### MCP (engine-hosted, JK-1095)
 

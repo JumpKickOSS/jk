@@ -3298,7 +3298,7 @@ public final class BuildPipelines {
                 continue;
             }
             BuildLayout layout = BuildLayout.of(dir, sib);
-            // An assembly plugin runs from its -assembly.jar — that's the artifact
+            // An assembly plugin runs from its -all.jar — that's the artifact
             // that bundles plugin-api/PluginMain and the plugin's deps; a
             // plain module ships only its main jar.
             Path jar = sib.assembly() ? layout.assemblyJar() : layout.mainJar();

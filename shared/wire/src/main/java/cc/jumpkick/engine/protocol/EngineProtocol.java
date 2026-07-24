@@ -1476,7 +1476,10 @@ public final class EngineProtocol {
             int stepsTotal,
             int stepsComplete,
             boolean cancelled) {
-        return "{\"t\":\""
+        // schema + type mirror CLI/SSE JSONL (t remains the historic wire short name).
+        return "{\"schema\":1,\"t\":\""
+                + PIPELINE_START
+                + "\",\"type\":\""
                 + PIPELINE_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1486,6 +1489,8 @@ public final class EngineProtocol {
                 + numerator
                 + ",\"denominator\":"
                 + denominator
+                + ",\"progress\":"
+                + progressPercent(numerator, denominator)
                 + ",\"stepsTotal\":"
                 + stepsTotal
                 + ",\"stepsComplete\":"
@@ -1496,7 +1501,9 @@ public final class EngineProtocol {
     }
 
     public static String stepStart(String dir, String step, String phase, int ticks) {
-        return "{\"t\":\""
+        return "{\"schema\":1,\"t\":\""
+                + STEP_START
+                + "\",\"type\":\""
                 + STEP_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1519,7 +1526,10 @@ public final class EngineProtocol {
             int stepsTotal,
             int stepsComplete,
             boolean cancelled) {
-        return "{\"t\":\""
+        // Additive progress % (JK-1117/1119) + type alias so agents share one mental model with SSE/JSONL.
+        return "{\"schema\":1,\"t\":\""
+                + type
+                + "\",\"type\":\""
                 + type
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1531,6 +1541,8 @@ public final class EngineProtocol {
                 + numerator
                 + ",\"denominator\":"
                 + denominator
+                + ",\"progress\":"
+                + progressPercent(numerator, denominator)
                 + ",\"stepsTotal\":"
                 + stepsTotal
                 + ",\"stepsComplete\":"
@@ -1538,6 +1550,20 @@ public final class EngineProtocol {
                 + ",\"cancelled\":"
                 + cancelled
                 + "}";
+    }
+
+    /**
+     * Aggregate percent 0–100 (one decimal) matching CLI {@code LiveProgress} / JSONL rider. Emits the
+     * JSON token {@code null} when {@code denominator <= 0}.
+     */
+    static String progressPercent(long numerator, long denominator) {
+        if (denominator <= 0) return "null";
+        double raw = 100.0 * (double) numerator / (double) denominator;
+        if (raw < 0) raw = 0;
+        if (raw > 100) raw = 100;
+        double p = Math.round(raw * 10.0) / 10.0;
+        if (p == Math.rint(p)) return Long.toString((long) p);
+        return Double.toString(p);
     }
 
     public static String progress(
