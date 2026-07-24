@@ -16,10 +16,6 @@ import java.util.List;
  */
 public final class AggregateContext {
 
-    /** @deprecated Use {@link WorkspaceProgressTracker#PREFLIGHT_UNITS}; kept for test constants. */
-    @Deprecated
-    public static final long PREFLIGHT_UNITS = WorkspaceProgressTracker.PREFLIGHT_UNITS;
-
     private final CommandManager cm;
     private volatile List<PipelineResult.Diagnostic> lastErrors = List.of();
 
@@ -48,40 +44,6 @@ public final class AggregateContext {
     public void preflight(String stage, int done, int total, String label) {
         cm.preflight(stage, done, total, label);
     }
-
-    /** @deprecated No-op; engine calibrates. Kept so older call sites compile during migration. */
-    @Deprecated
-    public void calibrate(long executeWeight) {
-        // Engine owns calibration (JK-1120/1121).
-    }
-
-    /** @deprecated Always 0 client-side; engine owns totals. */
-    @Deprecated
-    public long total() {
-        return 0;
-    }
-
-    /** @deprecated No-op. */
-    @Deprecated
-    public void growTotal(long delta) {}
-
-    /** @deprecated Always 0 client-side. */
-    @Deprecated
-    public long completedBase() {
-        return 0;
-    }
-
-    /** @deprecated No-op. */
-    @Deprecated
-    public void completeModule(long moduleTicks) {}
-
-    /** @deprecated No-op. */
-    @Deprecated
-    public void moduleProgress(String module, long advanced) {}
-
-    /** @deprecated No-op. */
-    @Deprecated
-    public void completeModule(String module, long slice) {}
 
     public List<PipelineResult.Diagnostic> lastErrors() {
         return lastErrors;

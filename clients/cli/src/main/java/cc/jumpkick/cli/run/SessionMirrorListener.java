@@ -1,81 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
-import java.time.Duration;
-
 /**
  * Mirrors pipeline events into the active {@link CliSessionTranscript} as {@link JsonlShape} lines
  * (JK-1116). Used when stdout is not already JSONL (TTY/verbose) so {@code details.jsonl} still
  * carries the live stream. {@link JsonlListener} dual-writes itself; this listener is skipped in
- * JSON mode to avoid duplicate lines.
+ * JSON mode to avoid duplicate lines. Never stamps module-local fractions into {@link LiveProgress}
+ * (JK-1121) — engine {@code workspace-progress} owns the aggregate rider.
  */
-public final class SessionMirrorListener implements PipelineListener {
+public final class SessionMirrorListener extends JsonlEmittingListener {
 
     private final CliSessionTranscript session;
 
     public SessionMirrorListener(CliSessionTranscript session) {
+        super(false);
         this.session = session;
     }
 
     @Override
-    public void pipelineStart(PipelineView v) {
-        // Do not stamp module-local fractions into LiveProgress (JK-1121) — engine
-        // workspace-progress owns the aggregate rider.
-        session.append(JsonlShape.pipelineStart(v), true);
-    }
-
-    @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        session.append(JsonlShape.stepStart(step, phase == null ? "" : phase.wireName(), ticks), true);
-    }
-
-    @Override
-    public void progress(String step, int delta, PipelineView v) {
-        session.append(JsonlShape.progress(step, delta, v), false);
-    }
-
-    @Override
-    public void tickUpdate(String step, int delta, PipelineView v) {
-        session.append(JsonlShape.tickUpdate(step, delta, v), false);
-    }
-
-    @Override
-    public void label(String step, String label) {
-        session.append(JsonlShape.label(step, label), false);
-    }
-
-    @Override
-    public void output(String step, String line) {
-        session.append(JsonlShape.output(step, line), false);
-    }
-
-    @Override
-    public void warn(String step, String code, String msg) {
-        session.append(JsonlShape.warn(step, code, msg), true);
-    }
-
-    @Override
-    public void error(String step, String code, String msg) {
-        session.append(JsonlShape.error(step, code, msg), true);
-    }
-
-    @Override
-    public void error(String step, String code, String msg, String test, String exClass) {
-        session.append(JsonlShape.error(step, code, msg, test, exClass), true);
-    }
-
-    @Override
-    public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        session.append(JsonlShape.stepFinish(step, phase == null ? "" : phase.wireName(), s, d), true);
-    }
-
-    @Override
-    public void pipelineFinish(PipelineResult r) {
-        session.append(JsonlShape.pipelineFinish(r), true);
+    protected void emit(String line, boolean immediate) {
+        session.appendRaw(line, immediate);
     }
 }

@@ -331,7 +331,7 @@ public final class BuildCommand implements CliCommand {
                         public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                             // Engine tracker owns the aggregate rider; module listeners stay local.
                             cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
-                            emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                                     cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
                                             entryDir.toString(),
                                             snap.numerator(),
@@ -345,7 +345,7 @@ public final class BuildCommand implements CliCommand {
                         @Override
                         public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                             total[0] = plan.size();
-                            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), json);
+                            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), json);
                         }
 
                         @Override
@@ -356,7 +356,7 @@ public final class BuildCommand implements CliCommand {
                             // listener is actually driven by wire-replayed events either way.
                             var log = cc.jumpkick.cli.run.EventLogListener.open(
                                     m.cache(), m.pipeline().name());
-                            emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                                     cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
                                 // Live step/progress events for agents (same shape as single-module jsonl).
@@ -389,7 +389,7 @@ public final class BuildCommand implements CliCommand {
 
                         @Override
                         public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                            emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                                     cc.jumpkick.cli.run.JsonlShape.moduleFinish(
                                             o.dir().toString(), o.coord(), o.success(), o.millis()),
                                     json);
@@ -405,7 +405,7 @@ public final class BuildCommand implements CliCommand {
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
         } catch (java.io.IOException e) {
-            emitJsonl(
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(
                             false, (System.nanoTime() - start) / 1_000_000, total[0]),
                     json);
@@ -419,7 +419,7 @@ public final class BuildCommand implements CliCommand {
             for (String err : result.errors()) session.error(err);
         }
         if (!result.errors().isEmpty()) {
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             }
@@ -428,13 +428,13 @@ public final class BuildCommand implements CliCommand {
             return result.exitCode();
         }
         if (total[0] == 0) {
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, 0), json);
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, 0), json);
             if (!json) CliOutput.out("(workspace declares no modules)");
             if (session != null) session.wedge("workspace declares no modules");
             return 0;
         }
         if (!result.success()) {
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
             if (!json) {
                 result.modules().stream().filter(m -> !m.success()).findFirst().ifPresent(f -> {
                     String msg = f.coord() + " failed (exit " + f.exitCode() + ")";
@@ -444,28 +444,13 @@ public final class BuildCommand implements CliCommand {
             }
             return result.exitCode();
         }
-        emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), json);
+        cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), json);
         String okTail = modulesTail(total[0], start);
         if (session != null) session.wedge(okTail);
         if (json) return 0;
         CliOutput.out(
                 PipelineWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
         return 0;
-    }
-
-    /**
-     * Emit one JSONL line with progress rider. Always dual-writes to {@code details.jsonl}; prints to
-     * stdout only when {@code toStdout} (agent {@code --output json}/{@code jsonl}).
-     */
-    private static void emitJsonl(String line, boolean toStdout) {
-        String decorated = cc.jumpkick.cli.run.JsonlShape.withProgress(line);
-        if (toStdout) {
-            synchronized (OUT_LOCK) {
-                System.out.println(decorated);
-                System.out.flush();
-            }
-        }
-        CliSessionTranscript.appendActive(decorated);
     }
 
     /** Session mirror for non-JSON engine-replayed pipelines (null when no session). */
@@ -526,7 +511,7 @@ public final class BuildCommand implements CliCommand {
                 @Override
                 public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
                     agg.applySnapshot(snap);
-                    emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
                                     entryDir.toString(),
                                     snap.numerator(),
@@ -541,7 +526,7 @@ public final class BuildCommand implements CliCommand {
                 public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                     total[0] = plan.size();
                     // Engine calibrates aggregate bar; CLI only records plan size for completion lines.
-                    emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), false);
+                    cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), false);
                 }
 
                 @Override
@@ -561,7 +546,7 @@ public final class BuildCommand implements CliCommand {
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);
-                    emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), false);
                     var mirror = sessionMirror();
                     return cc.jumpkick.cli.run.CompositePipelineListener.of(
@@ -570,7 +555,7 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                    emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                             cc.jumpkick.cli.run.JsonlShape.moduleFinish(
                                     o.dir().toString(), o.coord(), o.success(), o.millis()),
                             false);
@@ -615,7 +600,7 @@ public final class BuildCommand implements CliCommand {
             for (String err : result.errors()) above.add(ConsoleSpec.errorLine("composite", err));
             view.finishPipelineFailure("dependency resolution failed", above);
             if (session != null) session.wedge("dependency resolution failed");
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
         }
@@ -635,7 +620,7 @@ public final class BuildCommand implements CliCommand {
             String failTail = failureTail(failedCoord, start);
             view.finishPipelineFailure(failTail, above);
             if (session != null) session.wedge(failTail);
-            emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
             return result.exitCode();
         }
         // Empty execute plan (total==0) = engine found nothing dirty (JK-1106 single-RPC path).
@@ -645,7 +630,7 @@ public final class BuildCommand implements CliCommand {
                 : modulesTail(total[0], start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
-        emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
+        cc.jumpkick.cli.run.JsonlShape.emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
         return 0;
     }
 

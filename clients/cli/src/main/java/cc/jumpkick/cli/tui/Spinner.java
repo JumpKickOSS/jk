@@ -27,7 +27,7 @@ public final class Spinner implements AutoCloseable {
     static final int PULSE_FRAMES = 25;
 
     /** Interval between pulse frames (2.0s per full breath at 25 frames). */
-    static final long FRAME_MS = 80L;
+    static final long FRAME_MS = cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS;
 
     /** Dim end of the pulse when the spinner sits on the terminal (not on a chip). */
     static final Rgb PULSE_DIM = Rgb.hex(0x090C11); // web --bg

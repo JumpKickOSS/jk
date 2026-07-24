@@ -18,7 +18,7 @@ tasks.register("integrationTest") {
 tasks.register("checkAll") {
     group = "verification"
     description = "Unit test + integrationTest for the whole repo"
-    dependsOn("test", "integrationTest")
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } }, "integrationTest")
 }
 
 // The shippable native-dist layout (docs/architecture.md "Ship layout"): the size-tuned native jk

@@ -1,18 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -28,7 +23,7 @@ import java.time.format.DateTimeFormatter;
  * <p>Writes are best-effort: an IO failure during a single event silently drops that event. A
  * failure opening the file makes the whole listener a no-op for the pipeline's lifetime.
  */
-public final class EventLogListener implements PipelineListener {
+public final class EventLogListener extends JsonlEmittingListener {
 
     private static final DateTimeFormatter TS_FORMAT =
             DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS").withZone(ZoneOffset.UTC);
@@ -37,6 +32,7 @@ public final class EventLogListener implements PipelineListener {
     private final PrintStream stream;
 
     private EventLogListener(Path file, PrintStream stream) {
+        super(false);
         this.file = file;
         this.stream = stream;
     }
@@ -66,76 +62,21 @@ public final class EventLogListener implements PipelineListener {
         return file;
     }
 
-    // The bulk of the work delegates to JsonlListener's wire format
-    // by re-using its helper privately. We keep them as separate
-    // classes (rather than wrapping) so listener-ordering on
-    // System.out vs the log file stays explicit.
-
     @Override
-    public void pipelineStart(PipelineView v) {
-        line(JsonlShape.pipelineStart(v));
-    }
-
-    @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        line(JsonlShape.stepStart(step, phase == null ? "" : phase.wireName(), ticks));
-    }
-
-    @Override
-    public void progress(String step, int delta, PipelineView v) {
-        line(JsonlShape.progress(step, delta, v));
-    }
-
-    @Override
-    public void tickUpdate(String step, int delta, PipelineView v) {
-        line(JsonlShape.tickUpdate(step, delta, v));
-    }
-
-    @Override
-    public void label(String step, String label) {
-        line(JsonlShape.label(step, label));
-    }
-
-    @Override
-    public void output(String step, String line) {
-        line(JsonlShape.output(step, line));
-    }
-
-    @Override
-    public void warn(String step, String code, String msg) {
-        line(JsonlShape.warn(step, code, msg));
-    }
-
-    @Override
-    public void error(String step, String code, String msg) {
-        line(JsonlShape.error(step, code, msg));
-    }
-
-    @Override
-    public void error(String step, String code, String msg, String test, String exClass) {
-        line(JsonlShape.error(step, code, msg, test, exClass));
-    }
-
-    @Override
-    public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        line(JsonlShape.stepFinish(step, phase == null ? "" : phase.wireName(), s, d));
+    protected void emit(String line, boolean immediate) {
+        try {
+            stream.println(line);
+        } catch (RuntimeException ignored) {
+            // Best-effort logging.
+        }
     }
 
     @Override
     public void pipelineFinish(PipelineResult r) {
-        line(JsonlShape.pipelineFinish(r));
+        super.pipelineFinish(r);
         try {
             stream.close();
         } catch (RuntimeException ignored) {
-        }
-    }
-
-    private void line(String s) {
-        try {
-            // Same progress rider as stdout / details.jsonl (JK-1117).
-            stream.println(JsonlShape.withProgress(s));
-        } catch (RuntimeException ignored) {
-            // Best-effort logging.
         }
     }
 }

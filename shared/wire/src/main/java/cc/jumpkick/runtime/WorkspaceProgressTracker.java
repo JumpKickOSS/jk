@@ -17,6 +17,9 @@ public final class WorkspaceProgressTracker {
     /** Reserved progress units for all preflight work (before module pipelines run). */
     public static final long PREFLIGHT_UNITS = 100;
 
+    /** TTY frame cadence (ms): engine progress-emit throttle and CLI live-region share it. */
+    public static final long TTY_FRAME_MS = 80;
+
     private long completedBase;
     private long total; // execute aggregate denominator, 0 until calibrated
     private long preflightNum; // 0..PREFLIGHT_UNITS
@@ -53,14 +56,6 @@ public final class WorkspaceProgressTracker {
         /** True when {@link #percent} is a finite 0–100 value. */
         public boolean hasPercent() {
             return !Double.isNaN(percent);
-        }
-
-        /** JSON number token or {@code null}. */
-        public String progressToken() {
-            if (!hasPercent()) return "null";
-            double p = percent;
-            if (p == Math.rint(p)) return Long.toString((long) p);
-            return Double.toString(p);
         }
     }
 
@@ -234,9 +229,21 @@ public final class WorkspaceProgressTracker {
     /** 0–100 one-decimal percent, or {@link Double#NaN} when denominator is non-positive. */
     public static double percentOf(long numerator, long denominator) {
         if (denominator <= 0) return Double.NaN;
-        double raw = 100.0 * (double) numerator / (double) denominator;
-        if (raw < 0) raw = 0;
-        if (raw > 100) raw = 100;
-        return Math.round(raw * 10.0) / 10.0;
+        return clampPercent(100.0 * (double) numerator / (double) denominator);
+    }
+
+    /** Clamp to 0–100 and round to one decimal; {@link Double#NaN} passes through. */
+    public static double clampPercent(double raw) {
+        if (Double.isNaN(raw)) return raw;
+        double v = raw < 0 ? 0 : Math.min(raw, 100);
+        return Math.round(v * 10.0) / 10.0;
+    }
+
+    /** JSON number token for a percent: {@code null} for NaN, else integer or one-decimal. */
+    public static String progressToken(double percent) {
+        double p = clampPercent(percent);
+        if (Double.isNaN(p)) return "null";
+        if (p == Math.rint(p)) return Long.toString((long) p);
+        return Double.toString(p);
     }
 }

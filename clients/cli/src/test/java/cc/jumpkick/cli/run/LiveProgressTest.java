@@ -34,16 +34,13 @@ class LiveProgressTest {
         assertThat(p.percent()).isNull();
         p.update(1, 3);
         assertThat(p.percent()).isEqualTo(33.3);
-        assertThat(p.jsonToken()).isEqualTo("33.3");
+        assertThat(WorkspaceProgressTracker.progressToken(p.percent())).isEqualTo("33.3");
     }
 
     @Test
-    void json_token_formats_whole_numbers() {
-        LiveProgress p = LiveProgress.get();
-        p.setPercent(100.0);
-        assertThat(p.jsonToken()).isEqualTo("100");
-        p.clear();
-        assertThat(p.jsonToken()).isEqualTo("null");
+    void progress_token_formats_whole_numbers() {
+        assertThat(WorkspaceProgressTracker.progressToken(100.0)).isEqualTo("100");
+        assertThat(WorkspaceProgressTracker.progressToken(Double.NaN)).isEqualTo("null");
     }
 
     @Test
@@ -56,18 +53,5 @@ class LiveProgressTest {
         assertThat(p.percent()).isEqualTo(60.0);
     }
 
-    @Test
-    void aggregate_context_applies_engine_snapshot_to_live_progress() {
-        LiveProgress.get().clear(); // parallel forks / prior class must not leak static %
-        var cm = cc.jumpkick.cli.tui.CommandManager.pipeline(
-                new java.io.PrintStream(new java.io.ByteArrayOutputStream()), "Build", false);
-        var agg = new AggregateContext(cm);
-        // Preflight labels alone do not invent a percent (engine owns aggregate).
-        agg.preflight("plan", 5, 10, "Preparing…");
-        assertThat(LiveProgress.get().percent()).isNull();
-        long pf = WorkspaceProgressTracker.PREFLIGHT_UNITS;
-        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(pf, pf + 100, 50.0, "execute", 0, 2));
-        assertThat(LiveProgress.get().percent()).isEqualTo(50.0);
-    }
 }
 

@@ -863,9 +863,8 @@ public final class BuildService {
      * Assemble one dirty module's pipeline + estimates. Only called for modules in the dirty set
      * (JK-1102); clean modules never enter here. {@code forceRebuild} seeds {@link
      * EffortWeights#predict} so bar weights don't collapse as fully-cached for upstream-dirty work.
-     * A separate EffortWeights walk for {@code fullyCached} was removed (JK-1101) — dirty modules are
-     * never fully-cached for plan purposes; {@link BuildPipelines#coreBuilder} still predicts weights
-     * once via its lazy plan supplier.
+     * Dirty modules are never fully-cached for plan purposes; {@link BuildPipelines#coreBuilder}
+     * still predicts weights once via its lazy plan supplier.
      *
      * <p>JK-1113: when the static pipeline shape fingerprint is warm and the session is not
      * force/rebuild, reuse memoized {@code estimatedTotalWeight} (skip the parallel step estimate).

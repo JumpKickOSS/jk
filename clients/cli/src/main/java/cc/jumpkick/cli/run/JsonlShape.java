@@ -27,7 +27,29 @@ public final class JsonlShape {
      */
     public static final int SCHEMA = 1;
 
+    /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
+    static final java.util.Set<String> HOT_TYPES =
+            java.util.Set.of("progress", "tick-update", "workspace-progress", "label", "output");
+
+    private static final Object STDOUT_LOCK = new Object();
+
     private JsonlShape() {}
+
+    /**
+     * Emit one workspace-envelope line: progress rider applied, dual-written to the active {@link
+     * CliSessionTranscript}; printed to stdout only when {@code toStdout} ({@code --output
+     * json}/{@code jsonl}).
+     */
+    public static void emitJsonl(String line, boolean toStdout) {
+        String decorated = withProgress(line);
+        if (toStdout) {
+            synchronized (STDOUT_LOCK) {
+                System.out.println(decorated);
+                System.out.flush();
+            }
+        }
+        CliSessionTranscript.appendActive(decorated);
+    }
 
     /** Shared prefix: schema + ts + type. */
     private static StringBuilder open(String type) {
@@ -62,16 +84,9 @@ public final class JsonlShape {
         StringBuilder sb = new StringBuilder(line.length() + 24);
         sb.append(line, 0, end);
         sb.append(",\"progress\":");
-        if (progress == null) {
-            sb.append("null");
-        } else {
-            double v = progress;
-            if (v < 0) v = 0;
-            if (v > 100) v = 100;
-            v = Math.round(v * 10.0) / 10.0;
-            if (v == Math.rint(v)) sb.append((long) v);
-            else sb.append(v);
-        }
+        sb.append(progress == null
+                ? "null"
+                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
         sb.append('}');
         return sb.toString();
     }
@@ -243,7 +258,6 @@ public final class JsonlShape {
                 .toString();
     }
 
-    /** Workspace graph planned — agents learn module count before any module pipeline. */
     /**
      * Engine workspace aggregate progress (JK-1120). Clients mirror the engine's tracker snapshot;
      * do not recompute from module ticks.

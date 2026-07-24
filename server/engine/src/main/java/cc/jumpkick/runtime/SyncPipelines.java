@@ -226,7 +226,7 @@ public final class SyncPipelines {
 
                             @Override
                             public void missing(String artifact, String detail) {
-                                // Empty code → ProgressBarListener omits [step/code] brackets.
+                                // Empty code → diagnostic render omits [step/code] brackets.
                                 ctx.warn("", artifact + " " + detail + ".");
                             }
                         });

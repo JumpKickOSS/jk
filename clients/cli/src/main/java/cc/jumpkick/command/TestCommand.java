@@ -32,14 +32,11 @@ import java.util.List;
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
  * separate, Java-only test path to keep in sync.
  *
- * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same {@code
- * ProgressBarListener} {@code jk compile}/{@code jk build} use): each completion ticks the
- * numerator, each failure becomes a {@code ctx.error}, discovery grows the denominator.
+ * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same live
+ * console {@code jk compile}/{@code jk build} use): each completion ticks the numerator, each
+ * failure becomes a {@code ctx.error}, discovery grows the denominator.
  */
 public final class TestCommand implements CliCommand {
-
-    /** Serializes workspace JSONL envelope lines when modules run in parallel. */
-    private static final Object JSONL_LOCK = new Object();
 
     @Override
     public String name() {
@@ -246,7 +243,7 @@ public final class TestCommand implements CliCommand {
         if (modules.isEmpty()) return 0;
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        emitJsonl(JsonlShape.workspaceStart(modules.size()), json);
+        JsonlShape.emitJsonl(JsonlShape.workspaceStart(modules.size()), json);
         int worst = 0;
         try {
             if (!parallelTests || modules.size() == 1) {
@@ -284,7 +281,7 @@ public final class TestCommand implements CliCommand {
             }
         } finally {
             long ms = (System.nanoTime() - start) / 1_000_000;
-            emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()), json);
+            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()), json);
         }
         return worst;
     }
@@ -295,7 +292,7 @@ public final class TestCommand implements CliCommand {
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
+        JsonlShape.emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
         long t0 = System.nanoTime();
         PipelineResult result;
         int code;
@@ -335,19 +332,8 @@ public final class TestCommand implements CliCommand {
             code = Exit.SOFTWARE;
         }
         long ms = (System.nanoTime() - t0) / 1_000_000;
-        emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, code == 0, ms), json);
+        JsonlShape.emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, code == 0, ms), json);
         return code;
-    }
-
-    private static void emitJsonl(String line, boolean toStdout) {
-        String decorated = JsonlShape.withProgress(line);
-        if (toStdout) {
-            synchronized (JSONL_LOCK) {
-                System.out.println(decorated);
-                System.out.flush();
-            }
-        }
-        CliSessionTranscript.appendActive(decorated);
     }
 
     /**

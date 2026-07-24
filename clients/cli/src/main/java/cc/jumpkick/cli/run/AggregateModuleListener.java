@@ -75,7 +75,7 @@ public final class AggregateModuleListener implements PipelineListener {
         if (ConsoleSpec.isCompilerCode(code)) {
             emit(ConsoleSpec.compilerWarning(step, message));
         } else {
-            emit(ProgressBarListener.renderDiagnostic(
+            emit(renderDiagnostic(
                     Glyphs.BANG + " Warning",
                     cc.jumpkick.cli.theme.Theme.active().warning().bold(),
                     step,
@@ -88,12 +88,53 @@ public final class AggregateModuleListener implements PipelineListener {
     public void error(String step, String code, String message) {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
         cm.attachPhaseError(module, step, "", brief);
-        emit(ProgressBarListener.renderDiagnostic(
+        emit(renderDiagnostic(
                 Glyphs.CROSS + " Error",
                 cc.jumpkick.cli.theme.Theme.active().error().bold(),
                 step,
                 code,
                 message));
+    }
+
+    /** Styled {@code ! Warning [step/code]: Summary — detail} diagnostic line. */
+    static String renderDiagnostic(
+            String prefix,
+            org.jline.utils.AttributedStyle prefixStyle,
+            String step,
+            String code,
+            String message) {
+        String summary = message == null ? "" : message;
+        String detail = null;
+        int sep = summary.indexOf(" — ");
+        if (sep >= 0) {
+            detail = capitalize(summary.substring(sep + 3));
+            summary = summary.substring(0, sep);
+        }
+        // Only capitalize when the summary looks like a sentence start (first char
+        // is a plain letter not followed by a hyphen — artifact names like
+        // "jk-audit-runner" should stay lowercase).
+        if (!summary.isEmpty()
+                && Character.isLowerCase(summary.charAt(0))
+                && (summary.length() < 2 || summary.charAt(1) != '-')) {
+            summary = capitalize(summary);
+        }
+        var sb = new org.jline.utils.AttributedStringBuilder();
+        sb.append(prefix, prefixStyle);
+        // Omit [step/code] when code is absent — keeps simple informational
+        // warnings (e.g. missing worker jars) uncluttered.
+        if (code != null && !code.isBlank()) {
+            sb.append(" [").append(step).append("/").append(code).append("]");
+        }
+        sb.append(": ");
+        sb.append(summary, cc.jumpkick.cli.theme.Theme.active().focused());
+        if (detail != null) sb.append(" — ").append(detail, cc.jumpkick.cli.theme.Theme.active().activeStep());
+        return sb.toAnsi();
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s == null ? "" : s;
+        char first = s.charAt(0);
+        return Character.isLowerCase(first) ? Character.toUpperCase(first) + s.substring(1) : s;
     }
 
     private void emit(String line) {

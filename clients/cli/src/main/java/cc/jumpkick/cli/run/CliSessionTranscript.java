@@ -66,7 +66,6 @@ public final class CliSessionTranscript {
      */
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
     private long lastFlushMs;
-    private boolean dirty;
     private String wedgeSummary;
     private boolean closed;
 
@@ -186,38 +185,42 @@ public final class CliSessionTranscript {
     public void appendRaw(String line, boolean immediateFlush) {
         if (line == null || line.isBlank()) return;
         // Normalize: callers may pass a line that already ends with \n.
-        String record = line;
-        while (!record.isEmpty() && (record.charAt(record.length() - 1) == '\n' || record.charAt(record.length() - 1) == '\r')) {
-            record = record.substring(0, record.length() - 1);
-        }
+        String record = stripTrailingNewlines(line);
         if (record.isEmpty()) return;
         byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
         synchronized (lock) {
             if (closed || out == null) return;
             try {
                 pending.write(bytes);
-                dirty = true;
                 long now = System.currentTimeMillis();
                 if (immediateFlush || now - lastFlushMs >= LiveProgress.DISK_HEARTBEAT_MS) {
                     flushPending();
                 }
             } catch (IOException ignored) {
-                // Best-effort; leave pending for a later attempt or finish.
+                // Best-effort; the failed batch was already dropped by flushPending.
             }
         }
     }
 
     /**
      * Write every complete pending record to the file, then flush the OS stream. Empty pending is a
-     * no-op. Never writes a non-newline-terminated fragment.
+     * no-op. Never writes a non-newline-terminated fragment. Pending is cleared <em>before</em> the
+     * write: a failed or torn write drops that batch (best-effort file) rather than re-writing it
+     * later as duplicate/torn records or growing the buffer unboundedly.
      */
     private void flushPending() throws IOException {
         if (out == null || pending.size() == 0) return;
-        out.write(pending.toByteArray());
-        out.flush();
+        byte[] records = pending.toByteArray();
         pending.reset();
         lastFlushMs = System.currentTimeMillis();
-        dirty = false;
+        out.write(records);
+        out.flush();
+    }
+
+    private static String stripTrailingNewlines(String s) {
+        int end = s.length();
+        while (end > 0 && (s.charAt(end - 1) == '\n' || s.charAt(end - 1) == '\r')) end--;
+        return s.substring(0, end);
     }
 
     /**
@@ -230,15 +233,15 @@ public final class CliSessionTranscript {
         s.append(line, isImmediateType(line));
     }
 
+    /** Needles derived from the one classification source, {@link JsonlShape#HOT_TYPES}. */
+    private static final String[] HOT_TYPE_NEEDLES =
+            JsonlShape.HOT_TYPES.stream().map(t -> "\"type\":\"" + t + "\"").toArray(String[]::new);
+
     /** Semantic events flush immediately (M1–M3); hot ticks use the 2s heartbeat (M4/M5). */
     static boolean isImmediateType(String line) {
         // Cheap substring checks — avoid full JSON parse on the hot path.
-        if (line.contains("\"type\":\"progress\"")
-                || line.contains("\"type\":\"tick-update\"")
-                || line.contains("\"type\":\"workspace-progress\"")
-                || line.contains("\"type\":\"label\"")
-                || line.contains("\"type\":\"output\"")) {
-            return false;
+        for (String needle : HOT_TYPE_NEEDLES) {
+            if (line.contains(needle)) return false;
         }
         return true;
     }
@@ -258,14 +261,7 @@ public final class CliSessionTranscript {
                         exitCode, durationMs, wedgeSummary == null ? null : stripAnsi(wedgeSummary), List.copyOf(modules)));
                 // Enqueue finish as a complete record, then drain pending.
                 if (out != null) {
-                    String record = finishLine;
-                    while (!record.isEmpty()
-                            && (record.charAt(record.length() - 1) == '\n'
-                                    || record.charAt(record.length() - 1) == '\r')) {
-                        record = record.substring(0, record.length() - 1);
-                    }
-                    pending.write((record + "\n").getBytes(StandardCharsets.UTF_8));
-                    dirty = true;
+                    pending.write((stripTrailingNewlines(finishLine) + "\n").getBytes(StandardCharsets.UTF_8));
                     flushPending();
                 }
                 return Optional.of(file);

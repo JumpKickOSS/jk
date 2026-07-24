@@ -1587,13 +1587,8 @@ public final class EngineProtocol {
      * JSON token {@code null} when {@code denominator <= 0}.
      */
     static String progressPercent(long numerator, long denominator) {
-        if (denominator <= 0) return "null";
-        double raw = 100.0 * (double) numerator / (double) denominator;
-        if (raw < 0) raw = 0;
-        if (raw > 100) raw = 100;
-        double p = Math.round(raw * 10.0) / 10.0;
-        if (p == Math.rint(p)) return Long.toString((long) p);
-        return Double.toString(p);
+        return cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(
+                cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(numerator, denominator));
     }
 
     public static String progress(

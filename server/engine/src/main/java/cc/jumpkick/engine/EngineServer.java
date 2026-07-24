@@ -1153,13 +1153,13 @@ public final class EngineServer implements AutoCloseable {
         progressEmitState.put(requestId, new long[] {System.currentTimeMillis(), pctMillis});
     }
 
-    /** ≥0.1% change or ≥80 ms since last emit (TTY frame cadence). */
+    /** ≥0.1% change or one TTY frame (WorkspaceProgressTracker.TTY_FRAME_MS) since last emit. */
     private boolean shouldEmitWorkspaceProgress(
             long requestId, cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
         long[] prev = progressEmitState.get(requestId);
         if (prev == null) return true;
         long now = System.currentTimeMillis();
-        if (now - prev[0] >= 80) return true;
+        if (now - prev[0] >= cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS) return true;
         if (!snap.hasPercent()) return false;
         long pctMillis = Math.round(snap.percent() * 10.0);
         return Math.abs(pctMillis - prev[1]) >= 1; // 0.1%

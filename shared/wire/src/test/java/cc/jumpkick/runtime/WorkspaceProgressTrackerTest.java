@@ -129,7 +129,7 @@ class WorkspaceProgressTrackerTest {
         var s = t.finish();
         assertThat(s.percent()).isEqualTo(100.0);
         assertThat(s.phase()).isEqualTo("done");
-        assertThat(s.progressToken()).isEqualTo("100");
+        assertThat(WorkspaceProgressTracker.progressToken(s.percent())).isEqualTo("100");
     }
 
     @Test
