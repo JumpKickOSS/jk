@@ -256,8 +256,6 @@ class CommandManagerTest {
         assertThat(joined).contains(Theme.colorize("Compile", t.success()));
         assertThat(joined).contains(Theme.colorize("Test", t.error()));
         assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
-        assertThat(joined).doesNotContain(Theme.colorize(" Compile ", t.phaseRunningPill()));
-        assertThat(joined).doesNotContain(Theme.colorize(" Test ", t.phaseFailedPill()));
         assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
     }
 

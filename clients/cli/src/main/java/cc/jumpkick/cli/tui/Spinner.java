@@ -23,17 +23,10 @@ public final class Spinner implements AutoCloseable {
     /** Solid circle used for the pulse animation (U+25CF). */
     public static final String PULSE_GLYPH = "●";
 
-    /**
-     * @deprecated Use {@link #PULSE_GLYPH}; kept as a single-frame array for older tests that index
-     *     {@code FRAMES[0]}.
-     */
-    @Deprecated
-    static final String[] FRAMES = {PULSE_GLYPH};
-
     /** Frames in one full white→dim→white cycle (odd so the midpoint lands exactly on dim). */
     static final int PULSE_FRAMES = 25;
 
-    /** Interval between pulse frames (~1.9s per full breath at 24 frames). */
+    /** Interval between pulse frames (2.0s per full breath at 25 frames). */
     static final long FRAME_MS = 80L;
 
     /** Dim end of the pulse when the spinner sits on the terminal (not on a chip). */
@@ -144,14 +137,5 @@ public final class Spinner implements AutoCloseable {
         if (n <= 1) return 0.0;
         double t = (double) frame / (n - 1); // 0..1
         return t <= 0.5 ? t * 2.0 : (1.0 - t) * 2.0;
-    }
-
-    /**
-     * @deprecated Prefer {@link #buildPulseStyles}; retained for callers that still expect a linear
-     *     gradient of length {@code n}.
-     */
-    @Deprecated
-    static AttributedStyle[] buildGradient(int n) {
-        return buildPulseStyles(n, PULSE_DIM);
     }
 }

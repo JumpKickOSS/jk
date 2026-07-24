@@ -6,8 +6,7 @@ import java.util.Map;
 
 /**
  * Engine-owned workspace aggregate progress (JK-1120). Preflight reservation + calibrated module
- * weight slices + concurrent in-flight sum + monotonic peak — the model the CLI bar used to own
- * client-side.
+ * weight slices + concurrent in-flight sum + monotonic peak.
  *
  * <p><b>Smart engine / dumb clients:</b> all aggregate tuning lives here (or in call sites that only
  * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values —
@@ -28,7 +27,7 @@ public final class WorkspaceProgressTracker {
     private int modulesComplete;
     private int modulesTotal;
 
-    /** Monotonic display peak at a stable total (parity with former CLI CommandManager). */
+    /** Monotonic display peak at a stable total. */
     private double peakFraction;
     private long peakDenominator;
 
@@ -114,8 +113,9 @@ public final class WorkspaceProgressTracker {
                 m.knownDenominator = denominator > 0 ? denominator : m.slice;
                 modules.put(key, m);
             } else if (denominator != m.knownDenominator) {
-                long delta = denominator - m.knownDenominator;
-                total += delta;
+                // Reweight with the denominator; clamp a shrink so slice/total never go negative.
+                long delta = Math.max(denominator - m.knownDenominator, -m.slice);
+                total = Math.max(0, total + delta);
                 m.slice += delta;
                 m.knownDenominator = denominator;
             }
@@ -211,10 +211,7 @@ public final class WorkspaceProgressTracker {
     }
 
     private String phaseName() {
-        if (executeCalibrated && total >= 0 && modulesComplete >= modulesTotal && modulesTotal > 0
-                && moduleAdvanced.isEmpty()) {
-            return "execute";
-        }
+        // "done" is finish()'s alone — everything after calibrate is "execute".
         return executeCalibrated ? "execute" : "preflight";
     }
 

@@ -139,34 +139,6 @@ public interface Theme {
     Rgb pipelineFailColor();
 
     /**
-     * Live phase-chain pill (running) — bright blue text on deep blue, matching the web dashboard
-     * {@code .step-node.running} (dark bg + bright fg). Distinct from {@link #pipelineChip()} /
-     * CommandWedge solid chips.
-     */
-    AttributedStyle phaseRunningPill();
-
-    /** Background of {@link #phaseRunningPill()} — powerline cap color. */
-    Rgb phaseRunningBg();
-
-    /**
-     * Live phase-chain pill (success) — bright green on deep green tint ({@code #1a3430} / {@code
-     * #00b468}), matching web {@code .step-node.success}.
-     */
-    AttributedStyle phaseSuccessPill();
-
-    /** Background of {@link #phaseSuccessPill()} — powerline cap color. */
-    Rgb phaseSuccessBg();
-
-    /**
-     * Live phase-chain pill (failed) — bright red on deep red tint, matching web {@code
-     * .step-node.failed}.
-     */
-    AttributedStyle phaseFailedPill();
-
-    /** Background of {@link #phaseFailedPill()} — powerline cap color. */
-    Rgb phaseFailedBg();
-
-    /**
      * Layer {@code bg} as the background of {@code base}, keeping its foreground and attributes
      * (unless {@code --color} disables color). Used to build the pipeline-header pill: the spinner and
      * name sit on the bar gradient's left-most color, and the U+E0B0 cap pairs that same color (as

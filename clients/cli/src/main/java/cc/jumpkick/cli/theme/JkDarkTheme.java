@@ -41,21 +41,6 @@ public final class JkDarkTheme implements Theme {
     public static final Rgb NORMAL_RED = Rgb.hex(0xFF3366); // web --err (neon red)
     public static final Rgb NORMAL_GREEN = Rgb.hex(0x00B368); // web --okc (deep neon green)
     public static final Rgb PIPELINE_GREEN = NORMAL_GREEN.darker(0.30); // deep green × 0.7 — build wedge background
-    /**
-     * Phase-chain success pill — dark green tint + bright okc fg (web {@code .step-node.success};
-     * user-confirmed bg {@code #1a3430}, fg {@code #00b468}).
-     */
-    public static final Rgb PHASE_OK_BG = Rgb.hex(0x1A3430);
-    public static final Rgb PHASE_OK_FG = Rgb.hex(0x00B468);
-    /** Phase-chain running pill — web {@code --runc} bg + {@code --run-fg}. */
-    public static final Rgb PHASE_RUN_BG = PRIMARY_DARK; // #124A8C
-    public static final Rgb PHASE_RUN_FG = Rgb.hex(0xD6ECFF); // web --run-fg
-    /**
-     * Phase-chain failed pill — dark err tint (~12% --err on near-black) + bright --err fg (web
-     * {@code .step-node.failed}).
-     */
-    public static final Rgb PHASE_ERR_BG = Rgb.hex(0x3A1520);
-    public static final Rgb PHASE_ERR_FG = NORMAL_RED; // #FF3366
     public static final Rgb NORMAL_YELLOW = Rgb.hex(0xFFB800); // web --warn (neon amber)
     public static final Rgb NORMAL_BLUE = Rgb.hex(0x3D9BFF); // web --run (neon electric blue)
     public static final Rgb NORMAL_MAGENTA = Rgb.hex(0xC04DFF); // web --prog-b (neon violet)
@@ -327,36 +312,6 @@ public final class JkDarkTheme implements Theme {
     @Override
     public Rgb pipelineFailColor() {
         return NORMAL_RED;
-    }
-
-    @Override
-    public AttributedStyle phaseRunningPill() {
-        return withBg(withColor(AttributedStyle.DEFAULT, PHASE_RUN_FG), PHASE_RUN_BG);
-    }
-
-    @Override
-    public Rgb phaseRunningBg() {
-        return PHASE_RUN_BG;
-    }
-
-    @Override
-    public AttributedStyle phaseSuccessPill() {
-        return withBg(withColor(AttributedStyle.DEFAULT, PHASE_OK_FG), PHASE_OK_BG);
-    }
-
-    @Override
-    public Rgb phaseSuccessBg() {
-        return PHASE_OK_BG;
-    }
-
-    @Override
-    public AttributedStyle phaseFailedPill() {
-        return withBg(withColor(AttributedStyle.DEFAULT, PHASE_ERR_FG), PHASE_ERR_BG);
-    }
-
-    @Override
-    public Rgb phaseFailedBg() {
-        return PHASE_ERR_BG;
     }
 
     @Override

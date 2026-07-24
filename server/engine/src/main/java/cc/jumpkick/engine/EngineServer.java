@@ -1552,7 +1552,8 @@ public final class EngineServer implements AutoCloseable {
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             accOutcome(rid, result.success(), result.exitCode());
             if (rid > 0) {
-                progressTracker(rid).finish();
+                // finish() pins 100%/done — a failed build keeps its last true percent.
+                if (result.success()) progressTracker(rid).finish();
                 emitWorkspaceProgress(rid, writer, true);
             }
             // Chrome timeline before terminal event so the client still has the socket open.
@@ -3185,8 +3186,11 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void onPlan(java.util.List<ModulePlan> plan) {
                 long totalWeight = 0;
-                var weights = progressWeights.computeIfAbsent(
-                        eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<>());
+                // Id-less builds must not insert a key clearProgress can never remove.
+                var weights = eventRequestId > 0
+                        ? progressWeights.computeIfAbsent(
+                                eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<String, Long>())
+                        : new java.util.concurrent.ConcurrentHashMap<String, Long>();
                 for (ModulePlan m : plan) {
                     String dir = m.dir().toString();
                     totalWeight += m.weight();
@@ -4224,7 +4228,7 @@ public final class EngineServer implements AutoCloseable {
                     SessionContext.where(session, () -> BuildService.buildWorkspace(req, hubListener(entryDir.toString())));
             accOutcome(rid, result.success(), result.exitCode());
             if (rid > 0) {
-                progressTracker(rid).finish();
+                if (result.success()) progressTracker(rid).finish();
                 emitWorkspaceProgress(rid, null, true);
             }
             if (!result.success()) {
@@ -4332,8 +4336,11 @@ public final class EngineServer implements AutoCloseable {
             @Override
             public void onPlan(java.util.List<ModulePlan> plan) {
                 long totalWeight = 0;
-                var weights = progressWeights.computeIfAbsent(
-                        eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<>());
+                // Id-less builds must not insert a key clearProgress can never remove.
+                var weights = eventRequestId > 0
+                        ? progressWeights.computeIfAbsent(
+                                eventRequestId, id -> new java.util.concurrent.ConcurrentHashMap<String, Long>())
+                        : new java.util.concurrent.ConcurrentHashMap<String, Long>();
                 for (ModulePlan m : plan) {
                     totalWeight += m.weight();
                     weights.put(m.dir().toString(), (long) m.weight());

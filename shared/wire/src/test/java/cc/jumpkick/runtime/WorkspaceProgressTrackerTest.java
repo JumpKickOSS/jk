@@ -11,6 +11,18 @@ class WorkspaceProgressTrackerTest {
     private static final long PF = WorkspaceProgressTracker.PREFLIGHT_UNITS;
 
     @Test
+    void denominator_shrink_clamps_slice_and_total_non_negative() {
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(50, 1);
+        t.moduleProgress("a", 50, 10, 100);
+        // Shrink far below the registered slice — must clamp, not go negative.
+        var s = t.moduleProgress("a", 50, 1, 2);
+        assertThat(t.executeTotal()).isGreaterThanOrEqualTo(0);
+        assertThat(s.numerator()).isGreaterThanOrEqualTo(0);
+        assertThat(s.denominator()).isGreaterThanOrEqualTo(PF);
+    }
+
+    @Test
     void calibrated_bar_keeps_a_fixed_denominator_and_advances_cumulatively() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(100, 2);
