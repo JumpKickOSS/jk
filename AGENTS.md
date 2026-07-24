@@ -91,7 +91,7 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 ### Done criteria
 
-**Two-tier tests** (keep the default loop under ~5 minutes):
+**Two-tier tests** (keep the default loop under ~5 minutes; details: [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md)):
 
 | Command | What runs | When |
 |---------|-----------|------|

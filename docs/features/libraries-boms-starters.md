@@ -293,7 +293,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 
 ## 13. Ticket references
 
-Kanban tickets should link this PRD when touching:
+kanartist tickets (`JK-NNNN`) should link this PRD when touching:
 
 - Library catalog layers, registry, `jk library *`
 - `[libraries]`, shorthand deps, `jk add` short names

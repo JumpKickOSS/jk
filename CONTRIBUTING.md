@@ -88,7 +88,7 @@ The client never embeds the engine (ticket-1020). Spawning uses
 
 | Still Gradle | Why |
 |---|---|
-| `./gradlew test` (full suite) | CI source of truth for the unit/integration suite (Linux, every push) |
+| `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI source of truth for the test suite (Linux; unit on every push/PR, integration on `main` pushes + heavy-path PRs) — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
 | `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
 
@@ -103,8 +103,8 @@ jk release --skip-tests    # native CLI + JVM engine + workers; alias: jk dist
 
 | Lane | When | What |
 |---|---|---|
-| **Linux** (`ci.yml`) | Every push / PR | Full `./gradlew test`, self-host, showcase |
-| **Windows + macOS** (`ci-os-nightly.yml`) | **Nightly** (cron) + manual `workflow_dispatch` | Filtered `:core:test :wire:test :engine:test :cli:test`; Windows exercises real TCP+token engine transport (JK-1011 field path); macOS thin-client smoke |
+| **Linux** (`ci.yml`) | Every push / PR | Unit `./gradlew test` always; `./gradlew integrationTest` on `main` pushes + heavy-path PRs; self-host, showcase |
+| **Windows + macOS** (`ci-os-nightly.yml`) | **Nightly** (cron) + manual `workflow_dispatch` | Filtered `:core:test :wire:test :engine:test :cli:test` plus the matching `:integrationTest` tasks; Windows exercises real TCP+token engine transport (JK-1011 field path); macOS thin-client smoke |
 
 Rationale: macOS runners ~10× and Windows ~2× Linux minutes — not every push. Native-image
 per OS waits on the release matrix (JK-1066).
@@ -112,8 +112,9 @@ per OS waits on the release matrix (JK-1066).
 **Reproduce locally**
 
 ```bash
-# Same filter as nightly:
-./gradlew :core:test :wire:test :engine:test :cli:test
+# Same filter as nightly (unit + integration for the OS-sensitive modules):
+./gradlew :core:test :wire:test :engine:test :cli:test \
+  :core:integrationTest :wire:integrationTest :engine:integrationTest :cli:integrationTest
 
 # Windows local install of a thin client (PowerShell):
 #   .\gradlew :cli:installDist :engine:shadowJar
@@ -131,17 +132,20 @@ siblings** (today: `test-runner`, `java-compiler`), the test JVM gets
 `-Djk.<worker>.plugin.jar` pointing at the **built shadow jar** under
 `plugins/<name>/target/`. Other workers still resolve from `installLocal` / CAS.
 
-CLI integration tests (`:cli:test`) spawn a real engine from `:engine:shadowJar` (materialized
-into the test `JK_HOME`) — no in-process dual path (ticket-1020).
+CLI integration tests (`:cli:integrationTest`) spawn a real engine from `:engine:shadowJar`
+(materialized into the test `JK_HOME`) — no in-process dual path (ticket-1020). `:cli:test` is
+the pure unit tier (TUI/args/jsonl) with no shadowJar or worker-jar dependency.
 
-**Suite timing (order of magnitude, warm laptop):** `:cli:test` ≈ **7 minutes** with warm
-engine across methods (1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop
-engine only when delete fails). Full `./gradlew test` is longer. Use module filters mid-ticket;
-re-run full `./gradlew test` before merge to `main`. Shared dep cache:
+**Suite timing (order of magnitude, warm laptop):** default `./gradlew test` (unit tier) ≈
+**3 minutes**; `:cli:integrationTest` ≈ **7 minutes** with warm engine across methods
+(1042/1055). TempDir cleanup uses `JkTempDirDeletionStrategy` (stop engine only when delete
+fails). Use module filters mid-ticket; the pre-merge bar is `./gradlew checkAll` (unit +
+integration) before merge to `main`. Tier model:
+[docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md). Shared dep cache:
 `jk.test.cache.dir` under `clients/cli/build/test-shared-cache`.
 
 Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
-for dogfood; keep `./gradlew :cli:test` for the CLI integration suite (nested engines).
+for dogfood; keep `./gradlew :cli:integrationTest` for the CLI integration suite (nested engines).
 
 Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
 

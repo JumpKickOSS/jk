@@ -356,7 +356,7 @@ do not force main classpath versions.
 | Artifact | Config | Command |
 |---|---|---|
 | Thin jar | default | `jk build` |
-| Assembly jar | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
+| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
 

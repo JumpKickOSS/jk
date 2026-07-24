@@ -1,6 +1,8 @@
 # Test suite tiers (unit vs integration)
 
-**Goal:** default `./gradlew test` under **~5 minutes**; keep high-signal e2e on demand.
+**Goal:** default `./gradlew test` under **~5 minutes**; keep high-signal e2e on demand. (The old
+single-tier suite mixed engine/e2e, shadowJar+worker packaging deps, and Android multi-build tests
+into the default `test` task with no timeouts.)
 
 ## Commands
 
@@ -17,13 +19,6 @@ Tag new heavy tests at class level:
 @Tag("slow")        // Android / multi-minute / large downloads
 @Tag("bench")       // microbench only (never PR)
 ```
-
-## Why the suite was slow
-
-1. `:cli:test` serial + **EngineTestExtension** stop-after-every-class  
-2. Unit tests depending on **shadowJar + 8 workers**  
-3. Android / multi-build e2e mixed into default `test`  
-4. No timeouts → multi-minute freezes looked like “hangs”
 
 ## Redundancy / prune candidates (integration tier)
 
