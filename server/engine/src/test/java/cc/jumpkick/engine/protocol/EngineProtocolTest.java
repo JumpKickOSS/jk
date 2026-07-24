@@ -431,7 +431,7 @@ class EngineProtocolTest {
         String line = EngineProtocol.auth("secret-token");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.AUTH);
         assertThat(Jsonl.str(line, "token")).isEqualTo("secret-token");
-        assertThat(line).startsWith("{\"t\":");
+        assertThat(line).startsWith("{\"type\":");
     }
 
     @Test

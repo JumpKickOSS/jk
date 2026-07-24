@@ -12,7 +12,7 @@ class JobWatchdogConfigTest {
     @Test
     void heartbeat_json_shape() {
         String line = EngineProtocol.heartbeat(12_345L);
-        assertThat(line).contains("\"t\":\"heartbeat\"");
+        assertThat(line).contains("\"type\":\"heartbeat\"");
         assertThat(line).contains("\"elapsedMillis\":12345");
         assertThat(EngineProtocol.typeOf(line)).isEqualTo(EngineProtocol.HEARTBEAT);
     }

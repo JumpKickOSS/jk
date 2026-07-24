@@ -3395,7 +3395,7 @@ public final class EngineServer implements AutoCloseable {
         send(
                 writer,
                 JsonOut.object()
-                        .put("t", EngineProtocol.METRICS_DONE)
+                        .put("type", EngineProtocol.METRICS_DONE)
                         .put("count", n)
                         .toString());
     }
@@ -3405,7 +3405,7 @@ public final class EngineServer implements AutoCloseable {
         boolean global = e.dir().isEmpty();
         String scope = e.step() == null ? (global ? "global" : "project") : (global ? "step" : "project/step");
         return JsonOut.object()
-                .put("t", EngineProtocol.METRICS_ENTRY)
+                .put("type", EngineProtocol.METRICS_ENTRY)
                 .put("scope", scope)
                 .put("kind", e.kind())
                 .put("dir", e.dir())
@@ -3439,7 +3439,7 @@ public final class EngineServer implements AutoCloseable {
             send(
                     writer,
                     JsonOut.object()
-                            .put("t", EngineProtocol.HISTORY_ENTRY)
+                            .put("type", EngineProtocol.HISTORY_ENTRY)
                             .put("id", r.id())
                             .put("kind", r.kind())
                             .put("dir", r.dir())
@@ -3461,7 +3461,7 @@ public final class EngineServer implements AutoCloseable {
         send(
                 writer,
                 JsonOut.object()
-                        .put("t", EngineProtocol.HISTORY_DONE)
+                        .put("type", EngineProtocol.HISTORY_DONE)
                         .put("count", n)
                         .toString());
     }
@@ -3474,7 +3474,7 @@ public final class EngineServer implements AutoCloseable {
             send(
                     writer,
                     JsonOut.object()
-                            .put("t", EngineProtocol.ERROR)
+                            .put("type", EngineProtocol.ERROR)
                             .put("code", EngineProtocol.ERR_REQUEST_FAILED)
                             .put("message", "no such build: " + id)
                             .toString());
@@ -3486,7 +3486,7 @@ public final class EngineServer implements AutoCloseable {
         send(
                 writer,
                 JsonOut.object()
-                        .put("t", EngineProtocol.HISTORY_RECORD)
+                        .put("type", EngineProtocol.HISTORY_RECORD)
                         .put("id", r.id())
                         .put("kind", r.kind())
                         .put("dir", r.dir())
@@ -3512,7 +3512,7 @@ public final class EngineServer implements AutoCloseable {
             send(
                     writer,
                     JsonOut.object()
-                            .put("t", EngineProtocol.HISTORY_MODULE)
+                            .put("type", EngineProtocol.HISTORY_MODULE)
                             .put("coord", m.coord())
                             .put("dir", m.dir())
                             .put("success", m.success())
@@ -3535,7 +3535,7 @@ public final class EngineServer implements AutoCloseable {
             send(
                     writer,
                     JsonOut.object()
-                            .put("t", EngineProtocol.HISTORY_DIAG)
+                            .put("type", EngineProtocol.HISTORY_DIAG)
                             .put("severity", d.severity())
                             .put("step", d.step())
                             .put("code", d.code())
@@ -3547,7 +3547,7 @@ public final class EngineServer implements AutoCloseable {
         send(
                 writer,
                 JsonOut.object()
-                        .put("t", EngineProtocol.HISTORY_DONE)
+                        .put("type", EngineProtocol.HISTORY_DONE)
                         .put(
                                 "count",
                                 r.modules().size() + stepCount + r.diagnostics().size())
@@ -3557,7 +3557,7 @@ public final class EngineServer implements AutoCloseable {
     /** A {@code history-step} line, optionally tagged with its module label (null for single-pipeline). */
     private static String stepLine(BuildRecord.Step p, String module) {
         return JsonOut.object()
-                .put("t", EngineProtocol.HISTORY_STEP)
+                .put("type", EngineProtocol.HISTORY_STEP)
                 .put("module", module)
                 .put("name", p.name())
                 .put("status", p.status())
@@ -3572,7 +3572,7 @@ public final class EngineServer implements AutoCloseable {
         send(
                 writer,
                 JsonOut.object()
-                        .put("t", EngineProtocol.HISTORY_DELETED)
+                        .put("type", EngineProtocol.HISTORY_DELETED)
                         .put("id", id)
                         .put("deleted", deleted)
                         .toString());

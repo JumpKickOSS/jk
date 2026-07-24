@@ -5,15 +5,15 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
 
 /**
- * Engine wire vocabulary: newline-delimited JSON with a {@code "t"} discriminator. Same-version
- * client only (unversioned). Variable-length collections are repeated typed messages plus a
- * terminal marker — never nested object arrays.
+ * Engine wire vocabulary: newline-delimited JSON with a {@code "type"} discriminator (same name as
+ * CLI JSONL / SSE / MCP). Same-version client only (unversioned). Variable-length collections are
+ * repeated typed messages plus a terminal marker — never nested object arrays.
  */
 public final class EngineProtocol {
 
     private EngineProtocol() {}
 
-    public static final String TYPE_FIELD = "t";
+    public static final String TYPE_FIELD = "type";
 
     /**
      * Client → server first line on loopback TCP only: shared secret from {@code paths.token()}.
@@ -379,13 +379,13 @@ public final class EngineProtocol {
     /** Server → client: terminal for a metrics stream ({@code count} rows emitted). */
     public static final String METRICS_DONE = "metrics-done";
 
-    /** The {@code "t"} discriminator of a decoded message, or {@code null} if absent/malformed. */
+    /** The {@code "type"} discriminator of a decoded message, or {@code null} if absent/malformed. */
     public static String typeOf(String json) {
         return Jsonl.str(json, TYPE_FIELD);
     }
 
     public static String auth(String token) {
-        return "{\"t\":\"" + AUTH + "\",\"token\":" + Jsonl.quote(token) + "}";
+        return "{\"type\":\"" + AUTH + "\",\"token\":" + Jsonl.quote(token) + "}";
     }
 
     /**
@@ -400,7 +400,7 @@ public final class EngineProtocol {
 
     /** {@code purpose} is {@code connect} (working channel) or {@code probe} (liveness/version). */
     public static String hello(String version, String purpose) {
-        return "{\"t\":\"" + HELLO + "\",\"version\":" + Jsonl.quote(version)
+        return "{\"type\":\"" + HELLO + "\",\"version\":" + Jsonl.quote(version)
                 + ",\"proto\":" + PROTOCOL
                 + ",\"purpose\":" + Jsonl.quote(purpose) + "}";
     }
@@ -411,7 +411,7 @@ public final class EngineProtocol {
      * REBUILT dev engine is distinguishable from a stale one under the same version string.
      */
     public static String helloAck(String version, long pid, long startedAtMillis, boolean draining, String buildId) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + HELLO_ACK
                 + "\",\"version\":"
                 + Jsonl.quote(version)
@@ -429,15 +429,15 @@ public final class EngineProtocol {
     }
 
     public static String ping() {
-        return "{\"t\":\"" + PING + "\"}";
+        return "{\"type\":\"" + PING + "\"}";
     }
 
     public static String pong() {
-        return "{\"t\":\"" + PONG + "\"}";
+        return "{\"type\":\"" + PONG + "\"}";
     }
 
     public static String statusRequest() {
-        return "{\"t\":\"" + STATUS + "\"}";
+        return "{\"type\":\"" + STATUS + "\"}";
     }
 
     /**
@@ -505,7 +505,7 @@ public final class EngineProtocol {
             int peakActiveRequests,
             int peakActivePipelines) {
         String mcpUrl = mcpUrlFromHttp(httpUrl);
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + STATUS_ACK
                 + "\",\"version\":"
                 + Jsonl.quote(version)
@@ -561,7 +561,7 @@ public final class EngineProtocol {
 
     /** {@code force=true} exits the engine now (abandoning in-flight jobs); false drains gracefully. */
     public static String shutdown(boolean force) {
-        return "{\"t\":\"" + SHUTDOWN + "\",\"force\":" + force + "}";
+        return "{\"type\":\"" + SHUTDOWN + "\",\"force\":" + force + "}";
     }
 
     public static String bye() {
@@ -570,7 +570,7 @@ public final class EngineProtocol {
 
     /** Ack for {@link #SHUTDOWN}: reports the in-flight job count and whether a drain is now underway. */
     public static String bye(int pipelines, boolean draining) {
-        return "{\"t\":\"" + BYE + "\",\"pipelines\":" + pipelines + ",\"draining\":" + draining + "}";
+        return "{\"type\":\"" + BYE + "\",\"pipelines\":" + pipelines + ",\"draining\":" + draining + "}";
     }
 
     // ---- build-request (client → server) -------------------------------------------------------
@@ -595,7 +595,7 @@ public final class EngineProtocol {
             boolean freshenLock) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + BUILD_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -625,7 +625,7 @@ public final class EngineProtocol {
     }
 
     public static String buildCancel() {
-        return "{\"t\":\"" + BUILD_CANCEL + "\"}";
+        return "{\"type\":\"" + BUILD_CANCEL + "\"}";
     }
 
     /** Start a single-project test run (see {@link #TEST_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */
@@ -656,7 +656,7 @@ public final class EngineProtocol {
             boolean force,
             boolean parallelTests) {
         // noTimeline: session envelope only (see {@link #withSession}).
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + TEST_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -691,7 +691,7 @@ public final class EngineProtocol {
             boolean offline,
             boolean force) {
         // noTimeline: session envelope only (see {@link #withSession}).
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + SINGLE_BUILD_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -716,7 +716,7 @@ public final class EngineProtocol {
 
     /** Notify client that a chrome timeline file was written (absolute path). */
     public static String timeline(String absolutePath) {
-        return "{\"t\":\"" + TIMELINE + "\",\"path\":" + Jsonl.quote(absolutePath) + "}";
+        return "{\"type\":\"" + TIMELINE + "\",\"path\":" + Jsonl.quote(absolutePath) + "}";
     }
 
     /**
@@ -734,7 +734,7 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + LOCK_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -773,7 +773,7 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + UPDATE_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -814,7 +814,7 @@ public final class EngineProtocol {
             boolean force,
             boolean refresh,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + SYNC_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -845,7 +845,7 @@ public final class EngineProtocol {
      */
     public static String auditRequest(
             String dir, String cache, String severity, String osvBatchUrl, String osvVulnsUrl) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + AUDIT_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -875,7 +875,7 @@ public final class EngineProtocol {
             String rewriteConfig,
             boolean offline,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + FORMAT_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -922,7 +922,7 @@ public final class EngineProtocol {
             String pass,
             String token,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PUBLISH_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -983,7 +983,7 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + IMAGE_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1019,7 +1019,7 @@ public final class EngineProtocol {
      */
     public static String importRequest(
             String source, String out, String baseDir, String tmpDir, boolean force, String report, String cache) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + IMPORT_REQUEST
                 + "\",\"source\":"
                 + Jsonl.quote(source)
@@ -1044,7 +1044,7 @@ public final class EngineProtocol {
      */
     public static String provisionRequest(
             String cache, String dir, String toolsRoot, boolean noDiscover, boolean gradle) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PROVISION_REQUEST
                 + "\",\"cache\":"
                 + Jsonl.quote(cache)
@@ -1065,7 +1065,7 @@ public final class EngineProtocol {
      */
     public static String compileRequest(
             String dir, String cache, String profile, boolean offline, boolean force, boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + COMPILE_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1100,7 +1100,7 @@ public final class EngineProtocol {
             boolean verbose,
             List<String> extraArgs,
             java.util.Map<String, String> graalHomes) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + NATIVE_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1139,7 +1139,7 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + INSTALL_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1167,7 +1167,7 @@ public final class EngineProtocol {
      */
     public static String gitFetchRequest(
             String url, String canonicalUrl, String ref, String cache, boolean refresh, boolean requireJkToml) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + GIT_FETCH_REQUEST
                 + "\",\"url\":"
                 + Jsonl.quote(url)
@@ -1200,7 +1200,7 @@ public final class EngineProtocol {
             boolean serial,
             boolean parallelTests,
             boolean verbose) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + EXPLAIN_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1227,7 +1227,7 @@ public final class EngineProtocol {
 
     public static String explainModule(
             String dir, String coord, int sourceCount, int testCount, boolean producesJar, boolean producesImage) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + EXPLAIN_MODULE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1245,7 +1245,7 @@ public final class EngineProtocol {
     }
 
     public static String explainStep(String dir, String name, String status, String text, String key) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + EXPLAIN_STEP
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1261,7 +1261,7 @@ public final class EngineProtocol {
     }
 
     public static String explainEdge(String dir, String dependsOnDir) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + EXPLAIN_EDGE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1272,7 +1272,7 @@ public final class EngineProtocol {
 
     public static String forecastRequest(
             String dir, String cache, boolean skipTests, boolean offline, boolean force, boolean rerun) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + FORECAST_REQUEST
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1291,7 +1291,7 @@ public final class EngineProtocol {
 
     public static String treeRequest(
             String dir, int maxDepth, boolean flatten, boolean stack, java.util.List<String> scopes) {
-        return "{\"t\":\"" + TREE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + TREE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"maxDepth\":" + maxDepth
                 + ",\"flatten\":" + flatten
                 + ",\"stack\":" + stack
@@ -1300,17 +1300,17 @@ public final class EngineProtocol {
     }
 
     public static String treeAck(String error, String rendered) {
-        return "{\"t\":\"" + TREE_ACK + "\",\"error\":" + Jsonl.quote(error)
+        return "{\"type\":\"" + TREE_ACK + "\",\"error\":" + Jsonl.quote(error)
                 + ",\"rendered\":" + Jsonl.quote(rendered == null ? "" : rendered)
                 + "}";
     }
 
     public static String whyRequest(String dir, String query) {
-        return "{\"t\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query) + "}";
+        return "{\"type\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query) + "}";
     }
 
     public static String ideModelRequest(String dir, String cache, String jdksDir) {
-        return "{\"t\":\"" + IDE_MODEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + IDE_MODEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
                 + ",\"jdksDir\":" + Jsonl.quote(jdksDir)
                 + "}";
@@ -1322,7 +1322,7 @@ public final class EngineProtocol {
 
     /** As above with generator parameters (scaffold inputs etc.) as a flat map. */
     public static String generateRequest(String dir, String kind, java.util.Map<String, String> params) {
-        return "{\"t\":\"" + GENERATE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + GENERATE_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"kind\":" + Jsonl.quote(kind)
                 + ",\"params\":" + Jsonl.map(params)
                 + "}";
@@ -1334,7 +1334,7 @@ public final class EngineProtocol {
     }
 
     public static String pluginCommandRequest(String dir, String cache, String command, java.util.List<String> args) {
-        return "{\"t\":\"" + PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + PLUGIN_VERB_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
                 + ",\"command\":" + Jsonl.quote(command)
                 + ",\"args\":" + quoteArray(args)
@@ -1342,26 +1342,26 @@ public final class EngineProtocol {
     }
 
     public static String denyCheckRequest(String dir) {
-        return "{\"t\":\"" + DENY_CHECK_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
+        return "{\"type\":\"" + DENY_CHECK_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 
     public static String editRequest(String file, String op, java.util.List<String> args) {
-        return "{\"t\":\"" + EDIT_REQUEST + "\",\"file\":" + Jsonl.quote(file)
+        return "{\"type\":\"" + EDIT_REQUEST + "\",\"file\":" + Jsonl.quote(file)
                 + ",\"op\":" + Jsonl.quote(op)
                 + ",\"args\":" + quoteArray(args) + "}";
     }
 
     public static String editAck(boolean changed, String error) {
-        return "{\"t\":\"" + EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":" + Jsonl.quote(error) + "}";
+        return "{\"type\":\"" + EDIT_ACK + "\",\"changed\":" + changed + ",\"error\":" + Jsonl.quote(error) + "}";
     }
 
     public static String projectInfoRequest(String dir, String cache) {
-        return "{\"t\":\"" + PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
+        return "{\"type\":\"" + PROJECT_INFO_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"cache\":"
                 + Jsonl.quote(cache) + "}";
     }
 
     public static String outdatedRequest(String dir, String cache, String repoUrl, boolean offline, boolean force) {
-        return "{\"t\":\"" + OUTDATED_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + OUTDATED_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
                 + ",\"repoUrl\":" + Jsonl.quote(repoUrl)
                 + ",\"offline\":" + offline
@@ -1371,7 +1371,7 @@ public final class EngineProtocol {
 
     public static String execPlanRequest(
             String dir, String cache, String kind, String mainOverride, String binName, String binDir, String libDir) {
-        return "{\"t\":\"" + EXEC_PLAN_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
+        return "{\"type\":\"" + EXEC_PLAN_REQUEST + "\",\"dir\":" + Jsonl.quote(dir)
                 + ",\"cache\":" + Jsonl.quote(cache)
                 + ",\"kind\":" + Jsonl.quote(kind)
                 + ",\"mainOverride\":" + Jsonl.quote(mainOverride)
@@ -1383,7 +1383,7 @@ public final class EngineProtocol {
 
     public static String forecastAck(
             java.util.List<String> dirtyDirs, boolean lockStale, boolean empty, java.util.List<String> errors) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + FORECAST_ACK
                 + "\",\"dirtyDirs\":"
                 + quoteArray(dirtyDirs)
@@ -1397,7 +1397,7 @@ public final class EngineProtocol {
     }
 
     public static String explainDone(int maxReadyWidth, int moduleCount) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + EXPLAIN_DONE
                 + "\",\"maxReadyWidth\":"
                 + maxReadyWidth
@@ -1413,7 +1413,7 @@ public final class EngineProtocol {
      * total} ({@code total == 0} = indeterminate), optional {@code label}.
      */
     public static String preflight(String stage, int done, int total, String label) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PREFLIGHT
                 + "\",\"stage\":"
                 + Jsonl.quote(stage == null ? "" : stage)
@@ -1427,7 +1427,7 @@ public final class EngineProtocol {
     }
 
     public static String planModule(String dir, String coord, String pipelineName, int weight, boolean fullyCached) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PLAN_MODULE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1443,7 +1443,7 @@ public final class EngineProtocol {
     }
 
     public static String planStep(String dir, String name, String label, String phase) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PLAN_STEP
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1457,15 +1457,15 @@ public final class EngineProtocol {
     }
 
     public static String planDone(int count) {
-        return "{\"t\":\"" + PLAN_DONE + "\",\"count\":" + count + "}";
+        return "{\"type\":\"" + PLAN_DONE + "\",\"count\":" + count + "}";
     }
 
     public static String eta(long millis) {
-        return "{\"t\":\"" + ETA + "\",\"millis\":" + millis + "}";
+        return "{\"type\":\"" + ETA + "\",\"millis\":" + millis + "}";
     }
 
     public static String moduleStart(String dir) {
-        return "{\"t\":\"" + MODULE_START + "\",\"dir\":" + Jsonl.quote(dir) + "}";
+        return "{\"type\":\"" + MODULE_START + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 
     public static String pipelineStart(
@@ -1476,10 +1476,7 @@ public final class EngineProtocol {
             int stepsTotal,
             int stepsComplete,
             boolean cancelled) {
-        // schema + type mirror CLI/SSE JSONL (t remains the historic wire short name).
-        return "{\"schema\":1,\"t\":\""
-                + PIPELINE_START
-                + "\",\"type\":\""
+        return "{\"schema\":1,\"type\":\""
                 + PIPELINE_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1501,9 +1498,7 @@ public final class EngineProtocol {
     }
 
     public static String stepStart(String dir, String step, String phase, int ticks) {
-        return "{\"schema\":1,\"t\":\""
-                + STEP_START
-                + "\",\"type\":\""
+        return "{\"schema\":1,\"type\":\""
                 + STEP_START
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1526,10 +1521,7 @@ public final class EngineProtocol {
             int stepsTotal,
             int stepsComplete,
             boolean cancelled) {
-        // Additive progress % (JK-1117/1119) + type alias so agents share one mental model with SSE/JSONL.
-        return "{\"schema\":1,\"t\":\""
-                + type
-                + "\",\"type\":\""
+        return "{\"schema\":1,\"type\":\""
                 + type
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1592,7 +1584,7 @@ public final class EngineProtocol {
     }
 
     public static String label(String dir, String step, String label) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + LABEL
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1604,7 +1596,7 @@ public final class EngineProtocol {
     }
 
     public static String output(String dir, String step, String line) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + OUTPUT
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1617,7 +1609,7 @@ public final class EngineProtocol {
 
     private static String diagnosticLike(
             String type, String dir, String step, String code, String message, String test, String exceptionClass) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + type
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1649,7 +1641,7 @@ public final class EngineProtocol {
     }
 
     public static String stepFinish(String dir, String step, String phase, String status) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + STEP_FINISH
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1663,7 +1655,7 @@ public final class EngineProtocol {
     }
 
     public static String pipelineFinish(String dir, boolean success) {
-        return "{\"t\":\"" + PIPELINE_FINISH + "\",\"kind\":\"build\",\"dir\":" + Jsonl.quote(dir) + ",\"success\":"
+        return "{\"type\":\"" + PIPELINE_FINISH + "\",\"kind\":\"build\",\"dir\":" + Jsonl.quote(dir) + ",\"success\":"
                 + success + "}";
     }
 
@@ -1689,7 +1681,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinish(
             String dir, boolean success, String buildOutcome, long total, long succeeded, long failed, long skipped) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"build\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1715,7 +1707,7 @@ public final class EngineProtocol {
      * within its own {@code pipelineFinish} handler.
      */
     public static String pipelineFinishLock(String dir, boolean success, long packages, long sources, long plugins) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"lock\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1735,7 +1727,7 @@ public final class EngineProtocol {
      * fetched/up-to-date counts for the client's summary line ({@code "N fetched, M up-to-date"}).
      */
     public static String pipelineFinishSync(String dir, boolean success, long fetched, long upToDate) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"sync\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1750,12 +1742,12 @@ public final class EngineProtocol {
 
     /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link #LOCK_MODULE}). */
     public static String lockModule(String dir, String coord) {
-        return "{\"t\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord) + "}";
+        return "{\"type\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord) + "}";
     }
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
     public static String lockPackage(String dir, String name, String version) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + LOCK_PACKAGE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1774,7 +1766,7 @@ public final class EngineProtocol {
      * refreshed-dependency count, {@code -1} for every other request.
      */
     public static String lockFinish(boolean success, int exitCode, List<String> errors, int refreshed) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + LOCK_FINISH
                 + "\",\"success\":"
                 + success
@@ -1792,7 +1784,7 @@ public final class EngineProtocol {
     /** One OSV finding (see {@link #AUDIT_FINDING}) — plain structured fields, no theming. */
     public static String auditFinding(
             String dir, String module, String version, String vulnId, String severity, String summary) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + AUDIT_FINDING
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1814,7 +1806,7 @@ public final class EngineProtocol {
      * client's per-file progress bar ({@code total} is known engine-side before the worker forks).
      */
     public static String formatFile(String dir, String path, String status, String message, int index, int total) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + FORMAT_FILE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1833,7 +1825,7 @@ public final class EngineProtocol {
 
     /** One import progress note (see {@link #IMPORT_NOTE}). */
     public static String importNote(String dir, String kind, String text) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + IMPORT_NOTE
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1852,7 +1844,7 @@ public final class EngineProtocol {
      */
     public static String provisionResult(
             String bin, String version, String source, String error, int exit, String diag) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PROVISION_RESULT
                 + "\",\"bin\":"
                 + Jsonl.quote(bin)
@@ -1877,7 +1869,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishFormat(
             String dir, boolean success, int changed, int clean, int errors, int total, int workerExit) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"format\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1901,7 +1893,7 @@ public final class EngineProtocol {
      * materialized checkout path and resolved commit sha ({@code null} when the fetch failed).
      */
     public static String pipelineFinishGitFetch(String dir, boolean success, String checkout, String sha) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"git-fetch\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1916,7 +1908,7 @@ public final class EngineProtocol {
 
     /** As {@link #pipelineFinish(String, boolean)}, additionally carrying a {@code jk publish} run's uploaded-file count. */
     public static String pipelineFinishPublish(String dir, boolean success, int files) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"publish\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1934,7 +1926,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishImport(
             String dir, boolean success, int exitCode, int warnings, String error, String diag) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"import\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1971,7 +1963,7 @@ public final class EngineProtocol {
             String name,
             String version,
             String daemonExe) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"image\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -1999,7 +1991,7 @@ public final class EngineProtocol {
     }
 
     public static String moduleFinish(String dir, String coord, boolean success, int exitCode, long millis) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + MODULE_FINISH
                 + "\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -2015,7 +2007,7 @@ public final class EngineProtocol {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + WORKSPACE_FINISH
                 + "\",\"success\":"
                 + success
@@ -2028,7 +2020,7 @@ public final class EngineProtocol {
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
-        return "{\"t\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
+        return "{\"type\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */
@@ -2038,7 +2030,7 @@ public final class EngineProtocol {
 
     /** Keep-alive line during long jobs (ticket-1051). */
     public static String heartbeat(long elapsedMillis) {
-        return "{\"t\":\"" + HEARTBEAT + "\",\"elapsedMillis\":" + elapsedMillis + "}";
+        return "{\"type\":\"" + HEARTBEAT + "\",\"elapsedMillis\":" + elapsedMillis + "}";
     }
 
     // ---- hosted long-tail commands -----------------------------------------------------------------
@@ -2053,7 +2045,7 @@ public final class EngineProtocol {
      */
     public static String toolResolveRequest(
             String coord, List<String> with, String bin, String mainClass, String repoUrl, String cache) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + TOOL_RESOLVE_REQUEST
                 + "\",\"coord\":"
                 + Jsonl.quote(coord)
@@ -2079,7 +2071,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishTool(
             String dir, boolean success, String coord, String mainClass, List<String> classpath) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"tool\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -2106,7 +2098,7 @@ public final class EngineProtocol {
             String repoUrl,
             boolean forceRecompile,
             List<String> with) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + SCRIPT_PREPARE_REQUEST
                 + "\",\"mode\":"
                 + Jsonl.quote(mode)
@@ -2138,7 +2130,7 @@ public final class EngineProtocol {
             String classesDir,
             String kotlincBin,
             String stdlib) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"script\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -2172,7 +2164,7 @@ public final class EngineProtocol {
             boolean sweep,
             String maxSize,
             boolean includeJkTmp) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + CACHE_PRUNE_REQUEST
                 + "\",\"op\":"
                 + Jsonl.quote(op)
@@ -2199,7 +2191,7 @@ public final class EngineProtocol {
      * deleting.
      */
     public static String cacheClearRequest(String cache, String projectRoot, boolean dryRun) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + CACHE_PRUNE_REQUEST
                 + "\",\"op\":\"clear\",\"cache\":"
                 + Jsonl.quote(cache)
@@ -2212,7 +2204,7 @@ public final class EngineProtocol {
 
     /** The maintenance job is waiting for the cache to quiesce (see {@link #PRUNE_WAIT}). */
     public static String pruneWait(int pipelines, boolean external) {
-        return "{\"t\":\"" + PRUNE_WAIT + "\",\"pipelines\":" + pipelines + ",\"external\":" + external + "}";
+        return "{\"type\":\"" + PRUNE_WAIT + "\",\"pipelines\":" + pipelines + ",\"external\":" + external + "}";
     }
 
     /**
@@ -2223,7 +2215,7 @@ public final class EngineProtocol {
      */
     public static String pipelineFinishCache(
             String dir, boolean success, long files, long bytes, long reachableEvicted, long repoLinks) {
-        return "{\"t\":\""
+        return "{\"type\":\""
                 + PIPELINE_FINISH
                 + "\",\"kind\":\"cache\",\"dir\":"
                 + Jsonl.quote(dir)
@@ -2380,21 +2372,21 @@ public final class EngineProtocol {
     // ---- build-history request builders (responses are built engine-side with JsonOut) ----------
 
     public static String historyListRequest(int limit) {
-        return "{\"t\":\"" + HISTORY_LIST_REQUEST + "\",\"limit\":" + limit + "}";
+        return "{\"type\":\"" + HISTORY_LIST_REQUEST + "\",\"limit\":" + limit + "}";
     }
 
     public static String historyShowRequest(String id) {
-        return "{\"t\":\"" + HISTORY_SHOW_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
+        return "{\"type\":\"" + HISTORY_SHOW_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
     }
 
     public static String historyDeleteRequest(String id) {
-        return "{\"t\":\"" + HISTORY_DELETE_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
+        return "{\"type\":\"" + HISTORY_DELETE_REQUEST + "\",\"id\":" + Jsonl.quote(id) + "}";
     }
 
     /** A metrics stream request; null/blank {@code dir} asks for every row. */
     public static String metricsRequest(String dir) {
         return dir == null || dir.isBlank()
-                ? "{\"t\":\"" + METRICS_REQUEST + "\"}"
-                : "{\"t\":\"" + METRICS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
+                ? "{\"type\":\"" + METRICS_REQUEST + "\"}"
+                : "{\"type\":\"" + METRICS_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + "}";
     }
 }

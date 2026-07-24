@@ -110,14 +110,14 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 
 | Rule | Shape |
 |---|---|
-| Envelope | One JSON object per line; discriminator field `"t"` |
-| Auth (TCP only) | First line `{"t":"auth","token":…}` — never a raw token line |
+| Envelope | One JSON object per line; discriminator field `"type"` (same as CLI JSONL / SSE / MCP) |
+| Auth (TCP only) | First line `{"type":"auth","token":…}` — never a raw token line |
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
-| Errors | `{"t":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
+| Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
 | Project path | Field name is always `dir` |
-| Pipeline finish | `{"t":"pipeline-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
+| Pipeline finish | `{"type":"pipeline-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
 | Session extras | Variant / client env / JVM tuning via typed `withSession` builders — no JSON string surgery |
-| Line limits | Bounded line reader + idle timeout; unknown/`t`-less lines → `error`, not silent drop |
+| Line limits | Bounded line reader + idle timeout; unknown/`type`-less lines → `error`, not silent drop |
 
 Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 

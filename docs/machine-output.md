@@ -147,8 +147,8 @@ same work:
 | `test` / `exceptionClass` | Structured failure fields |
 
 The SSE *event* name may stay SPA-oriented (`pipeline-progress`, `diagnostic`); agents should
-prefer `data.type`. Wire frames still use historic `t` and also emit `type` + `schema` +
-`progress` additively so parsers can converge.
+prefer `data.type`. The client↔engine wire uses the same `type` discriminator (and additive
+`schema` / `progress` on progress events) — one vocabulary across JSONL, SSE, MCP, and wire.
 
 ### MCP (engine-hosted, JK-1095)
 
