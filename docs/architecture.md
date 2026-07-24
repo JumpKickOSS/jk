@@ -102,7 +102,7 @@ Relative `web-root` values resolve against `~/.jk`. Only files present under the
 overridden; anything missing still falls through to the jar.
 
 Transport: Unix domain socket on macOS/Linux; loopback TCP + shared-secret token on Windows.
-Protocol is internal (same-version client/server), newline-delimited JSON.
+Protocol is internal (same-version client/server), JSONL (one JSON object per line).
 
 ### Wire freeze vocabulary (pre-1.0)
 

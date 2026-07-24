@@ -5,9 +5,9 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.List;
 
 /**
- * Engine wire vocabulary: newline-delimited JSON with a {@code "type"} discriminator (same name as
- * CLI JSONL / SSE / MCP). Same-version client only (unversioned). Variable-length collections are
- * repeated typed messages plus a terminal marker — never nested object arrays.
+ * Engine wire vocabulary: JSONL with a {@code "type"} discriminator (same name as CLI JSONL / SSE /
+ * MCP). Same-version client only (unversioned). Variable-length collections are repeated typed
+ * messages plus a terminal marker — never nested object arrays.
  */
 public final class EngineProtocol {
 

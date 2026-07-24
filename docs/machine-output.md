@@ -204,7 +204,7 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 # Workspace build/test emit module-start / module-finish / workspace-* around step events.
 
 # Exit code still meaningful (0 ok, non-zero fail).
-# Parse stdout as NDJSON; look for type=pipeline-finish / error / step-finish.
+# Parse stdout as JSONL; look for type=pipeline-finish / error / step-finish.
 
 # Offline / mid-run:
 #   target/.jk-cli/<latest>/details.jsonl   # tail -F during the run
