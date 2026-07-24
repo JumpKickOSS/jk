@@ -661,6 +661,72 @@ class HttpEngineServerTest {
         assertThat(get("/hello.txt").statusCode()).isEqualTo(200);
     }
 
+    @Test
+    void open_sse_streams_do_not_starve_rpc_admission() throws Exception {
+        // A tiny RPC budget: if streams drew from it, three open streams would 503 everything else.
+        HttpEngineServer tiny = new HttpEngineServer(
+                new JkHttpConfig("127.0.0.1", 0, 2, webRoot.toString()),
+                webRoot,
+                stateDir.resolve("tiny.http-token"),
+                stateDir.resolve("tiny.log"),
+                "9.9.9-test",
+                () -> SNAPSHOT,
+                new HttpEvents(),
+                stubJobs,
+                testJournal(),
+                java.util.List::of,
+                () -> EMPTY_CACHE,
+                null);
+        var streams = new java.util.ArrayList<HttpResponse<java.util.stream.Stream<String>>>();
+        try {
+            tiny.start();
+            String url = tiny.url();
+            for (int i = 0; i < 3; i++) { // more streams than the whole RPC budget
+                HttpResponse<java.util.stream.Stream<String>> resp = client.send(
+                        HttpRequest.newBuilder(URI.create(url + "api/events")).build(),
+                        HttpResponse.BodyHandlers.ofLines());
+                assertThat(resp.statusCode()).isEqualTo(200);
+                var lines = resp.body().iterator();
+                assertThat(nextLine(lines)).isEqualTo(": connected"); // handler is inside its stream loop
+                streams.add(resp);
+            }
+            HttpResponse<String> rpc = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "api/status")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(rpc.statusCode()).isEqualTo(200); // RPC admission untouched by the streams
+        } finally {
+            streams.forEach(r -> r.body().close());
+            tiny.close();
+        }
+    }
+
+    @Test
+    void sse_beyond_its_own_cap_is_503_without_touching_rpc_admission() throws Exception {
+        int drained = server.sseAdmission().drainPermits();
+        try {
+            assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
+                HttpResponse<String> resp = get("/api/events");
+                assertThat(resp.statusCode()).isEqualTo(503);
+                assertThat(resp.body()).contains("too many event streams");
+                assertThat(resp.headers().firstValue("Retry-After")).contains("1");
+            });
+            assertThat(get("/api/status").statusCode()).isEqualTo(200); // RPC budget unaffected
+        } finally {
+            server.sseAdmission().release(drained);
+        }
+    }
+
+    @Test
+    void rpc_saturation_does_not_block_event_streams() throws Exception {
+        int permits = server.admission().drainPermits();
+        try {
+            var lines = openEvents("");
+            assertThat(nextLine(lines)).isEqualTo(": connected");
+        } finally {
+            server.admission().release(permits);
+        }
+    }
+
     // ---- /api/events (SSE) ----------------------------------------------------------------------
 
     /** Open the SSE stream and return a line iterator (the JDK client de-chunks for us). */

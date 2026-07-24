@@ -41,9 +41,17 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Pause between bind attempts; {@code BIND_ATTEMPTS ×} this bounds the wait (~5s). */
     private static final long BIND_RETRY_MILLIS = 200;
 
+    /**
+     * Cap on concurrent long-lived SSE streams. A separate budget from RPC admission — an open
+     * stream holds its slot for the connection's life, so streams drawing from the RPC semaphore
+     * would let {@code maxConcurrentRequests} EventSource tabs starve every other endpoint.
+     */
+    private static final int MAX_SSE_STREAMS = 32;
+
     private final JkHttpConfig config;
     private final StaticContent staticContent;
     private final Semaphore admission;
+    private final Semaphore sseAdmission = new Semaphore(MAX_SSE_STREAMS);
     private final Path webRoot;
     private final Path tokenFile;
     private final Path logFile;
@@ -255,15 +263,17 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 421, "unrecognized Host header\n");
                 return;
             }
-            if (!admission.tryAcquire()) {
+            boolean sse = isEventStreamRequest(exchange);
+            Semaphore gate = sse ? sseAdmission : admission;
+            if (!gate.tryAcquire()) {
                 exchange.getResponseHeaders().set("Retry-After", "1");
-                sendText(exchange, 503, "engine busy\n");
+                sendText(exchange, 503, sse ? "too many event streams\n" : "engine busy\n");
                 return;
             }
             try {
                 dispatch(exchange);
             } finally {
-                admission.release();
+                gate.release();
             }
         } catch (RuntimeException e) {
             // A handler bug must not kill the virtual thread silently mid-response; best-effort 500.
@@ -410,6 +420,17 @@ public final class HttpEngineServer implements AutoCloseable {
         return null;
     }
 
+    /**
+     * Matches exactly the requests that enter a long-lived stream loop ({@link #handleEvents},
+     * {@link #handleMcpEvents}) — these draw from the SSE budget, not RPC admission.
+     */
+    private static boolean isEventStreamRequest(HttpExchange exchange) {
+        if (!exchange.getRequestMethod().equals("GET")) return false;
+        String path = exchange.getRequestURI().getPath();
+        if (path.equals("/api/events")) return true;
+        return (path.equals("/mcp") || path.startsWith("/mcp/")) && acceptsEventStream(exchange);
+    }
+
     private static boolean acceptsEventStream(HttpExchange exchange) {
         String accept = exchange.getRequestHeaders().getFirst("Accept");
         if (accept == null || accept.isBlank()) return false;
@@ -546,8 +567,9 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * SSE stream: event frames plus comment heartbeats. Holds its admission slot for the stream's
-     * life; dead-client write and {@link #close()} interrupt end it.
+     * SSE stream: event frames plus comment heartbeats. Holds an SSE-budget slot (not an RPC
+     * admission permit) for the stream's life; dead-client write and {@link #close()} interrupt
+     * end it.
      */
     private void handleEvents(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
@@ -848,5 +870,10 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */
     Semaphore admission() {
         return admission;
+    }
+
+    /** Test seam: the SSE budget, so over-cap stream rejection is deterministically testable. */
+    Semaphore sseAdmission() {
+        return sseAdmission;
     }
 }

@@ -57,7 +57,11 @@ public final class CleanCommand implements CliCommand {
         Path cacheDirOverride = in.value("cache-dir").map(Path::of).orElse(null);
         Path dir = GlobalOptions.from(in).workingDir();
         Path workspaceRoot = resolveWorkspaceRoot(dir);
-        List<Path> projectDirs = collectProjectDirs(workspaceRoot);
+        List<String> warnings = new ArrayList<>();
+        List<Path> projectDirs = collectProjectDirs(workspaceRoot, warnings);
+        for (String warning : warnings) {
+            CliOutput.err(Theme.colorize(Glyphs.BANG, Theme.active().warning()) + " " + warning);
+        }
 
         long startMs = System.currentTimeMillis();
         long[] stats = {0L, 0L}; // [fileCount, totalBytes]
@@ -149,17 +153,35 @@ public final class CleanCommand implements CliCommand {
      * Returns the workspace root plus every declared module directory. Falls back to just {@code
      * [workspaceRoot]} when parsing fails or there are no modules (single-project).
      */
-    private static List<Path> collectProjectDirs(Path workspaceRoot) {
+    private static List<Path> collectProjectDirs(Path workspaceRoot, List<String> warnings) {
         List<Path> dirs = new ArrayList<>();
         dirs.add(workspaceRoot);
         Path rootToml = workspaceRoot.resolve("jk.toml");
         if (!Files.exists(rootToml)) return dirs;
         var info = BuildCommand.projectInfoOrNull(workspaceRoot);
         if (info != null && info.workspaceRoot()) {
-            for (String module : info.moduleDirs()) {
-                Path moduleDir = workspaceRoot.resolve(module);
+            for (Path moduleDir : resolveModuleDirs(workspaceRoot, info.moduleDirs(), warnings)) {
                 if (Files.isDirectory(moduleDir)) dirs.add(moduleDir);
             }
+        }
+        return dirs;
+    }
+
+    /**
+     * Module entries resolved against the workspace root; entries that escape it (absolute paths,
+     * {@code ..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
+     * never point {@code jk clean} outside the workspace.
+     */
+    static List<Path> resolveModuleDirs(Path workspaceRoot, List<String> modules, List<String> warnings) {
+        Path root = workspaceRoot.toAbsolutePath().normalize();
+        List<Path> dirs = new ArrayList<>();
+        for (String module : modules) {
+            Path moduleDir = root.resolve(module).normalize();
+            if (!moduleDir.startsWith(root)) {
+                warnings.add("skipping module outside workspace: " + module);
+                continue;
+            }
+            dirs.add(moduleDir);
         }
         return dirs;
     }
@@ -210,19 +232,30 @@ public final class CleanCommand implements CliCommand {
      * (e.g. {@code target/.jk/preflight} rewritten mid-walk) so {@code jk clean} does not exit 1
      * on a transient {@link java.nio.file.DirectoryNotEmptyException}.
      */
-    private static void deleteRecursively(Path root, long[] stats) throws IOException {
+    static void deleteRecursively(Path root, long[] stats) throws IOException {
         if (!Files.exists(root)) return;
         IOException last = null;
         for (int attempt = 0; attempt < 4; attempt++) {
+            if (attempt > 0) {
+                // Brief pause so a concurrent preflight/memo write can finish before we re-walk.
+                try {
+                    Thread.sleep(25L * attempt);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw last;
+                }
+            }
             try {
                 try (Stream<Path> stream = Files.walk(root)) {
                     stream.sorted(Comparator.reverseOrder()).forEach(p -> {
                         try {
-                            if (Files.isRegularFile(p)) {
-                                stats[1] += Files.size(p);
+                            long size = Files.isRegularFile(p) ? Files.size(p) : -1;
+                            // Count only after a successful delete — a failed attempt must not
+                            // inflate the stats across retry walks.
+                            if (Files.deleteIfExists(p) && size >= 0) {
                                 stats[0]++;
+                                stats[1] += size;
                             }
-                            Files.deleteIfExists(p);
                         } catch (IOException e) {
                             throw new UncheckedIOException(e);
                         }
@@ -231,23 +264,10 @@ public final class CleanCommand implements CliCommand {
                 return;
             } catch (UncheckedIOException e) {
                 last = e.getCause() instanceof IOException io ? io : new IOException(e);
-                // Brief pause so a concurrent preflight/memo write can finish before we re-walk.
-                try {
-                    Thread.sleep(25L * (attempt + 1));
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw last;
-                }
             } catch (IOException e) {
                 last = e;
-                try {
-                    Thread.sleep(25L * (attempt + 1));
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    throw last;
-                }
             }
         }
-        if (last != null) throw last;
+        throw last;
     }
 }
