@@ -1311,10 +1311,16 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Fine-grained module pipeline ticks for the dashboard (step detail). Aggregate % rides from the
-     * workspace tracker (JK-1120), not from this module's local fraction.
+     * Fine-grained module pipeline ticks for the dashboard (step detail). Aggregate % on SSE/MCP:
+     * workspace builds use {@link cc.jumpkick.runtime.WorkspaceProgressTracker}; single-pipeline
+     * jobs (build/test/compile) have no tracker yet — the pipeline <em>is</em> the whole request, so
+     * feed {@link #lastProgressByRequest} from this view (JK-1123).
      */
     private void publishPipelineProgress(long requestId, String dir, PipelineView view) {
+        if (requestId > 0 && view != null && !progressTrackers.containsKey(requestId) && view.denominator() > 0) {
+            double p = cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(view.numerator(), view.denominator());
+            if (!Double.isNaN(p)) lastProgressByRequest.put(requestId, p);
+        }
         if (!eventsWanted()) return;
         publishEvent(
                 "pipeline-progress",
