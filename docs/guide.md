@@ -590,6 +590,18 @@ Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reu
 jk bsp install               # write .bsp/jk.json
 # IDE launches: jk bsp serve  (stdio BSP — no engine jars in the IDE process)
 jk ide                       # offline .idea / .vscode files (export path)
+
+**Multi-suite tests (JK-1139–1142):** `jk ide` registers **every discovered test suite**
+(`test/`, `integration/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
+in the same module — IntelliJ `.iml` and VS Code/JDT `.classpath`. One test output directory;
+no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots.
+
+Execution still follows the CLI default: `jk test` runs only the **test** suite. Use
+`jk test --suite integration`, `jk test --all`, or tags for other selections. After
+`jk ide`, IntelliJ gains shell run configurations (`jk test`, `jk test (all suites)`, and
+one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
+
+
 ```
 
 **BSP capabilities (stdio `jk bsp serve`):**

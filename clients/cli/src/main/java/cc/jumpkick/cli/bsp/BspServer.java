@@ -188,20 +188,16 @@ public final class BspServer {
 
     private static String sourcesItem(String tid, Path mod) {
         List<String> srcs = new ArrayList<>();
-        addSrc(srcs, mod, "src/main/java", 1);
-        addSrc(srcs, mod, "src/main/kotlin", 1);
-        addSrc(srcs, mod, "src", 1);
-        addSrc(srcs, mod, "src/test/java", 2);
-        addSrc(srcs, mod, "src/test/kotlin", 2);
-        addSrc(srcs, mod, "test", 2);
-        return "{\"target\":{\"uri\":" + q(tid) + "},\"sources\":[" + String.join(",", srcs) + "]}";
-    }
-
-    private static void addSrc(List<String> srcs, Path mod, String rel, int kind) {
-        Path s = mod.resolve(rel);
-        if (Files.isDirectory(s)) {
-            srcs.add("{\"uri\":" + q(pathUri(s)) + ",\"kind\":" + kind + ",\"generated\":false}");
+        // JK-1140: same roots as jk ide (all TestSuites + main).
+        for (cc.jumpkick.command.ide.IdeSourceRoots.Root root : cc.jumpkick.command.ide.IdeSourceRoots.of(mod)) {
+            // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
+            int kind = root.test() ? 2 : 1;
+            Path s = mod.resolve(root.relative());
+            if (Files.isDirectory(s)) {
+                srcs.add("{\"uri\":" + q(pathUri(s)) + ",\"kind\":" + kind + ",\"generated\":false}");
+            }
         }
+        return "{\"target\":{\"uri\":" + q(tid) + "},\"sources\":[" + String.join(",", srcs) + "]}";
     }
 
     private String dependencyModulesJson(String requestJson) throws IOException {
