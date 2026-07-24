@@ -105,11 +105,7 @@ public enum PluginJar {
             if (fetched != null) return fetched;
         } catch (Exception e) {
             throw new PluginJarNotFoundException(
-                    artifactId,
-                    coordinate,
-                    checked,
-                    jarProperty,
-                    "official fetch failed: " + e.getMessage());
+                    artifactId, coordinate, checked, jarProperty, "official fetch failed: " + e.getMessage());
         }
 
         throw new PluginJarNotFoundException(artifactId, coordinate, checked, jarProperty);
@@ -141,7 +137,8 @@ public enum PluginJar {
             if (sumResp.statusCode() >= 200 && sumResp.statusCode() < 300) {
                 String published = new String(sumResp.body()).strip().split("\\s+")[0];
                 if (published.length() == 64 && !published.equalsIgnoreCase(sha)) {
-                    throw new IOException("checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
+                    throw new IOException(
+                            "checksum mismatch for " + jarUri + " (expected " + published + ", got " + sha + ")");
                 }
                 if (published.length() == 64) sha = published.toLowerCase();
             }

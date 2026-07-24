@@ -25,10 +25,10 @@ public final class AggregateModuleListener implements PipelineListener {
     private final List<Step> steps;
 
     /** Parallel-build output buffer; caller flushes when the module finishes. */
-    private java.util.List<String> outBuffer;
+    private List<String> outBuffer;
 
     /** Route this module's output into {@code buffer} (parallel build); see field doc. */
-    public void bufferOutputInto(java.util.List<String> buffer) {
+    public void bufferOutputInto(List<String> buffer) {
         this.outBuffer = buffer;
     }
 
@@ -98,11 +98,7 @@ public final class AggregateModuleListener implements PipelineListener {
 
     /** Styled {@code ! Warning [step/code]: Summary — detail} diagnostic line. */
     static String renderDiagnostic(
-            String prefix,
-            org.jline.utils.AttributedStyle prefixStyle,
-            String step,
-            String code,
-            String message) {
+            String prefix, org.jline.utils.AttributedStyle prefixStyle, String step, String code, String message) {
         String summary = message == null ? "" : message;
         String detail = null;
         int sep = summary.indexOf(" — ");
@@ -127,7 +123,8 @@ public final class AggregateModuleListener implements PipelineListener {
         }
         sb.append(": ");
         sb.append(summary, cc.jumpkick.cli.theme.Theme.active().focused());
-        if (detail != null) sb.append(" — ").append(detail, cc.jumpkick.cli.theme.Theme.active().activeStep());
+        if (detail != null)
+            sb.append(" — ").append(detail, cc.jumpkick.cli.theme.Theme.active().activeStep());
         return sb.toAnsi();
     }
 

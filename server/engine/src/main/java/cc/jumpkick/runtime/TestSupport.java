@@ -72,7 +72,9 @@ public final class TestSupport {
             out.add("");
             // JK-1094: module :: display [wN] so parallel monorepo flakes are locatable.
             out.add("  FAILED  " + f.headline());
-            if (f.className() != null && !f.className().isBlank() && !f.headline().contains(f.className())) {
+            if (f.className() != null
+                    && !f.className().isBlank()
+                    && !f.headline().contains(f.className())) {
                 out.add("    class: " + f.className());
             }
             if (f.details() != null && !f.details().isBlank()) {

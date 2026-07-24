@@ -10,13 +10,13 @@ import cc.jumpkick.engine.plugin.JvmOptions;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.resolver.pubgrub.UnsatisfiableException;
+import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineKey;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
-import cc.jumpkick.run.JkThreads;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -167,8 +167,7 @@ public final class BuildService {
      * for the local preflight dirty memo (JK-1100). When {@code entryDir} is non-null and inputs are
      * unchanged, returns the memoized dirty set without a full {@link BuildPlanForecast} walk.
      */
-    public static Set<Path> forecastDirtyDirs(
-            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         return forecastWithFingerprints(graph, cache, skipTests, entryDir).dirty();
     }
 
@@ -180,8 +179,7 @@ public final class BuildService {
      * forecast walk — the only fingerprints a post-build {@link PreflightMemo#storeDirty} may use
      * (fingerprinting after the build records mid-build edits as clean).
      */
-    static Preflight forecastWithFingerprints(
-            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+    static Preflight forecastWithFingerprints(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --rebuild: every module runs — skip the expensive per-step forecast walk.
@@ -301,12 +299,12 @@ public final class BuildService {
                 costs.add(EffortWeights.costOf(mdir, prereqs, pipeline));
                 // Warm the shape memo for the next explain/build ETA path.
                 if (!distrust && entryDir != null) {
-                    PreflightMemo.storeShape(
-                            entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
+                    PreflightMemo.storeShape(entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
                 }
             }
             if (Perf.ENABLED && shapeHits > 0) {
-                System.err.println("[jk-perf] estimateEta shape-hits=" + shapeHits + "/" + plan.modules().size());
+                System.err.println("[jk-perf] estimateEta shape-hits=" + shapeHits + "/"
+                        + plan.modules().size());
             }
             int concurrency = serial
                     ? 1
@@ -397,8 +395,7 @@ public final class BuildService {
     }
 
     /** As {@link #forecastDirtyDirs(ResolvedGraph, Path, boolean)} with preflight memo root. */
-    public static Set<Path> forecastDirtyDirs(
-            ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
+    public static Set<Path> forecastDirtyDirs(ResolvedGraph graph, Path cache, boolean skipTests, Path entryDir) {
         return forecastDirtyDirs(graph.graph(), cache, skipTests, entryDir);
     }
 
@@ -459,11 +456,7 @@ public final class BuildService {
         if (Perf.ENABLED && graphMemoHit) {
             System.err.println("[jk-perf] preflight-graph-memo structure-match units=" + units.size());
         }
-        listener.onPreflight(
-                "graph",
-                1,
-                1,
-                units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
+        listener.onPreflight("graph", 1, 1, units.size() + " modules" + (graphMemoHit ? " (memo)" : ""));
         if (units.isEmpty()) {
             WorkspaceResult r = new WorkspaceResult(true, 0, List.of(), List.of());
             listener.onWorkspaceFinish(r);
@@ -494,20 +487,14 @@ public final class BuildService {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = req.dirtyHint();
             listener.onPreflight(
-                    "checking",
-                    1,
-                    1,
-                    dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
+                    "checking", 1, 1, dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             Preflight preflight = forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
             dirty = preflight.dirty();
             preflightFps = preflight.fingerprints();
             listener.onPreflight(
-                    "checking",
-                    1,
-                    1,
-                    dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
+                    "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
         }
         Perf.end("ws-forecast(hint=" + (req.dirtyHint() != null) + ",dirty=" + dirty.size() + ")", tf);
 
@@ -611,10 +598,7 @@ public final class BuildService {
             costByDir.put(
                     e.getKey(),
                     EffortWeights.costOf(
-                            e.getKey(),
-                            graph.edges().getOrDefault(e.getKey(), Set.of()),
-                            p.weight(),
-                            testW));
+                            e.getKey(), graph.edges().getOrDefault(e.getKey(), Set.of()), p.weight(), testW));
         }
         Perf.end("ws-eta-costs", teta);
         listener.onEtaEstimate(seedEta(
@@ -715,10 +699,7 @@ public final class BuildService {
                 ModulePlan p = prepareModule(u, req, moduleDirs, true);
                 prepared++;
                 listener.onPreflight(
-                        "plan",
-                        prepared,
-                        nPrepare,
-                        "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
+                        "plan", prepared, nPrepare, "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
                 if (p == null) throw new PrepareFailed(u.coord(), u.dir());
                 p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
                 plans.put(u.dir(), p);
@@ -739,10 +720,7 @@ public final class BuildService {
                         int n = prepared.incrementAndGet();
                         synchronized (preflightLock) {
                             listener.onPreflight(
-                                    "plan",
-                                    n,
-                                    nPrepare,
-                                    "Preparing " + u.coord() + " (" + n + "/" + nPrepare + ")");
+                                    "plan", n, nPrepare, "Preparing " + u.coord() + " (" + n + "/" + nPrepare + ")");
                         }
                     },
                     JkThreads.io()));
@@ -888,9 +866,8 @@ public final class BuildService {
         Pipeline.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
         BuildPipelines.appendDeclaredTails(b, inputs);
         Pipeline pipeline = b.build();
-        boolean distrust =
-                SessionContext.current().config().forceOr(false)
-                        || SessionContext.current().config().rebuildOr(false);
+        boolean distrust = SessionContext.current().config().forceOr(false)
+                || SessionContext.current().config().rebuildOr(false);
         int weight;
         if (!distrust) {
             var shapeHit = PreflightMemo.tryLoadShape(req.entryDir(), dir, req.skipTests());
@@ -901,8 +878,7 @@ public final class BuildService {
                 }
             } else {
                 weight = pipeline.estimatedTotalWeight();
-                PreflightMemo.storeShape(
-                        req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(pipeline, weight));
+                PreflightMemo.storeShape(req.entryDir(), dir, req.skipTests(), PreflightMemo.shapeOf(pipeline, weight));
             }
         } else {
             // Force/rebuild: never trust shape memo fullyCached/weights.

@@ -79,8 +79,8 @@ public final class PluginCommand extends GroupCommand {
             Path dir = global.workingDir();
             Path rootToml = dir.resolve("jk.toml");
             if (!Files.isRegularFile(rootToml)) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir)));
+                CliOutput.err(
+                        cc.jumpkick.cli.tui.CommandWedge.fail("Plugin", "no jk.toml in " + PathDisplay.styledRaw(dir)));
                 return Exit.CONFIG;
             }
 
@@ -130,8 +130,7 @@ public final class PluginCommand extends GroupCommand {
                 }
                 RepoArtifactStore.writeToLocalStore(cache, rel, source);
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
-                        "Plugin",
-                        "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)));
+                        "Plugin", "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)));
                 installed++;
             }
 
@@ -143,8 +142,7 @@ public final class PluginCommand extends GroupCommand {
             }
             if (installed == 0 && skipped == 0) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Plugin",
-                        "no PluginMain assembly modules found (need [application] assembly + PluginMain)"));
+                        "Plugin", "no PluginMain assembly modules found (need [application] assembly + PluginMain)"));
                 return Exit.CONFIG;
             }
             if (skipped > 0 && installed == 0) return Exit.FAILURE;

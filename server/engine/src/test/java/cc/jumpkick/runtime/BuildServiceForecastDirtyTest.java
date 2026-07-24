@@ -54,9 +54,7 @@ class BuildServiceForecastDirtyTest {
 
     @Test
     void rebuild_marks_every_module_dirty_without_per_step_forecast(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -70,17 +68,14 @@ class BuildServiceForecastDirtyTest {
         for (String m : new String[] {"a", "b"}) {
             Path dir = tmp.resolve(m);
             Files.createDirectories(dir);
-            Files.writeString(
-                    dir.resolve("jk.toml"),
-                    """
+            Files.writeString(dir.resolve("jk.toml"), """
                     [project]
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
                     jdk = 21
                     java = 21
-                    """
-                            .formatted(m));
+                    """.formatted(m));
         }
 
         BuildGraph.Result graph =
@@ -92,15 +87,14 @@ class BuildServiceForecastDirtyTest {
         Set<Path> dirty =
                 SessionContext.where(session, () -> BuildService.forecastDirtyDirs(graph, tmp.resolve("cache")));
         assertThat(dirty)
-                .containsExactlyInAnyOrderElementsOf(
-                        graph.topoOrder().stream().map(BuildGraph.BuildUnit::dir).toList());
+                .containsExactlyInAnyOrderElementsOf(graph.topoOrder().stream()
+                        .map(BuildGraph.BuildUnit::dir)
+                        .toList());
     }
 
     @Test
     void force_marks_every_module_dirty_without_per_step_forecast(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "only"

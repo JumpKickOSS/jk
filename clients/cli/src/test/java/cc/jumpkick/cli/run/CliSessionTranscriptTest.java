@@ -77,7 +77,8 @@ class CliSessionTranscriptTest {
         assertTrue(finish.contains("Build successful"));
 
         // Mid-run line should have carried progress rider.
-        String step = lines.stream().filter(l -> l.contains("step-start")).findFirst().orElseThrow();
+        String step =
+                lines.stream().filter(l -> l.contains("step-start")).findFirst().orElseThrow();
         assertTrue(step.contains("\"progress\":50") || step.contains("\"progress\":50.0"));
     }
 
@@ -176,8 +177,8 @@ class CliSessionTranscriptTest {
 
     @Test
     void is_immediate_type_classifies_hot_ticks() {
-        assertFalse(CliSessionTranscript.isImmediateType(
-                "{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));
+        assertFalse(
+                CliSessionTranscript.isImmediateType("{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));
         assertFalse(CliSessionTranscript.isImmediateType(
                 "{\"schema\":1,\"ts\":1,\"type\":\"tick-update\",\"step\":\"x\"}"));
         // Engine aggregate ticks arrive at up to 12.5Hz — heartbeat cadence, not per-line flush.

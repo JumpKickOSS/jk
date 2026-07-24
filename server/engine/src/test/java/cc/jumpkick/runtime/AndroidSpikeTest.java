@@ -14,9 +14,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * The P6 validation gate (build-plugins plan §4; android-plan.md Step 1): {@code jk build} on a

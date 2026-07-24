@@ -107,8 +107,7 @@ public final class McpHandler {
             return notification ? null : errorMap(id, -32600, "invalid request: missing method");
         }
         @SuppressWarnings("unchecked")
-        Map<String, Object> params =
-                req.get("params") instanceof Map<?, ?> p ? (Map<String, Object>) p : Map.of();
+        Map<String, Object> params = req.get("params") instanceof Map<?, ?> p ? (Map<String, Object>) p : Map.of();
 
         try {
             Object result =
@@ -194,13 +193,8 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_lock",
                 "Resolve dependencies and write jk.lock for dir (async). Progress: GET /mcp?requestId=N.",
-                objectSchema(Map.of(
-                        "dir",
-                        Map.of(
-                                "type",
-                                "string",
-                                "description",
-                                "Absolute path containing jk.toml")))));
+                objectSchema(
+                        Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
         tools.add(tool(
                 "jk_cancel",
                 "Cancel an in-flight HTTP/MCP job by requestId (grace then force workers; JK-1096).",
@@ -210,19 +204,13 @@ public final class McpHandler {
         tools.add(tool(
                 "jk_project",
                 "Parse project metadata from dir/jk.toml (coord, description).",
-                objectSchema(Map.of(
-                        "dir",
-                        Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
+                objectSchema(
+                        Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
         tools.add(tool(
                 "jk_history",
                 "Recent build journal entries (JSON array of records). Same source as GET /api/history.",
                 objectSchema(Map.of(
-                        "limit",
-                        Map.of(
-                                "type",
-                                "integer",
-                                "description",
-                                "Max entries (default 20, max 200)")))));
+                        "limit", Map.of("type", "integer", "description", "Max entries (default 20, max 200)")))));
         return Map.of("tools", tools);
     }
 
@@ -230,8 +218,7 @@ public final class McpHandler {
         String name = string(params.get("name"));
         if (name == null || name.isBlank()) throw new McpError(-32602, "tools/call requires name");
         @SuppressWarnings("unchecked")
-        Map<String, Object> args =
-                params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
+        Map<String, Object> args = params.get("arguments") instanceof Map<?, ?> a ? (Map<String, Object>) a : Map.of();
         String progressToken = progressTokenOf(params);
 
         Object payload =

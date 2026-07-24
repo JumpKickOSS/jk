@@ -44,6 +44,7 @@ public final class CliSessionTranscript {
     public static final String REL_ROOT = "target/.jk-cli";
     /** Canonical live session log (replaces end-only {@code details.json}). */
     public static final String FILE_NAME = "details.jsonl";
+
     private static final String ENV = "JK_CLI_DETAILS";
 
     private static final DateTimeFormatter DIR_TS =
@@ -65,6 +66,7 @@ public final class CliSessionTranscript {
      * JSON line on disk.
      */
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
+
     private long lastFlushMs;
     private String wedgeSummary;
     private boolean closed;
@@ -258,7 +260,10 @@ public final class CliSessionTranscript {
                 long durationMs = Duration.between(started, finished).toMillis();
                 if (exitCode == 0) LiveProgress.get().setPercent(100.0);
                 String finishLine = JsonlShape.withProgress(JsonlShape.sessionFinish(
-                        exitCode, durationMs, wedgeSummary == null ? null : stripAnsi(wedgeSummary), List.copyOf(modules)));
+                        exitCode,
+                        durationMs,
+                        wedgeSummary == null ? null : stripAnsi(wedgeSummary),
+                        List.copyOf(modules)));
                 // Enqueue finish as a complete record, then drain pending.
                 if (out != null) {
                     pending.write((stripTrailingNewlines(finishLine) + "\n").getBytes(StandardCharsets.UTF_8));

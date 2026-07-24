@@ -9,6 +9,8 @@ import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -28,7 +30,8 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        Set<Path> dirty = Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
+        Set<Path> dirty =
+                Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
         storeDirty(tmp, graph, dirty);
 
         Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
@@ -126,7 +129,10 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        storeDirty(tmp, graph, Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize()));
+        storeDirty(
+                tmp,
+                graph,
+                Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize()));
         storeDirty(tmp, graph, Set.of());
         Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(hit).isPresent();
@@ -160,8 +166,9 @@ class PreflightMemoTest {
         assertThat(loaded.hasErrors()).isFalse();
         assertThat(loaded.topoOrder()).hasSize(2);
         assertThat(loaded.topoOrder().stream().map(BuildGraph.BuildUnit::coord).toList())
-                .containsExactlyElementsOf(
-                        full.topoOrder().stream().map(BuildGraph.BuildUnit::coord).toList());
+                .containsExactlyElementsOf(full.topoOrder().stream()
+                        .map(BuildGraph.BuildUnit::coord)
+                        .toList());
         // Edges: same prereq counts
         assertThat(loaded.edges().keySet()).hasSize(full.edges().keySet().size());
     }
@@ -173,9 +180,7 @@ class PreflightMemoTest {
         BuildGraph.Result full = BuildGraph.resolve(tmp, entry);
         PreflightMemo.storeGraph(tmp, full);
 
-        Files.writeString(
-                tmp.resolve("a/jk.toml"),
-                """
+        Files.writeString(tmp.resolve("a/jk.toml"), """
                 [project]
                 group = "t"
                 name = "a"
@@ -208,9 +213,7 @@ class PreflightMemoTest {
         BuildGraph.Result full = BuildGraph.resolve(tmp, entry);
         PreflightMemo.storeGraph(tmp, full);
         // Drop b from the workspace list (folder still exists) — entry toml changes structure key.
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -233,7 +236,9 @@ class PreflightMemoTest {
         // Second resolve should hit memo path (same structure)
         BuildGraph.Result second = BuildGraph.resolve(tmp, entry);
         assertThat(second.topoOrder().stream().map(BuildGraph.BuildUnit::coord).toList())
-                .isEqualTo(first.topoOrder().stream().map(BuildGraph.BuildUnit::coord).toList());
+                .isEqualTo(first.topoOrder().stream()
+                        .map(BuildGraph.BuildUnit::coord)
+                        .toList());
     }
 
     @Test
@@ -243,7 +248,7 @@ class PreflightMemoTest {
         var shape = new PreflightMemo.PipelineShape(
                 42,
                 8,
-                java.util.List.of(
+                List.of(
                         new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
                         new PreflightMemo.PipelineShape.StepShape("package-jar", "package")));
         PreflightMemo.storeShape(tmp, mod, false, shape);
@@ -259,11 +264,8 @@ class PreflightMemoTest {
     void shape_memo_misses_when_toml_changes(@TempDir Path tmp) throws Exception {
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
-        PreflightMemo.storeShape(
-                tmp, mod, false, new PreflightMemo.PipelineShape(10, 0, java.util.List.of()));
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        PreflightMemo.storeShape(tmp, mod, false, new PreflightMemo.PipelineShape(10, 0, List.of()));
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -277,7 +279,7 @@ class PreflightMemoTest {
     @Test
     void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
         // JK-1114: ETA path builds ModuleCost without assembling a pipeline.
-        var cost = EffortWeights.costOf(tmp, java.util.Set.of(), 100, 15);
+        var cost = EffortWeights.costOf(tmp, Set.of(), 100, 15);
         assertThat(cost.weight()).isEqualTo(100);
         assertThat(cost.testWeight()).isEqualTo(15);
         assertThat(cost.dir()).isEqualTo(tmp);
@@ -293,7 +295,7 @@ class PreflightMemoTest {
         var shape = new PreflightMemo.PipelineShape(
                 77,
                 12,
-                java.util.List.of(
+                List.of(
                         new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"),
                         new PreflightMemo.PipelineShape.StepShape("run-tests", "test")));
         ModulePlan plan = PreflightMemo.provisionalModulePlan(u, shape, tmp.resolve("cache"));
@@ -307,14 +309,13 @@ class PreflightMemoTest {
 
     /** Store with fingerprints snapshotted now — what every production call site does at preflight. */
     private static void storeDirty(Path entryDir, BuildGraph.Result graph, Set<Path> dirty) {
-        PreflightMemo.storeDirty(
-                entryDir, graph, false, dirty, PreflightMemo.snapshotFingerprints(graph, false));
+        PreflightMemo.storeDirty(entryDir, graph, false, dirty, PreflightMemo.snapshotFingerprints(graph, false));
     }
 
     private static void deleteRecursively(Path root) throws Exception {
         if (!Files.exists(root)) return;
         try (var stream = Files.walk(root)) {
-            for (Path p : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+            for (Path p : stream.sorted(Comparator.reverseOrder()).toList()) {
                 Files.deleteIfExists(p);
             }
         }
@@ -322,9 +323,7 @@ class PreflightMemoTest {
 
     private static void writeProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("target"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -335,9 +334,7 @@ class PreflightMemoTest {
         Path src = dir.resolve("src/main/java");
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
-        Files.writeString(
-                dir.resolve("jk.lock"),
-                """
+        Files.writeString(dir.resolve("jk.lock"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
@@ -345,9 +342,7 @@ class PreflightMemoTest {
     }
 
     private static void writeWorkspace(Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -363,21 +358,16 @@ class PreflightMemoTest {
             Path md = dir.resolve(m);
             Files.createDirectories(md.resolve("target"));
             Files.createDirectories(md.resolve("src/main/java"));
-            Files.writeString(
-                    md.resolve("jk.toml"),
-                    """
+            Files.writeString(md.resolve("jk.toml"), """
                     [project]
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
                     jdk = 21
                     java = 21
-                    """
-                            .formatted(m));
+                    """.formatted(m));
             Files.writeString(md.resolve("src/main/java/M.java"), "class M {}\n");
-            Files.writeString(
-                    md.resolve("jk.lock"),
-                    """
+            Files.writeString(md.resolve("jk.lock"), """
                     version = 1
                     generated-by = "test"
                     resolution-algorithm = "pubgrub-v1"

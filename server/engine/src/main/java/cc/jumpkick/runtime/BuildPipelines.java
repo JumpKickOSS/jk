@@ -1819,8 +1819,8 @@ public final class BuildPipelines {
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
                     JkBuild projectUnderTest = ctx.require(PROJECT);
-                    Map<String, String> workerJars = workerJarProps(
-                            in.dir(), projectUnderTest.build().testPluginJars());
+                    Map<String, String> workerJars =
+                            workerJarProps(in.dir(), projectUnderTest.build().testPluginJars());
                     // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
                     // so EngineTestExtension cannot kill the host engine running this test step.
                     Map<String, String> testEnv = Map.of();

@@ -24,8 +24,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final String displayName; // "Eclipse Temurin 26"
     private final boolean nerdfont;
     private final boolean silent;
-    private final AttributedStyle[] frameColors =
-            Spinner.buildPulseStyles(Spinner.PULSE_FRAMES, Spinner.PULSE_DIM);
+    private final AttributedStyle[] frameColors = Spinner.buildPulseStyles(Spinner.PULSE_FRAMES, Spinner.PULSE_DIM);
     private final AttributedStyle[] failColors;
     private final ProgressBar bar = new ProgressBar();
 

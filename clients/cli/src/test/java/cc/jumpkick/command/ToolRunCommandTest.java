@@ -20,9 +20,9 @@ import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * {@code jk tool run <file>} — file-execution modes (.java/.kt/.kts/.jar). (Coordinate-target

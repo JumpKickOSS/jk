@@ -52,6 +52,4 @@ class LiveProgressTest {
         p.apply(new WorkspaceProgressTracker.Snapshot(0, 0, 60.0, "execute", 2, 4));
         assertThat(p.percent()).isEqualTo(60.0);
     }
-
 }
-

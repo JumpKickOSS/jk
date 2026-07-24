@@ -22,9 +22,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end (offline) wiring of a git-source dependency through the resolver

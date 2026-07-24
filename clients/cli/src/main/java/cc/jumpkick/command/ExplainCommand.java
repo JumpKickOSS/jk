@@ -52,15 +52,12 @@ public final class ExplainCommand implements CliCommand {
         // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
         // means feeding the same inputs to the shared estimate (and, with --run, to build).
         // Module concurrency: global -j/--jobs (JK-1082).
+        opts.add(Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
         opts.add(Opt.value(
-                "<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
-        opts.add(Opt.value(
-                "<N>",
-                "Forecast with N test-runner JVMs per module (within -j). Default 1.",
-                "-w",
-                "--workers"));
+                "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
         opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
+                .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"));
         opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"));
@@ -68,8 +65,7 @@ public final class ExplainCommand implements CliCommand {
                 "<fmt>",
                 "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
                 "--graph"));
-        opts.add(Opt.value(
-                "<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
+        opts.add(Opt.value("<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
         return opts;
     }
 

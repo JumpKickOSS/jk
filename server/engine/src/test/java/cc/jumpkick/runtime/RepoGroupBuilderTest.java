@@ -8,6 +8,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class RepoGroupBuilderTest {
@@ -16,8 +17,7 @@ class RepoGroupBuilderTest {
     void empty_declaration_defaults_to_jumpkick_central_google() {
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(Map.of());
         assertThat(effective)
-                .containsExactly(
-                        RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+                .containsExactly(RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
         assertThat(RepositorySpec.JUMPKICK.groups()).contains("cc.jumpkick", "build.jumpkick.*");
     }
 
@@ -26,9 +26,7 @@ class RepoGroupBuilderTest {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         byName.put("corp", new RepositorySpec("corp", URI.create("https://corp.example/maven/")));
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
-        assertThat(effective)
-                .extracting(RepositorySpec::name)
-                .containsExactly("jumpkick", "corp", "central", "google");
+        assertThat(effective).extracting(RepositorySpec::name).containsExactly("jumpkick", "corp", "central", "google");
     }
 
     @Test
@@ -39,9 +37,7 @@ class RepoGroupBuilderTest {
         byName.put("google", customGoogle);
         byName.put("central", RepositorySpec.MAVEN_CENTRAL);
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
-        assertThat(effective)
-                .extracting(RepositorySpec::name)
-                .containsExactly("jumpkick", "google", "central");
+        assertThat(effective).extracting(RepositorySpec::name).containsExactly("jumpkick", "google", "central");
         assertThat(effective.stream().filter(r -> r.name().equals("google")).findFirst())
                 .get()
                 .extracting(RepositorySpec::url)
@@ -62,8 +58,7 @@ class RepoGroupBuilderTest {
     @Test
     void default_remote_repos_includes_jumpkick_first() {
         assertThat(RepoGroupBuilder.DEFAULT_REMOTE_REPOS)
-                .containsExactly(
-                        RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+                .containsExactly(RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
         assertThat(RepositorySpec.GOOGLE_MAVEN.url().toString()).contains("google");
     }
 
@@ -72,9 +67,7 @@ class RepoGroupBuilderTest {
         Map<String, RepositorySpec> byName = new LinkedHashMap<>();
         byName.put("google", RepositorySpec.GOOGLE_MAVEN);
         List<RepositorySpec> effective = RepoGroupBuilder.effectiveRepos(byName);
-        assertThat(effective)
-                .extracting(RepositorySpec::name)
-                .containsExactly("jumpkick", "google", "central");
+        assertThat(effective).extracting(RepositorySpec::name).containsExactly("jumpkick", "google", "central");
     }
 
     @Test
@@ -85,12 +78,11 @@ class RepoGroupBuilderTest {
         // Smoke: does not throw; warn goes to stderr (once per call).
         RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(multi);
         RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(RepositorySpec.MAVEN_CENTRAL));
-        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(
-                new RepositorySpec(
-                        "internal",
-                        URI.create("https://i.example/"),
-                        java.util.Optional.empty(),
-                        java.util.Optional.empty(),
-                        List.of("com.acme"))));
+        RepoGroupBuilder.maybeWarnMultiRepoWithoutBindings(List.of(new RepositorySpec(
+                "internal",
+                URI.create("https://i.example/"),
+                Optional.empty(),
+                Optional.empty(),
+                List.of("com.acme"))));
     }
 }

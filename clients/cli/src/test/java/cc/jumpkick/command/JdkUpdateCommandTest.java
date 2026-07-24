@@ -25,9 +25,9 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /** Integration tests for {@code jk jdk update [spec]}. */
 @Tag("integration")

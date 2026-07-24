@@ -140,8 +140,7 @@ final class EngineBuildListenerAdapter {
                             req.verbose(),
                             req.offline(),
                             req.force(),
-                            req.parallelTests()
-                                    || SessionContext.current().parallelTests()),
+                            req.parallelTests() || SessionContext.current().parallelTests()),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
@@ -400,7 +399,8 @@ final class EngineBuildListenerAdapter {
      * {@code ackType} line, return its decoded value. Every read-only engine verb goes through here
      * so the discriminator is matched in exactly one place.
      */
-    static <T> T request(EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
+    static <T> T request(
+            EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
             throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
         try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
@@ -421,11 +421,16 @@ final class EngineBuildListenerAdapter {
 
     /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
     static boolean edit(EnginePaths.Paths paths, Path file, String op, java.util.List<String> args) throws IOException {
-        return request(paths, EngineProtocol.editRequest(file.toString(), op, args), EngineProtocol.EDIT_ACK, "edit request", line -> {
-            String error = Jsonl.str(line, "error");
-            if (error != null) throw new IOException(error);
-            return Jsonl.bool(line, "changed", false);
-        });
+        return request(
+                paths,
+                EngineProtocol.editRequest(file.toString(), op, args),
+                EngineProtocol.EDIT_ACK,
+                "edit request",
+                line -> {
+                    String error = Jsonl.str(line, "error");
+                    if (error != null) throw new IOException(error);
+                    return Jsonl.bool(line, "changed", false);
+                });
     }
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
@@ -725,12 +730,10 @@ final class EngineBuildListenerAdapter {
                     String phase = Jsonl.str(line, "phase");
                     int mc = Jsonl.intValue(line, "modulesComplete", 0);
                     int mt = Jsonl.intValue(line, "modulesTotal", 0);
-                    double pct = den > 0
-                            ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den)
-                            : Double.NaN;
-                    listener.onWorkspaceProgress(
-                            new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
-                                    num, den, pct, phase == null ? "" : phase, mc, mt));
+                    double pct =
+                            den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
+                    listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
+                            num, den, pct, phase == null ? "" : phase, mc, mt));
                 }
                 case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                 case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));

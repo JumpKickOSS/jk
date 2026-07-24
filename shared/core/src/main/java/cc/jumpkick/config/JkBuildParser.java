@@ -1511,8 +1511,7 @@ public final class JkBuildParser {
                 for (int i = 0; i < kspOpts.size(); i++) {
                     Object val = kspOpts.get(i);
                     if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
-                        throw new JkBuildParseException(
-                                "[build].ksp-options must be an array of key=value strings");
+                        throw new JkBuildParseException("[build].ksp-options must be an array of key=value strings");
                     }
                     kspOptions.add(s);
                 }
@@ -1523,8 +1522,7 @@ public final class JkBuildParser {
                 for (int i = 0; i < es.size(); i++) {
                     Object val = es.get(i);
                     if (!(val instanceof String s) || s.isBlank())
-                        throw new JkBuildParseException(
-                                "[build].extra-src must be an array of directory strings");
+                        throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
                     extraSrc.add(s);
                 }
             }

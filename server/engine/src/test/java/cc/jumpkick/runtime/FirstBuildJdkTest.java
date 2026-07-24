@@ -10,8 +10,8 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -94,7 +94,11 @@ import org.junit.jupiter.api.Tag;
             PipelineResult result = pipeline.run();
             StringBuilder dump = new StringBuilder();
             for (PipelineResult.Diagnostic d : result.errors()) {
-                dump.append("DIAG [").append(d.step()).append("]: ").append(d.message()).append('\n');
+                dump.append("DIAG [")
+                        .append(d.step())
+                        .append("]: ")
+                        .append(d.message())
+                        .append('\n');
             }
             pipeline.get(BuildPipelines.TEST_RESULT).ifPresent(ts -> {
                 dump.append("NESTED-SUMMARY total=")
@@ -120,7 +124,8 @@ import org.junit.jupiter.api.Tag;
                 Path reports = project.resolve("target/reports/test-results");
                 if (Files.isDirectory(reports)) {
                     try (var stream = Files.walk(reports, 2)) {
-                        for (Path p : stream.filter(x -> x.toString().endsWith(".xml")).toList()) {
+                        for (Path p : stream.filter(x -> x.toString().endsWith(".xml"))
+                                .toList()) {
                             dump.append("NESTED-XML ")
                                     .append(p.getFileName())
                                     .append(":\n")

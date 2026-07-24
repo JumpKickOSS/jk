@@ -51,7 +51,12 @@ public final class CommandManagerListener implements PipelineListener {
     }
 
     public CommandManagerListener(
-            PrintStream out, ConsoleSpec spec, String module, List<Step> steps, boolean animate, boolean aggregateRider) {
+            PrintStream out,
+            ConsoleSpec spec,
+            String module,
+            List<Step> steps,
+            boolean animate,
+            boolean aggregateRider) {
         this.out = out;
         this.spec = spec;
         this.command = spec != null ? spec.command() : module;
@@ -107,8 +112,7 @@ public final class CommandManagerListener implements PipelineListener {
     public void error(String step, String code, String message) {
         String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
         cm.attachPhaseError(module, step, "", brief);
-        cm.writeAbove(
-                (code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
+        cm.writeAbove((code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
     }
 
     @Override

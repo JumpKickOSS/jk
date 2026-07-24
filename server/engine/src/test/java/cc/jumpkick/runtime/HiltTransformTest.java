@@ -12,9 +12,9 @@ import cc.jumpkick.run.PipelineResult;
 import java.lang.classfile.ClassFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 5, blocker 4: Hilt unmodified-source parity. Sources spell plain

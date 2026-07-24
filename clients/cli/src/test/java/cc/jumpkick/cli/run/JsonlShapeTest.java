@@ -7,6 +7,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.run.StepStatus;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -65,11 +66,11 @@ class JsonlShapeTest {
 
     @Test
     void session_events() {
-        String start = JsonlShape.sessionStart("build", java.util.List.of("build", "--skip-tests"));
+        String start = JsonlShape.sessionStart("build", List.of("build", "--skip-tests"));
         assertThat(start).contains("\"type\":\"session-start\"");
         assertThat(start).contains("\"command\":\"build\"");
         assertThat(start).contains("\"argv\":[\"build\",\"--skip-tests\"]");
-        String finish = JsonlShape.sessionFinish(0, 42, "ok", java.util.List.of("a:b"));
+        String finish = JsonlShape.sessionFinish(0, 42, "ok", List.of("a:b"));
         assertThat(finish).contains("\"type\":\"session-finish\"");
         assertThat(finish).contains("\"exit\":0");
         assertThat(finish).contains("\"duration_ms\":42");
@@ -80,7 +81,11 @@ class JsonlShapeTest {
     @Test
     void error_carries_optional_test_fields() {
         String line = JsonlShape.error(
-                "run-tests", "test-failure", "nope", "cc.jumpkick:core :: Foo > bar()  [w2]", "java.lang.AssertionError");
+                "run-tests",
+                "test-failure",
+                "nope",
+                "cc.jumpkick:core :: Foo > bar()  [w2]",
+                "java.lang.AssertionError");
         assertThat(line).contains("\"schema\":1");
         assertThat(line).contains("\"type\":\"error\"");
         assertThat(line).contains("\"test\":\"cc.jumpkick:core :: Foo > bar()  [w2]\"");

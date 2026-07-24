@@ -114,7 +114,15 @@ public final class JUnitLauncher {
             TestProgressListener listener)
             throws IOException, InterruptedException {
         return run(
-                javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, Map.of(), listener, null);
+                javaHome,
+                testClassesDir,
+                runtimeClasspath,
+                cacheRoot,
+                workers,
+                workerJarProps,
+                Map.of(),
+                listener,
+                null);
     }
 
     /**
@@ -339,13 +347,7 @@ public final class JUnitLauncher {
                     1,
                     0,
                     List.of(new TestSummary.Failure(
-                            "(test run)",
-                            "",
-                            "runner exited " + worstExit,
-                            crash.toString(),
-                            moduleLabel,
-                            "",
-                            0)));
+                            "(test run)", "", "runner exited " + worstExit, crash.toString(), moduleLabel, "", 0)));
         }
         if (xml != null) {
             try {
@@ -641,13 +643,7 @@ public final class JUnitLauncher {
             String stack = throwableJson != null ? Jsonl.str(throwableJson, "stack") : null;
             String className = classFromUniqueId(id);
             failures.add(new TestSummary.Failure(
-                    display,
-                    exClass,
-                    message,
-                    stack == null ? "" : stack,
-                    moduleLabel,
-                    className,
-                    workerId));
+                    display, exClass, message, stack == null ? "" : stack, moduleLabel, className, workerId));
             listener.onFailure(id, display, exClass, message, workerId);
         }
 

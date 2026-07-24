@@ -12,9 +12,9 @@ import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 4's ecosystem gate: a Kotlin Android app using <b>Room</b> (entity + dao +

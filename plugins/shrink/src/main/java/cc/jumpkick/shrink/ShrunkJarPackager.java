@@ -131,7 +131,8 @@ final class ShrunkJarPackager {
             for (Path file : classes) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
                 if (name.contains("$")) continue; // outer-class keep retains nested types
-                String fqcn = name.substring(0, name.length() - ".class".length()).replace('/', '.');
+                String fqcn =
+                        name.substring(0, name.length() - ".class".length()).replace('/', '.');
                 pro.append("-keep class ").append(fqcn).append(" { *; }\n");
                 kept++;
             }

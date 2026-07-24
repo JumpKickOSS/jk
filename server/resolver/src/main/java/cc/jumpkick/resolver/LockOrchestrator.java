@@ -311,7 +311,15 @@ public final class LockOrchestrator {
         // JK-1091: live graph ticks during PubGrub decisions (not only post-scope).
         Set<String> graphSeen = new LinkedHashSet<>();
         Resolution mainResolution = resolveGroup(
-                mainRoots, bomConstraints, lockedVersionPrefs, kmp, sharedSource, pomBuilder, observer, graphSeen, estimate);
+                mainRoots,
+                bomConstraints,
+                lockedVersionPrefs,
+                kmp,
+                sharedSource,
+                pomBuilder,
+                observer,
+                graphSeen,
+                estimate);
         noteGraph(observer, mainResolution, graphSeen, estimate);
         Map<String, String> testPrefs = new HashMap<>(lockedVersionPrefs);
         putVersions(testPrefs, mainResolution);
@@ -523,7 +531,8 @@ public final class LockOrchestrator {
     }
 
     /** Completion event for parallel jar materialize (progress on complete, rows ordered). */
-    private record MaterializeDone(int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
+    private record MaterializeDone(
+            int index, Lockfile.Artifact artifact, String module, String version, Throwable error) {
         static MaterializeDone ok(int index, Lockfile.Artifact art, String module, String version) {
             return new MaterializeDone(index, art, module, version, null);
         }

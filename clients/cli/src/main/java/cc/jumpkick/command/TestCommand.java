@@ -59,11 +59,10 @@ public final class TestCommand implements CliCommand {
                         "--workers")));
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
+                .hide());
         opts.add(Opt.value(
-                "<git-ref>",
-                "Test only modules (and dependents) changed since this git ref.",
-                "--affected-since"));
+                "<git-ref>", "Test only modules (and dependents) changed since this git ref.", "--affected-since"));
         opts.add(Opt.value(
                 "<sel>",
                 "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
@@ -252,8 +251,8 @@ public final class TestCommand implements CliCommand {
                     if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
                 }
             } else {
-                int width =
-                        Math.max(1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
+                int width = Math.max(
+                        1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
                 var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
                     Thread t = new Thread(r, "jk-test-module");
                     t.setDaemon(true);

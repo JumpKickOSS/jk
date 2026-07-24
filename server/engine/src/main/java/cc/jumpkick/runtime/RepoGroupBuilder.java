@@ -34,8 +34,8 @@ public final class RepoGroupBuilder {
      * Built-in remotes when the project declares none (and always appended if missing). JumpKick
      * is first so exclusive groups take effect before Central can confuse first-party coords.
      */
-    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS = List.of(
-            RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
+    static final List<RepositorySpec> DEFAULT_REMOTE_REPOS =
+            List.of(RepositorySpec.JUMPKICK, RepositorySpec.MAVEN_CENTRAL, RepositorySpec.GOOGLE_MAVEN);
 
     private RepoGroupBuilder() {}
 
@@ -94,11 +94,10 @@ public final class RepoGroupBuilder {
             }
         }
         if (any) return;
-        System.err.println(
-                "jk: warning: multiple repositories configured without exclusive `groups` bindings "
-                        + "(dependency-confusion risk). Bind internal namespaces, e.g. "
-                        + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
-                        + "See the guide § Auth and repositories.");
+        System.err.println("jk: warning: multiple repositories configured without exclusive `groups` bindings "
+                + "(dependency-confusion risk). Bind internal namespaces, e.g. "
+                + "[repositories.internal] groups = [\"com.acme\", \"com.acme.*\"]. "
+                + "See the guide § Auth and repositories.");
     }
 
     /**
@@ -123,7 +122,8 @@ public final class RepoGroupBuilder {
             }
         }
         for (RepositorySpec builtin : DEFAULT_REMOTE_REPOS) {
-            if (!byName.containsKey(builtin.name()) && !RepositorySpec.JUMPKICK.name().equals(builtin.name())) {
+            if (!byName.containsKey(builtin.name())
+                    && !RepositorySpec.JUMPKICK.name().equals(builtin.name())) {
                 effective.add(builtin);
             }
         }

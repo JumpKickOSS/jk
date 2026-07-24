@@ -27,9 +27,9 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * P5 acceptance (build-plugins plan §4): a third-party hello-world table plugin, published to a

@@ -7,9 +7,9 @@ import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * Coverage for the {@code jk ide} front door: by default it generates <b>both</b> IntelliJ and VS

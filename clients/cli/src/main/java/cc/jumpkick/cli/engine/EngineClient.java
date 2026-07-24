@@ -81,7 +81,6 @@ public final class EngineClient {
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null (JK-1095). */
             String mcpUrl) {
 
-
         /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
         public boolean httpEnabled() {
             return httpUrl != null || httpError != null;

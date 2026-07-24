@@ -100,34 +100,22 @@ class JkBuildParserTest {
 
                 [build]
                 test-workers = 1
-                """)
-                        .build()
-                        .testWorkers())
-                .isEqualTo(1);
+                """).build().testWorkers()).isEqualTo(1);
         assertThat(JkBuildParser.parse(PROJECT + """
 
                 [build]
                 test-parallel = false
-                """)
-                        .build()
-                        .testWorkers())
-                .isEqualTo(1);
+                """).build().testWorkers()).isEqualTo(1);
         assertThat(JkBuildParser.parse(PROJECT + """
 
                 [test]
                 workers = 2
-                """)
-                        .build()
-                        .testWorkers())
-                .isEqualTo(2);
+                """).build().testWorkers()).isEqualTo(2);
         assertThat(JkBuildParser.parse(PROJECT + """
 
                 [test]
                 parallel = false
-                """)
-                        .build()
-                        .testWorkers())
-                .isEqualTo(1);
+                """).build().testWorkers()).isEqualTo(1);
         assertThat(JkBuildParser.parse(PROJECT + """
 
                 [build]
@@ -135,9 +123,7 @@ class JkBuildParserTest {
 
                 [test]
                 parallel = false
-                """)
-                        .build()
-                        .effectiveTestWorkers(0))
+                """).build().effectiveTestWorkers(0))
                 .isEqualTo(1);
     }
 

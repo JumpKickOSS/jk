@@ -11,10 +11,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.api.Tag;
 
 /** {@code listRefs} (ls-remote) enumerates a remote's tags + HEAD without cloning. */
 @Tag("integration")

@@ -78,10 +78,8 @@ class EngineProtocolTest {
 
     @Test
     void mcp_url_strips_trailing_slashes() {
-        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910/"))
-                .isEqualTo("http://127.0.0.1:8910/mcp");
-        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910"))
-                .isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910/")).isEqualTo("http://127.0.0.1:8910/mcp");
+        assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910")).isEqualTo("http://127.0.0.1:8910/mcp");
         assertThat(EngineProtocol.mcpUrlFromHttp(null)).isNull();
     }
 

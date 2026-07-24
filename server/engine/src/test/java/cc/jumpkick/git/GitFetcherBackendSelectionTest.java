@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import cc.jumpkick.forge.ForgeGitCredentials;
 import java.nio.file.Path;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 /** {@code JK_GIT_BACKEND} selection semantics in {@link GitFetcher#select}. */
 @Tag("integration")

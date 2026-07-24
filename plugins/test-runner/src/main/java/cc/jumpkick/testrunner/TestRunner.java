@@ -370,9 +370,8 @@ public final class TestRunner implements Plugin {
 
         private static java.util.Map<String, String> loadPlatformProperties() {
             var map = new java.util.LinkedHashMap<String, String>();
-            try (var in = Thread.currentThread()
-                    .getContextClassLoader()
-                    .getResourceAsStream("junit-platform.properties")) {
+            try (var in =
+                    Thread.currentThread().getContextClassLoader().getResourceAsStream("junit-platform.properties")) {
                 if (in == null) return map;
                 var props = new java.util.Properties();
                 props.load(in);

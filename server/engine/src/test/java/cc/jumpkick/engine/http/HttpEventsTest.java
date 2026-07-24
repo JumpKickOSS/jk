@@ -5,8 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 @Tag("integration")
 class HttpEventsTest {
@@ -119,7 +119,8 @@ class HttpEventsTest {
 
     @Test
     void extract_request_id_from_payload() {
-        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}")).isEqualTo(42L);
+        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}"))
+                .isEqualTo(42L);
         assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
         assertThat(HttpEvents.extractRequestId(null)).isNull();
     }

@@ -17,9 +17,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
@@ -189,7 +189,8 @@ class HttpEngineServerTest {
         assertThat(get("/fold.js").body()).contains("export function foldEvent");
         assertThat(get("/api.js").body()).contains("bootstrapToken");
         assertThat(get("/jk-logo.svg").headers().firstValue("Content-Type")).contains("image/svg+xml");
-        assertThat(get("/jumpkick-logo.webp").headers().firstValue("Content-Type")).contains("image/webp");
+        assertThat(get("/jumpkick-logo.webp").headers().firstValue("Content-Type"))
+                .contains("image/webp");
         HttpResponse<String> css = get("/style.css");
         assertThat(css.headers().firstValue("Content-Type")).contains("text/css; charset=utf-8");
         // Vue rides the CDN, version-pinned and integrity-locked (docs/webclient.md) — the shell

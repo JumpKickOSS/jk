@@ -86,8 +86,7 @@ public final class CacheCommand extends GroupCommand {
             return;
         }
         if (pipelines <= 0) return;
-        CliOutput.out(
-                "Waiting for " + pipelines + " in-flight build" + (pipelines == 1 ? "" : "s") + " to finish…");
+        CliOutput.out("Waiting for " + pipelines + " in-flight build" + (pipelines == 1 ? "" : "s") + " to finish…");
     }
 
     static String fmtBytes(long bytes) {

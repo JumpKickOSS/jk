@@ -125,13 +125,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.progressTokens = new ProgressTokenRegistry();
         // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
         this.mcp = config.mcp().enabled()
-                ? new McpHandler(
-                        status,
-                        jobs,
-                        this::projectMap,
-                        () -> journal.rawRecords(200),
-                        version,
-                        progressTokens)
+                ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
                 : null;
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
@@ -400,9 +394,7 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
         String hello =
-                filter == null
-                        ? ": mcp-events connected\n\n"
-                        : ": mcp-events connected requestId=" + filter + "\n\n";
+                filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected requestId=" + filter + "\n\n";
         try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -537,11 +529,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
                 // url() already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
-                .put(
-                        "mcpUrl",
-                        config.mcp().enabled() && url() != null
-                                ? url().replaceAll("/+$", "") + "/mcp"
-                                : null)
+                .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
                 .put("maxEventStreams", config.maxEventStreams())
                 .put("mcpEnabled", config.mcp().enabled())

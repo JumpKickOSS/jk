@@ -13,9 +13,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * The spawn path's engine-jar self-heal ({@link EngineJarFetcher}): download from the release
@@ -99,9 +99,7 @@ class EngineJarFetcherTest {
         jarBody = "tampered bytes".getBytes(StandardCharsets.UTF_8);
 
         var store = store(root);
-        assertThatThrownBy(() -> fetch(root))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("checksum mismatch");
+        assertThatThrownBy(() -> fetch(root)).isInstanceOf(IOException.class).hasMessageContaining("checksum mismatch");
         assertThat(store.resolve(VERSION)).isEmpty();
     }
 
@@ -110,9 +108,7 @@ class EngineJarFetcherTest {
         sumsStatus = 404;
 
         var store = store(root);
-        assertThatThrownBy(() -> fetch(root))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("HTTP 404");
+        assertThatThrownBy(() -> fetch(root)).isInstanceOf(IOException.class).hasMessageContaining("HTTP 404");
         assertThat(store.resolve(VERSION)).isEmpty();
     }
 

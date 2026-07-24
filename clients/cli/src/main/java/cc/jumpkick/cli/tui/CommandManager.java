@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.Ansi;
-import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.ByteArrayOutputStream;
@@ -66,6 +65,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Pulse FG colors (white↔chip blue); applied with chip background in the header. */
     private final AttributedStyle[] pulseColors =
             Spinner.buildPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
+
     private final ProgressBar bar = new ProgressBar();
 
     private final Object lock = new Object();
@@ -92,6 +92,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     /** Coarse pipeline phases in first-seen order (render newest-first). Key = wire phase name. */
     private final List<String> phaseOrder = new ArrayList<>();
+
     private final Map<String, PhaseNode> phases = new LinkedHashMap<>();
 
     /** Pre-formatted completion lines, oldest→newest; bounded to {@link #MAX_COMPLETIONS}. */
@@ -693,7 +694,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
                 // Indent under the branch without a blank spacer row.
-                lines.add(Theme.colorize(" │  " + entry.briefError, Theme.active().error()));
+                lines.add(
+                        Theme.colorize(" │  " + entry.briefError, Theme.active().error()));
                 budget--;
             }
             if (shown >= MAX_ROWS) break;
@@ -749,8 +751,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             PhaseNode n = phases.get(r.phase);
             if (n != null) brief = n.briefError;
         }
-        return new TreeEntry(
-                renderWorkRow(r.module, phaseLabel(r.phase), failed), brief == null ? "" : brief);
+        return new TreeEntry(renderWorkRow(r.module, phaseLabel(r.phase), failed), brief == null ? "" : brief);
     }
 
     private TreeEntry treeEntryForPhase(PhaseNode n) {
@@ -801,8 +802,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean phase1 = denominator == 0 && !sl.isEmpty();
         AttributedStyle chip = t.pipelineChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
-        AttributedStyle pulse =
-                t.withBackground(pulseColors[frame % pulseColors.length], t.planBadgeColor());
+        AttributedStyle pulse = t.withBackground(pulseColors[frame % pulseColors.length], t.planBadgeColor());
         if (nerdfont) {
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
@@ -815,7 +815,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                         .append(' ')
                         .append(Theme.colorize(sl, t.brightWhite()));
             } else {
-                AttributedStyle cap = t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(numerator, denominator));
+                AttributedStyle cap =
+                        t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(numerator, denominator));
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
             }
         } else {
@@ -920,7 +921,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         if (colon < 0) return Theme.colorize(module, Theme.active().settled());
         return Theme.colorize(module.substring(0, colon), Theme.active().cyan())
                 + ":"
-                + Theme.colorize(module.substring(colon + 1), Theme.active().brightCyan().bold());
+                + Theme.colorize(
+                        module.substring(colon + 1), Theme.active().brightCyan().bold());
     }
 
     private long elapsedMillis() {
@@ -1218,6 +1220,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         String message = "";
         /** One-line failure summary under a failed row (full diagnostics stay above / in files). */
         String briefError = "";
+
         long seq;
 
         Row(String module, String step, String phase) {

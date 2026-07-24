@@ -26,8 +26,9 @@ class CleanCommandTest {
         List<Path> dirs = CleanCommand.resolveModuleDirs(ws, List.of("lib", "../victim", "/etc"), warnings);
 
         assertThat(dirs).containsExactly(ws.toAbsolutePath().normalize().resolve("lib"));
-        assertThat(dirs).allSatisfy(d -> assertThat(d.startsWith(ws.toAbsolutePath().normalize()))
-                .isTrue());
+        assertThat(dirs)
+                .allSatisfy(d -> assertThat(d.startsWith(ws.toAbsolutePath().normalize()))
+                        .isTrue());
         assertThat(warnings)
                 .containsExactly(
                         "skipping module outside workspace: ../victim", "skipping module outside workspace: /etc");
@@ -72,7 +73,8 @@ class CleanCommandTest {
 
         long[] stats = {0, 0};
         try {
-            assertThatThrownBy(() -> CleanCommand.deleteRecursively(root, stats)).isInstanceOf(IOException.class);
+            assertThatThrownBy(() -> CleanCommand.deleteRecursively(root, stats))
+                    .isInstanceOf(IOException.class);
         } finally {
             Files.setPosixFilePermissions(locked, PosixFilePermissions.fromString("rwx------"));
         }

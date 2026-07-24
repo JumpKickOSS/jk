@@ -32,6 +32,7 @@ class ExclusiveGroupsTest {
     @Test
     void any_binding() {
         assertThat(ExclusiveGroups.anyBinding(List.of(List.of(), List.of()))).isFalse();
-        assertThat(ExclusiveGroups.anyBinding(List.of(List.of(), List.of("com.acme")))).isTrue();
+        assertThat(ExclusiveGroups.anyBinding(List.of(List.of(), List.of("com.acme"))))
+                .isTrue();
     }
 }

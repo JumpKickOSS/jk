@@ -1315,7 +1315,8 @@ public final class EngineProtocol {
     }
 
     public static String whyRequest(String dir, String query) {
-        return "{\"type\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query) + "}";
+        return "{\"type\":\"" + WHY_REQUEST + "\",\"dir\":" + Jsonl.quote(dir) + ",\"query\":" + Jsonl.quote(query)
+                + "}";
     }
 
     public static String ideModelRequest(String dir, String cache, String jdksDir) {
@@ -1479,12 +1480,7 @@ public final class EngineProtocol {
      * {@code phase} is {@code preflight}, {@code execute}, or {@code done}.
      */
     public static String workspaceProgress(
-            String dir,
-            long numerator,
-            long denominator,
-            String phase,
-            int modulesComplete,
-            int modulesTotal) {
+            String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
         return "{\"schema\":1,\"type\":\""
                 + WORKSPACE_PROGRESS
                 + "\",\"dir\":"
@@ -1777,7 +1773,8 @@ public final class EngineProtocol {
 
     /** Opens one module's event scope in a {@code jk lock}/{@code jk update} cascade (see {@link #LOCK_MODULE}). */
     public static String lockModule(String dir, String coord) {
-        return "{\"type\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord) + "}";
+        return "{\"type\":\"" + LOCK_MODULE + "\",\"dir\":" + Jsonl.quote(dir) + ",\"coord\":" + Jsonl.quote(coord)
+                + "}";
     }
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
@@ -2055,7 +2052,8 @@ public final class EngineProtocol {
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
-        return "{\"type\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message) + "}";
+        return "{\"type\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message)
+                + "}";
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */

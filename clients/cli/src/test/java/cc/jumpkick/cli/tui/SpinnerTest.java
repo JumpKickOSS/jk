@@ -75,8 +75,7 @@ class SpinnerTest {
         assertThat(colors[colors.length - 1].toAnsi()).isEqualTo("38;2;255;255;255");
         // Midpoint: near dim end
         int mid = Spinner.PULSE_FRAMES / 2;
-        assertThat(colors[mid].toAnsi())
-                .isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
+        assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
     }
 
     @Test

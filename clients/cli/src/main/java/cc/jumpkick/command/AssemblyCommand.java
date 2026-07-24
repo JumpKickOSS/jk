@@ -138,8 +138,8 @@ public final class AssemblyCommand implements CliCommand {
                     .trim());
         }
         var previous = SessionContext.current();
-        SessionContext.install(previous.withAssemblyOverride(
-                overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
+        SessionContext.install(
+                previous.withAssemblyOverride(overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
         try {
             return build.run(in);
         } finally {

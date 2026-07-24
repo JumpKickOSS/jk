@@ -32,6 +32,7 @@ public final class WorkspaceProgressTracker {
 
     /** Monotonic display peak at a stable total. */
     private double peakFraction;
+
     private long peakDenominator;
 
     private Snapshot last = Snapshot.unknown();
@@ -42,12 +43,7 @@ public final class WorkspaceProgressTracker {
      * @param phase {@code preflight}, {@code execute}, or {@code done}
      */
     public record Snapshot(
-            long numerator,
-            long denominator,
-            double percent,
-            String phase,
-            int modulesComplete,
-            int modulesTotal) {
+            long numerator, long denominator, double percent, String phase, int modulesComplete, int modulesTotal) {
 
         static Snapshot unknown() {
             return new Snapshot(0, 0, Double.NaN, "preflight", 0, 0);
@@ -66,8 +62,7 @@ public final class WorkspaceProgressTracker {
 
     /** Drive preflight band. Stage-local {@code done}/{@code total} refine the plan stage. */
     public synchronized Snapshot preflight(String stage, int done, int total) {
-        preflightNum =
-                Math.min(PREFLIGHT_UNITS, Math.round(preflightFraction(stage, done, total) * PREFLIGHT_UNITS));
+        preflightNum = Math.min(PREFLIGHT_UNITS, Math.round(preflightFraction(stage, done, total) * PREFLIGHT_UNITS));
         return recompute();
     }
 

@@ -99,8 +99,7 @@ class EffortWeightsTest {
     }
 
     @Test
-    void learned_prefers_module_history_then_cross_module_median_then_static(@TempDir Path cache)
-            throws Exception {
+    void learned_prefers_module_history_then_cross_module_median_then_static(@TempDir Path cache) throws Exception {
         int staticWeight = EffortWeights.runTestsWeight(100); // 15 + 100*8 = 815
         // Isolate from the host's real ~/.jk metrics history (dogfood pollutes defaultFile).
         Path metricsFile = cache.resolve("metrics-empty.json");
@@ -122,8 +121,7 @@ class EffortWeightsTest {
         // (2) A never-built module borrows the cross-module rate, not the hot static. The learned
         // reconstruction adds the small learnable TEST_STARTUP_FLOOR, NOT the larger cold TEST_STARTUP
         // guess — that decoupling is what lets a fast suite learn a rate below the old 15-unit floor.
-        int crossModule =
-                EffortWeights.learned(t, emptyMetrics, "/m/never", "run-tests", 100, staticWeight, List.of());
+        int crossModule = EffortWeights.learned(t, emptyMetrics, "/m/never", "run-tests", 100, staticWeight, List.of());
         assertThat(crossModule).isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 0.7 * 100)); // 72
         assertThat(crossModule).isLessThan(staticWeight);
 

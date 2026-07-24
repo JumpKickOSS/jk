@@ -12,9 +12,9 @@ import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * The shrink plugin: R8 {@code --classfile} full mode over a plain Java app + its runtime

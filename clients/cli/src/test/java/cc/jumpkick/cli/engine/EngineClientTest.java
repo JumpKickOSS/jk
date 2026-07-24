@@ -15,8 +15,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 /**
  * Exercises {@link EngineClient} against a real, in-process {@link EngineServer} — everything except

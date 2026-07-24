@@ -18,6 +18,7 @@ import cc.jumpkick.engine.plugin.MemoryProbe;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.PipelineView;
@@ -26,14 +27,13 @@ import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.runtime.BuildGraph;
 import cc.jumpkick.runtime.BuildMetrics;
 import cc.jumpkick.runtime.BuildService;
-import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.CacheBenefit;
 import cc.jumpkick.runtime.ChromeTimeline;
 import cc.jumpkick.runtime.ExplainPlan;
 import cc.jumpkick.runtime.ModuleOutcome;
 import cc.jumpkick.runtime.ModulePlan;
+import cc.jumpkick.runtime.PreflightMemo;
 import cc.jumpkick.runtime.WorkspaceBuildListener;
-import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.runtime.WorkspaceRequest;
 import cc.jumpkick.runtime.WorkspaceResult;
 import java.io.BufferedReader;
@@ -569,7 +569,8 @@ public final class EngineServer implements AutoCloseable {
                     sendQuiet(
                             writer,
                             EngineProtocol.error(
-                                    EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
+                                    EngineProtocol.ERR_PROTOCOL,
+                                    "unparseable request line (no \"type\" discriminator)"));
                     continue;
                 }
                 // Downward-delegation gate for artifact-producing requests (engine-versioning §3).
@@ -1127,12 +1128,7 @@ public final class EngineServer implements AutoCloseable {
         if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
         String dir = progressRoots.getOrDefault(requestId, "");
         String line = EngineProtocol.workspaceProgress(
-                dir,
-                snap.numerator(),
-                snap.denominator(),
-                snap.phase(),
-                snap.modulesComplete(),
-                snap.modulesTotal());
+                dir, snap.numerator(), snap.denominator(), snap.phase(), snap.modulesComplete(), snap.modulesTotal());
         if (writer != null) sendQuiet(writer, line);
         if (eventsWanted()) {
             publishEvent(
@@ -3260,9 +3256,7 @@ public final class EngineServer implements AutoCloseable {
                 String dir = o.dir().toString();
                 long lastDen = lastDenByDir.getOrDefault(dir, 0L);
                 trackModuleComplete(eventRequestId, dir, lastDen, writer);
-                sendQuiet(
-                        writer,
-                        EngineProtocol.moduleFinish(dir, o.coord(), o.success(), o.exitCode(), o.millis()));
+                sendQuiet(writer, EngineProtocol.moduleFinish(dir, o.coord(), o.success(), o.exitCode(), o.millis()));
                 publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis());
                 accModule(eventRequestId, o);
                 cc.jumpkick.run.Pipeline g = modulePipelines.remove(dir);
@@ -4225,8 +4219,8 @@ public final class EngineServer implements AutoCloseable {
                     .withCancel(cancelToken);
             long rid = eventRequestId();
             if (rid > 0) progressRoots.put(rid, entryDir.toString());
-            WorkspaceResult result =
-                    SessionContext.where(session, () -> BuildService.buildWorkspace(req, hubListener(entryDir.toString())));
+            WorkspaceResult result = SessionContext.where(
+                    session, () -> BuildService.buildWorkspace(req, hubListener(entryDir.toString())));
             accOutcome(rid, result.success(), result.exitCode());
             if (rid > 0) {
                 if (result.success()) progressTracker(rid).finish();
@@ -4254,15 +4248,7 @@ public final class EngineServer implements AutoCloseable {
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
             cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                    entryDir,
-                    effective,
-                    cache,
-                    null,
-                    java.util.List.of(),
-                    true,
-                    false,
-                    ResolveObserver.NOOP,
-                    null);
+                    entryDir, effective, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
             pipeline.addListener(singlePipelineHubListener(entryDir.toString()));
             cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
             accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);

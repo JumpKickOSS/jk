@@ -60,8 +60,7 @@ public final class PreflightMemo {
     /** A memo hit: the dirty set plus the validated per-module fingerprints (current as of load). */
     public record DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {}
 
-    public static Optional<DirtyMemo> tryLoadDirty(
-            Path entryDir, BuildGraph.Result graph, boolean skipTests) {
+    public static Optional<DirtyMemo> tryLoadDirty(Path entryDir, BuildGraph.Result graph, boolean skipTests) {
         Path file = memoFile(entryDir);
         if (!Files.isRegularFile(file)) return Optional.empty();
         try {
@@ -149,7 +148,9 @@ public final class PreflightMemo {
             Files.createDirectories(file.getParent());
             StringBuilder sb = new StringBuilder();
             sb.append("schema=").append(SCHEMA).append('\n');
-            sb.append("cacheKeyVersion=").append(BuildIdentity.cacheKeyVersion()).append('\n');
+            sb.append("cacheKeyVersion=")
+                    .append(BuildIdentity.cacheKeyVersion())
+                    .append('\n');
             sb.append("skipTests=").append(skipTests ? "1" : "0").append('\n');
             sb.append("fpMode=").append(fingerprintMode()).append('\n');
             Set<Path> dirtyNorm = new LinkedHashSet<>();
@@ -191,8 +192,12 @@ public final class PreflightMemo {
             }
             StringBuilder sb = new StringBuilder();
             sb.append("schema=").append(SCHEMA).append('\n');
-            sb.append("cacheKeyVersion=").append(BuildIdentity.cacheKeyVersion()).append('\n');
-            sb.append("structure=").append(structureFingerprint(entryDir, unitDirs)).append('\n');
+            sb.append("cacheKeyVersion=")
+                    .append(BuildIdentity.cacheKeyVersion())
+                    .append('\n');
+            sb.append("structure=")
+                    .append(structureFingerprint(entryDir, unitDirs))
+                    .append('\n');
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 Path dir = u.dir().toAbsolutePath().normalize();
                 sb.append("unit\t")
@@ -277,7 +282,8 @@ public final class PreflightMemo {
                 Path dir = unitDirs.get(i);
                 dirByRel.put(ul.rel(), dir);
                 JkBuild manifest = JkBuildParser.parse(dir.resolve("jk.toml"));
-                String coord = manifest.project().group() + ":" + manifest.project().name();
+                String coord =
+                        manifest.project().group() + ":" + manifest.project().name();
                 if (!coord.equals(ul.coord())) return Optional.empty(); // identity drift
                 BuildGraph.Origin origin;
                 try {
@@ -420,8 +426,8 @@ public final class PreflightMemo {
                 if (p.length != 6) continue;
                 if (!rel.equals(p[1])) continue;
                 if (!wantFp.equals(p[2])) return Optional.empty();
-                return Optional.of(new PipelineShape(
-                        Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
+                return Optional.of(
+                        new PipelineShape(Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
             }
             return Optional.empty();
         } catch (Exception e) {
@@ -441,8 +447,7 @@ public final class PreflightMemo {
     }
 
     /** Upsert one module's pipeline shape into the shape memo. Best-effort. */
-    public static void storeShape(
-            Path entryDir, Path moduleDir, boolean skipTests, PipelineShape shape) {
+    public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, PipelineShape shape) {
         if (shape == null) return;
         try {
             Path root = entryDir.toAbsolutePath().normalize();
@@ -456,16 +461,8 @@ public final class PreflightMemo {
                 PipelineShape.StepShape s = shape.steps().get(i);
                 steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
             }
-            String newLine = "shape\t"
-                    + rel
-                    + "\t"
-                    + fp
-                    + "\t"
-                    + shape.weight()
-                    + "\t"
-                    + shape.testWeight()
-                    + "\t"
-                    + steps;
+            String newLine =
+                    "shape\t" + rel + "\t" + fp + "\t" + shape.weight() + "\t" + shape.testWeight() + "\t" + steps;
 
             Map<String, String> byRel = new LinkedHashMap<>();
             String gotVersion = BuildIdentity.cacheKeyVersion();
@@ -515,8 +512,7 @@ public final class PreflightMemo {
      * early {@code onPlan} so the aggregate bar can calibrate during prepare. Must never be
      * executed; the real plan replaces it after prepare.
      */
-    public static ModulePlan provisionalModulePlan(
-            BuildGraph.BuildUnit unit, PipelineShape shape, Path cache) {
+    public static ModulePlan provisionalModulePlan(BuildGraph.BuildUnit unit, PipelineShape shape, Path cache) {
         Objects.requireNonNull(unit, "unit");
         Objects.requireNonNull(shape, "shape");
         cc.jumpkick.run.Pipeline.Builder b = cc.jumpkick.run.Pipeline.builder(unit.coord());
@@ -554,8 +550,8 @@ public final class PreflightMemo {
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, moduleDir.resolve("jk.lock"));
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = List.of(
-                    moduleDir.resolve("src"), moduleDir.resolve("test"), moduleDir.resolve("test-resources"));
+            List<Path> roots =
+                    List.of(moduleDir.resolve("src"), moduleDir.resolve("test"), moduleDir.resolve("test-resources"));
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
                 Files.walkFileTree(r, new SimpleFileVisitor<>() {

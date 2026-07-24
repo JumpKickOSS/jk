@@ -84,9 +84,7 @@ public final class JsonlShape {
         StringBuilder sb = new StringBuilder(line.length() + 24);
         sb.append(line, 0, end);
         sb.append(",\"progress\":");
-        sb.append(progress == null
-                ? "null"
-                : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
+        sb.append(progress == null ? "null" : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
         sb.append('}');
         return sb.toString();
     }
@@ -263,12 +261,7 @@ public final class JsonlShape {
      * do not recompute from module ticks.
      */
     public static String workspaceProgress(
-            String dir,
-            long numerator,
-            long denominator,
-            String phase,
-            int modulesComplete,
-            int modulesTotal) {
+            String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
         return open("workspace-progress")
                 .append(",\"dir\":")
                 .append(js(dir == null ? "" : dir))
@@ -287,7 +280,11 @@ public final class JsonlShape {
     }
 
     public static String workspaceStart(int modules) {
-        return open("workspace-start").append(",\"modules\":").append(modules).append('}').toString();
+        return open("workspace-start")
+                .append(",\"modules\":")
+                .append(modules)
+                .append('}')
+                .toString();
     }
 
     /** Workspace graph finished (all modules done or aborted on graph error). */

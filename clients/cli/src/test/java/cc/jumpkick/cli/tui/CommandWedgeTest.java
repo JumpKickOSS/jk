@@ -39,7 +39,8 @@ class CommandWedgeTest {
             String plainCap = Theme.colorize(
                     " ",
                     Theme.active()
-                            .withBackground(AttributedStyle.DEFAULT, Theme.active().pipelineChipColor()));
+                            .withBackground(
+                                    AttributedStyle.DEFAULT, Theme.active().pipelineChipColor()));
             assertThat(plain).contains(plainCap);
         }
         assertThat(nerd).contains("Clean").contains("ok");

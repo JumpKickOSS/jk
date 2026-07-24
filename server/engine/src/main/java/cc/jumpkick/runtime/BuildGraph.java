@@ -95,7 +95,8 @@ public final class BuildGraph {
         var memo = PreflightMemo.tryLoadGraph(entryDir);
         if (memo.isPresent()) {
             if (Perf.ENABLED) {
-                System.err.println("[jk-perf] graph-memo hit units=" + memo.get().topoOrder().size());
+                System.err.println("[jk-perf] graph-memo hit units="
+                        + memo.get().topoOrder().size());
             }
             return memo.get();
         }

@@ -13,9 +13,9 @@ import cc.jumpkick.repo.RepoGroup;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end (offline) materialization: build a local git "library" repo with a jk.toml project,

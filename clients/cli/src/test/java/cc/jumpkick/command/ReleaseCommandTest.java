@@ -10,18 +10,16 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 @Tag("integration")
 class ReleaseCommandTest {
 
     @Test
     void dist_is_alias_for_release(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "t"
@@ -43,9 +41,7 @@ class ReleaseCommandTest {
 
     @Test
     void dry_run_prints_plan_without_building(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -76,9 +72,7 @@ class ReleaseCommandTest {
         Path cli = dir.resolve("clients/cli");
         Files.createDirectories(eng);
         Files.createDirectories(cli);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk"
@@ -87,9 +81,7 @@ class ReleaseCommandTest {
                 [workspace]
                 modules = ["server/engine", "clients/cli"]
                 """);
-        Files.writeString(
-                eng.resolve("jk.toml"),
-                """
+        Files.writeString(eng.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
@@ -99,9 +91,7 @@ class ReleaseCommandTest {
                 main = "cc.jumpkick.engine.EngineMain"
                 assembly = true
                 """);
-        Files.writeString(
-                cli.resolve("jk.toml"),
-                """
+        Files.writeString(cli.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
@@ -149,9 +139,7 @@ class ReleaseCommandTest {
         Path eng = dir.resolve("server/engine");
         Path engSrc = eng.resolve("src/main/java/cc/jumpkick/engine");
         Files.createDirectories(engSrc);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk"
@@ -161,9 +149,7 @@ class ReleaseCommandTest {
                 [workspace]
                 modules = ["server/engine"]
                 """);
-        Files.writeString(
-                eng.resolve("jk.toml"),
-                """
+        Files.writeString(eng.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
@@ -174,9 +160,7 @@ class ReleaseCommandTest {
                 main = "cc.jumpkick.engine.EngineMain"
                 assembly = true
                 """);
-        Files.writeString(
-                engSrc.resolve("EngineMain.java"),
-                """
+        Files.writeString(engSrc.resolve("EngineMain.java"), """
                 package cc.jumpkick.engine;
                 public class EngineMain {
                   public static void main(String[] args) {}
@@ -195,13 +179,7 @@ class ReleaseCommandTest {
             // No CLI module → stages the running jk as bootstrap client + engine assembly.
             // --skip-native avoids a Graal build for this unit fixture.
             exit = Jk.execute(
-                    "release",
-                    "-C",
-                    dir.toString(),
-                    "--skip-tests",
-                    "--skip-native",
-                    "--out",
-                    outDir.toString());
+                    "release", "-C", dir.toString(), "--skip-tests", "--skip-native", "--out", outDir.toString());
         } finally {
             System.setOut(origOut);
             System.setErr(origErr);
@@ -214,7 +192,9 @@ class ReleaseCommandTest {
         assertThat(outDir.resolve("jk")).exists();
         assertThat(combined).contains("distribution ready");
         // Must not ship the fat-jar (*-all.jar) filename in lib/
-        assertThat(Files.list(outDir.resolve("lib")).map(p -> p.getFileName().toString()).toList())
+        assertThat(Files.list(outDir.resolve("lib"))
+                        .map(p -> p.getFileName().toString())
+                        .toList())
                 .containsExactly("jk-engine-" + JkVersion.VERSION + ".jar");
     }
 }

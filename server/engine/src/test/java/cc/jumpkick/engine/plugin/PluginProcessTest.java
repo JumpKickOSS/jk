@@ -7,8 +7,8 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 /**
  * Drives {@link PluginProcess} against a real forked JVM ({@link EchoPluginMain}) — the first
