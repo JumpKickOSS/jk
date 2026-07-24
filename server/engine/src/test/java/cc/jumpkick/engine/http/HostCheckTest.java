@@ -4,7 +4,9 @@ package cc.jumpkick.engine.http;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class HostCheckTest {
 
     private static final int PORT = 8910;

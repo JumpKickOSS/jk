@@ -16,12 +16,14 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Exercises {@code resolveRef} against a real local git repo built with jgit — fully offline (clone
  * over a {@code file://} URL) — for every available {@link GitBackend}. This is the CLI-vs-JGit
  * parity check for commit time and nearest-tag describe.
  */
+@Tag("integration")
 class GitBackendResolveRefTest {
 
     private static final Instant TAG_TIME = Instant.parse("2026-05-01T09:00:00Z");

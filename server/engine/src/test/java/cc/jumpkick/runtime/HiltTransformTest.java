@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 5, blocker 4: Hilt unmodified-source parity. Sources spell plain
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Google Maven + Central); the CAS + SDK persist under build/ so repeat runs
  * are warm (same shared cache as KspRoomHiltTest).
  */
+@Tag("slow")
 class HiltTransformTest {
 
     @Test

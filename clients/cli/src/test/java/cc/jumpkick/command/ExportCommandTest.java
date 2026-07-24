@@ -9,12 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end coverage for {@code jk export <gradle|maven|idea>}: the in-process exporters write
  * runnable build files for a single project and a workspace, and the overwrite guard / parent-usage
  * behavior holds.
  */
+@Tag("integration")
 class ExportCommandTest {
 
     private static void writeApp(Path dir) throws IOException {

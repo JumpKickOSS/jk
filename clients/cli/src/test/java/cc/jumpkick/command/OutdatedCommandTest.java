@@ -21,6 +21,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Drives {@code jk outdated} against a mock Maven server (the version index only — outdated never
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * json} form so they don't depend on the human table's exact glyphs/spacing. Git tag/tip
  * enumeration is covered by the git-client and engine unit tests (no forked worker here).
  */
+@Tag("integration")
 class OutdatedCommandTest {
 
     @BeforeAll

@@ -25,11 +25,13 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * ticket-1010: path-pinned private plugins with required sha256 (fail closed on missing /
  * mismatch).
  */
+@Tag("integration")
 class PrivatePluginPathTest {
 
     private static final String MANIFEST = """

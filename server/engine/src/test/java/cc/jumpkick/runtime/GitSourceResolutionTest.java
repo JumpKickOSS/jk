@@ -24,6 +24,7 @@ import java.util.Map;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end (offline) wiring of a git-source dependency through the resolver
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
  * pin, and augments the repo group; the real {@link LockOrchestrator} solves it; {@link
  * GitSourceResolution#stamp} records the git provenance on the locked package.
  */
+@Tag("integration")
 class GitSourceResolutionTest {
 
     /** A local git repo holding a trivial no-dependency jk.toml library, tagged v1.0.0. */

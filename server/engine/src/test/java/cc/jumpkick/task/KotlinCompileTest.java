@@ -13,12 +13,14 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * The action-cache fast path of {@link KotlinCompile}: an exact-input hit restores the output dir
  * from the CAS and never forks the worker (so this runs with no Kotlin toolchain present). The
  * miss/worker path is covered end-to-end by the CLI's KotlinCompilationTest.
  */
+@Tag("integration")
 class KotlinCompileTest {
 
     @Test

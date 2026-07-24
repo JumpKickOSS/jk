@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan §3.6's local-unit-test gate: a Robolectric resource-reading test runs through
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Heavy network test: Robolectric self-provisions its instrumented android-all jar on first
  * run. The CAS + SDK persist under build/ so repeats are warm.
  */
+@Tag("slow")
 class RobolectricUnitTest {
 
     @Test

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Optional Now-in-Android workspace sweep. Builds every module under a local NiA clone that
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
         named = "JK_NIA_SCRATCH",
         matches = "1",
         disabledReason = "optional NiA marathon; export JK_NIA_SCRATCH=1 and JK_NIA_ROOT=/path/to/nowinandroid")
+@Tag("slow")
 class NiaScratchTest {
 
     private static final Path NIA = Path.of(System.getenv().getOrDefault("JK_NIA_ROOT", "/tmp/nowinandroid"));

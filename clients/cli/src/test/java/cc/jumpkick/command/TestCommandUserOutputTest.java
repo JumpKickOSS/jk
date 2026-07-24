@@ -19,11 +19,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Verifies the verbose gate on test-process stdout/stderr forwarding and the Pipeline-framework wiring
  * of the bridge listener.
  */
+@Tag("integration")
 class TestCommandUserOutputTest {
 
     private PrintStream originalOut;

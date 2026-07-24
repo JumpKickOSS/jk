@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * The spawn path's engine-jar self-heal ({@link EngineJarFetcher}): download from the release
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
  * wiring INTO {@code spawn()} is native-client-only and stays manual-verification territory,
  * like the spawn itself (see {@code EngineClientTest}).
  */
+@Tag("integration")
 class EngineJarFetcherTest {
 
     private static final String VERSION = "1.2.3";

@@ -10,11 +10,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Framing/handshake smoke without a live engine: install writes .bsp/jk.json; initialize response
  * framing is covered when a full engine is available (IdeEngineClientTest).
  */
+@Tag("integration")
 class BspServerFramingTest {
 
     @Test

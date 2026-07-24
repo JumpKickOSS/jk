@@ -19,12 +19,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
  * headers, literal {@code ..} request targets).
  */
+@Tag("integration")
 class HttpEngineServerTest {
 
     private static final StatusSnapshot SNAPSHOT =

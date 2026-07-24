@@ -9,12 +9,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end coverage for {@code jk vscode} — the Eclipse project metadata + {@code .vscode/}
  * settings the redhat.java language server consumes. Uses {@code --jdks-dir}/{@code --cache-dir}
  * overrides so nothing touches the developer's real {@code ~/.jk}.
  */
+@Tag("integration")
 class VscodeCommandTest {
 
     @Test

@@ -13,10 +13,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * ticket-1014 / ticket-1020: IdeEngineClient facade over the real engine wire path.
  */
+@Tag("integration")
 class IdeEngineClientTest {
 
     @BeforeAll

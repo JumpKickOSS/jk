@@ -16,8 +16,10 @@ import org.eclipse.jgit.revwalk.RevCommit;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.api.Tag;
 
 /** fetch/verifyLocked behaviour, run against every available {@link GitBackend}. */
+@Tag("integration")
 class GitBackendFetchTest {
 
     @ParameterizedTest(name = "{0}")

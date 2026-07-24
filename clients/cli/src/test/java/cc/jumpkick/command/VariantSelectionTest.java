@@ -11,11 +11,13 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Freeze: {@code --variant} is repeatable and folds into the compact wire selector used on engine
  * requests. Regression for silent last-wins if {@code .repeat()} is dropped.
  */
+@Tag("integration")
 class VariantSelectionTest {
 
     private static Command commandWithVariantOpts() {

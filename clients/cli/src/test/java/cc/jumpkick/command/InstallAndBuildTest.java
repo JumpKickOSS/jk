@@ -19,12 +19,14 @@ import java.util.stream.Stream;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end tests for the jk install <file> → jk lock → jk build/check pipeline. Verifies that
  * locally-installed JARs are usable as compile-time dependencies and that incremental compilation
  * behaves correctly against them.
  */
+@Tag("integration")
 class InstallAndBuildTest {
 
     @Test

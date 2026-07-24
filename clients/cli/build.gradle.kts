@@ -98,8 +98,32 @@ val cliTestStateDirShort =
         file(
                 "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
-tasks.withType<Test>().configureEach {
-    // Engine spawn (PosixDetach setsid) + MemoryProbe FFM.
+// ---------------------------------------------------------------------------
+// Unit vs integration (suite performance):
+//   :cli:test            — pure unit (TUI/args/jsonl); NO engine spawn tax
+//   :cli:integrationTest — Jk.execute + wire engine (serial, worker jars)
+// ---------------------------------------------------------------------------
+tasks.named<Test>("test") {
+    // Engine spawn (PosixDetach setsid) + MemoryProbe FFM not needed for pure unit, but
+    // keep native-access harmless for any accidental FFM use in TUI.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+    // No shadowJar / worker jar dependsOn — pure unit must not wait on fat packaging.
+    // Deterministic TUI ANSI assertions (CI runners otherwise force TERM=dumb / NO_COLOR).
+    environment("TERM", "xterm-256color")
+    environment("CI", "false")
+    environment("NO_COLOR", "")
+    // Do not autoload EngineTestExtension (materialize + stop-after-every-class).
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "false")
+    systemProperty(
+            "junit.jupiter.tempdir.deletion.strategy.default",
+            "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy")
+    systemProperty(
+            "junit.jupiter.tempdir.factory.default",
+            "cc.jumpkick.cli.engine.JkTempDirFactory")
+}
+
+tasks.named<Test>("integrationTest") {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
     // Single fork: one resident engine / JK_STATE_DIR per suite (ticket-1021).
     maxParallelForks = 1
@@ -107,31 +131,26 @@ tasks.withType<Test>().configureEach {
             ":engine:shadowJar",
             kotlinWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
             imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar)
-    // Deterministic TUI ANSI assertions (CI runners otherwise force TERM=dumb / NO_COLOR).
     environment("TERM", "xterm-256color")
     environment("CI", "false")
     environment("NO_COLOR", "")
     // Fail fast if the engine stops streaming (default is 60 minutes — freezes the full suite).
     environment("JK_STREAM_IDLE_MS", "45000")
-    // Shared dep cache across tests (Kotlin compiler, JUnit, …) — outside @TempDir.
     systemProperty(
             "jk.test.cache.dir",
             layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
     // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
     // EngineTestExtension autodetection: materialize jar + stop engine after each class (1042/1052).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
-    // TempDir (JUnit 6): deletion strategy stops engine only when delete fails (1055).
     systemProperty(
             "junit.jupiter.tempdir.deletion.strategy.default",
             "cc.jumpkick.cli.engine.JkTempDirDeletionStrategy")
     systemProperty(
             "junit.jupiter.tempdir.factory.default",
             "cc.jumpkick.cli.engine.JkTempDirFactory")
-    // Shared dep cache lives under build/test-shared-cache (jk.test.cache.dir), not @TempDir.
     doFirst {
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
-        // Isolate versions/cache from the developer machine.
         environment(
                 "JK_HOME",
                 layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
@@ -148,7 +167,6 @@ tasks.withType<Test>().configureEach {
         systemProperty("jk.spring-boot.plugin.jar", springBootWorkerJar.singleFile.absolutePath)
         systemProperty("jk.android.plugin.jar", androidWorkerJar.singleFile.absolutePath)
     }
-    // After the suite: remove the short state dir (best-effort; AfterAll also force-stops).
     doLast {
         cliTestStateDirShort.deleteRecursively()
     }

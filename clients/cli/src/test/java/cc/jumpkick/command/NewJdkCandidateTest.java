@@ -13,7 +13,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class NewJdkCandidateTest {
 
     private static final int LTS = 25;

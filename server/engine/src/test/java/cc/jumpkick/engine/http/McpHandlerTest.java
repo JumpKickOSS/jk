@@ -7,8 +7,10 @@ import cc.jumpkick.util.MiniJson;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /** JK-1095 — MCP JSON-RPC tools without a full HTTP bind. */
+@Tag("integration")
 class McpHandlerTest {
 
     private final EngineHttpJobs jobs = new EngineHttpJobs() {

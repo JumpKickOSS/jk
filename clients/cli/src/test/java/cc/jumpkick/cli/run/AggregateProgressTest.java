@@ -7,6 +7,7 @@ import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -14,6 +15,11 @@ import org.junit.jupiter.api.Test;
  * math lives in {@link WorkspaceProgressTrackerTest}.
  */
 class AggregateProgressTest {
+
+    @AfterEach
+    void clearLiveProgress() {
+        LiveProgress.get().clear();
+    }
 
     @Test
     void apply_snapshot_paints_bar_and_live_progress() {

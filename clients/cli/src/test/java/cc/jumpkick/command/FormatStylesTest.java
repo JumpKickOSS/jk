@@ -6,7 +6,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import cc.jumpkick.model.JkBuild;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class FormatStylesTest {
 
     private static final JkBuild.FormatConfig EMPTY = JkBuild.FormatConfig.EMPTY;

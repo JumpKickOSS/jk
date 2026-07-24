@@ -20,7 +20,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class UpdateCommandTest {
 
     // These tests drive the real fetch pipeline against a mock Maven server; fetched

@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end tests for {@code jk verify}: build a project, then re-build it through the real
@@ -17,6 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
  * an unchanged project must verify clean — including Kotlin, which the old javac-only verify never
  * covered.
  */
+@Tag("integration")
 class VerifyBuildCommandTest {
 
     @Test

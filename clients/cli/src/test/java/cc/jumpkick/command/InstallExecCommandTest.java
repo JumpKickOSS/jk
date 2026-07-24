@@ -24,8 +24,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 @DisabledOnOs(OS.WINDOWS) // POSIX launcher only.
+@Tag("integration")
 class InstallExecCommandTest {
 
     // These tests drive the real fetch pipeline against a mock Maven server; fetched

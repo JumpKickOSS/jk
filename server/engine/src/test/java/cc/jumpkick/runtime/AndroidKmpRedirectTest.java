@@ -14,6 +14,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 5, blocker 1: a Kotlin-Multiplatform root module (androidx compose
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Network test against Google Maven; the CAS persists under build/ so repeat runs are warm.
  */
+@Tag("slow")
 class AndroidKmpRedirectTest {
 
     @Test

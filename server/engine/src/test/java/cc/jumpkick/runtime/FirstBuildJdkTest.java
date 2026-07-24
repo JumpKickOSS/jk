@@ -11,6 +11,7 @@ import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>An empty {@code jdksDir} override reproduces the first-run shape deterministically.
  * Network test (Maven Central + the JDK feed; the CAS under build/ keeps repeats warm).
  */
+@Tag("integration")
 class FirstBuildJdkTest {
 
     @Test
@@ -52,6 +54,7 @@ class FirstBuildJdkTest {
         Files.createDirectories(project.resolve("test"));
         Files.writeString(project.resolve("test/FTest.java"), """
                 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
 
                 class FTest {

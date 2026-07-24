@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Exercises {@link EngineClient} against a real, in-process {@link EngineServer} — everything except
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
  * {@code jk} binary to exec, which a JVM test run doesn't have; that path is covered by manual
  * verification per the Step 1 plan, not a unit test).
  */
+@Tag("integration")
 class EngineClientTest {
 
     private final List<Path> tempDirs = new ArrayList<>();

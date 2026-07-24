@@ -20,8 +20,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /** Exercises the full pipeline: init -> add -> lock -> tree / why / sync. */
+@Tag("integration")
 class ReadSideIntegrationTest {
 
     // These tests drive the real fetch pipeline against a mock Maven server; fetched

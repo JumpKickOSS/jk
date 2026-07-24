@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /** The shared integration-test cache directory is stable, created, and reused. */
+@Tag("integration")
 class SharedTestCacheTest {
 
     @Test

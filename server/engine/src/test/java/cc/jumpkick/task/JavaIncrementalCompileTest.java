@@ -18,12 +18,14 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end incremental Java compilation (real subprocess javac). A recording strategy captures
  * exactly which sources each pass compiled, so we can assert the precise dirty set — the whole
  * point of the multi-pass orchestrator.
  */
+@Tag("integration")
 class JavaIncrementalCompileTest {
 
     @Test

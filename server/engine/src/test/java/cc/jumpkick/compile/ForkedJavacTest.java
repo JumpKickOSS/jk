@@ -14,6 +14,7 @@ import java.util.Set;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end of the launcher → worker subprocess round-trip: launches the real {@code
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
  * sets), compiles a source with a real annotation processor, and asserts the parsed generated →
  * originating provenance.
  */
+@Tag("integration")
 class ForkedJavacTest {
 
     @Test

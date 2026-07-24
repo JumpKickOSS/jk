@@ -13,7 +13,9 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIf;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class JshellCommandTest {
 
     static boolean jshellAvailable() {

@@ -17,6 +17,7 @@ import java.util.Map;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Annotation-processor-aware incremental compilation (slice 3b) end-to-end through {@link
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * fallback for an aggregating one. The underlying dirty-set/ABI machinery is shared with {@link
  * JavaIncrementalCompileTest}.
  */
+@Tag("integration")
 class JavaApIncrementalCompileTest {
 
     /**

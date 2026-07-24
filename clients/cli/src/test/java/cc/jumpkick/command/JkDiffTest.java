@@ -8,7 +8,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class JkDiffTest {
 
     @Test

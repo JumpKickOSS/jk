@@ -12,7 +12,9 @@ import java.nio.file.Path;
 import java.util.function.IntSupplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class SelectiveCommandTest {
 
     @Test

@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Downward delegation (engine-versioning-plan §3): pin parsing, ordering, and the intake gate —
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.Test;
  * full child exec is covered by the wrapper/e2e flow once release jars exist side-by-side);
  * a NEWER pin is refused with the upgrade-shaped error, never supervised.
  */
+@Tag("integration")
 class EngineDelegateTest {
 
     private final List<Path> tempDirs = new ArrayList<>();

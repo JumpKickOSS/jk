@@ -14,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class NewCommandTest {
 
     @Test

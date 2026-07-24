@@ -21,11 +21,13 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * {@code jk lock} revalidates an already-downloaded library catalog against the registry with a
  * conditional GET before resolving — the automatic counterpart to {@code jk library update}.
  */
+@Tag("integration")
 class LockCommandLibraryRegistryTest {
 
     // These tests drive the real fetch pipeline against a mock Maven server; fetched

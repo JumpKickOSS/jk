@@ -16,7 +16,9 @@ import java.time.temporal.ChronoUnit;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
+@Tag("integration")
 class CacheCommandTest {
 
     @Test

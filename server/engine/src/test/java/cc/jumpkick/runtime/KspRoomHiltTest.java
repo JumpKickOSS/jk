@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 4's ecosystem gate: a Kotlin Android app using <b>Room</b> (entity + dao +
@@ -30,6 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Google Maven + Central; Room/Hilt closures are real); the CAS + SDK persist
  * under build/ so repeat runs are warm.
  */
+@Tag("slow")
 class KspRoomHiltTest {
 
     @Test

@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * {@code jk new} / {@code jk init} module-awareness: detecting an enclosing project, inheriting its
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
  * a workspace on its first module). The non-TTY flag path is exercised here; the wizard UX shares
  * the same {@code parent} resolution.
  */
+@Tag("integration")
 class NewModuleTest {
 
     private static final String PLAIN_PROJECT = """

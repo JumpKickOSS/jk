@@ -11,12 +11,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * {@code jk run} — project mode. {@code jk run} builds (if needed) and runs the current project's
  * main artifact, forwarding every argument to its {@code main} method. File execution
  * (.java/.kt/.kts/.jar) lives under {@code jk tool run} — see {@link ToolRunCommandTest}.
  */
+@Tag("integration")
 class RunCommandTest {
 
     @Test

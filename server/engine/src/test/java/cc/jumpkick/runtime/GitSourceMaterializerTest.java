@@ -15,11 +15,13 @@ import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end (offline) materialization: build a local git "library" repo with a jk.toml project,
  * then clone → derive version → build → local-publish.
  */
+@Tag("integration")
 class GitSourceMaterializerTest {
 
     /** A local git repo holding a trivial no-dependency jk.toml library, tagged v1.0.0. */

@@ -27,12 +27,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Engine-versioning-plan §2: a newer engine takes over by atomically repointing the endpoint
  * file and gracefully draining the displaced generation — no kill, no lull-waiting. Also covers
  * the displacement watchdog (an engine whose endpoint stops naming it drains itself).
  */
+@Tag("integration")
 class EngineTakeoverTest {
 
     private final List<Path> tempDirs = new ArrayList<>();

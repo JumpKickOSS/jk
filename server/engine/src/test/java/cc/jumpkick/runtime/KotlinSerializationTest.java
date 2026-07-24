@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 5, blocker 2: project-declared Kotlin compiler plugins
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Maven Central; kotlinc worker via the test JVM's worker-jar property); the CAS
  * persists under build/ so repeat runs are warm.
  */
+@Tag("slow")
 class KotlinSerializationTest {
 
     @Test

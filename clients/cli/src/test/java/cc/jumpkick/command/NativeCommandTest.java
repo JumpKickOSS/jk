@@ -8,12 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Native builds are opt-in: {@code jk native} only builds modules that set {@code native = true}. A
  * project without it is refused up front (before any build), so we can assert the guard without
  * needing GraalVM in tests.
  */
+@Tag("integration")
 class NativeCommandTest {
 
     @Test

@@ -91,15 +91,26 @@ Prefer a small WIP limit (a few claimed tickets). If blocked: `ka set-status JK-
 
 ### Done criteria
 
+**Two-tier tests** (keep the default loop under ~5 minutes):
+
+| Command | What runs | When |
+|---------|-----------|------|
+| `./gradlew test` | **Unit/fast** — excludes `@Tag("integration"\|"slow"\|"bench")` | Every ticket, PR, mid-work |
+| `./gradlew integrationTest` | Engine/CLI e2e, Android, workers, network | When the ticket touches wire/engine/pipelines/CLI spawn paths |
+| `./gradlew checkAll` | Both tiers for the whole repo | Nightly / pre-merge confidence |
+
+Tag new heavy tests with `@Tag("integration")` (or `slow` / `bench`). Do **not** put multi-minute e2e in the default `test` task.
+
 **Docs-only / non-Java** tickets (markdown, comments-only, pure config with no runtime impact): ticket acceptance met is enough — no reinstall required. Still run any tests that would catch doc-linked fixtures if you touched them.
 
 **Any ticket that changes Java (or other runtime) code** must **not** move to `done` in kanartist until all of the following pass:
 
 1. **Tests (required, non-negotiable)** — prove the change did not break the build:
-   - Prefer full `./gradlew test` before merging to `main`.
-   - If full suite is too heavy mid-ticket, run the modules that make sense for the change (e.g. `./gradlew :resolver:test :engine:test :cli:test`) and **always** re-run a green `./gradlew test` (or the same relevant filter plus any adjacent modules you touched) **before** marking the ticket done / merging to `main`.
+   - **Always:** green `./gradlew test` (unit/fast tier) for the modules you touched (or full monorepo unit if unsure).
+   - **Also** green `./gradlew :cli:integrationTest` and/or `:engine:integrationTest` (or full `./gradlew integrationTest`) when the ticket touches CLI↔engine wire, engine pipelines/workers, plugin forks, lock/resolve/fetch, or install/materialize.
+   - Nightly / main confidence: `./gradlew checkAll` (unit + integration). Do not treat a 20+ minute full e2e as the only mid-ticket loop.
    - Do not land on `main` with a red or un-run test suite for areas you changed. A broken main is a stop-the-line defect: fix tests first, then resume tickets.
-2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds.
+2. **Reinstall** — `./gradlew clean dist installLocal && ./install.sh build/dist/jk` succeeds (for code that ships client/engine).
 3. **Engine smoke** — `jk engine status` succeeds (engine up or able to start; no immediate failure).
 4. **Project smoke** — a simple project builds with the reinstalled binary, e.g. `jk init … && jk build` (or equivalent lock/build path the ticket affects).
 

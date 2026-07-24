@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.zip.ZipFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * android-plan Step 3 acceptance ("release"): {@code jk build --release} on an app module
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Same harness as {@link AndroidWorkspaceTest}: real tools, persistent CAS/SDK under build/.
  */
+@Tag("slow")
 class AndroidReleaseTest {
 
     @Test

@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.api.Tag;
 
 /**
  * End-to-end (offline) wiring of a local-path dependency through the resolver: a consuming project
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * materializes it, rewrites it to an exact coordinate pin, and augments the repo group; the real
  * {@link LockOrchestrator} then solves it from the local {@code file://} repo.
  */
+@Tag("integration")
 class PathSourceResolutionTest {
 
     private static void writeLibrary(Path libDir) throws Exception {

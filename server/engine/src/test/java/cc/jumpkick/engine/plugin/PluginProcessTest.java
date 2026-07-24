@@ -8,12 +8,14 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
 
 /**
  * Drives {@link PluginProcess} against a real forked JVM ({@link EchoPluginMain}) — the first
  * end-to-end coverage of the fork + read-loop and the two-way stdin conversation the test-runner's
  * pull mode relies on.
  */
+@Tag("integration")
 class PluginProcessTest {
 
     private static List<String> cmd(String... extra) {
