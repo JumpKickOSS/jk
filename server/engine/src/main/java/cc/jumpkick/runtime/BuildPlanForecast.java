@@ -6,6 +6,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.JavacLint;
 import cc.jumpkick.config.ImageConfigParser;
+import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.lock.Lockfile;
@@ -141,7 +142,13 @@ public final class BuildPlanForecast {
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
         boolean skip = testOnly ? false : skipTests;
-        int estimatedTestCount = skip ? 0 : TestSupport.estimateTestCount(dir.resolve("src/test/java"));
+        boolean compactEst = false;
+        try {
+            compactEst = CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
+        } catch (Exception ignored) {
+            compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
+        }
+        int estimatedTestCount = skip ? 0 : TestSupport.estimateAllSuiteTestCount(dir, compactEst);
         return new BuildPipelines.Inputs(
                         dir,
                         cache,
@@ -254,17 +261,25 @@ public final class BuildPlanForecast {
             } catch (Exception ignored) {
             }
 
-            // ---- compile-test ----
-            Path javaTestDir = compact ? dir.resolve("test") : dir.resolve("src/test/java");
-            List<Path> javaTest = CompileSupport.collectJavaSources(javaTestDir);
-            List<Path> ktTest = CompileSupport.collectKotlinTestSources(dir, compact);
-            boolean haveTests = !javaTest.isEmpty() || !ktTest.isEmpty();
-            sourceCount = mainSrc.size() + ktSrc.size() + javaTest.size() + ktTest.size();
+            // ---- compile-test (all discovered suites — JK-1145) ----
+            List<Path> allTestSrc = List.of();
+            try {
+                allTestSrc = TestSupport.collectAllSuiteTestSources(dir, compact);
+            } catch (IOException ignored) {
+                // forecast degrades
+            }
+            List<Path> javaTest = allTestSrc.stream()
+                    .filter(p -> p.getFileName().toString().endsWith(".java"))
+                    .toList();
+            List<Path> ktTest = allTestSrc.stream()
+                    .filter(p -> p.getFileName().toString().endsWith(".kt"))
+                    .toList();
+            boolean haveTests = !allTestSrc.isEmpty();
+            sourceCount = mainSrc.size() + ktSrc.size() + allTestSrc.size();
             boolean testDirty = false;
             // --skip-tests composes no compile-test/run-tests steps, so don't forecast
             // (or content-hash the inputs of) steps the build will not run.
             if (haveTests && !skipTests) {
-                int testSrcCount = javaTest.size() + ktTest.size();
                 if (compileDirty) {
                     steps.add(
                             new BuildPlan.Step("compile-test", BuildPlan.Status.RUN, "recompile · main changed", null));
@@ -303,7 +318,7 @@ public final class BuildPlanForecast {
                 }
 
                 // ---- run-tests ----
-                int estimated = TestSupport.estimateTestCount(javaTestDir);
+                int estimated = TestSupport.estimateAllSuiteTestCount(dir, compact);
                 testCount = estimated;
                 String tests = estimated > 0 ? "~" + count(estimated, "test") : "tests";
                 if (compileDirty || testDirty) {
@@ -312,11 +327,9 @@ public final class BuildPlanForecast {
                     // Mirror the build's run-tests stamp EXACTLY: main classes are a
                     // separate computeKey arg, NOT part of the runtime classpath.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
-                    List<Path> testSrc = new ArrayList<>(javaTest);
-                    testSrc.addAll(ktTest);
                     long ts = Perf.start();
                     String stampKey = TestStamp.computeKey(
-                            testSrc,
+                            allTestSrc,
                             layout.classesDir(),
                             lockFile,
                             testRt,
@@ -368,11 +381,12 @@ public final class BuildPlanForecast {
             // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
             // module never does. Any drift ⇒ dirty.
             if (!compileDirty) {
-                if (resourcesOutOfSync(dir.resolve("src/main/resources"), layout.classesDir())) {
+                if (resourcesOutOfSync(
+                        cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
                     steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
                 }
                 if (haveTests && !skipTests && !testDirty) {
-                    Path resTest = compact ? dir.resolve("test-resources") : dir.resolve("src/test/resources");
+                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
                         steps.add(new BuildPlan.Step(
                                 "copy-resources", BuildPlan.Status.RUN, "test resources changed", null));

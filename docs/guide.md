@@ -468,6 +468,26 @@ Host matching is exact or a DNS-label suffix (`evil.com` matches `repo.evil.com`
 ships — silent no-ops are not allowed.
 
 
+
+## Project layout
+
+jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
+no Maven tree is present). Language is by file extension (`.java` / `.kt` may share a dir).
+
+| Input | Simple (default) | Traditional (Maven import) |
+|-------|------------------|----------------------------|
+| Main sources | `src/` | `src/main/java`, `src/main/kotlin` |
+| Main resources | `resources/` | `src/main/resources` |
+| Default tests | `test/` | `src/test/java`, `src/test/kotlin` |
+| Test resources | `test-resources/` | `src/test/resources` |
+| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin}` |
+
+Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
+paths (or `layout = "traditional"`) when importing a Maven tree.
+
+`jk test` runs the **test** suite only by default; see [Test suites and tags](#test-suites-and-tags).
+`jk ide` marks every discovered suite as IDE test source roots.
+
 ## Test suites and tags
 
 `jk test` runs the **default suite** only: sources under `test/` (simple layout) or

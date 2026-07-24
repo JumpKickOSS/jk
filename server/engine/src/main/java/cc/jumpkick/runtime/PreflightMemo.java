@@ -557,9 +557,9 @@ public final class PreflightMemo {
     // -------------------------------------------------------------------------
 
     /**
-     * Every regular file under {@code src}/{@code test}/{@code test-resources} feeds the digest —
-     * resources included: the build's copy/package/test steps consume them, so a memo blind to them
-     * ships stale jars.
+     * Every regular file under dirs the build consumes feeds the digest (JK-1144/1148): main
+     * sources, main resources, default + named test suites, test-resources. Derived from
+     * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
@@ -569,8 +569,7 @@ public final class PreflightMemo {
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, moduleDir.resolve("jk.lock"));
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots =
-                    List.of(moduleDir.resolve("src"), moduleDir.resolve("test"), moduleDir.resolve("test-resources"));
+            List<Path> roots = cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests);
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
                 Files.walkFileTree(r, new SimpleFileVisitor<>() {

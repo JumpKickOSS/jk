@@ -69,13 +69,29 @@ class PreflightMemoTest {
 
     @Test
     void test_resource_change_misses_memo(@TempDir Path tmp) throws Exception {
+        // Traditional fixture: test resources live under src/test/resources (under src/ walk).
         writeProject(tmp);
+        Path res = tmp.resolve("src/test/resources");
+        Files.createDirectories(res);
+        Files.writeString(res.resolve("fixture.json"), "{}\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+
+        Files.writeString(res.resolve("fixture.json"), "{\"a\":1}\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    @Test
+    void simple_test_resource_change_misses_memo(@TempDir Path tmp) throws Exception {
+        writeSimpleProject(tmp);
         Path res = tmp.resolve("test-resources");
         Files.createDirectories(res);
         Files.writeString(res.resolve("fixture.json"), "{}\n");
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
         Files.writeString(res.resolve("fixture.json"), "{\"a\":1}\n");
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
@@ -370,6 +386,53 @@ class PreflightMemoTest {
         assertThat(plan.pipeline().steps().getFirst().name()).isEqualTo("compile-java");
         // Must not do real work if accidentally run.
         assertThat(plan.pipeline().run().success()).isTrue();
+    }
+
+    
+    @Test
+    void fingerprint_includes_simple_resources_dir(@TempDir Path tmp) throws Exception {
+        writeSimpleProject(tmp);
+        Files.createDirectories(tmp.resolve("resources"));
+        Files.writeString(tmp.resolve("resources/a.txt"), "v1");
+        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        Files.writeString(tmp.resolve("resources/a.txt"), "v2");
+        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        assertThat(fp1).isNotEqualTo(fp2);
+    }
+
+    @Test
+    void fingerprint_includes_compact_named_suite(@TempDir Path tmp) throws Exception {
+        writeSimpleProject(tmp);
+        Files.createDirectories(tmp.resolve("integration"));
+        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest {}");
+        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest { int x; }");
+        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        assertThat(fp1).isNotEqualTo(fp2);
+    }
+
+    /** SIMPLE flat-siblings fixture (layout=simple, no Maven src/main tree). */
+    private static void writeSimpleProject(Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("src"));
+        Files.writeString(dir.resolve("src/App.java"), "class App {}\n");
+        Files.writeString(
+                dir.resolve("jk.toml"),
+                """
+                [project]
+                group = "t"
+                name = "app"
+                version = "0.1.0"
+                jdk = 21
+                java = 21
+                layout = "simple"
+                """);
+        Files.writeString(
+                dir.resolve("jk.lock"),
+                """
+                version = 1
+                generated-by = "test"
+                resolution-algorithm = "pubgrub-v1"
+                """);
     }
 
     /** Store with fingerprints snapshotted now — what every production call site does at preflight. */

@@ -58,6 +58,34 @@ public final class TestSupport {
     }
 
     /**
+     * Count test methods across every discovered suite (JK-1145) — not default-suite only.
+     * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
+     */
+    public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
+        int total = 0;
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+        }
+        for (Path r : roots) total += estimateTestCount(r);
+        return total;
+    }
+
+    /** Collect all test sources for every discovered suite (deduped paths). */
+    public static List<Path> collectAllSuiteTestSources(Path moduleDir, boolean compact) throws IOException {
+        java.util.LinkedHashSet<Path> out = new java.util.LinkedHashSet<>();
+        List<String> suites = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
+        if (suites.isEmpty()) {
+            // Fall back to default suite dirs even if empty of sources
+            suites = List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        }
+        out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
+        out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
+        return new java.util.ArrayList<>(out);
+    }
+
+    /**
      * Render a failed test run as console lines — each failing test's name followed by its full stack
      * trace, indented. Mirrors what Maven/Gradle print on failure so {@code jk} doesn't just report a
      * count. Returns an empty list when nothing failed.

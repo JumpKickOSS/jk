@@ -1533,8 +1533,9 @@ public final class BuildPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
-                    Path resMain = in.dir().resolve("src/main/resources");
-                    if (Files.exists(resMain)) {
+                    // JK-1144/1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
+                    Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
+                    if (Files.isDirectory(resMain)) {
                         ctx.label("copy resources");
                         copyResources(resMain, classes);
                     } else {
@@ -1777,9 +1778,7 @@ public final class BuildPipelines {
                     // Test resources ride the test classpath next to compiled tests (Gradle's
                     // processTestResources). Without this, getResourceAsStream fixtures NPE under
                     // self-host.
-                    Path resTest = compact
-                            ? in.dir().resolve("test-resources")
-                            : in.dir().resolve("src/test/resources");
+                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(in.dir(), compact);
                     if (Files.isDirectory(resTest)) {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);

@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FreshnessStamp;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -230,9 +231,14 @@ public final class EffortWeights {
             // the CAS marker (which survives `jk clean`); that step reweights down
             // to SKIP there, so a fully-cached run lands right with no up-front guess.
             List<Path> testSrc = new ArrayList<>();
-            testSrc.addAll(CompileSupport.collectJavaSources(
-                    compact ? in.dir().resolve("test") : in.dir().resolve("src/test/java")));
-            testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
+            try {
+                testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
+            } catch (IOException e) {
+                // fall back to default suite only
+                testSrc.addAll(CompileSupport.collectJavaSources(
+                        compact ? in.dir().resolve("test") : in.dir().resolve("src/test/java")));
+                testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
+            }
             boolean testWillRun = !testSrc.isEmpty() && (rerun || compileRun);
             // compile-test is an opaque, batch javac/kotlinc call: the step declares
             // .ticks(1), so the recorder learns its rate against a count of 1 — i.e. the
