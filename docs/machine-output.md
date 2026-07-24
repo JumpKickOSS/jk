@@ -38,7 +38,8 @@ All machine surfaces should carry **the same conceptual events**. Framing differ
 |---------|--------------------|----------------------------|-----------------|-------------------|
 | Request / session start | `pipeline-start` (per pipeline); workspace: `workspace-start` | `request-start` | `▶ pipeline (N steps)` | tool result / `notifications/jk/event` |
 | Step start | `step-start` | `step-start` | `· phase/step (ticks: N)` | notification |
-| Progress ticks | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | notification |
+| Progress ticks (fine) | `progress`, `tick-update` | `pipeline-progress` | (bar / quiet) | notification |
+| **Whole-job % (aggregate)** | **`workspace-progress`** | **`workspace-progress`** | TUI bar | filter `type=workspace-progress` |
 | Label (current work) | `label` | (via progress / output) | last label on finish line | notification |
 | User/compiler output | `output` | `output` | printed lines | notification |
 | Warning | `warn` | (diagnostic-like) | bang line | notification |
@@ -51,6 +52,11 @@ All machine surfaces should carry **the same conceptual events**. Framing differ
 
 **Rule:** when adding a new fact (module coord, worker id, ETA), add it once to the **shared conceptual model**, then project into JSONL fields, SSE `data`, verbose text, and MCP tools — do not invent parallel schemas.
 
+**Smart engine / dumb clients (JK-1120–1122):** workspace aggregate percent is computed **only** in the
+engine (`WorkspaceProgressTracker`). Clients render `workspace-progress` and the additive
+`progress` rider — they must **not** re-sum module-local `numerator`/`denominator` for the bar.
+Future bar tuning lives in the engine alone.
+
 ### Canonical live stream: JSONL
 
 ```bash
@@ -62,9 +68,11 @@ export JK_OUTPUT=json         # or jsonl
 - **One JSON object per line**, flushed promptly (live).
 - Every object includes at least: `schema` (int), `ts` (epoch ms), `type` (string).
 - Most lines also carry **`progress`**: aggregate workspace/pipeline percent **0–100** (or
-  `null` until known) matching the human bar model — **not** `progress_num`/`progress_den`
-  (JK-1117). Per-step `numerator`/`denominator` on `progress` / `tick-update` events stay
-  step-scoped and unchanged.
+  `null` until known) from the **engine** tracker — **not** `progress_num`/`progress_den`
+  (JK-1117/1120). Per-step `numerator`/`denominator` on `progress` / `tick-update` events stay
+  **pipeline-local** (one module). For whole-job % without step spam, subscribe to
+  **`type=workspace-progress`** (fields: `progress`, `numerator`, `denominator`, `phase`,
+  `modulesComplete`, `modulesTotal`).
 - Schema version: **`1`** forever until **jk 1.0** (see [architecture.md — Schema freeze](architecture.md#schema-freeze-until-10)).
   Do **not** bump for additive fields. No pre-1.0 version churn.
 - Terminal human chrome is **suppressed** in this mode so stdout stays parseable.
@@ -204,7 +212,8 @@ jk test --output json --modules 'shared/*' 2>/dev/null
 # Workspace build/test emit module-start / module-finish / workspace-* around step events.
 
 # Exit code still meaningful (0 ok, non-zero fail).
-# Parse stdout as JSONL; look for type=pipeline-finish / error / step-finish.
+# Parse stdout as JSONL; look for type=workspace-progress (whole-job %) or
+# type=pipeline-finish / error / step-finish (fine detail).
 
 # Offline / mid-run:
 #   target/.jk-cli/<latest>/details.jsonl   # tail -F during the run
@@ -222,9 +231,10 @@ When you add information (e.g. module on a test failure):
 2. [ ] `JsonlShape` / JSONL fields (**additive only** — keep `schema: 1` until 1.0)  
 3. [ ] Web SSE payload fields (same names)  
 4. [ ] Verbose / failure headline text (human projection)  
-5. [ ] `details.jsonl` (same shape as stdout JSONL; additive `progress` rider)  
+5. [ ] `details.jsonl` (same shape as stdout JSONL; additive `progress` rider from engine)  
 6. [ ] MCP tool payloads when MCP exists  
 7. [ ] This doc’s table row if a new **type** appears  
+8. [ ] Whole-job % comes from engine `workspace-progress` / tracker — **no client re-aggregation**  
 
 Pre-1.0: **no schema version bumps** across jk.toml, lock, wire, REST, SSE, MCP — see architecture.
 

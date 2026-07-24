@@ -24,7 +24,8 @@ public final class SessionMirrorListener implements PipelineListener {
 
     @Override
     public void pipelineStart(PipelineView v) {
-        LiveProgress.get().update(v.numerator(), v.denominator());
+        // Do not stamp module-local fractions into LiveProgress (JK-1121) — engine
+        // workspace-progress owns the aggregate rider.
         session.append(JsonlShape.pipelineStart(v), true);
     }
 
@@ -35,13 +36,11 @@ public final class SessionMirrorListener implements PipelineListener {
 
     @Override
     public void progress(String step, int delta, PipelineView v) {
-        LiveProgress.get().update(v.numerator(), v.denominator());
         session.append(JsonlShape.progress(step, delta, v), false);
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView v) {
-        LiveProgress.get().update(v.numerator(), v.denominator());
         session.append(JsonlShape.tickUpdate(step, delta, v), false);
     }
 

@@ -244,6 +244,34 @@ public final class JsonlShape {
     }
 
     /** Workspace graph planned — agents learn module count before any module pipeline. */
+    /**
+     * Engine workspace aggregate progress (JK-1120). Clients mirror the engine's tracker snapshot;
+     * do not recompute from module ticks.
+     */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal) {
+        return open("workspace-progress")
+                .append(",\"dir\":")
+                .append(js(dir == null ? "" : dir))
+                .append(",\"numerator\":")
+                .append(numerator)
+                .append(",\"denominator\":")
+                .append(denominator)
+                .append(",\"phase\":")
+                .append(js(phase == null ? "" : phase))
+                .append(",\"modulesComplete\":")
+                .append(modulesComplete)
+                .append(",\"modulesTotal\":")
+                .append(modulesTotal)
+                .append('}')
+                .toString();
+    }
+
     public static String workspaceStart(int modules) {
         return open("workspace-start").append(",\"modules\":").append(modules).append('}').toString();
     }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -48,12 +49,12 @@ class JsonlShapeTest {
 
     @Test
     void withProgress_tracks_preflight_and_execute() {
-        // Preflight-only band (AggregateContext PREFLIGHT_UNITS = 100).
-        LiveProgress.get().update(40, AggregateContext.PREFLIGHT_UNITS);
+        // Preflight-only band (WorkspaceProgressTracker.PREFLIGHT_UNITS = 100).
+        LiveProgress.get().update(40, WorkspaceProgressTracker.PREFLIGHT_UNITS);
         assertThat(JsonlShape.withProgress("{\"schema\":1,\"ts\":1,\"type\":\"x\"}"))
                 .contains("\"progress\":40");
         // Mid-execute: preflight full + half of execute weights.
-        long pf = AggregateContext.PREFLIGHT_UNITS;
+        long pf = WorkspaceProgressTracker.PREFLIGHT_UNITS;
         LiveProgress.get().update(pf + 50, pf + 100);
         String mid = JsonlShape.withProgress("{\"schema\":1,\"ts\":1,\"type\":\"x\"}");
         assertThat(mid).contains("\"progress\":75"); // (150/200)*100

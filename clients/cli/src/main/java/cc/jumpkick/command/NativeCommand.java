@@ -249,10 +249,8 @@ public final class NativeCommand implements CliCommand {
         int[] built = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
-            public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
-                long total = 0;
-                for (var p : plan) total += p.weight();
-                agg.calibrate(total);
+            public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                agg.applySnapshot(snap);
             }
 
             @Override

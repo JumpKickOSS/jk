@@ -53,6 +53,12 @@ public interface WorkspaceBuildListener {
      */
     default void onEtaEstimate(long millis) {}
 
+    /**
+     * Workspace aggregate progress from the engine tracker (JK-1120). Clients must paint this for
+     * the bar / {@code progress} rider — do not re-aggregate from per-module pipeline ticks.
+     */
+    default void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snapshot) {}
+
     /** The whole workspace build finished. */
     default void onWorkspaceFinish(WorkspaceResult result) {}
 }

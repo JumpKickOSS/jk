@@ -645,14 +645,15 @@ Vue.createApp({
       return { web: 'Web build', cli: 'CLI build' }[trigger] || '—';
     },
 
-    // Progress percentage for a running card's bar — the identical weight-based model as the CLI
-    // (ProgressBar): fraction = numerator/denominator of the engine's weight units, aggregated across
-    // modules (fold.js). Clamped to 99% while running; only a finished card is 100% — matching
-    // ProgressBarListener. No client-side estimation: the engine already did all the weight math.
+    // Progress % for a running card — engine workspace-progress (JK-1120). Dumb client: prefer
+    // progressPercent from the aggregate event; fall back to num/den. Clamped to 99% while running.
     progress(card) {
       if (this.outcome(card) !== 'running') return 100;
+      if (typeof card.progressPercent === 'number') {
+        return Math.min(99, Math.round(card.progressPercent));
+      }
       const den = weightDenominator(card);
-      if (den <= 0) return 0; // no weight yet (before pipeline-start) — the bar fills in a beat
+      if (den <= 0) return 0;
       return Math.min(99, Math.round((100 * weightNumerator(card)) / den));
     },
 

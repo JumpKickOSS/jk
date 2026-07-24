@@ -36,4 +36,17 @@ class WireEnvelopeGoldenTest {
     void protocol_version_is_frozen_at_1() {
         assertThat(EngineProtocol.PROTOCOL).isEqualTo(1);
     }
+
+    @Test
+    void workspace_progress_carries_aggregate_fields() {
+        String line = EngineProtocol.workspaceProgress("/ws", 150, 200, "execute", 1, 3);
+        assertThat(line).contains("\"type\":\"workspace-progress\"");
+        assertThat(line).contains("\"progress\":75");
+        assertThat(line).contains("\"numerator\":150");
+        assertThat(line).contains("\"denominator\":200");
+        assertThat(line).contains("\"phase\":\"execute\"");
+        assertThat(line).contains("\"modulesComplete\":1");
+        assertThat(line).contains("\"modulesTotal\":3");
+        assertThat(line).contains("\"schema\":1");
+    }
 }

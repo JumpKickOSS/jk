@@ -179,7 +179,7 @@ class CommandManagerTest {
     @Test
     void goal_header_bar_and_phase_chain() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false; // plain (space-padded) phase pills
+        cm.nerdfont = false;
         cm.progress(45, 100);
         cm.stepDone("acme:api", "parse-build", true, "resolve"); // success → removed from chain
         cm.stepRunning("acme:api", "compile-java", "compile");
@@ -190,10 +190,10 @@ class CommandManagerTest {
                 .contains("Building")
                 .contains(Spinner.PULSE_GLYPH)
                 .contains("1m 52s")
-                .doesNotContain("acme:api");
+                .doesNotContain("acme:api"); // module lives on the tree row, not the header
         assertThat(all).contains("45%");
-        // Only running Compile stays; Resolve succeeded and is gone.
-        assertThat(all).contains("Compile");
+        // Only running Compile stays; Resolve succeeded and is gone. Module + phase on the row.
+        assertThat(all).contains("acme:api").contains("Compile").contains("·");
         assertThat(all).doesNotContain("Resolve");
         assertThat(all).containsAnyOf("├─", "╰─");
         assertThat(all).doesNotContain("›");
@@ -241,21 +241,24 @@ class CommandManagerTest {
     }
 
     @Test
-    void phase_pills_use_dark_bg_bright_fg_not_solid_wedge_chips() {
-        // JK-1111: phase pills match web step-nodes (dark tint + bright fg), distinct from
-        // CommandWedge solid white-on-color chips.
+    void tree_rows_use_blue_spinner_and_green_phase_not_background_pills() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
-        cm.stepRunning("m", "compile", "compile");
-        cm.stepDone("m", "test", false, "test");
+        cm.stepRunning("com.foo:bar", "compile", "compile");
+        cm.stepDone("com.foo:baz", "test", false, "test");
         var raw = cm.renderPipelineLines(120, 0);
         String joined = String.join("\n", raw);
+        String visible = String.join("\n", stripAll(raw));
         Theme t = Theme.active();
-        assertThat(joined).contains(Theme.colorize(" Compile ", t.phaseRunningPill()));
-        assertThat(joined).contains(Theme.colorize(" Test ", t.phaseFailedPill()));
-        // Must not use the solid CommandWedge chips for phase labels.
-        assertThat(joined).doesNotContain(Theme.colorize(" Compile ", t.pipelineChip()));
-        assertThat(joined).doesNotContain(Theme.colorize(" Test ", t.pipelineFailureChip()));
+        // Compact module · phase: no bg pills / powerline caps on the tree.
+        assertThat(visible).contains("com.foo:bar").contains("·").contains("Compile");
+        assertThat(visible).contains("com.foo:baz").contains("Test");
+        assertThat(joined).contains(Theme.colorize("Compile", t.success()));
+        assertThat(joined).contains(Theme.colorize("Test", t.error()));
+        assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
+        assertThat(joined).doesNotContain(Theme.colorize(" Compile ", t.phaseRunningPill()));
+        assertThat(joined).doesNotContain(Theme.colorize(" Test ", t.phaseFailedPill()));
+        assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
     }
 
     @Test
@@ -269,9 +272,9 @@ class CommandManagerTest {
         String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
         assertThat(all).contains("Test").contains("Compile");
         assertThat(all).doesNotContain("Resolve");
-        // Newest (test) above older failed compile.
+        // Running rows first (newest), then failed by finish seq.
         assertThat(all.indexOf("Test")).isLessThan(all.indexOf("Compile"));
-        assertThat(all).contains(Glyphs.CROSS); // failed phase icon
+        assertThat(all).contains(Glyphs.CROSS); // failed row icon
     }
 
     @Test
@@ -288,25 +291,19 @@ class CommandManagerTest {
     }
 
     @Test
-    void tree_rail_spacer_separates_phases() {
+    void tree_is_vertically_compact_without_blank_rail_spacers() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;
-        cm.stepRunning("m", "a", "compile");
-        cm.stepRunning("m", "b", "test");
+        cm.stepRunning("com.foo:a", "a", "compile");
+        cm.stepRunning("com.foo:b", "b", "test");
         var lines = stripAll(cm.renderPipelineLines(120, 0));
-        // header, leading " │", phase, " │", phase
-        assertThat(lines.size()).isGreaterThanOrEqualTo(5);
-        assertThat(lines.get(1).strip()).isEqualTo("│"); // drop from header into chain
-        boolean sawRailBetween = false;
-        for (int i = 2; i < lines.size() - 1; i++) {
-            String mid = lines.get(i).strip();
-            if (mid.equals("│")
-                    && lines.get(i - 1).contains("─")
-                    && lines.get(i + 1).contains("─")) {
-                sawRailBetween = true;
-            }
+        // header + two tree rows only (no leading │, no blank │ between).
+        assertThat(lines).hasSize(3);
+        assertThat(lines.get(1)).startsWith(" ├─").contains("com.foo").contains("·");
+        assertThat(lines.get(2)).startsWith(" ╰─").contains("com.foo").contains("·");
+        for (String line : lines) {
+            assertThat(line.strip()).isNotEqualTo("│");
         }
-        assertThat(sawRailBetween).isTrue();
     }
 
     @Test
@@ -325,18 +322,8 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.stepRunning("m", "compile", "compile");
         var lines = cm.renderPipelineLines(120, 0);
-        // lines[0]=header, lines[1]=leading rail, lines[2]=single phase (closing branch).
-        assertThat(stripAnsi(lines.get(1)).strip()).isEqualTo("│");
-        assertThat(stripAnsi(lines.get(2))).startsWith(" ╰─").contains("Compile");
-    }
-
-    @Test
-    void nerd_phase_pills_use_half_circle_caps() {
-        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = true;
-        cm.stepRunning("m", "compile", "compile");
-        String line = stripAnsi(cm.renderPipelineLines(120, 0).get(2));
-        assertThat(line).contains(Glyphs.PILL_LEFT_NERD + "Compile" + Glyphs.PILL_RIGHT_NERD);
+        // lines[0]=header, lines[1]=single work row (closing branch) — no leading blank rail.
+        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─").contains("Compile");
     }
 
     @Test
@@ -348,11 +335,10 @@ class CommandManagerTest {
         cm.addCompletion("✓ [14 of 17] g:a14 took 1s");
 
         var lines = cm.renderPipelineLines(120, 0);
-        // header, leading rail, phase pill (╰─), then completions newest first.
-        assertThat(stripAnsi(lines.get(1)).strip()).isEqualTo("│");
-        assertThat(stripAnsi(lines.get(2))).startsWith(" ╰─").contains("Compile");
-        assertThat(stripAnsi(lines.get(3))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
-        assertThat(stripAnsi(lines.get(4))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
+        // header, work row (╰─), then completions newest first.
+        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─").contains("Compile");
+        assertThat(stripAnsi(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
+        assertThat(stripAnsi(lines.get(3))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
     }
 
     @Test

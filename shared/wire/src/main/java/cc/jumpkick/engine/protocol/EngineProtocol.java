@@ -69,6 +69,13 @@ public final class EngineProtocol {
     /** Server → client: {@code onEtaEstimate}. */
     public static final String ETA = "eta";
 
+    /**
+     * Server → client: workspace-level aggregate progress (JK-1120). Filterable whole-job % —
+     * preflight reservation + module weight slices. Fine-grained {@link #PROGRESS} remains
+     * module-local.
+     */
+    public static final String WORKSPACE_PROGRESS = "workspace-progress";
+
     /** Server → client: a module's pipeline is about to run — {@code onModuleStart}. */
     public static final String MODULE_START = "module-start";
 
@@ -1462,6 +1469,37 @@ public final class EngineProtocol {
 
     public static String eta(long millis) {
         return "{\"type\":\"" + ETA + "\",\"millis\":" + millis + "}";
+    }
+
+    /**
+     * Workspace aggregate progress (JK-1120). {@code progress} is 0–100 (one decimal) from the
+     * engine tracker; {@code numerator}/{@code denominator} are the same abstract bar units.
+     * {@code phase} is {@code preflight}, {@code execute}, or {@code done}.
+     */
+    public static String workspaceProgress(
+            String dir,
+            long numerator,
+            long denominator,
+            String phase,
+            int modulesComplete,
+            int modulesTotal) {
+        return "{\"schema\":1,\"type\":\""
+                + WORKSPACE_PROGRESS
+                + "\",\"dir\":"
+                + Jsonl.quote(dir == null ? "" : dir)
+                + ",\"numerator\":"
+                + numerator
+                + ",\"denominator\":"
+                + denominator
+                + ",\"progress\":"
+                + progressPercent(numerator, denominator)
+                + ",\"phase\":"
+                + Jsonl.quote(phase == null ? "" : phase)
+                + ",\"modulesComplete\":"
+                + modulesComplete
+                + ",\"modulesTotal\":"
+                + modulesTotal
+                + "}";
     }
 
     public static String moduleStart(String dir) {

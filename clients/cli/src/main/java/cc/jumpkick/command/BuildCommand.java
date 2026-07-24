@@ -503,16 +503,28 @@ public final class BuildCommand implements CliCommand {
             cc.jumpkick.runtime.WorkspaceBuildListener liveListener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
                 public void onPreflight(String stage, int done, int totalUnits, String label) {
+                    // Labels only — aggregate % arrives via onWorkspaceProgress (engine tracker).
                     agg.preflight(stage, done, totalUnits, label);
+                }
+
+                @Override
+                public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                    agg.applySnapshot(snap);
+                    emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
+                                    entryDir.toString(),
+                                    snap.numerator(),
+                                    snap.denominator(),
+                                    snap.phase(),
+                                    snap.modulesComplete(),
+                                    snap.modulesTotal()),
+                            false);
                 }
 
                 @Override
                 public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                     total[0] = plan.size();
-                    long tw = 0;
-                    for (var p : plan) tw += p.weight();
-                    // Preflight reservation + execute weights; bar leaves 0% during plan prepare.
-                    agg.calibrate(tw);
+                    // Engine calibrates aggregate bar; CLI only records plan size for completion lines.
                     emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), false);
                 }
 
@@ -529,8 +541,7 @@ public final class BuildCommand implements CliCommand {
                             m.cache(), m.pipeline().name());
                     List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                     buffers.put(m.dir(), buf);
-                    // The module's pipeline feeds the shared aggregate bar; its output buffers for
-                    // ordered flush (parallel modules' logs never interleave).
+                    // Step tree + output only; aggregate bar is engine-owned (JK-1121).
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);

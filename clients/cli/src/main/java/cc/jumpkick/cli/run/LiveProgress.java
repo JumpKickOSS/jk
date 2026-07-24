@@ -2,11 +2,12 @@
 package cc.jumpkick.cli.run;
 
 /**
- * Workspace/pipeline aggregate progress snapshot for JSONL riders (JK-1117).
+ * Workspace/pipeline aggregate progress snapshot for JSONL riders (JK-1117 / JK-1121).
  *
- * <p>Updated whenever the human bar model changes ({@link AggregateContext}, single-pipeline
- * {@link CommandManagerListener}, etc.). Machine output attaches a single {@code progress}
- * percent (0–100) — never raw numerator/denominator on the rider.
+ * <p>For multi-module builds, updated only from engine {@code workspace-progress} (via {@link
+ * AggregateContext#applySnapshot}). Single-pipeline paths still update from {@link
+ * CommandManagerListener}. Machine output attaches a single {@code progress} percent (0–100) —
+ * never raw numerator/denominator on the rider.
  *
  * <p>Materialize cadence constants (JK-1118) live here so TTY and disk/stdout share one source.
  */

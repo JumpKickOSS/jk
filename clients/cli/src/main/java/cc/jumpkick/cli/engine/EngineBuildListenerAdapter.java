@@ -780,6 +780,19 @@ final class EngineBuildListenerAdapter {
                             Jsonl.intValue(line, "done", 0),
                             Jsonl.intValue(line, "total", 0),
                             Jsonl.str(line, "label"));
+                case EngineProtocol.WORKSPACE_PROGRESS -> {
+                    long num = Jsonl.longValue(line, "numerator", 0);
+                    long den = Jsonl.longValue(line, "denominator", 0);
+                    String phase = Jsonl.str(line, "phase");
+                    int mc = Jsonl.intValue(line, "modulesComplete", 0);
+                    int mt = Jsonl.intValue(line, "modulesTotal", 0);
+                    double pct = den > 0
+                            ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den)
+                            : Double.NaN;
+                    listener.onWorkspaceProgress(
+                            new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
+                                    num, den, pct, phase == null ? "" : phase, mc, mt));
+                }
                 case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
                 case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
                 case EngineProtocol.MODULE_START -> {

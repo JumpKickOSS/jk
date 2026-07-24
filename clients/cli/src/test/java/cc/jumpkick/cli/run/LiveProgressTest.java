@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -46,16 +47,16 @@ class LiveProgressTest {
     }
 
     @Test
-    void aggregate_context_feeds_live_progress() {
+    void aggregate_context_applies_engine_snapshot_to_live_progress() {
         var cm = cc.jumpkick.cli.tui.CommandManager.pipeline(
                 new java.io.PrintStream(new java.io.ByteArrayOutputStream()), "Build", false);
         var agg = new AggregateContext(cm);
+        // Preflight labels alone do not invent a percent (engine owns aggregate).
         agg.preflight("plan", 5, 10, "Preparing…");
-        assertThat(LiveProgress.get().percent()).isNotNull();
-        assertThat(LiveProgress.get().percent()).isGreaterThan(0);
-        agg.calibrate(100);
-        // End of preflight = PREFLIGHT_UNITS / (PREFLIGHT_UNITS + 100)
-        double expected = 100.0 * AggregateContext.PREFLIGHT_UNITS / (AggregateContext.PREFLIGHT_UNITS + 100);
-        assertThat(LiveProgress.get().percent()).isEqualTo(Math.round(expected * 10.0) / 10.0);
+        assertThat(LiveProgress.get().percent()).isNull();
+        long pf = WorkspaceProgressTracker.PREFLIGHT_UNITS;
+        agg.applySnapshot(new WorkspaceProgressTracker.Snapshot(pf, pf + 100, 50.0, "execute", 0, 2));
+        assertThat(LiveProgress.get().percent()).isEqualTo(50.0);
     }
 }
+
