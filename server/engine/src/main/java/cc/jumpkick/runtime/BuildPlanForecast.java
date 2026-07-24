@@ -19,6 +19,7 @@ import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaIncrementalCompile;
 import cc.jumpkick.task.TestStamp;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -361,6 +362,23 @@ public final class BuildPlanForecast {
                                 ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
                                 : new BuildPlan.Step("package-assembly", BuildPlan.Status.RUN, "repackage", null));
             }
+
+            // ---- resource drift ----
+            // The scheduled build re-copies resource trees unconditionally (main → classes, test →
+            // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
+            // module never does. Any drift ⇒ dirty.
+            if (!compileDirty) {
+                if (resourcesOutOfSync(dir.resolve("src/main/resources"), layout.classesDir())) {
+                    steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
+                }
+                if (haveTests && !skipTests && !testDirty) {
+                    Path resTest = compact ? dir.resolve("test-resources") : dir.resolve("src/test/resources");
+                    if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
+                        steps.add(new BuildPlan.Step(
+                                "copy-resources", BuildPlan.Status.RUN, "test resources changed", null));
+                    }
+                }
+            }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
             steps.add(new BuildPlan.Step(
@@ -370,6 +388,26 @@ public final class BuildPlanForecast {
                     null));
         }
         return new BuildPlan.Module(u.dir(), u.coord(), steps, sourceCount, testCount, producesJar, producesImage);
+    }
+
+    /** True when any file under {@code resDir} is missing from or differs from its copy in {@code outDir}. */
+    static boolean resourcesOutOfSync(Path resDir, Path outDir) {
+        if (!Files.isDirectory(resDir)) return false;
+        try (var stream = Files.walk(resDir)) {
+            for (Path source : (Iterable<Path>) stream::iterator) {
+                if (Files.isDirectory(source)) continue;
+                Path copy = outDir.resolve(resDir.relativize(source));
+                if (!Files.isRegularFile(copy)) return true;
+                if (Files.size(copy) != Files.size(source)) return true;
+                if (Files.getLastModifiedTime(source).compareTo(Files.getLastModifiedTime(copy)) > 0
+                        && Files.mismatch(source, copy) >= 0) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (IOException e) {
+            return true; // unreadable ⇒ treat as dirty
+        }
     }
 
     /** Map a {@link JavaIncrementalCompile.Prediction} to a step, honoring upstream dirtiness. */

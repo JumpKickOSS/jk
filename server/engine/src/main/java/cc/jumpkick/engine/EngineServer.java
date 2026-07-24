@@ -2079,6 +2079,25 @@ public final class EngineServer implements AutoCloseable {
             sendQuiet(writer, EngineProtocol.planDone(1));
             pipeline.addListener(wirePipelineListener(dir, writer, pipeline));
 
+            // JK-1110: snapshot graph + fingerprints BEFORE the run — a post-build fingerprint
+            // would record mid-build edits as clean. Guard on the resolved session, not the
+            // ambient one (the request thread's ambient session is the engine default).
+            BuildGraph.Result preGraph = null;
+            java.util.Map<Path, String> preFps = null;
+            if (!session.config().rebuildOr(false) && !session.config().forceOr(false)) {
+                try {
+                    cc.jumpkick.model.JkBuild entry =
+                            cc.jumpkick.config.JkBuildParser.parse(Files.readString(buildFile));
+                    BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
+                    if (!g.hasErrors()) {
+                        preGraph = g;
+                        preFps = PreflightMemo.snapshotFingerprints(g, skipTests);
+                    }
+                } catch (Exception ignored) {
+                    // fail-open
+                }
+            }
+
             long startNanos = System.nanoTime();
             cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
             accTests(
@@ -2092,21 +2111,11 @@ public final class EngineServer implements AutoCloseable {
                 }
                 maybeEnqueuePrune(cache);
             }
-            // JK-1110: single-module success → preflight dirty memo = all clean (parity with workspace).
-            if (result.success()
-                    && !SessionContext.current().config().rebuildOr(false)
-                    && !SessionContext.current().config().forceOr(false)) {
-                try {
-                    cc.jumpkick.model.JkBuild entry =
-                            cc.jumpkick.config.JkBuildParser.parse(Files.readString(buildFile));
-                    BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
-                    if (!g.hasErrors()) {
-                        PreflightMemo.storeDirty(entryDir, g, skipTests, java.util.Set.of());
-                        PreflightMemo.storeGraph(entryDir, g);
-                    }
-                } catch (Exception ignored) {
-                    // fail-open
-                }
+            // JK-1110: single-module success → preflight dirty memo = all clean (parity with
+            // workspace), using the pre-run snapshot.
+            if (result.success() && preGraph != null && preFps != null) {
+                PreflightMemo.storeDirty(entryDir, preGraph, skipTests, java.util.Set.of(), preFps);
+                PreflightMemo.storeGraph(entryDir, preGraph);
             }
         } catch (Exception e) {
             sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));

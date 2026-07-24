@@ -28,12 +28,13 @@ import java.util.Set;
  * under {@code <entry>/target/.jk/preflight/}. Never git-committed; miss or corrupt → full recompute
  * (fail-open).
  *
- * <p>Schema 2: content-hash source fingerprints for dirty memo (JK-1108). Graph rebuild without
- * {@code WorkspaceLoader} (JK-1112). Pipeline shape weights (JK-1113).
+ * <p>Schema 3: module fingerprints cover every file under {@code src}/{@code test}/
+ * {@code test-resources} (resources included); dirty rows are stored with fingerprints captured at
+ * preflight time, never post-build.
  */
 public final class PreflightMemo {
 
-    static final String SCHEMA = "2";
+    static final String SCHEMA = "3";
     private static final String DIRTY_FILE = "dirty-memo.txt";
     private static final String GRAPH_FILE = "graph-memo.txt";
     private static final String SHAPE_FILE = "shape-memo.txt";
@@ -56,7 +57,10 @@ public final class PreflightMemo {
     // Dirty set (layer C)
     // -------------------------------------------------------------------------
 
-    public static Optional<Set<Path>> tryLoadDirty(
+    /** A memo hit: the dirty set plus the validated per-module fingerprints (current as of load). */
+    public record DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {}
+
+    public static Optional<DirtyMemo> tryLoadDirty(
             Path entryDir, BuildGraph.Result graph, boolean skipTests) {
         Path file = memoFile(entryDir);
         if (!Files.isRegularFile(file)) return Optional.empty();
@@ -97,6 +101,7 @@ public final class PreflightMemo {
             if (units.size() != rows.size()) return Optional.empty();
 
             Set<Path> dirty = new LinkedHashSet<>();
+            Map<Path, String> fps = new LinkedHashMap<>();
             Set<String> seen = new LinkedHashSet<>();
             for (BuildGraph.BuildUnit u : units) {
                 Path dir = u.dir().toAbsolutePath().normalize();
@@ -104,18 +109,40 @@ public final class PreflightMemo {
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
                 if (!row.fp().equals(fingerprintModule(dir, skipTests))) return Optional.empty();
+                // A clean claim is a promise that dir/target holds the outputs; a hand-deleted
+                // target invalidates it even though no source changed.
+                if (!row.dirty() && !Files.isDirectory(dir.resolve("target"))) return Optional.empty();
                 seen.add(rel);
+                fps.put(dir, row.fp());
                 if (row.dirty()) dirty.add(dir);
             }
             if (!seen.equals(rows.keySet())) return Optional.empty();
-            return Optional.of(dirty);
+            return Optional.of(new DirtyMemo(dirty, fps));
         } catch (Exception e) {
             return Optional.empty();
         }
     }
 
+    /**
+     * Per-module fingerprints captured now. Callers snapshot BEFORE forecasting or building and
+     * hand the snapshot to {@link #storeDirty}: a store must never fingerprint post-build, or a
+     * mid-build edit is recorded as clean and never rebuilt.
+     */
+    public static Map<Path, String> snapshotFingerprints(BuildGraph.Result graph, boolean skipTests) {
+        Map<Path, String> fps = new LinkedHashMap<>();
+        for (BuildGraph.BuildUnit u : graph.topoOrder()) {
+            Path dir = u.dir().toAbsolutePath().normalize();
+            fps.put(dir, fingerprintModule(dir, skipTests));
+        }
+        return fps;
+    }
+
     public static void storeDirty(
-            Path entryDir, BuildGraph.Result graph, boolean skipTests, Set<Path> dirty) {
+            Path entryDir,
+            BuildGraph.Result graph,
+            boolean skipTests,
+            Set<Path> dirty,
+            Map<Path, String> fingerprints) {
         try {
             Path root = entryDir.toAbsolutePath().normalize();
             Path file = memoFile(entryDir);
@@ -129,10 +156,11 @@ public final class PreflightMemo {
             for (Path d : dirty) dirtyNorm.add(d.toAbsolutePath().normalize());
             for (BuildGraph.BuildUnit u : graph.topoOrder()) {
                 Path dir = u.dir().toAbsolutePath().normalize();
-                String rel = relKey(root, dir);
-                sb.append(rel)
+                String fp = fingerprints.get(dir);
+                if (fp == null) return; // graph drifted from the snapshot — don't write
+                sb.append(relKey(root, dir))
                         .append('\t')
-                        .append(fingerprintModule(dir, skipTests))
+                        .append(fp)
                         .append('\t')
                         .append(dirtyNorm.contains(dir) ? "1" : "0")
                         .append('\n');
@@ -309,8 +337,11 @@ public final class PreflightMemo {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             Path root = entryDir.toAbsolutePath().normalize();
-            // Always pin the entry manifest (workspace module list lives here).
+            // Always pin the entry manifest (workspace module list lives here). Whether the root
+            // itself is a buildable unit depends on it having sources, not on any toml — pin that
+            // too, or a root that grows src/ keeps hitting a graph memo without a root unit.
             feed(md, "entry");
+            feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feedFile(md, root.resolve("jk.toml"));
             feedFile(md, root.resolve("jk.lock"));
             for (Path dir : unitDirs) {
@@ -346,11 +377,6 @@ public final class PreflightMemo {
      */
     public record PipelineShape(int weight, int testWeight, List<StepShape> steps) {
         public record StepShape(String name, String phase) {}
-
-        /** Backward-compat constructor when test weight is unknown. */
-        public PipelineShape(int weight, List<StepShape> steps) {
-            this(weight, 0, steps);
-        }
     }
 
     /**
@@ -387,30 +413,15 @@ public final class PreflightMemo {
             }
             if (!BuildIdentity.cacheKeyVersion().equals(gotVersion)) return Optional.empty();
 
-            // New: shape\trel\tfp\tweight\ttestWeight\tname:phase,...
-            // Old: shape\trel\tfp\tweight\tname:phase,...  (testWeight defaults 0)
+            // shape\trel\tfp\tweight\ttestWeight\tname:phase,...
             for (String line : lines) {
                 if (!line.startsWith("shape\t")) continue;
                 String[] p = line.split("\t", 6);
-                if (p.length < 4) continue;
+                if (p.length != 6) continue;
                 if (!rel.equals(p[1])) continue;
                 if (!wantFp.equals(p[2])) return Optional.empty();
-                int weight = Integer.parseInt(p[3]);
-                int testWeight = 0;
-                String stepsField = "";
-                if (p.length >= 6) {
-                    testWeight = Integer.parseInt(p[4]);
-                    stepsField = p[5];
-                } else if (p.length == 5) {
-                    // Ambiguous: either old steps or new testWeight with empty steps.
-                    if (p[4].chars().allMatch(Character::isDigit)) {
-                        testWeight = Integer.parseInt(p[4]);
-                    } else {
-                        stepsField = p[4];
-                    }
-                }
-                List<PipelineShape.StepShape> steps = parseStepField(stepsField);
-                return Optional.of(new PipelineShape(weight, testWeight, steps));
+                return Optional.of(new PipelineShape(
+                        Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
             }
             return Optional.empty();
         } catch (Exception e) {
@@ -530,6 +541,11 @@ public final class PreflightMemo {
     // Module dirty fingerprint (sources)
     // -------------------------------------------------------------------------
 
+    /**
+     * Every regular file under {@code src}/{@code test}/{@code test-resources} feeds the digest —
+     * resources included: the build's copy/package/test steps consume them, so a memo blind to them
+     * ships stale jars.
+     */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -538,17 +554,14 @@ public final class PreflightMemo {
             feedFile(md, moduleDir.resolve("jk.toml"));
             feedFile(md, moduleDir.resolve("jk.lock"));
             boolean mtimeMode = useMtimeMode();
-            List<Path> roots = List.of(moduleDir.resolve("src"), moduleDir.resolve("test"));
+            List<Path> roots = List.of(
+                    moduleDir.resolve("src"), moduleDir.resolve("test"), moduleDir.resolve("test-resources"));
             for (Path r : roots) {
                 if (!Files.isDirectory(r)) continue;
                 Files.walkFileTree(r, new SimpleFileVisitor<>() {
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        String name = file.getFileName().toString();
-                        if (name.endsWith(".java")
-                                || name.endsWith(".kt")
-                                || name.endsWith(".kts")
-                                || name.endsWith(".proto")) {
+                        if (attrs.isRegularFile()) {
                             feed(md, moduleDir.relativize(file).toString().replace('\\', '/'));
                             if (mtimeMode) {
                                 feed(md, Long.toString(attrs.size()));

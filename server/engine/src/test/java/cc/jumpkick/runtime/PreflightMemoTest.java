@@ -29,11 +29,11 @@ class PreflightMemoTest {
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
         Set<Path> dirty = Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize());
-        PreflightMemo.storeDirty(tmp, graph, false, dirty);
+        storeDirty(tmp, graph, dirty);
 
-        Optional<Set<Path>> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(hit).isPresent();
-        assertThat(hit.get()).isEqualTo(dirty);
+        assertThat(hit.get().dirty()).isEqualTo(dirty);
     }
 
     @Test
@@ -43,9 +43,67 @@ class PreflightMemoTest {
         Files.writeString(src, "class App { int x = 1; }\n");
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of());
+        storeDirty(tmp, graph, Set.of());
 
         Files.writeString(src, "class App { int x = 2; }\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    @Test
+    void resource_change_misses_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path res = tmp.resolve("src/main/resources");
+        Files.createDirectories(res);
+        Files.writeString(res.resolve("application.properties"), "answer=41\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        Files.writeString(res.resolve("application.properties"), "answer=42\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    @Test
+    void test_resource_change_misses_memo(@TempDir Path tmp) throws Exception {
+        writeProject(tmp);
+        Path res = tmp.resolve("test-resources");
+        Files.createDirectories(res);
+        Files.writeString(res.resolve("fixture.json"), "{}\n");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+
+        Files.writeString(res.resolve("fixture.json"), "{\"a\":1}\n");
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    @Test
+    void clean_row_requires_module_target_dir(@TempDir Path tmp) throws Exception {
+        // Entry memo survives a hand-deleted module target; its "clean" promise must not.
+        writeWorkspace(tmp);
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        storeDirty(tmp, graph, Set.of());
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
+
+        deleteRecursively(tmp.resolve("a").resolve("target"));
+        assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
+    }
+
+    @Test
+    void storeDirty_uses_snapshot_fingerprints_not_current_state(@TempDir Path tmp) throws Exception {
+        // TOCTOU: a mid-build edit must not be recorded as clean by the post-build store.
+        writeProject(tmp);
+        Path src = tmp.resolve("src/main/java/App.java");
+        BuildGraph.Result graph =
+                BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
+        var preBuild = PreflightMemo.snapshotFingerprints(graph, false);
+
+        Files.writeString(src, "class App { int editedMidBuild; }\n"); // "mid-build" edit
+        PreflightMemo.storeDirty(tmp, graph, false, Set.of(), preBuild);
+
+        // The stored fingerprint is pre-edit, so the next preflight must miss and re-forecast.
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
     }
 
@@ -68,12 +126,11 @@ class PreflightMemoTest {
         writeProject(tmp);
         BuildGraph.Result graph =
                 BuildGraph.resolve(tmp, JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml"))));
-        PreflightMemo.storeDirty(
-                tmp, graph, false, Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize()));
-        PreflightMemo.storeDirty(tmp, graph, false, Set.of());
-        Optional<Set<Path>> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
+        storeDirty(tmp, graph, Set.of(graph.topoOrder().getFirst().dir().toAbsolutePath().normalize()));
+        storeDirty(tmp, graph, Set.of());
+        Optional<PreflightMemo.DirtyMemo> hit = PreflightMemo.tryLoadDirty(tmp, graph, false);
         assertThat(hit).isPresent();
-        assertThat(hit.get()).isEmpty();
+        assertThat(hit.get().dirty()).isEmpty();
     }
 
     @Test
@@ -126,6 +183,21 @@ class PreflightMemoTest {
                 jdk = 21
                 java = 21
                 """);
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
+    }
+
+    @Test
+    void tryLoadGraph_misses_when_root_gains_sources(@TempDir Path tmp) throws Exception {
+        // Root buildability depends on it having sources, not on any toml — the structure key
+        // must see the transition or the root module is silently never built.
+        writeWorkspace(tmp);
+        var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
+        BuildGraph.Result full = BuildGraph.resolve(tmp, entry);
+        PreflightMemo.storeGraph(tmp, full);
+        assertThat(PreflightMemo.tryLoadGraph(tmp)).isPresent();
+
+        Files.createDirectories(tmp.resolve("src/main/java"));
+        Files.writeString(tmp.resolve("src/main/java/Root.java"), "class Root {}\n");
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
     }
 
@@ -233,7 +305,23 @@ class PreflightMemoTest {
         assertThat(plan.pipeline().run().success()).isTrue();
     }
 
+    /** Store with fingerprints snapshotted now — what every production call site does at preflight. */
+    private static void storeDirty(Path entryDir, BuildGraph.Result graph, Set<Path> dirty) {
+        PreflightMemo.storeDirty(
+                entryDir, graph, false, dirty, PreflightMemo.snapshotFingerprints(graph, false));
+    }
+
+    private static void deleteRecursively(Path root) throws Exception {
+        if (!Files.exists(root)) return;
+        try (var stream = Files.walk(root)) {
+            for (Path p : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
     private static void writeProject(Path dir) throws Exception {
+        Files.createDirectories(dir.resolve("target"));
         Files.writeString(
                 dir.resolve("jk.toml"),
                 """
@@ -270,8 +358,10 @@ class PreflightMemoTest {
                 [workspace]
                 modules = ["a", "b"]
                 """);
+        Files.createDirectories(dir.resolve("target"));
         for (String m : new String[] {"a", "b"}) {
             Path md = dir.resolve(m);
+            Files.createDirectories(md.resolve("target"));
             Files.createDirectories(md.resolve("src/main/java"));
             Files.writeString(
                     md.resolve("jk.toml"),

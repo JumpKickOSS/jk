@@ -169,21 +169,39 @@ public final class BuildService {
      */
     public static Set<Path> forecastDirtyDirs(
             BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
+        return forecastWithFingerprints(graph, cache, skipTests, entryDir).dirty();
+    }
+
+    /** A preflight verdict: the dirty set plus the fingerprints it was computed against. */
+    record Preflight(Set<Path> dirty, Map<Path, String> fingerprints) {}
+
+    /**
+     * As {@link #forecastDirtyDirs} but also returning the fingerprint snapshot taken BEFORE the
+     * forecast walk — the only fingerprints a post-build {@link PreflightMemo#storeDirty} may use
+     * (fingerprinting after the build records mid-build edits as clean).
+     */
+    static Preflight forecastWithFingerprints(
+            BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
         // --force / --rebuild: every module runs — skip the expensive per-step forecast walk.
         if (SessionContext.current().config().rebuildOr(false)
                 || SessionContext.current().config().forceOr(false)) {
-            return all;
+            return new Preflight(all, Map.of());
         }
+        Map<Path, String> fps;
         if (entryDir != null) {
             var memo = PreflightMemo.tryLoadDirty(entryDir, graph, skipTests);
             if (memo.isPresent()) {
                 if (Perf.ENABLED) {
-                    System.err.println("[jk-perf] preflight-memo hit dirty=" + memo.get().size());
+                    System.err.println("[jk-perf] preflight-memo hit dirty="
+                            + memo.get().dirty().size());
                 }
-                return memo.get();
+                return new Preflight(memo.get().dirty(), memo.get().fingerprints());
             }
+            fps = PreflightMemo.snapshotFingerprints(graph, skipTests);
+        } else {
+            fps = Map.of();
         }
         try {
             Cas cas = new Cas(cache);
@@ -199,11 +217,11 @@ public final class BuildService {
                 }
             }
             if (entryDir != null) {
-                PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty);
+                PreflightMemo.storeDirty(entryDir, graph, skipTests, dirty, fps);
             }
-            return dirty;
+            return new Preflight(dirty, fps);
         } catch (RuntimeException e) {
-            return all;
+            return new Preflight(all, fps);
         }
     }
 
@@ -471,6 +489,7 @@ public final class BuildService {
         // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // JK-1100: when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
+        Map<Path, String> preflightFps = Map.of();
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = req.dirtyHint();
@@ -481,7 +500,9 @@ public final class BuildService {
                     dirty.isEmpty() ? "Nothing dirty" : dirty.size() + " module(s) dirty");
         } else {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
-            dirty = forecastDirtyDirs(graph, req.cache(), req.skipTests(), req.entryDir());
+            Preflight preflight = forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
+            dirty = preflight.dirty();
+            preflightFps = preflight.fingerprints();
             listener.onPreflight(
                     "checking",
                     1,
@@ -661,9 +682,11 @@ public final class BuildService {
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
             // JK-1100: sources unchanged after a successful full forecast path ⇒ next cold process
             // should see "all clean" without re-walking action keys. Dirty-hint paths (selection)
-            // leave the memo alone — we didn't recompute the whole graph's dirtiness.
-            if (req.dirtyHint() == null) {
-                PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of());
+            // leave the memo alone — we didn't recompute the whole graph's dirtiness. Test-only
+            // runs also leave it alone: they never package, so "clean" would be a lie for build.
+            // Fingerprints come from the preflight snapshot, never post-build (mid-build edits).
+            if (req.dirtyHint() == null && !req.testOnly() && !preflightFps.isEmpty()) {
+                PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), preflightFps);
             }
         }
         WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
