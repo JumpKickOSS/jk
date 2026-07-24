@@ -1566,6 +1566,7 @@ public final class EngineServer implements AutoCloseable {
                     .withCacheDir(cache)
                     .withJdksDir(jdksDir)
                     .withParallelTests(parallelTests)
+                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine))
                     .withCancel(cancelToken)
                     .withJvm(EngineProtocol.jvmTuning(requestLine));
 
@@ -1984,7 +1985,8 @@ public final class EngineServer implements AutoCloseable {
                     .withJdksDir(jdksDir)
                     .withCancel(cancelToken)
                     .withJvm(EngineProtocol.jvmTuning(requestLine))
-                    .withParallelTests(parallelTests);
+                    .withParallelTests(parallelTests)
+                    .withTestSelection(EngineProtocol.testSelectionOf(requestLine));
 
             // The session rides Inputs EXPLICITLY (canonical constructor): the delegating
             // constructors capture SessionContext.current() at construction time, which here —

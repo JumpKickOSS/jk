@@ -130,6 +130,9 @@ final class EngineBuildListenerAdapter {
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
 
+            var sel = req.testSelection() != null
+                    ? req.testSelection()
+                    : SessionContext.current().testSelection();
             writer.write(EngineProtocol.withSession(
                     EngineProtocol.testRequest(
                             req.entryDir().toString(),
@@ -140,7 +143,8 @@ final class EngineBuildListenerAdapter {
                             req.verbose(),
                             req.offline(),
                             req.force(),
-                            req.parallelTests() || SessionContext.current().parallelTests()),
+                            req.parallelTests() || SessionContext.current().parallelTests(),
+                            sel),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),

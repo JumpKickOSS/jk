@@ -50,3 +50,18 @@ Measured profiling of a full `integrationTest` is expensive; use this as a **man
 ```
 
 (Default task output dir for the custom `integrationTest` task is `build/test-results/integrationTest/`.)
+
+## Pure-jk product parity (JK-1134–1138)
+
+Gradle tiers remain how **this monorepo** is bootstrapped. Once dogfooding with `jk test`:
+
+| Intent | Command |
+|--------|---------|
+| Fast / default | `jk test` (suite `test` only; optional `[test] default-exclude-tags`) |
+| Extra suite | `jk test --suite integration` or put e2e under `integration/` |
+| Everything | `jk test --all` |
+| Tag filter | `jk test --exclude-tag slow` / `--include-tag smoke` |
+| CI profile | `[profiles.ci] exclude-tags = […]` + `--profile ci` (auto on CI) |
+
+Prefer **directory suites** for structural separation (Mill-shaped); use **JUnit tags** for
+cross-cutting cost filters inside a suite.

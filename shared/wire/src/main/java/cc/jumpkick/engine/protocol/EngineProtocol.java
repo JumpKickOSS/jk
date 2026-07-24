@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.protocol;
 
 import cc.jumpkick.plugin.protocol.Jsonl;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -664,6 +665,25 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean parallelTests) {
+        return testRequest(
+                dir, cache, jdksDir, workers, profile, verbose, offline, force, parallelTests, null);
+    }
+
+    /**
+     * Start a single-project test run with suite/tag selection (JK-1134–1136). {@code selection}
+     * may be {@code null} (default suite only).
+     */
+    public static String testRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean verbose,
+            boolean offline,
+            boolean force,
+            boolean parallelTests,
+            cc.jumpkick.config.TestSelection selection) {
         // noTimeline: session envelope only (see {@link #withSession}).
         return "{\"type\":\""
                 + TEST_REQUEST
@@ -685,7 +705,77 @@ public final class EngineProtocol {
                 + force
                 + ",\"parallelTests\":"
                 + parallelTests
+                + testSelectionFields(selection)
                 + "}";
+    }
+
+    /** Encode suite/tag fields for {@link #TEST_REQUEST} (and siblings that carry the same shape). */
+    public static String testSelectionFields(cc.jumpkick.config.TestSelection selection) {
+        cc.jumpkick.config.TestSelection s =
+                selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
+        StringBuilder sb = new StringBuilder();
+        sb.append(",\"allSuites\":").append(s.allSuites());
+        sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
+        sb.append(",\"includeTags\":").append(jsonStringArray(s.includeTags()));
+        sb.append(",\"excludeTags\":").append(jsonStringArray(s.excludeTags()));
+        return sb.toString();
+    }
+
+    /** Parse suite/tag selection from a test/build request line. */
+    public static cc.jumpkick.config.TestSelection testSelectionOf(String json) {
+        boolean all = Jsonl.bool(json, "allSuites", false);
+        List<String> suites = stringArrayField(json, "suites");
+        List<String> include = stringArrayField(json, "includeTags");
+        List<String> exclude = stringArrayField(json, "excludeTags");
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
+    }
+
+    private static String jsonStringArray(List<String> values) {
+        if (values == null || values.isEmpty()) return "[]";
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < values.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(Jsonl.quote(values.get(i)));
+        }
+        return sb.append(']').toString();
+    }
+
+    /** Best-effort parse of a JSON string array field (flat list of quoted strings). */
+    private static List<String> stringArrayField(String json, String key) {
+        if (json == null) return List.of();
+        String needle = "\"" + key + "\":";
+        int start = json.indexOf(needle);
+        if (start < 0) return List.of();
+        start += needle.length();
+        while (start < json.length() && json.charAt(start) == ' ') start++;
+        if (start >= json.length() || json.charAt(start) != '[') return List.of();
+        int end = json.indexOf(']', start);
+        if (end < 0) return List.of();
+        String body = json.substring(start + 1, end).trim();
+        if (body.isEmpty()) return List.of();
+        List<String> out = new ArrayList<>();
+        int i = 0;
+        while (i < body.length()) {
+            while (i < body.length() && (body.charAt(i) == ' ' || body.charAt(i) == ',')) i++;
+            if (i >= body.length()) break;
+            if (body.charAt(i) != '"') break;
+            int j = i + 1;
+            StringBuilder s = new StringBuilder();
+            while (j < body.length()) {
+                char c = body.charAt(j);
+                if (c == '\\' && j + 1 < body.length()) {
+                    s.append(body.charAt(j + 1));
+                    j += 2;
+                    continue;
+                }
+                if (c == '"') break;
+                s.append(c);
+                j++;
+            }
+            out.add(s.toString());
+            i = j + 1;
+        }
+        return List.copyOf(out);
     }
 
     /** Start a single-project build (see {@link #SINGLE_BUILD_REQUEST}). {@code jdksDir}/{@code profile} may be {@code null}. */

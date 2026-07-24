@@ -467,6 +467,40 @@ Host matching is exact or a DNS-label suffix (`evil.com` matches `repo.evil.com`
 `notevil.com`). License and yanked policies will fail closed at parse until enforcement
 ships — silent no-ops are not allowed.
 
+
+## Test suites and tags
+
+`jk test` runs the **default suite** only: sources under `test/` (simple layout) or
+`src/test/{java,kotlin}` (traditional). Optional sibling suites are discovered when they
+exist — for example `integration/` or `src/integration/java`.
+
+```bash
+jk test                           # default suite ("test") only
+jk test --suite integration       # only that suite
+jk test --suite test --suite integration
+jk test --all                     # every discovered suite
+jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
+jk test --include-tag smoke
+jk test --all --exclude-tag bench
+```
+
+`--all` and `--suite` cannot be combined. Unknown suite names error with the available list.
+
+Declarative defaults (CLI wins when you pass tags):
+
+```toml
+[test]
+workers = 1
+default-exclude-tags = ["slow", "bench"]
+
+[profiles.ci]
+exclude-tags = ["bench"]
+include-tags = []   # optional
+```
+
+`--profile` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
+the test stamp: changing selection re-runs tests even if sources are unchanged.
+
 ## Quality (format + lint)
 
 | Concern | Path |

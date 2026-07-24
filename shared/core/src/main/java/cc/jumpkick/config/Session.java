@@ -16,6 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @param graalSpec top-tier GraalVM selection ({@code --graal}), or {@code null}
  * @param parallelTests when false, module tests serialize through the engine's test gate
  * @param cancel never null after construction; {@code null} input becomes {@link CancelToken#NONE}
+ * @param testSelection suite/tag selection for {@code jk test} (JK-1134+)
  */
 public record Session(
         JkConfig config,
@@ -31,7 +32,9 @@ public record Session(
         String variant,
         java.util.Map<String, String> clientEnv,
         /** CLI packaging override: empty, {@code fat}, or {@code shrink} ({@code jk assembly --shrink}). */
-        String assemblyOverride) {
+        String assemblyOverride,
+        /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
+        TestSelection testSelection) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -42,10 +45,23 @@ public record Session(
         variant = (variant == null) ? "" : variant;
         clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? java.util.Map.of() : java.util.Map.copyOf(clientEnv);
         assemblyOverride = (assemblyOverride == null || assemblyOverride.isBlank()) ? "" : assemblyOverride.trim();
+        testSelection = testSelection == null ? TestSelection.DEFAULT : testSelection;
     }
 
-    /** A copy carrying the given variant selection + client-resolved env. */
-    public Session withVariant(String variant, java.util.Map<String, String> clientEnv) {
+    private Session copy(
+            JkConfig config,
+            Path workingDir,
+            Path cacheDir,
+            Path jdksDir,
+            PluginTuning jvm,
+            String jdkSpec,
+            String graalSpec,
+            boolean parallelTests,
+            CancelToken cancel,
+            String variant,
+            java.util.Map<String, String> clientEnv,
+            String assemblyOverride,
+            TestSelection testSelection) {
         return new Session(
                 config,
                 workingDir,
@@ -58,7 +74,26 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
+    }
+
+    /** A copy carrying the given variant selection + client-resolved env. */
+    public Session withVariant(String variant, java.util.Map<String, String> clientEnv) {
+        return copy(
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride,
+                testSelection);
     }
 
     /**
@@ -121,11 +156,12 @@ public record Session(
                 CancelToken.live(),
                 "",
                 null,
-                "");
+                "",
+                TestSelection.DEFAULT);
     }
 
     public Session withConfig(JkConfig newConfig) {
-        return new Session(
+        return copy(
                 newConfig,
                 workingDir,
                 cacheDir,
@@ -137,11 +173,12 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     public Session withWorkingDir(Path dir) {
-        return new Session(
+        return copy(
                 config,
                 dir.toAbsolutePath().normalize(),
                 cacheDir,
@@ -153,11 +190,12 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     public Session withCacheDir(Path dir) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 dir,
@@ -169,11 +207,12 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     public Session withJdksDir(Path dir) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -185,11 +224,12 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     public Session withJvm(PluginTuning tuning) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -201,12 +241,13 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     /** The top-tier JDK / GraalVM selection ({@code --jdk} / {@code --graal}); blanks normalize to null. */
     public Session withToolchainSpecs(String jdk, String graal) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -218,11 +259,12 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     public Session withParallelTests(boolean enabled) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -234,7 +276,8 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
     }
 
     /**
@@ -242,7 +285,7 @@ public record Session(
      * Does not rewrite {@code jk.toml}.
      */
     public Session withAssemblyOverride(String mode) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -254,12 +297,13 @@ public record Session(
                 cancel,
                 variant,
                 clientEnv,
-                mode);
+                mode,
+                testSelection);
     }
 
     /** A copy carrying the given cancellation token ({@code null} → {@link CancelToken#NONE}). */
     public Session withCancel(CancelToken token) {
-        return new Session(
+        return copy(
                 config,
                 workingDir,
                 cacheDir,
@@ -271,7 +315,26 @@ public record Session(
                 token,
                 variant,
                 clientEnv,
-                assemblyOverride);
+                assemblyOverride,
+                testSelection);
+    }
+
+    /** Suite / tag selection for this invocation ({@code jk test}). */
+    public Session withTestSelection(TestSelection selection) {
+        return copy(
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride,
+                selection == null ? TestSelection.DEFAULT : selection);
     }
 
     private static String blankToNull(String s) {

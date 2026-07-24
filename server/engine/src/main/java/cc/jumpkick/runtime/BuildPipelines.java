@@ -1653,10 +1653,22 @@ public final class BuildPipelines {
                 .interpolated() // opaque javac/kotlinc call — ease it over time
                 .ticks(1)
                 .execute(ctx -> {
+                    var sel = in.session() == null
+                            ? cc.jumpkick.config.TestSelection.DEFAULT
+                            : in.session().testSelection();
+                    List<String> discovered =
+                            cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
+                    var resolved = sel.resolve(discovered);
+                    if (!resolved.ok()) {
+                        throw new IllegalArgumentException(resolved.missingMessage());
+                    }
+                    List<String> suiteNames = resolved.suites();
                     Path javaTestSrc =
-                            compact ? in.dir().resolve("test") : in.dir().resolve("src/test/java");
-                    List<Path> javaTest = CompileSupport.collectJavaSources(javaTestSrc);
-                    List<Path> ktTest = CompileSupport.collectKotlinTestSources(in.dir(), compact);
+                            cc.jumpkick.layout.TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
+                    List<Path> javaTest =
+                            cc.jumpkick.layout.TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
+                    List<Path> ktTest =
+                            cc.jumpkick.layout.TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
                     if (javaTest.isEmpty() && ktTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
@@ -1834,7 +1846,11 @@ public final class BuildPipelines {
                     // runtime classpath (sibling modules included), the lock, and the
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
-                            testSrcs, ctx.require(MAIN_CLASSES), in.lockFile(), testRtCp, testStampExtras(workerJars));
+                            testSrcs,
+                            ctx.require(MAIN_CLASSES),
+                            in.lockFile(),
+                            testRtCp,
+                            testStampExtras(workerJars, in.session().testSelection()));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -1906,8 +1922,10 @@ public final class BuildPipelines {
                     boolean gated = !in.session().parallelTests();
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
+                        var sel = in.session().testSelection();
                         result = new JUnitLauncher()
                                 .withModuleLabel(moduleLabel)
+                                .withTagFilters(sel.includeTags(), sel.excludeTags())
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),
@@ -3436,12 +3454,17 @@ public final class BuildPipelines {
      * test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
-        return testStampExtras(workerJarProps(dir, project.build().testPluginJars()));
+        return testStampExtras(
+                workerJarProps(dir, project.build().testPluginJars()),
+                cc.jumpkick.config.TestSelection.DEFAULT);
     }
 
-    private static List<String> testStampExtras(Map<String, String> workerJars) {
+    private static List<String> testStampExtras(
+            Map<String, String> workerJars, cc.jumpkick.config.TestSelection selection) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
+        // Suite + tag filters are part of the outcome (JK-1134/1135).
+        if (selection != null) extras.add("sel:" + selection.identityToken());
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;

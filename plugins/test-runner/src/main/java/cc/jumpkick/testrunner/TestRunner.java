@@ -13,8 +13,10 @@ import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import org.junit.platform.engine.TestTag;
 import org.junit.platform.engine.ConfigurationParameters;
 import org.junit.platform.engine.DiscoveryFilter;
 import org.junit.platform.engine.DiscoverySelector;
@@ -51,7 +53,8 @@ public final class TestRunner implements Plugin {
         } catch (IllegalArgumentException e) {
             System.err.println("jk-test-runner: " + e.getMessage());
             System.err.println("usage: jk-test-runner --scan-classpath=<dir> "
-                    + "[--list-only] [--pull --worker=<id>] [--filter=<regex>]");
+                    + "[--list-only] [--pull --worker=<id>] [--filter=<regex>] "
+                    + "[--include-tag=a,b] [--exclude-tag=c,d]");
             return 2;
         }
 
@@ -95,6 +98,7 @@ public final class TestRunner implements Plugin {
         for (var engine : engines) {
             var uid = UniqueId.root("[engine]", engine.getId());
             var descriptor = engine.discover(request, uid);
+            pruneByTags(descriptor, args.includeTags, args.excludeTags);
             emitDiscovery(descriptor, streaming);
             engine.execute(makeExecutionRequest(descriptor, streaming));
         }
@@ -112,6 +116,7 @@ public final class TestRunner implements Plugin {
         for (var engine : engines) {
             var uid = UniqueId.root("[engine]", engine.getId());
             var descriptor = engine.discover(request, uid);
+            pruneByTags(descriptor, args.includeTags, args.excludeTags);
             emitDiscovery(descriptor, streaming);
         }
     }
@@ -162,6 +167,7 @@ public final class TestRunner implements Plugin {
                 for (var engine : engines) {
                     var uid = UniqueId.root("[engine]", engine.getId());
                     var descriptor = engine.discover(classRequest, uid);
+                    pruneByTags(descriptor, args.includeTags, args.excludeTags);
                     if (descriptor.getChildren().isEmpty()) continue;
                     engine.execute(makeExecutionRequest(descriptor, streaming));
                 }
@@ -293,7 +299,68 @@ public final class TestRunner implements Plugin {
         }
     }
 
-    private record Args(Path scanClasspath, String filter, boolean listOnly, boolean pull, int workerId) {
+    /**
+     * Drop tests that fail include/exclude tag filters (JUnit Platform tag semantics, JK-1135).
+     * Empty include = no include filter; exclude removes any node that carries a listed tag
+     * (tags inherit from ancestors). Containers with no remaining children are removed.
+     */
+    static void pruneByTags(TestDescriptor root, List<String> include, List<String> exclude) {
+        if ((include == null || include.isEmpty()) && (exclude == null || exclude.isEmpty())) return;
+        Set<String> inc = normalizeTagSet(include);
+        Set<String> exc = normalizeTagSet(exclude);
+        pruneChildren(root, Set.of(), inc, exc);
+    }
+
+    private static void pruneChildren(
+            TestDescriptor parent, Set<String> parentTags, Set<String> include, Set<String> exclude) {
+        List<TestDescriptor> children = new ArrayList<>(parent.getChildren());
+        for (TestDescriptor child : children) {
+            Set<String> tags = new HashSet<>(parentTags);
+            for (TestTag t : child.getTags()) {
+                if (t != null && t.getName() != null) tags.add(t.getName());
+            }
+            pruneChildren(child, tags, include, exclude);
+            boolean leaf = child.getChildren().isEmpty() && child.getType().isTest();
+            boolean emptyContainer = child.getChildren().isEmpty() && !child.getType().isTest();
+            if (emptyContainer || (leaf && !tagMatch(tags, include, exclude))) {
+                parent.removeChild(child);
+            } else if (!leaf && child.getChildren().isEmpty()) {
+                parent.removeChild(child);
+            }
+        }
+    }
+
+    /** Include: must have ≥1 listed tag when include non-empty. Exclude: must have none. */
+    static boolean tagMatch(Set<String> tags, Set<String> include, Set<String> exclude) {
+        if (!exclude.isEmpty()) {
+            for (String t : tags) if (exclude.contains(t)) return false;
+        }
+        if (!include.isEmpty()) {
+            for (String t : tags) if (include.contains(t)) return true;
+            return false;
+        }
+        return true;
+    }
+
+    private static Set<String> normalizeTagSet(List<String> tags) {
+        if (tags == null || tags.isEmpty()) return Set.of();
+        Set<String> out = new HashSet<>();
+        for (String t : tags) {
+            if (t == null) continue;
+            String s = t.trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
+    }
+
+    private record Args(
+            Path scanClasspath,
+            String filter,
+            boolean listOnly,
+            boolean pull,
+            int workerId,
+            List<String> includeTags,
+            List<String> excludeTags) {
 
         static Args parse(String[] argv) {
             Path scan = null;
@@ -301,6 +368,8 @@ public final class TestRunner implements Plugin {
             boolean listOnly = false;
             boolean pull = false;
             int workerId = 0;
+            List<String> includeTags = new ArrayList<>();
+            List<String> excludeTags = new ArrayList<>();
             for (var a : argv) {
                 if (a.startsWith("--scan-classpath=")) {
                     scan = Path.of(a.substring("--scan-classpath=".length()));
@@ -312,6 +381,10 @@ public final class TestRunner implements Plugin {
                     pull = true;
                 } else if (a.startsWith("--worker=")) {
                     workerId = Integer.parseInt(a.substring("--worker=".length()));
+                } else if (a.startsWith("--include-tag=")) {
+                    splitCsv(a.substring("--include-tag=".length()), includeTags);
+                } else if (a.startsWith("--exclude-tag=")) {
+                    splitCsv(a.substring("--exclude-tag=".length()), excludeTags);
                 } else if (a.equals("--fail-fast")) {
                     // accepted but currently a no-op — wired in a follow-up
                 } else {
@@ -324,7 +397,15 @@ public final class TestRunner implements Plugin {
             if (listOnly && pull) {
                 throw new IllegalArgumentException("--list-only and --pull are mutually exclusive");
             }
-            return new Args(scan, filter, listOnly, pull, workerId);
+            return new Args(scan, filter, listOnly, pull, workerId, List.copyOf(includeTags), List.copyOf(excludeTags));
+        }
+
+        private static void splitCsv(String csv, List<String> out) {
+            if (csv == null || csv.isBlank()) return;
+            for (String p : csv.split(",")) {
+                String t = p.trim();
+                if (!t.isEmpty()) out.add(t);
+            }
         }
     }
 

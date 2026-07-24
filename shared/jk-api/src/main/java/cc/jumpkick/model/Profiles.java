@@ -51,7 +51,11 @@ public record Profiles(Map<String, Profile> byName) {
         mergedJavac.addAll(current.javacArgs());
         List<String> mergedJvm = new ArrayList<>(parent.jvmArgs());
         mergedJvm.addAll(current.jvmArgs());
-        return new Profile(name, null, mergedJavac, mergedJvm);
+        List<String> mergedInclude = new ArrayList<>(parent.includeTags());
+        mergedInclude.addAll(current.includeTags());
+        List<String> mergedExclude = new ArrayList<>(parent.excludeTags());
+        mergedExclude.addAll(current.excludeTags());
+        return new Profile(name, null, mergedJavac, mergedJvm, mergedInclude, mergedExclude);
     }
 
     /** Picks the auto-selected profile name based on env, or {@code null}. */

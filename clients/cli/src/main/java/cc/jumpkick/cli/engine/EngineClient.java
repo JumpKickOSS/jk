@@ -353,8 +353,9 @@ public final class EngineClient {
             boolean verbose,
             boolean offline,
             boolean force,
-            boolean parallelTests) {
-        /** Backward-compatible ctor: serial cross-module gate. */
+            boolean parallelTests,
+            cc.jumpkick.config.TestSelection testSelection) {
+        /** Backward-compatible ctor: serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,
                 Path cache,
@@ -364,7 +365,40 @@ public final class EngineClient {
                 boolean verbose,
                 boolean offline,
                 boolean force) {
-            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    false,
+                    cc.jumpkick.config.TestSelection.DEFAULT);
+        }
+
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                Path jdksDir,
+                int workers,
+                String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force,
+                boolean parallelTests) {
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    parallelTests,
+                    cc.jumpkick.config.TestSelection.DEFAULT);
         }
     }
 

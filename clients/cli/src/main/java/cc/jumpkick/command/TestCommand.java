@@ -67,6 +67,18 @@ public final class TestCommand implements CliCommand {
                 "<sel>",
                 "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
                 "--modules"));
+        opts.add(Opt.value(
+                        "<name>",
+                        "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",
+                        "--suite")
+                .repeat());
+        opts.add(Opt.flag("Run every discovered test suite (test + integration + …).", "--all"));
+        opts.add(Opt.value(
+                        "<tag>",
+                        "JUnit tag to include (repeatable). Empty include list = all tags not excluded.",
+                        "--include-tag")
+                .repeat());
+        opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag").repeat());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -80,6 +92,7 @@ public final class TestCommand implements CliCommand {
     int jobs;
     String affectedSince;
     String modulesSpec;
+    cc.jumpkick.config.TestSelection testSelection = cc.jumpkick.config.TestSelection.DEFAULT;
     private CliSessionTranscript session;
 
     @Override
@@ -94,8 +107,15 @@ public final class TestCommand implements CliCommand {
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
         this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
-        cc.jumpkick.config.SessionContext.install(
-                cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
+        try {
+            this.testSelection = resolveTestSelection(in);
+        } catch (IllegalArgumentException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
+            return Exit.CONFIG;
+        }
+        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
@@ -170,7 +190,8 @@ public final class TestCommand implements CliCommand {
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force(),
-                            parallelTests),
+                            parallelTests,
+                            testSelection),
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
@@ -307,7 +328,8 @@ public final class TestCommand implements CliCommand {
                             global.verbose,
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force(),
-                            parallelTests),
+                            parallelTests,
+                            testSelection),
                     steps -> {
                         // Workspace member: no aggregate-rider writes from pipeline-local fractions.
                         var console = PipelineConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
@@ -351,5 +373,43 @@ public final class TestCommand implements CliCommand {
 
     static String testFailureMessage(TestSummary testResult, PipelineResult result) {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
+    }
+
+    /**
+     * CLI + {@code [test]} defaults → {@link cc.jumpkick.config.TestSelection}. Throws if {@code
+     * --all} and {@code --suite} are both set.
+     */
+    static cc.jumpkick.config.TestSelection resolveTestSelection(Invocation in) {
+        boolean all = in.isSet("all");
+        List<String> suites = new ArrayList<>(in.values("suite"));
+        List<String> include = new ArrayList<>(in.values("include-tag"));
+        List<String> exclude = new ArrayList<>(in.values("exclude-tag"));
+        if (all && !suites.isEmpty()) {
+            throw new IllegalArgumentException("--all and --suite cannot be combined");
+        }
+        Path wd = GlobalOptions.from(in).workingDir();
+        Path toml = wd.resolve("jk.toml");
+        // [test] default-exclude-tags when CLI did not set excludes (JK-1137).
+        if (exclude.isEmpty()) {
+            exclude.addAll(cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(toml));
+        }
+        // Profile exclude/include tags when a profile is selected / auto.
+        try {
+            if (java.nio.file.Files.isRegularFile(toml)) {
+                var build = cc.jumpkick.config.JkBuildParser.parse(toml);
+                String explicit = in.value("profile").orElse(null);
+                String name = (explicit != null && !explicit.isBlank())
+                        ? explicit
+                        : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
+                if (name != null && build.profiles().contains(name)) {
+                    var p = build.profiles().resolve(name);
+                    exclude.addAll(p.excludeTags());
+                    if (include.isEmpty()) include.addAll(p.includeTags());
+                }
+            }
+        } catch (Exception ignored) {
+            // profile optional
+        }
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
     }
 }
