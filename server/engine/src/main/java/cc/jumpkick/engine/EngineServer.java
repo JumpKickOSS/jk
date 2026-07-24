@@ -569,7 +569,7 @@ public final class EngineServer implements AutoCloseable {
                     sendQuiet(
                             writer,
                             EngineProtocol.error(
-                                    EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"t\" discriminator)"));
+                                    EngineProtocol.ERR_PROTOCOL, "unparseable request line (no \"type\" discriminator)"));
                     continue;
                 }
                 // Downward-delegation gate for artifact-producing requests (engine-versioning §3).

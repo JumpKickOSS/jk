@@ -390,31 +390,42 @@ final class EngineBuildListenerAdapter {
         }
     }
 
+    /** Decodes one matched ack line into its reply value. */
+    interface AckDecoder<T> {
+        T decode(String line) throws IOException;
+    }
+
     /**
-     * Pre-flight a build's dirty forecast against the engine ({@code jk build}'s fully-cached
-     * shortcut + dirty hint — see {@link EngineProtocol#FORECAST_REQUEST}). Synchronous: one
-     * request line, one {@code forecast-ack} back. The session's offline/force/rerun flags ride
-     * the request so the engine's forecast honors them exactly as the in-process one did.
+     * One synchronous request/ack exchange: write {@code requestLine}, skip stream noise until the
+     * {@code ackType} line, return its decoded value. Every read-only engine verb goes through here
+     * so the discriminator is matched in exactly one place.
      */
-    /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
-    static boolean edit(EnginePaths.Paths paths, Path file, String op, java.util.List<String> args) throws IOException {
+    static <T> T request(EnginePaths.Paths paths, String requestLine, String ackType, String what, AckDecoder<T> decoder)
+            throws IOException {
         EngineClient.ensureRunning(paths, Jk.VERSION);
         try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.editRequest(file.toString(), op, args));
+            writer.write(requestLine);
             writer.write('\n');
             writer.flush();
             String line;
             while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.EDIT_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                String error = Jsonl.str(line, "error");
-                if (error != null) throw new IOException(error);
-                return Jsonl.bool(line, "changed", false);
+                if (!ackType.equals(EngineProtocol.typeOf(line))) continue;
+                return decoder.decode(line);
             }
-            throw new IOException("jk engine: disconnected before answering the edit request");
+            throw new IOException("jk engine: disconnected before answering the " + what);
         }
+    }
+
+    /** One engine-hosted jk.toml edit: returns changed; throws with the engine's message. */
+    static boolean edit(EnginePaths.Paths paths, Path file, String op, java.util.List<String> args) throws IOException {
+        return request(paths, EngineProtocol.editRequest(file.toString(), op, args), EngineProtocol.EDIT_ACK, "edit request", line -> {
+            String error = Jsonl.str(line, "error");
+            if (error != null) throw new IOException(error);
+            return Jsonl.bool(line, "changed", false);
+        });
     }
 
     /** One engine-hosted tree render: the marker-tagged tree; throws with the engine's message. */
@@ -426,148 +437,87 @@ final class EngineBuildListenerAdapter {
             boolean stack,
             java.util.List<String> scopes)
             throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.treeRequest(dir.toString(), maxDepth, flatten, stack, scopes));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.TREE_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                String error = Jsonl.str(line, "error");
-                if (error != null) throw new IOException(error);
-                return Jsonl.str(line, "rendered");
-            }
-            throw new IOException("jk engine: disconnected before answering the tree request");
-        }
+        return request(
+                paths,
+                EngineProtocol.treeRequest(dir.toString(), maxDepth, flatten, stack, scopes),
+                EngineProtocol.TREE_ACK,
+                "tree request",
+                line -> {
+                    String error = Jsonl.str(line, "error");
+                    if (error != null) throw new IOException(error);
+                    return Jsonl.str(line, "rendered");
+                });
     }
 
     /** One engine-hosted why lookup. */
     static cc.jumpkick.engine.protocol.WhyReport why(EnginePaths.Paths paths, Path dir, String query)
             throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.whyRequest(dir.toString(), query));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.WHY_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.WhyReport.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the why request");
-        }
+        return request(
+                paths,
+                EngineProtocol.whyRequest(dir.toString(), query),
+                EngineProtocol.WHY_ACK,
+                "why request",
+                cc.jumpkick.engine.protocol.WhyReport::decode);
     }
 
     /** One engine-hosted IDE model computation: the wire model back, generation stays client-side. */
     static cc.jumpkick.engine.protocol.IdeWireModel ideModel(
             EnginePaths.Paths paths, Path dir, Path cache, Path jdksDir) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.ideModelRequest(
-                    dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString()));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.IDE_MODEL_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.IdeWireModel.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the ide-model request");
-        }
+        return request(
+                paths,
+                EngineProtocol.ideModelRequest(
+                        dir.toString(), cache.toString(), jdksDir == null ? null : jdksDir.toString()),
+                EngineProtocol.IDE_MODEL_ACK,
+                "ide-model request",
+                cc.jumpkick.engine.protocol.IdeWireModel::decode);
     }
 
     /** One engine-hosted generator run: file payloads back, guards/writes stay client-side. */
     static cc.jumpkick.engine.protocol.GeneratedFiles generate(
             EnginePaths.Paths paths, Path dir, String kind, java.util.Map<String, String> params) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.generateRequest(dir.toString(), kind, params));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.GENERATE_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.GeneratedFiles.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the generate request");
-        }
+        return request(
+                paths,
+                EngineProtocol.generateRequest(dir.toString(), kind, params),
+                EngineProtocol.GENERATE_ACK,
+                "generate request",
+                cc.jumpkick.engine.protocol.GeneratedFiles::decode);
     }
 
     /** One engine-hosted plugin command run. */
     static cc.jumpkick.engine.protocol.PluginCommandReport pluginCommand(
             EnginePaths.Paths paths, Path dir, Path cache, String command, java.util.List<String> args)
             throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
-                    SessionContext.current().variant(),
-                    SessionContext.current().clientEnv(),
-                    SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.PLUGIN_VERB_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.PluginCommandReport.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the plugin command");
-        }
+        return request(
+                paths,
+                EngineProtocol.withSession(
+                        EngineProtocol.pluginCommandRequest(dir.toString(), cache.toString(), command, args),
+                        SessionContext.current().variant(),
+                        SessionContext.current().clientEnv(),
+                        SessionContext.current().jvm(),
+                        SessionContext.current().config().rebuildOr(false),
+                        cc.jumpkick.cli.run.TimelineOpts.noTimeline()),
+                EngineProtocol.PLUGIN_VERB_ACK,
+                "plugin command",
+                cc.jumpkick.engine.protocol.PluginCommandReport::decode);
     }
 
     /** One engine-hosted deny check: policy parse + lock read + violations, engine-side. */
     static cc.jumpkick.engine.protocol.DenyReport denyCheck(EnginePaths.Paths paths, Path dir) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.denyCheckRequest(dir.toString()));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.DENY_CHECK_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.DenyReport.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the deny check");
-        }
+        return request(
+                paths,
+                EngineProtocol.denyCheckRequest(dir.toString()),
+                EngineProtocol.DENY_CHECK_ACK,
+                "deny check",
+                cc.jumpkick.engine.protocol.DenyReport::decode);
     }
 
     static cc.jumpkick.engine.protocol.ProjectInfo projectInfo(EnginePaths.Paths paths, Path dir) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.projectInfoRequest(dir.toString(), ""));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.PROJECT_INFO_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.ProjectInfo.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the project-info request");
-        }
+        return request(
+                paths,
+                EngineProtocol.projectInfoRequest(dir.toString(), ""),
+                EngineProtocol.PROJECT_INFO_ACK,
+                "project-info request",
+                cc.jumpkick.engine.protocol.ProjectInfo::decode);
     }
 
     static cc.jumpkick.engine.protocol.ExecPlan execPlan(
@@ -580,67 +530,56 @@ final class EngineBuildListenerAdapter {
             Path binDir,
             Path libDir)
             throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.withSession(
-                    EngineProtocol.execPlanRequest(
-                            dir.toString(),
-                            cache.toString(),
-                            kind,
-                            mainOverride,
-                            binName,
-                            binDir == null ? null : binDir.toString(),
-                            libDir == null ? null : libDir.toString()),
-                    SessionContext.current().variant(),
-                    SessionContext.current().clientEnv(),
-                    SessionContext.current().jvm(),
-                    SessionContext.current().config().rebuildOr(false),
-                    cc.jumpkick.cli.run.TimelineOpts.noTimeline()));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.EXEC_PLAN_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.ExecPlan.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the exec-plan request");
-        }
+        return request(
+                paths,
+                EngineProtocol.withSession(
+                        EngineProtocol.execPlanRequest(
+                                dir.toString(),
+                                cache.toString(),
+                                kind,
+                                mainOverride,
+                                binName,
+                                binDir == null ? null : binDir.toString(),
+                                libDir == null ? null : libDir.toString()),
+                        SessionContext.current().variant(),
+                        SessionContext.current().clientEnv(),
+                        SessionContext.current().jvm(),
+                        SessionContext.current().config().rebuildOr(false),
+                        cc.jumpkick.cli.run.TimelineOpts.noTimeline()),
+                EngineProtocol.EXEC_PLAN_ACK,
+                "exec-plan request",
+                cc.jumpkick.engine.protocol.ExecPlan::decode);
     }
 
+    /**
+     * Pre-flight a build's dirty forecast against the engine ({@code jk build}'s fully-cached
+     * shortcut + dirty hint — see {@link EngineProtocol#FORECAST_REQUEST}). Synchronous: one
+     * request line, one {@code forecast-ack} back. The session's offline/force/rerun flags ride
+     * the request so the engine's forecast honors them exactly as the in-process one did.
+     */
     static cc.jumpkick.runtime.BuildForecast forecast(
             EnginePaths.Paths paths, Path entryDir, Path cache, boolean skipTests) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
         Session session = SessionContext.current();
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.forecastRequest(
-                    entryDir.toString(),
-                    cache.toString(),
-                    skipTests,
-                    session.offline(),
-                    session.force(),
-                    session.config().rebuildOr(false)));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.FORECAST_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                java.util.Set<Path> dirty = new java.util.LinkedHashSet<>();
-                for (String d : Jsonl.strArray(line, "dirtyDirs")) dirty.add(Path.of(d));
-                return new cc.jumpkick.runtime.BuildForecast(
-                        dirty,
-                        Jsonl.bool(line, "lockStale", false),
-                        Jsonl.bool(line, "empty", false),
-                        Jsonl.strArray(line, "errors"));
-            }
-            throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                    + "(it may have crashed); run `jk engine status` for details");
-        }
+        return request(
+                paths,
+                EngineProtocol.forecastRequest(
+                        entryDir.toString(),
+                        cache.toString(),
+                        skipTests,
+                        session.offline(),
+                        session.force(),
+                        session.config().rebuildOr(false)),
+                EngineProtocol.FORECAST_ACK,
+                "forecast request",
+                line -> {
+                    java.util.Set<Path> dirty = new java.util.LinkedHashSet<>();
+                    for (String d : Jsonl.strArray(line, "dirtyDirs")) dirty.add(Path.of(d));
+                    return new cc.jumpkick.runtime.BuildForecast(
+                            dirty,
+                            Jsonl.bool(line, "lockStale", false),
+                            Jsonl.bool(line, "empty", false),
+                            Jsonl.strArray(line, "errors"));
+                });
     }
 
     private static PipelineResult streamSinglePipelineEvents(

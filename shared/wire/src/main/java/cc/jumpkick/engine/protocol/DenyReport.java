@@ -20,7 +20,7 @@ public record DenyReport(String error, int checked, List<String> modules, List<S
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.DENY_CHECK_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.DENY_CHECK_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"checked\":" + checked
                 + ",\"modules\":" + EngineProtocol.quoteArray(modules)

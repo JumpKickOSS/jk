@@ -38,26 +38,17 @@ final class EngineResolveAdapter {
      */
     static cc.jumpkick.engine.protocol.OutdatedReport runOutdated(
             EnginePaths.Paths paths, EngineClient.OutdatedRequest req) throws IOException {
-        EngineClient.ensureRunning(paths, Jk.VERSION);
-        try (SocketChannel ch = EngineClient.connect(cc.jumpkick.engine.EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader = EngineClient.protocolReader(ch);
-            writer.write(EngineProtocol.outdatedRequest(
-                    req.entryDir().toString(),
-                    req.cache().toString(),
-                    req.repoUrl() != null ? req.repoUrl().toString() : null,
-                    req.offline(),
-                    req.force()));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (!EngineProtocol.OUTDATED_ACK.equals(EngineProtocol.typeOf(line))) continue;
-                return cc.jumpkick.engine.protocol.OutdatedReport.decode(line);
-            }
-            throw new IOException("jk engine: disconnected before answering the outdated request");
-        }
+        return EngineBuildListenerAdapter.request(
+                paths,
+                EngineProtocol.outdatedRequest(
+                        req.entryDir().toString(),
+                        req.cache().toString(),
+                        req.repoUrl() != null ? req.repoUrl().toString() : null,
+                        req.offline(),
+                        req.force()),
+                EngineProtocol.OUTDATED_ACK,
+                "outdated request",
+                cc.jumpkick.engine.protocol.OutdatedReport::decode);
     }
 
     /** Run {@code jk lock}'s cascade against the engine, driving {@code handler}. */

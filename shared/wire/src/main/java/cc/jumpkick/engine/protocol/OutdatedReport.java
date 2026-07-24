@@ -45,7 +45,7 @@ public record OutdatedReport(String error, boolean workspace, List<Row> rows) {
                     r.latest(),
                     r.tip()));
         }
-        return "{\"t\":\"" + EngineProtocol.OUTDATED_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.OUTDATED_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"workspace\":" + workspace
                 + ",\"rows\":" + EngineProtocol.quoteArray(encoded)

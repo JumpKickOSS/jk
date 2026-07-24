@@ -86,7 +86,7 @@ public record ProjectInfo(
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.PROJECT_INFO_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.PROJECT_INFO_ACK + "\""
                 + ",\"error\":" + quoteOrNull(error)
                 + ",\"group\":" + Jsonl.quote(group)
                 + ",\"name\":" + Jsonl.quote(name)

@@ -45,7 +45,7 @@ public record ExecPlan(
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.EXEC_PLAN_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.EXEC_PLAN_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"mainIssue\":" + Jsonl.quote(mainIssue)
                 + ",\"kind\":" + Jsonl.quote(kind)

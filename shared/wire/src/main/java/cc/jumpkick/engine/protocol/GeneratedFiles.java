@@ -16,7 +16,7 @@ public record GeneratedFiles(String error, List<String> paths, List<String> cont
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.GENERATE_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.GENERATE_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"paths\":" + EngineProtocol.quoteArray(paths)
                 + ",\"contents\":" + EngineProtocol.quoteArray(contents)
