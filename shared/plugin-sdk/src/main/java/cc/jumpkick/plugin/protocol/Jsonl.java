@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * Dependency-free JSONL field codec for plugin wire lines: readers return defaults on missing/bad
- * fields; {@link #quote} is the writer half. Tree documents use sibling {@code cc.jumpkick.util.MiniJson}.
+ * fields; {@link #quote} is the writer half. Tree documents use sibling {@link MiniJson}.
  */
 public final class Jsonl {
 

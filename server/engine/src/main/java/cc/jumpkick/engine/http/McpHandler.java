@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.util.MiniJson;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;

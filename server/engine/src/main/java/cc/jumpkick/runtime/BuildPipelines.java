@@ -1778,8 +1778,10 @@ public final class BuildPipelines {
                     // Test resources ride the test classpath next to compiled tests (Gradle's
                     // processTestResources). Without this, getResourceAsStream fixtures NPE under
                     // self-host.
-                    Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(in.dir(), compact);
-                    if (Files.isDirectory(resTest)) {
+                    // JK-1149: copy resources for every suite in this run's selection
+                    // (default test-resources/ + e.g. integration-resources/).
+                    for (Path resTest :
+                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames)) {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);
                     }

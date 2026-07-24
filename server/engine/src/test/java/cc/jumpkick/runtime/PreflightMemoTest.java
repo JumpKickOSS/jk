@@ -411,6 +411,19 @@ class PreflightMemoTest {
         assertThat(fp1).isNotEqualTo(fp2);
     }
 
+    @Test
+    void fingerprint_includes_named_suite_resources(@TempDir Path tmp) throws Exception {
+        writeSimpleProject(tmp);
+        Files.createDirectories(tmp.resolve("integration"));
+        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest {}");
+        Files.createDirectories(tmp.resolve("integration-resources"));
+        Files.writeString(tmp.resolve("integration-resources/fix.txt"), "a");
+        String fp1 = PreflightMemo.fingerprintModule(tmp, false);
+        Files.writeString(tmp.resolve("integration-resources/fix.txt"), "b");
+        String fp2 = PreflightMemo.fingerprintModule(tmp, false);
+        assertThat(fp1).isNotEqualTo(fp2);
+    }
+
     /** SIMPLE flat-siblings fixture (layout=simple, no Maven src/main tree). */
     private static void writeSimpleProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src"));

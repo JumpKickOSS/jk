@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.StepStatus;
-import cc.jumpkick.util.MiniJson;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;

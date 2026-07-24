@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.util;
+package cc.jumpkick.plugin.protocol;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -8,10 +8,11 @@ import java.util.Map;
 
 /**
  * Tree-shaped JSON parse/write ({@code Map}/{@code List}/{@code String}/{@code Number}/
- * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Escaping is owned by
- * {@link cc.jumpkick.plugin.protocol.Jsonl#quote} (JK-1125); this class is the single tree codec
- * and must not reimplement string escapes. Lives in core (Java 25) because the tree codec uses
- * modern language features; plugin-sdk stays on the JDK 17 floor for worker/SPI packaging.
+ * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Sibling of {@link Jsonl} (wire field codec +
+ * {@link Jsonl#quote}); this is the single tree codec — never reimplement escaping here.
+ *
+ * <p>Lives in plugin-sdk at the SPI language floor ({@code --release 17}); written without
+ * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes (JK-1133).
  */
 public final class MiniJson {
 
@@ -32,27 +33,46 @@ public final class MiniJson {
 
     /** {@code indent < 0} = compact; otherwise the current pretty-print depth. */
     private static void writeValue(StringBuilder sb, Object value, int indent) {
-        switch (value) {
-            case null -> sb.append("null");
-            case String s -> sb.append(cc.jumpkick.plugin.protocol.Jsonl.quote(s));
-            case Boolean b -> sb.append(b);
-            case Double d -> {
-                // Integral doubles (the parser's number type) print without the ".0" so
-                // parse→write round-trips don't reformat whole numbers.
-                if (d == Math.floor(d) && !d.isInfinite() && Math.abs(d) < 9.007199254740992E15) {
-                    sb.append((long) (double) d);
-                } else {
-                    sb.append(d);
-                }
-            }
-            case Float f -> writeValue(sb, f.doubleValue(), indent);
-            case Number n -> sb.append(n); // integral types print naturally
-            case Map<?, ?> map -> writeObject(sb, map, indent);
-            case List<?> list -> writeArray(sb, list, indent);
-            default ->
-                throw new IllegalArgumentException(
-                        "not JSON-representable: " + value.getClass().getName());
+        if (value == null) {
+            sb.append("null");
+            return;
         }
+        if (value instanceof String) {
+            sb.append(Jsonl.quote((String) value));
+            return;
+        }
+        if (value instanceof Boolean) {
+            sb.append(value);
+            return;
+        }
+        if (value instanceof Double) {
+            Double d = (Double) value;
+            // Integral doubles (the parser's number type) print without the ".0" so
+            // parse→write round-trips don't reformat whole numbers.
+            if (d == Math.floor(d) && !d.isInfinite() && Math.abs(d) < 9.007199254740992E15) {
+                sb.append((long) (double) d);
+            } else {
+                sb.append(d);
+            }
+            return;
+        }
+        if (value instanceof Float) {
+            writeValue(sb, ((Float) value).doubleValue(), indent);
+            return;
+        }
+        if (value instanceof Number) {
+            sb.append(value);
+            return;
+        }
+        if (value instanceof Map) {
+            writeObject(sb, (Map<?, ?>) value, indent);
+            return;
+        }
+        if (value instanceof List) {
+            writeArray(sb, (List<?>) value, indent);
+            return;
+        }
+        throw new IllegalArgumentException("not JSON-representable: " + value.getClass().getName());
     }
 
     private static void writeObject(StringBuilder sb, Map<?, ?> map, int indent) {
@@ -66,8 +86,7 @@ public final class MiniJson {
             if (!first) sb.append(',');
             first = false;
             newlineIndent(sb, indent < 0 ? -1 : indent + 1);
-            sb.append(cc.jumpkick.plugin.protocol.Jsonl.quote(String.valueOf(e.getKey())))
-                    .append(':');
+            sb.append(Jsonl.quote(String.valueOf(e.getKey()))).append(':');
             if (indent >= 0) sb.append(' ');
             writeValue(sb, e.getValue(), indent < 0 ? -1 : indent + 1);
         }
@@ -95,7 +114,7 @@ public final class MiniJson {
     private static void newlineIndent(StringBuilder sb, int indent) {
         if (indent < 0) return;
         sb.append('\n');
-        sb.append("  ".repeat(indent));
+        for (int i = 0; i < indent; i++) sb.append("  ");
     }
 
     private final String src;
@@ -120,14 +139,21 @@ public final class MiniJson {
         skipWhitespace();
         if (pos >= src.length()) throw new IllegalArgumentException("unexpected end of input");
         char c = src.charAt(pos);
-        return switch (c) {
-            case '{' -> parseObject();
-            case '[' -> parseArray();
-            case '"' -> parseString();
-            case 't', 'f' -> parseBoolean();
-            case 'n' -> parseNull();
-            default -> parseNumber();
-        };
+        switch (c) {
+            case '{':
+                return parseObject();
+            case '[':
+                return parseArray();
+            case '"':
+                return parseString();
+            case 't':
+            case 'f':
+                return parseBoolean();
+            case 'n':
+                return parseNull();
+            default:
+                return parseNumber();
+        }
     }
 
     private Map<String, Object> parseObject() {
@@ -181,19 +207,36 @@ public final class MiniJson {
             }
             char esc = src.charAt(pos++);
             switch (esc) {
-                case '"' -> sb.append('"');
-                case '\\' -> sb.append('\\');
-                case '/' -> sb.append('/');
-                case 'b' -> sb.append('\b');
-                case 'f' -> sb.append('\f');
-                case 'n' -> sb.append('\n');
-                case 'r' -> sb.append('\r');
-                case 't' -> sb.append('\t');
-                case 'u' -> {
+                case '"':
+                    sb.append('"');
+                    break;
+                case '\\':
+                    sb.append('\\');
+                    break;
+                case '/':
+                    sb.append('/');
+                    break;
+                case 'b':
+                    sb.append('\b');
+                    break;
+                case 'f':
+                    sb.append('\f');
+                    break;
+                case 'n':
+                    sb.append('\n');
+                    break;
+                case 'r':
+                    sb.append('\r');
+                    break;
+                case 't':
+                    sb.append('\t');
+                    break;
+                case 'u':
                     sb.append((char) Integer.parseInt(src.substring(pos, pos + 4), 16));
                     pos += 4;
-                }
-                default -> throw new IllegalArgumentException("bad escape \\" + esc + " at offset " + (pos - 1));
+                    break;
+                default:
+                    throw new IllegalArgumentException("bad escape \\" + esc + " at offset " + (pos - 1));
             }
         }
     }

@@ -77,12 +77,43 @@ public final class ModuleLayout {
 
     /** Default-suite test resources. */
     public static Path testResourcesDir(Path moduleDir, boolean compact) {
-        return compact ? moduleDir.resolve("test-resources") : moduleDir.resolve("src/test/resources");
+        return suiteResourcesDir(moduleDir, compact, TestSuites.DEFAULT);
+    }
+
+    /**
+     * Test-resource root for a suite (JK-1149).
+     *
+     * <ul>
+     *   <li>SIMPLE default: {@code test-resources/}
+     *   <li>SIMPLE named {@code integration}: {@code integration-resources/}
+     *   <li>TRADITIONAL default: {@code src/test/resources}
+     *   <li>TRADITIONAL named: {@code src/<name>/resources}
+     * </ul>
+     */
+    public static Path suiteResourcesDir(Path moduleDir, boolean compact, String suite) {
+        String s = suite == null || suite.isBlank() ? TestSuites.DEFAULT : suite;
+        if (compact) {
+            if (TestSuites.DEFAULT.equals(s)) return moduleDir.resolve("test-resources");
+            return moduleDir.resolve(s + "-resources");
+        }
+        if (TestSuites.DEFAULT.equals(s)) return moduleDir.resolve("src/test/resources");
+        return moduleDir.resolve("src").resolve(s).resolve("resources");
+    }
+
+    /** Resource dirs for the selected suites that exist on disk (stable order). */
+    public static List<Path> suiteResourceDirs(Path moduleDir, boolean compact, List<String> suites) {
+        List<String> want = suites == null || suites.isEmpty() ? List.of(TestSuites.DEFAULT) : suites;
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        for (String suite : want) {
+            Path r = suiteResourcesDir(moduleDir, compact, suite);
+            if (Files.isDirectory(r)) out.add(r.toAbsolutePath().normalize());
+        }
+        return List.copyOf(out);
     }
 
     /**
      * All input roots that exist on disk: main source/resource + every discovered test suite +
-     * test-resources. Prefer this over hand-rolled path literals.
+     * suite resource dirs. Prefer this over hand-rolled path literals.
      */
     public static List<Root> roots(Path moduleDir) {
         boolean compact = isCompact(moduleDir);
@@ -92,12 +123,10 @@ public final class ModuleLayout {
         if (compact) {
             addIfDir(out, seen, moduleDir, "src", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "resources", Kind.RESOURCE);
-            addIfDir(out, seen, moduleDir, "test-resources", Kind.TEST_RESOURCE);
         } else {
             addIfDir(out, seen, moduleDir, "src/main/java", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
-            addIfDir(out, seen, moduleDir, "src/test/resources", Kind.TEST_RESOURCE);
         }
 
         List<String> suites = TestSuites.discover(moduleDir, compact);
@@ -107,13 +136,17 @@ public final class ModuleLayout {
             withDefault.addAll(suites);
             suites = withDefault;
         }
-        for (String suite : suites) {
+        // Always surface default suite resource dir if present, even when suite has no sources yet.
+        LinkedHashSet<String> suiteNames = new LinkedHashSet<>(suites);
+        suiteNames.add(TestSuites.DEFAULT);
+        for (String suite : suiteNames) {
             for (Path root : TestSuites.javaRoots(moduleDir, compact, suite)) {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
             for (Path root : TestSuites.kotlinRoots(moduleDir, compact, suite)) {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
+            addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
         }
         return List.copyOf(out);
     }
@@ -135,19 +168,20 @@ public final class ModuleLayout {
         }
         if (!skipTests) {
             if (compact) {
-                // Default suite + named suites + test-resources (not under src/)
-                for (String suite : TestSuites.discover(moduleDir, true)) {
+                // Default suite + named suites + per-suite resource dirs (not under src/).
+                // Always include DEFAULT so test-resources/ is fingerprinted even when test/
+                // sources are not yet present (memo correctness for fixture-only changes).
+                LinkedHashSet<String> suites = new LinkedHashSet<>(TestSuites.discover(moduleDir, true));
+                suites.add(TestSuites.DEFAULT);
+                for (String suite : suites) {
                     for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.kotlinRoots(moduleDir, true, suite)) addDir(dirs, r);
+                    addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
                 }
-                // Empty default suite dir still matters for future adds
-                if (hasDefaultSuiteDir(moduleDir, true)) {
-                    for (Path r : TestSuites.javaRoots(moduleDir, true, TestSuites.DEFAULT)) addDir(dirs, r);
-                }
-                addDir(dirs, testResourcesDir(moduleDir, true));
             } else {
-                // src already covers traditional suites; test-resources path is under src/test
-                // already when using src walk — no extra for traditional test resources
+                // src covers suite sources; still fingerprint any named-suite resource dirs
+                // that live under src/<name>/resources (already under src walk). Default
+                // test-resources is src/test/resources — under src.
             }
         }
         return List.copyOf(dirs);

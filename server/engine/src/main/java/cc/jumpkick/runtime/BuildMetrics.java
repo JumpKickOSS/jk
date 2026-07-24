@@ -5,7 +5,7 @@ import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.util.MiniJson;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

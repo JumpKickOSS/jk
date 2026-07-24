@@ -235,6 +235,16 @@ public class IdeEngineClient {
      * engine path as {@code jk test}.
      */
     public BuildOutcome testModule(Path moduleDir, BuildListener listener) throws IOException {
+        return testModule(moduleDir, listener, null);
+    }
+
+    /**
+     * Run tests with optional suite/tag selection (JK-1143 BSP {@code data} / CLI TestSelection).
+     * {@code selection} null → session default (usually suite {@code test} only).
+     */
+    public BuildOutcome testModule(
+            Path moduleDir, BuildListener listener, cc.jumpkick.config.TestSelection selection)
+            throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         if (moduleDir == null) {
             ProjectInfo info = projectInfo();
@@ -242,20 +252,21 @@ public class IdeEngineClient {
                 return new BuildOutcome(false, 0, 0, List.of(info.error()));
             }
             if (info.workspaceRoot()) {
-                return testWorkspace(progress);
+                return testWorkspace(progress, selection);
             }
         }
         Path mod = moduleDir == null ? projectDir : moduleDir.toAbsolutePath().normalize();
-        return testOneModule(mod, progress);
+        return testOneModule(mod, progress, selection);
     }
 
     /** Sequential per-module {@code jk test} for a workspace root (JK-1063). */
-    private BuildOutcome testWorkspace(BuildListener progress) throws IOException {
+    private BuildOutcome testWorkspace(BuildListener progress, cc.jumpkick.config.TestSelection selection)
+            throws IOException {
         IdeWireModel model = ideModel();
         List<String> dirs = model != null && model.moduleDirs() != null ? model.moduleDirs() : List.of();
         if (dirs.isEmpty()) {
             // No module list — fall back to testing the workspace root directory alone.
-            return testOneModule(projectDir, progress);
+            return testOneModule(projectDir, progress, selection);
         }
         int modules = 0;
         int failed = 0;
@@ -264,7 +275,7 @@ public class IdeEngineClient {
             if (d == null || d.isBlank()) continue;
             Path mod = Path.of(d);
             modules++;
-            BuildOutcome o = testOneModule(mod, progress);
+            BuildOutcome o = testOneModule(mod, progress, selection);
             if (!o.success()) {
                 failed++;
                 if (o.errors() != null) errors.addAll(o.errors());
@@ -273,16 +284,27 @@ public class IdeEngineClient {
         return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
     }
 
-    private BuildOutcome testOneModule(Path mod, BuildListener progress) throws IOException {
+    private BuildOutcome testOneModule(
+            Path mod, BuildListener progress, cc.jumpkick.config.TestSelection selection) throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();
         cc.jumpkick.run.TestSummary[] testOut = new cc.jumpkick.run.TestSummary[1];
         var session = SessionContext.current();
+        var sel = selection != null ? selection : session.testSelection();
         PipelineResult r = EngineClient.runTest(
                 EnginePaths.current(),
                 new EngineClient.TestRequest(
-                        mod, cacheDir, jdksDir, 1, null, false, session.offline(), session.force()),
+                        mod,
+                        cacheDir,
+                        jdksDir,
+                        1,
+                        null,
+                        false,
+                        session.offline(),
+                        session.force(),
+                        session.parallelTests(),
+                        sel),
                 steps -> progressListener(progress, steps),
                 testOut);
         for (var d : r.errors()) errors.add(d.message());

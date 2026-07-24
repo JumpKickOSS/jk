@@ -479,11 +479,13 @@ no Maven tree is present). Language is by file extension (`.java` / `.kt` may sh
 | Main sources | `src/` | `src/main/java`, `src/main/kotlin` |
 | Main resources | `resources/` | `src/main/resources` |
 | Default tests | `test/` | `src/test/java`, `src/test/kotlin` |
-| Test resources | `test-resources/` | `src/test/resources` |
+| Default test resources | `test-resources/` | `src/test/resources` |
 | Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin}` |
+| Named suite resources | `<name>-resources/` (e.g. `integration-resources/`) | `src/<name>/resources` |
 
 Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
-paths (or `layout = "traditional"`) when importing a Maven tree.
+paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
+classpath only when that suite is selected (`jk test --suite integration`, `--all`, etc.).
 
 `jk test` runs the **test** suite only by default; see [Test suites and tags](#test-suites-and-tags).
 `jk ide` marks every discovered suite as IDE test source roots.
@@ -610,19 +612,38 @@ Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reu
 jk bsp install               # write .bsp/jk.json
 # IDE launches: jk bsp serve  (stdio BSP — no engine jars in the IDE process)
 jk ide                       # offline .idea / .vscode files (export path)
+```
 
 **Multi-suite tests (JK-1139–1142):** `jk ide` registers **every discovered test suite**
 (`test/`, `integration/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
 in the same module — IntelliJ `.iml` and VS Code/JDT `.classpath`. One test output directory;
-no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots.
+no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots. Named suite
+resource dirs (`integration-resources/`, …) are marked as test resources when present.
 
 Execution still follows the CLI default: `jk test` runs only the **test** suite. Use
 `jk test --suite integration`, `jk test --all`, or tags for other selections. After
 `jk ide`, IntelliJ gains shell run configurations (`jk test`, `jk test (all suites)`, and
 one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
 
+**BSP `buildTarget/test` selection (JK-1143):** omit `params.data` for default-suite only
+(same as bare `jk test`). Optional jk extension:
 
+```json
+{
+  "params": {
+    "targets": [{ "uri": "file:///path/to/module#name" }],
+    "data": {
+      "allSuites": false,
+      "suites": ["test", "integration"],
+      "includeTags": ["smoke"],
+      "excludeTags": ["slow"]
+    }
+  }
+}
 ```
+
+Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
+`--include-tag` / `--exclude-tag`.
 
 **BSP capabilities (stdio `jk bsp serve`):**
 
@@ -630,7 +651,7 @@ one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
 |---|---|
 | `workspace/buildTargets`, sources, dependency modules | yes |
 | `buildTarget/compile` | yes (per-target / module) |
-| `buildTarget/test` | yes (engine `jk test` path; JUnit) |
+| `buildTarget/test` | yes (engine `jk test`; optional suite/tag `data`) |
 | `buildTarget/run` | **no** — use IDE tasks / `jk run` |
 | `workspace/reload` | yes |
 | Debug adapter | no |
