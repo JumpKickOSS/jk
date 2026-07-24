@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
@@ -88,12 +90,12 @@ class ReadSideIntegrationTest {
         // against. --color=never drops the foreground colors but
         // leaves text attributes (underline/bold) in place, hence
         // the regex below.
-        String tree = stripAnsi(captureStdout(() -> run("tree", "-C", tempDir.toString())));
+        String tree = TestAnsi.strip(captureStdout(() -> run("tree", "-C", tempDir.toString())));
         assertThat(tree).contains("com.foo:root:1.0");
         assertThat(tree).contains("com.foo:leaf:1.0");
 
         // jk why
-        String why = stripAnsi(captureStdout(() -> run("why", "com.foo:leaf", "-C", tempDir.toString())));
+        String why = TestAnsi.strip(captureStdout(() -> run("why", "com.foo:leaf", "-C", tempDir.toString())));
         assertThat(why).contains("com.foo:leaf:1.0 is pulled in by:");
         assertThat(why).contains("com.foo:root:1.0");
 
@@ -192,9 +194,6 @@ class ReadSideIntegrationTest {
     }
 
     /** Remove ANSI CSI escape sequences from {@code s}. */
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\\[[0-9;]*[a-zA-Z]", "");
-    }
 
     private static String captureStdout(Runnable body) {
         PrintStream original = System.out;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
@@ -95,7 +97,7 @@ class RunCommandTest {
                 version  = "0.1.0"
                 """);
         String output =
-                stripAnsi(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
+                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
         assertThat(output).contains("Failed to run").contains("No valid main method was specified or detected");
     }
 
@@ -130,7 +132,7 @@ class RunCommandTest {
                 """);
 
         String output =
-                stripAnsi(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
+                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
         assertThat(output).contains("Failed to run").contains("Multiple main methods found");
     }
 
@@ -164,9 +166,5 @@ class RunCommandTest {
             System.setErr(prevErr);
         }
         return captured.toString(StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

@@ -7,8 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Small in-memory JSON parse/write ({@code Map}/{@code List}/{@code String}/{@code Number}/
- * {@code Boolean}/{@code null}). Not for large documents; string escaping via {@code Jsonl#quote}.
+ * Tree-shaped JSON parse/write ({@code Map}/{@code List}/{@code String}/{@code Number}/
+ * {@code Boolean}/{@code null}) for HTTP/MCP/journal. Escaping is owned by
+ * {@link cc.jumpkick.plugin.protocol.Jsonl#quote} (JK-1125); this class is the single tree codec
+ * and must not reimplement string escapes. Lives in core (Java 25) because the tree codec uses
+ * modern language features; plugin-sdk stays on the JDK 17 floor for worker/SPI packaging.
  */
 public final class MiniJson {
 

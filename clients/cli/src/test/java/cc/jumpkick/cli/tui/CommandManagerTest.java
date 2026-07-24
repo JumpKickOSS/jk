@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Rgb;
@@ -21,7 +23,7 @@ class CommandManagerTest {
         var cm = new CommandManager(stream(buf), true);
         cm.label("Locking");
         cm.tick(); // frame 0 = pulse circle
-        assertThat(stripAnsi(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Locking…");
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Locking…");
     }
 
     @Test
@@ -32,7 +34,7 @@ class CommandManagerTest {
         cm.finishSuccess("Finished syncing 13 artifacts");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        String visible = stripAnsi(raw);
+        String visible = TestAnsi.strip(raw);
         // Frozen pulse circle + command on its own line, result line below.
         assertThat(visible).contains(Spinner.PULSE_GLYPH + " Syncing…");
         // "✓ <pipeline> Successful: <message>", head in green.
@@ -49,7 +51,7 @@ class CommandManagerTest {
         cm.label("Build");
         cm.finishSuccess("built 17 modules", List.of("‼ Warning [compile-test]:", "  deprecation in Foo.java"));
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int warn = visible.indexOf("‼ Warning [compile-test]:");
         int summary = visible.indexOf("✓ Build Successful: built 17 modules");
         // Subprocess output prints first; the success summary is the last thing shown.
@@ -69,7 +71,7 @@ class CommandManagerTest {
 
         cm.finishSuccess("built 17 modules", List.of("‼ Warning [compile-test]:"));
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int warn = visible.indexOf("‼ Warning [compile-test]:");
         int summary = visible.indexOf("Successful: built 17 modules");
         // Region is wiped, then the deferred warning, then the summary line last.
@@ -85,7 +87,7 @@ class CommandManagerTest {
         cm.finishFailure("Failed to sync remote artifacts");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(stripAnsi(raw)).contains("✘ Failed to sync remote artifacts");
+        assertThat(TestAnsi.strip(raw)).contains("✘ Failed to sync remote artifacts");
         assertThat(raw).contains(Theme.colorize("✘", Theme.active().error()));
     }
 
@@ -96,7 +98,7 @@ class CommandManagerTest {
         cm.label("Locking");
         cm.renderCanceled();
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains(Spinner.PULSE_GLYPH + " Locking…");
         // The notice itself is GlobalCancel's job; the component only settles.
         assertThat(visible).doesNotContain("Canceled");
@@ -114,8 +116,8 @@ class CommandManagerTest {
         cm.finishSuccess("done");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(stripAnsi(raw)).contains("✓ Locking Successful: done");
-        assertThat(stripAnsi(raw)).doesNotContain("Locking…"); // no spinner line
+        assertThat(TestAnsi.strip(raw)).contains("✓ Locking Successful: done");
+        assertThat(TestAnsi.strip(raw)).doesNotContain("Locking…"); // no spinner line
         assertThat(raw).doesNotContain("\033[?25h"); // never hid the cursor
     }
 
@@ -155,13 +157,13 @@ class CommandManagerTest {
 
         // No estimate set → the clock counts elapsed up from 0s (4s elapsed → "4s").
         String up = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(stripAnsi(up)).contains("4s");
+        assertThat(TestAnsi.strip(up)).contains("4s");
 
         // Seeded with a 60s estimate, the clock counts down by pure wall-clock: at 4s
         // elapsed, 56s remain — independent of the bar's numerator/denominator.
         cm.setEtaEstimate(60_000);
         String header = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(stripAnsi(header)).contains("56s");
+        assertThat(TestAnsi.strip(header)).contains("56s");
         // The clock is yellow; the · separator is bright-black.
         assertThat(header).contains(Theme.colorize("56s", Theme.active().warning()));
         assertThat(header).contains(Theme.colorize("·", Theme.active().darkGray()));
@@ -173,7 +175,7 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
         // 15s elapsed → 5s overrun → clock flips to "+5s".
-        assertThat(stripAnsi(cm.renderPipelineLines(120, 15_000).get(0))).contains("+5s");
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 15_000).get(0))).contains("+5s");
     }
 
     @Test
@@ -186,7 +188,7 @@ class CommandManagerTest {
 
         var raw = cm.renderPipelineLines(120, 112_000);
         String all = String.join("\n", stripAll(raw));
-        assertThat(stripAnsi(raw.get(0)))
+        assertThat(TestAnsi.strip(raw.get(0)))
                 .contains("Building")
                 .contains(Spinner.PULSE_GLYPH)
                 .contains("1m 52s")
@@ -207,7 +209,7 @@ class CommandManagerTest {
 
         String header = cm.renderPipelineLines(120, 0).get(0);
         // Pill: pulse circle + name + powerline cap.
-        assertThat(stripAnsi(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
+        assertThat(TestAnsi.strip(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
         AttributedStyle chip = Theme.active().pipelineChip();
         assertThat(header).startsWith(Theme.colorize(" ", chip));
         assertThat(header).contains(Theme.colorize("Build", chip));
@@ -289,6 +291,44 @@ class CommandManagerTest {
     }
 
     @Test
+    void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
+        // JK-1127: listeners pass phase=""; step key is compile-java, phase node is compile.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile-java", "compile");
+        cm.attachPhaseError("m", "compile-java", "", "cannot find symbol Foo");
+        cm.stepDone("m", "compile-java", false, "compile");
+
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        String all = String.join("\n", lines);
+        assertThat(all).contains("Compile").contains("cannot find symbol Foo");
+        assertThat(all).doesNotContain("Failed\n"); // not the generic-only brief when we have a real one
+    }
+
+    @Test
+    void brief_error_under_last_tree_entry_uses_space_indent_not_rail() {
+        // JK-1128: ╰─ then spaces, not │ under a closing branch.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile-java", "compile");
+        cm.attachPhaseError("m", "compile-java", "compile", "boom");
+        cm.stepDone("m", "compile-java", false, "compile");
+
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        // Find the error line after the last ╰─ row
+        boolean sawClose = false;
+        for (String line : lines) {
+            if (line.startsWith(" ╰─")) sawClose = true;
+            if (sawClose && line.contains("boom")) {
+                assertThat(line).startsWith("    boom");
+                assertThat(line).doesNotContain("│");
+                return;
+            }
+        }
+        throw new AssertionError("expected brief error under closing branch, got:\n" + String.join("\n", lines));
+    }
+
+    @Test
     void tree_is_vertically_compact_without_blank_rail_spacers() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;
@@ -321,7 +361,7 @@ class CommandManagerTest {
         cm.stepRunning("m", "compile", "compile");
         var lines = cm.renderPipelineLines(120, 0);
         // lines[0]=header, lines[1]=single work row (closing branch) — no leading blank rail.
-        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─").contains("Compile");
+        assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
     }
 
     @Test
@@ -334,9 +374,9 @@ class CommandManagerTest {
 
         var lines = cm.renderPipelineLines(120, 0);
         // header, work row (╰─), then completions newest first.
-        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─").contains("Compile");
-        assertThat(stripAnsi(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
-        assertThat(stripAnsi(lines.get(3))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
+        assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
+        assertThat(TestAnsi.strip(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
+        assertThat(TestAnsi.strip(lines.get(3))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
     }
 
     @Test
@@ -363,7 +403,7 @@ class CommandManagerTest {
 
         cm.writeAbove("javac: warning in Foo.java");
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // The log line appears, and the bar (region) is repainted after it.
         int log = visible.indexOf("javac: warning in Foo.java");
         int bar = visible.indexOf("█");
@@ -384,7 +424,7 @@ class CommandManagerTest {
             System.out.println("from a step");
         }
         assertThat(System.out).isSameAs(original); // streams restored
-        assertThat(stripAnsi(buf.toString(StandardCharsets.UTF_8)))
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8)))
                 .contains("from a step"); // routed to the region's real stdout
     }
 
@@ -399,7 +439,7 @@ class CommandManagerTest {
     void truncate_visible_cuts_at_column_keeping_escapes() {
         String colored = Theme.colorize("abcdef", Theme.active().success());
         String cut = CommandManager.truncateVisible(colored, 3);
-        assertThat(stripAnsi(cut)).isEqualTo("abc");
+        assertThat(TestAnsi.strip(cut)).isEqualTo("abc");
         assertThat(cut).endsWith("\033[0m"); // reset appended on truncation
     }
 
@@ -412,14 +452,10 @@ class CommandManagerTest {
     }
 
     private static List<String> stripAll(List<String> lines) {
-        return lines.stream().map(CommandManagerTest::stripAnsi).toList();
+        return lines.stream().map(TestAnsi::strip).toList();
     }
 
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

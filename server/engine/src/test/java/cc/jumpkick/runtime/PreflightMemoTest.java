@@ -277,6 +277,71 @@ class PreflightMemoTest {
     }
 
     @Test
+    void shape_memo_skip_tests_variants_coexist(@TempDir Path tmp) throws Exception {
+        // JK-1124: fingerprint embeds skipTests — both rows must persist.
+        writeProject(tmp);
+        Path mod = tmp.toAbsolutePath().normalize();
+        PreflightMemo.storeShape(
+                tmp, mod, false, new PreflightMemo.PipelineShape(40, 10, List.of(new PreflightMemo.PipelineShape.StepShape("run-tests", "test"))));
+        PreflightMemo.storeShape(
+                tmp, mod, true, new PreflightMemo.PipelineShape(30, 0, List.of(new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"))));
+        Optional<PreflightMemo.PipelineShape> withTests = PreflightMemo.tryLoadShape(tmp, mod, false);
+        Optional<PreflightMemo.PipelineShape> skipTests = PreflightMemo.tryLoadShape(tmp, mod, true);
+        assertThat(withTests).isPresent();
+        assertThat(withTests.get().weight()).isEqualTo(40);
+        assertThat(withTests.get().testWeight()).isEqualTo(10);
+        assertThat(skipTests).isPresent();
+        assertThat(skipTests.get().weight()).isEqualTo(30);
+        assertThat(skipTests.get().testWeight()).isEqualTo(0);
+    }
+
+    @Test
+    void shape_memo_concurrent_upserts_retain_all_modules(@TempDir Path tmp) throws Exception {
+        // JK-1124: parallel prepare must not drop peer rows.
+        writeProject(tmp);
+        Path a = tmp.resolve("a");
+        Path b = tmp.resolve("b");
+        Files.createDirectories(a);
+        Files.createDirectories(b);
+        Files.writeString(
+                a.resolve("jk.toml"),
+                """
+                [project]
+                group = "t"
+                name = "a"
+                version = "1.0.0"
+                jdk = 21
+                java = 21
+                """);
+        Files.writeString(
+                b.resolve("jk.toml"),
+                """
+                [project]
+                group = "t"
+                name = "b"
+                version = "1.0.0"
+                jdk = 21
+                java = 21
+                """);
+        var shapeA = new PreflightMemo.PipelineShape(11, 0, List.of());
+        var shapeB = new PreflightMemo.PipelineShape(22, 0, List.of());
+        Thread t1 = new Thread(() -> {
+            for (int i = 0; i < 40; i++) PreflightMemo.storeShape(tmp, a, false, shapeA);
+        });
+        Thread t2 = new Thread(() -> {
+            for (int i = 0; i < 40; i++) PreflightMemo.storeShape(tmp, b, false, shapeB);
+        });
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        assertThat(PreflightMemo.tryLoadShape(tmp, a, false)).isPresent();
+        assertThat(PreflightMemo.tryLoadShape(tmp, a, false).orElseThrow().weight()).isEqualTo(11);
+        assertThat(PreflightMemo.tryLoadShape(tmp, b, false)).isPresent();
+        assertThat(PreflightMemo.tryLoadShape(tmp, b, false).orElseThrow().weight()).isEqualTo(22);
+    }
+
+    @Test
     void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
         // JK-1114: ETA path builds ModuleCost without assembling a pipeline.
         var cost = EffortWeights.costOf(tmp, Set.of(), 100, 15);

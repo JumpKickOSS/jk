@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
@@ -30,7 +32,7 @@ class SpinnerProgressBarTest {
         try (var pb = SpinnerProgressBar.show(stream(buf))) {
             pb.update(60, "Downloading");
         }
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // 60% → 24 filled out of 40.
         assertThat(visible).contains("▰".repeat(24) + "▱".repeat(16));
         assertThat(visible).contains(" 60%: Downloading");
@@ -44,7 +46,7 @@ class SpinnerProgressBarTest {
             buf.reset();
             pb.update(60, "step"); // 24 filled
         }
-        String diff = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String diff = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // The moving gradient re-colors every filled glyph when the frontier
         // advances, so the row is repainted whole: 24 ▰ + 16 ▱.
         long filled = diff.chars().filter(c -> c == '▰').count();
@@ -61,7 +63,7 @@ class SpinnerProgressBarTest {
             buf.reset();
             pb.update(61, "step"); // round(61 * 40 / 100) = 24 filled (unchanged)
         }
-        String diff = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String diff = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // No fill change → no glyphs redrawn (only the OSC progress update).
         assertThat(diff.chars().filter(c -> c == '▰' || c == '▱').count()).isZero();
     }
@@ -96,7 +98,7 @@ class SpinnerProgressBarTest {
         }
         // Only the cursor SGR / show-cursor on close should be present.
         String out = buf.toString(StandardCharsets.UTF_8);
-        String visible = stripAnsi(out);
+        String visible = TestAnsi.strip(out);
         assertThat(visible).doesNotContain("downloading");
     }
 
@@ -112,7 +114,7 @@ class SpinnerProgressBarTest {
             buf.reset();
             pb.update(50, shortStatus);
         }
-        String diff = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String diff = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(diff).contains(shortStatus);
         // Exactly `expectedShrink` trailing spaces after the new status —
         // the gap between old and new status lengths.
@@ -152,7 +154,7 @@ class SpinnerProgressBarTest {
         assertThat(all).contains("\033]9;4;0\007");
         assertThat(all).contains("\033[?25h");
         // Replacement message lands on the same row.
-        assertThat(stripAnsi(all)).contains("✓ Download finished for Eclipse Temurin 21");
+        assertThat(TestAnsi.strip(all)).contains("✓ Download finished for Eclipse Temurin 21");
         // Subsequent close() is a no-op.
         buf.reset();
         pb.close();
@@ -203,10 +205,5 @@ class SpinnerProgressBarTest {
         var m = Pattern.compile("\033\\[(38;2;\\d+;\\d+;\\d+)m▰").matcher(raw);
         while (m.find()) out.add(m.group(1));
         return out;
-    }
-
-    /** Drop CSI escapes so we can assert on the visible characters. */
-    static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

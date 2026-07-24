@@ -145,6 +145,10 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, long[]> progressEmitState =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Serialize workspace-progress emit per request (JK-1130 ordered stream). */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Object> progressEmitLocks =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Per-request journal accumulators; persisted at request-finish regardless of SSE subscribers. */
     private final java.util.concurrent.ConcurrentHashMap<Long, BuildAccumulator> accumulators =
             new java.util.concurrent.ConcurrentHashMap<>();
@@ -1083,6 +1087,7 @@ public final class EngineServer implements AutoCloseable {
         progressRoots.remove(requestId);
         progressWeights.remove(requestId);
         progressEmitState.remove(requestId);
+        progressEmitLocks.remove(requestId);
     }
 
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
@@ -1121,33 +1126,48 @@ public final class EngineServer implements AutoCloseable {
      */
     private void emitWorkspaceProgress(long requestId, java.io.BufferedWriter writer, boolean force) {
         if (requestId <= 0) return;
-        cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
-        if (tracker == null) return;
-        var snap = tracker.snapshot();
-        if (snap.hasPercent()) lastProgressByRequest.put(requestId, snap.percent());
-        if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
-        String dir = progressRoots.getOrDefault(requestId, "");
-        String line = EngineProtocol.workspaceProgress(
-                dir, snap.numerator(), snap.denominator(), snap.phase(), snap.modulesComplete(), snap.modulesTotal());
-        if (writer != null) sendQuiet(writer, line);
-        if (eventsWanted()) {
-            publishEvent(
-                    "workspace-progress",
-                    withProgress(
-                            cc.jumpkick.engine.http.JsonOut.object()
-                                    .put("schema", 1)
-                                    .put("type", "workspace-progress")
-                                    .put("requestId", requestId)
-                                    .put("dir", dir)
-                                    .put("numerator", snap.numerator())
-                                    .put("denominator", snap.denominator())
-                                    .put("phase", snap.phase())
-                                    .put("modulesComplete", snap.modulesComplete())
-                                    .put("modulesTotal", snap.modulesTotal()),
-                            requestId));
+        Object lock = progressEmitLocks.computeIfAbsent(requestId, id -> new Object());
+        synchronized (lock) {
+            cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
+            if (tracker == null) return;
+            var snap = tracker.snapshot();
+            if (snap.hasPercent()) {
+                // Peak-hold machine progress (JK-1130): never publish a lower % than already emitted.
+                Double prevPct = lastProgressByRequest.get(requestId);
+                double pct = snap.percent();
+                if (prevPct != null && pct + 1e-9 < prevPct) {
+                    pct = prevPct;
+                }
+                lastProgressByRequest.put(requestId, pct);
+            }
+            if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
+            String dir = progressRoots.getOrDefault(requestId, "");
+            long num = snap.numerator();
+            long den = snap.denominator();
+            // If peak-holding percent, still emit the snapped phase counters but progress rider uses peak.
+            String line = EngineProtocol.workspaceProgress(
+                    dir, num, den, snap.phase(), snap.modulesComplete(), snap.modulesTotal());
+            if (writer != null) sendQuiet(writer, line);
+            if (eventsWanted()) {
+                publishEvent(
+                        "workspace-progress",
+                        withProgress(
+                                cc.jumpkick.engine.http.JsonOut.object()
+                                        .put("schema", 1)
+                                        .put("type", "workspace-progress")
+                                        .put("requestId", requestId)
+                                        .put("dir", dir)
+                                        .put("numerator", num)
+                                        .put("denominator", den)
+                                        .put("phase", snap.phase())
+                                        .put("modulesComplete", snap.modulesComplete())
+                                        .put("modulesTotal", snap.modulesTotal()),
+                                requestId));
+            }
+            Double held = lastProgressByRequest.get(requestId);
+            long pctMillis = held != null ? Math.round(held * 10.0) : (snap.hasPercent() ? Math.round(snap.percent() * 10.0) : -1L);
+            progressEmitState.put(requestId, new long[] {System.currentTimeMillis(), pctMillis});
         }
-        long pctMillis = snap.hasPercent() ? Math.round(snap.percent() * 10.0) : -1L;
-        progressEmitState.put(requestId, new long[] {System.currentTimeMillis(), pctMillis});
     }
 
     /** ≥0.1% change or one TTY frame (WorkspaceProgressTracker.TTY_FRAME_MS) since last emit. */

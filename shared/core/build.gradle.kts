@@ -10,7 +10,7 @@ description = "jk core foundations: TOML config parser, lockfile, layout, librar
 
 dependencies {
     api(project(":jk-api"))
-    // Jsonl is MiniJson's single escaping home (the JSON-consolidation decision);
+    // MiniJson (tree codec) lives in core; Jsonl (field codec + quote) is the escape home in :plugin-sdk (JK-1125).
     // plugin-api itself depends only on :model, so the direction is legal.
     api(project(":plugin-sdk"))
     api(libs.tomlj)

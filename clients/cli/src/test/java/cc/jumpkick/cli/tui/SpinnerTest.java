@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
@@ -15,7 +17,7 @@ class SpinnerTest {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
         s.step();
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
     }
 
@@ -29,7 +31,7 @@ class SpinnerTest {
         String raw = buf.toString(StandardCharsets.UTF_8);
         // Same solid circle every frame; only ANSI FG changes.
         assertThat(countOccurrences(raw, Spinner.PULSE_GLYPH)).isEqualTo(Spinner.PULSE_FRAMES);
-        assertThat(stripAnsi(raw)).doesNotContain("·");
+        assertThat(TestAnsi.strip(raw)).doesNotContain("·");
     }
 
     @Test
@@ -40,7 +42,7 @@ class SpinnerTest {
         s.update("second");
         buf.reset();
         s.step();
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains("second");
     }
 
@@ -56,7 +58,7 @@ class SpinnerTest {
         s.update(shortMsg);
         buf.reset();
         s.step();
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int idx = visible.indexOf(shortMsg);
         assertThat(idx).isGreaterThanOrEqualTo(0);
         long spaces = visible.substring(idx + shortMsg.length())
@@ -127,10 +129,6 @@ class SpinnerTest {
 
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 
     private static long countOccurrences(String haystack, String needle) {

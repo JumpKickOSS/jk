@@ -11,7 +11,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -128,9 +130,14 @@ final class ShrunkJarPackager {
                     .filter(p -> !p.getFileName().toString().equals("module-info.class"))
                     .sorted(Comparator.naturalOrder())
                     .toList();
+            // Relative paths present in the tree (for outer-class peer checks).
+            Set<String> classPaths = new HashSet<>();
+            for (Path file : classes) {
+                classPaths.add(classesDir.relativize(file).toString().replace('\\', '/'));
+            }
             for (Path file : classes) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                if (name.contains("$")) continue; // outer-class keep retains nested types
+                if (isNestedClassFile(name, classPaths)) continue; // outer keep retains nested types
                 String fqcn =
                         name.substring(0, name.length() - ".class".length()).replace('/', '.');
                 pro.append("-keep class ").append(fqcn).append(" { *; }\n");
@@ -138,6 +145,22 @@ final class ShrunkJarPackager {
             }
         }
         if (kept == 0) pro.append("-dontshrink\n");
+    }
+
+    /**
+     * True when {@code relClassPath} is a javac nested type ({@code Outer$Inner.class}) whose
+     * outer {@code Outer.class} is also present. Top-level names that merely contain {@code $}
+     * (legal on the JVM) have no outer peer and must still get a keep rule (JK-1126).
+     */
+    static boolean isNestedClassFile(String relClassPath, Set<String> classPaths) {
+        String fileName = relClassPath;
+        int slash = relClassPath.lastIndexOf('/');
+        if (slash >= 0) fileName = relClassPath.substring(slash + 1);
+        if (!fileName.endsWith(".class") || !fileName.contains("$")) return false;
+        String beforeDollar = fileName.substring(0, fileName.indexOf('$'));
+        if (beforeDollar.isEmpty()) return false;
+        String outerRel = (slash >= 0 ? relClassPath.substring(0, slash + 1) : "") + beforeDollar + ".class";
+        return classPaths.contains(outerRel);
     }
 
     /** A project-relative path for a declared keep-file. */

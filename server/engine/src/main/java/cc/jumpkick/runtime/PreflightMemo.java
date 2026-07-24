@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Machine-local preflight memo (JK-1100+): dirty-set, graph structure, and pipeline shape caches
@@ -38,6 +39,12 @@ public final class PreflightMemo {
     private static final String DIRTY_FILE = "dirty-memo.txt";
     private static final String GRAPH_FILE = "graph-memo.txt";
     private static final String SHAPE_FILE = "shape-memo.txt";
+
+    /**
+     * Serialize shape-memo upserts per entry directory (JK-1124). Parallel prepare races
+     * read-modify-write on a single file; last writer must not drop peer modules' rows.
+     */
+    private static final ConcurrentHashMap<Path, Object> SHAPE_LOCKS = new ConcurrentHashMap<>();
 
     private PreflightMemo() {}
 
@@ -420,12 +427,13 @@ public final class PreflightMemo {
             if (!BuildIdentity.cacheKeyVersion().equals(gotVersion)) return Optional.empty();
 
             // shape\trel\tfp\tweight\ttestWeight\tname:phase,...
+            // Multiple rows per rel may exist (skipTests true vs false); match fingerprint.
             for (String line : lines) {
                 if (!line.startsWith("shape\t")) continue;
                 String[] p = line.split("\t", 6);
                 if (p.length != 6) continue;
                 if (!rel.equals(p[1])) continue;
-                if (!wantFp.equals(p[2])) return Optional.empty();
+                if (!wantFp.equals(p[2])) continue; // other skipTests/fp variant — keep scanning
                 return Optional.of(
                         new PipelineShape(Integer.parseInt(p[3]), Integer.parseInt(p[4]), parseStepField(p[5])));
             }
@@ -446,44 +454,55 @@ public final class PreflightMemo {
         return List.copyOf(steps);
     }
 
+    /**
+     * Unique row key: module rel + shape fingerprint. Fingerprint embeds skipTests, so
+     * alternating {@code --skip-tests} keeps both variants instead of thrashing (JK-1124).
+     */
+    private static String shapeRowKey(String rel, String fingerprint) {
+        return rel + "\0" + fingerprint;
+    }
+
     /** Upsert one module's pipeline shape into the shape memo. Best-effort. */
     public static void storeShape(Path entryDir, Path moduleDir, boolean skipTests, PipelineShape shape) {
         if (shape == null) return;
-        try {
-            Path root = entryDir.toAbsolutePath().normalize();
-            Path file = shapeMemoFile(entryDir);
-            Files.createDirectories(file.getParent());
-            String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
-            String fp = shapeFingerprint(moduleDir, skipTests);
-            StringBuilder steps = new StringBuilder();
-            for (int i = 0; i < shape.steps().size(); i++) {
-                if (i > 0) steps.append(',');
-                PipelineShape.StepShape s = shape.steps().get(i);
-                steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
-            }
-            String newLine =
-                    "shape\t" + rel + "\t" + fp + "\t" + shape.weight() + "\t" + shape.testWeight() + "\t" + steps;
+        Path root = entryDir.toAbsolutePath().normalize();
+        Object lock = SHAPE_LOCKS.computeIfAbsent(root, k -> new Object());
+        synchronized (lock) {
+            try {
+                Path file = shapeMemoFile(entryDir);
+                Files.createDirectories(file.getParent());
+                String rel = relKey(root, moduleDir.toAbsolutePath().normalize());
+                String fp = shapeFingerprint(moduleDir, skipTests);
+                StringBuilder steps = new StringBuilder();
+                for (int i = 0; i < shape.steps().size(); i++) {
+                    if (i > 0) steps.append(',');
+                    PipelineShape.StepShape s = shape.steps().get(i);
+                    steps.append(s.name()).append(':').append(s.phase() == null ? "" : s.phase());
+                }
+                String newLine =
+                        "shape\t" + rel + "\t" + fp + "\t" + shape.weight() + "\t" + shape.testWeight() + "\t" + steps;
 
-            Map<String, String> byRel = new LinkedHashMap<>();
-            String gotVersion = BuildIdentity.cacheKeyVersion();
-            if (Files.isRegularFile(file)) {
-                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                    if (line.startsWith("schema=") || line.startsWith("cacheKeyVersion=")) continue;
-                    if (line.startsWith("shape\t")) {
-                        String[] p = line.split("\t", 3);
-                        if (p.length >= 2) byRel.put(p[1], line);
+                Map<String, String> byKey = new LinkedHashMap<>();
+                String gotVersion = BuildIdentity.cacheKeyVersion();
+                if (Files.isRegularFile(file)) {
+                    for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                        if (line.startsWith("schema=") || line.startsWith("cacheKeyVersion=")) continue;
+                        if (line.startsWith("shape\t")) {
+                            String[] p = line.split("\t", 6);
+                            if (p.length >= 3) byKey.put(shapeRowKey(p[1], p[2]), line);
+                        }
                     }
                 }
-            }
-            byRel.put(rel, newLine);
+                byKey.put(shapeRowKey(rel, fp), newLine);
 
-            StringBuilder sb = new StringBuilder();
-            sb.append("schema=").append(SCHEMA).append('\n');
-            sb.append("cacheKeyVersion=").append(gotVersion).append('\n');
-            for (String line : byRel.values()) sb.append(line).append('\n');
-            AtomicWrites.replace(file, sb.toString());
-        } catch (Exception ignored) {
-            // fail-open
+                StringBuilder sb = new StringBuilder();
+                sb.append("schema=").append(SCHEMA).append('\n');
+                sb.append("cacheKeyVersion=").append(gotVersion).append('\n');
+                for (String line : byKey.values()) sb.append(line).append('\n');
+                AtomicWrites.replace(file, sb.toString());
+            } catch (Exception ignored) {
+                // fail-open
+            }
         }
     }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
@@ -148,7 +150,7 @@ class CacheCommandTest {
         seedRepo(cache, "com.google.guava", "guava", "33.0.0-jre");
 
         // Coordinates print in color; strip ANSI to assert on the visible text.
-        String stdout = stripAnsi(capture(() -> run("cache", "search", "jackson", "--cache-dir", cache.toString())));
+        String stdout = TestAnsi.strip(capture(() -> run("cache", "search", "jackson", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering
@@ -316,10 +318,6 @@ class CacheCommandTest {
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 
     private static Path writeBlob(Path file, byte[] body) throws Exception {

@@ -243,7 +243,9 @@ public final class BuildCommand implements CliCommand {
         long buildStart = System.nanoTime();
         CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
         AggregateContext earlyAgg = new AggregateContext(view);
-        earlyAgg.preflight("checking", 0, 0, "Checking cache…");
+        // Do not client-seed a "checking" phase row (JK-1128): the engine owns Checking /
+        // Lock / Graph preflight events on the single build RPC (JK-1106). A seed left a
+        // stale Checking row until checking 1/1.
 
         // JK-1106: live build uses a single engine request for Checking + Graph + Plan + execute.
         // No separate client forecast RPC — the engine emits checking preflight and (when all clean)

@@ -305,8 +305,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (msg.length() > 96) msg = msg.substring(0, 93) + "…";
             Row r = rows.get(key(module, stepKey));
             if (r != null && !msg.isEmpty()) r.briefError = msg;
+            // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty
+            // phase or a step key that has no PhaseNode (JK-1127).
             String pk = phaseKey(phase, stepKey);
-            if ((pk == null || pk.isEmpty()) && r != null) pk = r.phase;
+            if (r != null && r.phase != null && !r.phase.isEmpty()) {
+                if (pk == null || pk.isEmpty() || !phases.containsKey(pk)) {
+                    pk = r.phase;
+                }
+            }
             if (pk == null || pk.isEmpty()) return;
             PhaseNode n = phases.get(pk);
             if (n == null) return;
@@ -693,9 +699,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             budget--;
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
-                // Indent under the branch without a blank spacer row.
-                lines.add(
-                        Theme.colorize(" │  " + entry.briefError, Theme.active().error()));
+                // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) — JK-1128.
+                String errIndent = last ? "    " : " │  ";
+                lines.add(Theme.colorize(errIndent + entry.briefError, Theme.active().error()));
                 budget--;
             }
             if (shown >= MAX_ROWS) break;
