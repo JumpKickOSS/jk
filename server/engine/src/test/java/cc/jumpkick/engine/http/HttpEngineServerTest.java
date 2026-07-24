@@ -55,6 +55,15 @@ class HttpEngineServerTest {
     private String baseUrl;
     private int port;
 
+    /** Config with the default stream budgets and MCP on — most tests only vary host/port/RPC cap. */
+    private JkHttpConfig httpConfig(String host, int port, int maxConcurrentRequests) {
+        return httpConfig(host, port, maxConcurrentRequests, JkHttpConfig.Mcp.DEFAULTS);
+    }
+
+    private JkHttpConfig httpConfig(String host, int port, int maxConcurrentRequests, JkHttpConfig.Mcp mcp) {
+        return new JkHttpConfig(host, port, maxConcurrentRequests, 16, webRoot.toString(), mcp);
+    }
+
     /** A journal rooted under the test's temp state dir — endpoints exist; content is per-test. */
     private cc.jumpkick.engine.journal.BuildJournal testJournal() {
         return new cc.jumpkick.engine.journal.BuildJournal(
@@ -96,7 +105,7 @@ class HttpEngineServerTest {
         logFile = stateDir.resolve("e2e.log");
         Files.writeString(logFile, "jk engine: listening\njk engine: http listening\nline three\n");
         events = new HttpEvents();
-        JkHttpConfig config = new JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString());
+        JkHttpConfig config = httpConfig("127.0.0.1", 0, 16);
         server = new HttpEngineServer(
                 config,
                 webRoot,
@@ -217,7 +226,7 @@ class HttpEngineServerTest {
         // Version string must end with -SNAPSHOT so StaticContent sets no-cache (release pins use
         // max-age + ETag). The status supplier's own version field is unrelated.
         HttpEngineServer snapshot = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString()),
+                httpConfig("127.0.0.1", 0, 16),
                 webRoot,
                 stateDir.resolve("snap.http-token"),
                 stateDir.resolve("snap.log"),
@@ -357,6 +366,80 @@ class HttpEngineServerTest {
                 .contains("\"activePipelines\":0")
                 .contains("\"maxConcurrentRequests\":16")
                 .contains("\"webRoot\":\"" + webRoot + "\"");
+    }
+
+    @Test
+    void api_status_reports_stream_budgets_and_mcp_state() throws Exception {
+        String body = get("/api/status").body();
+        assertThat(body)
+                .contains("\"maxEventStreams\":16")
+                .contains("\"mcpEnabled\":true")
+                .contains("\"mcpMaxEventStreams\":16")
+                .contains("\"mcpUrl\":\"" + baseUrl.replaceAll("/+$", "") + "/mcp\"");
+    }
+
+    @Test
+    void disabled_mcp_is_404_while_web_surfaces_still_serve() throws Exception {
+        Path noMcpToken = stateDir.resolve("nomcp.http-token");
+        HttpEngineServer noMcp = new HttpEngineServer(
+                httpConfig("127.0.0.1", 0, 16, new JkHttpConfig.Mcp(false, 16)),
+                webRoot,
+                noMcpToken,
+                stateDir.resolve("nomcp.log"),
+                "9.9.9-test",
+                () -> SNAPSHOT,
+                new HttpEvents(),
+                stubJobs,
+                testJournal(),
+                java.util.List::of,
+                () -> EMPTY_CACHE,
+                null);
+        try {
+            noMcp.start();
+            String url = noMcp.url();
+            String tok = Files.readString(noMcpToken).trim();
+
+            // Every /mcp shape is 404, valid token or not: discovery GET, SSE GET, JSON-RPC POST.
+            HttpResponse<String> discovery = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "mcp"))
+                            .header("Authorization", "Bearer " + tok)
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(discovery.statusCode()).isEqualTo(404);
+            HttpResponse<String> sse = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "mcp"))
+                            .header("Authorization", "Bearer " + tok)
+                            .header("Accept", "text/event-stream")
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(sse.statusCode()).isEqualTo(404);
+            HttpResponse<String> post = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "mcp"))
+                            .header("Authorization", "Bearer " + tok)
+                            .POST(HttpRequest.BodyPublishers.ofString(
+                                    "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}"))
+                            .build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(post.statusCode()).isEqualTo(404);
+
+            // The web surfaces are unaffected; status reports the disable with a null mcpUrl.
+            HttpResponse<String> status = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "api/status")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertThat(status.statusCode()).isEqualTo(200);
+            assertThat(status.body()).contains("\"mcpEnabled\":false").contains("\"mcpUrl\":null");
+            HttpResponse<java.util.stream.Stream<String>> events = client.send(
+                    HttpRequest.newBuilder(URI.create(url + "api/events")).build(),
+                    HttpResponse.BodyHandlers.ofLines());
+            try {
+                assertThat(events.statusCode()).isEqualTo(200);
+                assertThat(nextLine(events.body().iterator())).isEqualTo(": connected");
+            } finally {
+                events.body().close();
+            }
+        } finally {
+            noMcp.close();
+        }
     }
 
     @Test
@@ -523,7 +606,7 @@ class HttpEngineServerTest {
         server.close();
 
         HttpEngineServer restarted = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString()),
+                httpConfig("127.0.0.1", 0, 16),
                 webRoot,
                 tokenFile,
                 logFile,
@@ -558,7 +641,7 @@ class HttpEngineServerTest {
         Files.writeString(tokenFile, "   \n");
 
         HttpEngineServer restarted = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString()),
+                httpConfig("127.0.0.1", 0, 16),
                 webRoot,
                 tokenFile,
                 logFile,
@@ -585,7 +668,7 @@ class HttpEngineServerTest {
         // rides out a draining predecessor, give up promptly (a handful of attempts) rather than
         // spin forever. The generous timeout only guards against a regression to an unbounded loop.
         HttpEngineServer collider = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", port, 16, webRoot.toString()),
+                httpConfig("127.0.0.1", port, 16),
                 webRoot,
                 tokenFile,
                 logFile,
@@ -607,7 +690,7 @@ class HttpEngineServerTest {
 
     @Test
     void non_loopback_bind_gates_api_reads_but_not_static() throws Exception {
-        JkHttpConfig config = new JkHttpConfig("0.0.0.0", 0, 16, webRoot.toString());
+        JkHttpConfig config = httpConfig("0.0.0.0", 0, 16);
         Path lanTokenFile = stateDir.resolve("lan.http-token");
         HttpEngineServer lan = new HttpEngineServer(
                 config,
@@ -665,7 +748,7 @@ class HttpEngineServerTest {
     void open_sse_streams_do_not_starve_rpc_admission() throws Exception {
         // A tiny RPC budget: if streams drew from it, three open streams would 503 everything else.
         HttpEngineServer tiny = new HttpEngineServer(
-                new JkHttpConfig("127.0.0.1", 0, 2, webRoot.toString()),
+                httpConfig("127.0.0.1", 0, 2),
                 webRoot,
                 stateDir.resolve("tiny.http-token"),
                 stateDir.resolve("tiny.log"),
@@ -702,7 +785,7 @@ class HttpEngineServerTest {
 
     @Test
     void sse_beyond_its_own_cap_is_503_without_touching_rpc_admission() throws Exception {
-        int drained = server.sseAdmission().drainPermits();
+        int drained = server.webSseAdmission().drainPermits();
         try {
             assertTimeoutPreemptively(java.time.Duration.ofSeconds(5), () -> {
                 HttpResponse<String> resp = get("/api/events");
@@ -712,7 +795,39 @@ class HttpEngineServerTest {
             });
             assertThat(get("/api/status").statusCode()).isEqualTo(200); // RPC budget unaffected
         } finally {
-            server.sseAdmission().release(drained);
+            server.webSseAdmission().release(drained);
+        }
+    }
+
+    @Test
+    void exhausted_web_sse_budget_leaves_mcp_streams_connectable() throws Exception {
+        int drained = server.webSseAdmission().drainPermits();
+        try {
+            assertThat(get("/api/events").statusCode()).isEqualTo(503);
+            HttpResponse<java.util.stream.Stream<String>> mcpStream = openMcpEvents();
+            try {
+                assertThat(mcpStream.statusCode()).isEqualTo(200); // separate budget
+                assertThat(nextLine(mcpStream.body().iterator())).isEqualTo(": mcp-events connected");
+            } finally {
+                mcpStream.body().close();
+            }
+        } finally {
+            server.webSseAdmission().release(drained);
+        }
+    }
+
+    @Test
+    void exhausted_mcp_sse_budget_leaves_web_streams_connectable() throws Exception {
+        int drained = server.mcpSseAdmission().drainPermits();
+        try {
+            HttpResponse<java.util.stream.Stream<String>> rejected = openMcpEvents();
+            assertThat(rejected.statusCode()).isEqualTo(503);
+            assertThat(String.join("\n", rejected.body().toList())).contains("too many MCP event streams");
+
+            var lines = openEvents(""); // web budget untouched
+            assertThat(nextLine(lines)).isEqualTo(": connected");
+        } finally {
+            server.mcpSseAdmission().release(drained);
         }
     }
 
@@ -738,6 +853,16 @@ class HttpEngineServerTest {
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("text/event-stream; charset=utf-8");
         return resp.body().iterator();
+    }
+
+    /** Open the MCP progress stream (token + event-stream Accept) without asserting the status. */
+    private HttpResponse<java.util.stream.Stream<String>> openMcpEvents() throws Exception {
+        return client.send(
+                HttpRequest.newBuilder(URI.create(baseUrl + "mcp"))
+                        .header("Authorization", "Bearer " + token())
+                        .header("Accept", "text/event-stream")
+                        .build(),
+                HttpResponse.BodyHandlers.ofLines());
     }
 
     /** Read the next line with a timeout — a hung stream must fail the test, not the build. */
@@ -768,7 +893,7 @@ class HttpEngineServerTest {
 
     @Test
     void events_accepts_access_token_query_param_on_non_loopback_binds() throws Exception {
-        JkHttpConfig config = new JkHttpConfig("0.0.0.0", 0, 16, webRoot.toString());
+        JkHttpConfig config = httpConfig("0.0.0.0", 0, 16);
         HttpEngineServer lan = new HttpEngineServer(
                 config,
                 webRoot,

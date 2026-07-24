@@ -611,6 +611,7 @@ public final class EngineServer implements AutoCloseable {
                                         s.aotTrainingPid(),
                                         httpServer != null ? httpServer.url() : null,
                                         httpError,
+                                        httpServer != null && httpServer.mcpEnabled(),
                                         s.peakActiveRequests(),
                                         s.peakActivePipelines()));
                     }

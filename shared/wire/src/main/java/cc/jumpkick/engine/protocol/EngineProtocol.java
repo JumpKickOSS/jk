@@ -487,6 +487,7 @@ public final class EngineProtocol {
                 aotTrainingPid,
                 httpUrl,
                 httpError,
+                true,
                 activeRequests,
                 activePipelines);
     }
@@ -509,9 +510,10 @@ public final class EngineProtocol {
             long aotTrainingPid,
             String httpUrl,
             String httpError,
+            boolean mcpEnabled,
             int peakActiveRequests,
             int peakActivePipelines) {
-        String mcpUrl = mcpUrlFromHttp(httpUrl);
+        String mcpUrl = mcpEnabled ? mcpUrlFromHttp(httpUrl) : null;
         return "{\"type\":\""
                 + STATUS_ACK
                 + "\",\"version\":"

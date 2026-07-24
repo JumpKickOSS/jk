@@ -157,6 +157,9 @@ Same HTTP server and lifecycle as the web UI:
 | Auth | `Authorization: Bearer <token>` (always required) |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
+MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.jk/config.toml`
+(404s `/mcp`; web dashboard unaffected — `mcpUrl` reports `null`).
+
 **Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only pipelines — no package), `jk_lock`
 (async → `requestId`), `jk_cancel`, `jk_project`, `jk_history`.
 

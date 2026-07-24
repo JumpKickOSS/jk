@@ -1007,7 +1007,8 @@ class EngineServerTest {
     // ---- embedded HTTP server (docs/http.md) ----------------------------------------------------
 
     private static cc.jumpkick.config.JkHttpConfig httpOnEphemeralPort(Path webRoot) {
-        return new cc.jumpkick.config.JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString());
+        return new cc.jumpkick.config.JkHttpConfig(
+                "127.0.0.1", 0, 16, 16, webRoot.toString(), cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
     }
 
     @Test
@@ -1064,7 +1065,9 @@ class EngineServerTest {
                     "127.0.0.1",
                     blocker.getLocalPort(),
                     16,
-                    stateDir.resolve("web").toString());
+                    16,
+                    stateDir.resolve("web").toString(),
+                    cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, http, "1.0", null);
             Thread serverThread = runInBackground(server);
             waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));

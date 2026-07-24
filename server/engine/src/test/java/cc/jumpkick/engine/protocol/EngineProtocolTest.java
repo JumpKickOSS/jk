@@ -69,6 +69,14 @@ class EngineProtocolTest {
     }
 
     @Test
+    void status_ack_omits_mcp_url_when_mcp_disabled() {
+        String json = EngineProtocol.statusAck(
+                "1.2.3", 42, 1_000, 3, 0, false, 1, 2, 3, -1, -1, "http://127.0.0.1:8910/", null, false, 3, 0);
+        assertThat(Jsonl.str(json, "httpUrl")).isEqualTo("http://127.0.0.1:8910/");
+        assertThat(Jsonl.str(json, "mcpUrl")).isNull();
+    }
+
+    @Test
     void mcp_url_strips_trailing_slashes() {
         assertThat(EngineProtocol.mcpUrlFromHttp("http://127.0.0.1:8910/"))
                 .isEqualTo("http://127.0.0.1:8910/mcp");

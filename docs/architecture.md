@@ -101,6 +101,19 @@ jk engine start
 Relative `web-root` values resolve against `~/.jk`. Only files present under the root are
 overridden; anything missing still falls through to the jar.
 
+### HTTP server knobs
+
+`~/.jk/config.toml`; env wins over the file (`env > file > default`):
+
+| Config key | Env | Default | Meaning |
+|---|---|---|---|
+| `[http] max-concurrent-requests` | `JK_HTTP_MAX_CONCURRENT_REQUESTS` | `16` (`0` = core count) | RPC admission cap |
+| `[http] max-event-streams` | `JK_HTTP_MAX_EVENT_STREAMS` | `16` (min `1`) | Web-UI SSE budget (`GET /api/events`) |
+| `[mcp] enabled` | `JK_MCP_ENABLED` | `true` | MCP surface toggle — `false` 404s `/mcp`; the HTTP server and dashboard stay up |
+| `[mcp] max-event-streams` | `JK_MCP_MAX_EVENT_STREAMS` | `16` (min `1`) | MCP SSE budget (`GET /mcp` event streams) |
+
+`[http] enabled = false` still disables the whole server, MCP included.
+
 Transport: Unix domain socket on macOS/Linux; loopback TCP + shared-secret token on Windows.
 Protocol is internal (same-version client/server), JSONL (one JSON object per line).
 

@@ -41,17 +41,19 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Pause between bind attempts; {@code BIND_ATTEMPTS ×} this bounds the wait (~5s). */
     private static final long BIND_RETRY_MILLIS = 200;
 
-    /**
-     * Cap on concurrent long-lived SSE streams. A separate budget from RPC admission — an open
-     * stream holds its slot for the connection's life, so streams drawing from the RPC semaphore
-     * would let {@code maxConcurrentRequests} EventSource tabs starve every other endpoint.
-     */
-    private static final int MAX_SSE_STREAMS = 32;
-
     private final JkHttpConfig config;
     private final StaticContent staticContent;
     private final Semaphore admission;
-    private final Semaphore sseAdmission = new Semaphore(MAX_SSE_STREAMS);
+
+    /**
+     * Budgets for concurrent long-lived SSE streams — separate from RPC admission (an open stream
+     * holds its slot for the connection's life, so streams drawing from the RPC semaphore would let
+     * {@code maxConcurrentRequests} EventSource tabs starve every other endpoint) and from each
+     * other (a runaway agent must not evict the dashboard, or vice versa).
+     */
+    private final Semaphore webSse;
+
+    private final Semaphore mcpSse;
     private final Path webRoot;
     private final Path tokenFile;
     private final Path logFile;
@@ -107,6 +109,8 @@ public final class HttpEngineServer implements AutoCloseable {
         this.config = config;
         this.staticContent = new StaticContent(webRoot, version);
         this.admission = new Semaphore(config.effectiveMaxConcurrentRequests());
+        this.webSse = new Semaphore(config.maxEventStreams());
+        this.mcpSse = new Semaphore(config.mcp().maxEventStreams());
         this.webRoot = webRoot;
         this.tokenFile = tokenFile;
         this.logFile = logFile;
@@ -119,13 +123,16 @@ public final class HttpEngineServer implements AutoCloseable {
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
-        this.mcp = new McpHandler(
-                status,
-                jobs,
-                this::projectMap,
-                () -> journal.rawRecords(200),
-                version,
-                progressTokens);
+        // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
+        this.mcp = config.mcp().enabled()
+                ? new McpHandler(
+                        status,
+                        jobs,
+                        this::projectMap,
+                        () -> journal.rawRecords(200),
+                        version,
+                        progressTokens)
+                : null;
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
@@ -212,6 +219,11 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
 
+    /** True when the MCP surface is mounted ({@code [mcp] enabled}). */
+    public boolean mcpEnabled() {
+        return mcp != null;
+    }
+
     /** The served base URL, e.g. {@code http://127.0.0.1:8910/} — actual bound port, so 0 works. */
     public String url() {
         HttpServer s = server;
@@ -264,10 +276,16 @@ public final class HttpEngineServer implements AutoCloseable {
                 return;
             }
             boolean sse = isEventStreamRequest(exchange);
-            Semaphore gate = sse ? sseAdmission : admission;
+            boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
+            Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
             if (!gate.tryAcquire()) {
                 exchange.getResponseHeaders().set("Retry-After", "1");
-                sendText(exchange, 503, sse ? "too many event streams\n" : "engine busy\n");
+                sendText(
+                        exchange,
+                        503,
+                        !sse
+                                ? "engine busy\n"
+                                : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
                 return;
             }
             try {
@@ -288,7 +306,11 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if (path.equals("/mcp") || path.startsWith("/mcp/")) {
+        if (isMcpPath(path)) {
+            if (mcp == null) {
+                sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
+                return;
+            }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
                     && !tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"))) {
@@ -428,7 +450,11 @@ public final class HttpEngineServer implements AutoCloseable {
         if (!exchange.getRequestMethod().equals("GET")) return false;
         String path = exchange.getRequestURI().getPath();
         if (path.equals("/api/events")) return true;
-        return (path.equals("/mcp") || path.startsWith("/mcp/")) && acceptsEventStream(exchange);
+        return isMcpPath(path) && acceptsEventStream(exchange);
+    }
+
+    private static boolean isMcpPath(String path) {
+        return path.equals("/mcp") || path.startsWith("/mcp/");
     }
 
     private static boolean acceptsEventStream(HttpExchange exchange) {
@@ -510,9 +536,16 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
-                // url() already ends with /; avoid //mcp in status/mcpUrl.
-                .put("mcpUrl", url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
+                // url() already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
+                .put(
+                        "mcpUrl",
+                        config.mcp().enabled() && url() != null
+                                ? url().replaceAll("/+$", "") + "/mcp"
+                                : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
+                .put("maxEventStreams", config.maxEventStreams())
+                .put("mcpEnabled", config.mcp().enabled())
+                .put("mcpMaxEventStreams", config.mcp().maxEventStreams())
                 .put("webRoot", webRoot.toString())
                 .toString();
         sendJson(exchange, 200, body);
@@ -872,8 +905,13 @@ public final class HttpEngineServer implements AutoCloseable {
         return admission;
     }
 
-    /** Test seam: the SSE budget, so over-cap stream rejection is deterministically testable. */
-    Semaphore sseAdmission() {
-        return sseAdmission;
+    /** Test seam: the web-UI SSE budget, so over-cap stream rejection is deterministically testable. */
+    Semaphore webSseAdmission() {
+        return webSse;
+    }
+
+    /** Test seam: the MCP SSE budget — independent of {@link #webSseAdmission()}. */
+    Semaphore mcpSseAdmission() {
+        return mcpSse;
     }
 }
