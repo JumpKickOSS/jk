@@ -24,10 +24,11 @@ default.
 jk build    # target/<name>-<version>.jar (or layout default)
 ```
 
-## Assembly jar
+## Assembly / fat jar (`*-all.jar`)
 
 ```toml
 [application]
+# main is optional — library fat jars need no entry point
 main = "com.example.App"
 assembly = true
 ```
@@ -35,6 +36,7 @@ assembly = true
 ```bash
 jk assembly   # alias: jk assemble — errors with a one-line fix if assembly is off
 jk build      # same packaging graph when assembly = true
+# → target/<name>-<version>-all.jar  (fat classifier; not -assembly.jar)
 ```
 
 ### One-off CLI override (`--fat` / `--shrink`)
@@ -50,7 +52,7 @@ jk assembly --fat --write-config      # fat + assembly = true
 
 | Flag | Effect |
 |---|---|
-| `--fat` | Override packaging to classic assembly jar for **this invocation** |
+| `--fat` | Override packaging to classic fat jar (`*-all.jar`) for **this invocation** |
 | `--shrink` | Override packaging to R8 shrink packager for **this invocation** |
 | `--write-config` | With `--fat` or `--shrink`, surgically edit `[application].assembly` in `jk.toml` (creates the table if missing; leaves `main` and other keys alone). Never rewrites the whole file. |
 
@@ -76,8 +78,9 @@ Sample: [examples/assembly-app/](examples/assembly-app/).
 
 ```toml
 [application]
+# main is optional (library shrink jars keep module classes without an entry point)
 main = "com.example.App"
-assembly = "shrink"   # R8 over classes + runtime closure → small fat jar
+assembly = "shrink"   # R8 over classes + runtime closure → small fat jar (*-all.jar path)
 ```
 
 Optional keep rules / R8 version still live under `[shrink]` when you need them:
