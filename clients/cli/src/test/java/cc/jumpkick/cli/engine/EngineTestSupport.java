@@ -72,9 +72,9 @@ public final class EngineTestSupport {
         Path cwd = Path.of(System.getProperty("user.dir", "."));
         // clients/cli cwd when running under Gradle; monorepo root under pure-jk module tests.
         for (Path cand : List.of(
-                cwd.resolve("server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"),
-                cwd.resolve("../server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"),
-                cwd.resolve("../../server/engine/target/jk-engine-" + JkVersion.VERSION + "-assembly.jar"))) {
+                cwd.resolve("server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"),
+                cwd.resolve("../server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"),
+                cwd.resolve("../../server/engine/target/jk-engine-" + JkVersion.VERSION + "-all.jar"))) {
             if (Files.isRegularFile(cand)) return cand.normalize();
         }
         return null;

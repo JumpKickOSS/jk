@@ -36,7 +36,7 @@ assembly = true
 ```bash
 jk assembly   # alias: jk assemble — errors with a one-line fix if assembly is off
 jk build      # same packaging graph when assembly = true
-# → target/<name>-<version>-all.jar  (fat classifier; not -assembly.jar)
+# → target/<name>-<version>-all.jar
 ```
 
 ### One-off CLI override (`--fat` / `--shrink`)

@@ -243,10 +243,7 @@ public final class BuildLayout {
         return artifactDir().resolve(artifact + "-" + version + ".jar");
     }
 
-    /**
-     * {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included).
-     * Filename uses the conventional {@code -all} classifier (not {@code -assembly}).
-     */
+    /** {@code <artifactDir>/<artifact>-<version>-all.jar} — the fat / shaded jar (deps included). */
     public Path assemblyJar() {
         return artifactDir().resolve(artifact + "-" + version + "-all.jar");
     }
