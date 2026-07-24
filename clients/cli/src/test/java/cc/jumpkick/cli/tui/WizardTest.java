@@ -25,7 +25,11 @@ import org.junit.jupiter.api.Test;
  */
 class WizardTest {
 
-    private static final long STEP_TIMEOUT_MS = 200L;
+    /**
+     * Wizard.run drains stdin for ~40ms on entry ({@code drainInput}). Keys written before that
+     * are discarded — always {@link #waitReady} after submit before typing.
+     */
+    private static final long READY_POLL_MS = 2L;
 
     private record Harness(DumbTerminal terminal, PipedOutputStream input, ByteArrayOutputStream output) {}
 
@@ -51,6 +55,21 @@ class WizardTest {
         }
     }
 
+    /** Wait until the wizard has drawn {@code prompt} (post-drain). */
+    private static void waitReady(Harness h, String prompt) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (System.nanoTime() < deadline) {
+            if (h.output().toString(StandardCharsets.UTF_8).contains(prompt)) return;
+            Thread.sleep(READY_POLL_MS);
+        }
+        throw new TimeoutException("wizard never showed: " + prompt);
+    }
+
+    /** Brief settle between keystrokes that must be processed in order (navigation). */
+    private static void tick() throws InterruptedException {
+        Thread.sleep(10);
+    }
+
     @Test
     void input_step_records_typed_string() throws Exception {
         var h = newHarness();
@@ -62,7 +81,7 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Project name");
             write(h.input(), (byte) 'f', (byte) 'o', (byte) 'o', (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("foo");
@@ -87,7 +106,7 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Language");
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("lang")).isEqualTo("java");
@@ -112,9 +131,9 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Language");
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("lang")).isEqualTo("kotlin");
@@ -139,16 +158,16 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Dependencies");
             // Select first (lombok), move down twice, select third (commons-io), enter.
             write(h.input(), (byte) 0x20);
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x20);
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.getList("deps")).containsExactly("lombok", "commons-io");
@@ -172,9 +191,9 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Dependencies");
             write(h.input(), (byte) 'a');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.getList("deps")).containsExactly("lombok", "guava");
@@ -197,9 +216,9 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             write(h.input(), (byte) 'b', (byte) 'a', (byte) 'r', (byte) 0x0A);
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Hello"); // OutputStep preview line (ANSI may wrap)
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("bar");
@@ -221,7 +240,7 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             write(h.input(), (byte) 0x03);
             var answers = await(result);
             assertThat(answers).isEmpty();
@@ -252,7 +271,7 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Mode");
             // Accept default ("lib") and let the wizard skip the conditional step.
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
@@ -275,7 +294,7 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             write(h.input(), (byte) 'a', (byte) 'b', (byte) 'c', (byte) 0x7F, (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("ab");
@@ -298,10 +317,10 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             // Right-arrow then Enter → placeholder becomes the answer.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("widget");
@@ -324,10 +343,10 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             // Realize "widget", then append "-2" → final = "widget-2".
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
             write(h.input(), (byte) '-', (byte) '2', (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("widget-2");
@@ -352,10 +371,10 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             // Step 1: type "widget", Enter → name = "widget".
             write(h.input(), (byte) 'w', (byte) 'i', (byte) 'd', (byte) 'g', (byte) 'e', (byte) 't', (byte) 0x0A);
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Artifact");
             // Step 2: just Enter → artifact buffer was pre-seeded with "widget",
             // and Enter records the buffer contents (defaultValue stays empty).
             write(h.input(), (byte) 0x0A);
@@ -380,10 +399,10 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             // Tab then Enter → placeholder becomes the answer.
             write(h.input(), (byte) 0x09);
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("widget");
@@ -409,14 +428,14 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Pick a fruit");
             // Down 3× from apple(0) → custom row (index 3), type "mango", Enter.
             for (int i = 0; i < 3; i++) {
                 write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-                Thread.sleep(50);
+                tick();
             }
             write(h.input(), (byte) 'm', (byte) 'a', (byte) 'n', (byte) 'g', (byte) 'o');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("fruit")).isEqualTo("mango");
@@ -442,10 +461,10 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Pick a fruit");
             // Down once → banana, Enter → the choice id, not custom text.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("fruit")).isEqualTo("banana");
@@ -469,16 +488,17 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Pick a fruit");
             // Move to the (empty) custom row and press Enter — must NOT advance.
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
+            tick();
             assertThat(result.isDone()).isFalse();
             // Now type a value and Enter — it commits the typed text.
             write(h.input(), (byte) 'k', (byte) 'i', (byte) 'w', (byte) 'i');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("fruit")).isEqualTo("kiwi");
@@ -504,16 +524,16 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Pick fruits");
             // Space → check apple(0); Down 3× → custom row; type "kiwi"; Enter.
             write(h.input(), (byte) 0x20);
-            Thread.sleep(50);
+            tick();
             for (int i = 0; i < 3; i++) {
                 write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'B');
-                Thread.sleep(50);
+                tick();
             }
             write(h.input(), (byte) 'k', (byte) 'i', (byte) 'w', (byte) 'i');
-            Thread.sleep(50);
+            tick();
             write(h.input(), (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.getList("fruit")).containsExactly("apple", "kiwi");
@@ -536,9 +556,9 @@ class WizardTest {
         var exec = Executors.newSingleThreadExecutor();
         try {
             Future<Optional<Answers>> result = exec.submit(() -> wizard.run(h.terminal()));
-            Thread.sleep(STEP_TIMEOUT_MS);
+            waitReady(h, "Name");
             write(h.input(), (byte) 0x1B, (byte) '[', (byte) 'C');
-            Thread.sleep(STEP_TIMEOUT_MS);
+            tick();
             write(h.input(), (byte) 'h', (byte) 'i', (byte) 0x0A);
             var answers = await(result).orElseThrow();
             assertThat(answers.get("name")).isEqualTo("hi");

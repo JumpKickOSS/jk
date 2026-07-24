@@ -12,10 +12,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
-import org.junit.jupiter.api.Tag;
 
 @DisabledOnOs(OS.WINDOWS) // POSIX link/shim shapes; the Windows branch writes jkx.cmd instead.
-@Tag("integration")
 class JkxLinkTest {
 
     @TempDir

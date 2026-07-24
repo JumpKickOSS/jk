@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
 
 /**
  * The wrapper scripts are FROZEN (engine-versioning-plan §7): they may depend on exactly two
@@ -14,7 +13,6 @@ import org.junit.jupiter.api.Tag;
  * nothing else about jk. This test pins that contract so a template edit that reaches deeper
  * fails loudly.
  */
-@Tag("integration")
 class WrapperTemplateTest {
 
     private static String template(String name) throws Exception {

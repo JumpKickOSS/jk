@@ -27,9 +27,13 @@ jobs:
 
       # Real os.name — no forced Windows property. Covers JK-1011 TCP+token transport
       # on hardware (loopback) rather than under a simulated OS.
-      - name: Module tests
+      # Nightly: unit + integration for the OS-sensitive modules.
+      - name: Module unit + integration tests
         shell: bash
-        run: ./gradlew :core:test :wire:test :engine:test :cli:test --no-daemon
+        run: |
+          ./gradlew :core:test :wire:test :engine:test :cli:test \
+            :core:integrationTest :wire:integrationTest :engine:integrationTest :cli:integrationTest \
+            --no-daemon
 
       - name: Local install.ps1 (stub binary path)
         shell: pwsh
@@ -53,8 +57,11 @@ jobs:
           java-version: "25"
           cache: gradle
 
-      - name: Module tests
-        run: ./gradlew :core:test :wire:test :engine:test :cli:test --no-daemon
+      - name: Module unit + integration tests
+        run: |
+          ./gradlew :core:test :wire:test :engine:test :cli:test \
+            :core:integrationTest :wire:integrationTest :engine:integrationTest :cli:integrationTest \
+            --no-daemon
 
       - name: Thin-client smoke (no Graal)
         run: |

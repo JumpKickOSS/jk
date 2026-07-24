@@ -8,9 +8,7 @@ import cc.jumpkick.jdk.JdkVendor;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
 
-@Tag("integration")
 class NewJdkPlanTest {
 
     private static final int LTS = 25;

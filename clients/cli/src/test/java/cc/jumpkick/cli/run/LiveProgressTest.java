@@ -48,6 +48,7 @@ class LiveProgressTest {
 
     @Test
     void aggregate_context_applies_engine_snapshot_to_live_progress() {
+        LiveProgress.get().clear(); // parallel forks / prior class must not leak static %
         var cm = cc.jumpkick.cli.tui.CommandManager.pipeline(
                 new java.io.PrintStream(new java.io.ByteArrayOutputStream()), "Build", false);
         var agg = new AggregateContext(cm);

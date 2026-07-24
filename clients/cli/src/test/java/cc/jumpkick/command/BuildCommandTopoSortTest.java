@@ -11,13 +11,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
 
 /**
  * {@link BuildGraph#orderModules} ordering, with focus on the {@code [build].order-after}
  * build-order-only edges: they must affect order without being dependencies.
  */
-@Tag("integration")
 class BuildCommandTopoSortTest {
 
     private static JkBuild module(String name, String orderAfterToml) {
