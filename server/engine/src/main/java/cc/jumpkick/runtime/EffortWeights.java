@@ -303,11 +303,19 @@ public final class EffortWeights {
             int methods = in.estimatedTestCount();
             int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
             int staticTests = runTestsHierarchical(methods, classes);
-            // Prefer method count for the learned rate scale; fall back to class count units.
-            int unitCount = methods > 0 ? methods : Math.max(1, classes);
-            runTests = testWillRun
-                    ? learned(timings, mod, "run-tests", unitCount, staticTests, projectDirs)
-                    : SKIP;
+            // JK-1155: prefer method-count × run-tests rate; fall back to class-count ×
+            // run-tests-class rate when method annotations are not found.
+            if (testWillRun) {
+                if (methods > 0) {
+                    runTests = learned(timings, mod, "run-tests", methods, staticTests, projectDirs);
+                } else if (classes > 0) {
+                    runTests = learned(timings, mod, "run-tests-class", classes, staticTests, projectDirs);
+                } else {
+                    runTests = learned(timings, mod, "run-tests", 1, staticTests, projectDirs);
+                }
+            } else {
+                runTests = SKIP;
+            }
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
             pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", PACKAGE_JAR);

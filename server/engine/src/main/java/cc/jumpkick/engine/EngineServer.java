@@ -3599,7 +3599,20 @@ public final class EngineServer implements AutoCloseable {
                 steps.add(new BuildMetrics.StepSample(m.dir(), p.name(), p.status(), p.millis()));
             }
         }
-        return new BuildMetrics.Outcome(r.kind(), r.dir(), r.coord(), r.success(), r.cancelled(), r.millis(), steps);
+        // JK-1156: shape-aware metrics key so rebuild vs incremental priors stay separate.
+        String kind = r.kind() == null ? "build" : r.kind();
+        String dir = r.dir() == null ? "" : r.dir();
+        if ("build".equals(kind) || kind.startsWith("build")) {
+            boolean rebuild = SessionContext.current().config().rebuildOr(false)
+                    || SessionContext.current().config().forceOr(false);
+            int dirty = r.modules() == null ? 0 : r.modules().size();
+            // Single-module pipeline records often have empty modules list — treat as 1 when steps ran.
+            if (dirty == 0 && r.steps() != null && !r.steps().isEmpty()) dirty = 1;
+            var shape = new BuildService.HistoryShape(rebuild, dirty);
+            kind = shape.kind();
+            if (!dir.isEmpty()) dir = shape.dirKey(Path.of(dir));
+        }
+        return new BuildMetrics.Outcome(kind, dir, r.coord(), r.success(), r.cancelled(), r.millis(), steps);
     }
 
     /**

@@ -179,6 +179,19 @@ class CommandManagerTest {
     }
 
     @Test
+    void header_shows_module_remaining_work_counter() {
+        // JK-1157: modulesComplete/modulesTotal next to the wall clock.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.progress(50, 100);
+        cm.setEtaEstimate(60_000);
+        cm.setModuleProgress(2, 8);
+        String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
+        assertThat(header).contains("2/8");
+        assertThat(header).contains("56s");
+    }
+
+    @Test
     void goal_header_bar_and_phase_chain() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.nerdfont = false;

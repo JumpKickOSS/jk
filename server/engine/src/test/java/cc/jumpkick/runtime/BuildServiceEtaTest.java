@@ -3,6 +3,8 @@ package cc.jumpkick.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
+
 import org.junit.jupiter.api.Test;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
@@ -49,5 +51,16 @@ class BuildServiceEtaTest {
         BuildMetrics.Stats host = ok(10, 4500, 1000, 12_000);
         assertThat(BuildService.applyHistoryPrior(0, host)).isEqualTo(4500);
         assertThat(BuildService.applyHistoryPrior(3000, host)).isEqualTo(3000);
+    }
+
+    @Test
+    void history_shape_keys_separate_rebuild_from_incremental() {
+        var inc = new BuildService.HistoryShape(false, 4);
+        var reb = new BuildService.HistoryShape(true, 200);
+        assertThat(inc.kind()).isEqualTo("build");
+        assertThat(reb.kind()).isEqualTo("build:rebuild");
+        assertThat(inc.dirKey(Path.of("/ws"))).isEqualTo("/ws#d4");
+        assertThat(reb.dirKey(Path.of("/ws"))).isEqualTo("/ws#d200");
+        assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws"))).isEqualTo("/ws");
     }
 }

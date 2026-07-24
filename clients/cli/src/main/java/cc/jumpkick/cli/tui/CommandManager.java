@@ -89,6 +89,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long denominator;
     private double peakFraction; // monotonic-display floor: the bar never renders below this
     private long etaEstimateMs; // total predicted build wall-clock (the jk explain figure); 0 = no countdown
+    private int modulesComplete;
+    private int modulesTotal; // 0 = hide module remaining (JK-1157)
     private long finishSeq;
 
     private final Map<String, Row> rows = new LinkedHashMap<>();
@@ -256,6 +258,17 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     public void setEtaEstimate(long totalMillis) {
         synchronized (lock) {
             this.etaEstimateMs = Math.max(0, totalMillis);
+        }
+    }
+
+    /**
+     * Workspace module progress for the header secondary remaining-work display (JK-1157).
+     * {@code total <= 0} hides the module counter.
+     */
+    public void setModuleProgress(int complete, int total) {
+        synchronized (lock) {
+            this.modulesComplete = Math.max(0, complete);
+            this.modulesTotal = Math.max(0, total);
         }
     }
 
@@ -857,6 +870,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 .append(Theme.colorize("·", dim))
                 .append(' ')
                 .append(Theme.colorize(clockStr, Theme.active().warning()));
+        // JK-1157: remaining-work module counter (run-wide, not per-module local).
+        if (modulesTotal > 0) {
+            String mods = modulesComplete + "/" + modulesTotal;
+            h.append(' ')
+                    .append(Theme.colorize("·", dim))
+                    .append(' ')
+                    .append(Theme.colorize(mods, dim));
+        }
         return h.toString();
     }
 

@@ -324,9 +324,12 @@ public final class BuildService {
                     serial,
                     parallelTests,
                     dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
-            // The same whole-build history anchor the live seed uses — an explain on a wiped cache
-            // reports something grounded in this project's real past instead of a static guess.
-            return applyHistoryPrior(base, okHistory(entryDir));
+            // Shape-aware prior (JK-1156): explain --rebuild uses rebuild history when set.
+            HistoryShape shape = new HistoryShape(
+                    SessionContext.current().config().rebuildOr(false)
+                            || SessionContext.current().config().forceOr(false),
+                    costs.size());
+            return applyHistoryPrior(base, okHistory(entryDir, shape));
         } catch (RuntimeException e) {
             return 0; // never fail explain over the estimate
         }
@@ -609,6 +612,7 @@ public final class BuildService {
                             e.getKey(), graph.edges().getOrDefault(e.getKey(), Set.of()), p.weight(), testW));
         }
         Perf.end("ws-eta-costs", teta);
+        // JK-1156: seed with known dirty count so rebuild vs incremental priors separate.
         listener.onEtaEstimate(seedEta(
                 req.entryDir(),
                 new ArrayList<>(costByDir.values()),
@@ -616,7 +620,11 @@ public final class BuildService {
                 concurrency,
                 parallelTests,
                 req.cache(),
-                req.jdksDir()));
+                req.jdksDir(),
+                new HistoryShape(
+                        SessionContext.current().config().rebuildOr(false)
+                                || SessionContext.current().config().forceOr(false),
+                        plans.size())));
 
         // Workspace artifact links for the whole graph (clean modules still own jars from prior builds).
         Map<Path, Path> wsLinks = computeWorkspaceLinks(moduleDirs, req.entryDir());
@@ -709,7 +717,7 @@ public final class BuildService {
                 listener.onPreflight(
                         "plan", prepared, nPrepare, "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
                 if (p == null) throw new PrepareFailed(u.coord(), u.dir());
-                p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
+                p.pipeline().addListener(timingsRecorder(p, timingSamples));
                 plans.put(u.dir(), p);
             }
             return plans;
@@ -723,7 +731,7 @@ public final class BuildService {
                     () -> {
                         ModulePlan p = prepareModule(u, req, moduleDirs, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
-                        p.pipeline().addListener(new StepTimingsRecorder(u.dir().toString(), timingSamples));
+                        p.pipeline().addListener(timingsRecorder(p, timingSamples));
                         plans.put(u.dir(), p);
                         int n = prepared.incrementAndGet();
                         synchronized (preflightLock) {
@@ -789,8 +797,20 @@ public final class BuildService {
             boolean parallelTests,
             Path cache,
             Path jdksDir) {
+        return seedEta(entryDir, costs, dirs, concurrency, parallelTests, cache, jdksDir, historyShape());
+    }
+
+    private static long seedEta(
+            Path entryDir,
+            List<EffortWeights.ModuleCost> costs,
+            Set<Path> dirs,
+            int concurrency,
+            boolean parallelTests,
+            Path cache,
+            Path jdksDir,
+            HistoryShape shape) {
         if (costs == null || costs.isEmpty()) {
-            return applyHistoryPrior(0, okHistory(entryDir));
+            return applyHistoryPrior(0, okHistory(entryDir, shape));
         }
         StepTimings timings = StepTimings.load(cache);
         java.util.function.Predicate<Path> warm = dir -> timings.hasTimingsFor(List.of(dir.toString()));
@@ -805,7 +825,7 @@ public final class BuildService {
                 false,
                 parallelTests,
                 dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
-        return applyHistoryPrior(base, okHistory(entryDir));
+        return applyHistoryPrior(base, okHistory(entryDir, shape));
     }
 
     /**
@@ -825,15 +845,60 @@ public final class BuildService {
     }
 
     /**
-     * Successful {@code build}-kind invocation stats: project path first, then host-global tier
-     * ({@code dir=""}). Kind-precise so {@code jk test} history never stretches build ETAs.
+     * Successful build invocation stats with JK-1156 shape-aware keys.
+     *
+     * <p>Lookup order: exact shaped key → bare project dir → host {@code dir=""} for that shape's
+     * kind → host bare {@code build}. Kind is {@code build} or {@code build:rebuild} so full
+     * rebuild averages do not pollute incremental ETAs (and vice versa).
      */
     static BuildMetrics.Stats okHistory(Path entryDir) {
-        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        if (entryDir != null) {
-            var project = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);
-            if (project.isPresent() && project.get().count() > 0) return project.get();
+        return okHistory(entryDir, historyShape());
+    }
+
+    /** Resolve history shape from the ambient session (rebuild/force + dirty-count hint). */
+    static HistoryShape historyShape() {
+        var cfg = SessionContext.current().config();
+        boolean rebuild = cfg.rebuildOr(false) || cfg.forceOr(false);
+        return new HistoryShape(rebuild, -1);
+    }
+
+    /**
+     * @param rebuild whether this run is a force/rebuild (full work)
+     * @param dirtyModules dirty module count, or {@code -1} when unknown at seed time
+     */
+    public record HistoryShape(boolean rebuild, int dirtyModules) {
+        public String kind() {
+            return rebuild ? "build:rebuild" : "build";
         }
+
+        /** Metrics dir key: {@code path} or {@code path#dN} when dirty count known. */
+        public String dirKey(Path entryDir) {
+            if (entryDir == null) return "";
+            String base = entryDir.toString();
+            if (dirtyModules >= 0) return base + "#d" + dirtyModules;
+            return base;
+        }
+    }
+
+    static BuildMetrics.Stats okHistory(Path entryDir, HistoryShape shape) {
+        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        HistoryShape s = shape == null ? new HistoryShape(false, -1) : shape;
+        String kind = s.kind();
+        if (entryDir != null) {
+            String shaped = s.dirKey(entryDir);
+            var exact = metrics.invocation(kind, shaped).map(BuildMetrics.Entry::ok);
+            if (exact.isPresent() && exact.get().count() > 0) return exact.get();
+            // Same path, any dirty-count for this kind.
+            var bare = metrics.invocation(kind, entryDir.toString()).map(BuildMetrics.Entry::ok);
+            if (bare.isPresent() && bare.get().count() > 0) return bare.get();
+            // Fall back to plain "build" for the path (pre-1156 rows).
+            if (!"build".equals(kind)) {
+                var legacy = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);
+                if (legacy.isPresent() && legacy.get().count() > 0) return legacy.get();
+            }
+        }
+        var hostShaped = metrics.invocation(kind, "").map(BuildMetrics.Entry::ok);
+        if (hostShaped.isPresent() && hostShaped.get().count() > 0) return hostShaped.get();
         return metrics.invocation("build", "").map(BuildMetrics.Entry::ok).orElse(BuildMetrics.Stats.EMPTY);
     }
 
@@ -898,6 +963,14 @@ public final class BuildService {
         }
         // Dirty ⇒ not fullyCached for calibration / skip-rate sampling.
         return new ModulePlan(u.dir(), u.coord(), pipeline, weight, false, req.cache());
+    }
+
+    /** JK-1155: learn run-tests rates from actual TestSummary counts when present. */
+    private static StepTimingsRecorder timingsRecorder(ModulePlan p, List<StepTimings.Sample> timingSamples) {
+        return new StepTimingsRecorder(
+                p.dir().toString(),
+                timingSamples,
+                () -> p.pipeline().get(BuildPipelines.TEST_RESULT).orElse(null));
     }
 
     /** Run one module's pipeline, attaching the caller's per-module listener; map the result to an outcome. */

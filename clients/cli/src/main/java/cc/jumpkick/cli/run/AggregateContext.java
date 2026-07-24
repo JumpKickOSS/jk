@@ -34,6 +34,10 @@ public final class AggregateContext {
     public void applySnapshot(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
         if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
+        // JK-1157: run-wide module remaining next to the wall-clock ETA.
+        if (snap.modulesTotal() > 0) {
+            cm.setModuleProgress(snap.modulesComplete(), snap.modulesTotal());
+        }
         LiveProgress.get().apply(snap);
     }
 
