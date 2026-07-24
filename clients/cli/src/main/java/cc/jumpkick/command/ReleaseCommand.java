@@ -62,9 +62,7 @@ public final class ReleaseCommand implements CliCommand {
         return List.of(
                 Opt.value("<dir>", "Output directory. Default: target/dist (workspace or module).", "--out"),
                 Opt.flag("Skip tests during the build step.", "--skip-tests"),
-                Opt.flag(
-                        "Do not run `jk native` when no native CLI binary is present yet.",
-                        "--skip-native"),
+                Opt.flag("Do not run `jk native` when no native CLI binary is present yet.", "--skip-native"),
                 Opt.flag("Print the plan; build nothing and write nothing.", "--dry-run"),
                 Opt.value(
                         "<sel>",
@@ -103,15 +101,13 @@ public final class ReleaseCommand implements CliCommand {
             CliOutput.out("  out:         " + out);
             CliOutput.out("  skip-tests:  " + skipTests);
             CliOutput.out("  skip-native: " + skipNative);
-            CliOutput.out(
-                    "  client:      native CLI preferred"
-                            + (nativeBin != null
-                                    ? " (found " + nativeBin + ")"
-                                    : skipNative
-                                            ? " (none yet; will stage running jk)"
-                                            : " (will try `jk native` if eligible, else running jk)"));
-            CliOutput.out("  engine:      JVM assembly"
-                    + (engineDir != null ? " from " + engineDir : " (none found)"));
+            CliOutput.out("  client:      native CLI preferred"
+                    + (nativeBin != null
+                            ? " (found " + nativeBin + ")"
+                            : skipNative
+                                    ? " (none yet; will stage running jk)"
+                                    : " (will try `jk native` if eligible, else running jk)"));
+            CliOutput.out("  engine:      JVM assembly" + (engineDir != null ? " from " + engineDir : " (none found)"));
             CliOutput.out("  cli:         " + (cliDir != null ? cliDir : "(none found)"));
             CliOutput.out("  then:        jk plugin install-local");
             return 0;
@@ -180,12 +176,12 @@ public final class ReleaseCommand implements CliCommand {
                         + clientBin
                         + ")"));
         if (!nativeClient) {
-            CliOutput.out(
-                    "  tip: run `jk native --skip-tests` then `jk release` again for a production native CLI");
+            CliOutput.out("  tip: run `jk native --skip-tests` then `jk release` again for a production native CLI");
         }
 
         CliOutput.out("");
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Release", "distribution ready at " + PathDisplay.styledRaw(out)));
+        CliOutput.out(
+                cc.jumpkick.cli.tui.CommandWedge.ok("Release", "distribution ready at " + PathDisplay.styledRaw(out)));
         CliOutput.out("  next: ./install.sh " + out.resolve("jk"));
         CliOutput.out("    or: jk self materialize " + out.resolve("jk") + " " + stagedEngine);
         return 0;
@@ -273,7 +269,8 @@ public final class ReleaseCommand implements CliCommand {
     }
 
     private static boolean isCli(JkBuild b) {
-        return "cc.jumpkick.cli.Jk".equals(b.mainClass()) || "jk-cli".equals(b.project().name());
+        return "cc.jumpkick.cli.Jk".equals(b.mainClass())
+                || "jk-cli".equals(b.project().name());
     }
 
     private static boolean isNativeEligible(Path cliDir) {
@@ -295,10 +292,9 @@ public final class ReleaseCommand implements CliCommand {
         Path target = engineDir.resolve("target");
         if (!Files.isDirectory(target)) return null;
         try (var stream = Files.list(target)) {
-            return stream
-                    .filter(p -> {
+            return stream.filter(p -> {
                         String n = p.getFileName().toString();
-                        return n.endsWith("-assembly.jar") && n.contains("engine");
+                        return n.endsWith("-all.jar") && n.contains("engine");
                     })
                     .findFirst()
                     .orElse(null);
@@ -324,7 +320,10 @@ public final class ReleaseCommand implements CliCommand {
         try {
             return Files.isSameFile(nativeBin, clientBin);
         } catch (IOException e) {
-            return nativeBin.toAbsolutePath().normalize().equals(clientBin.toAbsolutePath().normalize());
+            return nativeBin
+                    .toAbsolutePath()
+                    .normalize()
+                    .equals(clientBin.toAbsolutePath().normalize());
         }
     }
 
@@ -341,8 +340,7 @@ public final class ReleaseCommand implements CliCommand {
         Path target = cliDir.resolve("target");
         if (Files.isDirectory(target)) {
             try (var stream = Files.walk(target, 3)) {
-                return stream
-                        .filter(Files::isRegularFile)
+                return stream.filter(Files::isRegularFile)
                         .filter(p -> {
                             String n = p.getFileName().toString();
                             return n.equals("jk") || n.equals("jk-cli");

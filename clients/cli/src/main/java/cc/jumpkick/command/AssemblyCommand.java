@@ -97,21 +97,7 @@ public final class AssemblyCommand implements CliCommand {
             }
         }
 
-        if (overrideMode != null) {
-            // CLI wins over jk.toml for this process/session (also rides the engine wire).
-            SessionContext.install(SessionContext.current()
-                    .withAssemblyOverride(overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
-            if (!writeConfig) {
-                String modeLabel = overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink (R8)" : "fat";
-                CliOutput.err("""
-                        jk assembly: one-off packaging override — %s for this run only
-                          (not written to jk.toml; action cache keys include the packaging mode)
-                          make it permanent: jk assembly --%s --write-config
-                        """.formatted(modeLabel, overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat")
-                        .stripIndent()
-                        .trim());
-            }
-        } else {
+        if (overrideMode == null) {
             JkBuild project = JkBuildParser.parse(toml);
             if (!project.assemblyMode().isBundled()) {
                 CliOutput.err("""
@@ -135,7 +121,29 @@ public final class AssemblyCommand implements CliCommand {
                         """.stripIndent());
                 return Exit.CONFIG;
             }
+            return build.run(in);
         }
-        return build.run(in);
+
+        // One-off --fat/--shrink: install override for this invocation only, then restore. A sticky
+        // SessionContext.assemblyOverride leaked into later Jk.execute / engine requests in the same
+        // JVM (tests, multi-command tools) and forced R8 package-jar on library projects without main.
+        if (!writeConfig) {
+            String modeLabel = overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink (R8)" : "fat";
+            CliOutput.err("""
+                    jk assembly: one-off packaging override — %s for this run only
+                      (not written to jk.toml; action cache keys include the packaging mode)
+                      make it permanent: jk assembly --%s --write-config
+                    """.formatted(modeLabel, overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat")
+                    .stripIndent()
+                    .trim());
+        }
+        var previous = SessionContext.current();
+        SessionContext.install(
+                previous.withAssemblyOverride(overrideMode == JkBuild.AssemblyMode.SHRINK ? "shrink" : "fat"));
+        try {
+            return build.run(in);
+        } finally {
+            SessionContext.install(previous);
+        }
     }
 }

@@ -44,6 +44,16 @@ public final class HttpEngineServer implements AutoCloseable {
     private final JkHttpConfig config;
     private final StaticContent staticContent;
     private final Semaphore admission;
+
+    /**
+     * Budgets for concurrent long-lived SSE streams — separate from RPC admission (an open stream
+     * holds its slot for the connection's life, so streams drawing from the RPC semaphore would let
+     * {@code maxConcurrentRequests} EventSource tabs starve every other endpoint) and from each
+     * other (a runaway agent must not evict the dashboard, or vice versa).
+     */
+    private final Semaphore webSse;
+
+    private final Semaphore mcpSse;
     private final Path webRoot;
     private final Path tokenFile;
     private final Path logFile;
@@ -99,6 +109,8 @@ public final class HttpEngineServer implements AutoCloseable {
         this.config = config;
         this.staticContent = new StaticContent(webRoot, version);
         this.admission = new Semaphore(config.effectiveMaxConcurrentRequests());
+        this.webSse = new Semaphore(config.maxEventStreams());
+        this.mcpSse = new Semaphore(config.mcp().maxEventStreams());
         this.webRoot = webRoot;
         this.tokenFile = tokenFile;
         this.logFile = logFile;
@@ -111,13 +123,10 @@ public final class HttpEngineServer implements AutoCloseable {
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
-        this.mcp = new McpHandler(
-                status,
-                jobs,
-                this::projectMap,
-                () -> journal.rawRecords(200),
-                version,
-                progressTokens);
+        // null when [mcp] enabled=false — dispatch 404s every /mcp path before reaching it.
+        this.mcp = config.mcp().enabled()
+                ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
+                : null;
         api.register("GET", "/api/status", this::handleStatus);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
@@ -204,6 +213,11 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
 
+    /** True when the MCP surface is mounted ({@code [mcp] enabled}). */
+    public boolean mcpEnabled() {
+        return mcp != null;
+    }
+
     /** The served base URL, e.g. {@code http://127.0.0.1:8910/} — actual bound port, so 0 works. */
     public String url() {
         HttpServer s = server;
@@ -255,15 +269,23 @@ public final class HttpEngineServer implements AutoCloseable {
                 sendText(exchange, 421, "unrecognized Host header\n");
                 return;
             }
-            if (!admission.tryAcquire()) {
+            boolean sse = isEventStreamRequest(exchange);
+            boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
+            Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
+            if (!gate.tryAcquire()) {
                 exchange.getResponseHeaders().set("Retry-After", "1");
-                sendText(exchange, 503, "engine busy\n");
+                sendText(
+                        exchange,
+                        503,
+                        !sse
+                                ? "engine busy\n"
+                                : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
                 return;
             }
             try {
                 dispatch(exchange);
             } finally {
-                admission.release();
+                gate.release();
             }
         } catch (RuntimeException e) {
             // A handler bug must not kill the virtual thread silently mid-response; best-effort 500.
@@ -278,7 +300,11 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private void dispatch(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
-        if (path.equals("/mcp") || path.startsWith("/mcp/")) {
+        if (isMcpPath(path)) {
+            if (mcp == null) {
+                sendText(exchange, 404, "not found\n"); // [mcp] enabled = false
+                return;
+            }
             // MCP is agent-facing; always token-gated (even loopback) — same CSRF posture as POST /api/build.
             if (!tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))
                     && !tokenValid(queryParam(exchange.getRequestURI().getQuery(), "access_token"))) {
@@ -368,9 +394,7 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
         String hello =
-                filter == null
-                        ? ": mcp-events connected\n\n"
-                        : ": mcp-events connected requestId=" + filter + "\n\n";
+                filter == null ? ": mcp-events connected\n\n" : ": mcp-events connected requestId=" + filter + "\n\n";
         try (HttpEvents.Subscription subscription = events.subscribe(HttpEvents.FrameStyle.MCP, filter)) {
             out.write(hello.getBytes(StandardCharsets.UTF_8));
             out.flush();
@@ -408,6 +432,21 @@ public final class HttpEngineServer implements AutoCloseable {
             return bound != null ? bound : -1L;
         }
         return null;
+    }
+
+    /**
+     * Matches exactly the requests that enter a long-lived stream loop ({@link #handleEvents},
+     * {@link #handleMcpEvents}) — these draw from the SSE budget, not RPC admission.
+     */
+    private static boolean isEventStreamRequest(HttpExchange exchange) {
+        if (!exchange.getRequestMethod().equals("GET")) return false;
+        String path = exchange.getRequestURI().getPath();
+        if (path.equals("/api/events")) return true;
+        return isMcpPath(path) && acceptsEventStream(exchange);
+    }
+
+    private static boolean isMcpPath(String path) {
+        return path.equals("/mcp") || path.startsWith("/mcp/");
     }
 
     private static boolean acceptsEventStream(HttpExchange exchange) {
@@ -489,9 +528,12 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
-                // url() already ends with /; avoid //mcp in status/mcpUrl.
-                .put("mcpUrl", url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
+                // url() already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
+                .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
+                .put("maxEventStreams", config.maxEventStreams())
+                .put("mcpEnabled", config.mcp().enabled())
+                .put("mcpMaxEventStreams", config.mcp().maxEventStreams())
                 .put("webRoot", webRoot.toString())
                 .toString();
         sendJson(exchange, 200, body);
@@ -546,8 +588,9 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * SSE stream: event frames plus comment heartbeats. Holds its admission slot for the stream's
-     * life; dead-client write and {@link #close()} interrupt end it.
+     * SSE stream: event frames plus comment heartbeats. Holds an SSE-budget slot (not an RPC
+     * admission permit) for the stream's life; dead-client write and {@link #close()} interrupt
+     * end it.
      */
     private void handleEvents(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().set("Content-Type", "text/event-stream; charset=utf-8");
@@ -848,5 +891,15 @@ public final class HttpEngineServer implements AutoCloseable {
     /** Test seam: the admission gate, so a saturated-server {@code 503} is deterministically testable. */
     Semaphore admission() {
         return admission;
+    }
+
+    /** Test seam: the web-UI SSE budget, so over-cap stream rejection is deterministically testable. */
+    Semaphore webSseAdmission() {
+        return webSse;
+    }
+
+    /** Test seam: the MCP SSE budget — independent of {@link #webSseAdmission()}. */
+    Semaphore mcpSseAdmission() {
+        return mcpSse;
     }
 }

@@ -1,7 +1,7 @@
 # PRD: Libraries, BOMs, starters, and catalogs
 
 **Status:** accepted (design frozen for implementation)  
-**Audience:** implementers, importers, first-party plugins, kanban tickets  
+**Audience:** implementers, importers, first-party plugins, kanartist tickets (`JK-NNNN`) 
 **Related code:** `LibraryCatalog`, `LibraryRegistryClient`, `JkBuildParser` `[libraries]`,
 `[platform-dependencies]`, `GradleVersionCatalog` / `GradleImporter`, Boot plugin / `jk new --spring`
 
@@ -209,7 +209,7 @@ A **bundle** is a pure data expand: one name → N catalog short names (or GAs) 
 | Defined on | A library’s `[features]` (and consumer selection) | Vendor Maven module |
 | Activates | That library’s `optional = true` deps | Transitives via the starter’s POM |
 | Catalog role | None | Optional short name for the starter GA |
-| Status | Local + path cross-package (see kanban 1006); Maven-coord later | Core resolve model |
+| Status | Local + path cross-package (JK-1006); Maven-coord later | Core resolve model |
 
 Do not implement starters as feature tables in the library catalog.
 
@@ -293,7 +293,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 
 ## 13. Ticket references
 
-Kanban tickets should link this PRD when touching:
+kanartist tickets (`JK-NNNN`) should link this PRD when touching:
 
 - Library catalog layers, registry, `jk library *`
 - `[libraries]`, shorthand deps, `jk add` short names
@@ -302,8 +302,7 @@ Kanban tickets should link this PRD when touching:
 - Spring/Quarkus scaffold and “starter” UX wording
 - Optional bundles / `[versions]` designs
 
-Examples: [ticket-1008](../kanban/ticket-1008-gradle-version-catalog-import.md) (import fidelity),
-platform/BOM work, catalog registry curation.
+Examples: JK-1008 (import fidelity), platform/BOM work, catalog registry curation.
 
 ---
 

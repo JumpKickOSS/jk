@@ -104,7 +104,10 @@ public final class RepoGroup {
     private static List<List<String>> normalizeExclusive(int n, List<List<String>> raw) {
         List<List<String>> out = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
-            if (raw != null && i < raw.size() && raw.get(i) != null && !raw.get(i).isEmpty()) {
+            if (raw != null
+                    && i < raw.size()
+                    && raw.get(i) != null
+                    && !raw.get(i).isEmpty()) {
                 out.add(List.copyOf(raw.get(i)));
             } else {
                 out.add(List.of());

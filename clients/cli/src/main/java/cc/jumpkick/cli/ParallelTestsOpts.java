@@ -17,9 +17,7 @@ public final class ParallelTestsOpts {
     /** Flag definitions shared by {@code jk build}, {@code jk test}, and {@code jk explain}. */
     public static List<Opt> options() {
         return List.of(
-                Opt.flag(
-                        "Run modules' tests concurrently (cross-module). Default: on.",
-                        "--parallel-tests"),
+                Opt.flag("Run modules' tests concurrently (cross-module). Default: on.", "--parallel-tests"),
                 Opt.flag(
                         "Serialize modules' tests (opt out of default cross-module parallel).",
                         "--serial-tests",

@@ -107,7 +107,9 @@ class EngineAotCacheTest {
 
         String prev = System.getProperty("jk.aot.train");
         try {
-            System.clearProperty("jk.aot.train");
+            // Property wins over ambient JK_AOT_TRAIN=off (jk test workers / CI). Do not clear —
+            // env would keep training disabled.
+            System.setProperty("jk.aot.train", "on");
             assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, missing, false)))
                     .isEqualTo(AotMode.TRAIN);
             assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, present, false)))

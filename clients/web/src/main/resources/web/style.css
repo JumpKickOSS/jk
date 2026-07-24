@@ -123,16 +123,28 @@ header {
   position: sticky;
   top: 0;
   z-index: 10;
+  /* logo hangs below the bar — do not clip */
+  overflow: visible;
 }
 
-/* Square "jk" CRT mark, sized to the taller bar with a soft cyan halo. */
+/* Pixel karateka mark (jumpkick-logo.webp @ 200×200 source). CSS scale only — asset stays 200².
+ * 3× prior display height (44 → 132); floats over the bar and spills below (overflow: visible). */
 .logo {
-  height: 40px;
-  width: 40px;
+  height: 132px;
+  width: auto;
+  max-height: none;
   display: block;
   flex: none;
-  border-radius: var(--r-md);
-  box-shadow: 0 0 16px rgba(var(--cn-rgb), 0.22);
+  align-self: flex-start;
+  margin-top: 6px; /* slight top inset; most of the sprite hangs under the header */
+  /* transform only paints the sprite; layout still uses the full box — pull brand left */
+  margin-right: -18px;
+  position: relative;
+  z-index: 20;
+  object-fit: contain;
+  pointer-events: none;
+  transform: translate(-8px, -20px);
+  filter: drop-shadow(0 0 14px rgba(var(--cn-rgb), 0.35));
 }
 
 /* brand: JumpKick + version pill, over a "Build Engine" subtitle */
@@ -1075,7 +1087,13 @@ nav button:hover::before,
 
 /* ---- Help / About modal ---- */
 .modal.about { width: 460px; }
-.about-logo { width: 40px; height: 40px; border-radius: var(--r-md); box-shadow: 0 0 14px rgba(var(--cn-rgb), 0.25); }
+.about-logo {
+  width: auto;
+  height: 48px;
+  object-fit: contain;
+  flex: none;
+  filter: drop-shadow(0 0 10px rgba(var(--cn-rgb), 0.28));
+}
 .about-title { font: 700 15px var(--mono); color: var(--bright); }
 .about-sub { font: 600 11px var(--mono); color: var(--cn); }
 .about-dl {

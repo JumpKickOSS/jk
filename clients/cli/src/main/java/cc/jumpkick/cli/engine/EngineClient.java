@@ -81,38 +81,6 @@ public final class EngineClient {
             /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null (JK-1095). */
             String mcpUrl) {
 
-        /** Compat: older status without mcpUrl. */
-        public Status(
-                String version,
-                long pid,
-                long startedAtMillis,
-                int activeRequests,
-                int activePipelines,
-                boolean draining,
-                long heapUsedBytes,
-                long heapCommittedBytes,
-                long heapMaxBytes,
-                long rssBytes,
-                long aotTrainingPid,
-                String httpUrl,
-                String httpError) {
-            this(
-                    version,
-                    pid,
-                    startedAtMillis,
-                    activeRequests,
-                    activePipelines,
-                    draining,
-                    heapUsedBytes,
-                    heapCommittedBytes,
-                    heapMaxBytes,
-                    rssBytes,
-                    aotTrainingPid,
-                    httpUrl,
-                    httpError,
-                    httpUrl != null ? httpUrl + "/mcp" : null);
-        }
-
         /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
         public boolean httpEnabled() {
             return httpUrl != null || httpError != null;
@@ -165,8 +133,7 @@ public final class EngineClient {
             String ack = exchange(ch, EngineProtocol.statusRequest());
             if (!EngineProtocol.STATUS_ACK.equals(EngineProtocol.typeOf(ack))) return Optional.empty();
             String httpUrl = Jsonl.str(ack, "httpUrl");
-            String mcpUrl = Jsonl.str(ack, "mcpUrl");
-            if (mcpUrl == null && httpUrl != null) mcpUrl = httpUrl + "/mcp";
+            String mcpUrl = Jsonl.str(ack, "mcpUrl"); // null = MCP disabled
             return Optional.of(new Status(
                     Jsonl.str(ack, "version"),
                     Jsonl.longValue(ack, "pid", -1),
@@ -386,8 +353,9 @@ public final class EngineClient {
             boolean verbose,
             boolean offline,
             boolean force,
-            boolean parallelTests) {
-        /** Backward-compatible ctor: serial cross-module gate. */
+            boolean parallelTests,
+            cc.jumpkick.config.TestSelection testSelection) {
+        /** Backward-compatible ctor: serial cross-module gate, default suite. */
         public TestRequest(
                 Path entryDir,
                 Path cache,
@@ -397,7 +365,40 @@ public final class EngineClient {
                 boolean verbose,
                 boolean offline,
                 boolean force) {
-            this(entryDir, cache, jdksDir, workers, profile, verbose, offline, force, false);
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    false,
+                    cc.jumpkick.config.TestSelection.DEFAULT);
+        }
+
+        public TestRequest(
+                Path entryDir,
+                Path cache,
+                Path jdksDir,
+                int workers,
+                String profile,
+                boolean verbose,
+                boolean offline,
+                boolean force,
+                boolean parallelTests) {
+            this(
+                    entryDir,
+                    cache,
+                    jdksDir,
+                    workers,
+                    profile,
+                    verbose,
+                    offline,
+                    force,
+                    parallelTests,
+                    cc.jumpkick.config.TestSelection.DEFAULT);
         }
     }
 

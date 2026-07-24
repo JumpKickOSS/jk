@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.ByteArrayOutputStream;
@@ -11,18 +13,25 @@ import org.junit.jupiter.api.Test;
 class SpinnerTest {
 
     @Test
-    void step_cycles_through_frames_in_order() {
+    void step_uses_pulse_circle_glyph() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
-        // Manually drive 7 frames; we should see each glyph in order.
-        for (int i = 0; i < Spinner.FRAMES.length; i++) {
+        s.step();
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
+    }
+
+    @Test
+    void step_cycles_pulse_frames_without_changing_glyph() {
+        var buf = new ByteArrayOutputStream();
+        var s = new Spinner(stream(buf), "Working");
+        for (int i = 0; i < Spinner.PULSE_FRAMES; i++) {
             s.step();
         }
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
-        // Each frame line begins with "\r<frame> <message>" — search for the glyphs.
-        for (String frame : Spinner.FRAMES) {
-            assertThat(visible).contains(frame + " Working");
-        }
+        String raw = buf.toString(StandardCharsets.UTF_8);
+        // Same solid circle every frame; only ANSI FG changes.
+        assertThat(countOccurrences(raw, Spinner.PULSE_GLYPH)).isEqualTo(Spinner.PULSE_FRAMES);
+        assertThat(TestAnsi.strip(raw)).doesNotContain("·");
     }
 
     @Test
@@ -33,7 +42,7 @@ class SpinnerTest {
         s.update("second");
         buf.reset();
         s.step();
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains("second");
     }
 
@@ -49,7 +58,7 @@ class SpinnerTest {
         s.update(shortMsg);
         buf.reset();
         s.step();
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int idx = visible.indexOf(shortMsg);
         assertThat(idx).isGreaterThanOrEqualTo(0);
         long spaces = visible.substring(idx + shortMsg.length())
@@ -60,11 +69,30 @@ class SpinnerTest {
     }
 
     @Test
-    void gradient_runs_from_primary_to_accent() {
-        var colors = Spinner.buildGradient(Spinner.FRAMES.length);
-        // First frame: Jk Dark primary #3D9BFF; last frame: accent (violet) #C04DFF.
-        assertThat(colors[0].toAnsi()).isEqualTo("38;2;61;155;255");
-        assertThat(colors[colors.length - 1].toAnsi()).isEqualTo("38;2;192;77;255");
+    void open_pulse_styles_are_brand_blue_at_ends_and_dark_blue_at_midpoint() {
+        var bright = Spinner.PULSE_OPEN_BRIGHT;
+        var dim = Spinner.PULSE_OPEN_DIM;
+        var colors = Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES);
+        // Ends: brand blue #3D9BFF
+        assertThat(colors[0].toAnsi()).isEqualTo("38;2;" + bright.r() + ";" + bright.g() + ";" + bright.b());
+        assertThat(colors[colors.length - 1].toAnsi())
+                .isEqualTo("38;2;" + bright.r() + ";" + bright.g() + ";" + bright.b());
+        // Midpoint: almost-black blue in the same family
+        int mid = Spinner.PULSE_FRAMES / 2;
+        assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
+        // Dim is darker but still blue-dominant (not pure black).
+        assertThat(dim.b()).isGreaterThan(dim.r());
+        assertThat(dim.r() + dim.g() + dim.b()).isGreaterThan(0);
+    }
+
+    @Test
+    void chip_pulse_styles_are_white_at_ends_and_dim_at_midpoint() {
+        var dim = cc.jumpkick.cli.theme.Rgb.hex(0x0F4786); // plan/chip blue
+        var colors = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, dim);
+        assertThat(colors[0].toAnsi()).isEqualTo("38;2;255;255;255");
+        assertThat(colors[colors.length - 1].toAnsi()).isEqualTo("38;2;255;255;255");
+        int mid = Spinner.PULSE_FRAMES / 2;
+        assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
     }
 
     @Test
@@ -83,15 +111,11 @@ class SpinnerTest {
     void show_emits_osc94_indeterminate_indicator() {
         var buf = new ByteArrayOutputStream();
         try (var s = Spinner.show(stream(buf), "Working")) {
-            // Tiny sleep to let the animator emit at least one frame —
-            // not strictly required since the OSC is emitted in start()
-            // before the animator thread runs.
             Thread.yield();
         }
         String out = buf.toString(StandardCharsets.UTF_8);
         assertThat(out).contains("\033]9;4;3\007"); // indeterminate
         assertThat(out).contains("\033]9;4;0\007"); // cleared on close
-        // Indeterminate-set must precede clear.
         assertThat(out.indexOf("\033]9;4;3\007")).isLessThan(out.indexOf("\033]9;4;0\007"));
     }
 
@@ -99,8 +123,6 @@ class SpinnerTest {
     void each_step_reasserts_osc94_indeterminate() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");
-        // Drive 3 frames and count the OSC indeterminate emissions; one
-        // per step keeps the host indicator alive across tab/focus events.
         s.step();
         s.step();
         s.step();
@@ -122,10 +144,6 @@ class SpinnerTest {
 
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 
     private static long countOccurrences(String haystack, String needle) {

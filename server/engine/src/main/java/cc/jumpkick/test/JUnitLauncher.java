@@ -45,6 +45,12 @@ public final class JUnitLauncher {
      */
     private Map<String, String> workerJarProps = Map.of();
 
+    /** JUnit include tags (JK-1135); empty = no include filter. */
+    private List<String> includeTags = List.of();
+
+    /** JUnit exclude tags (JK-1135). */
+    private List<String> excludeTags = List.of();
+
     /**
      * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
      * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}.
@@ -104,7 +110,22 @@ public final class JUnitLauncher {
      * plugin-jar paths, forwarded to the test JVM so plugin-forking tests can locate their plugin by
      * path (see {@link #workerJarProps}).
      */
-    public TestSummary run(
+    
+    /** JUnit Platform tag filters forwarded to the runner (JK-1135). */
+    public JUnitLauncher withTagFilters(List<String> include, List<String> exclude) {
+        this.includeTags = include == null ? List.of() : List.copyOf(include);
+        this.excludeTags = exclude == null ? List.of() : List.copyOf(exclude);
+        return this;
+    }
+
+    private List<String> withTagArgs(List<String> base) {
+        var out = new ArrayList<>(base);
+        if (!includeTags.isEmpty()) out.add("--include-tag=" + String.join(",", includeTags));
+        if (!excludeTags.isEmpty()) out.add("--exclude-tag=" + String.join(",", excludeTags));
+        return out;
+    }
+
+public TestSummary run(
             Path javaHome,
             Path testClassesDir,
             List<Path> runtimeClasspath,
@@ -114,7 +135,15 @@ public final class JUnitLauncher {
             TestProgressListener listener)
             throws IOException, InterruptedException {
         return run(
-                javaHome, testClassesDir, runtimeClasspath, cacheRoot, workers, workerJarProps, Map.of(), listener, null);
+                javaHome,
+                testClassesDir,
+                runtimeClasspath,
+                cacheRoot,
+                workers,
+                workerJarProps,
+                Map.of(),
+                listener,
+                null);
     }
 
     /**
@@ -219,7 +248,7 @@ public final class JUnitLauncher {
                 classpath,
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
-                List.of("--scan-classpath=" + testClassesDir),
+                withTagArgs(List.of("--scan-classpath=" + testClassesDir)),
                 testEnv,
                 aggregator::accept,
                 line -> {
@@ -291,7 +320,7 @@ public final class JUnitLauncher {
         for (int w = 0; w < actualWorkers; w++) {
             final int workerId = w + 1;
             final int idx = w;
-            List<String> args = List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir);
+            List<String> args = withTagArgs(List.of("--pull", "--worker=" + workerId, "--scan-classpath=" + testClassesDir));
             var agg = new ResultAggregator(listener, workerId, xml, md, moduleLabel);
             aggregators.add(agg);
             final var crash = new CaptureBuffer();
@@ -339,13 +368,7 @@ public final class JUnitLauncher {
                     1,
                     0,
                     List.of(new TestSummary.Failure(
-                            "(test run)",
-                            "",
-                            "runner exited " + worstExit,
-                            crash.toString(),
-                            moduleLabel,
-                            "",
-                            0)));
+                            "(test run)", "", "runner exited " + worstExit, crash.toString(), moduleLabel, "", 0)));
         }
         if (xml != null) {
             try {
@@ -449,7 +472,7 @@ public final class JUnitLauncher {
                 classpath,
                 runnerFlags(1),
                 PROTOCOL_PREFIX,
-                List.of("--list-only", "--scan-classpath=" + testClassesDir),
+                withTagArgs(List.of("--list-only", "--scan-classpath=" + testClassesDir)),
                 testEnv,
                 json -> {
                     String event = Jsonl.str(json, "event");
@@ -641,13 +664,7 @@ public final class JUnitLauncher {
             String stack = throwableJson != null ? Jsonl.str(throwableJson, "stack") : null;
             String className = classFromUniqueId(id);
             failures.add(new TestSummary.Failure(
-                    display,
-                    exClass,
-                    message,
-                    stack == null ? "" : stack,
-                    moduleLabel,
-                    className,
-                    workerId));
+                    display, exClass, message, stack == null ? "" : stack, moduleLabel, className, workerId));
             listener.onFailure(id, display, exClass, message, workerId);
         }
 

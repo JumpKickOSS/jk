@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
@@ -9,6 +11,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -17,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * main artifact, forwarding every argument to its {@code main} method. File execution
  * (.java/.kt/.kts/.jar) lives under {@code jk tool run} — see {@link ToolRunCommandTest}.
  */
+@Tag("integration")
 class RunCommandTest {
 
     @Test
@@ -93,7 +97,7 @@ class RunCommandTest {
                 version  = "0.1.0"
                 """);
         String output =
-                stripAnsi(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
+                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
         assertThat(output).contains("Failed to run").contains("No valid main method was specified or detected");
     }
 
@@ -128,7 +132,7 @@ class RunCommandTest {
                 """);
 
         String output =
-                stripAnsi(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
+                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
         assertThat(output).contains("Failed to run").contains("Multiple main methods found");
     }
 
@@ -162,9 +166,5 @@ class RunCommandTest {
             System.setErr(prevErr);
         }
         return captured.toString(StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

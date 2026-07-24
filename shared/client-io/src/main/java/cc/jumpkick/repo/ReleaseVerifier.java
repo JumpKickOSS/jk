@@ -24,8 +24,7 @@ public final class ReleaseVerifier {
      * (PKCS#8 base64) and used by {@code scripts/sign-release.sh} on tag builds. Empty string
      * would mean "verification unavailable" — do not clear without rotating to a replacement.
      */
-    public static final String BUILT_IN_KEY =
-            "MCowBQYDK2VwAyEAJMjkVY8egU7YDTJGcLs/LQC8e11cwJ8cYflpdjuUcAo=";
+    public static final String BUILT_IN_KEY = "MCowBQYDK2VwAyEAJMjkVY8egU7YDTJGcLs/LQC8e11cwJ8cYflpdjuUcAo=";
 
     private final List<PublicKey> trusted;
 

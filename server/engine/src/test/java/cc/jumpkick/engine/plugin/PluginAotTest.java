@@ -10,9 +10,11 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.util.List;
 import java.util.function.BooleanSupplier;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Tag("integration")
 class PluginAotTest {
 
     @TempDir

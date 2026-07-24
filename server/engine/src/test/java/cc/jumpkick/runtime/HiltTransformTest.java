@@ -12,6 +12,7 @@ import cc.jumpkick.run.PipelineResult;
 import java.lang.classfile.ClassFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Google Maven + Central); the CAS + SDK persist under build/ so repeat runs
  * are warm (same shared cache as KspRoomHiltTest).
  */
+@Tag("slow")
 class HiltTransformTest {
 
     @Test

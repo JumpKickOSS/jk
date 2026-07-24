@@ -77,8 +77,45 @@ the product default and not a per-worker budget.
 jk engine start | status | stop
 ```
 
+### Dashboard static assets (`web-root`)
+
+The engine HTTP server serves the dashboard from **disk first**, then classpath `/web`
+(in the engine jar). Disk paths are always `Cache-Control: no-cache`, so edits show up on
+refresh without reinstalling.
+
+| Source | Key |
+|---|---|
+| Env | `JK_HTTP_WEB_ROOT` (absolute path preferred) |
+| Config | `~/.jk/config.toml` → `[http] web-root` |
+| Default | `~/.jk/state/web` (relative to `JK_HOME`) |
+
+Point at the worktree for UI iteration:
+
+```bash
+export JK_HTTP_WEB_ROOT="$PWD/clients/web/src/main/resources/web"
+jk engine stop
+jk engine start
+# edit style.css / index.html / *.webp → hard-refresh the browser
+```
+
+Relative `web-root` values resolve against `~/.jk`. Only files present under the root are
+overridden; anything missing still falls through to the jar.
+
+### HTTP server knobs
+
+`~/.jk/config.toml`; env wins over the file (`env > file > default`):
+
+| Config key | Env | Default | Meaning |
+|---|---|---|---|
+| `[http] max-concurrent-requests` | `JK_HTTP_MAX_CONCURRENT_REQUESTS` | `16` (`0` = core count) | RPC admission cap |
+| `[http] max-event-streams` | `JK_HTTP_MAX_EVENT_STREAMS` | `16` (min `1`) | Web-UI SSE budget (`GET /api/events`) |
+| `[mcp] enabled` | `JK_MCP_ENABLED` | `true` | MCP surface toggle — `false` 404s `/mcp`; the HTTP server and dashboard stay up |
+| `[mcp] max-event-streams` | `JK_MCP_MAX_EVENT_STREAMS` | `16` (min `1`) | MCP SSE budget (`GET /mcp` event streams) |
+
+`[http] enabled = false` still disables the whole server, MCP included.
+
 Transport: Unix domain socket on macOS/Linux; loopback TCP + shared-secret token on Windows.
-Protocol is internal (same-version client/server), newline-delimited JSON.
+Protocol is internal (same-version client/server), JSONL (one JSON object per line).
 
 ### Wire freeze vocabulary (pre-1.0)
 
@@ -86,14 +123,14 @@ Same-version client/engine only — not a multi-version public API. Conventions 
 
 | Rule | Shape |
 |---|---|
-| Envelope | One JSON object per line; discriminator field `"t"` |
-| Auth (TCP only) | First line `{"t":"auth","token":…}` — never a raw token line |
+| Envelope | One JSON object per line; discriminator field `"type"` (same as CLI JSONL / SSE / MCP) |
+| Auth (TCP only) | First line `{"type":"auth","token":…}` — never a raw token line |
 | Handshake | `hello` / `hello-ack` carry `version`, `proto` (`EngineProtocol.PROTOCOL`), `purpose` (`connect`\|`probe`); `hello-ack` uses `startedAt` (millis) |
-| Errors | `{"t":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
+| Errors | `{"type":"error","code",…,"message",…}` (`auth`, `protocol`, `version-skew`, …) |
 | Project path | Field name is always `dir` |
-| Pipeline finish | `{"t":"pipeline-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
+| Pipeline finish | `{"type":"pipeline-finish","kind":…,"dir":…,"success":…}` (+ kind-specific tails) |
 | Session extras | Variant / client env / JVM tuning via typed `withSession` builders — no JSON string surgery |
-| Line limits | Bounded line reader + idle timeout; unknown/`t`-less lines → `error`, not silent drop |
+| Line limits | Bounded line reader + idle timeout; unknown/`type`-less lines → `error`, not silent drop |
 
 Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 
@@ -108,7 +145,7 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 | `jk.lock` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
 | Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
 | CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
-| Session transcripts | `details.json` `"schema"` | Stay on **1** |
+| Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
 | REST `/api/*` | response shapes | Additive fields only |
 | SSE event `data` | `"schema"` | Stay on **1** |
 | MCP | `protocolVersion` / tool payloads | Stay on advertised **1**-era shape; no version churn |

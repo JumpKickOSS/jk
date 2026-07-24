@@ -5,9 +5,11 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.CliSessionTranscript;
+import cc.jumpkick.cli.run.CompositePipelineListener;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.JsonlShape;
 import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.run.SessionMirrorListener;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -30,14 +32,11 @@ import java.util.List;
  * means Kotlin test sources compile and run exactly as they do under {@code jk build} — no
  * separate, Java-only test path to keep in sync.
  *
- * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same {@code
- * ProgressBarListener} {@code jk compile}/{@code jk build} use): each completion ticks the
- * numerator, each failure becomes a {@code ctx.error}, discovery grows the denominator.
+ * <p>The test-runner's JSONL event stream bridges into the pipeline's progress bar (the same live
+ * console {@code jk compile}/{@code jk build} use): each completion ticks the numerator, each
+ * failure becomes a {@code ctx.error}, discovery grows the denominator.
  */
 public final class TestCommand implements CliCommand {
-
-    /** Serializes workspace JSONL envelope lines when modules run in parallel. */
-    private static final Object JSONL_LOCK = new Object();
 
     @Override
     public String name() {
@@ -60,15 +59,26 @@ public final class TestCommand implements CliCommand {
                         "--workers")));
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir").hide());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
+                .hide());
         opts.add(Opt.value(
-                "<git-ref>",
-                "Test only modules (and dependents) changed since this git ref.",
-                "--affected-since"));
+                "<git-ref>", "Test only modules (and dependents) changed since this git ref.", "--affected-since"));
         opts.add(Opt.value(
                 "<sel>",
                 "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
                 "--modules"));
+        opts.add(Opt.value(
+                        "<name>",
+                        "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",
+                        "--suite")
+                .repeat());
+        opts.add(Opt.flag("Run every discovered test suite (test + integration + …).", "--all"));
+        opts.add(Opt.value(
+                        "<tag>",
+                        "JUnit tag to include (repeatable). Empty include list = all tags not excluded.",
+                        "--include-tag")
+                .repeat());
+        opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag").repeat());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -82,6 +92,7 @@ public final class TestCommand implements CliCommand {
     int jobs;
     String affectedSince;
     String modulesSpec;
+    cc.jumpkick.config.TestSelection testSelection = cc.jumpkick.config.TestSelection.DEFAULT;
     private CliSessionTranscript session;
 
     @Override
@@ -96,14 +107,22 @@ public final class TestCommand implements CliCommand {
         this.jobs = global.jobsEffective();
         // C2: overlap module suites by default; --serial-tests opts out (shared ports/locks).
         this.parallelTests = cc.jumpkick.cli.ParallelTestsOpts.enabled(in);
-        cc.jumpkick.config.SessionContext.install(
-                cc.jumpkick.config.SessionContext.current().withParallelTests(parallelTests));
+        try {
+            this.testSelection = resolveTestSelection(in);
+        } catch (IllegalArgumentException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", e.getMessage()));
+            return Exit.CONFIG;
+        }
+        cc.jumpkick.config.SessionContext.install(cc.jumpkick.config.SessionContext.current()
+                .withParallelTests(parallelTests)
+                .withTestSelection(testSelection));
         Path dir = global.workingDir();
         VariantSelection.install(in, dir);
         var proj = ProjectContext.require(dir, "test").orElse(null);
         if (proj == null) return Exit.CONFIG;
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
+        if (session != null) session.announceIf(global != null && global.verbose);
         // No jk.lock guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
@@ -171,7 +190,8 @@ public final class TestCommand implements CliCommand {
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force(),
-                            parallelTests),
+                            parallelTests,
+                            testSelection),
                     steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
                     testResultHolder);
         } catch (IOException e) {
@@ -243,7 +263,7 @@ public final class TestCommand implements CliCommand {
         if (modules.isEmpty()) return 0;
         boolean json = global != null && global.outputIsJson();
         long start = System.nanoTime();
-        if (json) emitJsonl(JsonlShape.workspaceStart(modules.size()));
+        JsonlShape.emitJsonl(JsonlShape.workspaceStart(modules.size()), json);
         int worst = 0;
         try {
             if (!parallelTests || modules.size() == 1) {
@@ -252,8 +272,8 @@ public final class TestCommand implements CliCommand {
                     if (code != 0) worst = worst == 0 ? code : Math.max(worst, code);
                 }
             } else {
-                int width =
-                        Math.max(1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
+                int width = Math.max(
+                        1, Math.min(jobs > 0 ? jobs : Runtime.getRuntime().availableProcessors(), modules.size()));
                 var pool = java.util.concurrent.Executors.newFixedThreadPool(width, r -> {
                     Thread t = new Thread(r, "jk-test-module");
                     t.setDaemon(true);
@@ -280,10 +300,8 @@ public final class TestCommand implements CliCommand {
                 }
             }
         } finally {
-            if (json) {
-                long ms = (System.nanoTime() - start) / 1_000_000;
-                emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()));
-            }
+            long ms = (System.nanoTime() - start) / 1_000_000;
+            JsonlShape.emitJsonl(JsonlShape.workspaceFinish(worst == 0, ms, modules.size()), json);
         }
         return worst;
     }
@@ -294,9 +312,7 @@ public final class TestCommand implements CliCommand {
                 "Test", r -> testSummary(testResultHolder[0], r), r -> testFailureMessage(testResultHolder[0], r));
         String module = BuildCommand.buildTarget(mod.resolve("jk.toml"), mod);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        if (json) {
-            emitJsonl(JsonlShape.moduleStart(mod.toString(), module));
-        }
+        JsonlShape.emitJsonl(JsonlShape.moduleStart(mod.toString(), module), json);
         long t0 = System.nanoTime();
         PipelineResult result;
         int code;
@@ -312,8 +328,14 @@ public final class TestCommand implements CliCommand {
                             global.verbose,
                             cc.jumpkick.config.SessionContext.current().offline(),
                             cc.jumpkick.config.SessionContext.current().force(),
-                            parallelTests),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, module),
+                            parallelTests,
+                            testSelection),
+                    steps -> {
+                        // Workspace member: no aggregate-rider writes from pipeline-local fractions.
+                        var console = PipelineConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
+                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
+                        return CompositePipelineListener.of(new SessionMirrorListener(session), console);
+                    },
                     testResultHolder);
             if (session != null) {
                 session.module(module).absorb(result);
@@ -330,19 +352,9 @@ public final class TestCommand implements CliCommand {
             if (session != null) session.error(mod + ": " + e.getMessage());
             code = Exit.SOFTWARE;
         }
-        if (json) {
-            long ms = (System.nanoTime() - t0) / 1_000_000;
-            boolean ok = code == 0;
-            emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, ok, ms));
-        }
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        JsonlShape.emitJsonl(JsonlShape.moduleFinish(mod.toString(), module, code == 0, ms), json);
         return code;
-    }
-
-    private static void emitJsonl(String line) {
-        synchronized (JSONL_LOCK) {
-            System.out.println(line);
-            System.out.flush();
-        }
     }
 
     /**
@@ -361,5 +373,43 @@ public final class TestCommand implements CliCommand {
 
     static String testFailureMessage(TestSummary testResult, PipelineResult result) {
         return (testResult != null && !testResult.allPassed()) ? "Tests failed" : "Build failed";
+    }
+
+    /**
+     * CLI + {@code [test]} defaults → {@link cc.jumpkick.config.TestSelection}. Throws if {@code
+     * --all} and {@code --suite} are both set.
+     */
+    static cc.jumpkick.config.TestSelection resolveTestSelection(Invocation in) {
+        boolean all = in.isSet("all");
+        List<String> suites = new ArrayList<>(in.values("suite"));
+        List<String> include = new ArrayList<>(in.values("include-tag"));
+        List<String> exclude = new ArrayList<>(in.values("exclude-tag"));
+        if (all && !suites.isEmpty()) {
+            throw new IllegalArgumentException("--all and --suite cannot be combined");
+        }
+        Path wd = GlobalOptions.from(in).workingDir();
+        Path toml = wd.resolve("jk.toml");
+        // [test] default-exclude-tags when CLI did not set excludes (JK-1137).
+        if (exclude.isEmpty()) {
+            exclude.addAll(cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(toml));
+        }
+        // Profile exclude/include tags when a profile is selected / auto.
+        try {
+            if (java.nio.file.Files.isRegularFile(toml)) {
+                var build = cc.jumpkick.config.JkBuildParser.parse(toml);
+                String explicit = in.value("profile").orElse(null);
+                String name = (explicit != null && !explicit.isBlank())
+                        ? explicit
+                        : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
+                if (name != null && build.profiles().contains(name)) {
+                    var p = build.profiles().resolve(name);
+                    exclude.addAll(p.excludeTags());
+                    if (include.isEmpty()) include.addAll(p.includeTags());
+                }
+            }
+        } catch (Exception ignored) {
+            // profile optional
+        }
+        return cc.jumpkick.config.TestSelection.of(suites, all, include, exclude);
     }
 }

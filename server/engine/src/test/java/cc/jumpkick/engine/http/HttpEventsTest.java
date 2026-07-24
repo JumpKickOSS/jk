@@ -5,8 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+@Tag("integration")
 class HttpEventsTest {
 
     @Test
@@ -71,12 +73,22 @@ class HttpEventsTest {
     void mcp_style_frames_are_jsonrpc_notifications() throws Exception {
         HttpEvents hub = new HttpEvents();
         try (HttpEvents.Subscription s = hub.subscribe(HttpEvents.FrameStyle.MCP)) {
-            hub.publish("step-start", JsonOut.object().put("step", "compile").put("schema", 1));
+            hub.publish(
+                    "step-start",
+                    JsonOut.object()
+                            .put("schema", 1)
+                            .put("type", "step-start")
+                            .put("step", "compile")
+                            .put("progress", 42.5));
             String frame = s.next(1000);
             assertThat(frame).contains("event: message");
             assertThat(frame).contains("notifications/jk/event");
             assertThat(frame).contains("\"event\":\"step-start\"");
             assertThat(frame).contains("\"step\":\"compile\"");
+            // JK-1119: agents read aggregate percent without parsing TTY bars.
+            assertThat(frame).contains("\"progress\":42.5");
+            assertThat(frame).doesNotContain("progress_num");
+            assertThat(frame).doesNotContain("progress_den");
         }
     }
 
@@ -107,7 +119,8 @@ class HttpEventsTest {
 
     @Test
     void extract_request_id_from_payload() {
-        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}")).isEqualTo(42L);
+        assertThat(HttpEvents.extractRequestId("{\"requestId\":42,\"kind\":\"test\"}"))
+                .isEqualTo(42L);
         assertThat(HttpEvents.extractRequestId("{\"step\":\"x\"}")).isNull();
         assertThat(HttpEvents.extractRequestId(null)).isNull();
     }

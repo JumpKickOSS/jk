@@ -37,17 +37,33 @@ public final class CommandManagerListener implements PipelineListener {
     private final String module;
     private final List<Step> steps;
     private final boolean animate;
+    /**
+     * False for one member of a multi-module workspace run: engine {@code workspace-progress} is the
+     * only aggregate truth — pipeline-local fractions must not reach {@link LiveProgress} (JK-1121).
+     */
+    private final boolean aggregateRider;
 
     private CommandManager cm;
     private CommandManager.OutputScope capture;
 
     public CommandManagerListener(PrintStream out, ConsoleSpec spec, String module, List<Step> steps, boolean animate) {
+        this(out, spec, module, steps, animate, true);
+    }
+
+    public CommandManagerListener(
+            PrintStream out,
+            ConsoleSpec spec,
+            String module,
+            List<Step> steps,
+            boolean animate,
+            boolean aggregateRider) {
         this.out = out;
         this.spec = spec;
         this.command = spec != null ? spec.command() : module;
         this.module = module;
         this.steps = steps;
         this.animate = animate;
+        this.aggregateRider = aggregateRider;
     }
 
     /**
@@ -61,6 +77,7 @@ public final class CommandManagerListener implements PipelineListener {
         this.module = module;
         this.steps = steps;
         this.animate = animate;
+        this.aggregateRider = true;
     }
 
     @Override
@@ -71,13 +88,14 @@ public final class CommandManagerListener implements PipelineListener {
             cm.addStepLabeled(module, p.name(), display(p));
         }
         cm.progress(view.numerator(), view.denominator());
+        if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
         // Route step/process output above the pinned region for the pipeline's lifetime.
         capture = cm.captureOutput();
     }
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step);
+        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
     }
 
     @Override
@@ -91,18 +109,27 @@ public final class CommandManagerListener implements PipelineListener {
     }
 
     @Override
+    public void error(String step, String code, String message) {
+        String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
+        cm.attachPhaseError(module, step, "", brief);
+        cm.writeAbove((code != null && !code.isEmpty() ? code + ": " : "") + (message != null ? message : ""));
+    }
+
+    @Override
     public void progress(String step, int delta, PipelineView view) {
         cm.progress(view.numerator(), view.denominator());
+        if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView view) {
         cm.progress(view.numerator(), view.denominator());
+        if (aggregateRider) LiveProgress.get().update(view.numerator(), view.denominator());
     }
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS);
+        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
     }
 
     @Override

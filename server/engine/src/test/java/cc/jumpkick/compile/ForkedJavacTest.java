@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
  * sets), compiles a source with a real annotation processor, and asserts the parsed generated →
  * originating provenance.
  */
+@Tag("integration")
 class ForkedJavacTest {
 
     @Test

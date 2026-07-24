@@ -207,24 +207,46 @@ public final class NativeCommand implements CliCommand {
         var req = hostedRequest(wsRoot, cache, graalHomes);
         var paths = EnginePaths.current();
 
-        // JSON / verbose: per-module banners, append-only per-module listeners.
+        // JSON / verbose: append-only per-module listeners. JSON must not print human banners and
+        // must not let module-local num/den clobber the engine aggregate rider (JK-1132).
         if (mode != PipelineConsole.Mode.AUTO && mode != PipelineConsole.Mode.QUIET) {
             int[] idx = {0};
+            boolean json = mode == PipelineConsole.Mode.JSON;
             var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
+                public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                    if (!json) return;
+                    cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
+                    cc.jumpkick.cli.run.JsonlShape.emitJsonl(
+                            cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
+                                    wsRoot.toString(),
+                                    snap.numerator(),
+                                    snap.denominator(),
+                                    snap.phase(),
+                                    snap.modulesComplete(),
+                                    snap.modulesTotal()),
+                            true);
+                }
+
+                @Override
                 public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                    CliOutput.out();
-                    CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/" + totalModules + ") ══");
+                    if (!json) {
+                        CliOutput.out();
+                        CliOutput.out(
+                                "══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/" + totalModules + ") ══");
+                    }
                     var log = EventLogListener.open(m.cache(), m.pipeline().name());
-                    return CompositePipelineListener.of(
-                            PipelineConsole.chooseConsoleListener(
-                                    m.pipeline().name(), m.pipeline().steps(), mode),
-                            log);
+                    // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.
+                    var console = json
+                            ? new cc.jumpkick.cli.run.JsonlListener(System.out, false)
+                            : PipelineConsole.chooseConsoleListener(
+                                    m.pipeline().name(), m.pipeline().steps(), mode);
+                    return CompositePipelineListener.of(console, log);
                 }
 
                 @Override
                 public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                    if (!o.success()) {
+                    if (!o.success() && !json) {
                         CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                                 "Native", wsRoot.relativize(o.dir()) + " failed (exit " + o.exitCode() + ")"));
                     }
@@ -249,10 +271,8 @@ public final class NativeCommand implements CliCommand {
         int[] built = {0};
         var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
             @Override
-            public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
-                long total = 0;
-                for (var p : plan) total += p.weight();
-                agg.calibrate(total);
+            public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                agg.applySnapshot(snap);
             }
 
             @Override

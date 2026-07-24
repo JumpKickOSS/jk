@@ -12,6 +12,7 @@ import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.JarFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Maven Central: commons-lang3 + the r8 jar); the CAS persists under build/ so
  * repeat runs are warm.
  */
+@Tag("slow")
 class ShrinkPluginTest {
 
     @Test

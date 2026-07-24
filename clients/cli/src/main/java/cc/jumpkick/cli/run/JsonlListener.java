@@ -1,86 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
-import cc.jumpkick.plugin.build.Phase;
-import cc.jumpkick.run.PipelineListener;
-import cc.jumpkick.run.PipelineResult;
-import cc.jumpkick.run.PipelineView;
-import cc.jumpkick.run.StepStatus;
 import java.io.PrintStream;
-import java.time.Duration;
 
 /**
  * Emit one JSON object per event to stdout. Triggered by {@code --output json} or {@code jsonl}
  * (identical). Consumed by agents, CI, and tooling. Wire format: {@link JsonlShape} — see {@code
- * docs/machine-output.md}.
+ * docs/machine-output.md}. Each line carries the aggregate {@code progress} rider (JK-1117) and is
+ * dual-written to the active {@link CliSessionTranscript} when present (JK-1116).
  */
-public final class JsonlListener implements PipelineListener {
+public final class JsonlListener extends JsonlEmittingListener {
 
     private final PrintStream out;
 
     public JsonlListener(PrintStream out) {
+        this(out, true);
+    }
+
+    /**
+     * {@code aggregateRider} is false for one member of a multi-module workspace run: the engine's
+     * {@code workspace-progress} snapshot is the only aggregate truth there (JK-1121).
+     */
+    public JsonlListener(PrintStream out, boolean aggregateRider) {
+        super(aggregateRider);
         this.out = out;
     }
 
     @Override
-    public void pipelineStart(PipelineView v) {
-        emit(JsonlShape.pipelineStart(v));
-    }
-
-    @Override
-    public void stepStart(String step, Phase phase, int ticks) {
-        emit(JsonlShape.stepStart(step, phase == null ? "" : phase.wireName(), ticks));
-    }
-
-    @Override
-    public void progress(String step, int delta, PipelineView v) {
-        emit(JsonlShape.progress(step, delta, v));
-    }
-
-    @Override
-    public void tickUpdate(String step, int delta, PipelineView v) {
-        emit(JsonlShape.tickUpdate(step, delta, v));
-    }
-
-    @Override
-    public void label(String step, String label) {
-        emit(JsonlShape.label(step, label));
-    }
-
-    @Override
-    public void output(String step, String line) {
-        emit(JsonlShape.output(step, line));
-    }
-
-    @Override
-    public void warn(String step, String code, String msg) {
-        emit(JsonlShape.warn(step, code, msg));
-    }
-
-    @Override
-    public void error(String step, String code, String msg) {
-        emit(JsonlShape.error(step, code, msg));
-    }
-
-    @Override
-    public void error(String step, String code, String msg, String test, String exClass) {
-        emit(JsonlShape.error(step, code, msg, test, exClass));
-    }
-
-    @Override
-    public void stepFinish(String step, Phase phase, StepStatus s, Duration d) {
-        emit(JsonlShape.stepFinish(step, phase == null ? "" : phase.wireName(), s, d));
-    }
-
-    @Override
-    public void pipelineFinish(PipelineResult r) {
-        emit(JsonlShape.pipelineFinish(r));
-    }
-
-    private void emit(String line) {
+    protected void emit(String line, boolean immediate) {
         synchronized (out) {
             out.println(line);
             out.flush();
         }
+        CliSessionTranscript session = CliSessionTranscript.active();
+        if (session != null) session.appendRaw(line, immediate);
     }
 }

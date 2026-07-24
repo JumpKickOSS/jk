@@ -9,6 +9,7 @@ import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
  * a workspace on its first module). The non-TTY flag path is exercised here; the wizard UX shares
  * the same {@code parent} resolution.
  */
+@Tag("integration")
 class NewModuleTest {
 
     private static final String PLAIN_PROJECT = """

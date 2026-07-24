@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.io.TempDir;
  * materializes it, rewrites it to an exact coordinate pin, and augments the repo group; the real
  * {@link LockOrchestrator} then solves it from the local {@code file://} repo.
  */
+@Tag("integration")
 class PathSourceResolutionTest {
 
     private static void writeLibrary(Path libDir) throws Exception {

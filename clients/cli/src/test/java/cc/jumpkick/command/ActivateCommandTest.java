@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * hang otherwise waiting for a keypress).
  */
 @DisabledOnOs(OS.WINDOWS)
+@Tag("integration")
 class ActivateCommandTest {
 
     @Test

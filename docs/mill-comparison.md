@@ -4,8 +4,7 @@
 **Purpose:** Where [Mill](https://mill-build.org) is stronger today, what that implies for product direction, and which Mill ideas are worth stealing vs deliberately not matching.  
 **Mill version reviewed:** 1.1.7 docs + main-branch source at `../mill` (com-lihaoyi/mill).  
 **JumpKick status:** pre-1.0 alpha (`0.10.1`).  
-**As of:** 2026-07-20 — reconciled after tickets 1023–1055 / 1035–1048 dogfood. Historical priority
-tables below may still list old `ticket-NNNN` paths (frozen archive); live board is kanartist `JK-NNNN`.
+**As of:** 2026-07-20 — reconciled after tickets 1023–1055 / 1035–1048 dogfood. Live board: kanartist `JK-NNNN`.
 
 > **Shipped since first draft (do not re-litigate as gaps):** `jk watch` / `dev` (1025), chrome
 > timeline (1023), microbench (1024), module DAG `jk explain --graph dot` (1035), `jk tasks` /
@@ -370,35 +369,31 @@ These are the axes where beating Mill means **doubling down**, not converging.
 
 ## Priority recommendations (Mill → JumpKick backlog)
 
-> **Board moved (2026-07-20).** Live tickets are **`JK-NNNN`** in
-> [kanartist](https://github.com/jkbuild/kanartist) (`projects/jk/`). Links below still
-> point at the frozen snapshot under [`docs/kanban/`](kanban/README.md) for reading.
-
-Kanban tickets (historical paths under [`docs/kanban/`](kanban/README.md)):
+Live tickets: **`JK-NNNN`** in [kanartist](https://github.com/jkbuild/kanartist) (`projects/jk/`). Snapshot of themes at migration time (status may have moved — check the board):
 
 | Priority | Ticket | Theme | Kind |
 |---|---|---|---|
-| **P0** | [1023](kanban/ticket-1023-build-timeline-profile.md) | Build timeline / chrome profile every run | go-do |
-| **P0** | [1024](kanban/ticket-1024-microbench-harness.md) | Microbench harness (clean / incremental / no-op) | go-do |
-| **P0** | [1025](kanban/ticket-1025-watch-mode.md) | Watch mode for compile/test | go-do |
-| **P0** | [1026](kanban/ticket-1026-programmable-escape-hatch-design.md) | Programmable escape hatch design (outside TOML) | research |
-| **P1** | [1029](kanban/ticket-1029-incremental-compile-contracts.md) | Incremental contracts + why-recompiled | go-do |
-| **P1** | [1027](kanban/ticket-1027-selective-test-plan.md) | Selective test / multi-verb plan | go-do |
-| **P1** | [1028](kanban/ticket-1028-bsp-engine-host.md) | BSP server / IDE host | research → MVP |
-| **P1** | [1030](kanban/ticket-1030-warm-compiler-pool-benchmark.md) | Warm pool vs AOT measure-and-verify | research (no pool until go) |
-| **P1** | [1037](kanban/ticket-1037-programmable-escape-hatch-mvp.md) | Escape hatch MVP | go-do (after 1026) |
-| **P1-depth** | [1031](kanban/ticket-1031-module-task-selectors.md) · [1039](kanban/ticket-1039-build-logic-graph-tasks.md) · [1040](kanban/ticket-1040-selective-prepare-run.md) · [1041](kanban/ticket-1041-bsp-import-reliability.md) | Selectors, multi-task logic, selective prepare/run, BSP import | **done** (this branch) |
-| **P2** | [1034](kanban/ticket-1034-outdated-deps.md) | `jk outdated` polish | go-do (command exists) |
-| **P2** | [1032](kanban/ticket-1032-assembly-packaging-depth.md) | Fat-jar rules + R8 productization | go-do (`assembly` exists) |
-| **P2** | [1038](kanban/ticket-1038-showcase-monorepo-ci.md) | Showcase monorepo CI | go-do |
-| **P2** | [1033](kanban/ticket-1033-lint-matrix-research.md) | Lint matrix | research → thin go-do |
-| **P2** | [1017](kanban/ticket-1017-ide-marketplace-plugins.md) | Marketplace IDE plugin (one track) | go-do after BSP |
-| **P3** | [1035](kanban/ticket-1035-dag-visualize.md) | Module DAG DOT export | go-do |
-| **P3** | [1036](kanban/ticket-1036-jshell-repl-sandbox-dx.md) | jshell + sandbox docs | go-do |
-| **P3** | [1022](kanban/ticket-1022-tempdir-engine-cas-cleanup.md) | CLI test TempDir cleanup | go-do |
-| **P3** | [1019](kanban/ticket-1019-plugin-cosign-signing.md) | Cosign additive plugin sigs | go-do |
+| **P0** | JK-1023 | Build timeline / chrome profile every run | go-do |
+| **P0** | JK-1024 | Microbench harness (clean / incremental / no-op) | go-do |
+| **P0** | JK-1025 | Watch mode for compile/test | go-do |
+| **P0** | JK-1026 | Programmable escape hatch design (outside TOML) | research |
+| **P1** | JK-1029 | Incremental contracts + why-recompiled | go-do |
+| **P1** | JK-1027 | Selective test / multi-verb plan | go-do |
+| **P1** | JK-1028 | BSP server / IDE host | research → MVP |
+| **P1** | JK-1030 | Warm pool vs AOT measure-and-verify | research (no pool until go) |
+| **P1** | JK-1037 | Escape hatch MVP | go-do (after 1026) |
+| **P1-depth** | JK-1031 · JK-1039 · JK-1040 · JK-1041 | Selectors, multi-task logic, selective prepare/run, BSP import | often done |
+| **P2** | JK-1034 | `jk outdated` polish | go-do (command exists) |
+| **P2** | JK-1032 | Fat-jar rules + R8 productization | go-do (`assembly` exists) |
+| **P2** | JK-1038 | Showcase monorepo CI | go-do |
+| **P2** | JK-1033 | Lint matrix | research → thin go-do |
+| **P2** | JK-1017 | Marketplace IDE plugin (one track) | go-do after BSP |
+| **P3** | JK-1035 | Module DAG DOT export | go-do |
+| **P3** | JK-1036 | jshell + sandbox docs | go-do |
+| **P3** | JK-1022 | CLI test TempDir cleanup | go-do |
+| **P3** | JK-1019 | Cosign additive plugin sigs | go-do |
 
-Warm pool **implementation** is not scheduled until [1030](kanban/ticket-1030-warm-compiler-pool-benchmark.md) go criteria pass.
+Warm pool **implementation** is not scheduled until JK-1030 go criteria pass.
 
 ### Programmable escape hatch — steal brief
 

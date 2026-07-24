@@ -75,14 +75,18 @@ public final class CacheCommand extends GroupCommand {
         return String.format("%,d", n);
     }
 
-    /** Render a hosted maintenance job's {@code prune-wait} event (see {@code EngineProtocol.PRUNE_WAIT}). */
+    /**
+     * Render a hosted maintenance job's {@code prune-wait} event (see {@code
+     * EngineProtocol.PRUNE_WAIT}). No-op when nothing is blocking (0 in-flight and no external prune)
+     * so we never print "Waiting for 0 in-flight builds…".
+     */
     static void printWait(Boolean external, int pipelines) {
         if (Boolean.TRUE.equals(external)) {
             CliOutput.out("Waiting for another jk process's cache prune to finish…");
-        } else {
-            CliOutput.out(
-                    "Waiting for " + pipelines + " in-flight build" + (pipelines == 1 ? "" : "s") + " to finish…");
+            return;
         }
+        if (pipelines <= 0) return;
+        CliOutput.out("Waiting for " + pipelines + " in-flight build" + (pipelines == 1 ? "" : "s") + " to finish…");
     }
 
     static String fmtBytes(long bytes) {

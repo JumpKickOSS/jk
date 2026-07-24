@@ -13,11 +13,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.revwalk.RevCommit;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /** fetch/verifyLocked behaviour, run against every available {@link GitBackend}. */
+@Tag("integration")
 class GitBackendFetchTest {
 
     @ParameterizedTest(name = "{0}")

@@ -189,9 +189,10 @@ public final class CachePipelines {
                 .execute(ctx -> {
                     ctx.label(dryRun ? "Inspecting build cache…" : "Clearing build cache…");
                     long[] acc = {0L, 0L}; // {files, bytes}
+                    List<Path> allModuleDirs = resolveModuleDirs(projectDir);
                     Path actionsDir = cacheRoot.resolve("actions");
                     if (Files.isDirectory(actionsDir)) {
-                        List<Path> moduleDirs = resolveModuleDirs(projectDir);
+                        List<Path> moduleDirs = allModuleDirs;
                         Set<String> tags = tagsFor(moduleDirs);
                         List<String> prefixes =
                                 moduleDirs.stream().map(p -> p.toString()).toList();
@@ -220,6 +221,20 @@ public final class CachePipelines {
                         deleteQualified(actionsDir.resolve("tasks"), tags, deletedTaskIds, dryRun, acc);
                         deleteQualified(actionsDir.resolve("incremental-java"), tags, deletedTaskIds, dryRun, acc);
                         deleteQualified(actionsDir.resolve("incremental-kotlin"), tags, deletedTaskIds, dryRun, acc);
+                    }
+                    // 3) preflight memos — their "clean" conclusions were derived from the
+                    // action keys just deleted; a surviving memo turns clear into a no-op.
+                    for (Path m : allModuleDirs) {
+                        Path preflight = m.resolve("target").resolve(".jk").resolve("preflight");
+                        if (!Files.isDirectory(preflight)) continue;
+                        try (var files = Files.list(preflight)) {
+                            for (Path f : (Iterable<Path>) files::iterator) {
+                                if (!Files.isRegularFile(f)) continue;
+                                acc[1] += Files.size(f);
+                                if (!dryRun) Files.deleteIfExists(f);
+                                acc[0]++;
+                            }
+                        }
                     }
                     ctx.put(FILES, acc[0]);
                     ctx.put(BYTES, acc[1]);

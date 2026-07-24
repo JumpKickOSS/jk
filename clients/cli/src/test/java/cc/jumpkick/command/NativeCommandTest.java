@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.Jk;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
  * project without it is refused up front (before any build), so we can assert the guard without
  * needing GraalVM in tests.
  */
+@Tag("integration")
 class NativeCommandTest {
 
     @Test

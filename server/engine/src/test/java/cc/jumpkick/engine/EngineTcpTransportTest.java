@@ -24,6 +24,7 @@ import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.Test;
  * drainDisplaced) once sent a raw token line where the server requires the {@code auth} envelope,
  * so same-version election and takeover drain silently failed on TCP.
  */
+@Tag("integration")
 class EngineTcpTransportTest {
 
     private final List<Path> tempDirs = new ArrayList<>();

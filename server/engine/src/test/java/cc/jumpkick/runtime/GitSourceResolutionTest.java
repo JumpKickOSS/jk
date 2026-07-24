@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -32,6 +33,7 @@ import org.junit.jupiter.api.io.TempDir;
  * pin, and augments the repo group; the real {@link LockOrchestrator} solves it; {@link
  * GitSourceResolution#stamp} records the git provenance on the locked package.
  */
+@Tag("integration")
 class GitSourceResolutionTest {
 
     /** A local git repo holding a trivial no-dependency jk.toml library, tagged v1.0.0. */

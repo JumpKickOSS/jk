@@ -13,10 +13,9 @@ import java.time.Duration;
 import java.util.List;
 
 /**
- * Feeds one workspace module's pipeline/step events into the shared {@link AggregateContext}'s {@link
- * CommandManager}, tagging every step row with the module so interleaved modules stay distinct.
- * Does <em>not</em> finalize the shared view — {@code BuildCommand} settles it once after the last
- * module.
+ * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
+ * CommandManager}. Aggregate bar math is engine-owned (JK-1120/1121) — this listener does not update
+ * {@link LiveProgress} or workspace percent.
  */
 public final class AggregateModuleListener implements PipelineListener {
 
@@ -25,22 +24,11 @@ public final class AggregateModuleListener implements PipelineListener {
     private final String module;
     private final List<Step> steps;
 
-    /**
-     * This module's tick slice of the calibrated aggregate total (pre-scan estimate, adjusted on
-     * reweight via {@link AggregateContext#growTotal}). Uncalibrated path ignores it.
-     */
-    private long slice;
-
-    /** The pipeline denominator we've already folded into {@link #slice} / the total. */
-    private long knownDenominator;
-
-    private long lastDenominator;
-
     /** Parallel-build output buffer; caller flushes when the module finishes. */
-    private java.util.List<String> outBuffer;
+    private List<String> outBuffer;
 
     /** Route this module's output into {@code buffer} (parallel build); see field doc. */
-    public void bufferOutputInto(java.util.List<String> buffer) {
+    public void bufferOutputInto(List<String> buffer) {
         this.outBuffer = buffer;
     }
 
@@ -48,13 +36,14 @@ public final class AggregateModuleListener implements PipelineListener {
         this(agg, module, steps, 0);
     }
 
+    /**
+     * {@code slice} is ignored (engine owns weights); kept for call-site compatibility.
+     */
     public AggregateModuleListener(AggregateContext agg, String module, List<Step> steps, long slice) {
         this.agg = agg;
         this.cm = agg.view();
         this.module = module;
         this.steps = steps;
-        this.slice = slice;
-        this.knownDenominator = slice; // the pipeline's initial denominator == its pre-scan estimate
     }
 
     @Override
@@ -64,12 +53,11 @@ public final class AggregateModuleListener implements PipelineListener {
             String display = p.label() != null && !p.label().isEmpty() ? p.label() : p.name();
             cm.addStepLabeled(module, p.name(), display);
         }
-        push(view);
     }
 
     @Override
     public void stepStart(String step, Phase phase, int ticks) {
-        cm.stepRunning(module, step);
+        cm.stepRunning(module, step, phase == null ? "" : phase.wireName());
     }
 
     @Override
@@ -84,13 +72,10 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void warn(String step, String code, String message) {
-        // Surface warnings above the shared bar as they arrive — same rendering as
-        // the single-project ProgressBarListener. Compiler warnings get the rich
-        // block (relative paths, color); everything else stays a one-liner.
         if (ConsoleSpec.isCompilerCode(code)) {
             emit(ConsoleSpec.compilerWarning(step, message));
         } else {
-            emit(ProgressBarListener.renderDiagnostic(
+            emit(renderDiagnostic(
                     Glyphs.BANG + " Warning",
                     cc.jumpkick.cli.theme.Theme.active().warning().bold(),
                     step,
@@ -99,7 +84,56 @@ public final class AggregateModuleListener implements PipelineListener {
         }
     }
 
-    /** Buffer (parallel) or write-above-now (serial), per {@link #bufferOutputInto}. */
+    @Override
+    public void error(String step, String code, String message) {
+        String brief = message == null || message.isBlank() ? (code != null ? code : "Failed") : message;
+        cm.attachPhaseError(module, step, "", brief);
+        emit(renderDiagnostic(
+                Glyphs.CROSS + " Error",
+                cc.jumpkick.cli.theme.Theme.active().error().bold(),
+                step,
+                code,
+                message));
+    }
+
+    /** Styled {@code ! Warning [step/code]: Summary — detail} diagnostic line. */
+    static String renderDiagnostic(
+            String prefix, org.jline.utils.AttributedStyle prefixStyle, String step, String code, String message) {
+        String summary = message == null ? "" : message;
+        String detail = null;
+        int sep = summary.indexOf(" — ");
+        if (sep >= 0) {
+            detail = capitalize(summary.substring(sep + 3));
+            summary = summary.substring(0, sep);
+        }
+        // Only capitalize when the summary looks like a sentence start (first char
+        // is a plain letter not followed by a hyphen — artifact names like
+        // "jk-audit-runner" should stay lowercase).
+        if (!summary.isEmpty()
+                && Character.isLowerCase(summary.charAt(0))
+                && (summary.length() < 2 || summary.charAt(1) != '-')) {
+            summary = capitalize(summary);
+        }
+        var sb = new org.jline.utils.AttributedStringBuilder();
+        sb.append(prefix, prefixStyle);
+        // Omit [step/code] when code is absent — keeps simple informational
+        // warnings (e.g. missing worker jars) uncluttered.
+        if (code != null && !code.isBlank()) {
+            sb.append(" [").append(step).append("/").append(code).append("]");
+        }
+        sb.append(": ");
+        sb.append(summary, cc.jumpkick.cli.theme.Theme.active().focused());
+        if (detail != null)
+            sb.append(" — ").append(detail, cc.jumpkick.cli.theme.Theme.active().activeStep());
+        return sb.toAnsi();
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s == null ? "" : s;
+        char first = s.charAt(0);
+        return Character.isLowerCase(first) ? Character.toUpperCase(first) + s.substring(1) : s;
+    }
+
     private void emit(String line) {
         if (outBuffer != null) {
             synchronized (outBuffer) {
@@ -112,58 +146,23 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void progress(String step, int delta, PipelineView view) {
-        push(view);
+        // Aggregate % comes from engine workspace-progress only.
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView view) {
-        push(view);
+        // Aggregate % comes from engine workspace-progress only.
     }
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS);
+        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
     }
 
     @Override
     public void pipelineFinish(PipelineResult result) {
         if (!result.success()) {
             agg.notifyErrors(result.errors());
-        }
-        // Calibrated: advance the base by exactly the slice we reserved in `total`
-        // and drop this module's running contribution — Σ slices == total, no
-        // boundary drift, no double-count. Uncalibrated: fold the live final
-        // denominator (the pre-fix growing behaviour).
-        if (agg.total() > 0) agg.completeModule(module, slice);
-        else agg.completeModule(lastDenominator);
-    }
-
-    private void push(PipelineView view) {
-        lastDenominator = view.denominator();
-        long base = agg.completedBase();
-        long total = agg.total();
-        if (total > 0) {
-            // A step reweighted: fold the denominator delta into this module's
-            // slice and the aggregate total, so a restore/skip shrinks (and a
-            // surprise full grows) the module's share of the whole-workspace bar.
-            if (view.denominator() != knownDenominator) {
-                agg.growTotal(view.denominator() - knownDenominator);
-                slice += view.denominator() - knownDenominator;
-                knownDenominator = view.denominator();
-                total = agg.total();
-            }
-            // Calibrated: scale this module's own 0→100% into its fixed slice and
-            // report it through the aggregate, which sums every running module's
-            // contribution onto completedBase. Monotonic within the module and
-            // clamped to total, so the bar neither backtracks at a module boundary
-            // nor stretches the denominator past the up-front estimate — and
-            // concurrent modules add up instead of clobbering each other.
-            long advanced = Math.round(view.fraction() * slice);
-            agg.moduleProgress(module, advanced);
-        } else {
-            // Uncalibrated caller (slice 0): fall back to live ticks against a
-            // denominator that grows as modules start.
-            cm.progress(base + view.numerator(), base + view.denominator());
         }
     }
 }

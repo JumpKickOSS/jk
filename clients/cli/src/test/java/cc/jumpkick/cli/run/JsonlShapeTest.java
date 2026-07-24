@@ -5,11 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.run.StepStatus;
+import cc.jumpkick.runtime.WorkspaceProgressTracker;
 import java.time.Duration;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /** Machine JSONL shape + output mode aliases (docs/machine-output.md). */
 class JsonlShapeTest {
+
+    @AfterEach
+    void clearProgress() {
+        LiveProgress.get().clear();
+    }
 
     @Test
     void events_include_schema_ts_and_type() {
@@ -22,9 +30,62 @@ class JsonlShapeTest {
     }
 
     @Test
+    void withProgress_attaches_percent_only() {
+        LiveProgress.get().update(25, 100);
+        String base = JsonlShape.stepStart("compile-main", "compile", 10);
+        String line = JsonlShape.withProgress(base);
+        assertThat(line).contains("\"progress\":25");
+        assertThat(line).doesNotContain("progress_num");
+        assertThat(line).doesNotContain("progress_den");
+        // Idempotent.
+        assertThat(JsonlShape.withProgress(line)).isEqualTo(line);
+    }
+
+    @Test
+    void withProgress_null_when_unknown() {
+        LiveProgress.get().clear();
+        String line = JsonlShape.withProgress(JsonlShape.workspaceStart(2));
+        assertThat(line).contains("\"progress\":null");
+    }
+
+    @Test
+    void withProgress_tracks_preflight_and_execute() {
+        // Preflight-only band (WorkspaceProgressTracker.PREFLIGHT_UNITS = 100).
+        LiveProgress.get().update(40, WorkspaceProgressTracker.PREFLIGHT_UNITS);
+        assertThat(JsonlShape.withProgress("{\"schema\":1,\"ts\":1,\"type\":\"x\"}"))
+                .contains("\"progress\":40");
+        // Mid-execute: preflight full + half of execute weights.
+        long pf = WorkspaceProgressTracker.PREFLIGHT_UNITS;
+        LiveProgress.get().update(pf + 50, pf + 100);
+        String mid = JsonlShape.withProgress("{\"schema\":1,\"ts\":1,\"type\":\"x\"}");
+        assertThat(mid).contains("\"progress\":75"); // (150/200)*100
+        LiveProgress.get().update(pf + 100, pf + 100);
+        assertThat(JsonlShape.withProgress("{\"schema\":1,\"ts\":1,\"type\":\"x\"}"))
+                .contains("\"progress\":100");
+    }
+
+    @Test
+    void session_events() {
+        String start = JsonlShape.sessionStart("build", List.of("build", "--skip-tests"));
+        assertThat(start).contains("\"type\":\"session-start\"");
+        assertThat(start).contains("\"command\":\"build\"");
+        assertThat(start).contains("\"argv\":[\"build\",\"--skip-tests\"]");
+        String finish = JsonlShape.sessionFinish(0, 42, "ok", List.of("a:b"));
+        assertThat(finish).contains("\"type\":\"session-finish\"");
+        assertThat(finish).contains("\"exit\":0");
+        assertThat(finish).contains("\"duration_ms\":42");
+        assertThat(finish).contains("\"wedge\":\"ok\"");
+        assertThat(finish).contains("\"modules\":[\"a:b\"]");
+    }
+
+    @Test
     void error_carries_optional_test_fields() {
         String line = JsonlShape.error(
-                "run-tests", "test-failure", "nope", "cc.jumpkick:core :: Foo > bar()  [w2]", "java.lang.AssertionError");
+                "run-tests",
+                "test-failure",
+                "nope",
+                "cc.jumpkick:core :: Foo > bar()  [w2]",
+                "java.lang.AssertionError");
         assertThat(line).contains("\"schema\":1");
         assertThat(line).contains("\"type\":\"error\"");
         assertThat(line).contains("\"test\":\"cc.jumpkick:core :: Foo > bar()  [w2]\"");

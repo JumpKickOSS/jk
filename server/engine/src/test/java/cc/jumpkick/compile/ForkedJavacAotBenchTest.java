@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * Engine host must be HotSpot 25+ ({@code PluginAot.eligible}); Graal never trains/maps.
  */
+@Tag("bench")
 class ForkedJavacAotBenchTest {
 
     private static final int RUNS = 7;

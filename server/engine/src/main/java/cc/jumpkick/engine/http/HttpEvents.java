@@ -46,7 +46,8 @@ public final class HttpEvents {
         Long requestId = extractRequestId(data);
         for (Subscription s : subscriptions) {
             if (!s.accepts(requestId)) continue;
-            s.offerDroppingOldest(s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
+            s.offerDroppingOldest(
+                    s.style == FrameStyle.MCP ? mcpFrame(id, type, data) : dashboardFrame(id, type, data));
         }
     }
 
@@ -141,6 +142,7 @@ public final class HttpEvents {
         private final FrameStyle style;
         /** {@code null} = all events; non-null = only matching {@code requestId}. */
         private final Long requestIdFilter;
+
         private final BlockingQueue<String> frames = new ArrayBlockingQueue<>(QUEUE_CAPACITY);
 
         private Subscription(HttpEvents hub, FrameStyle style, Long requestIdFilter) {

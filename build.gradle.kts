@@ -8,6 +8,19 @@ tasks.wrapper {
     distributionType = Wrapper.DistributionType.BIN
 }
 
+// Aggregate integration suite across all subprojects that register the task.
+tasks.register("integrationTest") {
+    group = "verification"
+    description = "Run @Tag(integration|slow) tests in every module (not part of check)"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "integrationTest" } })
+}
+
+tasks.register("checkAll") {
+    group = "verification"
+    description = "Unit test + integrationTest for the whole repo"
+    dependsOn(subprojects.map { it.tasks.matching { t -> t.name == "test" } }, "integrationTest")
+}
+
 // The shippable native-dist layout (docs/architecture.md "Ship layout"): the size-tuned native jk
 // client next to the engine's fat jar. The engine is a JVM app, never a native image — the
 // installed client spawns it on the jk-managed JDK as

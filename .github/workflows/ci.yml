@@ -11,8 +11,9 @@ env:
   TERM: xterm-256color
 
 jobs:
+  # Fast unit tier only — excludes @Tag(integration|slow|bench). Target <5 min.
   test:
-    name: Gradle test
+    name: Gradle unit test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,9 +24,44 @@ jobs:
           java-version: '25'
           cache: gradle
 
-      # Full unit/integration suite across all modules (source of truth until phase 2).
-      - name: Test
+      - name: Unit test
         run: ./gradlew test --no-daemon
+
+  # Integration/e2e: always on main push; on PR when CLI/engine/plugins/wire change.
+  integration:
+    name: Gradle integration test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            heavy:
+              - 'clients/cli/**'
+              - 'server/engine/**'
+              - 'server/resolver/**'
+              - 'server/io/**'
+              - 'plugins/**'
+              - 'shared/wire/**'
+              - 'buildSrc/**'
+              - 'gradle/**'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - '.github/workflows/ci.yml'
+
+      - uses: actions/setup-java@v4
+        if: github.event_name == 'push' || steps.filter.outputs.heavy == 'true'
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Integration test
+        if: github.event_name == 'push' || steps.filter.outputs.heavy == 'true'
+        run: ./gradlew integrationTest --no-daemon
 
   # ticket-1007/1018: dogfood workspace lock + build with a freshly built jk.
   self-host:
@@ -35,7 +71,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # Native client needs GraalVM; engine jar is a normal HotSpot fat jar.
-      - uses: graalvm/setup-graalvm@v1
+      - uses: graalvm/setup-graalvm@0def53c0fd8534bc13416c9469f5be45265824fd # v1.6.3
         with:
           java-version: '25'
           distribution: 'graalvm'

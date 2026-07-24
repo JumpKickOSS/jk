@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * fallback for an aggregating one. The underlying dirty-set/ABI machinery is shared with {@link
  * JavaIncrementalCompileTest}.
  */
+@Tag("integration")
 class JavaApIncrementalCompileTest {
 
     /**

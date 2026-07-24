@@ -10,11 +10,10 @@ import org.jline.utils.AttributedStyle;
  * Shared chrome for the build pipeline line and its settled result lines, so the live header ({@link
  * CommandManager#pipelineHeader}) and the buffered plain-scheduler println render identically.
  *
- * <p>The line is a powerline chip: {@code ✓ Build } painted on a colored chip, closed by a U+E0B0
- * cap whose <em>foreground</em> is the chip color (so the cap's solid body continues the chip) and
- * whose <em>background</em> is left unset (so the cap tapers the chip into whatever follows — the
- * bar on the live line, the command on a result line). Without a Nerd Font there is no chip background
- * and no cap: the glyph and command are simply colored.
+ * <p>The line is a powerline chip: {@code ✓ Build } painted on a colored chip, closed by a cap:
+ * with a Nerd Font, U+E0B0 whose <em>foreground</em> is the chip color (solid body continues the
+ * chip) and whose <em>background</em> is left unset (tapers into what follows); without a Nerd Font,
+ * a trailing space painted with the chip color as <em>background</em> (same width idea, no PUA).
  */
 public final class PipelineWedge {
 
@@ -29,12 +28,16 @@ public final class PipelineWedge {
     }
 
     /**
-     * The U+E0B0 cap closing a chip: foreground = {@code chipColor} (continuing the chip body),
-     * background unset (tapering into what follows). Empty when {@code nerdfont} is off — the plain
-     * line needs no cap.
+     * Cap closing a chip. Nerd Font: U+E0B0 with foreground = {@code chipColor} (continues the chip
+     * body; background unset so it tapers). Plain ANSI: a single space with background = {@code
+     * chipColor} (same visual end of the pill, no powerline glyph).
      */
     static String cap(Rgb chipColor, boolean nerdfont) {
-        return nerdfont ? Theme.colorize(Glyphs.SEGMENT_END_NERD, Theme.active().bright(chipColor)) : "";
+        Theme t = Theme.active();
+        if (nerdfont) {
+            return Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(chipColor));
+        }
+        return Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, chipColor));
     }
 
     /**
@@ -57,7 +60,7 @@ public final class PipelineWedge {
         boolean green = Glyphs.CHECK.equals(glyph) || Glyphs.PLAY.equals(glyph);
         var chipStyle = green ? t.pipelineSuccessChip() : t.pipelineChip();
         var capColor = green ? t.pipelineChipColor() : t.planBadgeColor();
-        // Background is always applied; the powerline cap glyph is the only nerd-font difference.
+        // Chip + cap (PUA arrow or plain bg-colored space) then message.
         return chip(glyph, command, chipStyle) + cap(capColor, nerdfont) + " " + message;
     }
 

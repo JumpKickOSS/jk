@@ -29,16 +29,17 @@ class RepoGroupExclusiveTest {
         MavenRepo internal = new MavenRepo("internal", internalDir.toUri(), new Http(), cas);
         MavenRepo pub = new MavenRepo("central", publicDir.toUri(), new Http(), cas);
         // Public first — would win without exclusive binding.
-        RepoGroup group =
-                new RepoGroup(List.of(pub, internal), List.of(List.of(), List.of("com.acme", "com.acme.*")));
+        RepoGroup group = new RepoGroup(List.of(pub, internal), List.of(List.of(), List.of("com.acme", "com.acme.*")));
 
-        assertThat(group.availableVersions(Coordinate.of("com.acme", "secret", "0"))).containsExactly("1.0");
+        assertThat(group.availableVersions(Coordinate.of("com.acme", "secret", "0")))
+                .containsExactly("1.0");
 
         Optional<RepoGroup.RepoFetched> hit = group.tryFetchPom(Coordinate.of("com.acme", "secret", "1.0"));
         assertThat(hit).isPresent();
         assertThat(hit.get().repo().name()).isEqualTo("internal");
 
-        assertThat(group.tryFetchPom(Coordinate.of("com.acme", "secret", "99.0"))).isEmpty();
+        assertThat(group.tryFetchPom(Coordinate.of("com.acme", "secret", "99.0")))
+                .isEmpty();
     }
 
     @Test

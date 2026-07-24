@@ -34,6 +34,41 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 
 The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
 
+### CI: what to cache between jobs
+
+jk’s correctness does **not** depend on local caches — a cold machine with a valid
+`jk.lock` always rebuilds. Caching only speeds up **CAS downloads**, **action hits**, and
+(once present) local preflight memos. **Never commit** cache dirs to git.
+
+| Path | What it holds | Safe to restore in CI? |
+|------|----------------|------------------------|
+| `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
+| `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
+| `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
+| `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
+| `jk.lock` | Resolved coords | **Commit** this (not a cache) |
+
+**Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
+
+Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates the CAS restore:
+
+```yaml
+- uses: actions/cache@v4
+  with:
+    path: |
+      ~/.jk/cache
+      **/target/.jk
+    key: jk-${{ runner.os }}-${{ hashFiles('**/jk.lock') }}
+    restore-keys: |
+      jk-${{ runner.os }}-
+```
+
+Also set `JK_AOT_TRAIN=off` on short-lived CI engines (see table above). After restoring
+cache, a normal `jk build` should hit action cache for unchanged modules.
+
+Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
+faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
+
 ## Projects and `jk.toml`
 
 ```bash
@@ -321,7 +356,7 @@ do not force main classpath versions.
 | Artifact | Config | Command |
 |---|---|---|
 | Thin jar | default | `jk build` |
-| Assembly jar | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
+| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
 
@@ -380,8 +415,8 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
-- Post-hoc summary still lands in `target/.jk-cli/<ts>/details.json` (below). Deep timings:
-  `target/jk-chrome-profile.json`.
+- Session log (same JSONL shape, live append) lands in `target/.jk-cli/<ts>/details.jsonl`
+  (below). Deep timings: `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
 
@@ -400,22 +435,24 @@ jk self setup-terminal --no-nerd   # force off
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
 
-### Session transcripts (`details.json`)
+### Session transcripts (`details.jsonl`)
 
-`jk build` and `jk test` write a small, versioned session file by default:
+`jk build` and `jk test` write a **live** JSONL session log by default (same event shape as
+`--output json`/`jsonl`):
 
 ```text
-target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.json
+target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.jsonl
 ```
 
-Schema version is the top-level `schema` field (currently `1`). Contents include the
-command name, a compact argv snapshot, exit code, wall-clock duration, optional wedge
-summary, selected modules, pipeline steps, and key engine errors. The terminal stays
-terse; with `-v` / `--verbose`, jk prints a one-line `Details: <path>` pointer after the
-run.
+One JSON object per line (`schema: 1`), appended as events arrive — safe to `tail -F` mid-run.
+Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
+`session-start`, ends with `session-finish` (`exit`, duration, optional wedge/modules). The
+terminal stays terse; with `-v` / `--verbose`, jk prints `Details: <path>` when the session
+opens (and again at finish).
 
 Writing is best-effort: a missing project, full disk, or permission error never fails the
-user command. Disable with `JK_CLI_DETAILS=off` (or `0`).
+user command. Disable with `JK_CLI_DETAILS=off` (or `0`). See [machine-output.md](machine-output.md)
+for the materialize cadence (TTY ~80 ms paint; disk flush ≤2 s on hot ticks).
 
 ### Deny policy
 
@@ -429,6 +466,65 @@ deny = ["jcenter.bintray.com"]   # enforced at lock / jk deny (host match)
 Host matching is exact or a DNS-label suffix (`evil.com` matches `repo.evil.com`, not
 `notevil.com`). License and yanked policies will fail closed at parse until enforcement
 ships — silent no-ops are not allowed.
+
+
+
+## Project layout
+
+Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
+ticks only); see [progress-contract.md](perf/progress-contract.md).
+
+jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
+no Maven tree is present). Language is by file extension (`.java` / `.kt` may share a dir).
+
+| Input | Simple (default) | Traditional (Maven import) |
+|-------|------------------|----------------------------|
+| Main sources | `src/` | `src/main/java`, `src/main/kotlin` |
+| Main resources | `resources/` | `src/main/resources` |
+| Default tests | `test/` | `src/test/java`, `src/test/kotlin` |
+| Default test resources | `test-resources/` | `src/test/resources` |
+| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin}` |
+| Named suite resources | `<name>-resources/` (e.g. `integration-resources/`) | `src/<name>/resources` |
+
+Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
+paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
+classpath only when that suite is selected (`jk test --suite integration`, `--all`, etc.).
+
+`jk test` runs the **test** suite only by default; see [Test suites and tags](#test-suites-and-tags).
+`jk ide` marks every discovered suite as IDE test source roots.
+
+## Test suites and tags
+
+`jk test` runs the **default suite** only: sources under `test/` (simple layout) or
+`src/test/{java,kotlin}` (traditional). Optional sibling suites are discovered when they
+exist — for example `integration/` or `src/integration/java`.
+
+```bash
+jk test                           # default suite ("test") only
+jk test --suite integration       # only that suite
+jk test --suite test --suite integration
+jk test --all                     # every discovered suite
+jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
+jk test --include-tag smoke
+jk test --all --exclude-tag bench
+```
+
+`--all` and `--suite` cannot be combined. Unknown suite names error with the available list.
+
+Declarative defaults (CLI wins when you pass tags):
+
+```toml
+[test]
+workers = 1
+default-exclude-tags = ["slow", "bench"]
+
+[profiles.ci]
+exclude-tags = ["bench"]
+include-tags = []   # optional
+```
+
+`--profile` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
+the test stamp: changing selection re-runs tests even if sources are unchanged.
 
 ## Quality (format + lint)
 
@@ -521,13 +617,44 @@ jk bsp install               # write .bsp/jk.json
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
+**Multi-suite tests (JK-1139–1142):** `jk ide` registers **every discovered test suite**
+(`test/`, `integration/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
+in the same module — IntelliJ `.iml` and VS Code/JDT `.classpath`. One test output directory;
+no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots. Named suite
+resource dirs (`integration-resources/`, …) are marked as test resources when present.
+
+Execution still follows the CLI default: `jk test` runs only the **test** suite. Use
+`jk test --suite integration`, `jk test --all`, or tags for other selections. After
+`jk ide`, IntelliJ gains shell run configurations (`jk test`, `jk test (all suites)`, and
+one per extra suite) and VS Code gets matching `.vscode/tasks.json` entries.
+
+**BSP `buildTarget/test` selection (JK-1143):** omit `params.data` for default-suite only
+(same as bare `jk test`). Optional jk extension:
+
+```json
+{
+  "params": {
+    "targets": [{ "uri": "file:///path/to/module#name" }],
+    "data": {
+      "allSuites": false,
+      "suites": ["test", "integration"],
+      "includeTags": ["smoke"],
+      "excludeTags": ["slow"]
+    }
+  }
+}
+```
+
+Fields mirror CLI: `allSuites` ↔ `--all`, `suites` ↔ `--suite`, tags ↔
+`--include-tag` / `--exclude-tag`.
+
 **BSP capabilities (stdio `jk bsp serve`):**
 
 | Capability | Status |
 |---|---|
 | `workspace/buildTargets`, sources, dependency modules | yes |
 | `buildTarget/compile` | yes (per-target / module) |
-| `buildTarget/test` | yes (engine `jk test` path; JUnit) |
+| `buildTarget/test` | yes (engine `jk test`; optional suite/tag `data`) |
 | `buildTarget/run` | **no** — use IDE tasks / `jk run` |
 | `workspace/reload` | yes |
 | Debug adapter | no |

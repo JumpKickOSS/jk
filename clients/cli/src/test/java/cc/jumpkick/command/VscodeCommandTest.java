@@ -7,6 +7,7 @@ import cc.jumpkick.cli.Jk;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * settings the redhat.java language server consumes. Uses {@code --jdks-dir}/{@code --cache-dir}
  * overrides so nothing touches the developer's real {@code ~/.jk}.
  */
+@Tag("integration")
 class VscodeCommandTest {
 
     @Test

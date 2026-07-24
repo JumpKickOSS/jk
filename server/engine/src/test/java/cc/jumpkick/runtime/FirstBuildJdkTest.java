@@ -10,6 +10,7 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>An empty {@code jdksDir} override reproduces the first-run shape deterministically.
  * Network test (Maven Central + the JDK feed; the CAS under build/ keeps repeats warm).
  */
+@Tag("integration")
 class FirstBuildJdkTest {
 
     @Test
@@ -52,6 +54,7 @@ class FirstBuildJdkTest {
         Files.createDirectories(project.resolve("test"));
         Files.writeString(project.resolve("test/FTest.java"), """
                 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Tag;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
 
                 class FTest {
@@ -91,7 +94,11 @@ class FirstBuildJdkTest {
             PipelineResult result = pipeline.run();
             StringBuilder dump = new StringBuilder();
             for (PipelineResult.Diagnostic d : result.errors()) {
-                dump.append("DIAG [").append(d.step()).append("]: ").append(d.message()).append('\n');
+                dump.append("DIAG [")
+                        .append(d.step())
+                        .append("]: ")
+                        .append(d.message())
+                        .append('\n');
             }
             pipeline.get(BuildPipelines.TEST_RESULT).ifPresent(ts -> {
                 dump.append("NESTED-SUMMARY total=")
@@ -117,7 +124,8 @@ class FirstBuildJdkTest {
                 Path reports = project.resolve("target/reports/test-results");
                 if (Files.isDirectory(reports)) {
                     try (var stream = Files.walk(reports, 2)) {
-                        for (Path p : stream.filter(x -> x.toString().endsWith(".xml")).toList()) {
+                        for (Path p : stream.filter(x -> x.toString().endsWith(".xml"))
+                                .toList()) {
                             dump.append("NESTED-XML ")
                                     .append(p.getFileName())
                                     .append(":\n")

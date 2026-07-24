@@ -45,6 +45,7 @@ class KotlinPluginSetupTest {
     @Test
     void throws_with_clear_hint_when_absent(@TempDir Path dir) {
         Cas cas = new Cas(dir);
+        // Empty cas + no -D jar property + dead official URL ⇒ no soft network success.
         withoutOverride(() -> assertThatThrownBy(() -> PluginJar.KOTLIN_COMPILER.locate(cas))
                 .isInstanceOf(PluginJarNotFoundException.class));
     }
@@ -52,15 +53,22 @@ class KotlinPluginSetupTest {
     /**
      * The engine test JVM sets the worker-jar override so the KSP/Room/Hilt gates can fork real
      * kotlinc (see kernel/engine/build.gradle.kts); these two tests exercise the repos lookup
-     * BELOW the override, so it must be absent for their duration.
+     * BELOW the override, so it must be absent for their duration. Official-repo fetch is also
+     * disabled (dead loopback URL) so an empty temp cache cannot soft-succeed over the network.
      */
     private static void withoutOverride(Runnable body) {
         String prev = System.getProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
+        String prevRepo = System.getProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY);
         System.clearProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
+        // Connection refused / empty — fetchOfficial returns null, locate throws NotFound.
+        System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, "http://127.0.0.1:1/");
         try {
             body.run();
         } finally {
             if (prev != null) System.setProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY, prev);
+            else System.clearProperty(KotlinPluginSetup.WORKER_JAR_PROPERTY);
+            if (prevRepo != null) System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, prevRepo);
+            else System.clearProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY);
         }
     }
 

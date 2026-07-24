@@ -10,11 +10,14 @@ import java.time.Instant;
 
 /**
  * Stable wire format for pipeline events as one-JSON-object-per-line text. Shared by {@link
- * JsonlListener} (stdout for {@code --output json}/{@code jsonl}) and {@link EventLogListener}
- * (always-on under the cache run log). Centralising the shape here means agents, CI, and future MCP
- * tools share one schema — see {@code docs/machine-output.md}.
+ * JsonlListener} (stdout for {@code --output json}/{@code jsonl}), {@link EventLogListener}
+ * (always-on under the cache run log), and {@link CliSessionTranscript} ({@code details.jsonl}).
+ * Centralising the shape here means agents, CI, and future MCP tools share one schema — see
+ * {@code docs/machine-output.md}.
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
+ * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — JK-1117) via
+ * {@link #withProgress(String)}.
  */
 public final class JsonlShape {
 
@@ -24,7 +27,29 @@ public final class JsonlShape {
      */
     public static final int SCHEMA = 1;
 
+    /** Hot-tick event types: heartbeat flush to disk (M4/M5); everything else flushes per line. */
+    static final java.util.Set<String> HOT_TYPES =
+            java.util.Set.of("progress", "tick-update", "workspace-progress", "label", "output");
+
+    private static final Object STDOUT_LOCK = new Object();
+
     private JsonlShape() {}
+
+    /**
+     * Emit one workspace-envelope line: progress rider applied, dual-written to the active {@link
+     * CliSessionTranscript}; printed to stdout only when {@code toStdout} ({@code --output
+     * json}/{@code jsonl}).
+     */
+    public static void emitJsonl(String line, boolean toStdout) {
+        String decorated = withProgress(line);
+        if (toStdout) {
+            synchronized (STDOUT_LOCK) {
+                System.out.println(decorated);
+                System.out.flush();
+            }
+        }
+        CliSessionTranscript.appendActive(decorated);
+    }
 
     /** Shared prefix: schema + ts + type. */
     private static StringBuilder open(String type) {
@@ -35,6 +60,65 @@ public final class JsonlShape {
                 .append(nowMillis())
                 .append(",\"type\":")
                 .append(js(type));
+    }
+
+    /**
+     * Attach the aggregate {@code progress} percent rider from {@link LiveProgress} (JK-1117).
+     * Idempotent if the line already ends with a progress field. Returns {@code line} unchanged when
+     * null/blank or not a single JSON object.
+     */
+    public static String withProgress(String line) {
+        return withProgress(line, LiveProgress.get().percent());
+    }
+
+    /**
+     * Attach {@code progress} (0–100 or JSON {@code null}) before the final {@code }}. Additive only;
+     * does not add {@code progress_num}/{@code progress_den}.
+     */
+    public static String withProgress(String line, Double progress) {
+        if (line == null || line.isEmpty()) return line;
+        int end = line.length() - 1;
+        if (line.charAt(end) != '}') return line;
+        // Avoid double-append if a caller already decorated the line.
+        if (line.contains("\"progress\":")) return line;
+        StringBuilder sb = new StringBuilder(line.length() + 24);
+        sb.append(line, 0, end);
+        sb.append(",\"progress\":");
+        sb.append(progress == null ? "null" : cc.jumpkick.runtime.WorkspaceProgressTracker.progressToken(progress));
+        sb.append('}');
+        return sb.toString();
+    }
+
+    /** Command session opened under {@code target/.jk-cli/…/details.jsonl}. */
+    public static String sessionStart(String command, java.util.List<String> argv) {
+        StringBuilder sb = open("session-start").append(",\"command\":").append(js(command));
+        sb.append(",\"argv\":[");
+        if (argv != null) {
+            for (int i = 0; i < argv.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(js(argv.get(i)));
+            }
+        }
+        return sb.append(']').append('}').toString();
+    }
+
+    /** Command session finished — exit code + wall duration (+ optional summary fields). */
+    public static String sessionFinish(int exit, long durationMs, String wedge, java.util.List<String> modules) {
+        StringBuilder sb = open("session-finish")
+                .append(",\"exit\":")
+                .append(exit)
+                .append(",\"duration_ms\":")
+                .append(durationMs);
+        if (wedge != null && !wedge.isBlank()) sb.append(",\"wedge\":").append(js(wedge));
+        if (modules != null && !modules.isEmpty()) {
+            sb.append(",\"modules\":[");
+            for (int i = 0; i < modules.size(); i++) {
+                if (i > 0) sb.append(',');
+                sb.append(js(modules.get(i)));
+            }
+            sb.append(']');
+        }
+        return sb.append('}').toString();
     }
 
     static String pipelineStart(PipelineView v) {
@@ -172,9 +256,35 @@ public final class JsonlShape {
                 .toString();
     }
 
-    /** Workspace graph planned — agents learn module count before any module pipeline. */
+    /**
+     * Engine workspace aggregate progress (JK-1120). Clients mirror the engine's tracker snapshot;
+     * do not recompute from module ticks.
+     */
+    public static String workspaceProgress(
+            String dir, long numerator, long denominator, String phase, int modulesComplete, int modulesTotal) {
+        return open("workspace-progress")
+                .append(",\"dir\":")
+                .append(js(dir == null ? "" : dir))
+                .append(",\"numerator\":")
+                .append(numerator)
+                .append(",\"denominator\":")
+                .append(denominator)
+                .append(",\"phase\":")
+                .append(js(phase == null ? "" : phase))
+                .append(",\"modulesComplete\":")
+                .append(modulesComplete)
+                .append(",\"modulesTotal\":")
+                .append(modulesTotal)
+                .append('}')
+                .toString();
+    }
+
     public static String workspaceStart(int modules) {
-        return open("workspace-start").append(",\"modules\":").append(modules).append('}').toString();
+        return open("workspace-start")
+                .append(",\"modules\":")
+                .append(modules)
+                .append('}')
+                .toString();
     }
 
     /** Workspace graph finished (all modules done or aborted on graph error). */

@@ -20,6 +20,7 @@ import java.util.zip.ZipEntry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * behavior lives alongside the tool-install integration tests.) These moved here from {@code
  * RunCommandTest} when {@code jk run} stopped interpreting file arguments.
  */
+@Tag("integration")
 class ToolRunCommandTest {
 
     // These tests drive the real fetch pipeline against a mock Maven server; fetched

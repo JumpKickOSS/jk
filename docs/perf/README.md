@@ -51,6 +51,12 @@ JDK_SPEC=temurin-25 ./scripts/aot-vs-fork-bench.sh /path/to/project   # bare jav
 cache (one content read per path per thread for key + why-rebuilt snapshot) plus settled
 disk memo under `<cache>/hash-memo/`. Action key material unchanged (still path + SHA-256 hex).
 
+## Test suite tiers
+
+Default `./gradlew test` = unit tier (excludes `@Tag("integration"|"slow"|"bench")`; target <5 min);
+`integrationTest` = tagged integration/slow; `checkAll` = both (pre-merge bar).
+See [test-suite-tiers.md](test-suite-tiers.md).
+
 ## Test parallelization (JK-1086 Phase A → B/C)
 
 **Within-module:** default `-w0` auto + per-module `[test] workers=1` opt-out (B1–B4).  

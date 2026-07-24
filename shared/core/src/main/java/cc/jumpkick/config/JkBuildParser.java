@@ -1101,9 +1101,31 @@ public final class JkBuildParser {
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = optionalStringList(body, "jvm-args", "profiles." + name + ".jvm-args");
-            byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs));
+            List<String> includeTags =
+                    optionalStringList(body, "include-tags", "profiles." + name + ".include-tags");
+            List<String> excludeTags =
+                    optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags");
+            byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags));
         }
         return new Profiles(byName);
+    }
+
+    /**
+     * {@code [test] default-exclude-tags} — applied when CLI did not set {@code --exclude-tag}
+     * (JK-1137). Empty when the table/key is absent.
+     */
+    public static List<String> parseDefaultExcludeTags(Path buildFile) {
+        if (buildFile == null || !java.nio.file.Files.isRegularFile(buildFile)) return List.of();
+        try {
+            String toml = java.nio.file.Files.readString(buildFile);
+            TomlParseResult result = Toml.parse(toml);
+            if (result.hasErrors()) return List.of();
+            TomlTable test = result.getTable("test");
+            if (test == null) return List.of();
+            return optionalStringList(test, "default-exclude-tags", "test.default-exclude-tags");
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     private static Features parseFeatures(TomlTable root) {
@@ -1511,8 +1533,7 @@ public final class JkBuildParser {
                 for (int i = 0; i < kspOpts.size(); i++) {
                     Object val = kspOpts.get(i);
                     if (!(val instanceof String s) || s.isBlank() || !s.contains("=")) {
-                        throw new JkBuildParseException(
-                                "[build].ksp-options must be an array of key=value strings");
+                        throw new JkBuildParseException("[build].ksp-options must be an array of key=value strings");
                     }
                     kspOptions.add(s);
                 }
@@ -1523,8 +1544,7 @@ public final class JkBuildParser {
                 for (int i = 0; i < es.size(); i++) {
                     Object val = es.get(i);
                     if (!(val instanceof String s) || s.isBlank())
-                        throw new JkBuildParseException(
-                                "[build].extra-src must be an array of directory strings");
+                        throw new JkBuildParseException("[build].extra-src must be an array of directory strings");
                     extraSrc.add(s);
                 }
             }

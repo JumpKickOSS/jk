@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test;
 class CommandDispatchTest {
 
     @Test
+    void escaping_exception_sweep_closes_active_live_region() {
+        // A RuntimeException escaping a command must not leave the live region owning the terminal
+        // (hidden cursor, animator, taskbar progress) — dispatch sweeps the active region closed.
+        var cm = cc.jumpkick.cli.tui.CommandManager.pipeline(
+                new java.io.PrintStream(new java.io.ByteArrayOutputStream()), "Build", false);
+        assertThat(cc.jumpkick.cli.tui.LiveRegion.active()).isSameAs(cm);
+        CommandDispatch.closeActiveLiveRegion();
+        assertThat(cc.jumpkick.cli.tui.LiveRegion.active()).isNull();
+        CommandDispatch.closeActiveLiveRegion(); // idempotent with nothing active
+    }
+
+    @Test
     void commandIndex_findsFirstPositional() {
         assertThat(CommandDispatch.commandIndex(List.of("build"))).isZero();
         assertThat(CommandDispatch.commandIndex(List.of("-q", "build"))).isEqualTo(1);

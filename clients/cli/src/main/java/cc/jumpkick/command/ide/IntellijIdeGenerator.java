@@ -6,6 +6,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.layout.TestSuites;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.util.MinimalXml;
 import java.io.IOException;
@@ -14,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -74,6 +76,8 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                 files++;
             }
         }
+        // JK-1141: jk test suite run configurations (workspace root working dir).
+        files += writeJkTestRunConfigs(runDir, wsRoot, allModules.keySet());
 
         // ---- generate *.iml for each module --------------------------------
         for (Map.Entry<Path, IdeModule> me : allModules.entrySet()) {
@@ -294,22 +298,13 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append("    <exclude-output />\n");
 
         sb.append("    <content url=\"file://$MODULE_DIR$\">\n");
-        boolean hasTraditional = Files.isDirectory(moduleDir.resolve("src/main/java"))
-                || Files.isDirectory(moduleDir.resolve("src/main/kotlin"))
-                || Files.isDirectory(moduleDir.resolve("src/test/java"))
-                || Files.isDirectory(moduleDir.resolve("src/test/kotlin"));
-        if (hasTraditional) {
-            addSourceFolder(sb, moduleDir, "src/main/java", false);
-            addSourceFolder(sb, moduleDir, "src/main/kotlin", false);
-            addResourceFolder(sb, moduleDir, "src/main/resources", false);
-            addSourceFolder(sb, moduleDir, "src/test/java", true);
-            addSourceFolder(sb, moduleDir, "src/test/kotlin", true);
-            addResourceFolder(sb, moduleDir, "src/test/resources", true);
-        } else {
-            addSourceFolder(sb, moduleDir, "src", false);
-            addResourceFolder(sb, moduleDir, "resources", false);
-            addSourceFolder(sb, moduleDir, "test", true);
-            addResourceFolder(sb, moduleDir, "test-resources", true);
+        // JK-1139: all TestSuites roots as test sources (not only default test/).
+        for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
+            if (root.resource()) {
+                addResourceFolder(sb, moduleDir, root.relative(), root.test());
+            } else {
+                addSourceFolder(sb, moduleDir, root.relative(), root.test());
+            }
         }
 
         Path gen = module.generatedSourcesDir();
@@ -371,6 +366,59 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append("    <method v=\"2\">\n");
         sb.append("      <option name=\"Make\" enabled=\"true\" />\n");
         sb.append("    </method>\n");
+        sb.append("  </configuration>\n</component>\n");
+        return sb.toString();
+    }
+
+    /**
+     * Shell run configs: {@code jk test}, {@code jk test --all}, and one per non-default suite
+     * discovered under any module (JK-1141).
+     */
+    static int writeJkTestRunConfigs(Path runDir, Path wsRoot, Set<Path> moduleDirs) throws IOException {
+        Files.createDirectories(runDir);
+        int n = 0;
+        write(runDir.resolve("jk_test.xml"), shellRunConfigXml("jk test", "jk test", wsRoot));
+        n++;
+        write(runDir.resolve("jk_test_all.xml"), shellRunConfigXml("jk test (all suites)", "jk test --all", wsRoot));
+        n++;
+        LinkedHashSet<String> extraSuites = new LinkedHashSet<>();
+        for (Path mod : moduleDirs) {
+            for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
+                if (!TestSuites.DEFAULT.equals(suite)) extraSuites.add(suite);
+            }
+        }
+        for (String suite : extraSuites) {
+            String file = "jk_test_" + IdeSupport.sanitize(suite) + ".xml";
+            write(
+                    runDir.resolve(file),
+                    shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
+            n++;
+        }
+        return n;
+    }
+
+    /** IntelliJ ShConfigurationType: run a shell command in the workspace root. */
+    static String shellRunConfigXml(String name, String command, Path workingDir) {
+        String cwd = workingDir.toAbsolutePath().normalize().toString().replace('\\', '/');
+        StringBuilder sb = xmlHeader();
+        sb.append("<component name=\"ProjectRunConfigurationManager\">\n");
+        sb.append("  <configuration default=\"false\" name=\"")
+                .append(esc(name))
+                .append("\" type=\"ShConfigurationType\">\n");
+        sb.append("    <option name=\"SCRIPT_TEXT\" value=\"").append(esc(command)).append("\" />\n");
+        sb.append("    <option name=\"INDEPENDENT_SCRIPT_PATH\" value=\"true\" />\n");
+        sb.append("    <option name=\"SCRIPT_PATH\" value=\"\" />\n");
+        sb.append("    <option name=\"SCRIPT_OPTIONS\" value=\"\" />\n");
+        sb.append("    <option name=\"INDEPENDENT_SCRIPT_WORKING_DIRECTORY\" value=\"true\" />\n");
+        sb.append("    <option name=\"SCRIPT_WORKING_DIRECTORY\" value=\"")
+                .append(esc(cwd))
+                .append("\" />\n");
+        sb.append("    <option name=\"INDEPENDENT_INTERPRETER_PATH\" value=\"true\" />\n");
+        sb.append("    <option name=\"INTERPRETER_PATH\" value=\"/bin/zsh\" />\n");
+        sb.append("    <option name=\"INTERPRETER_OPTIONS\" value=\"\" />\n");
+        sb.append("    <option name=\"EXECUTE_IN_TERMINAL\" value=\"true\" />\n");
+        sb.append("    <option name=\"EXECUTE_SCRIPT_FILE\" value=\"false\" />\n");
+        sb.append("    <method v=\"2\" />\n");
         sb.append("  </configuration>\n</component>\n");
         return sb.toString();
     }

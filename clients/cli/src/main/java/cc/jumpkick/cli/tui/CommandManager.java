@@ -15,13 +15,14 @@ import java.util.Map;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Live console for long-running commands: simple spinner task mode, or pipeline mode (header +
- * {@link ProgressBar} + collapsible step list). Animates on a TTY; under pipes/{@code --quiet}/
- * {@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
+ * Live console for long-running commands: simple pulse-circle task mode, or pipeline mode (header
+ * with pulse + {@link ProgressBar} + compact module/phase tree). Animates on a TTY; under pipes/{@code
+ * --quiet}/{@code --no-progress} only prints the final result. Active {@link LiveRegion} for Ctrl-C.
  */
 public final class CommandManager implements AutoCloseable, LiveRegion {
 
-    private static final String[] FRAMES = Spinner.FRAMES;
+    private static final String PULSE = Spinner.PULSE_GLYPH;
+    private static final int PULSE_FRAMES = Spinner.PULSE_FRAMES;
     private static final long FRAME_MS = Spinner.FRAME_MS;
 
     /** Flush a captured partial line (no newline yet) after this much quiet. */
@@ -61,7 +62,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     private volatile String solveLabel = "";
 
-    private final AttributedStyle[] frameColors = Spinner.buildGradient(FRAMES.length);
+    /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
+    private final AttributedStyle[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
+
+    /** Chip pulse (white↔chip blue) — pipeline header pill only; FG sits on solid chip BG. */
+    private final AttributedStyle[] chipPulseColors =
+            Spinner.buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
+
     private final ProgressBar bar = new ProgressBar();
 
     private final Object lock = new Object();
@@ -82,9 +89,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private long denominator;
     private double peakFraction; // monotonic-display floor: the bar never renders below this
     private long etaEstimateMs; // total predicted build wall-clock (the jk explain figure); 0 = no countdown
+    private int modulesComplete;
+    private int modulesTotal; // 0 = hide module remaining (JK-1157)
     private long finishSeq;
 
     private final Map<String, Row> rows = new LinkedHashMap<>();
+
+    /** Coarse pipeline phases in first-seen order (render newest-first). Key = wire phase name. */
+    private final List<String> phaseOrder = new ArrayList<>();
+
+    private final Map<String, PhaseNode> phases = new LinkedHashMap<>();
 
     /** Pre-formatted completion lines, oldest→newest; bounded to {@link #MAX_COMPLETIONS}. */
     private final List<String> recentCompletions = new ArrayList<>();
@@ -185,16 +199,27 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Register a not-yet-started step row with an explicit display label. */
     public void addStepLabeled(String module, String stepKey, String display) {
         synchronized (lock) {
-            rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, display));
+            rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, display, stepKey));
         }
     }
 
-    /** Mark a step running and make it the header's active module. */
+    /** Mark a step running (phase defaults to the step key). */
     public void stepRunning(String module, String stepKey) {
+        stepRunning(module, stepKey, "");
+    }
+
+    /**
+     * Mark a step running and record its coarse {@code phase} (wire name, e.g. {@code compile}) for
+     * the vertical phase chain. Empty phase falls back to the step key (same as the web dashboard).
+     */
+    public void stepRunning(String module, String stepKey, String phase) {
         synchronized (lock) {
-            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey)));
+            String phaseKey = phaseKey(phase, stepKey);
+            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            r.phase = phaseKey;
             r.state = RowState.ACTIVE;
             this.target = module;
+            touchPhaseStart(phaseKey);
         }
     }
 
@@ -206,13 +231,21 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Mark a step finished (success or failure); it sinks to the completed group. */
+    /** Mark a step finished (phase defaults empty). */
     public void stepDone(String module, String stepKey, boolean ok) {
+        stepDone(module, stepKey, ok, "");
+    }
+
+    /** Mark a step finished; updates the phase chain aggregate for {@code phase}. */
+    public void stepDone(String module, String stepKey, boolean ok, String phase) {
         synchronized (lock) {
-            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey)));
+            String phaseKey = phaseKey(phase, stepKey);
+            Row r = rows.computeIfAbsent(key(module, stepKey), k -> new Row(module, humanize(stepKey), phaseKey));
+            r.phase = phaseKey;
             r.state = ok ? RowState.DONE : RowState.FAILED;
             r.message = "";
             r.seq = ++finishSeq;
+            touchPhaseFinish(phaseKey, ok);
         }
     }
 
@@ -229,12 +262,80 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
+     * Workspace module progress for the header secondary remaining-work display (JK-1157).
+     * {@code total <= 0} hides the module counter.
+     */
+    public void setModuleProgress(int complete, int total) {
+        synchronized (lock) {
+            this.modulesComplete = Math.max(0, complete);
+            this.modulesTotal = Math.max(0, total);
+        }
+    }
+
+    /**
      * Set a text label shown in the header instead of the progress bar when the denominator is
      * still 0 (pre-solve step). Once {@link #progress} is called with a positive denominator the
      * bar takes over automatically; pass {@code ""} to clear explicitly.
      */
     public void solveLabel(String label) {
         this.solveLabel = label == null ? "" : label;
+    }
+
+    /**
+     * Workspace preflight: phase pill for {@code stage} + optional header label while the bar may
+     * still be preflight-only. Called from {@link cc.jumpkick.cli.run.AggregateContext#preflight}.
+     */
+    public void preflight(String stage, int done, int total, String label) {
+        synchronized (lock) {
+            String key = stage == null || stage.isEmpty() ? "checking" : stage;
+            String pill = phaseLabel(key);
+            PhaseNode n = phases.get(key);
+            if (n == null) {
+                n = new PhaseNode(key, pill);
+                phases.put(key, n);
+                phaseOrder.add(key);
+            }
+            boolean complete = total > 0 && done >= total;
+            if (complete) {
+                // Success → drop from the live chain (failed preflight keeps a red row).
+                phases.remove(key);
+                phaseOrder.remove(key);
+            } else {
+                n.state = PhaseState.RUNNING;
+            }
+            if (denominator <= 0) {
+                if (label != null && !label.isEmpty()) this.solveLabel = label;
+                else if (total > 0) this.solveLabel = pill + " " + done + "/" + total;
+                else this.solveLabel = pill + "…";
+            }
+        }
+    }
+
+    /**
+     * Attach a short failure summary to the step/phase owning {@code stepKey} (or {@code phase} if
+     * set). Full diagnostics still go above the region / result files.
+     */
+    public void attachPhaseError(String module, String stepKey, String phase, String brief) {
+        synchronized (lock) {
+            String msg = brief == null ? "" : brief.trim().replace('\n', ' ');
+            if (msg.length() > 96) msg = msg.substring(0, 93) + "…";
+            Row r = rows.get(key(module, stepKey));
+            if (r != null && !msg.isEmpty()) r.briefError = msg;
+            // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty
+            // phase or a step key that has no PhaseNode (JK-1127).
+            String pk = phaseKey(phase, stepKey);
+            if (r != null && r.phase != null && !r.phase.isEmpty()) {
+                if (pk == null || pk.isEmpty() || !phases.containsKey(pk)) {
+                    pk = r.phase;
+                }
+            }
+            if (pk == null || pk.isEmpty()) return;
+            PhaseNode n = phases.get(pk);
+            if (n == null) return;
+            if (!msg.isEmpty()) n.briefError = msg;
+            n.anyFailed = true;
+            n.state = PhaseState.FAILED;
+        }
     }
 
     /** Set the aggregate progress numerator/denominator for the bar. */
@@ -257,6 +358,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
             this.numerator = numerator;
             this.denominator = denominator;
+            // Prefer the bar over the text-only solve label once we have a denominator.
+            if (denominator > 0) this.solveLabel = "";
         }
     }
 
@@ -470,7 +573,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Simple mode: repaint the spinner line with its first (settled) glyph, then newline. */
     private void freezeSpinnerLine() {
         out.print('\r');
-        out.print(Theme.colorize(FRAMES[0], frameColors[0]));
+        out.print(Theme.colorize(PULSE, openPulseColors[0]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -504,14 +607,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (pipelineMode) paintPipeline();
             else paintSimple();
             out.flush();
-            frame = (frame + 1) % FRAMES.length;
+            frame = (frame + 1) % PULSE_FRAMES;
         }
     }
 
     /** Repaint the single simple-mode spinner line in place (must hold {@link #lock}). */
     private void paintSimple() {
         out.print('\r');
-        out.print(Theme.colorize(FRAMES[frame], frameColors[frame]));
+        out.print(Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -584,49 +687,43 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Build the pipeline region's lines (header-with-bar, active step tree, completed tail). Pure — no
-     * cursor control, no output. Package-private for tests; the {@code frame} field and {@code
-     * elapsedMillis} are passed/read so tests are deterministic.
+     * Build the pipeline region's lines (header-with-bar, compact module/phase tree, completed
+     * tail). Pure — no cursor control. Package-private for tests.
+     *
+     * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
+     * out. Each row is {@code ├─ ● group:name · Phase} with a blue pulse spinner while running (no
+     * background pills). Failed rows use a red cross and keep a one-line brief under the branch.
+     * No blank spacer rails between rows — vertically compact.
      */
     public List<String> renderPipelineLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
-        String sep = Theme.colorize("›", dim);
         List<String> lines = new ArrayList<>();
 
-        // 1. Header: {spinner} {name} {bar} …elapsed…. The aggregate bar is inlined
-        // after the pipeline name; the elapsed trails the bar in bright-black italic
-        // (…52s… rather than a parenthesised suffix). The module moved to the
-        // active row, so the header carries no step detail.
+        // 1. Header: pulse circle + name + bar + clock
         lines.add(pipelineHeader(elapsedMillis));
 
-        // 2. Active step tree: only the currently-running step(s). Pending and
-        // per-step completed rows aren't shown — most steps finish in well under
-        // a second, so the tree of boxes/checkmarks was render cost without telling
-        // the user anything they'd act on. Unit-level completions are summarized in
-        // the completed tail below; the aggregate bar conveys overall progress.
-        List<Row> active = new ArrayList<>();
-        for (Row r : rows.values()) {
-            if (r.state == RowState.ACTIVE) active.add(r);
+        // 2. Active work: prefer per-module step rows; fall back to phase-only (preflight).
+        // Budget leaves the header line and one margin so the region stays inside the viewport.
+        int budget = Math.max(1, height - 2);
+        List<TreeEntry> visible = collectVisibleTree();
+        int shown = 0;
+        for (int i = 0; i < visible.size() && budget > 0; i++) {
+            TreeEntry entry = visible.get(i);
+            boolean last = i == visible.size() - 1;
+            String branch = Theme.colorize(last ? " ╰─" : " ├─", dim);
+            lines.add(branch + entry.line);
+            budget--;
+            shown++;
+            if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
+                // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) — JK-1128.
+                String errIndent = last ? "    " : " │  ";
+                lines.add(Theme.colorize(errIndent + entry.briefError, Theme.active().error()));
+                budget--;
+            }
+            if (shown >= MAX_ROWS) break;
         }
-        // Budget the region to the viewport: header (1) + active rows + the
-        // completed tail (+ an optional footer), within height-1 so a line of
-        // headroom keeps the region where cursor-relative repaint can reach it.
-        int budget = Math.max(1, height - 2); // lines available below the header
-        int shown = Math.min(active.size(), Math.min(MAX_ROWS, budget));
-        for (int i = 0; i < shown; i++) {
-            // Tree branches: ├─ for every active row but the last, ╰─ to close.
-            // A leading space indents the whole region by one column (the header's
-            // matching indent is part of its colored pill).
-            String prefix = Theme.colorize(i == shown - 1 ? " ╰─ " : " ├─ ", dim);
-            lines.add(prefix + renderActiveRow(active.get(i), sep));
-        }
-        budget -= shown;
 
-        // 3. Completed tail: recently-finished units below the active tree, newest
-        // first, indented four spaces (aligning under the ╰─ branch content with the
-        // region's one-column indent). When more have completed than fit, a
-        // bright-black italic "… plus N more …" footer (indented further) collapses
-        // the overflow.
+        // 3. Completed unit tail (newest first), if room remains
         if (completedCount > 0 && budget > 0) {
             boolean overflow = completedCount > Math.min(MAX_COMPLETIONS, budget);
             int cap = Math.max(0, Math.min(MAX_COMPLETIONS, overflow ? budget - 1 : budget));
@@ -643,54 +740,114 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         return lines;
     }
 
+    /** Running/failed tree entries, newest first. Module rows when available; else preflight phases. */
+    private List<TreeEntry> collectVisibleTree() {
+        List<TreeEntry> out = new ArrayList<>();
+        List<Row> active = new ArrayList<>();
+        List<Row> failed = new ArrayList<>();
+        for (Row r : rows.values()) {
+            if (r.state == RowState.ACTIVE) active.add(r);
+            else if (r.state == RowState.FAILED) failed.add(r);
+        }
+        if (!active.isEmpty() || !failed.isEmpty()) {
+            // LinkedHashMap insert order → reverse so newest work floats up.
+            for (int i = active.size() - 1; i >= 0; i--) out.add(treeEntryForRow(active.get(i)));
+            failed.sort((a, b) -> Long.compare(b.seq, a.seq));
+            for (Row r : failed) out.add(treeEntryForRow(r));
+            return out;
+        }
+        // Preflight (or any phase with no step rows yet): phase-only labels.
+        for (int i = phaseOrder.size() - 1; i >= 0; i--) {
+            PhaseNode n = phases.get(phaseOrder.get(i));
+            if (n != null && (n.state == PhaseState.RUNNING || n.state == PhaseState.FAILED)) {
+                out.add(treeEntryForPhase(n));
+            }
+        }
+        return out;
+    }
+
+    private TreeEntry treeEntryForRow(Row r) {
+        boolean failed = r.state == RowState.FAILED;
+        String brief = failed ? r.briefError : "";
+        if ((brief == null || brief.isEmpty()) && failed) {
+            PhaseNode n = phases.get(r.phase);
+            if (n != null) brief = n.briefError;
+        }
+        return new TreeEntry(renderWorkRow(r.module, phaseLabel(r.phase), failed), brief == null ? "" : brief);
+    }
+
+    private TreeEntry treeEntryForPhase(PhaseNode n) {
+        boolean failed = n.state == PhaseState.FAILED;
+        String label = n.label == null || n.label.isEmpty() ? phaseLabel(n.key) : n.label;
+        return new TreeEntry(renderWorkRow("", label, failed), failed ? n.briefError : "");
+    }
+
     /**
-     * The pipeline header line: {@code {spinner} {name} {bar} …elapsed…}.
-     *
-     * <p>With a Nerd Font ({@code [global].nerdfont}) the spinner (glyph-cycling only — same
-     * bright-white foreground as the name, no color animation) + name form a pill filled with the
-     * accent (the bar gradient's bright end), closed by a U+E0B0 powerline cap whose
-     * <em>foreground</em> is that same pill color (so its body blends with the chip) and whose
-     * <em>background</em> tracks the bar's lead color, tapering the chip into the first bar cell; the
-     * cap is underlined to sit flush with the bar's underscored track. Without a Nerd Font it's the
-     * plain animated spinner + a bright-white name, as before. Either way a leading space gives the
-     * whole region its one-column indent — on the pill background in Nerd Font mode, so the chip
-     * reaches the left edge.
+     * One tree body: {@code ● group:name · Phase} (or {@code ● Phase} with no module). Running uses
+     * a blue pulse spinner with no background; failed uses a red cross; phase label is green or red.
+     */
+    private String renderWorkRow(String module, String displayPhase, boolean failed) {
+        Theme t = Theme.active();
+        String icon;
+        AttributedStyle phaseStyle;
+        if (failed) {
+            icon = Theme.colorize(Glyphs.CROSS, t.error());
+            phaseStyle = t.error();
+        } else {
+            // Blue pulse on the terminal background — no chip/pill fill.
+            icon = Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]);
+            phaseStyle = t.success();
+        }
+        String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
+        StringBuilder sb = new StringBuilder();
+        sb.append(' ').append(icon).append(' ');
+        if (module != null && !module.isEmpty()) {
+            sb.append(coloredModule(module))
+                    .append(' ')
+                    .append(Theme.colorize("·", t.darkGray()))
+                    .append(' ');
+        }
+        sb.append(Theme.colorize(phase, phaseStyle));
+        return sb.toString();
+    }
+
+    /**
+     * Pipeline header: pulse circle + name on the chip, powerline (or plain) cap, bar, clock.
+     * The circle FG breathes white↔chip-blue while sitting on the chip background.
      */
     private String pipelineHeader(long elapsedMillis) {
-        AttributedStyle dim = Theme.active().darkGray();
+        Theme t = Theme.active();
+        AttributedStyle dim = t.darkGray();
         String barStr = bar.render(numerator, denominator);
         StringBuilder h = new StringBuilder();
         String sl = solveLabel;
         boolean phase1 = denominator == 0 && !sl.isEmpty();
+        AttributedStyle chip = t.pipelineChip();
+        // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
+        AttributedStyle pulse = t.withBackground(chipPulseColors[frame % chipPulseColors.length], t.planBadgeColor());
         if (nerdfont) {
-            // The spinner + name share the pipeline chip: white text on PLAN_BLUE.
-            AttributedStyle chip = Theme.active().pipelineChip();
             h.append(Theme.colorize(" ", chip))
-                    .append(Theme.colorize(FRAMES[frame], chip))
+                    .append(Theme.colorize(PULSE, pulse))
                     .append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(name, chip))
                     .append(Theme.colorize(" ", chip));
             if (phase1) {
-                // Step 1 (spinner label): U+E0B0 cap tapering to terminal bg, then space + white text.
-                AttributedStyle phase1Cap = Theme.active().bright(Theme.active().planBadgeColor());
+                AttributedStyle phase1Cap = t.bright(t.planBadgeColor());
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, phase1Cap))
                         .append(' ')
-                        .append(Theme.colorize(sl, Theme.active().brightWhite()));
+                        .append(Theme.colorize(sl, t.brightWhite()));
             } else {
-                // Step 2 (fetching): cap tapers into the bar.
-                AttributedStyle cap = Theme.active()
-                        .withBackground(
-                                Theme.active().bright(Theme.active().planBadgeColor()),
-                                bar.leadColor(numerator, denominator));
+                AttributedStyle cap =
+                        t.withBackground(t.bright(t.planBadgeColor()), bar.leadColor(numerator, denominator));
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
             }
         } else {
-            // Same chip background as the nerd-font path; the only difference is no
-            // powerline cap glyph (PUA). Spinner frame and name share the chip style.
-            AttributedStyle chip = Theme.active().pipelineChip();
-            h.append(Theme.colorize(" " + FRAMES[frame] + " " + name + " ", chip));
+            h.append(Theme.colorize(" ", chip))
+                    .append(Theme.colorize(PULSE, pulse))
+                    .append(Theme.colorize(" " + name + " ", chip))
+                    .append(Theme.colorize(" ", chip)); // plain trailing cap space
             if (phase1) {
-                h.append(' ').append(Theme.colorize(sl, Theme.active().brightWhite()));
+                h.append(' ').append(Theme.colorize(sl, t.brightWhite()));
             } else {
                 h.append(barStr);
             }
@@ -713,6 +870,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 .append(Theme.colorize("·", dim))
                 .append(' ')
                 .append(Theme.colorize(clockStr, Theme.active().warning()));
+        // JK-1157: remaining-work module counter (run-wide, not per-module local).
+        if (modulesTotal > 0) {
+            String mods = modulesComplete + "/" + modulesTotal;
+            h.append(' ')
+                    .append(Theme.colorize("·", dim))
+                    .append(' ')
+                    .append(Theme.colorize(mods, dim));
+        }
         return h.toString();
     }
 
@@ -728,37 +893,66 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         return s + "s";
     }
 
-    /**
-     * A running step row: {@code <module> › <step>[ › <message>]} — no status glyph, module
-     * coordinate colored (cyan group, bright-cyan artifact). When {@code step} is empty the step
-     * segment is omitted, giving {@code <module> › <message>} (two segments instead of three).
-     */
-    private static String renderActiveRow(Row r, String sep) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(coloredModule(r.module));
-        boolean hasStep = r.step != null && !r.step.isEmpty();
-        if (hasStep) {
-            sb.append(' ')
-                    .append(sep)
-                    .append(' ')
-                    .append(Theme.colorize(r.step, Theme.active().settled()));
-        }
-        if (r.message != null && !r.message.isEmpty()) {
-            sb.append(' ')
-                    .append(sep)
-                    .append(' ')
-                    .append(Theme.colorize(r.message, Theme.active().settled()));
-        }
-        return sb.toString();
+    private static String phaseKey(String phase, String stepKey) {
+        if (phase != null && !phase.isEmpty()) return phase;
+        return stepKey == null ? "" : stepKey;
     }
 
-    /** {@code group:artifact} → cyan group + bright-cyan artifact; plain if no colon. */
+    private void touchPhaseStart(String phaseKey) {
+        if (phaseKey == null || phaseKey.isEmpty()) return;
+        PhaseNode n = phases.get(phaseKey);
+        if (n == null) {
+            n = new PhaseNode(phaseKey, phaseLabel(phaseKey));
+            phases.put(phaseKey, n);
+            phaseOrder.add(phaseKey);
+        }
+        n.runningCount++;
+        n.state = PhaseState.RUNNING;
+    }
+
+    private void touchPhaseFinish(String phaseKey, boolean ok) {
+        if (phaseKey == null || phaseKey.isEmpty()) return;
+        PhaseNode n = phases.get(phaseKey);
+        if (n == null) {
+            n = new PhaseNode(phaseKey, phaseLabel(phaseKey));
+            phases.put(phaseKey, n);
+            phaseOrder.add(phaseKey);
+        }
+        n.runningCount = Math.max(0, n.runningCount - 1);
+        if (!ok) {
+            n.anyFailed = true;
+            if (n.briefError == null || n.briefError.isEmpty()) n.briefError = "Failed";
+        }
+        if (n.runningCount == 0) {
+            if (n.anyFailed) {
+                n.state = PhaseState.FAILED;
+            } else {
+                // Success → remove from the live chain (web-like: only active/failed stay visible)
+                phases.remove(phaseKey);
+                phaseOrder.remove(phaseKey);
+            }
+        } else {
+            n.state = n.anyFailed ? PhaseState.FAILED : PhaseState.RUNNING;
+        }
+    }
+
+    /** {@code compile} → {@code Compile}. */
+    static String phaseLabel(String wire) {
+        if (wire == null || wire.isEmpty()) return "?";
+        return Character.toUpperCase(wire.charAt(0)) + wire.substring(1);
+    }
+
+    /**
+     * {@code group:artifact} → cyan group + bold bright-cyan artifact (pipeline tree / failure
+     * tails). Plain settled style if no colon.
+     */
     public static String coloredModule(String module) {
         int colon = module.indexOf(':');
         if (colon < 0) return Theme.colorize(module, Theme.active().settled());
         return Theme.colorize(module.substring(0, colon), Theme.active().cyan())
                 + ":"
-                + Theme.colorize(module.substring(colon + 1), Theme.active().brightCyan());
+                + Theme.colorize(
+                        module.substring(colon + 1), Theme.active().brightCyan().bold());
     }
 
     private long elapsedMillis() {
@@ -1026,16 +1220,54 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         FAILED
     }
 
+    private enum PhaseState {
+        PENDING,
+        RUNNING,
+        SUCCESS,
+        FAILED
+    }
+
+    private static final class PhaseNode {
+        final String key;
+        final String label;
+        PhaseState state = PhaseState.PENDING;
+        int runningCount;
+        boolean anyFailed;
+        /** One-line summary under a failed phase (full diagnostics stay in result files). */
+        String briefError = "";
+
+        PhaseNode(String key, String label) {
+            this.key = key;
+            this.label = label;
+        }
+    }
+
     private static final class Row {
         final String module;
         final String step;
+        String phase;
         RowState state = RowState.PENDING;
         String message = "";
+        /** One-line failure summary under a failed row (full diagnostics stay above / in files). */
+        String briefError = "";
+
         long seq;
 
-        Row(String module, String step) {
+        Row(String module, String step, String phase) {
             this.module = module;
             this.step = step;
+            this.phase = phase == null ? "" : phase;
+        }
+    }
+
+    /** One compact tree line (+ optional brief under failed work). */
+    private static final class TreeEntry {
+        final String line;
+        final String briefError;
+
+        TreeEntry(String line, String briefError) {
+            this.line = line;
+            this.briefError = briefError == null ? "" : briefError;
         }
     }
 }

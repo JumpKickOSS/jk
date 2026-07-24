@@ -9,12 +9,14 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * Machine-scoped {@code [http]} policy for the engine's embedded server. On by default
- * (loopback, token-gated mutations); {@code enabled = false} / {@code JK_HTTP_ENABLED=false}
- * or a malformed config file yields empty (fail closed). Not project-overridable; read once at
- * engine start.
+ * Machine-scoped {@code [http]} policy for the engine's embedded server, plus the {@code [mcp]}
+ * table it hosts. On by default (loopback, token-gated mutations); {@code enabled = false} /
+ * {@code JK_HTTP_ENABLED=false} or a malformed config file yields empty (fail closed).
+ * {@code [mcp] enabled = false} disables only the MCP surface, never the server. Not
+ * project-overridable; read once at engine start.
  */
-public record JkHttpConfig(String host, int port, int maxConcurrentRequests, String webRoot) {
+public record JkHttpConfig(
+        String host, int port, int maxConcurrentRequests, int maxEventStreams, String webRoot, Mcp mcp) {
 
     public static final String DEFAULT_HOST = "127.0.0.1";
 
@@ -23,11 +25,24 @@ public record JkHttpConfig(String host, int port, int maxConcurrentRequests, Str
     /** Concurrent-request admission cap; {@code 0} = container-aware core count. */
     public static final int DEFAULT_MAX_CONCURRENT_REQUESTS = 16;
 
+    /** Web-UI SSE budget ({@code GET /api/events}); a separate cap from RPC admission. */
+    public static final int DEFAULT_MAX_EVENT_STREAMS = 16;
+
     /** Relative to the resolved {@code ~/.jk} home — i.e. {@code ~/.jk/state/web} by default. */
     public static final String DEFAULT_WEB_ROOT = "state/web";
 
-    public static final JkHttpConfig DEFAULTS =
-            new JkHttpConfig(DEFAULT_HOST, DEFAULT_PORT, DEFAULT_MAX_CONCURRENT_REQUESTS, DEFAULT_WEB_ROOT);
+    /** The {@code [mcp]} table: surface toggle + its own SSE budget ({@code GET /mcp}). */
+    public record Mcp(boolean enabled, int maxEventStreams) {
+        public static final Mcp DEFAULTS = new Mcp(true, DEFAULT_MAX_EVENT_STREAMS);
+    }
+
+    public static final JkHttpConfig DEFAULTS = new JkHttpConfig(
+            DEFAULT_HOST,
+            DEFAULT_PORT,
+            DEFAULT_MAX_CONCURRENT_REQUESTS,
+            DEFAULT_MAX_EVENT_STREAMS,
+            DEFAULT_WEB_ROOT,
+            Mcp.DEFAULTS);
 
     /**
      * Effective machine config (env &gt; file &gt; defaults). Empty when disabled or unreadable.
@@ -53,7 +68,15 @@ public record JkHttpConfig(String host, int port, int maxConcurrentRequests, Str
                 EnvValues.intValue(env, "JK_HTTP_MAX_CONCURRENT_REQUESTS")
                         .filter(JkHttpConfig::validMaxConcurrentRequests)
                         .orElse(base.maxConcurrentRequests),
-                EnvValues.string(env, "JK_HTTP_WEB_ROOT").orElse(base.webRoot)));
+                EnvValues.intValue(env, "JK_HTTP_MAX_EVENT_STREAMS")
+                        .filter(JkHttpConfig::validMaxEventStreams)
+                        .orElse(base.maxEventStreams),
+                EnvValues.string(env, "JK_HTTP_WEB_ROOT").orElse(base.webRoot),
+                new Mcp(
+                        EnvValues.bool(env, "JK_MCP_ENABLED").orElse(base.mcp.enabled()),
+                        EnvValues.intValue(env, "JK_MCP_MAX_EVENT_STREAMS")
+                                .filter(JkHttpConfig::validMaxEventStreams)
+                                .orElse(base.mcp.maxEventStreams()))));
     }
 
     /**
@@ -65,15 +88,26 @@ public record JkHttpConfig(String host, int port, int maxConcurrentRequests, Str
         Optional<TomlParseResult> parsed = TomlValues.parse(file);
         if (parsed.isEmpty()) return Optional.empty(); // exists but unreadable → fail closed
         TomlTable http = parsed.get().getTable("http");
-        if (http == null) return Optional.of(DEFAULTS);
-        if (!TomlValues.optBoolean(http, "enabled").orElse(true)) return Optional.empty();
+        if (http != null && !TomlValues.optBoolean(http, "enabled").orElse(true)) return Optional.empty();
         return Optional.of(new JkHttpConfig(
                 TomlValues.optString(http, "host").orElse(DEFAULT_HOST),
                 TomlValues.optInt(http, "port").filter(JkHttpConfig::validPort).orElse(DEFAULT_PORT),
                 TomlValues.optInt(http, "max-concurrent-requests")
                         .filter(JkHttpConfig::validMaxConcurrentRequests)
                         .orElse(DEFAULT_MAX_CONCURRENT_REQUESTS),
-                TomlValues.optString(http, "web-root").orElse(DEFAULT_WEB_ROOT)));
+                TomlValues.optInt(http, "max-event-streams")
+                        .filter(JkHttpConfig::validMaxEventStreams)
+                        .orElse(DEFAULT_MAX_EVENT_STREAMS),
+                TomlValues.optString(http, "web-root").orElse(DEFAULT_WEB_ROOT),
+                mcpFrom(parsed.get().getTable("mcp"))));
+    }
+
+    private static Mcp mcpFrom(TomlTable mcp) {
+        return new Mcp(
+                TomlValues.optBoolean(mcp, "enabled").orElse(true),
+                TomlValues.optInt(mcp, "max-event-streams")
+                        .filter(JkHttpConfig::validMaxEventStreams)
+                        .orElse(DEFAULT_MAX_EVENT_STREAMS));
     }
 
     private static boolean validPort(int port) {
@@ -82,6 +116,10 @@ public record JkHttpConfig(String host, int port, int maxConcurrentRequests, Str
 
     private static boolean validMaxConcurrentRequests(int max) {
         return max >= 0; // 0 = match the container-aware core count
+    }
+
+    private static boolean validMaxEventStreams(int max) {
+        return max >= 1; // no core-count rule for stream caps; 0 would be a silent SSE blackout
     }
 
     /** The admission-semaphore size: the configured cap, or the container-aware core count for 0. */

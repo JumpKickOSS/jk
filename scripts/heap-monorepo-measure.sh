@@ -38,7 +38,14 @@ echo "fixture: $FIXTURE_DIR"
 echo
 
 # --- generate fixture -------------------------------------------------------
-echo "Generating $MODULES-module workspace..."
+# Prefer the dedicated generator (empty locks, no junit) so builds finish offline
+# and do not hang on first resolve of 200× test deps.
+GEN="$ROOT/scripts/generate-synthetic-monorepo.sh"
+if [[ -x "$GEN" ]]; then
+  echo "Generating $MODULES-module workspace via generate-synthetic-monorepo.sh..."
+  "$GEN" "$FIXTURE_DIR" "$MODULES"
+else
+echo "Generating $MODULES-module workspace (inline)..."
 rm -rf "$FIXTURE_DIR"
 mkdir -p "$FIXTURE_DIR"
 mod_list=""
@@ -75,6 +82,7 @@ java = 25
 [workspace]
 modules = [$mod_list]
 EOF
+fi  # end inline generate fallback
 
 # --- fresh engine -----------------------------------------------------------
 "$JK_BIN" engine stop >/dev/null 2>&1 || true

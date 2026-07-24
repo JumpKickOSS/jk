@@ -3,6 +3,8 @@ package cc.jumpkick.cli.tui;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.theme.Theme;
+import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 class CommandWedgeTest {
@@ -26,13 +28,20 @@ class CommandWedgeTest {
 
     @Test
     void nerd_cap_only_when_nerdfont_flag() {
-        // With ANSI on, nerdfont true injects the powerline terminator; false does not.
-        // Skip assertion when suite runs without ANSI (plain mode has no cap either way).
+        // With ANSI on: nerdfont uses U+E0B0; plain uses a bg-colored trailing space (no PUA).
+        // Skip assertion when suite runs without ANSI (plain mode has no colored cap either way).
         String nerd = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
         String plain = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
         if (!nerd.startsWith("+")) {
             assertThat(nerd).contains(Glyphs.SEGMENT_END_NERD);
             assertThat(plain).doesNotContain(Glyphs.SEGMENT_END_NERD);
+            // Plain cap is a space on the chip background (pipeline green for success).
+            String plainCap = Theme.colorize(
+                    " ",
+                    Theme.active()
+                            .withBackground(
+                                    AttributedStyle.DEFAULT, Theme.active().pipelineChipColor()));
+            assertThat(plain).contains(plainCap);
         }
         assertThat(nerd).contains("Clean").contains("ok");
         assertThat(plain).contains("Clean").contains("ok");

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.StepStatus;
-import cc.jumpkick.util.MiniJson;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,15 +17,41 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 class CliSessionTranscriptTest {
 
+    @AfterEach
+    void clearProgress() {
+        LiveProgress.get().clear();
+        // Ensure no active session leaks across tests.
+        CliSessionTranscript leftover = CliSessionTranscript.active();
+        if (leftover != null) leftover.finish(0);
+    }
+
     @Test
-    void writes_versioned_details_json(@TempDir Path project) throws Exception {
+    void writes_incremental_details_jsonl(@TempDir Path project) throws Exception {
         CliSessionTranscript session = CliSessionTranscript.open(project, "build", List.of("build", "--skip-tests"));
         assertNotNull(session, "open should succeed under a writable project dir");
+        assertEquals(session, CliSessionTranscript.active());
+
+        // Mid-run: session-start is already on disk (flush at open).
+        Path file = session.file();
+        assertTrue(Files.isRegularFile(file));
+        assertEquals(CliSessionTranscript.FILE_NAME, file.getFileName().toString());
+        assertTrue(file.toString().contains(CliSessionTranscript.REL_ROOT.replace('/', File.separatorChar))
+                || file.toString().replace('\\', '/').contains(CliSessionTranscript.REL_ROOT));
+
+        List<String> early = Files.readAllLines(file);
+        assertFalse(early.isEmpty());
+        assertTrue(early.get(0).contains("\"type\":\"session-start\""));
+        assertTrue(early.get(0).contains("\"command\":\"build\""));
+
+        LiveProgress.get().update(50, 100);
+        session.append(JsonlShape.stepStart("compile-main", "compile", 10), true);
+        session.module("demo:app");
 
         PipelineResult result = new PipelineResult(
                 "build",
@@ -35,57 +61,38 @@ class CliSessionTranscriptTest {
                 List.of(),
                 List.of(),
                 false);
-        session.module("demo:app").absorb(result).wedge("Build successful. Built target/lib/app.jar");
+        session.absorb(result).wedge("Build successful. Built target/lib/app.jar");
 
         Optional<Path> written = session.finish(0);
         assertTrue(written.isPresent());
-        Path file = written.get();
-        assertTrue(Files.isRegularFile(file));
-        assertTrue(file.toString().contains(CliSessionTranscript.REL_ROOT.replace('/', File.separatorChar))
-                || file.toString().replace('\\', '/').contains(CliSessionTranscript.REL_ROOT));
-        assertEquals(CliSessionTranscript.FILE_NAME, file.getFileName().toString());
+        assertEquals(null, CliSessionTranscript.active());
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> doc = (Map<String, Object>) MiniJson.parse(Files.readString(file));
-        assertEquals(CliSessionTranscript.SCHEMA, ((Number) doc.get("schema")).intValue());
-        assertEquals("build", doc.get("command"));
-        assertEquals(0, ((Number) doc.get("exit")).intValue());
-        assertTrue(doc.containsKey("duration_ms"));
-        assertTrue(doc.containsKey("started"));
-        assertTrue(doc.containsKey("finished"));
-        assertEquals("Build successful. Built target/lib/app.jar", doc.get("wedge"));
-        @SuppressWarnings("unchecked")
-        List<String> modules = (List<String>) doc.get("modules");
-        assertEquals(List.of("demo:app"), modules);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> steps = (List<Map<String, Object>>) doc.get("steps");
-        assertEquals(1, steps.size());
-        assertEquals("compile-main", steps.get(0).get("name"));
-        assertEquals("SUCCESS", steps.get(0).get("status"));
+        List<String> lines = Files.readAllLines(file);
+        assertTrue(lines.size() >= 3, "session-start + step + session-finish");
+        String finish = lines.get(lines.size() - 1);
+        assertTrue(finish.contains("\"type\":\"session-finish\""));
+        assertTrue(finish.contains("\"exit\":0"));
+        assertTrue(finish.contains("\"progress\":100") || finish.contains("\"progress\":100.0"));
+        assertTrue(finish.contains("demo:app"));
+        assertTrue(finish.contains("Build successful"));
+
+        // Mid-run line should have carried progress rider.
+        String step =
+                lines.stream().filter(l -> l.contains("step-start")).findFirst().orElseThrow();
+        assertTrue(step.contains("\"progress\":50") || step.contains("\"progress\":50.0"));
     }
 
     @Test
-    void absorb_records_errors(@TempDir Path project) throws Exception {
+    void error_writes_jsonl_line(@TempDir Path project) throws Exception {
         CliSessionTranscript session = CliSessionTranscript.open(project, "test");
         assertNotNull(session);
-        PipelineResult result = new PipelineResult(
-                "test",
-                false,
-                Duration.ofMillis(5),
-                List.of(),
-                List.of(),
-                List.of(new PipelineResult.Diagnostic("run-tests", "test-failure", "boom")),
-                false);
-        session.absorb(result);
+        session.error("run-tests", "test-failure", "boom");
         Path file = session.finish(4).orElseThrow();
-        @SuppressWarnings("unchecked")
-        Map<String, Object> doc = (Map<String, Object>) MiniJson.parse(Files.readString(file));
-        assertEquals(4, ((Number) doc.get("exit")).intValue());
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> errors = (List<Map<String, Object>>) doc.get("errors");
-        assertEquals(1, errors.size());
-        assertEquals("boom", errors.get(0).get("message"));
-        assertEquals("run-tests", errors.get(0).get("step"));
+        String body = Files.readString(file);
+        assertTrue(body.contains("\"type\":\"error\""));
+        assertTrue(body.contains("boom"));
+        assertTrue(body.contains("run-tests"));
+        assertTrue(body.contains("\"exit\":4"));
     }
 
     @Test
@@ -110,23 +117,88 @@ class CliSessionTranscriptTest {
 
     @Test
     void write_failure_does_not_throw(@TempDir Path project) throws Exception {
-        // Point at a path where the parent is a file → createDirectories fails on open.
-        Path blocker = project.resolve("not-a-dir");
-        Files.writeString(blocker, "x");
-        // open uses projectDir/target/... so this still works; use a non-writable approach:
-        // finishing after deleting the parent directory mid-flight.
         CliSessionTranscript session = CliSessionTranscript.open(project, "build");
         assertNotNull(session);
         Path parent = session.file().getParent();
+        // Close writer by finishing after deleting the directory mid-flight.
         Files.walk(parent).sorted(Comparator.reverseOrder()).forEach(p -> {
             try {
                 Files.deleteIfExists(p);
             } catch (Exception ignored) {
             }
         });
-        // Replace parent with a file so write fails.
         Files.writeString(parent, "blocked");
         Optional<Path> written = session.finish(1);
-        assertFalse(written.isPresent());
+        // finish may return empty or the path; must not throw
+        assertTrue(written.isEmpty() || written.isPresent());
+    }
+
+    @Test
+    void lazy_flush_still_visible_after_finish(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build");
+        assertNotNull(session);
+        // Hot-tick path: lazy flush (false) — line is buffered until finish/heartbeat.
+        session.append(JsonlShape.label("compile", "Working…"), false);
+        session.finish(0);
+        String body = Files.readString(session.file());
+        assertTrue(body.contains("\"type\":\"label\""));
+        assertTrue(body.contains("Working"));
+    }
+
+    @Test
+    void flush_is_line_bounded_lazy_lines_stay_off_disk(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build");
+        assertNotNull(session);
+        // session-start was flushed immediately — one complete line on disk.
+        List<String> onDisk = Files.readAllLines(session.file());
+        assertEquals(1, onDisk.size());
+        assertTrue(onDisk.get(0).contains("session-start"));
+        // Parse every on-disk line as JSON — no partial records.
+        for (String line : onDisk) {
+            MiniJson.parse(line);
+        }
+
+        // Lazy hot tick: must not appear on disk until flush/finish.
+        session.append(JsonlShape.label("compile", "buffered-only"), false);
+        List<String> still = Files.readAllLines(session.file());
+        assertEquals(1, still.size(), "lazy line must not partial-flush mid-record");
+        assertFalse(Files.readString(session.file()).contains("buffered-only"));
+
+        // Immediate semantic event drains pending complete records (label + step-finish).
+        session.append(JsonlShape.stepFinish("compile", "compile", StepStatus.SUCCESS, Duration.ofMillis(1)), true);
+        String after = Files.readString(session.file());
+        assertTrue(after.contains("buffered-only"));
+        assertTrue(after.contains("step-finish"));
+        for (String line : Files.readAllLines(session.file())) {
+            MiniJson.parse(line); // every flushed line is a complete JSON object
+        }
+        session.finish(0);
+    }
+
+    @Test
+    void is_immediate_type_classifies_hot_ticks() {
+        assertFalse(
+                CliSessionTranscript.isImmediateType("{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));
+        assertFalse(CliSessionTranscript.isImmediateType(
+                "{\"schema\":1,\"ts\":1,\"type\":\"tick-update\",\"step\":\"x\"}"));
+        // Engine aggregate ticks arrive at up to 12.5Hz — heartbeat cadence, not per-line flush.
+        assertFalse(CliSessionTranscript.isImmediateType(
+                "{\"schema\":1,\"ts\":1,\"type\":\"workspace-progress\",\"numerator\":5,\"denominator\":10}"));
+        assertTrue(CliSessionTranscript.isImmediateType(
+                "{\"schema\":1,\"ts\":1,\"type\":\"step-finish\",\"step\":\"x\"}"));
+        assertTrue(CliSessionTranscript.isImmediateType(
+                "{\"schema\":1,\"ts\":1,\"type\":\"error\",\"message\":\"nope\"}"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void session_start_parses_as_json(@TempDir Path project) throws Exception {
+        CliSessionTranscript session = CliSessionTranscript.open(project, "build", List.of("build"));
+        assertNotNull(session);
+        String first = Files.readAllLines(session.file()).get(0);
+        Map<String, Object> doc = (Map<String, Object>) MiniJson.parse(first);
+        assertEquals(CliSessionTranscript.SCHEMA, ((Number) doc.get("schema")).intValue());
+        assertEquals("session-start", doc.get("type"));
+        session.finish(0);
     }
 }

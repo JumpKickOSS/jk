@@ -57,7 +57,7 @@ public record IdeWireModel(
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.IDE_MODEL_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.IDE_MODEL_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"wsRoot\":" + Jsonl.quote(wsRoot)
                 + ",\"rootName\":" + Jsonl.quote(rootName)

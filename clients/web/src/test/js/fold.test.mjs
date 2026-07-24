@@ -95,6 +95,18 @@ test('events for unknown request ids and unknown types are ignored', () => {
   assert.equal(cards.length, 0);
 });
 
+test('workspace-progress sets request-level aggregate percent (JK-1120)', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'workspace-progress',
+    data: { requestId: 1, dir: '/w', numerator: 150, denominator: 200, progress: 75, phase: 'execute' },
+  });
+  assert.equal(cards[0].progressPercent, 75);
+  assert.equal(cards[0].progressNum, 150);
+  assert.equal(cards[0].progressDen, 200);
+});
+
 test('the feed is bounded at MAX_CARDS', () => {
   const cards = [];
   for (let i = 1; i <= MAX_CARDS + 7; i++) foldEvent(cards, start(i, '/w/' + i));

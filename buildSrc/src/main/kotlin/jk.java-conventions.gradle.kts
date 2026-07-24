@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import java.time.Duration
+
 plugins {
     java
     `java-library`
@@ -30,6 +32,15 @@ dependencies {
     "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").orElseThrow())
 }
 
+// ---------------------------------------------------------------------------
+// Two-tier tests (JK-1123 / suite performance):
+//   ./gradlew test              — unit/fast (exclude integration|slow|bench); target <5 min
+//   ./gradlew integrationTest   — engine/e2e/network/worker suites
+//
+// Tag classes with @Tag("integration"), @Tag("slow"), or @Tag("bench").
+// ---------------------------------------------------------------------------
+val slowTags = listOf("integration", "slow", "bench")
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // Isolate tests from the developer's real ~/.jk. JkDirs.home() honours
@@ -53,4 +64,43 @@ tasks.withType<Test>().configureEach {
     // any jk subprocess a test forks; suites that exercise HTTP construct HttpEngineServer (or
     // pass an explicit JkHttpConfig) directly.
     environment("JK_HTTP_ENABLED", "false")
+    // Fail hung methods instead of multi-hour freezes (override per-task if needed).
+    systemProperty("junit.jupiter.execution.timeout.default", "120s")
+    systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
+}
+
+tasks.named<Test>("test") {
+    description = "Unit/fast tests (excludes @Tag integration|slow|bench)"
+    useJUnitPlatform {
+        excludeTags(*slowTags.toTypedArray())
+    }
+    // Parallel forks for pure unit modules. CLI overrides to 1 for integration only.
+    maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+    // Suite budget: hang becomes a fail, not a 20+ min stall.
+    timeout.set(Duration.ofMinutes(8))
+}
+
+// Same classpath/sources as test; different tag filter + longer budget.
+val integrationTest by tasks.registering(Test::class) {
+    description = "Integration/slow tests (@Tag integration|slow). Not part of check by default."
+    group = "verification"
+    val testSourceSet = sourceSets["test"]
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.runtimeClasspath
+    useJUnitPlatform {
+        includeTags("integration", "slow")
+        excludeTags("bench")
+    }
+    shouldRunAfter(tasks.named("test"))
+    systemProperty("junit.jupiter.execution.timeout.default", "300s")
+    systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
+    timeout.set(Duration.ofMinutes(45))
+    // Inherit hermetic env from withType<Test> configureEach above.
+}
+
+// Optional: full verification including integration (nightly / merge gates).
+tasks.register("checkAll") {
+    group = "verification"
+    description = "Unit test + integrationTest for this module"
+    dependsOn(tasks.named("test"), integrationTest)
 }

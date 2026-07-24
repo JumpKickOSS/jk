@@ -27,6 +27,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 import javax.tools.ToolProvider;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.io.TempDir;
  * (file://) repo, declared under {@code [plugins]} — resolved, SHA-pinned, manifest-extracted,
  * schema-validated, contribution-applied, and its worker code trust-gated end to end.
  */
+@Tag("slow")
 class ThirdPartyPluginTest {
 
     private static final String GROUP = "com.example";

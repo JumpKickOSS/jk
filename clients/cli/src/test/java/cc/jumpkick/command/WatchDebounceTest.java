@@ -6,9 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.Jk;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Tag("integration")
 class WatchDebounceTest {
 
     @Test

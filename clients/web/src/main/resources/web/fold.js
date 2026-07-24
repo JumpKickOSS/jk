@@ -38,12 +38,13 @@ export function foldEvent(cards, event) {
         // SINGLE_GOAL_DIR); each row carries its OWN step chain, so the card shows a chain per
         // module rather than one merged strip.
         modules: [],
-        // Weight-based progress, identical to the CLI: the engine streams per-module pipeline
-        // numerator/denominator (weight units); mods holds the latest per dir, and the card's bar
-        // is their sum over the plan total. planWeight seeds the denominator so a workspace bar
-        // never jumps backward as later modules start. etaMillis/etaAt drive the ETA countdown.
+        // Fine-grained per-module pipeline ticks (detail only). Request-level bar uses
+        // progressPercent from engine workspace-progress (JK-1120) — dumb client, no re-sum.
         mods: {},
         planWeight: 0,
+        progressPercent: null, // 0–100 from workspace-progress; null until first aggregate event
+        progressNum: 0,
+        progressDen: 0,
         etaMillis: null,
         etaAt: null,
         output: [],
@@ -79,7 +80,20 @@ export function foldEvent(cards, event) {
     }
     case 'pipeline-progress': {
       const card = byId(cards, d.requestId);
+      // Fine-grained only — do not drive the request bar from module-local fractions.
       if (card) card.mods[d.dir || ''] = { num: d.numerator || 0, den: d.denominator || 0 };
+      break;
+    }
+    case 'workspace-progress': {
+      const card = byId(cards, d.requestId);
+      if (card) {
+        card.progressNum = d.numerator || 0;
+        card.progressDen = d.denominator || 0;
+        if (typeof d.progress === 'number') card.progressPercent = d.progress;
+        else if (card.progressDen > 0) {
+          card.progressPercent = Math.min(100, Math.round((100 * card.progressNum) / card.progressDen));
+        }
+      }
       break;
     }
     case 'eta': {
@@ -151,18 +165,23 @@ export function foldEvent(cards, event) {
   return cards;
 }
 
-/** Sum of the latest per-module weight numerators — the completed weight so far. */
+/**
+ * Aggregate numerator for the request bar (JK-1120). Prefers engine workspace-progress units;
+ * falls back to summing module ticks only when no aggregate event has arrived yet.
+ */
 export function weightNumerator(card) {
+  if (card.progressDen > 0 || card.progressPercent != null) return card.progressNum || 0;
   let n = 0;
   for (const dir in card.mods || {}) n += card.mods[dir].num || 0;
   return n;
 }
 
 /**
- * The bar's denominator: the plan total when known (stable, so a workspace bar can't jump backward
- * as later modules start), else the sum of per-module denominators (a single-pipeline build has one).
+ * Aggregate denominator for the request bar. Prefers engine workspace-progress; else plan weight
+ * or sum of module dens (legacy fallback).
  */
 export function weightDenominator(card) {
+  if (card.progressDen > 0) return card.progressDen;
   let den = 0;
   for (const dir in card.mods || {}) den += card.mods[dir].den || 0;
   return Math.max(card.planWeight || 0, den);

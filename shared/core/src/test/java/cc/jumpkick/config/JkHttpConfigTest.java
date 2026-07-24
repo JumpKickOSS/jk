@@ -230,7 +230,119 @@ class JkHttpConfigTest {
 
     @Test
     void absolute_web_root_ignores_home(@TempDir Path tempDir) {
-        JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, "/srv/jk-web");
+        JkHttpConfig c = new JkHttpConfig("127.0.0.1", 8910, 16, 16, "/srv/jk-web", JkHttpConfig.Mcp.DEFAULTS);
         assertThat(c.webRootPath(tempDir)).isEqualTo(Path.of("/srv/jk-web"));
+    }
+
+    @Test
+    void parses_max_event_streams(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nmax-event-streams = 4\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().maxEventStreams()).isEqualTo(4);
+    }
+
+    @Test
+    void non_positive_max_event_streams_falls_back_to_default(@TempDir Path tempDir) throws IOException {
+        // No core-count rule for stream caps: 0 is invalid, unlike max-concurrent-requests.
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nmax-event-streams = 0\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().maxEventStreams())
+                .isEqualTo(JkHttpConfig.DEFAULT_MAX_EVENT_STREAMS);
+        Files.writeString(toml, "[http]\nmax-event-streams = -3\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().maxEventStreams())
+                .isEqualTo(JkHttpConfig.DEFAULT_MAX_EVENT_STREAMS);
+    }
+
+    @Test
+    void env_max_event_streams_wins_over_file() throws IOException {
+        Path toml = Files.createTempFile("jk-http-", ".toml");
+        try {
+            Files.writeString(toml, "[http]\nmax-event-streams = 4\n");
+            assertThat(JkHttpConfig.resolve(toml, Map.of("JK_HTTP_MAX_EVENT_STREAMS", "8")::get)
+                            .orElseThrow()
+                            .maxEventStreams())
+                    .isEqualTo(8);
+        } finally {
+            Files.deleteIfExists(toml);
+        }
+    }
+
+    @Test
+    void invalid_env_max_event_streams_falls_through_to_file() throws IOException {
+        Path toml = Files.createTempFile("jk-http-", ".toml");
+        try {
+            Files.writeString(toml, "[http]\nmax-event-streams = 4\n");
+            assertThat(JkHttpConfig.resolve(toml, Map.of("JK_HTTP_MAX_EVENT_STREAMS", "0")::get)
+                            .orElseThrow()
+                            .maxEventStreams())
+                    .isEqualTo(4);
+        } finally {
+            Files.deleteIfExists(toml);
+        }
+    }
+
+    @Test
+    void absent_mcp_table_means_enabled_with_defaults(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[http]\nport = 9000\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp()).isEqualTo(JkHttpConfig.Mcp.DEFAULTS);
+        assertThat(JkHttpConfig.Mcp.DEFAULTS.enabled()).isTrue();
+        assertThat(JkHttpConfig.Mcp.DEFAULTS.maxEventStreams()).isEqualTo(16);
+    }
+
+    @Test
+    void parses_the_mcp_table(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\nenabled = false\nmax-event-streams = 3\n");
+        JkHttpConfig.Mcp mcp = JkHttpConfig.fromToml(toml).orElseThrow().mcp();
+        assertThat(mcp.enabled()).isFalse();
+        assertThat(mcp.maxEventStreams()).isEqualTo(3);
+    }
+
+    @Test
+    void mcp_disable_does_not_disable_http(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\nenabled = false\n");
+        JkHttpConfig c = JkHttpConfig.fromToml(toml).orElseThrow(); // server still on
+        assertThat(c.mcp().enabled()).isFalse();
+    }
+
+    @Test
+    void invalid_mcp_max_event_streams_falls_back_to_default(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[mcp]\nmax-event-streams = 0\n");
+        assertThat(JkHttpConfig.fromToml(toml).orElseThrow().mcp().maxEventStreams())
+                .isEqualTo(JkHttpConfig.DEFAULT_MAX_EVENT_STREAMS);
+    }
+
+    @Test
+    void env_mcp_keys_win_over_file() throws IOException {
+        Path toml = Files.createTempFile("jk-http-", ".toml");
+        try {
+            Files.writeString(toml, "[mcp]\nenabled = true\nmax-event-streams = 4\n");
+            JkHttpConfig.Mcp mcp = JkHttpConfig.resolve(
+                            toml, Map.of("JK_MCP_ENABLED", "false", "JK_MCP_MAX_EVENT_STREAMS", "9")::get)
+                    .orElseThrow()
+                    .mcp();
+            assertThat(mcp.enabled()).isFalse();
+            assertThat(mcp.maxEventStreams()).isEqualTo(9);
+        } finally {
+            Files.deleteIfExists(toml);
+        }
+    }
+
+    @Test
+    void env_mcp_enabled_true_wins_over_a_file_mcp_disable() throws IOException {
+        Path toml = Files.createTempFile("jk-http-", ".toml");
+        try {
+            Files.writeString(toml, "[mcp]\nenabled = false\n");
+            assertThat(JkHttpConfig.resolve(toml, Map.of("JK_MCP_ENABLED", "true")::get)
+                            .orElseThrow()
+                            .mcp()
+                            .enabled())
+                    .isTrue();
+        } finally {
+            Files.deleteIfExists(toml);
+        }
     }
 }

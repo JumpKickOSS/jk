@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
  * only token source is jk's own store — which the hidden {@code --credentials-dir} points at a temp
  * dir.
  */
+@Tag("integration")
 class AuthCommandTest {
 
     private record Result(int code, String out, String err) {}

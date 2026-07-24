@@ -11,6 +11,7 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Network test (Maven Central; protobuf worker via the test JVM's worker-jar property); the
  * CAS persists under build/ so repeat runs are warm.
  */
+@Tag("slow")
 class ProtobufPluginTest {
 
     @Test

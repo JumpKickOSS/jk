@@ -13,9 +13,11 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.Comparator;
 import java.util.function.IntSupplier;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Tag("integration")
 class BuildCacheTest {
 
     @Test
@@ -105,24 +107,34 @@ class BuildCacheTest {
         Path cache = tempDir.resolve("cache");
         run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
         Path keys = cache.resolve("actions/keys");
-        assertThat(Files.list(keys).count())
-                .as("build populated the action cache")
-                .isPositive();
+        assertThat(countKeys(keys)).as("build populated the action cache").isPositive();
 
         // Plain clean: files go, the action cache STAYS (the next build restores from it).
         assertThat(run("clean", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
         assertThat(tempDir.resolve("target")).doesNotExist();
-        assertThat(Files.list(keys).count()).isPositive();
+        assertThat(countKeys(keys)).isPositive();
 
         // The hammer: clean --force ALSO invalidates this project's action-cache entries.
-        run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString());
-        assertThat(run("clean", "--force", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+        assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
+                .as("rebuild after plain clean")
+                .isEqualTo(0);
+        int cleanForce = run("clean", "--force", "-C", tempDir.toString(), "--cache-dir", cache.toString());
+        assertThat(cleanForce)
+                .as("clean --force must exit 0 (action-cache clear is part of the contract)")
                 .isEqualTo(0);
         assertThat(tempDir.resolve("target")).doesNotExist();
-        assertThat(Files.list(keys).count())
+        assertThat(countKeys(keys))
                 .as("clean --force left no action-cache entries for the project")
                 .isZero();
+    }
+
+    /** Count action-cache key files; always closes the directory stream (macOS handle leak). */
+    private static long countKeys(Path keys) throws IOException {
+        if (!Files.isDirectory(keys)) return 0;
+        try (var stream = Files.list(keys)) {
+            return stream.filter(Files::isRegularFile).count();
+        }
     }
 
     private static void deleteRecursively(Path root) throws IOException {

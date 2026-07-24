@@ -11,6 +11,7 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>Heavy network test: Robolectric self-provisions its instrumented android-all jar on first
  * run. The CAS + SDK persist under build/ so repeats are warm.
  */
+@Tag("slow")
 class RobolectricUnitTest {
 
     @Test

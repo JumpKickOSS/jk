@@ -323,7 +323,7 @@ public final class NewScaffolder {
                 ```
                 jk build
                 ```
-                Produces `target/%1$s-0.1.0-assembly.jar` — the fat jar with `jk-plugin.toml` at its root.
+                Produces `target/%1$s-0.1.0-all.jar` — the fat jar with `jk-plugin.toml` at its root.
 
                 ## Publish, declare, trust
                 ```
@@ -343,19 +343,23 @@ public final class NewScaffolder {
     }
 
     /**
-     * Ensure the production and test source roots both exist from the start: {@code src/} + {@code
-     * test/} for the simple layout, or {@code src/main/<lang>} + {@code src/test/<lang>} for the
-     * traditional one.
+     * Ensure production/test/resource roots exist: SIMPLE flat-siblings ({@code src/},
+     * {@code resources/}, {@code test/}, {@code test-resources/}) or traditional Maven tree
+     * (JK-1145/1146).
      */
     private static void createSourceTree(NewInputs inputs) throws IOException {
         var dir = inputs.directory();
         if (inputs.isSimpleLayout()) {
             Files.createDirectories(dir.resolve("src"));
+            Files.createDirectories(dir.resolve("resources"));
             Files.createDirectories(dir.resolve("test"));
+            Files.createDirectories(dir.resolve("test-resources"));
         } else {
             String lang = inputs.lang() == NewInputs.Language.KOTLIN ? "kotlin" : "java";
             Files.createDirectories(dir.resolve("src").resolve("main").resolve(lang));
+            Files.createDirectories(dir.resolve("src").resolve("main").resolve("resources"));
             Files.createDirectories(dir.resolve("src").resolve("test").resolve(lang));
+            Files.createDirectories(dir.resolve("src").resolve("test").resolve("resources"));
         }
     }
 

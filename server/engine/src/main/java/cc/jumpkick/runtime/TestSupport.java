@@ -58,6 +58,71 @@ public final class TestSupport {
     }
 
     /**
+     * Count test methods across every discovered suite (JK-1145) — not default-suite only.
+     * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
+     */
+    public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
+        int total = 0;
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+        }
+        for (Path r : roots) total += estimateTestCount(r);
+        return total;
+    }
+
+    /**
+     * Best-effort count of test <em>classes</em> (source files with ≥1 test annotation) under
+     * discovered suites — hierarchical effort tier between method and step (JK-1152).
+     */
+    public static int estimateAllSuiteTestClassCount(Path moduleDir, boolean compact) {
+        int total = 0;
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+        }
+        for (Path r : roots) total += estimateTestClassCount(r);
+        return total;
+    }
+
+    /** Source files under {@code testSrcDir} that contain at least one JUnit test annotation. */
+    public static int estimateTestClassCount(Path testSrcDir) {
+        if (!Files.isDirectory(testSrcDir)) return 0;
+        int count = 0;
+        try (Stream<Path> walk = Files.walk(testSrcDir)) {
+            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
+                String n = p.getFileName().toString();
+                return n.endsWith(".java") || n.endsWith(".kt");
+            })::iterator) {
+                try {
+                    String content = Files.readString(file);
+                    if (TEST_ANNOTATION_REGEX.matcher(content).find()) count++;
+                } catch (IOException ignored) {
+                    // best-effort
+                }
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+        return count;
+    }
+
+    /** Collect all test sources for every discovered suite (deduped paths). */
+    public static List<Path> collectAllSuiteTestSources(Path moduleDir, boolean compact) throws IOException {
+        java.util.LinkedHashSet<Path> out = new java.util.LinkedHashSet<>();
+        List<String> suites = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
+        if (suites.isEmpty()) {
+            // Fall back to default suite dirs even if empty of sources
+            suites = List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        }
+        out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
+        out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
+        return new java.util.ArrayList<>(out);
+    }
+
+    /**
      * Render a failed test run as console lines — each failing test's name followed by its full stack
      * trace, indented. Mirrors what Maven/Gradle print on failure so {@code jk} doesn't just report a
      * count. Returns an empty list when nothing failed.
@@ -72,7 +137,9 @@ public final class TestSupport {
             out.add("");
             // JK-1094: module :: display [wN] so parallel monorepo flakes are locatable.
             out.add("  FAILED  " + f.headline());
-            if (f.className() != null && !f.className().isBlank() && !f.headline().contains(f.className())) {
+            if (f.className() != null
+                    && !f.className().isBlank()
+                    && !f.headline().contains(f.className())) {
                 out.add("    class: " + f.className());
             }
             if (f.details() != null && !f.details().isBlank()) {

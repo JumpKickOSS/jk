@@ -26,6 +26,18 @@ public record RepositorySpec(
     public static final RepositorySpec GOOGLE_MAVEN =
             new RepositorySpec("google", URI.create("https://maven.google.com/"));
 
+    /**
+     * JumpKick's first-party Maven repository (GCS-backed). Exclusive for {@code cc.jumpkick.*}
+     * and {@code build.jumpkick.*}. Public URL is {@code https://jumpkick.build/repo/} (Hosting
+     * redirect); the transport URL is the GCS HTTPS origin so resolves work before custom DNS.
+     */
+    public static final RepositorySpec JUMPKICK = new RepositorySpec(
+            "jumpkick",
+            URI.create("https://storage.googleapis.com/jkbuild-releases/repo/"),
+            Optional.empty(),
+            Optional.empty(),
+            List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"));
+
     /** Convenience: a repository with no inline credential, object-store, or exclusive groups. */
     public RepositorySpec(String name, URI url) {
         this(name, url, Optional.empty(), Optional.empty(), List.of());

@@ -188,20 +188,16 @@ public final class BspServer {
 
     private static String sourcesItem(String tid, Path mod) {
         List<String> srcs = new ArrayList<>();
-        addSrc(srcs, mod, "src/main/java", 1);
-        addSrc(srcs, mod, "src/main/kotlin", 1);
-        addSrc(srcs, mod, "src", 1);
-        addSrc(srcs, mod, "src/test/java", 2);
-        addSrc(srcs, mod, "src/test/kotlin", 2);
-        addSrc(srcs, mod, "test", 2);
-        return "{\"target\":{\"uri\":" + q(tid) + "},\"sources\":[" + String.join(",", srcs) + "]}";
-    }
-
-    private static void addSrc(List<String> srcs, Path mod, String rel, int kind) {
-        Path s = mod.resolve(rel);
-        if (Files.isDirectory(s)) {
-            srcs.add("{\"uri\":" + q(pathUri(s)) + ",\"kind\":" + kind + ",\"generated\":false}");
+        // JK-1140: same roots as jk ide (all TestSuites + main).
+        for (cc.jumpkick.command.ide.IdeSourceRoots.Root root : cc.jumpkick.command.ide.IdeSourceRoots.of(mod)) {
+            // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
+            int kind = root.test() ? 2 : 1;
+            Path s = mod.resolve(root.relative());
+            if (Files.isDirectory(s)) {
+                srcs.add("{\"uri\":" + q(pathUri(s)) + ",\"kind\":" + kind + ",\"generated\":false}");
+            }
         }
+        return "{\"target\":{\"uri\":" + q(tid) + "},\"sources\":[" + String.join(",", srcs) + "]}";
     }
 
     private String dependencyModulesJson(String requestJson) throws IOException {
@@ -254,11 +250,59 @@ public final class BspServer {
         return statusResult(outcome, "compile failed");
     }
 
-    /** BSP {@code buildTarget/test} — run {@code jk test} pipeline for the selected module. */
+    /**
+     * BSP {@code buildTarget/test} — run {@code jk test} for the selected module. Optional jk
+     * extension in {@code params.data} (JK-1143):
+     *
+     * <pre>
+     * "data": {
+     *   "allSuites": false,
+     *   "suites": ["test","integration"],
+     *   "includeTags": ["smoke"],
+     *   "excludeTags": ["slow"]
+     * }
+     * </pre>
+     *
+     * Omitted data → default suite only (same as bare {@code jk test}).
+     */
     private String testJson(String requestJson) throws IOException {
         Path moduleDir = resolveTargetModule(requestJson);
-        var outcome = ide.testModule(moduleDir, null);
+        var selection = parseTestSelectionData(requestJson);
+        var outcome = ide.testModule(moduleDir, null, selection);
         return statusResult(outcome, "test failed");
+    }
+
+    /**
+     * Parse optional {@code data} object on a BSP test request into {@link
+     * cc.jumpkick.config.TestSelection}. Missing/empty → DEFAULT.
+     */
+    static cc.jumpkick.config.TestSelection parseTestSelectionData(String requestJson) {
+        if (requestJson == null || requestJson.isBlank()) {
+            return cc.jumpkick.config.TestSelection.DEFAULT;
+        }
+        // Prefer a "data":{...} object if present; else allow top-level fields (lenient).
+        String slice = requestJson;
+        int dataIdx = requestJson.indexOf("\"data\"");
+        if (dataIdx >= 0) {
+            int brace = requestJson.indexOf('{', dataIdx);
+            if (brace >= 0) {
+                int depth = 0;
+                int end = brace;
+                for (; end < requestJson.length(); end++) {
+                    char c = requestJson.charAt(end);
+                    if (c == '{') depth++;
+                    else if (c == '}') {
+                        depth--;
+                        if (depth == 0) {
+                            end++;
+                            break;
+                        }
+                    }
+                }
+                if (depth == 0) slice = requestJson.substring(brace, end);
+            }
+        }
+        return cc.jumpkick.engine.protocol.EngineProtocol.testSelectionOf(slice);
     }
 
     private static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {

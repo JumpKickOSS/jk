@@ -24,8 +24,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+@Tag("integration")
 class EngineServerTest {
 
     // Unix domain socket paths are capped at ~104 bytes (macOS/BSD) / ~108 (Linux) — JUnit's
@@ -1005,7 +1007,8 @@ class EngineServerTest {
     // ---- embedded HTTP server (docs/http.md) ----------------------------------------------------
 
     private static cc.jumpkick.config.JkHttpConfig httpOnEphemeralPort(Path webRoot) {
-        return new cc.jumpkick.config.JkHttpConfig("127.0.0.1", 0, 16, webRoot.toString());
+        return new cc.jumpkick.config.JkHttpConfig(
+                "127.0.0.1", 0, 16, 16, webRoot.toString(), cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
     }
 
     @Test
@@ -1062,7 +1065,9 @@ class EngineServerTest {
                     "127.0.0.1",
                     blocker.getLocalPort(),
                     16,
-                    stateDir.resolve("web").toString());
+                    16,
+                    stateDir.resolve("web").toString(),
+                    cc.jumpkick.config.JkHttpConfig.Mcp.DEFAULTS);
             EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, http, "1.0", null);
             Thread serverThread = runInBackground(server);
             waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));

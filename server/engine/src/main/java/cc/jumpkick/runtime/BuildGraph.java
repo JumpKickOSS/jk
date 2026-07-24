@@ -86,8 +86,20 @@ public final class BuildGraph {
         return max;
     }
 
-    /** Resolve the graph rooted at {@code entryDir}/{@code entry}. */
+    /**
+     * Resolve the graph rooted at {@code entryDir}/{@code entry}. On a preflight graph-memo hit
+     * (JK-1112), rebuilds topo + edges + re-parsed manifests without {@link WorkspaceLoader}.
+     */
     public static Result resolve(Path entryDir, JkBuild entry) throws IOException {
+        // JK-1112: try memo first — skip WorkspaceLoader membership walk when structure is warm.
+        var memo = PreflightMemo.tryLoadGraph(entryDir);
+        if (memo.isPresent()) {
+            if (Perf.ENABLED) {
+                System.err.println("[jk-perf] graph-memo hit units="
+                        + memo.get().topoOrder().size());
+            }
+            return memo.get();
+        }
         Builder b = new Builder();
         if (entry.isWorkspaceRoot()) {
             b.addWorkspace(entryDir, entry, Origin.MODULE);

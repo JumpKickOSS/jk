@@ -11,7 +11,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -22,7 +24,11 @@ import java.util.zip.ZipEntry;
 
 /**
  * {@code shrunk-jar} packager: R8 {@code --classfile} full mode over classes + runtime closure →
- * one slim executable jar. Shrink-only by default; {@code obfuscate = true} writes a mapping file.
+ * one slim jar. Shrink-only by default; {@code obfuscate = true} writes a mapping file.
+ *
+ * <p>{@code [application] main} is optional: when present, R8 keeps the entry point and the
+ * manifest gets {@code Main-Class}. When absent (library fat/shrunk jars), every class from the
+ * module's own classes dir is kept so R8 can still strip unused dependency code.
  */
 final class ShrunkJarPackager {
 
@@ -35,10 +41,7 @@ final class ShrunkJarPackager {
 
     static void produce(PackageIo io) throws Exception {
         String mainClass = io.project().mainClass();
-        if (mainClass == null || mainClass.isBlank()) {
-            throw new IllegalStateException("[shrink] needs an entry point to keep — declare"
-                    + " [application] main, or ship exactly one main(String[]) for the scan");
-        }
+        if (mainClass != null && mainClass.isBlank()) mainClass = null;
         Path r8 = io.extra("r8")
                 .orElseThrow(() -> new IllegalStateException("the r8 packager-dependency was not supplied"));
         Path work = Files.createTempDirectory("jk-shrink-");
@@ -55,7 +58,15 @@ final class ShrunkJarPackager {
             boolean obfuscate = io.config().bool("obfuscate", false);
             Path rules = work.resolve("keep.pro");
             StringBuilder pro = new StringBuilder();
-            pro.append("-keep class ").append(mainClass).append(" { public static void main(java.lang.String[]); }\n");
+            if (mainClass != null) {
+                pro.append("-keep class ")
+                        .append(mainClass)
+                        .append(" { public static void main(java.lang.String[]); }\n");
+            } else {
+                // Library / no entry point: keep the module's own classes so R8 still shrinks
+                // unused dependency code without requiring [application] main.
+                appendModuleClassKeeps(pro, io.classesDir());
+            }
             pro.append("-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,")
                     .append("SourceFile,LineNumberTable\n");
             if (!obfuscate) pro.append("-dontobfuscate\n");
@@ -95,11 +106,61 @@ final class ShrunkJarPackager {
                 throw new IllegalStateException("R8 failed (exit " + result.exit() + "):\n" + result.output());
             }
 
-            writeExecutableJar(shrunk, io.artifactPath(), mainClass);
+            writeOutputJar(shrunk, io.artifactPath(), mainClass);
             io.label("shrunk " + mb(before) + " → " + mb(Files.size(io.artifactPath())));
         } finally {
             deleteRecursively(work);
         }
+    }
+
+    /**
+     * Keep every top-level class compiled for this module. Inner classes are covered by their
+     * outer keep when present; anonymous/local types stay reachable from kept members.
+     */
+    static void appendModuleClassKeeps(StringBuilder pro, Path classesDir) throws IOException {
+        if (classesDir == null || !Files.isDirectory(classesDir)) {
+            // Empty module: still need a rule so R8 does not delete the whole program graph.
+            pro.append("-dontshrink\n");
+            return;
+        }
+        int kept = 0;
+        try (Stream<Path> walk = Files.walk(classesDir)) {
+            List<Path> classes = walk.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith(".class"))
+                    .filter(p -> !p.getFileName().toString().equals("module-info.class"))
+                    .sorted(Comparator.naturalOrder())
+                    .toList();
+            // Relative paths present in the tree (for outer-class peer checks).
+            Set<String> classPaths = new HashSet<>();
+            for (Path file : classes) {
+                classPaths.add(classesDir.relativize(file).toString().replace('\\', '/'));
+            }
+            for (Path file : classes) {
+                String name = classesDir.relativize(file).toString().replace('\\', '/');
+                if (isNestedClassFile(name, classPaths)) continue; // outer keep retains nested types
+                String fqcn =
+                        name.substring(0, name.length() - ".class".length()).replace('/', '.');
+                pro.append("-keep class ").append(fqcn).append(" { *; }\n");
+                kept++;
+            }
+        }
+        if (kept == 0) pro.append("-dontshrink\n");
+    }
+
+    /**
+     * True when {@code relClassPath} is a javac nested type ({@code Outer$Inner.class}) whose
+     * outer {@code Outer.class} is also present. Top-level names that merely contain {@code $}
+     * (legal on the JVM) have no outer peer and must still get a keep rule (JK-1126).
+     */
+    static boolean isNestedClassFile(String relClassPath, Set<String> classPaths) {
+        String fileName = relClassPath;
+        int slash = relClassPath.lastIndexOf('/');
+        if (slash >= 0) fileName = relClassPath.substring(slash + 1);
+        if (!fileName.endsWith(".class") || !fileName.contains("$")) return false;
+        String beforeDollar = fileName.substring(0, fileName.indexOf('$'));
+        if (beforeDollar.isEmpty()) return false;
+        String outerRel = (slash >= 0 ? relClassPath.substring(0, slash + 1) : "") + beforeDollar + ".class";
+        return classPaths.contains(outerRel);
     }
 
     /** A project-relative path for a declared keep-file. */
@@ -129,12 +190,17 @@ final class ShrunkJarPackager {
         }
     }
 
-    /** R8's output jar, rewritten with a Main-Class manifest, deterministic order and times. */
-    private static void writeExecutableJar(Path shrunk, Path artifact, String mainClass) throws IOException {
+    /**
+     * R8's output jar, rewritten with a deterministic order/times. Sets {@code Main-Class} only when
+     * {@code mainClass} is non-null (library fat/shrunk jars need no entry point).
+     */
+    private static void writeOutputJar(Path shrunk, Path artifact, String mainClass) throws IOException {
         Files.createDirectories(artifact.getParent());
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
+        if (mainClass != null && !mainClass.isBlank()) {
+            manifest.getMainAttributes().put(Attributes.Name.MAIN_CLASS, mainClass);
+        }
         try (JarFile in = new JarFile(shrunk.toFile());
                 OutputStream out = Files.newOutputStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {

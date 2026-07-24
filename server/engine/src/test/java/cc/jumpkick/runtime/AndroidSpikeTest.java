@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Central. The CAS lives under the module's build dir, not a @TempDir, so repeat runs are warm
  * (the platform jar is ~115MB once).
  */
+@Tag("slow")
 class AndroidSpikeTest {
 
     @Test

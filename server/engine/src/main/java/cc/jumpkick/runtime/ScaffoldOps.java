@@ -76,7 +76,7 @@ public final class ScaffoldOps {
     private static String interpolatePath(String path, String lang, String pkg, boolean simple) {
         return path.replace("${main-root}", simple ? "src" : "src/main/" + lang)
                 .replace("${test-root}", simple ? "test" : "src/test/" + lang)
-                .replace("${resources-root}", simple ? "src" : "src/main/resources")
+                .replace("${resources-root}", simple ? "resources" : "src/main/resources")
                 .replace("${package-path}", pkg.replace('.', '/'));
     }
 }

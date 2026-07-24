@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
  * <java> -cp <jar> PluginMain <args>}, which ServiceLoad-s the plugin and runs it. (jk has no
  * in-process plugin path — every worker is its own JVM.)
  */
+@Tag("integration")
 class PluginLoaderTest {
 
     /** The java-compiler worker jar, side-loaded by Gradle via this system property. */

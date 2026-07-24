@@ -17,6 +17,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 import java.util.stream.Stream;
 import javax.tools.ToolProvider;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * locally-installed JARs are usable as compile-time dependencies and that incremental compilation
  * behaves correctly against them.
  */
+@Tag("integration")
 class InstallAndBuildTest {
 
     @Test

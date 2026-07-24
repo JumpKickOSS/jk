@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cli.Jk;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
  * project with no main class compiles + packages (proving the pipeline ran), then the image tail
  * rejects it with EX_USAGE (64).
  */
+@Tag("integration")
 class ImageCommandTest {
 
     @Test

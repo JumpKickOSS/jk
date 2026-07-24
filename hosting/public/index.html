@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JumpKick — modern builds for Java &amp; Kotlin</title>
+  <meta name="description" content="jk is a lockfile-first build tool for Java and Kotlin." />
+  <style>
+    :root {
+      color-scheme: dark light;
+      --bg: #0b1220;
+      --fg: #e8eef7;
+      --muted: #9aacc4;
+      --accent: #3ee0f0;
+      --card: #121a2b;
+      --border: #243049;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f6f8fc; --fg: #0b1220; --muted: #4b5d76; --card: #fff; --border: #d5deeb; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--fg); line-height: 1.55; }
+    main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+    h1 { font-size: 2.1rem; letter-spacing: -0.03em; margin: 0 0 0.5rem; }
+    .lead { color: var(--muted); font-size: 1.1rem; margin-bottom: 1.75rem; }
+    pre, code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+    pre {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      overflow-x: auto;
+    }
+    a { color: var(--accent); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.15rem;
+      margin: 1.25rem 0;
+    }
+    .muted { color: var(--muted); font-size: 0.95rem; }
+    ul { padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>JumpKick</h1>
+    <p class="lead">A modern, lockfile-first build tool for Java and Kotlin.</p>
+
+    <div class="card">
+      <strong>Install</strong>
+      <pre>curl -fsSL https://jumpkick.build/install.sh | bash</pre>
+      <p class="muted">Until the custom domain DNS is live, use the temporary Hosting URL below for install.sh, and set <code>JK_RELEASES_URL</code> for binaries.</p>
+    </div>
+
+    <div class="card">
+      <strong>Releases</strong>
+      <ul>
+        <li><a href="/releases/latest/VERSION">latest/VERSION</a> (redirects to GCS)</li>
+        <li>Object store: <a href="https://storage.googleapis.com/jkbuild-releases/releases/">gs://jkbuild-releases</a></li>
+      </ul>
+      <pre>export JK_RELEASES_URL=https://storage.googleapis.com/jkbuild-releases/releases
+# after DNS: https://jumpkick.build/releases</pre>
+    </div>
+
+    <p class="muted">
+      Source: <a href="https://github.com/jkbuild/jk">github.com/jkbuild/jk</a>
+      · Docs: <a href="https://github.com/jkbuild/jk/tree/main/docs">docs/</a>
+    </p>
+  </main>
+</body>
+</html>

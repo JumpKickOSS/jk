@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
@@ -13,7 +15,7 @@ class ProgressBarTest {
 
     @Test
     void renders_blocks_then_spaces_then_percent_without_a_count() {
-        String visible = stripAnsi(new ProgressBar().render(45, 100));
+        String visible = TestAnsi.strip(new ProgressBar().render(45, 100));
         // 45% → 0.45 * 40 = 18.0 whole cells, no fraction, 22 unreached spaces.
         assertThat(visible).startsWith("█".repeat(18) + " ".repeat(22));
         assertThat(visible).contains("45%");
@@ -24,7 +26,7 @@ class ProgressBarTest {
     @Test
     void fractional_frontier_uses_an_eighth_block() {
         // 2% → 0.8 of a cell → round(0.8*8)=6 eighths → ▊ (¾ block) as the first cell.
-        String visible = stripAnsi(new ProgressBar().render(2, 100));
+        String visible = TestAnsi.strip(new ProgressBar().render(2, 100));
         assertThat(visible).startsWith("▊");
         assertThat(visible).doesNotContain("█"); // no whole cell yet
         assertThat(visible).contains("2%");
@@ -32,11 +34,11 @@ class ProgressBarTest {
 
     @Test
     void zero_is_all_spaces_and_full_is_all_blocks() {
-        assertThat(stripAnsi(new ProgressBar().render(0, 100)))
+        assertThat(TestAnsi.strip(new ProgressBar().render(0, 100)))
                 .startsWith(" ".repeat(40))
                 .contains("0%")
                 .doesNotContain("█");
-        assertThat(stripAnsi(new ProgressBar().render(100, 100)))
+        assertThat(TestAnsi.strip(new ProgressBar().render(100, 100)))
                 .startsWith("█".repeat(40))
                 .contains("100%");
     }
@@ -76,9 +78,5 @@ class ProgressBarTest {
         var out = new ArrayList<String>();
         while (m.find()) out.add(m.group(1));
         return out;
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

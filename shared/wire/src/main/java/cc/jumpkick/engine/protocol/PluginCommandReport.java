@@ -19,7 +19,7 @@ public record PluginCommandReport(String error, boolean found, int exit, List<St
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.PLUGIN_VERB_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.PLUGIN_VERB_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"found\":" + found
                 + ",\"exit\":" + exit

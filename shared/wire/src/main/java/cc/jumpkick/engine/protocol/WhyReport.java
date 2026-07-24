@@ -25,7 +25,7 @@ public record WhyReport(
     }
 
     public String encode() {
-        return "{\"t\":\"" + EngineProtocol.WHY_ACK + "\""
+        return "{\"type\":\"" + EngineProtocol.WHY_ACK + "\""
                 + ",\"error\":" + (error == null ? "null" : Jsonl.quote(error))
                 + ",\"matchNames\":" + EngineProtocol.quoteArray(matchNames)
                 + ",\"matchVersions\":" + EngineProtocol.quoteArray(matchVersions)

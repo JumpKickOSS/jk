@@ -72,6 +72,9 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         }
         write(vscodeDir.resolve("extensions.json"), extensionsJson());
         files++;
+        // JK-1141: tasks for jk test / --all / per-suite
+        write(vscodeDir.resolve("tasks.json"), tasksJson(model));
+        files++;
 
         // ---- presentation ---------------------------------------------------
         Theme t = Theme.active();
@@ -144,24 +147,10 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         StringBuilder sb = xmlHeader();
         sb.append("<classpath>\n");
 
-        // Source / resource folders, inferred by directory existence exactly as the IntelliJ
-        // generator does (traditional Maven layout wins over the simple layout).
-        boolean hasTraditional = Files.isDirectory(moduleDir.resolve("src/main/java"))
-                || Files.isDirectory(moduleDir.resolve("src/main/kotlin"))
-                || Files.isDirectory(moduleDir.resolve("src/test/java"))
-                || Files.isDirectory(moduleDir.resolve("src/test/kotlin"));
-        if (hasTraditional) {
-            srcEntry(sb, moduleDir, "src/main/java", false, outMain);
-            srcEntry(sb, moduleDir, "src/main/kotlin", false, outMain);
-            srcEntry(sb, moduleDir, "src/main/resources", false, outMain);
-            srcEntry(sb, moduleDir, "src/test/java", true, outTest);
-            srcEntry(sb, moduleDir, "src/test/kotlin", true, outTest);
-            srcEntry(sb, moduleDir, "src/test/resources", true, outTest);
-        } else {
-            srcEntry(sb, moduleDir, "src", false, outMain);
-            srcEntry(sb, moduleDir, "resources", false, outMain);
-            srcEntry(sb, moduleDir, "test", true, outTest);
-            srcEntry(sb, moduleDir, "test-resources", true, outTest);
+        // JK-1139: all TestSuites roots as test sources (shared with IntelliJ generator).
+        for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
+            String out = root.test() ? outTest : outMain;
+            srcEntry(sb, moduleDir, root.relative(), root.test(), out);
         }
 
         // Annotation-processor output roots (created so JDT's classpath stays valid), emitted when
@@ -333,6 +322,34 @@ public final class VscodeIdeGenerator implements IdeGenerator {
                 + "    \"redhat.java\",\n"
                 + "    \"vscjava.vscode-java-debug\"\n"
                 + "  ]\n}\n";
+    }
+
+    /** JK-1141: shell tasks for default suite, --all, and each extra suite. */
+    static String tasksJson(IdeModel model) {
+        List<String> tasks = new ArrayList<>();
+        tasks.add(taskEntry("jk: test", "jk test"));
+        tasks.add(taskEntry("jk: test all", "jk test --all"));
+        LinkedHashSet<String> extra = new LinkedHashSet<>();
+        for (Path mod : model.allModules().keySet()) {
+            for (String suite : IdeSourceRoots.discoveredSuites(mod)) {
+                if (!cc.jumpkick.layout.TestSuites.DEFAULT.equals(suite)) extra.add(suite);
+            }
+        }
+        for (String suite : extra) {
+            tasks.add(taskEntry("jk: test · " + suite, "jk test --suite " + suite));
+        }
+        return "{\n  \"version\": \"2.0.0\",\n  \"tasks\": [\n" + String.join(",\n", tasks) + "\n  ]\n}\n";
+    }
+
+    private static String taskEntry(String label, String command) {
+        return "    {\n"
+                + "      \"label\": \"" + jsonEsc(label) + "\",\n"
+                + "      \"type\": \"shell\",\n"
+                + "      \"command\": \"" + jsonEsc(command) + "\",\n"
+                + "      \"group\": \"test\",\n"
+                + "      \"presentation\": { \"reveal\": \"always\", \"panel\": \"shared\" },\n"
+                + "      \"problemMatcher\": []\n"
+                + "    }";
     }
 
     // =========================================================================

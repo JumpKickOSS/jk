@@ -8,6 +8,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Framing/handshake smoke without a live engine: install writes .bsp/jk.json; initialize response
  * framing is covered when a full engine is available (IdeEngineClientTest).
  */
+@Tag("integration")
 class BspServerFramingTest {
 
     @Test

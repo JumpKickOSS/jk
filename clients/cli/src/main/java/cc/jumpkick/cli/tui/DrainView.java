@@ -29,7 +29,6 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     private volatile boolean forceRequested;
     private volatile boolean closed;
     private int linesDrawn;
-    private int frame;
     private Thread animator;
     private Thread keys;
     private Thread restoreHook;
@@ -90,14 +89,14 @@ public final class DrainView implements LiveRegion, AutoCloseable {
     // --- rendering -----------------------------------------------------------
 
     private void animate() {
+        // The only moving part is the 1s-granularity elapsed counter — 2 Hz is plenty.
         while (!closed) {
             synchronized (lock) {
                 if (closed) break;
                 paint();
-                frame = (frame + 1) % Spinner.FRAMES.length;
             }
             try {
-                Thread.sleep(Spinner.FRAME_MS);
+                Thread.sleep(500L);
             } catch (InterruptedException e) {
                 return;
             }
@@ -121,7 +120,7 @@ public final class DrainView implements LiveRegion, AutoCloseable {
                 "+" + fmtElapsed((System.nanoTime() - startNanos) / 1_000_000),
                 Theme.active().warning());
         String l1 = PipelineWedge.chipLine(
-                Spinner.FRAMES[frame],
+                Spinner.PULSE_GLYPH,
                 "Engine",
                 nerdfont,
                 "Draining " + n + " job" + (n == 1 ? "" : "s") + "… " + elapsed);

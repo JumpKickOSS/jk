@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
-import cc.jumpkick.util.MiniJson;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,19 @@ public final class JsonOut {
         return this;
     }
 
+    /** Floating progress percent (0–100) and similar scalars — MiniJson writes a JSON number. */
+    public JsonOut put(String key, double value) {
+        fields.put(key, value);
+        return this;
+    }
+
     public JsonOut put(String key, boolean value) {
+        fields.put(key, value);
+        return this;
+    }
+
+    /** Put a nullable number (e.g. {@code progress: null} until known). */
+    public JsonOut putNullable(String key, Double value) {
         fields.put(key, value);
         return this;
     }

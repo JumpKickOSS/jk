@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.zip.ZipFile;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,6 +38,7 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>Same harness as {@link AndroidWorkspaceTest}: real tools, persistent CAS/SDK under build/.
  */
+@Tag("slow")
 class AndroidReleaseTest {
 
     @Test

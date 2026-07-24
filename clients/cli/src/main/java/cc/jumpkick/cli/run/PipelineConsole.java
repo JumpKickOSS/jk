@@ -48,6 +48,7 @@ public final class PipelineConsole {
         // failed log open just leaves the listener out of the chain.
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        attachSessionMirror(pipeline, mode);
 
         PipelineListener console = chooseConsoleListener(pipeline, mode);
         if (console != null) pipeline.addListener(console);
@@ -72,6 +73,7 @@ public final class PipelineConsole {
     public static PipelineResult run(Pipeline pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        attachSessionMirror(pipeline, mode);
 
         PipelineListener console =
                 switch (mode) {
@@ -113,6 +115,7 @@ public final class PipelineConsole {
             Pipeline pipeline, Mode mode, Path cacheRoot, ConsoleSpec spec, String module) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        attachSessionMirror(pipeline, mode);
 
         pipeline.addListener(chooseConsoleListener(pipeline.steps(), mode, spec, module));
         return pipeline.run();
@@ -134,6 +137,22 @@ public final class PipelineConsole {
     }
 
     /**
+     * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
+     * multi-module workspace run: listeners never stamp their pipeline-local fraction into {@link
+     * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
+     * workspace-progress} snapshots alone (JK-1120/1121).
+     */
+    public static PipelineListener chooseWorkspaceMemberListener(
+            List<Step> steps, Mode mode, ConsoleSpec spec, String module) {
+        return switch (mode) {
+            case JSON -> new JsonlListener(System.out, false);
+            case VERBOSE -> new VerboseListener(System.out, System.err);
+            case AUTO -> new CommandManagerListener(System.out, spec, module, steps, isInteractiveTerminal(), false);
+            case QUIET -> new CommandManagerListener(System.out, spec, module, steps, false, false);
+        };
+    }
+
+    /**
      * Run {@code pipeline} with no console output (only the event log), returning its result. For builds
      * whose progress must NOT render to the terminal — e.g. composite dependency units built
      * concurrently, where N live progress bars can't share one terminal region; the caller prints a
@@ -142,6 +161,8 @@ public final class PipelineConsole {
     public static PipelineResult runPipelineSilently(Pipeline pipeline, Path cacheRoot) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        // Silent still mirrors to details.jsonl when a session is open (TTY chrome suppressed).
+        attachSessionMirror(pipeline, Mode.QUIET);
         pipeline.addListener(new SilentListener(System.out, System.err));
         return pipeline.run();
     }
@@ -158,6 +179,7 @@ public final class PipelineConsole {
     public static Buffered runPipelineBuffered(Pipeline pipeline, Path cacheRoot) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        attachSessionMirror(pipeline, Mode.QUIET);
         List<String> lines = new java.util.ArrayList<>();
         pipeline.addListener(new PipelineListener() {
             @Override
@@ -228,6 +250,8 @@ public final class PipelineConsole {
             Pipeline pipeline, Path cacheRoot, String module, AggregateContext agg, long slice) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        // Workspace TTY path is never JSON mode — always mirror pipeline events into details.jsonl.
+        attachSessionMirror(pipeline, Mode.AUTO);
         pipeline.addListener(new AggregateModuleListener(agg, module, pipeline.steps(), slice));
         return pipeline.run();
     }
@@ -248,10 +272,22 @@ public final class PipelineConsole {
             java.util.List<String> outBuffer) {
         EventLogListener log = EventLogListener.open(cacheRoot, pipeline.name());
         if (log != null) pipeline.addListener(log);
+        attachSessionMirror(pipeline, Mode.AUTO);
         AggregateModuleListener lis = new AggregateModuleListener(agg, module, pipeline.steps(), slice);
         lis.bufferOutputInto(outBuffer);
         pipeline.addListener(lis);
         return pipeline.run();
+    }
+
+    /**
+     * When a CLI session is open and stdout is <em>not</em> already JSONL, mirror pipeline events
+     * into {@code details.jsonl}. JSON mode dual-writes via {@link JsonlListener} instead.
+     */
+    private static void attachSessionMirror(Pipeline pipeline, Mode mode) {
+        if (mode == Mode.JSON) return;
+        CliSessionTranscript session = CliSessionTranscript.active();
+        if (session == null) return;
+        pipeline.addListener(new SessionMirrorListener(session));
     }
 
     /**

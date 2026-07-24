@@ -114,7 +114,9 @@ class SelfHostingTomlTest {
         JkBuild engine = JkBuildParser.parse(REPO.resolve("server/engine/jk.toml"));
         assertThat(engine.assembly()).isTrue();
         assertThat(engine.mainClass()).isEqualTo("cc.jumpkick.engine.EngineMain");
-        assertThat(engine.dependencies().of(Scope.MAIN).stream().map(d -> d.library()).toList())
+        assertThat(engine.dependencies().of(Scope.MAIN).stream()
+                        .map(d -> d.library())
+                        .toList())
                 .contains("jk-web");
     }
 
@@ -136,7 +138,9 @@ class SelfHostingTomlTest {
     void android_plugin_declares_google_maven_for_apksig() throws Exception {
         JkBuild android = JkBuildParser.parse(REPO.resolve("plugins/android/jk.toml"));
         assertThat(android.repositories()).extracting(r -> r.name()).contains("google");
-        assertThat(android.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList())
+        assertThat(android.dependencies().of(Scope.MAIN).stream()
+                        .map(d -> d.module())
+                        .toList())
                 .contains("com.android.tools.build:apksig");
     }
 

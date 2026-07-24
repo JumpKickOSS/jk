@@ -70,6 +70,7 @@ const EVENT_TYPES = [
   'step-start',
   'step-finish',
   'pipeline-progress',
+  'workspace-progress',
   'eta',
   'output',
   'diagnostic',

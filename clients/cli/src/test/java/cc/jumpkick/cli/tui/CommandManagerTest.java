@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.TestAnsi;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Rgb;
@@ -20,8 +22,8 @@ class CommandManagerTest {
         var buf = new ByteArrayOutputStream();
         var cm = new CommandManager(stream(buf), true);
         cm.label("Locking");
-        cm.tick(); // frame 0 = "·"
-        assertThat(stripAnsi(buf.toString(StandardCharsets.UTF_8))).contains("· Locking…");
+        cm.tick(); // frame 0 = pulse circle
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8))).contains(Spinner.PULSE_GLYPH + " Locking…");
     }
 
     @Test
@@ -32,9 +34,9 @@ class CommandManagerTest {
         cm.finishSuccess("Finished syncing 13 artifacts");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        String visible = stripAnsi(raw);
-        // Frozen spinner (first glyph) + command on its own line, result line below.
-        assertThat(visible).contains("· Syncing…");
+        String visible = TestAnsi.strip(raw);
+        // Frozen pulse circle + command on its own line, result line below.
+        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Syncing…");
         // "✓ <pipeline> Successful: <message>", head in green.
         assertThat(visible).contains("✓ Syncing Successful: Finished syncing 13 artifacts");
         assertThat(raw)
@@ -49,7 +51,7 @@ class CommandManagerTest {
         cm.label("Build");
         cm.finishSuccess("built 17 modules", List.of("‼ Warning [compile-test]:", "  deprecation in Foo.java"));
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int warn = visible.indexOf("‼ Warning [compile-test]:");
         int summary = visible.indexOf("✓ Build Successful: built 17 modules");
         // Subprocess output prints first; the success summary is the last thing shown.
@@ -69,7 +71,7 @@ class CommandManagerTest {
 
         cm.finishSuccess("built 17 modules", List.of("‼ Warning [compile-test]:"));
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         int warn = visible.indexOf("‼ Warning [compile-test]:");
         int summary = visible.indexOf("Successful: built 17 modules");
         // Region is wiped, then the deferred warning, then the summary line last.
@@ -85,7 +87,7 @@ class CommandManagerTest {
         cm.finishFailure("Failed to sync remote artifacts");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(stripAnsi(raw)).contains("✘ Failed to sync remote artifacts");
+        assertThat(TestAnsi.strip(raw)).contains("✘ Failed to sync remote artifacts");
         assertThat(raw).contains(Theme.colorize("✘", Theme.active().error()));
     }
 
@@ -96,8 +98,8 @@ class CommandManagerTest {
         cm.label("Locking");
         cm.renderCanceled();
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
-        assertThat(visible).contains("· Locking…");
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Locking…");
         // The notice itself is GlobalCancel's job; the component only settles.
         assertThat(visible).doesNotContain("Canceled");
         assertThat(buf.toString(StandardCharsets.UTF_8)).contains("\033[?25h");
@@ -114,8 +116,8 @@ class CommandManagerTest {
         cm.finishSuccess("done");
 
         String raw = buf.toString(StandardCharsets.UTF_8);
-        assertThat(stripAnsi(raw)).contains("✓ Locking Successful: done");
-        assertThat(stripAnsi(raw)).doesNotContain("Locking…"); // no spinner line
+        assertThat(TestAnsi.strip(raw)).contains("✓ Locking Successful: done");
+        assertThat(TestAnsi.strip(raw)).doesNotContain("Locking…"); // no spinner line
         assertThat(raw).doesNotContain("\033[?25h"); // never hid the cursor
     }
 
@@ -155,13 +157,13 @@ class CommandManagerTest {
 
         // No estimate set → the clock counts elapsed up from 0s (4s elapsed → "4s").
         String up = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(stripAnsi(up)).contains("4s");
+        assertThat(TestAnsi.strip(up)).contains("4s");
 
         // Seeded with a 60s estimate, the clock counts down by pure wall-clock: at 4s
         // elapsed, 56s remain — independent of the bar's numerator/denominator.
         cm.setEtaEstimate(60_000);
         String header = cm.renderPipelineLines(120, 4_000).get(0);
-        assertThat(stripAnsi(header)).contains("56s");
+        assertThat(TestAnsi.strip(header)).contains("56s");
         // The clock is yellow; the · separator is bright-black.
         assertThat(header).contains(Theme.colorize("56s", Theme.active().warning()));
         assertThat(header).contains(Theme.colorize("·", Theme.active().darkGray()));
@@ -173,41 +175,43 @@ class CommandManagerTest {
         cm.nerdfont = false;
         cm.setEtaEstimate(10_000); // 10s estimate
         // 15s elapsed → 5s overrun → clock flips to "+5s".
-        assertThat(stripAnsi(cm.renderPipelineLines(120, 15_000).get(0))).contains("+5s");
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 15_000).get(0))).contains("+5s");
     }
 
     @Test
-    void goal_header_bar_and_rows() {
+    void header_shows_module_remaining_work_counter() {
+        // JK-1157: modulesComplete/modulesTotal next to the wall clock.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.progress(50, 100);
+        cm.setEtaEstimate(60_000);
+        cm.setModuleProgress(2, 8);
+        String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
+        assertThat(header).contains("2/8");
+        assertThat(header).contains("56s");
+    }
+
+    @Test
+    void goal_header_bar_and_phase_chain() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.nerdfont = false; // plain (non-pill) header
+        cm.nerdfont = false;
         cm.progress(45, 100);
-        cm.addStep("acme:api", "parse-build");
-        cm.stepDone("acme:api", "parse-build", true);
-        cm.stepRunning("acme:api", "compile-java");
-        cm.stepMessage("acme:api", "compile-java", "javac 12 sources");
+        cm.stepDone("acme:api", "parse-build", true, "resolve"); // success → removed from chain
+        cm.stepRunning("acme:api", "compile-java", "compile");
 
         var raw = cm.renderPipelineLines(120, 112_000);
         String all = String.join("\n", stripAll(raw));
-        // Header: {name} {bar} · {clock} — bright-white name, bar inlined, module NOT in
-        // the header. No estimate set, so the clock counts elapsed up (112s → "1m 52s").
-        assertThat(stripAnsi(raw.get(0)))
+        assertThat(TestAnsi.strip(raw.get(0)))
                 .contains("Building")
+                .contains(Spinner.PULSE_GLYPH)
                 .contains("1m 52s")
-                .doesNotContain("[")
-                .doesNotContain("acme:api");
-        assertThat(raw.get(0))
-                .contains(Theme.colorize(" · Building ", Theme.active().planBadge()));
-        // Bar with percent, inlined into the header line — the N-of-M count is gone.
+                .doesNotContain("acme:api"); // module lives on the tree row, not the header
         assertThat(all).contains("45%");
-        assertThat(all).doesNotContain("[45 of 100]");
-        // Active row only: colored module, step, message, no trailing ellipsis.
-        assertThat(all).contains("acme:api › Compile java › javac 12 sources");
-        assertThat(raw.get(1))
-                .contains(Theme.colorize("acme", Theme.active().cyan()))
-                .contains(Theme.colorize("api", Theme.active().brightCyan()));
-        // Completed steps are not listed, and no status glyphs are drawn.
-        assertThat(all).doesNotContain("Parse build");
-        assertThat(all).doesNotContain("◻").doesNotContain("✓");
+        // Only running Compile stays; Resolve succeeded and is gone. Module + phase on the row.
+        assertThat(all).contains("acme:api").contains("Compile").contains("·");
+        assertThat(all).doesNotContain("Resolve");
+        assertThat(all).containsAnyOf("├─", "╰─");
+        assertThat(all).doesNotContain("›");
     }
 
     @Test
@@ -217,18 +221,12 @@ class CommandManagerTest {
         cm.progress(45, 100);
 
         String header = cm.renderPipelineLines(120, 0).get(0);
-        // The region is indented one column; the pill spans " · Build " then the cap.
-        assertThat(stripAnsi(header)).contains(" · Build " + Glyphs.SEGMENT_END_NERD);
-        // Pill = the pipeline chip: near-black text on the pipeline green.
+        // Pill: pulse circle + name + powerline cap.
+        assertThat(TestAnsi.strip(header)).contains(Spinner.PULSE_GLYPH + " Build " + Glyphs.SEGMENT_END_NERD);
         AttributedStyle chip = Theme.active().pipelineChip();
-        // The leading indent space is part of the pill (same chip background).
         assertThat(header).startsWith(Theme.colorize(" ", chip));
         assertThat(header).contains(Theme.colorize("Build", chip));
-        // Spinner (frame 0 = "·") cycles glyphs only — same near-black chip style as the
-        // name, not a gradient color.
-        assertThat(header).contains(Theme.colorize("·", chip));
-        // Cap: foreground = the chip green; background = the bar's first cell color,
-        // so the chip tapers into the block immediately to its right.
+        // Cap: FG = chip blue; BG = bar lead color.
         Rgb lead = new ProgressBar().leadColor(45, 100);
         assertThat(header)
                 .contains(Theme.colorize(
@@ -258,58 +256,140 @@ class CommandManagerTest {
     }
 
     @Test
-    void completed_rows_are_not_listed() {
+    void tree_rows_use_blue_spinner_and_green_phase_not_background_pills() {
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("com.foo:bar", "compile", "compile");
+        cm.stepDone("com.foo:baz", "test", false, "test");
+        var raw = cm.renderPipelineLines(120, 0);
+        String joined = String.join("\n", raw);
+        String visible = String.join("\n", stripAll(raw));
+        Theme t = Theme.active();
+        // Compact module · phase: no bg pills / powerline caps on the tree.
+        assertThat(visible).contains("com.foo:bar").contains("·").contains("Compile");
+        assertThat(visible).contains("com.foo:baz").contains("Test");
+        assertThat(joined).contains(Theme.colorize("Compile", t.success()));
+        assertThat(joined).contains(Theme.colorize("Test", t.error()));
+        assertThat(joined).contains(Theme.colorize("·", t.darkGray()));
+        assertThat(joined).doesNotContain(Glyphs.PILL_LEFT_NERD);
+    }
+
+    @Test
+    void phase_chain_shows_running_and_failed_only_newest_first() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
-        for (int i = 0; i < 9; i++) {
-            cm.addStep("m", "p" + i);
-            cm.stepDone("m", "p" + i, true);
-        }
-        cm.stepRunning("m", "active");
+        cm.nerdfont = false;
+        cm.stepDone("m", "s1", true, "resolve"); // success → dropped
+        cm.stepDone("m", "s2", false, "compile"); // failed → stays
+        cm.stepRunning("m", "s3", "test");
 
         String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
-        // Only the running step shows — no completed rows, no "+N completed".
-        assertThat(all).contains("m › Active");
-        assertThat(all).doesNotContain("completed").doesNotContain("✓");
+        assertThat(all).contains("Test").contains("Compile");
+        assertThat(all).doesNotContain("Resolve");
+        // Running rows first (newest), then failed by finish seq.
+        assertThat(all.indexOf("Test")).isLessThan(all.indexOf("Compile"));
+        assertThat(all).contains(Glyphs.CROSS); // failed row icon
+    }
+
+    @Test
+    void failed_phase_shows_brief_error_below() {
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile", "compile");
+        cm.attachPhaseError("m", "compile", "compile", "javac failed: cannot find symbol");
+        cm.stepDone("m", "compile", false, "compile");
+
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        String all = String.join("\n", lines);
+        assertThat(all).contains("Compile").contains("cannot find symbol");
+    }
+
+    @Test
+    void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
+        // JK-1127: listeners pass phase=""; step key is compile-java, phase node is compile.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile-java", "compile");
+        cm.attachPhaseError("m", "compile-java", "", "cannot find symbol Foo");
+        cm.stepDone("m", "compile-java", false, "compile");
+
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        String all = String.join("\n", lines);
+        assertThat(all).contains("Compile").contains("cannot find symbol Foo");
+        assertThat(all).doesNotContain("Failed\n"); // not the generic-only brief when we have a real one
+    }
+
+    @Test
+    void brief_error_under_last_tree_entry_uses_space_indent_not_rail() {
+        // JK-1128: ╰─ then spaces, not │ under a closing branch.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile-java", "compile");
+        cm.attachPhaseError("m", "compile-java", "compile", "boom");
+        cm.stepDone("m", "compile-java", false, "compile");
+
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        // Find the error line after the last ╰─ row
+        boolean sawClose = false;
+        for (String line : lines) {
+            if (line.startsWith(" ╰─")) sawClose = true;
+            if (sawClose && line.contains("boom")) {
+                assertThat(line).startsWith("    boom");
+                assertThat(line).doesNotContain("│");
+                return;
+            }
+        }
+        throw new AssertionError("expected brief error under closing branch, got:\n" + String.join("\n", lines));
+    }
+
+    @Test
+    void tree_is_vertically_compact_without_blank_rail_spacers() {
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
+        cm.nerdfont = false;
+        cm.stepRunning("com.foo:a", "a", "compile");
+        cm.stepRunning("com.foo:b", "b", "test");
+        var lines = stripAll(cm.renderPipelineLines(120, 0));
+        // header + two tree rows only (no leading │, no blank │ between).
+        assertThat(lines).hasSize(3);
+        assertThat(lines.get(1)).startsWith(" ├─").contains("com.foo").contains("·");
+        assertThat(lines.get(2)).startsWith(" ╰─").contains("com.foo").contains("·");
+        for (String line : lines) {
+            assertThat(line.strip()).isNotEqualTo("│");
+        }
     }
 
     @Test
     void region_is_capped_to_terminal_height() {
-        // A region taller than the viewport scrolls its top off-screen, where
-        // the cursor-relative repaint/wipe can't reach it (lingering spinner on
-        // cancel). So the active-row list is capped to fit the terminal height.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
         cm.height = 6;
-        for (int i = 0; i < 20; i++) cm.stepRunning("m", "p" + i); // 20 concurrently active
+        for (int i = 0; i < 20; i++) cm.stepRunning("m", "p" + i, "phase" + i);
 
         var lines = cm.renderPipelineLines(120, 0);
-        // header (bar inlined) + active rows, all within height (with a line of headroom).
         assertThat(lines.size()).isLessThanOrEqualTo(6 - 1);
     }
 
     @Test
-    void first_row_carries_the_rail_connector() {
+    void phase_chain_uses_tree_connectors() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Building", false);
-        cm.stepRunning("m", "compile");
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile", "compile");
         var lines = cm.renderPipelineLines(120, 0);
-        // lines[0]=header (bar inlined), lines[1]=the running step row (no glyph).
-        // The region is indented one column, so the connector starts after a space.
-        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─ m › Compile");
+        // lines[0]=header, lines[1]=single work row (closing branch) — no leading blank rail.
+        assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
     }
 
     @Test
-    void completed_lines_render_below_the_active_tree_newest_first() {
+    void completed_lines_render_below_the_phase_chain_newest_first() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
-        cm.stepRunning("m", "compile");
+        cm.nerdfont = false;
+        cm.stepRunning("m", "compile", "compile");
         cm.addCompletion("✓ [13 of 17] g:a13 took 1s");
         cm.addCompletion("✓ [14 of 17] g:a14 took 1s");
 
         var lines = cm.renderPipelineLines(120, 0);
-        // header, the active row (╰─ closes the tree), then the completions —
-        // newest first, each indented four spaces under the branch content (the
-        // region's one-column indent + the three under the branch).
-        assertThat(stripAnsi(lines.get(1))).startsWith(" ╰─ m › Compile");
-        assertThat(stripAnsi(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
-        assertThat(stripAnsi(lines.get(3))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
+        // header, work row (╰─), then completions newest first.
+        assertThat(TestAnsi.strip(lines.get(1))).startsWith(" ╰─").contains("Compile");
+        assertThat(TestAnsi.strip(lines.get(2))).isEqualTo("    ✓ [14 of 17] g:a14 took 1s");
+        assertThat(TestAnsi.strip(lines.get(3))).isEqualTo("    ✓ [13 of 17] g:a13 took 1s");
     }
 
     @Test
@@ -336,7 +416,7 @@ class CommandManagerTest {
 
         cm.writeAbove("javac: warning in Foo.java");
 
-        String visible = stripAnsi(buf.toString(StandardCharsets.UTF_8));
+        String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         // The log line appears, and the bar (region) is repainted after it.
         int log = visible.indexOf("javac: warning in Foo.java");
         int bar = visible.indexOf("█");
@@ -357,7 +437,7 @@ class CommandManagerTest {
             System.out.println("from a step");
         }
         assertThat(System.out).isSameAs(original); // streams restored
-        assertThat(stripAnsi(buf.toString(StandardCharsets.UTF_8)))
+        assertThat(TestAnsi.strip(buf.toString(StandardCharsets.UTF_8)))
                 .contains("from a step"); // routed to the region's real stdout
     }
 
@@ -372,7 +452,7 @@ class CommandManagerTest {
     void truncate_visible_cuts_at_column_keeping_escapes() {
         String colored = Theme.colorize("abcdef", Theme.active().success());
         String cut = CommandManager.truncateVisible(colored, 3);
-        assertThat(stripAnsi(cut)).isEqualTo("abc");
+        assertThat(TestAnsi.strip(cut)).isEqualTo("abc");
         assertThat(cut).endsWith("\033[0m"); // reset appended on truncation
     }
 
@@ -385,14 +465,10 @@ class CommandManagerTest {
     }
 
     private static List<String> stripAll(List<String> lines) {
-        return lines.stream().map(CommandManagerTest::stripAnsi).toList();
+        return lines.stream().map(TestAnsi::strip).toList();
     }
 
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
-    }
-
-    private static String stripAnsi(String s) {
-        return s.replaceAll("\033\\[[0-9;?]*[a-zA-Z]", "");
     }
 }

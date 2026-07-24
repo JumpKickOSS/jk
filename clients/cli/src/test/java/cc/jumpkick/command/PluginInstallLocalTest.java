@@ -9,13 +9,14 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@Tag("integration")
 class PluginInstallLocalTest {
 
-    private static final String WORKER_TOML =
-            """
+    private static final String WORKER_TOML = """
             [project]
             group = "cc.jumpkick"
             name = "jk-test-runner"
@@ -32,9 +33,7 @@ class PluginInstallLocalTest {
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod.resolve("target"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -44,7 +43,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = mod.resolve("target/jk-test-runner-0.10.1-assembly.jar");
+        Path jar = mod.resolve("target/jk-test-runner-0.10.1-all.jar");
         Files.writeString(jar, "fake-worker-jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -52,14 +51,12 @@ class PluginInstallLocalTest {
         System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute(
-                    "plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString());
+            exit = Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString());
         } finally {
             System.setOut(orig);
         }
         assertThat(exit).isZero();
-        Path dest = cache.resolve(
-                "repos/local/cc/jumpkick/jk-test-runner/0.10.1/jk-test-runner-0.10.1.jar");
+        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.10.1/jk-test-runner-0.10.1.jar");
         assertThat(dest).exists();
         assertThat(Files.readString(dest)).isEqualTo("fake-worker-jar");
         assertThat(Path.of(dest + ".sha256")).exists();
@@ -72,9 +69,7 @@ class PluginInstallLocalTest {
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod.resolve("target"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -84,7 +79,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-assembly.jar"), "x");
+        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-all.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -92,13 +87,7 @@ class PluginInstallLocalTest {
         int exit;
         try {
             exit = Jk.execute(
-                    "plugin",
-                    "install-local",
-                    "-C",
-                    dir.toString(),
-                    "--cache-dir",
-                    cache.toString(),
-                    "--dry-run");
+                    "plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString(), "--dry-run");
         } finally {
             System.setOut(orig);
         }
@@ -114,9 +103,7 @@ class PluginInstallLocalTest {
         Path b = dir.resolve("plugins/beta");
         Files.createDirectories(a.resolve("target"));
         Files.createDirectories(b.resolve("target"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -125,9 +112,7 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["plugins/alpha", "plugins/beta"]
                 """);
-        Files.writeString(
-                a.resolve("jk.toml"),
-                """
+        Files.writeString(a.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-alpha"
@@ -138,9 +123,7 @@ class PluginInstallLocalTest {
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 assembly = true
                 """);
-        Files.writeString(
-                b.resolve("jk.toml"),
-                """
+        Files.writeString(b.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-beta"
@@ -151,8 +134,8 @@ class PluginInstallLocalTest {
                 main = "cc.jumpkick.plugin.process.PluginMain"
                 assembly = true
                 """);
-        Files.writeString(a.resolve("target/jk-alpha-0.10.1-assembly.jar"), "A");
-        Files.writeString(b.resolve("target/jk-beta-0.10.1-assembly.jar"), "B");
+        Files.writeString(a.resolve("target/jk-alpha-0.10.1-all.jar"), "A");
+        Files.writeString(b.resolve("target/jk-beta-0.10.1-all.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",
@@ -174,9 +157,7 @@ class PluginInstallLocalTest {
     void missing_jar_fails_when_no_workers_installed(@TempDir Path dir) throws Exception {
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -210,9 +191,7 @@ class PluginInstallLocalTest {
     void skips_non_plugin_main_modules(@TempDir Path dir) throws Exception {
         Path lib = dir.resolve("lib");
         Files.createDirectories(lib);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "ws"
@@ -221,9 +200,7 @@ class PluginInstallLocalTest {
                 [workspace]
                 modules = ["lib"]
                 """);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "lib"
