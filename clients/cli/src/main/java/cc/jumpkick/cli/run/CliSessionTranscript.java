@@ -235,6 +235,7 @@ public final class CliSessionTranscript {
         // Cheap substring checks — avoid full JSON parse on the hot path.
         if (line.contains("\"type\":\"progress\"")
                 || line.contains("\"type\":\"tick-update\"")
+                || line.contains("\"type\":\"workspace-progress\"")
                 || line.contains("\"type\":\"label\"")
                 || line.contains("\"type\":\"output\"")) {
             return false;

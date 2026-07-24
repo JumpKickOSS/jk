@@ -265,12 +265,30 @@ public final class CommandDispatch {
         try {
             return cmd.run(in);
         } catch (PluginJarNotFoundException e) {
+            closeActiveLiveRegion();
             printWorkerJarError(e, ansi);
             return 1;
         } catch (Exception e) {
+            closeActiveLiveRegion();
             String msg = e.getMessage() != null ? e.getMessage() : e.toString();
             System.err.println(HelpRenderer.paint("error:", Theme.active().errorLabel(), ansi) + " " + msg);
             return 1;
+        }
+    }
+
+    /**
+     * An escaping exception must not leave a live region owning the terminal — hidden cursor,
+     * animator repainting over the error, stale OSC taskbar progress. Close (idempotent) restores
+     * the captured streams first, so the error line prints to the real stderr.
+     */
+    static void closeActiveLiveRegion() {
+        cc.jumpkick.cli.tui.LiveRegion region = cc.jumpkick.cli.tui.LiveRegion.active();
+        if (region instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception ignored) {
+                // Best-effort terminal restore.
+            }
         }
     }
 

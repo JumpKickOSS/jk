@@ -34,6 +34,25 @@ class AggregateProgressTest {
     }
 
     @Test
+    void workspace_member_console_listener_keeps_engine_rider() {
+        LiveProgress.get().setPercent(70.0); // engine snapshot already applied
+        var lis = new CommandManagerListener(
+                new PrintStream(new ByteArrayOutputStream()), (ConsoleSpec) null, "g:a", java.util.List.of(), false, false);
+        lis.pipelineStart(new cc.jumpkick.run.PipelineView("build", 1, 10, 1, 0, false));
+        lis.progress("compile", 1, new cc.jumpkick.run.PipelineView("build", 2, 10, 1, 0, false));
+        lis.tickUpdate("compile", 1, new cc.jumpkick.run.PipelineView("build", 3, 10, 1, 0, false));
+        assertThat(LiveProgress.get().percent()).isEqualTo(70.0);
+        lis.pipelineFinish(new cc.jumpkick.run.PipelineResult(
+                "build",
+                true,
+                java.time.Duration.ZERO,
+                java.util.List.of(),
+                java.util.List.of(),
+                java.util.List.of(),
+                false));
+    }
+
+    @Test
     void preflight_only_sets_labels_not_percent() {
         LiveProgress.get().clear();
         CommandManager cm = CommandManager.pipeline(new PrintStream(new ByteArrayOutputStream()), "Build", false);

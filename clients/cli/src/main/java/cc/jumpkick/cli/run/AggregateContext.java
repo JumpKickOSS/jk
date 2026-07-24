@@ -37,12 +37,8 @@ public final class AggregateContext {
      */
     public void applySnapshot(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
-        if (snap.denominator() > 0) {
-            cm.progress(snap.numerator(), snap.denominator());
-            LiveProgress.get().update(snap.numerator(), snap.denominator());
-        } else if (snap.hasPercent()) {
-            LiveProgress.get().setPercent(snap.percent());
-        }
+        if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
+        LiveProgress.get().apply(snap);
     }
 
     /**

@@ -51,6 +51,16 @@ public final class LiveProgress {
         percent = Math.round(raw * 10.0) / 10.0;
     }
 
+    /**
+     * Apply an engine workspace snapshot — the only aggregate truth for multi-module builds
+     * (JK-1120/1121). Percent-only snapshots (denominator 0) still land.
+     */
+    public void apply(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+        if (snap == null) return;
+        if (snap.denominator() > 0) update(snap.numerator(), snap.denominator());
+        else if (snap.hasPercent()) setPercent(snap.percent());
+    }
+
     /** Explicit percent (tests / session-finish at 100). */
     public void setPercent(Double value) {
         if (value == null) {

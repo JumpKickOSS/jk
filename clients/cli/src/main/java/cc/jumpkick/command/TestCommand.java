@@ -313,7 +313,8 @@ public final class TestCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             parallelTests),
                     steps -> {
-                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, module);
+                        // Workspace member: no aggregate-rider writes from pipeline-local fractions.
+                        var console = PipelineConsole.chooseWorkspaceMemberListener(steps, mode, spec, module);
                         if (mode == PipelineConsole.Mode.JSON || session == null) return console;
                         return CompositePipelineListener.of(new SessionMirrorListener(session), console);
                     },

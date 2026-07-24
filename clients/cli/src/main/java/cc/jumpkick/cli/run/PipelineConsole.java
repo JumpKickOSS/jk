@@ -137,6 +137,22 @@ public final class PipelineConsole {
     }
 
     /**
+     * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
+     * multi-module workspace run: listeners never stamp their pipeline-local fraction into {@link
+     * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
+     * workspace-progress} snapshots alone (JK-1120/1121).
+     */
+    public static PipelineListener chooseWorkspaceMemberListener(
+            List<Step> steps, Mode mode, ConsoleSpec spec, String module) {
+        return switch (mode) {
+            case JSON -> new JsonlListener(System.out, false);
+            case VERBOSE -> new VerboseListener(System.out, System.err);
+            case AUTO -> new CommandManagerListener(System.out, spec, module, steps, isInteractiveTerminal(), false);
+            case QUIET -> new CommandManagerListener(System.out, spec, module, steps, false, false);
+        };
+    }
+
+    /**
      * Run {@code pipeline} with no console output (only the event log), returning its result. For builds
      * whose progress must NOT render to the terminal — e.g. composite dependency units built
      * concurrently, where N live progress bars can't share one terminal region; the caller prints a

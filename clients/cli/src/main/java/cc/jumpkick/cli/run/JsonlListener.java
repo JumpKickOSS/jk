@@ -18,9 +18,20 @@ import java.time.Duration;
 public final class JsonlListener implements PipelineListener {
 
     private final PrintStream out;
+    /**
+     * False for one member of a multi-module workspace run: the engine's {@code workspace-progress}
+     * snapshot is the only aggregate truth there — pipeline-local fractions must not reach {@link
+     * LiveProgress} (JK-1121).
+     */
+    private final boolean aggregateRider;
 
     public JsonlListener(PrintStream out) {
+        this(out, true);
+    }
+
+    public JsonlListener(PrintStream out, boolean aggregateRider) {
         this.out = out;
+        this.aggregateRider = aggregateRider;
     }
 
     @Override
@@ -36,13 +47,13 @@ public final class JsonlListener implements PipelineListener {
     @Override
     public void progress(String step, int delta, PipelineView v) {
         // Per-step numerator/denominator on the event; aggregate % via LiveProgress rider.
-        LiveProgress.get().update(v.numerator(), v.denominator());
+        if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         emit(JsonlShape.progress(step, delta, v), false);
     }
 
     @Override
     public void tickUpdate(String step, int delta, PipelineView v) {
-        LiveProgress.get().update(v.numerator(), v.denominator());
+        if (aggregateRider) LiveProgress.get().update(v.numerator(), v.denominator());
         emit(JsonlShape.tickUpdate(step, delta, v), false);
     }
 

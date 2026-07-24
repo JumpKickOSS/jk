@@ -180,6 +180,9 @@ class CliSessionTranscriptTest {
                 "{\"schema\":1,\"ts\":1,\"type\":\"progress\",\"step\":\"x\"}"));
         assertFalse(CliSessionTranscript.isImmediateType(
                 "{\"schema\":1,\"ts\":1,\"type\":\"tick-update\",\"step\":\"x\"}"));
+        // Engine aggregate ticks arrive at up to 12.5Hz — heartbeat cadence, not per-line flush.
+        assertFalse(CliSessionTranscript.isImmediateType(
+                "{\"schema\":1,\"ts\":1,\"type\":\"workspace-progress\",\"numerator\":5,\"denominator\":10}"));
         assertTrue(CliSessionTranscript.isImmediateType(
                 "{\"schema\":1,\"ts\":1,\"type\":\"step-finish\",\"step\":\"x\"}"));
         assertTrue(CliSessionTranscript.isImmediateType(

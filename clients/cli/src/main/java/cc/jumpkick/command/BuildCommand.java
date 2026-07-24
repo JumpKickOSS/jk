@@ -328,6 +328,21 @@ public final class BuildCommand implements CliCommand {
             cc.jumpkick.runtime.WorkspaceBuildListener headlessListener =
                     new cc.jumpkick.runtime.WorkspaceBuildListener() {
                         @Override
+                        public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                            // Engine tracker owns the aggregate rider; module listeners stay local.
+                            cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
+                            emitJsonl(
+                                    cc.jumpkick.cli.run.JsonlShape.workspaceProgress(
+                                            entryDir.toString(),
+                                            snap.numerator(),
+                                            snap.denominator(),
+                                            snap.phase(),
+                                            snap.modulesComplete(),
+                                            snap.modulesTotal()),
+                                    json);
+                        }
+
+                        @Override
                         public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
                             total[0] = plan.size();
                             emitJsonl(cc.jumpkick.cli.run.JsonlShape.workspaceStart(plan.size()), json);
@@ -345,8 +360,9 @@ public final class BuildCommand implements CliCommand {
                                     cc.jumpkick.cli.run.JsonlShape.moduleStart(m.dir().toString(), m.coord()), json);
                             if (json) {
                                 // Live step/progress events for agents (same shape as single-module jsonl).
+                                // Workspace member: no aggregate-rider writes (engine snapshot owns it).
                                 return cc.jumpkick.cli.run.CompositePipelineListener.of(
-                                        new cc.jumpkick.cli.run.JsonlListener(System.out), log);
+                                        new cc.jumpkick.cli.run.JsonlListener(System.out, false), log);
                             }
                             List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                             buffers.put(m.dir(), buf);
@@ -751,7 +767,13 @@ public final class BuildCommand implements CliCommand {
                             cc.jumpkick.config.SessionContext.current().force(),
                             variant,
                             clientEnv),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule),
+                    steps -> {
+                        var console = PipelineConsole.chooseConsoleListener(steps, mode, spec, timelineModule);
+                        // Mirror pipeline events into details.jsonl (JSON mode dual-writes itself).
+                        if (mode == PipelineConsole.Mode.JSON || session == null) return console;
+                        return cc.jumpkick.cli.run.CompositePipelineListener.of(
+                                new cc.jumpkick.cli.run.SessionMirrorListener(session), console);
+                    },
                     testResultHolder,
                     buildOutcomeHolder);
         } catch (java.io.IOException e) {
