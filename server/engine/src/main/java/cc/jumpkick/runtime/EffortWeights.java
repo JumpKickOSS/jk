@@ -18,14 +18,24 @@ import java.util.Set;
 /**
  * Predicts each build step's progress-bar weight from on-disk state at pipeline start. Skip
  * detection uses {@link FreshnessStamp#looksFresh}; compile→test→package are correlated (if compile
- * will run, consumers are reserved too). Mispredictions only mis-size a slice — closed by step-end
- * auto-fill.
+ * will run, consumers are reserved too). Fresh/cached steps reserve {@link #TOKEN} (not zero) so
+ * the aggregate bar keeps a denominator (JK-1153). Mispredictions only mis-size a slice — closed
+ * by step-end auto-fill. See {@code docs/perf/progress-contract.md}.
  */
 public final class EffortWeights {
 
     private EffortWeights() {}
 
+    /**
+     * Plan/runtime weight when a step is known skip/cache-hit but still appears in the pipeline
+     * (JK-1153). Keeps a non-zero phase tick so the aggregate bar has a denominator without
+     * inventing full compile/test cost.
+     */
+    public static final int TOKEN = 1;
+
+    /** Omitted / no contribution. Prefer {@link #TOKEN} when the step still runs a short check. */
     static final int SKIP = 0;
+
     static final int RESTORE = 3;
     /** Cold static reservation for test JVM fork + framework init. */
     static final int TEST_STARTUP = 15;
@@ -71,6 +81,42 @@ public final class EffortWeights {
     /** Cold test-step weight: {@link #TEST_STARTUP} plus per-method term. */
     public static int runTestsWeight(int methods) {
         return TEST_STARTUP + Math.max(0, methods) * TEST_METHOD;
+    }
+
+    /**
+     * Hierarchical test weight (JK-1152 MVP): prefer learned module rate × method count; else
+     * class-count × derived class rate; else method static floor. Does not replace
+     * {@link #learned} — callers compose: {@code learned(..., runTestsHierarchical(...))}.
+     */
+    public static int runTestsHierarchical(int methods, int classes) {
+        int m = Math.max(0, methods);
+        int c = Math.max(0, classes);
+        if (m > 0) return runTestsWeight(m);
+        if (c > 0) return TEST_STARTUP + c * (TEST_METHOD * 3); // ~3 methods/class cold guess
+        return TEST_STARTUP;
+    }
+
+    /**
+     * Phase rollup: sum of flat learned step weights for a module (compile + test + package).
+     * Missing steps contribute 0. Used for module-level schedule costs when shape memo is cold.
+     */
+    public static int phaseRollupWeight(String dir, BuildMetrics metrics) {
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        int sum = 0;
+        for (String step : List.of(
+                "compile-java",
+                "compile-kotlin",
+                "compile-test",
+                "run-tests",
+                "package-jar",
+                "resolve-deps",
+                "copy-resources")) {
+            var e = metrics.step(dir == null ? "" : dir, step);
+            if (e.isPresent() && e.get().ok().count() >= MIN_METRICS_SAMPLES) {
+                sum += flatWeight(e.get().ok().avgMillis());
+            }
+        }
+        return sum;
     }
 
     /** Learnable startup floor subtracted before recording a per-unit rate. */
@@ -202,6 +248,8 @@ public final class EffortWeights {
         List<String> projectDirs =
                 in.projectModules().stream().map(Path::toString).toList();
         int compileJava = SKIP, compileKotlin = SKIP, compileTest = SKIP, runTests = SKIP, pkg = SKIP;
+        List<Path> testSrc = new ArrayList<>();
+        boolean hadTestSources = false;
         try {
             JkBuild project = JkBuildParser.parse(in.buildFile());
             BuildLayout layout = BuildLayout.of(in.dir(), project);
@@ -229,8 +277,7 @@ public final class EffortWeights {
             // Tests + packaging consume the compiled output: if a compile ran (or
             // --force), they run. The precise test skip is decided at run-tests via
             // the CAS marker (which survives `jk clean`); that step reweights down
-            // to SKIP there, so a fully-cached run lands right with no up-front guess.
-            List<Path> testSrc = new ArrayList<>();
+            // to TOKEN there (JK-1153).
             try {
                 testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
             } catch (IOException e) {
@@ -239,7 +286,8 @@ public final class EffortWeights {
                         compact ? in.dir().resolve("test") : in.dir().resolve("src/test/java")));
                 testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
             }
-            boolean testWillRun = !testSrc.isEmpty() && (rerun || compileRun);
+            hadTestSources = !testSrc.isEmpty();
+            boolean testWillRun = hadTestSources && (rerun || compileRun);
             // compile-test is an opaque, batch javac/kotlinc call: the step declares
             // .ticks(1), so the recorder learns its rate against a count of 1 — i.e. the
             // learned value IS the whole-step weight, not a per-file rate. Forecast it
@@ -253,8 +301,12 @@ public final class EffortWeights {
                     : SKIP;
 
             int methods = in.estimatedTestCount();
+            int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
+            int staticTests = runTestsHierarchical(methods, classes);
+            // Prefer method count for the learned rate scale; fall back to class count units.
+            int unitCount = methods > 0 ? methods : Math.max(1, classes);
             runTests = testWillRun
-                    ? learned(timings, mod, "run-tests", methods, runTestsWeight(methods), projectDirs)
+                    ? learned(timings, mod, "run-tests", unitCount, staticTests, projectDirs)
                     : SKIP;
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
@@ -263,16 +315,29 @@ public final class EffortWeights {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
         }
-        // A module whose every work step skipped is fully cached: its always-run
-        // steps will do trivial work (re-parse the build file, re-check stamps), so
-        // the pipeline shrinks them to a token touch rather than full static weight.
-        boolean fullyCached = sync == SKIP
-                && compileJava == SKIP
-                && compileKotlin == SKIP
-                && compileTest == SKIP
-                && runTests == SKIP
-                && pkg == SKIP;
+        // Fresh steps still sit in the pipeline for a stamp check — reserve a token so the
+        // workspace bar never calibrates to a pure-zero execute band (JK-1153).
+        if (useJava && compileJava == SKIP) compileJava = TOKEN;
+        if (useKotlin && compileKotlin == SKIP) compileKotlin = TOKEN;
+        if (compileTest == SKIP && hadTestSources) compileTest = TOKEN;
+        if (runTests == SKIP && hadTestSources) runTests = TOKEN;
+        if (pkg == SKIP) pkg = TOKEN;
+        if (sync == SKIP) sync = TOKEN;
+
+        // A module whose every work step is only a token is fully cached: always-run tails
+        // shrink to a touch rather than full static weight.
+        boolean fullyCached = isTokenOrSkip(sync)
+                && isTokenOrSkip(compileJava)
+                && isTokenOrSkip(compileKotlin)
+                && isTokenOrSkip(compileTest)
+                && isTokenOrSkip(runTests)
+                && isTokenOrSkip(pkg);
         return new Plan(sync, compileJava, compileKotlin, compileTest, runTests, pkg, fullyCached);
+    }
+
+    /** True when weight is absent or only a token (no real compile/test/package work). */
+    static boolean isTokenOrSkip(int weight) {
+        return weight <= TOKEN;
     }
 
     /**

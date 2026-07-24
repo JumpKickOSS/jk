@@ -75,12 +75,19 @@ public final class WorkspaceProgressTracker {
     /**
      * Pin execute weight after plan. {@code executeWeight} is Σ module pipeline weights (ticks).
      * {@code modulesTotal} is the planned module count (0 if unknown).
+     *
+     * <p>JK-1153/1154: when modules are planned but execute weight is still 0 (every step token
+     * not yet applied, or a bug), floor the total at {@code modulesTotal} so calibrate never
+     * leaves an empty execute band that falls into per-module uncalibrated math (which looks
+     * like a count reset when modules swap).
      */
     public synchronized Snapshot calibrate(long executeWeight, int modulesTotal) {
-        this.total = Math.max(0, executeWeight);
+        this.modulesTotal = Math.max(0, modulesTotal);
+        long w = Math.max(0, executeWeight);
+        if (w == 0 && this.modulesTotal > 0) w = this.modulesTotal; // ≥1 token per module
+        this.total = w;
         this.executeCalibrated = true;
         this.preflightNum = PREFLIGHT_UNITS;
-        this.modulesTotal = Math.max(0, modulesTotal);
         return recompute();
     }
 

@@ -962,7 +962,7 @@ public final class BuildPipelines {
                     if (!rerun
                             && cc.jumpkick.task.FreshnessStamp.isFresh(
                                     outBase, KSP_STAMP, stampInputs, stampCp, ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.SKIP);
+                        ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick (JK-1153)
                         ctx.label("up to date");
                         ctx.progress(1);
                         return;
@@ -1235,7 +1235,7 @@ public final class BuildPipelines {
                                     sources,
                                     stampInputs,
                                     ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.SKIP); // nothing to compile this run
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(BUILD_OUTCOME, "up-to-date");
@@ -1462,7 +1462,7 @@ public final class BuildPipelines {
                                     freshInputs,
                                     classpath,
                                     ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.SKIP); // nothing to compile this run
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(KOTLIN_OUTCOME, "up-to-date");
@@ -1867,7 +1867,7 @@ public final class BuildPipelines {
                     if (!rerun && stampKey != null) {
                         var greenRecord = actionCache.lookup(stampKey);
                         if (greenRecord.isPresent()) {
-                            ctx.reweight(EffortWeights.SKIP);
+                            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick (JK-1153)
                             ctx.label("tests up-to-date");
                             ctx.cached();
                             // Replay the green run's counts (stored on the marker) so the summary

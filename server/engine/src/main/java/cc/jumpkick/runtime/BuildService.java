@@ -515,28 +515,32 @@ public final class BuildService {
         final int concurrency =
                 req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
 
-        // JK-1114/1115: when every dirty module has a warm shape memo (and not force/rebuild):
+        // JK-1114/1115 / JK-1151: early ETA during prepare.
+        // When every dirty module has a warm shape memo (and not force/rebuild):
         //   • provisional onPlan — bar denominator calibrates during prepare
-        //   • early onEtaEstimate — countdown starts during prepare
-        // Both are overwritten after prepare with the real ModulePlans / costs.
+        //   • early onEtaEstimate from schedule + history
+        // On force/rebuild (or partial shapes): still seed countdown from history alone so the
+        // TUI never counts elapsed-up for the whole prepare window when metrics exist.
         boolean distrustShape = SessionContext.current().config().forceOr(false)
                 || SessionContext.current().config().rebuildOr(false);
-        if (!distrustShape && !dirtyUnits.isEmpty()) {
+        if (!dirtyUnits.isEmpty()) {
             List<EffortWeights.ModuleCost> earlyCosts = new ArrayList<>();
             List<ModulePlan> provisional = new ArrayList<>();
-            boolean allShaped = true;
-            for (BuildGraph.BuildUnit u : dirtyUnits) {
-                var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
-                if (shape.isEmpty()) {
-                    allShaped = false;
-                    break;
+            boolean allShaped = !distrustShape;
+            if (allShaped) {
+                for (BuildGraph.BuildUnit u : dirtyUnits) {
+                    var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
+                    if (shape.isEmpty()) {
+                        allShaped = false;
+                        break;
+                    }
+                    earlyCosts.add(EffortWeights.costOf(
+                            u.dir(),
+                            graph.edges().getOrDefault(u.dir(), Set.of()),
+                            shape.get().weight(),
+                            shape.get().testWeight()));
+                    provisional.add(PreflightMemo.provisionalModulePlan(u, shape.get(), req.cache()));
                 }
-                earlyCosts.add(EffortWeights.costOf(
-                        u.dir(),
-                        graph.edges().getOrDefault(u.dir(), Set.of()),
-                        shape.get().weight(),
-                        shape.get().testWeight()));
-                provisional.add(PreflightMemo.provisionalModulePlan(u, shape.get(), req.cache()));
             }
             if (allShaped) {
                 if (Perf.ENABLED) {
@@ -554,6 +558,10 @@ public final class BuildService {
                         parallelTests,
                         req.cache(),
                         req.jdksDir()));
+            } else {
+                // History-only early seed (rebuild/force or cold shapes) — JK-1151.
+                long early = applyHistoryPrior(0, okHistory(req.entryDir()));
+                if (early > 0) listener.onEtaEstimate(early);
             }
         }
 
@@ -768,8 +776,10 @@ public final class BuildService {
     /**
      * Initial schedule-aware ETA (ms): each module converts weight→ms at its own rate — a warm module
      * (its dir has learned timings) at the reference {@link EffortWeights#MS_PER_WEIGHT}; a cold module
-     * at this host's measured {@link Calibration}. Returns {@code 0} ("count up") only when a cold
-     * module exists and the host is uncalibratable (no JDK yet) — then no rate is trustworthy.
+     * at this host's measured {@link Calibration}, or static {@link EffortWeights#MS_PER_WEIGHT} when
+     * calibration is absent so the schedule still produces a non-zero base (JK-1151). History prior
+     * (project then host) fills in when base is 0 or clamps absurd over-estimates. Pure count-up
+     * only when costs are empty and no history exists.
      */
     private static long seedEta(
             Path entryDir,
@@ -779,30 +789,33 @@ public final class BuildService {
             boolean parallelTests,
             Path cache,
             Path jdksDir) {
+        if (costs == null || costs.isEmpty()) {
+            return applyHistoryPrior(0, okHistory(entryDir));
+        }
         StepTimings timings = StepTimings.load(cache);
         java.util.function.Predicate<Path> warm = dir -> timings.hasTimingsFor(List.of(dir.toString()));
         boolean anyCold = dirs.stream().anyMatch(dir -> !warm.test(dir));
         Calibration cal = anyCold ? Calibration.ensure(jdksDir) : null;
         double coldRate = cal != null && cal.present() ? cal.msPerWeight() : EffortWeights.MS_PER_WEIGHT;
-        long base = anyCold && (cal == null || !cal.present())
-                ? 0 // count up: a cold module exists and no measured rate is trustworthy
-                : EffortWeights.scheduleMillis(
-                        costs,
-                        concurrency,
-                        false,
-                        parallelTests,
-                        dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
+        // Always schedule — never drop to base=0 solely because a module is StepTimings-cold.
+        // Uncalibrated hosts use MS_PER_WEIGHT; history prior still anchors the result.
+        long base = EffortWeights.scheduleMillis(
+                costs,
+                concurrency,
+                false,
+                parallelTests,
+                dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
         return applyHistoryPrior(base, okHistory(entryDir));
     }
 
     /**
-     * The whole-build history sanity anchor: never "count up" when this project has real finished
-     * builds to average (a fresh checkout on a wiped cache still gets a countdown), and never a
-     * seed wildly beyond anything this project has ever done (an over-predicted cold estimate is
-     * clamped to 2× the historical max). One-sided on purpose: {@code base} prices only <em>this
-     * run's</em> mostly-cached, incremental work, which legitimately beats the historical average —
-     * clamping up would wreck every incremental estimate. Success-only stats: failed/cancelled runs
-     * have abnormal durations, matching what {@link StepTimings}/{@link Calibration} learn from.
+     * The whole-build history sanity anchor: never "count up" when this project <em>or host</em>
+     * has real finished builds to average (JK-1151), and never a seed wildly beyond anything this
+     * project has ever done (an over-predicted cold estimate is clamped to 2× the historical max).
+     * One-sided on purpose: {@code base} prices only <em>this run's</em> mostly-cached, incremental
+     * work, which legitimately beats the historical average — clamping up would wreck every
+     * incremental estimate. Success-only stats: failed/cancelled runs have abnormal durations,
+     * matching what {@link StepTimings}/{@link Calibration} learn from.
      */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
         if (okHist == null || okHist.count() == 0) return base;
@@ -812,17 +825,16 @@ public final class BuildService {
     }
 
     /**
-     * This project's successful {@code build}-kind invocation stats — kind-precise on purpose.
-     * Every caller of the prior is a build flow ({@code buildWorkspace} serves build requests and
-     * the HTTP trigger; explain models {@code jk build}); {@code jk test} runs a single test pipeline
-     * on its own path and never consults the seeded ETA, so its history (typically longer, always
-     * test-heavy) must not stretch the build anchor.
+     * Successful {@code build}-kind invocation stats: project path first, then host-global tier
+     * ({@code dir=""}). Kind-precise so {@code jk test} history never stretches build ETAs.
      */
-    private static BuildMetrics.Stats okHistory(Path entryDir) {
-        return BuildMetrics.load(BuildMetrics.defaultFile())
-                .invocation("build", entryDir.toString())
-                .map(BuildMetrics.Entry::ok)
-                .orElse(BuildMetrics.Stats.EMPTY);
+    static BuildMetrics.Stats okHistory(Path entryDir) {
+        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (entryDir != null) {
+            var project = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);
+            if (project.isPresent() && project.get().count() > 0) return project.get();
+        }
+        return metrics.invocation("build", "").map(BuildMetrics.Entry::ok).orElse(BuildMetrics.Stats.EMPTY);
     }
 
     /** Median of observed per-module ms/weight rates, or null when none recorded yet. */

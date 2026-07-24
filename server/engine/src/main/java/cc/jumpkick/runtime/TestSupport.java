@@ -72,6 +72,43 @@ public final class TestSupport {
         return total;
     }
 
+    /**
+     * Best-effort count of test <em>classes</em> (source files with ≥1 test annotation) under
+     * discovered suites — hierarchical effort tier between method and step (JK-1152).
+     */
+    public static int estimateAllSuiteTestClassCount(Path moduleDir, boolean compact) {
+        int total = 0;
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
+            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+        }
+        for (Path r : roots) total += estimateTestClassCount(r);
+        return total;
+    }
+
+    /** Source files under {@code testSrcDir} that contain at least one JUnit test annotation. */
+    public static int estimateTestClassCount(Path testSrcDir) {
+        if (!Files.isDirectory(testSrcDir)) return 0;
+        int count = 0;
+        try (Stream<Path> walk = Files.walk(testSrcDir)) {
+            for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
+                String n = p.getFileName().toString();
+                return n.endsWith(".java") || n.endsWith(".kt");
+            })::iterator) {
+                try {
+                    String content = Files.readString(file);
+                    if (TEST_ANNOTATION_REGEX.matcher(content).find()) count++;
+                } catch (IOException ignored) {
+                    // best-effort
+                }
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
+        return count;
+    }
+
     /** Collect all test sources for every discovered suite (deduped paths). */
     public static List<Path> collectAllSuiteTestSources(Path moduleDir, boolean compact) throws IOException {
         java.util.LinkedHashSet<Path> out = new java.util.LinkedHashSet<>();

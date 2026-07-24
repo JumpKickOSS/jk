@@ -1960,9 +1960,10 @@ public final class EngineServer implements AutoCloseable {
             Path lockFile = entryDir.resolve("jk.lock");
             int workerCount = Math.max(0, workers);
 
+            // All discovered suites + simple/traditional roots (JK-1152) — not default Maven paths only.
+            boolean compactTests = cc.jumpkick.layout.ModuleLayout.isCompact(entryDir);
             int estimatedTestCount =
-                    cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/java"))
-                            + cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/kotlin"));
+                    cc.jumpkick.runtime.TestSupport.estimateAllSuiteTestCount(entryDir, compactTests);
 
             // The request's cache-relevant flags ride the session config exactly as
             // runSingleBuild's do — without this, `jk test --force` was silently
@@ -2060,8 +2061,8 @@ public final class EngineServer implements AutoCloseable {
 
             int estimatedTestCount = skipTests
                     ? 0
-                    : cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/java"))
-                            + cc.jumpkick.runtime.TestSupport.estimateTestCount(entryDir.resolve("src/test/kotlin"));
+                    : cc.jumpkick.runtime.TestSupport.estimateAllSuiteTestCount(
+                            entryDir, cc.jumpkick.layout.ModuleLayout.isCompact(entryDir));
 
             // resolveSession carries assemblyOverride / rebuild / force from the wire envelope.
             Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);

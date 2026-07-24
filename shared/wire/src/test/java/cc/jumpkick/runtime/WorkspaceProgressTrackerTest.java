@@ -111,6 +111,38 @@ class WorkspaceProgressTrackerTest {
     }
 
     @Test
+    void calibrate_zero_weight_floors_to_module_count_tokens() {
+        // JK-1153/1154: empty execute weight with N modules still calibrates so module
+        // boundaries cannot fall into uncalibrated "reset" math.
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(0, 3);
+        assertThat(t.executeTotal()).isEqualTo(3);
+        assertThat(t.calibrated()).isTrue();
+        t.moduleProgress("a", 1, 1, 1);
+        t.moduleComplete("a", 1);
+        var mid = t.snapshot();
+        assertThat(mid.numerator()).isGreaterThan(0);
+        t.moduleProgress("b", 1, 0, 1);
+        assertThat(t.snapshot().numerator()).isGreaterThanOrEqualTo(mid.numerator() - WorkspaceProgressTracker.PREFLIGHT_UNITS);
+        // Absolute: after A complete, base holds A's slice even when B starts at 0 frac.
+        assertThat(bar(t)).isEqualTo((PF + 1) + " of " + (PF + 3));
+    }
+
+    @Test
+    void module_a_to_b_never_zeros_numerator_after_progress() {
+        // JK-1154 regression: monorepo module swap must keep completed work on the bar.
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        t.calibrate(200, 2);
+        t.moduleProgress("a", 100, 100, 100);
+        t.moduleComplete("a", 100);
+        long afterA = t.snapshot().numerator();
+        assertThat(afterA).isEqualTo(PF + 100);
+        t.moduleProgress("b", 100, 0, 100);
+        assertThat(t.snapshot().numerator()).isEqualTo(afterA);
+        assertThat(t.snapshot().numerator()).isNotEqualTo(0);
+    }
+
+    @Test
     void monotonic_peak_holds_when_fraction_would_slide() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(100, 1);

@@ -85,6 +85,10 @@ class EffortWeightsTest {
         assertThat(EffortWeights.PACKAGE_JAR).isEqualTo(5);
         // A skipped step is a true no-op — off the bar entirely, not a stray tick.
         assertThat(EffortWeights.SKIP).isEqualTo(0);
+        assertThat(EffortWeights.TOKEN).isEqualTo(1);
+        assertThat(EffortWeights.isTokenOrSkip(0)).isTrue();
+        assertThat(EffortWeights.isTokenOrSkip(1)).isTrue();
+        assertThat(EffortWeights.isTokenOrSkip(8)).isFalse();
     }
 
     @Test

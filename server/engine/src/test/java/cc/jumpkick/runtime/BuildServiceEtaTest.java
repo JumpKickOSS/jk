@@ -42,4 +42,12 @@ class BuildServiceEtaTest {
         assertThat(BuildService.applyHistoryPrior(60_000, ok(2, 2000, 800, 6000)))
                 .isEqualTo(60_000);
     }
+
+    @Test
+    void host_history_fills_count_up_when_project_path_is_unknown() {
+        // JK-1151: applyHistoryPrior with host-tier stats must turn base=0 into a countdown seed.
+        BuildMetrics.Stats host = ok(10, 4500, 1000, 12_000);
+        assertThat(BuildService.applyHistoryPrior(0, host)).isEqualTo(4500);
+        assertThat(BuildService.applyHistoryPrior(3000, host)).isEqualTo(3000);
+    }
 }

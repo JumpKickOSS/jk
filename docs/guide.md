@@ -471,6 +471,9 @@ ships — silent no-ops are not allowed.
 
 ## Project layout
 
+Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
+ticks only); see [progress-contract.md](perf/progress-contract.md).
+
 jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
 no Maven tree is present). Language is by file extension (`.java` / `.kt` may share a dir).
 
