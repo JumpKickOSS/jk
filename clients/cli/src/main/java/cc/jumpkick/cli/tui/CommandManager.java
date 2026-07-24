@@ -62,9 +62,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     private volatile String solveLabel = "";
 
-    /** Pulse FG colors (white↔chip blue); applied with chip background in the header. */
-    private final AttributedStyle[] pulseColors =
-            Spinner.buildPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
+    /** Open pulse (blue↔dark blue) — tree rows and simple spinner lines, no chip background. */
+    private final AttributedStyle[] openPulseColors = Spinner.buildOpenPulseStyles(PULSE_FRAMES);
+
+    /** Chip pulse (white↔chip blue) — pipeline header pill only; FG sits on solid chip BG. */
+    private final AttributedStyle[] chipPulseColors =
+            Spinner.buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
 
     private final ProgressBar bar = new ProgressBar();
 
@@ -557,7 +560,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Simple mode: repaint the spinner line with its first (settled) glyph, then newline. */
     private void freezeSpinnerLine() {
         out.print('\r');
-        out.print(Theme.colorize(PULSE, pulseColors[0]));
+        out.print(Theme.colorize(PULSE, openPulseColors[0]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -598,7 +601,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Repaint the single simple-mode spinner line in place (must hold {@link #lock}). */
     private void paintSimple() {
         out.print('\r');
-        out.print(Theme.colorize(PULSE, pulseColors[frame % pulseColors.length]));
+        out.print(Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -779,7 +782,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             phaseStyle = t.error();
         } else {
             // Blue pulse on the terminal background — no chip/pill fill.
-            icon = Theme.colorize(PULSE, pulseColors[frame % pulseColors.length]);
+            icon = Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]);
             phaseStyle = t.success();
         }
         String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
@@ -808,7 +811,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean phase1 = denominator == 0 && !sl.isEmpty();
         AttributedStyle chip = t.pipelineChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
-        AttributedStyle pulse = t.withBackground(pulseColors[frame % pulseColors.length], t.planBadgeColor());
+        AttributedStyle pulse = t.withBackground(chipPulseColors[frame % chipPulseColors.length], t.planBadgeColor());
         if (nerdfont) {
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))

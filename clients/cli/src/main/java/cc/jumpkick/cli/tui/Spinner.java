@@ -10,8 +10,17 @@ import org.jline.utils.AttributedStyle;
 
 /**
  * Single-line animated spinner for indeterminate CLI work. A solid circle glyph ({@value
- * #PULSE_GLYPH}) <em>pulses</em> by lerping its foreground from white to a dim end color and back —
- * the same breathing effect as the web dashboard's live indicators (no multi-glyph thrash).
+ * #PULSE_GLYPH}) <em>pulses</em> by lerping its foreground between two colors and back — the same
+ * breathing effect as the web dashboard's live indicators (no multi-glyph thrash).
+ *
+ * <p>Two pulse palettes:
+ *
+ * <ul>
+ *   <li><b>Open</b> (bare terminal, no chip background) — brand blue ↔ almost-black blue
+ *       ({@link #buildOpenPulseStyles}).
+ *   <li><b>Chip</b> (CommandWedge / pipeline pill with a solid background) — white ↔ chip blue
+ *       ({@link #buildChipPulseStyles}), so the glyph stays readable on the colored pill.
+ * </ul>
  *
  * <p>Layout: {@code <circle> <message>} on the current line.
  *
@@ -23,14 +32,26 @@ public final class Spinner implements AutoCloseable {
     /** Solid circle used for the pulse animation (U+25CF). */
     public static final String PULSE_GLYPH = "●";
 
-    /** Frames in one full white→dim→white cycle (odd so the midpoint lands exactly on dim). */
+    /** Frames in one full bright→dim→bright cycle (odd so the midpoint lands exactly on dim). */
     static final int PULSE_FRAMES = 25;
 
     /** Interval between pulse frames (2.0s per full breath at 25 frames). */
     static final long FRAME_MS = cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS;
 
-    /** Dim end of the pulse when the spinner sits on the terminal (not on a chip). */
-    static final Rgb PULSE_DIM = Rgb.hex(0x090C11); // web --bg
+    /**
+     * Bright end of the open (no-background) pulse — brand run blue ({@code #3D9BFF}, web {@code
+     * --run} / Jk Dark primary).
+     */
+    static final Rgb PULSE_OPEN_BRIGHT = Rgb.hex(0x3D9BFF);
+
+    /**
+     * Dim end of the open pulse — almost-black blue in the same family (~10% of primary so it
+     * still reads blue, not pure black).
+     */
+    static final Rgb PULSE_OPEN_DIM = PULSE_OPEN_BRIGHT.scaled(0.10);
+
+    /** White end of the chip pulse (glyph on a solid blue pill). */
+    static final Rgb PULSE_CHIP_BRIGHT = Rgb.hex(0xFFFFFF);
 
     private static final String HIDE_CURSOR = Ansi.HIDE_CURSOR;
     private static final String SHOW_CURSOR = Ansi.SHOW_CURSOR;
@@ -59,7 +80,8 @@ public final class Spinner implements AutoCloseable {
     Spinner(PrintStream out, String message) {
         this.out = out;
         this.message = message == null ? "" : message;
-        this.frameColors = buildPulseStyles(PULSE_FRAMES, PULSE_DIM);
+        // Standalone spinner sits on the terminal background — open blue↔dark-blue pulse.
+        this.frameColors = buildOpenPulseStyles(PULSE_FRAMES);
         this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
     }
 
@@ -120,11 +142,25 @@ public final class Spinner implements AutoCloseable {
     }
 
     /**
-     * Pulse styles: white at the ends of the cycle, {@code dim} at the midpoint (triangle wave on a
-     * white→dim gradient).
+     * Open-terminal pulse (no chip background): brand blue at the ends of the cycle, almost-black
+     * blue at the midpoint.
      */
-    static AttributedStyle[] buildPulseStyles(int n, Rgb dim) {
-        Gradient gradient = new Gradient(Rgb.hex(0xFFFFFF), dim);
+    static AttributedStyle[] buildOpenPulseStyles(int n) {
+        return buildPulseStyles(n, PULSE_OPEN_BRIGHT, PULSE_OPEN_DIM);
+    }
+
+    /**
+     * Chip / wedge pulse (glyph painted on a solid colored pill): white at the ends, {@code dim}
+     * (typically the chip blue) at the midpoint — same as historical behavior so the glyph stays
+     * readable on the blue background.
+     */
+    static AttributedStyle[] buildChipPulseStyles(int n, Rgb dim) {
+        return buildPulseStyles(n, PULSE_CHIP_BRIGHT, dim);
+    }
+
+    /** Pulse styles: {@code bright} at the ends of the cycle, {@code dim} at the midpoint. */
+    static AttributedStyle[] buildPulseStyles(int n, Rgb bright, Rgb dim) {
+        Gradient gradient = new Gradient(bright, dim);
         AttributedStyle[] a = new AttributedStyle[n];
         for (int i = 0; i < n; i++) {
             a[i] = Theme.active().bright(gradient.at(pulseWave(i, n)));
@@ -132,7 +168,7 @@ public final class Spinner implements AutoCloseable {
         return a;
     }
 
-    /** 0 at frame 0 and last, 1 at the midpoint — white→dim→white when used as gradient {@code t}. */
+    /** 0 at frame 0 and last, 1 at the midpoint — bright→dim→bright when used as gradient {@code t}. */
     static double pulseWave(int frame, int n) {
         if (n <= 1) return 0.0;
         double t = (double) frame / (n - 1); // 0..1

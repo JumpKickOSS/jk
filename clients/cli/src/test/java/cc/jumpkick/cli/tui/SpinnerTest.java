@@ -69,13 +69,28 @@ class SpinnerTest {
     }
 
     @Test
-    void pulse_styles_are_white_at_ends_and_dim_at_midpoint() {
-        var dim = Spinner.PULSE_DIM;
-        var colors = Spinner.buildPulseStyles(Spinner.PULSE_FRAMES, dim);
-        // Ends: white #FFFFFF
+    void open_pulse_styles_are_brand_blue_at_ends_and_dark_blue_at_midpoint() {
+        var bright = Spinner.PULSE_OPEN_BRIGHT;
+        var dim = Spinner.PULSE_OPEN_DIM;
+        var colors = Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES);
+        // Ends: brand blue #3D9BFF
+        assertThat(colors[0].toAnsi()).isEqualTo("38;2;" + bright.r() + ";" + bright.g() + ";" + bright.b());
+        assertThat(colors[colors.length - 1].toAnsi())
+                .isEqualTo("38;2;" + bright.r() + ";" + bright.g() + ";" + bright.b());
+        // Midpoint: almost-black blue in the same family
+        int mid = Spinner.PULSE_FRAMES / 2;
+        assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
+        // Dim is darker but still blue-dominant (not pure black).
+        assertThat(dim.b()).isGreaterThan(dim.r());
+        assertThat(dim.r() + dim.g() + dim.b()).isGreaterThan(0);
+    }
+
+    @Test
+    void chip_pulse_styles_are_white_at_ends_and_dim_at_midpoint() {
+        var dim = cc.jumpkick.cli.theme.Rgb.hex(0x0F4786); // plan/chip blue
+        var colors = Spinner.buildChipPulseStyles(Spinner.PULSE_FRAMES, dim);
         assertThat(colors[0].toAnsi()).isEqualTo("38;2;255;255;255");
         assertThat(colors[colors.length - 1].toAnsi()).isEqualTo("38;2;255;255;255");
-        // Midpoint: near dim end
         int mid = Spinner.PULSE_FRAMES / 2;
         assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
     }
