@@ -64,7 +64,7 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "Language: java | kotlin. Default: java.", "--lang"),
+                Opt.value("<lang>", "Language: java | kotlin | groovy. Default: java.", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
@@ -137,6 +137,10 @@ public final class NewCommand implements CliCommand {
 
         boolean kotlin() {
             return info.kotlin();
+        }
+
+        boolean groovy() {
+            return info.groovy();
         }
 
         /** The JDK toolchain version (which JDK runs the build). */
@@ -570,7 +574,9 @@ public final class NewCommand implements CliCommand {
         }
         var resolvedLang = (lang != null && !lang.isBlank())
                 ? parseLanguage(lang)
-                : (parent != null && parent.kotlin()) ? NewInputs.Language.KOTLIN : NewInputs.Language.JAVA;
+                : (parent != null && parent.kotlin())
+                        ? NewInputs.Language.KOTLIN
+                        : (parent != null && parent.groovy()) ? NewInputs.Language.GROOVY : NewInputs.Language.JAVA;
         var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
         // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot
@@ -709,7 +715,10 @@ public final class NewCommand implements CliCommand {
         return switch (value.toLowerCase(Locale.ROOT)) {
             case "java" -> NewInputs.Language.JAVA;
             case "kotlin", "kt" -> NewInputs.Language.KOTLIN;
-            default -> throw new IllegalArgumentException("jk new: --lang must be 'java' or 'kotlin', got: " + value);
+            case "groovy" -> NewInputs.Language.GROOVY;
+            default ->
+                throw new IllegalArgumentException(
+                        "jk new: --lang must be 'java', 'kotlin', or 'groovy', got: " + value);
         };
     }
 
@@ -850,12 +859,15 @@ public final class NewCommand implements CliCommand {
      *   <li>Kotlin compact → {@code MainKt} (no package; Kotlin emits a {@code FilenameKt} synthetic
      *       class for top-level {@code fun main}).
      *   <li>Kotlin standard → {@code <group>.MainKt}.
+     *   <li>Groovy compact → {@code Main} (package-less, like compact Kotlin); standard →
+     *       {@code <group>.Main}.
      * </ul>
      */
     private static String deriveMainFqcn(String group, NewInputs.Language lang, boolean compact) {
         return switch (lang) {
             case JAVA -> group + ".Main";
             case KOTLIN -> compact ? "MainKt" : group + ".MainKt";
+            case GROOVY -> compact ? "Main" : group + ".Main";
         };
     }
 

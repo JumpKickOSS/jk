@@ -81,7 +81,7 @@ public final class BspCommand implements CliCommand {
                   "name": "jk",
                   "version": "%s",
                   "bspVersion": "2.1.0",
-                  "languages": ["java", "kotlin"],
+                  "languages": ["java", "kotlin", "groovy"],
                   "argv": ["%s", "bsp", "serve"]
                 }
                 """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));

@@ -355,7 +355,7 @@ public final class NewScaffolder {
             Files.createDirectories(dir.resolve("test"));
             Files.createDirectories(dir.resolve("test-resources"));
         } else {
-            String lang = inputs.lang() == NewInputs.Language.KOTLIN ? "kotlin" : "java";
+            String lang = inputs.lang().sourceDir();
             Files.createDirectories(dir.resolve("src").resolve("main").resolve(lang));
             Files.createDirectories(dir.resolve("src").resolve("main").resolve("resources"));
             Files.createDirectories(dir.resolve("src").resolve("test").resolve(lang));
@@ -412,6 +412,7 @@ public final class NewScaffolder {
         switch (inputs.lang()) {
             case JAVA -> writeJavaSample(inputs);
             case KOTLIN -> writeKotlinSample(inputs);
+            case GROOVY -> writeGroovySample(inputs);
         }
     }
 
@@ -448,6 +449,24 @@ public final class NewScaffolder {
         Files.writeString(testDir.resolve("CalcTest.kt"), renderKotlinCalcTest(pkg), StandardCharsets.UTF_8);
         if (inputs.isRunnable()) {
             Files.writeString(srcDir.resolve(MAIN_CLASS + ".kt"), renderKotlinMain(pkg), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void writeGroovySample(NewInputs inputs) throws IOException {
+        // Groovy mirrors Kotlin's compact convention: the simple layout is package-less
+        // (files at ./src and ./test); the traditional layout nests by package.
+        boolean simple = inputs.isSimpleLayout();
+        String pkg = simple ? "" : inputs.group();
+        String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
+        Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/groovy") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test" : "src/test/groovy") + pkgPath);
+        Files.createDirectories(srcDir);
+        Files.createDirectories(testDir);
+
+        Files.writeString(srcDir.resolve("Calc.groovy"), renderGroovyCalc(pkg), StandardCharsets.UTF_8);
+        Files.writeString(testDir.resolve("CalcTest.groovy"), renderGroovyCalcTest(pkg), StandardCharsets.UTF_8);
+        if (inputs.isRunnable()) {
+            Files.writeString(srcDir.resolve(MAIN_CLASS + ".groovy"), renderGroovyMain(pkg), StandardCharsets.UTF_8);
         }
     }
 
@@ -554,7 +573,44 @@ public final class NewScaffolder {
                 """;
     }
 
-    /** {@code "package <pkg>\n\n"}, or empty for the package-less (compact Kotlin) case. */
+    private static String renderGroovyMain(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                class Main {
+                    static void main(String[] args) {
+                        def value = 5
+                        def calc = new Calc()
+                        println "Hello, world! 5 * 2 = ${calc.doubleValue(value)}"
+                    }
+                }
+                """;
+    }
+
+    private static String renderGroovyCalc(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                class Calc {
+                    int doubleValue(int value) {
+                        value * 2
+                    }
+                }
+                """;
+    }
+
+    private static String renderGroovyCalcTest(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                import org.junit.jupiter.api.Test
+
+                import static org.junit.jupiter.api.Assertions.assertEquals
+
+                class CalcTest {
+                    @Test
+                    void doubleValueReturnsTwiceTheInput() {
+                        assertEquals(10, new Calc().doubleValue(5))
+                    }
+                }
+                """;
+    }
+
+    /** {@code "package <pkg>\n\n"}, or empty for the package-less (compact Kotlin/Groovy) case. */
     private static String pkgHeaderKt(String pkg) {
         return pkg.isEmpty() ? "" : "package " + pkg + "\n\n";
     }

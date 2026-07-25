@@ -1,6 +1,6 @@
 # User guide
 
-jk is a declarative, lockfile-first build tool for **Java and Kotlin** (JDK 17+).
+jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** (JDK 17+).
 This guide covers the commands and files you touch every day.
 
 ## Install
@@ -93,6 +93,10 @@ junit = "5.11.0"
 ```
 
 - **TOML is data** — no embedded scripts. Safe for `jk add` / `jk remove` to edit.
+- **Language**: Java by default (`java = 25` sets the compile target). Kotlin modules pin the
+  compiler with `kotlin = "2.4.0"`, Groovy modules with `groovy = "5.0.4"` (Groovy 5+) —
+  `jk new --lang kotlin|groovy` scaffolds either. A module may mix Java with Kotlin or with
+  Groovy (cross-references resolve both directions); Kotlin + Groovy in one module is rejected.
 - Version strings: bare `"1.2.3"` means `^1.2.3`; use `"=1.2.3"` for exact, `"~1.2.3"` for patch-only, or ranges like `">=1.2,<2"`.
 - Dependency scopes: `[dependencies]`, `[test-dependencies]`, `[provided-dependencies]`,
   `[runtime-dependencies]`, `[processor-dependencies]`, `[platform-dependencies]` (BOMs),
@@ -475,15 +479,16 @@ Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache
 ticks only); see [progress-contract.md](perf/progress-contract.md).
 
 jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
-no Maven tree is present). Language is by file extension (`.java` / `.kt` may share a dir).
+no Maven tree is present). Language is by file extension (`.java` / `.kt` / `.groovy` may
+share a dir).
 
 | Input | Simple (default) | Traditional (Maven import) |
 |-------|------------------|----------------------------|
-| Main sources | `src/` | `src/main/java`, `src/main/kotlin` |
+| Main sources | `src/` | `src/main/{java,kotlin,groovy}` |
 | Main resources | `resources/` | `src/main/resources` |
-| Default tests | `test/` | `src/test/java`, `src/test/kotlin` |
+| Default tests | `test/` | `src/test/{java,kotlin,groovy}` |
 | Default test resources | `test-resources/` | `src/test/resources` |
-| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin}` |
+| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin,groovy}` |
 | Named suite resources | `<name>-resources/` (e.g. `integration-resources/`) | `src/<name>/resources` |
 
 Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
@@ -496,7 +501,7 @@ classpath only when that suite is selected (`jk test --suite integration`, `--al
 ## Test suites and tags
 
 `jk test` runs the **default suite** only: sources under `test/` (simple layout) or
-`src/test/{java,kotlin}` (traditional). Optional sibling suites are discovered when they
+`src/test/{java,kotlin,groovy}` (traditional). Optional sibling suites are discovered when they
 exist — for example `integration/` or `src/integration/java`.
 
 ```bash

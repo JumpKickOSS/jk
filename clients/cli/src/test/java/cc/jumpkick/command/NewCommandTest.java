@@ -237,6 +237,30 @@ class NewCommandTest {
     }
 
     @Test
+    void groovy_lang_writes_groovy_sample(@TempDir Path tempDir) throws IOException {
+        int exit = Jk.execute(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "widget",
+                "--lang",
+                "groovy",
+                "--executable",
+                tempDir.toString());
+        assertThat(exit).isEqualTo(0);
+
+        // Default layout is simple: Main.groovy lands at ./src/Main.groovy with no package.
+        Path app = tempDir.resolve("src/Main.groovy");
+        assertThat(app).exists();
+        assertThat(Files.readString(app)).contains("static void main");
+
+        JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThat(parsed.project().isGroovy()).isTrue();
+        assertThat(parsed.mainClass()).isEqualTo("Main"); // compact: package-less Main class
+    }
+
+    @Test
     void wizard_preset_name_is_empty_when_no_positional() {
         assertThat(NewCommand.wizardPresetName(null, Path.of("/home/bob/myapp")))
                 .isEmpty();
