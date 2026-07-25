@@ -5,6 +5,8 @@ import grails.boot.config.GrailsAutoConfiguration
 
 class Application extends GrailsAutoConfiguration {
     static void main(String[] args) {
+        // Packaged jars default to the development env (file watchers, pid files).
+        System.setProperty('grails.env', System.getProperty('grails.env', 'production'))
         GrailsApp.run(Application, args)
     }
 }

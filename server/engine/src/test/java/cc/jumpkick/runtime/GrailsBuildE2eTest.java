@@ -51,9 +51,15 @@ class GrailsBuildE2eTest {
                 [dependencies]
                 grails-core            = { group = "org.apache.grails", name = "grails-core" }
                 grails-web-boot        = { group = "org.apache.grails", name = "grails-web-boot" }
+                grails-url-mappings    = { group = "org.apache.grails", name = "grails-url-mappings" }
+                grails-databinding     = { group = "org.apache.grails", name = "grails-databinding" }
                 grails-rest-transforms = { group = "org.apache.grails", name = "grails-rest-transforms" }
                 grails-data-hibernate7 = { group = "org.apache.grails", name = "grails-data-hibernate7" }
+                grails-logging         = { group = "org.apache.grails", name = "grails-logging" }
+                starter-tomcat         = { group = "org.springframework.boot", name = "spring-boot-starter-tomcat" }
+                logback-classic        = { group = "ch.qos.logback", name = "logback-classic" }
                 h2                     = { group = "com.h2database", name = "h2" }
+                hikaricp               = { group = "com.zaxxer", name = "HikariCP" }
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
