@@ -14,6 +14,7 @@ jackson = "3.2.0"
 jgit = "7.6.0.202603022253-r"
 jline = "4.1.2"
 jib-core = "0.28.1"
+groovy = "5.0.4"
 junit = "6.1.0"
 kotlin-bta = "2.4.0"
 maven-artifact = "3.9.16"
@@ -60,6 +61,9 @@ kotlin-build-tools-api = { module = "org.jetbrains.kotlin:kotlin-build-tools-api
 # Compile-time only: lets javac resolve the kotlin.DeprecationLevel enum referenced by
 # the BTA's @Deprecated annotations. Not bundled, not on the worker's runtime closure.
 kotlin-stdlib          = { module = "org.jetbrains.kotlin:kotlin-stdlib",           version.ref = "kotlin-bta" }
+
+# Groovy compile worker (compile-time only; the runtime closure is resolved at runtime)
+groovy                 = { module = "org.apache.groovy:groovy",                     version.ref = "groovy" }
 
 # Format worker (Spotless engine — the formatter impls are resolved at runtime
 # via jk's own resolver, NOT bundled, so only spotless-lib is a compile dep).

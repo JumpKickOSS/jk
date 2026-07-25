@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
@@ -94,6 +95,48 @@ public final class ActionKey {
         }
 
         appendSources(sb, request.sources());
+
+        List<Path> cp = new ArrayList<>(request.classpath());
+        cp.addAll(request.workerClasspath());
+        cp.sort(Comparator.comparing(Path::toString));
+        for (Path entry : cp) {
+            sb.append("cp:").append(entry.toAbsolutePath().normalize()).append('\n');
+        }
+        return Hashing.sha256Hex(sb.toString());
+    }
+
+    /**
+     * Action key for a Groovy worker invocation. Same shape as {@link #forKotlinc}: task + jk
+     * version + jvm target + sorted free args + each source's content hash + Java-source-root file
+     * hashes (they feed joint resolution) + classpath paths (both the compilation classpath and the
+     * worker's Groovy closure — whose CAS paths encode the compiler version, so a compiler bump
+     * invalidates the key).
+     */
+    public static String forGroovyc(String taskId, GroovycRequest request, String jkVersion) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("task:").append(taskId).append('\n');
+        sb.append("jk:").append(jkVersion).append('\n');
+        sb.append("jvmTarget:").append(request.jvmTarget()).append('\n');
+        sb.append("args:");
+        List<String> args = new ArrayList<>(request.extraArgs());
+        args.sort(Comparator.naturalOrder());
+        sb.append(String.join(",", args)).append('\n');
+
+        appendSources(sb, request.sources());
+
+        // Java source roots feed joint resolution — hash every .java under them so an
+        // edit to a swept file invalidates the key just like an explicit source would.
+        List<Path> rootJava = new ArrayList<>();
+        for (Path root : request.javaSourceRoots()) {
+            if (!java.nio.file.Files.isDirectory(root)) continue;
+            try (var walk = java.nio.file.Files.walk(root)) {
+                walk.filter(p -> p.toString().endsWith(".java"))
+                        .filter(java.nio.file.Files::isRegularFile)
+                        .sorted()
+                        .forEach(rootJava::add);
+            }
+        }
+        appendSources(sb, rootJava);
 
         List<Path> cp = new ArrayList<>(request.classpath());
         cp.addAll(request.workerClasspath());

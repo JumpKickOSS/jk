@@ -105,6 +105,7 @@ include(
     // plugins/ — first-party, shipped with jk (one module per plugin)
     ":test-runner",
     ":kotlin-compiler",
+    ":groovy-compiler",
     ":java-compiler",
     ":auditor",
     ":publisher",
@@ -138,6 +139,7 @@ project(":web").projectDir        = file("clients/web")
 // Plugin modules live under plugins/
 project(":test-runner").projectDir    = file("plugins/test-runner")
 project(":kotlin-compiler").projectDir = file("plugins/kotlin-compiler")
+project(":groovy-compiler").projectDir = file("plugins/groovy-compiler")
 project(":java-compiler").projectDir  = file("plugins/java-compiler")
 project(":auditor").projectDir        = file("plugins/auditor")
 project(":publisher").projectDir      = file("plugins/publisher")

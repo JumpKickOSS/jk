@@ -348,6 +348,7 @@ public final class JkBuildParser {
         String jdk = parseJdkSpec(project);
         int java = parseJavaRelease(project);
         VersionSelector kotlin = parseKotlinVersion(project);
+        VersionSelector groovy = parseGroovyVersion(project);
         requireSupportedMajor("project.java", java);
         // sources = true        → PUBLISH  (assembled during `jk publish` only)
         // sources = "always"   → ALWAYS   (built as package-sources step + published)
@@ -377,7 +378,7 @@ public final class JkBuildParser {
             layout = JkBuild.Layout.AUTO;
         }
         return new JkBuild.Project(
-                group, name, version, jdk, java, kotlin, sourcesMode, description, m2install, layout);
+                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
     }
 
     /**
@@ -475,6 +476,21 @@ public final class JkBuildParser {
         String raw = project.getString("kotlin");
         if (raw == null) {
             throw new JkBuildParseException("project.kotlin must be a version string, e.g. \"2.3.21\"");
+        }
+        if (raw.isBlank()) return null;
+        return VersionSelector.parseFloating(raw);
+    }
+
+    /**
+     * {@code project.groovy} is a Groovy compiler version selector (string), parsed the same way as
+     * a floating dependency version: bare {@code 5.0.4} → caret, {@code =5.0.4} pins. Absent →
+     * {@code null} (not a Groovy project).
+     */
+    private static VersionSelector parseGroovyVersion(TomlTable project) {
+        if (!project.contains("groovy")) return null;
+        String raw = project.getString("groovy");
+        if (raw == null) {
+            throw new JkBuildParseException("project.groovy must be a version string, e.g. \"5.0.4\"");
         }
         if (raw.isBlank()) return null;
         return VersionSelector.parseFloating(raw);

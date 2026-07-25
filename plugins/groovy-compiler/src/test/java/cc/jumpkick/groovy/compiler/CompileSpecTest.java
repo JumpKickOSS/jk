@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.groovy.compiler;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import cc.jumpkick.plugin.protocol.PluginProtocol;
+import cc.jumpkick.plugin.protocol.PluginSpec;
+import cc.jumpkick.plugin.protocol.SpecWriter;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * The groovy plugin's spec decode ({@link CompileSpec#from}) over the unified JSONL plugin wire —
+ * no Groovy runtime required.
+ */
+class CompileSpecTest {
+
+    @Test
+    void parses_all_keys_and_repeatables(@TempDir Path dir) throws IOException {
+        CompileSpec s = parse(
+                dir,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                        .layout(Map.of(
+                                "classesDir", Path.of("/tmp/out"),
+                                "workdir", Path.of("/tmp/work")))
+                        .extra("stubsOut", Path.of("/tmp/stubs"))
+                        .configString("jvmTarget", "21")
+                        .configList("javaSourceRoots", List.of("/src/java", "/gen/java"))
+                        .source(Path.of("/src/A.groovy"))
+                        .source(Path.of("/src/B.java"))
+                        .cp(Path.of("/libs/dep.jar"), PluginProtocol.ROLE_COMPILE)
+                        .cp(Path.of("/libs/other.jar"), PluginProtocol.ROLE_COMPILE)
+                        .arg("--parameters")
+                        .arg("--enable-preview"));
+
+        assertThat(s.outputDir).isEqualTo(new File("/tmp/out"));
+        assertThat(s.workDir).isEqualTo(new File("/tmp/work"));
+        assertThat(s.stubsOut).isEqualTo(new File("/tmp/stubs"));
+        assertThat(s.jvmTarget).isEqualTo("21");
+        assertThat(s.javaSourceRoots).containsExactly(new File("/src/java"), new File("/gen/java"));
+        assertThat(s.sources).containsExactly(new File("/src/A.groovy"), new File("/src/B.java"));
+        assertThat(s.classpath).containsExactly(new File("/libs/dep.jar"), new File("/libs/other.jar"));
+        assertThat(s.extraArgs).containsExactly("--parameters", "--enable-preview");
+        assertThat(s.joint()).isTrue();
+        assertThat(s.javaSources()).containsExactly(new File("/src/B.java"));
+        assertThat(s.groovySources()).containsExactly(new File("/src/A.groovy"));
+    }
+
+    @Test
+    void absent_optionals_are_null_and_groovy_only_is_not_joint(@TempDir Path dir) throws IOException {
+        CompileSpec s = parse(
+                dir,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                        .layout(Map.of("classesDir", Path.of("/tmp/out")))
+                        .configString("jvmTarget", "21")
+                        .source(Path.of("/src/A.groovy")));
+        assertThat(s.workDir).isNull();
+        assertThat(s.stubsOut).isNull();
+        assertThat(s.javaSourceRoots).isEmpty();
+        assertThat(s.joint()).isFalse();
+    }
+
+    @Test
+    void value_may_contain_spaces(@TempDir Path dir) throws IOException {
+        CompileSpec s = parse(
+                dir,
+                new SpecWriter()
+                        .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                        .layout(Map.of("classesDir", Path.of("/tmp/with space/out")))
+                        .configString("jvmTarget", "21")
+                        .source(Path.of("/tmp/with space/A.groovy")));
+        assertThat(s.outputDir).isEqualTo(new File("/tmp/with space/out"));
+        assertThat(s.sources).containsExactly(new File("/tmp/with space/A.groovy"));
+    }
+
+    @Test
+    void rejects_missing_required_keys(@TempDir Path dir) throws IOException {
+        assertThatThrownBy(() -> parse(
+                        dir,
+                        new SpecWriter()
+                                .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                                .configString("jvmTarget", "21")
+                                .source(Path.of("/a.groovy"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("classesDir");
+
+        assertThatThrownBy(() -> parse(
+                        dir,
+                        new SpecWriter()
+                                .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                                .layout(Map.of("classesDir", Path.of("/o")))
+                                .source(Path.of("/a.groovy"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("jvmTarget");
+
+        assertThatThrownBy(() -> parse(
+                        dir,
+                        new SpecWriter()
+                                .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
+                                .layout(Map.of("classesDir", Path.of("/o")))
+                                .configString("jvmTarget", "21")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("source");
+    }
+
+    private static CompileSpec parse(Path dir, SpecWriter sw) throws IOException {
+        Path f = dir.resolve("spec-" + System.nanoTime() + ".spec");
+        Files.write(f, sw.lines());
+        return CompileSpec.from(PluginSpec.read(f));
+    }
+}

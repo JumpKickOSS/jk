@@ -33,6 +33,7 @@ class JkBuildParserTest {
         assertThat(parsed.project().jdk()).isEqualTo("21");
         assertThat(parsed.project().java()).isEqualTo(21);
         assertThat(parsed.project().isKotlin()).isFalse();
+        assertThat(parsed.project().isGroovy()).isFalse();
         assertThat(parsed.mainClass()).isNull();
         assertThat(parsed.isApplication()).isFalse();
         assertThat(parsed.assembly()).isFalse();
@@ -40,6 +41,37 @@ class JkBuildParserTest {
         assertThat(parsed.nativeMode()).isEqualTo(JkBuild.NativeMode.DISABLED);
         assertThat(parsed.nativeImage()).isFalse();
         assertThat(parsed.project().description()).isNull();
+    }
+
+    @Test
+    void parses_groovy_version_pin() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                group    = "com.example"
+                name     = "widget"
+                version  = "1.0.0"
+                jdk      = 21
+                groovy   = "=5.0.4"
+                """);
+        assertThat(parsed.project().isGroovy()).isTrue();
+        assertThat(parsed.project().languageName()).isEqualTo("groovy");
+        assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version()).isEqualTo("5.0.4");
+    }
+
+    @Test
+    void bare_groovy_version_floats_like_a_dependency() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 21", "groovy   = \"5.0.4\""));
+        assertThat(parsed.project().isGroovy()).isTrue();
+        assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Caret.class);
+    }
+
+    @Test
+    void blank_groovy_version_means_not_a_groovy_project() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 21", "groovy   = \"\""));
+        assertThat(parsed.project().isGroovy()).isFalse();
+        assertThat(parsed.project().groovy()).isNull();
+        assertThat(parsed.project().languageName()).isEqualTo("java");
     }
 
     @Test

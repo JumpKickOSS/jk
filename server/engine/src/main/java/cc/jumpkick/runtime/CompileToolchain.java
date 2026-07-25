@@ -53,6 +53,19 @@ public final class CompileToolchain {
     }
 
     /**
+     * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}: an exact
+     * {@code project.groovy} pin, else {@code null} — which falls back to the bundled default.
+     * {@code jk.lock} carries no groovy stamp yet; the {@code lock} parameter is the wave-2 seam
+     * (lock &gt; project pin &gt; null once {@code jk lock} resolves it).
+     */
+    public static String groovyVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+        if (project != null && project.project().groovy() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
+            return exact.version();
+        }
+        return null;
+    }
+
+    /**
      * Resolve a Kotlin installation pinned to a specific version (e.g. from a script's {@code
      * //KOTLIN 2.1.0} directive). Passes {@code null} to fall back to the bundled default
      * distribution.
