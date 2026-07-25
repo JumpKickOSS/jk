@@ -305,11 +305,16 @@ public final class EngineClient {
      */
     public static Optional<String> calibrate(EnginePaths.Paths paths, boolean force, long engineColdStartMs)
             throws IOException {
+        return calibrate(paths, force, engineColdStartMs, false);
+    }
+
+    public static Optional<String> calibrate(
+            EnginePaths.Paths paths, boolean force, long engineColdStartMs, boolean allowNetwork) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
         try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            writer.write(EngineProtocol.calibrateRequest(force, engineColdStartMs));
+            writer.write(EngineProtocol.calibrateRequest(force, engineColdStartMs, allowNetwork));
             writer.write('\n');
             writer.flush();
             BufferedReader reader = protocolReader(ch);

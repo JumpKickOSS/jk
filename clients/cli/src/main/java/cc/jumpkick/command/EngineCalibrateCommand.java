@@ -29,8 +29,9 @@ import java.util.Optional;
  *       ~/.jk/state/builds/calibration.toml}.
  * </ol>
  *
- * <p>No network. Idempotent unless the global {@code --force} flag is set. Prints a human summary
- * of component timings.
+ * <p>Default is offline. Pass {@code --with-network} for an optional Maven Central micro-GET
+ * (resolve RTT) and to download Jupiter jars if missing for a real JUnit Platform probe.
+ * Idempotent unless the global {@code --force} flag is set.
  */
 public final class EngineCalibrateCommand implements CliCommand {
 
@@ -41,18 +42,20 @@ public final class EngineCalibrateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Measure host build timings for better cold ETAs (offline micro-probes; use --force to re-run)";
+        return "Measure host build timings for better cold ETAs (use --force to re-run; --with-network for resolve)";
     }
 
     @Override
     public List<Opt> options() {
         // --force is global (GlobalOptions); re-run probes + retime cold engine start.
-        return List.of();
+        return List.of(Opt.flag(
+                "Allow network: HTTP resolve probe + fetch JUnit jars if not in local cache.", "--with-network"));
     }
 
     @Override
     public int run(Invocation in) {
         boolean force = GlobalOptions.from(in).force;
+        boolean allowNetwork = in.isSet("with-network");
         EnginePaths.Paths paths = EnginePaths.current();
         long coldMs = 0;
         try {
@@ -74,12 +77,10 @@ public final class EngineCalibrateCommand implements CliCommand {
                 EngineClient.ensureRunning(paths, Jk.VERSION);
             }
 
-            CliOutput.out(PipelineWedge.chipLine(
-                    Glyphs.PLAY,
-                    "Calibrate",
-                    GlobalConfig.nerdfont(),
-                    force ? "Re-running host probes…" : "Running host probes…"));
-            Optional<String> ack = EngineClient.calibrate(paths, force, coldMs);
+            String msg = force ? "Re-running host probes" : "Running host probes";
+            if (allowNetwork) msg += " (with network)";
+            CliOutput.out(PipelineWedge.chipLine(Glyphs.PLAY, "Calibrate", GlobalConfig.nerdfont(), msg + "…"));
+            Optional<String> ack = EngineClient.calibrate(paths, force, coldMs, allowNetwork);
             if (ack.isEmpty()) {
                 CliOutput.err(CommandWedge.fail("Calibrate", "engine did not return calibration"));
                 return Exit.SOFTWARE;

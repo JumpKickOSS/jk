@@ -3663,8 +3663,10 @@ public final class EngineServer implements AutoCloseable {
     private void handleCalibrateRequest(String requestLine, BufferedWriter writer) {
         try {
             boolean force = Jsonl.bool(requestLine, "force", false);
+            boolean allowNetwork = Jsonl.bool(requestLine, "allowNetwork", false);
             long cold = Jsonl.longValue(requestLine, "engineColdStartMs", 0);
-            cc.jumpkick.runtime.Calibration cal = cc.jumpkick.runtime.Calibration.ensure(null, force);
+            cc.jumpkick.runtime.Calibration cal =
+                    cc.jumpkick.runtime.Calibration.ensure(null, force, allowNetwork);
             if (cold > 0) {
                 cal = cc.jumpkick.runtime.Calibration.recordEngineColdStart(cold, System.currentTimeMillis());
             }
@@ -3679,14 +3681,32 @@ public final class EngineServer implements AutoCloseable {
                             cal.hashCpuMs(),
                             cal.junitForkMs(),
                             cal.junitRunMs(),
+                            cal.junitPlatformMs(),
+                            cal.resolveMs(),
                             cal.engineColdStartMs(),
                             cal.measured(),
+                            cal.junitPlatformUsed(),
+                            cal.resolveUsed(),
                             cal.summary()));
         } catch (Exception e) {
             sendQuiet(
                     writer,
                     EngineProtocol.calibrateAck(
-                            false, 0, 0, 0, 0, 0, 0, 0, 0, false, "calibration failed: " + e.getMessage()));
+                            false,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            0,
+                            false,
+                            false,
+                            false,
+                            "calibration failed: " + e.getMessage()));
         }
     }
 

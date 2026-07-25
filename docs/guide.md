@@ -589,9 +589,10 @@ jk explain --graph mermaid > build.mmd
 jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 
-# Host calibration for cold ETAs (offline multi-probe; JK-1180)
-jk engine calibrate          # skip if already measured
-jk engine calibrate --force  # re-run + retime cold engine start
+# Host calibration for cold ETAs (JK-1180)
+jk engine calibrate                   # offline multi-probe; skip if already measured
+jk engine calibrate --force           # re-run + retime cold engine start
+jk engine calibrate --force --with-network  # also: HTTP resolve probe + JUnit jars if missing
 
 
 # Pipeline tasks (Mill resolve-lite)

@@ -70,12 +70,14 @@ cold-cache discard). Stored in `~/.jk/state/builds/calibration.toml`:
 | `disk-io-ms` | 4 MiB write+fsync+read (local I/O) |
 | `hash-cpu-ms` | 8 MiB SHA-256 (CPU-bound, CAS-like) |
 | `junit-fork-ms` / `junit-run-ms` | Synthetic test-worker JVM + known body work |
+| `junit-platform-ms` | Real JUnit Platform Launcher + 1 `@Test` (when Jupiter jars in cache or fetched) |
+| `resolve-ms` | HTTP GET of a tiny Central artifact (`--with-network` only) |
 | `engine-cold-start-ms` | Client-timed cold engine spawn (`jk engine calibrate`) |
 | `ms-per-weight` | Combined wall ÷ static weight model; floored near the historical constant |
 
 Triggers: first `Calibration.ensure` (explain/build when cold), or explicit `jk engine calibrate
-[--force]`. Network latency is **not** probed — project-tier metrics absorb fetch once real
-resolves run. Per-project `StepTimings` always win once present.
+[--force] [--with-network]`. Without `--with-network`, resolve is skipped and JUnit Platform runs
+only if jars are already local. Per-project `StepTimings` always win once present.
 
 ## Hierarchical lookup (effort prediction)
 

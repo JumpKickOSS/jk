@@ -33,8 +33,8 @@ public final class Calibration {
     /** Re-probe once a stored calibration is older than this (hardware/VM may have changed). */
     private static final long MAX_AGE_MILLIS = 60L * 86_400_000L; // ~60 days
 
-    /** Schema for the richer multi-probe calibration file. */
-    public static final int SCHEMA = 2;
+    /** Schema for the multi-probe calibration file (3 = JUnit Platform + optional resolve). */
+    public static final int SCHEMA = 3;
 
     private static final AtomicReference<Calibration> MEMO = new AtomicReference<>();
 
@@ -45,6 +45,8 @@ public final class Calibration {
     private final long hashCpuMs;
     private final long junitForkMs;
     private final long junitRunMs;
+    private final long junitPlatformMs;
+    private final long resolveMs;
     private final long engineColdStartMs;
     private final double loadAtCalibration;
     private final int cores;
@@ -56,6 +58,8 @@ public final class Calibration {
      * the legacy java/javac-only bootstrap.
      */
     private final boolean measured;
+    private final boolean junitPlatformUsed;
+    private final boolean resolveUsed;
 
     private final int schema;
 
@@ -67,6 +71,8 @@ public final class Calibration {
             long hashCpuMs,
             long junitForkMs,
             long junitRunMs,
+            long junitPlatformMs,
+            long resolveMs,
             long engineColdStartMs,
             double loadAtCalibration,
             int cores,
@@ -74,6 +80,8 @@ public final class Calibration {
             String jkVersion,
             long updated,
             boolean measured,
+            boolean junitPlatformUsed,
+            boolean resolveUsed,
             int schema) {
         this.msPerWeight = msPerWeight;
         this.jvmForkMs = jvmForkMs;
@@ -82,6 +90,8 @@ public final class Calibration {
         this.hashCpuMs = hashCpuMs;
         this.junitForkMs = junitForkMs;
         this.junitRunMs = junitRunMs;
+        this.junitPlatformMs = junitPlatformMs;
+        this.resolveMs = resolveMs;
         this.engineColdStartMs = engineColdStartMs;
         this.loadAtCalibration = loadAtCalibration;
         this.cores = cores;
@@ -89,6 +99,8 @@ public final class Calibration {
         this.jkVersion = jkVersion;
         this.updated = updated;
         this.measured = measured;
+        this.junitPlatformUsed = junitPlatformUsed;
+        this.resolveUsed = resolveUsed;
         this.schema = schema;
     }
 
@@ -132,6 +144,24 @@ public final class Calibration {
         return junitRunMs;
     }
 
+    /** Wall for a real JUnit Platform Launcher run of one known test (0 if skipped). */
+    public long junitPlatformMs() {
+        return junitPlatformMs;
+    }
+
+    /** HTTP GET of a tiny Central artifact when {@code --with-network} (0 if skipped). */
+    public long resolveMs() {
+        return resolveMs;
+    }
+
+    public boolean junitPlatformUsed() {
+        return junitPlatformUsed;
+    }
+
+    public boolean resolveUsed() {
+        return resolveUsed;
+    }
+
     public long engineColdStartMs() {
         return engineColdStartMs;
     }
@@ -155,7 +185,7 @@ public final class Calibration {
     /** Test seam: construct an instance directly (bypasses the probe/IO). */
     static Calibration testInstance(double msPerWeight, boolean measured, String version, long updated) {
         return new Calibration(
-                msPerWeight, 10, 20, 5, 8, 15, 40, 0, 1.5, 8, "jdk-x", version, updated, measured, SCHEMA);
+                msPerWeight, 10, 20, 5, 8, 15, 40, 0, 0, 0, 1.5, 8, "jdk-x", version, updated, measured, false, false, SCHEMA);
     }
 
     /** Copy with client-measured engine cold-start wall (ms). */
@@ -169,6 +199,8 @@ public final class Calibration {
                 hashCpuMs,
                 junitForkMs,
                 junitRunMs,
+                junitPlatformMs,
+                resolveMs,
                 c,
                 loadAtCalibration,
                 cores,
@@ -176,6 +208,8 @@ public final class Calibration {
                 jkVersion,
                 updated,
                 measured,
+                junitPlatformUsed,
+                resolveUsed,
                 schema);
     }
 
@@ -198,18 +232,23 @@ public final class Calibration {
      * stored one is stale. Never throws.
      */
     public static Calibration ensure(Path jdksDir) {
-        return ensure(jdksDir, false);
+        return ensure(jdksDir, false, false);
+    }
+
+    /** As {@link #ensure(Path)} with {@code force} (re-run even when present). */
+    public static Calibration ensure(Path jdksDir, boolean force) {
+        return ensure(jdksDir, force, false);
     }
 
     /**
-     * As {@link #ensure(Path)} with {@code force} — re-run the full suite even when a fresh
-     * calibration already exists ({@code jk engine calibrate --force}).
+     * Full ensure with optional network probes ({@code allowNetwork} enables resolve + JUnit jar
+     * fetch when missing from the local cache).
      */
-    public static Calibration ensure(Path jdksDir, boolean force) {
+    public static Calibration ensure(Path jdksDir, boolean force, boolean allowNetwork) {
         Calibration current = load();
-        // Skip when we already have a full multi-probe (schema ≥2) result, unless forced.
+        // Skip when we already have a current-schema multi-probe result, unless forced.
         if (!force && current.present() && current.measured && current.schema >= SCHEMA) return current;
-        Calibration probed = probe(jdksDir);
+        Calibration probed = probe(jdksDir, allowNetwork);
         if (probed != null && probed.present()) {
             // Preserve engine cold-start if we already had one and this is an upgrade re-probe.
             if (current.engineColdStartMs > 0 && probed.engineColdStartMs == 0) {
@@ -250,6 +289,8 @@ public final class Calibration {
                     cur.hashCpuMs,
                     cur.junitForkMs,
                     cur.junitRunMs,
+                    cur.junitPlatformMs,
+                    cur.resolveMs,
                     c,
                     cur.loadAtCalibration,
                     cur.cores,
@@ -257,10 +298,14 @@ public final class Calibration {
                     JkVersion.VERSION,
                     nowMillis,
                     cur.measured,
+                    cur.junitPlatformUsed,
+                    cur.resolveUsed,
                     Math.max(cur.schema, SCHEMA));
         } else {
             next = new Calibration(
                     EffortWeights.MS_PER_WEIGHT,
+                    0,
+                    0,
                     0,
                     0,
                     0,
@@ -273,6 +318,8 @@ public final class Calibration {
                     null,
                     JkVersion.VERSION,
                     nowMillis,
+                    false,
+                    false,
                     false,
                     SCHEMA);
         }
@@ -293,6 +340,8 @@ public final class Calibration {
                 prev.hashCpuMs,
                 prev.junitForkMs,
                 prev.junitRunMs,
+                prev.junitPlatformMs,
+                prev.resolveMs,
                 prev.engineColdStartMs,
                 prev.loadAtCalibration,
                 prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors(),
@@ -300,17 +349,20 @@ public final class Calibration {
                 JkVersion.VERSION,
                 nowMillis,
                 true,
+                prev.junitPlatformUsed,
+                prev.resolveUsed,
                 Math.max(prev.schema, SCHEMA));
     }
 
     // --- the host probe ------------------------------------------------------
 
-    private static Calibration probe(Path jdksDir) {
+    private static Calibration probe(Path jdksDir, boolean allowNetwork) {
         try {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
             Path home = javaHome.get();
-            HardwareProbe.Result r = HardwareProbe.run(home);
+            HardwareProbe.Result r =
+                    HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork, JkDirs.cache()));
             if (r == null || !(r.msPerWeight() > 0)) return null;
             String jdkId = JdkRegistry.identifierFor(home);
             return new Calibration(
@@ -321,13 +373,17 @@ public final class Calibration {
                     r.hashCpuMs(),
                     r.junitForkMs(),
                     r.junitRunMs(),
+                    r.junitPlatformMs(),
+                    r.resolveMs(),
                     0,
                     Math.max(0.0, safeLoadAverage()),
                     Runtime.getRuntime().availableProcessors(),
                     jdkId,
                     JkVersion.VERSION,
                     System.currentTimeMillis(),
-                    true, // full multi-probe suite
+                    true,
+                    r.junitPlatformUsed(),
+                    r.resolveUsed(),
                     SCHEMA);
         } catch (Exception | LinkageError e) {
             return null;
@@ -398,6 +454,8 @@ public final class Calibration {
                     longOr(t, "hash-cpu-ms", 0),
                     longOr(t, "junit-fork-ms", 0),
                     longOr(t, "junit-run-ms", 0),
+                    longOr(t, "junit-platform-ms", 0),
+                    longOr(t, "resolve-ms", 0),
                     longOr(t, "engine-cold-start-ms", 0),
                     t.getDouble("load-at-calibration") != null ? t.getDouble("load-at-calibration") : -1,
                     t.getLong("cores") != null ? Math.toIntExact(t.getLong("cores")) : 0,
@@ -405,6 +463,8 @@ public final class Calibration {
                     version,
                     updated,
                     t.getBoolean("measured") != null ? t.getBoolean("measured") : false,
+                    t.getBoolean("junit-platform-used") != null && t.getBoolean("junit-platform-used"),
+                    t.getBoolean("resolve-used") != null && t.getBoolean("resolve-used"),
                     schema);
         } catch (Exception e) {
             return absent;
@@ -417,7 +477,7 @@ public final class Calibration {
     }
 
     private static Calibration absent() {
-        return new Calibration(0, 0, 0, 0, 0, 0, 0, 0, -1, 0, null, null, 0, false, 0);
+        return new Calibration(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, null, null, 0, false, false, false, 0);
     }
 
     private static void persist(Calibration c) {
@@ -435,6 +495,7 @@ public final class Calibration {
     private String render() {
         return """
                 # jk host calibration (JK-1180). Offline multi-probe; safe to delete (re-runs on next build).
+                # Optional: junit-platform / resolve with --with-network.
                 schema               = %d
                 ms-per-weight        = %s
                 jvm-fork-ms          = %d
@@ -443,12 +504,16 @@ public final class Calibration {
                 hash-cpu-ms          = %d
                 junit-fork-ms        = %d
                 junit-run-ms         = %d
+                junit-platform-ms    = %d
+                resolve-ms           = %d
                 engine-cold-start-ms = %d
                 load-at-calibration  = %s
                 cores                = %d
                 jdk                  = %s
                 jk-version           = %s
                 measured             = %s
+                junit-platform-used  = %s
+                resolve-used         = %s
                 updated              = %d
                 """
                 .formatted(
@@ -460,12 +525,16 @@ public final class Calibration {
                         hashCpuMs,
                         junitForkMs,
                         junitRunMs,
+                        junitPlatformMs,
+                        resolveMs,
                         engineColdStartMs,
                         round3(loadAtCalibration),
                         cores,
                         quote(jdk == null ? "" : jdk),
                         quote(jkVersion == null ? "" : jkVersion),
                         measured,
+                        junitPlatformUsed,
+                        resolveUsed,
                         updated);
     }
 
@@ -480,6 +549,16 @@ public final class Calibration {
         if (hashCpuMs > 0) sb.append(String.format("  sha-256 (8 MiB)     %d ms%n", hashCpuMs));
         if (junitForkMs > 0) sb.append(String.format("  test-worker fork    %d ms%n", junitForkMs));
         if (junitRunMs > 0) sb.append(String.format("  test-worker body    %d ms%n", junitRunMs));
+        if (junitPlatformUsed && junitPlatformMs > 0) {
+            sb.append(String.format("  junit-platform      %d ms  (1 real @Test via Launcher)%n", junitPlatformMs));
+        } else {
+            sb.append("  junit-platform      (skipped — no Jupiter jars in cache; try --with-network)\n");
+        }
+        if (resolveUsed && resolveMs > 0) {
+            sb.append(String.format("  resolve (HTTP)      %d ms  (Maven Central micro-GET)%n", resolveMs));
+        } else {
+            sb.append("  resolve (HTTP)      (skipped — pass --with-network)\n");
+        }
         if (engineColdStartMs > 0) sb.append(String.format("  engine cold start   %d ms%n", engineColdStartMs));
         sb.append(String.format("  cores=%d  measured=%s  schema=%d%n", cores, measured, schema));
         return sb.toString().stripTrailing();

@@ -457,12 +457,21 @@ public final class EngineProtocol {
         return "{\"type\":\"" + STATUS + "\"}";
     }
 
-    /** JK-1180: run host hardware calibration. {@code engineColdStartMs} ≤0 means omit. */
+    /**
+     * JK-1180: run host hardware calibration. {@code engineColdStartMs} ≤0 means omit.
+     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing.
+     */
     public static String calibrateRequest(boolean force, long engineColdStartMs) {
+        return calibrateRequest(force, engineColdStartMs, false);
+    }
+
+    public static String calibrateRequest(boolean force, long engineColdStartMs, boolean allowNetwork) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(CALIBRATE_REQUEST)
                 .append("\",\"force\":")
-                .append(force);
+                .append(force)
+                .append(",\"allowNetwork\":")
+                .append(allowNetwork);
         if (engineColdStartMs > 0) {
             b.append(",\"engineColdStartMs\":").append(engineColdStartMs);
         }
@@ -482,8 +491,12 @@ public final class EngineProtocol {
             long hashCpuMs,
             long junitForkMs,
             long junitRunMs,
+            long junitPlatformMs,
+            long resolveMs,
             long engineColdStartMs,
             boolean measured,
+            boolean junitPlatformUsed,
+            boolean resolveUsed,
             String summary) {
         return "{\"type\":\""
                 + CALIBRATE_ACK
@@ -503,10 +516,18 @@ public final class EngineProtocol {
                 + junitForkMs
                 + ",\"junitRunMs\":"
                 + junitRunMs
+                + ",\"junitPlatformMs\":"
+                + junitPlatformMs
+                + ",\"resolveMs\":"
+                + resolveMs
                 + ",\"engineColdStartMs\":"
                 + engineColdStartMs
                 + ",\"measured\":"
                 + measured
+                + ",\"junitPlatformUsed\":"
+                + junitPlatformUsed
+                + ",\"resolveUsed\":"
+                + resolveUsed
                 + ",\"summary\":"
                 + Jsonl.quote(summary == null ? "" : summary)
                 + "}";
