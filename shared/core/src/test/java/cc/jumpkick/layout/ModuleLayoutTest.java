@@ -64,6 +64,40 @@ class ModuleLayoutTest {
                 .contains("integration", "integration-resources");
     }
 
+    @Test
+    void groovy_main_roots_by_layout(@TempDir Path tmp) {
+        assertThat(ModuleLayout.mainGroovyRoots(tmp, true)).containsExactly(tmp.resolve("src"));
+        assertThat(ModuleLayout.mainGroovyRoots(tmp, false))
+                .containsExactly(tmp.resolve("src/main/groovy"), tmp.resolve("src/main/java"));
+    }
+
+    @Test
+    void traditional_groovy_root_is_a_source_root(@TempDir Path tmp) throws Exception {
+        writeToml(tmp, "traditional");
+        Files.createDirectories(tmp.resolve("src/main/groovy"));
+        assertThat(ModuleLayout.roots(tmp).stream()
+                        .filter(r -> r.kind() == ModuleLayout.Kind.SOURCE)
+                        .map(ModuleLayout.Root::relative))
+                .contains("src/main/groovy");
+    }
+
+    @Test
+    void src_main_groovy_flips_auto_layout_to_traditional(@TempDir Path tmp) throws Exception {
+        // No jk.toml: isCompact falls back to the traditional-dir probe.
+        Files.createDirectories(tmp.resolve("src/main/groovy"));
+        assertThat(ModuleLayout.isCompact(tmp)).isFalse();
+    }
+
+    @Test
+    void groovy_only_suite_is_discovered(@TempDir Path tmp) throws Exception {
+        writeToml(tmp, "simple");
+        Files.createDirectories(tmp.resolve("test"));
+        Files.writeString(tmp.resolve("test/FooSpec.groovy"), "class FooSpec {}");
+        assertThat(TestSuites.discover(tmp, true)).containsExactly("test");
+        assertThat(TestSuites.collectGroovySources(tmp, true, List.of("test")))
+                .containsExactly(tmp.resolve("test/FooSpec.groovy"));
+    }
+
     private static void writeToml(Path dir, String layout) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"),

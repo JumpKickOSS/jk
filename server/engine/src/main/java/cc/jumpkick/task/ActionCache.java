@@ -130,7 +130,8 @@ public final class ActionCache {
         // doesn't wipe the stamp a later step relies on. (The test result is a CAS
         // marker now, not a file here — see TestStamp.)
         Map<String, byte[]> stamps = new LinkedHashMap<>();
-        for (String f : new String[] {FreshnessStamp.JAVA_STAMP, FreshnessStamp.KOTLIN_STAMP}) {
+        for (String f :
+                new String[] {FreshnessStamp.JAVA_STAMP, FreshnessStamp.KOTLIN_STAMP, FreshnessStamp.GROOVY_STAMP}) {
             Path sp = outputDir.resolve(f);
             if (Files.isRegularFile(sp)) stamps.put(f, Files.readAllBytes(sp));
         }

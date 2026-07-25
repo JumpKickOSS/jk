@@ -68,6 +68,7 @@ public final class EffortWeights {
             int sync,
             int compileJava,
             int compileKotlin,
+            int compileGroovy,
             int compileTest,
             int runTests,
             int pkg,
@@ -106,6 +107,7 @@ public final class EffortWeights {
         for (String step : List.of(
                 "compile-java",
                 "compile-kotlin",
+                "compile-groovy",
                 "compile-test",
                 "run-tests",
                 "package-jar",
@@ -123,7 +125,7 @@ public final class EffortWeights {
     static int floor(String step) {
         return switch (step) {
             case "run-tests" -> TEST_STARTUP_FLOOR;
-            case "compile-java", "compile-kotlin", "compile-test" -> COMPILE_FLOOR;
+            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" -> COMPILE_FLOOR;
             default -> 0;
         };
     }
@@ -219,7 +221,18 @@ public final class EffortWeights {
 
     /** Predict the weights for {@code in}; never throws (degrades to skip-ish). */
     public static Plan predict(BuildPipelines.Inputs in, Cas cas, boolean compact, boolean useJava, boolean useKotlin) {
-        return predict(in, cas, compact, useJava, useKotlin, false);
+        return predict(in, cas, compact, useJava, useKotlin, false, false);
+    }
+
+    /** Back-compat overload (no Groovy lane). */
+    public static Plan predict(
+            BuildPipelines.Inputs in,
+            Cas cas,
+            boolean compact,
+            boolean useJava,
+            boolean useKotlin,
+            boolean forceRebuild) {
+        return predict(in, cas, compact, useJava, useKotlin, false, forceRebuild);
     }
 
     /**
@@ -232,6 +245,7 @@ public final class EffortWeights {
             boolean compact,
             boolean useJava,
             boolean useKotlin,
+            boolean useGroovy,
             boolean forceRebuild) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
         // If jk.toml is newer than jk.lock AND the lock no longer satisfies all declared
@@ -247,7 +261,8 @@ public final class EffortWeights {
         // Sibling modules of this build, for the project-tier learned fallback (empty ⇒ host-median).
         List<String> projectDirs =
                 in.projectModules().stream().map(Path::toString).toList();
-        int compileJava = SKIP, compileKotlin = SKIP, compileTest = SKIP, runTests = SKIP, pkg = SKIP;
+        int compileJava = SKIP, compileKotlin = SKIP, compileGroovy = SKIP, compileTest = SKIP, runTests = SKIP;
+        int pkg = SKIP;
         List<Path> testSrc = new ArrayList<>();
         boolean hadTestSources = false;
         try {
@@ -272,7 +287,17 @@ public final class EffortWeights {
                         ? learned(timings, mod, "compile-kotlin", src.size(), compileWeight(src.size()), projectDirs)
                         : SKIP;
             }
-            boolean compileRun = javaRun || ktRun;
+            boolean gvRun = false;
+            if (useGroovy) {
+                // The groovy stamp lives in the merged classes dir — that is where
+                // write-stamp-groovy writes it (stamp-only freshness, like Kotlin's).
+                List<Path> src = CompileSupport.collectGroovySources(in.dir(), compact);
+                gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, src);
+                compileGroovy = gvRun
+                        ? learned(timings, mod, "compile-groovy", src.size(), compileWeight(src.size()), projectDirs)
+                        : SKIP;
+            }
+            boolean compileRun = javaRun || ktRun || gvRun;
 
             // Tests + packaging consume the compiled output: if a compile ran (or
             // --force), they run. The precise test skip is decided at run-tests via
@@ -327,6 +352,7 @@ public final class EffortWeights {
         // workspace bar never calibrates to a pure-zero execute band (JK-1153).
         if (useJava && compileJava == SKIP) compileJava = TOKEN;
         if (useKotlin && compileKotlin == SKIP) compileKotlin = TOKEN;
+        if (useGroovy && compileGroovy == SKIP) compileGroovy = TOKEN;
         if (compileTest == SKIP && hadTestSources) compileTest = TOKEN;
         if (runTests == SKIP && hadTestSources) runTests = TOKEN;
         if (pkg == SKIP) pkg = TOKEN;
@@ -337,10 +363,11 @@ public final class EffortWeights {
         boolean fullyCached = isTokenOrSkip(sync)
                 && isTokenOrSkip(compileJava)
                 && isTokenOrSkip(compileKotlin)
+                && isTokenOrSkip(compileGroovy)
                 && isTokenOrSkip(compileTest)
                 && isTokenOrSkip(runTests)
                 && isTokenOrSkip(pkg);
-        return new Plan(sync, compileJava, compileKotlin, compileTest, runTests, pkg, fullyCached);
+        return new Plan(sync, compileJava, compileKotlin, compileGroovy, compileTest, runTests, pkg, fullyCached);
     }
 
     /** True when weight is absent or only a token (no real compile/test/package work). */

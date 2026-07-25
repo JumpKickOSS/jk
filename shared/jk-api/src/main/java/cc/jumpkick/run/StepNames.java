@@ -15,6 +15,7 @@ public final class StepNames {
     public static final String CACHE_INSTALL = "cache-install";
     public static final String COLLECT_SOURCES = "collect-sources";
     public static final String COMPARE_HASHES = "compare-hashes";
+    public static final String COMPILE_GROOVY = "compile-groovy";
     public static final String COMPILE_JAVA = "compile-java";
     public static final String COMPILE_KOTLIN = "compile-kotlin";
     public static final String COMPILE_TEST = "compile-test";
@@ -60,6 +61,7 @@ public final class StepNames {
     public static final String WRITE_IMAGE = "write-image";
     public static final String WRITE_LOCKFILE = "write-lockfile";
     public static final String WRITE_STAMP = "write-stamp";
+    public static final String WRITE_STAMP_GROOVY = "write-stamp-groovy";
     public static final String WRITE_STAMP_KOTLIN = "write-stamp-kotlin";
     public static final String WRITE_SYNC_MANIFEST = "write-sync-manifest";
     public static final String DELETE = "delete";

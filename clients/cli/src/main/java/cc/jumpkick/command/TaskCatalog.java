@@ -44,6 +44,7 @@ final class TaskCatalog {
                     "compile-main",
                     "compile"),
             def(StepNames.COMPILE_KOTLIN, "compile", "Compile main Kotlin sources", BuildLayout::kotlinClassesDir),
+            def(StepNames.COMPILE_GROOVY, "compile", "Compile main Groovy sources", BuildLayout::groovyClassesDir),
             def(
                     StepNames.ASSEMBLE_CLASSES,
                     "compile",
@@ -75,7 +76,8 @@ final class TaskCatalog {
                     BuildLayout::assemblyJar,
                     "assembly"),
             def(StepNames.WRITE_STAMP, "package", "Write Java compile freshness stamp", null),
-            def(StepNames.WRITE_STAMP_KOTLIN, "package", "Write Kotlin compile freshness stamp", null));
+            def(StepNames.WRITE_STAMP_KOTLIN, "package", "Write Kotlin compile freshness stamp", null),
+            def(StepNames.WRITE_STAMP_GROOVY, "package", "Write Groovy compile freshness stamp", null));
 
     private static final Map<String, TaskDef> BY_NAME = index();
 

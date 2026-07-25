@@ -81,6 +81,10 @@ public final class ExecPlans {
                     build.project().kotlin() == null
                             ? ""
                             : build.project().kotlin().raw(),
+                    build.project().isGroovy(),
+                    build.project().groovy() == null
+                            ? ""
+                            : build.project().groovy().raw(),
                     SourceLayout.isSimpleLayout(build.project(), dir),
                     build.isWorkspaceRoot(),
                     workspaceRootDir,

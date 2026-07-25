@@ -16,6 +16,15 @@ class FreshnessStampTest {
     private static final int RELEASE = 21;
 
     @Test
+    void every_language_stamp_is_a_stamp_file() {
+        assertThat(FreshnessStamp.isStampFile(FreshnessStamp.JAVA_STAMP)).isTrue();
+        assertThat(FreshnessStamp.isStampFile(FreshnessStamp.KOTLIN_STAMP)).isTrue();
+        assertThat(FreshnessStamp.isStampFile(FreshnessStamp.GROOVY_STAMP)).isTrue();
+        assertThat(FreshnessStamp.GROOVY_STAMP).isEqualTo(".gstamp");
+        assertThat(FreshnessStamp.isStampFile("Main.class")).isFalse();
+    }
+
+    @Test
     void removed_sources_are_detected_and_absent_stamp_is_not(@TempDir Path tempDir) throws IOException {
         Path classes = tempDir.resolve("classes");
         Files.createDirectories(classes);

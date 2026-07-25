@@ -27,11 +27,14 @@ public final class FreshnessStamp {
     /** Sentinel stamped into the output directory by the Kotlin compile. */
     public static final String KOTLIN_STAMP = ".kstamp";
 
+    /** Sentinel stamped into the output directory by the Groovy compile. */
+    public static final String GROOVY_STAMP = ".gstamp";
+
     private FreshnessStamp() {}
 
     /** True when {@code fileName} is a compile stamp sentinel (excluded from action-cache outputs). */
     public static boolean isStampFile(String fileName) {
-        return JAVA_STAMP.equals(fileName) || KOTLIN_STAMP.equals(fileName);
+        return JAVA_STAMP.equals(fileName) || KOTLIN_STAMP.equals(fileName) || GROOVY_STAMP.equals(fileName);
     }
 
     /** True when the stamp matches the current source/classpath sets and no input is newer. */

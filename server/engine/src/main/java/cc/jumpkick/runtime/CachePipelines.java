@@ -301,6 +301,8 @@ public final class CachePipelines {
                     layout.testClassesDir(),
                     layout.kotlinClassesDir(),
                     layout.kotlinTestClassesDir(),
+                    layout.groovyClassesDir(),
+                    layout.groovyTestClassesDir(),
                     layout.mainJar(),
                     layout.assemblyJar(),
                     layout.sourcesJar(),

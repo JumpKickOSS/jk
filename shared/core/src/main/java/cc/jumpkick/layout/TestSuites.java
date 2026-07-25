@@ -64,7 +64,10 @@ public final class TestSuites {
      */
     public static List<String> discover(Path projectDir, boolean compact) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        if (hasSources(javaRoots(projectDir, compact, DEFAULT), kotlinRoots(projectDir, compact, DEFAULT))) {
+        if (hasSources(
+                javaRoots(projectDir, compact, DEFAULT),
+                kotlinRoots(projectDir, compact, DEFAULT),
+                groovyRoots(projectDir, compact, DEFAULT))) {
             names.add(DEFAULT);
         }
         if (compact) {
@@ -76,7 +79,10 @@ public final class TestSuites {
                         .filter(n -> isSuiteName(n))
                         .sorted()
                         .forEach(n -> {
-                            if (hasSources(javaRoots(projectDir, true, n), kotlinRoots(projectDir, true, n))) {
+                            if (hasSources(
+                                    javaRoots(projectDir, true, n),
+                                    kotlinRoots(projectDir, true, n),
+                                    groovyRoots(projectDir, true, n))) {
                                 names.add(n);
                             }
                         });
@@ -93,7 +99,10 @@ public final class TestSuites {
                             .filter(TestSuites::isSuiteName)
                             .sorted()
                             .forEach(n -> {
-                                if (hasSources(javaRoots(projectDir, false, n), kotlinRoots(projectDir, false, n))) {
+                                if (hasSources(
+                                        javaRoots(projectDir, false, n),
+                                        kotlinRoots(projectDir, false, n),
+                                        groovyRoots(projectDir, false, n))) {
                                     names.add(n);
                                 }
                             });
@@ -143,6 +152,17 @@ public final class TestSuites {
         return List.of(base.resolve("kotlin"), base.resolve("java"));
     }
 
+    /** Groovy source roots for one suite (may not exist). */
+    public static List<Path> groovyRoots(Path projectDir, boolean compact, String suite) {
+        String s = suite == null || suite.isBlank() ? DEFAULT : suite;
+        if (compact) {
+            // Simple layout: .groovy lives alongside .java under test/ or <suite>/
+            return List.of(projectDir.resolve(s.equals(DEFAULT) ? "test" : s));
+        }
+        Path base = projectDir.resolve("src").resolve(s);
+        return List.of(base.resolve("groovy"), base.resolve("java"));
+    }
+
     /** Collect {@code .java} under the selected suites (deduped, stable order). */
     public static List<Path> collectJavaSources(Path projectDir, boolean compact, List<String> suites)
             throws IOException {
@@ -167,6 +187,18 @@ public final class TestSuites {
         return new ArrayList<>(out);
     }
 
+    /** Collect {@code .groovy} under the selected suites (deduped, stable order). */
+    public static List<Path> collectGroovySources(Path projectDir, boolean compact, List<String> suites)
+            throws IOException {
+        LinkedHashSet<Path> out = new LinkedHashSet<>();
+        for (String suite : effectiveSuites(suites)) {
+            for (Path root : groovyRoots(projectDir, compact, suite)) {
+                out.addAll(collectExt(root, ".groovy"));
+            }
+        }
+        return new ArrayList<>(out);
+    }
+
     /** Primary Java root used for incremental compile task identity (first selected suite). */
     public static Path primaryJavaRoot(Path projectDir, boolean compact, List<String> suites) {
         List<String> eff = effectiveSuites(suites);
@@ -179,10 +211,16 @@ public final class TestSuites {
         return suites;
     }
 
-    private static boolean hasSources(List<Path> javaRoots, List<Path> kotlinRoots) {
+    @SafeVarargs
+    private static boolean hasSources(List<Path>... rootSets) {
+        LinkedHashSet<Path> roots = new LinkedHashSet<>();
+        for (List<Path> set : rootSets) roots.addAll(set);
         try {
-            for (Path r : javaRoots) if (!collectExt(r, ".java").isEmpty()) return true;
-            for (Path r : kotlinRoots) if (!collectExt(r, ".kt").isEmpty()) return true;
+            for (Path r : roots) {
+                if (!collectExt(r, ".java").isEmpty()) return true;
+                if (!collectExt(r, ".kt").isEmpty()) return true;
+                if (!collectExt(r, ".groovy").isEmpty()) return true;
+            }
         } catch (IOException e) {
             return false;
         }

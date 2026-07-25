@@ -133,6 +133,16 @@ tasks.withType<Test>().configureEach {
     doFirst { systemProperty("jk.kotlin.plugin.jar", testKotlinWorkerJar.singleFile.absolutePath) }
 }
 
+// Pass the groovy-compiler worker jar to tests (the Groovy compile integration test forks it).
+val testGroovyWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { testGroovyWorkerJar(project(":groovy-compiler")) }
+tasks.withType<Test>().configureEach {
+    dependsOn(testGroovyWorkerJar)
+    doFirst { systemProperty("jk.groovy.plugin.jar", testGroovyWorkerJar.singleFile.absolutePath) }
+}
+
 // Pass the auditor jar path to tests (EngineServerTest's hosted jk audit round-trip forks it).
 val testAuditorWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false

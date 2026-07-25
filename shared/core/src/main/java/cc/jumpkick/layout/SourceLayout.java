@@ -21,8 +21,9 @@ public final class SourceLayout {
             case SIMPLE -> true;
             case TRADITIONAL -> false;
             case AUTO ->
-                !anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java")
-                        && !anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java");
+                !anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java", ".groovy")
+                        && !anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java", ".groovy")
+                        && !anySourceUnder(projectDir.resolve("src/main/groovy"), ".kt", ".java", ".groovy");
         };
     }
 

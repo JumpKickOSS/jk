@@ -66,8 +66,20 @@ public final class ModuleLayout {
     static boolean hasTraditionalDirs(Path moduleDir) {
         return Files.isDirectory(moduleDir.resolve("src/main/java"))
                 || Files.isDirectory(moduleDir.resolve("src/main/kotlin"))
+                || Files.isDirectory(moduleDir.resolve("src/main/groovy"))
                 || Files.isDirectory(moduleDir.resolve("src/test/java"))
-                || Files.isDirectory(moduleDir.resolve("src/test/kotlin"));
+                || Files.isDirectory(moduleDir.resolve("src/test/kotlin"))
+                || Files.isDirectory(moduleDir.resolve("src/test/groovy"));
+    }
+
+    /**
+     * Main Groovy source roots (JK-1165). SIMPLE shares {@code src/} by extension; TRADITIONAL is
+     * {@code src/main/groovy} plus {@code src/main/java} (stray {@code .groovy} under the Java
+     * root compiles too, mirroring the Kotlin collector).
+     */
+    public static List<Path> mainGroovyRoots(Path moduleDir, boolean compact) {
+        if (compact) return List.of(moduleDir.resolve("src"));
+        return List.of(moduleDir.resolve("src/main/groovy"), moduleDir.resolve("src/main/java"));
     }
 
     /** Main resources directory (SIMPLE: {@code resources/}; TRADITIONAL: {@code src/main/resources}). */
@@ -126,6 +138,7 @@ public final class ModuleLayout {
         } else {
             addIfDir(out, seen, moduleDir, "src/main/java", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
+            addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
         }
 
@@ -144,6 +157,9 @@ public final class ModuleLayout {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
             for (Path root : TestSuites.kotlinRoots(moduleDir, compact, suite)) {
+                addAbs(out, seen, moduleDir, root, Kind.TEST);
+            }
+            for (Path root : TestSuites.groovyRoots(moduleDir, compact, suite)) {
                 addAbs(out, seen, moduleDir, root, Kind.TEST);
             }
             addAbs(out, seen, moduleDir, suiteResourcesDir(moduleDir, compact, suite), Kind.TEST_RESOURCE);
@@ -176,6 +192,7 @@ public final class ModuleLayout {
                 for (String suite : suites) {
                     for (Path r : TestSuites.javaRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.kotlinRoots(moduleDir, true, suite)) addDir(dirs, r);
+                    for (Path r : TestSuites.groovyRoots(moduleDir, true, suite)) addDir(dirs, r);
                     addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
                 }
             } else {
@@ -197,6 +214,9 @@ public final class ModuleLayout {
             if (Files.isDirectory(r)) return true;
         }
         for (Path r : TestSuites.kotlinRoots(moduleDir, compact, TestSuites.DEFAULT)) {
+            if (Files.isDirectory(r)) return true;
+        }
+        for (Path r : TestSuites.groovyRoots(moduleDir, compact, TestSuites.DEFAULT)) {
             if (Files.isDirectory(r)) return true;
         }
         return false;

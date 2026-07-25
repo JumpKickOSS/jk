@@ -98,6 +98,7 @@ class SelfHostingTomlTest {
                         "plugins/test-runner",
                         "plugins/java-compiler",
                         "plugins/kotlin-compiler",
+                        "plugins/groovy-compiler",
                         "plugins/auditor",
                         "plugins/publisher",
                         "plugins/image-builder",
