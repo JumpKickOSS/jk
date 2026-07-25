@@ -51,8 +51,8 @@ class FirstBuildJdkTest {
         Files.writeString(project.resolve("src/F.java"), """
                 class F {}
                 """);
-        Files.createDirectories(project.resolve("test"));
-        Files.writeString(project.resolve("test/FTest.java"), """
+        Files.createDirectories(project.resolve("test").resolve("src"));
+        Files.writeString(project.resolve("test/src/FTest.java"), """
                 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
                 import static org.junit.jupiter.api.Assertions.assertEquals;

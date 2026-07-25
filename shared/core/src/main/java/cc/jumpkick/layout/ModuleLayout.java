@@ -10,22 +10,24 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Canonical module input roots (JK-1145): one resolver for engine, IDE, BSP, and scaffold.
+ * Canonical module input roots (JK-1198 Mill-like SIMPLE).
  *
- * <p><b>SIMPLE (flat-siblings, preferred):</b>
+ * <p><b>SIMPLE (default / Mill-shaped):</b>
  *
  * <ul>
  *   <li>main sources {@code src/}
  *   <li>main resources {@code resources/}
- *   <li>default tests {@code test/}
- *   <li>test resources {@code test-resources/}
- *   <li>named suite {@code <name>/} (e.g. {@code integration/})
+ *   <li>default tests {@code test/src/}
+ *   <li>default test resources {@code test/resources/}
+ *   <li>named suite {@code <name>/src/}, resources {@code <name>/resources/}
  * </ul>
  *
- * <p><b>TRADITIONAL (Maven import):</b> {@code src/main/{java,kotlin,resources}},
- * {@code src/test/…}, {@code src/<suite>/{java,kotlin}}.
+ * <p><b>TRADITIONAL (Maven import):</b> {@code src/main/{java,kotlin,groovy,resources}},
+ * {@code src/test/…}, {@code src/<suite>/{java,kotlin,resources}}.
  *
  * <p>Language is by file extension inside each source dir. Outputs remain under {@code target/}.
+ * Flat-siblings ({@code test/} as source root, top-level {@code test-resources/}, {@code
+ * integration-resources/}) are <b>not</b> recognized.
  */
 public final class ModuleLayout {
 
@@ -93,11 +95,11 @@ public final class ModuleLayout {
     }
 
     /**
-     * Test-resource root for a suite (JK-1149).
+     * Test-resource root for a suite (JK-1198 Mill-like).
      *
      * <ul>
-     *   <li>SIMPLE default: {@code test-resources/}
-     *   <li>SIMPLE named {@code integration}: {@code integration-resources/}
+     *   <li>SIMPLE default: {@code test/resources/}
+     *   <li>SIMPLE named {@code integration}: {@code integration/resources/}
      *   <li>TRADITIONAL default: {@code src/test/resources}
      *   <li>TRADITIONAL named: {@code src/<name>/resources}
      * </ul>
@@ -105,8 +107,8 @@ public final class ModuleLayout {
     public static Path suiteResourcesDir(Path moduleDir, boolean compact, String suite) {
         String s = suite == null || suite.isBlank() ? TestSuites.DEFAULT : suite;
         if (compact) {
-            if (TestSuites.DEFAULT.equals(s)) return moduleDir.resolve("test-resources");
-            return moduleDir.resolve(s + "-resources");
+            if (TestSuites.DEFAULT.equals(s)) return moduleDir.resolve("test").resolve("resources");
+            return moduleDir.resolve(s).resolve("resources");
         }
         if (TestSuites.DEFAULT.equals(s)) return moduleDir.resolve("src/test/resources");
         return moduleDir.resolve("src").resolve(s).resolve("resources");
@@ -174,7 +176,6 @@ public final class ModuleLayout {
             withDefault.addAll(suites);
             suites = withDefault;
         }
-        // Always surface default suite resource dir if present, even when suite has no sources yet.
         LinkedHashSet<String> suiteNames = new LinkedHashSet<>(suites);
         suiteNames.add(TestSuites.DEFAULT);
         for (String suite : suiteNames) {
@@ -194,28 +195,22 @@ public final class ModuleLayout {
 
     /**
      * Directories to walk for preflight dirty fingerprints: every root the build consumes,
-     * deduplicated (JK-1148). When {@code skipTests}, omits test / test-resource roots.
+     * deduplicated (JK-1148 / JK-1198). When {@code skipTests}, omits test / test-resource roots.
      */
     public static List<Path> fingerprintDirs(Path moduleDir, boolean skipTests) {
         boolean compact = isCompact(moduleDir);
         LinkedHashSet<Path> dirs = new LinkedHashSet<>();
-        // Always fingerprint main sources + main resources + lock/toml are separate.
         if (compact) {
             addDir(dirs, moduleDir.resolve("src"));
             addDir(dirs, mainResourcesDir(moduleDir, true));
         } else {
-            // Walking src/ covers main + traditional test + named suites under src/<name>
             addDir(dirs, moduleDir.resolve("src"));
         }
-        // Plugin-contributed roots (grails-app/…) are main inputs — always fingerprinted.
         for (Root root : pluginContributedRoots(moduleDir)) {
             addDir(dirs, moduleDir.resolve(root.relative()));
         }
         if (!skipTests) {
             if (compact) {
-                // Default suite + named suites + per-suite resource dirs (not under src/).
-                // Always include DEFAULT so test-resources/ is fingerprinted even when test/
-                // sources are not yet present (memo correctness for fixture-only changes).
                 LinkedHashSet<String> suites = new LinkedHashSet<>(TestSuites.discover(moduleDir, true));
                 suites.add(TestSuites.DEFAULT);
                 for (String suite : suites) {
@@ -223,11 +218,14 @@ public final class ModuleLayout {
                     for (Path r : TestSuites.kotlinRoots(moduleDir, true, suite)) addDir(dirs, r);
                     for (Path r : TestSuites.groovyRoots(moduleDir, true, suite)) addDir(dirs, r);
                     addDir(dirs, suiteResourcesDir(moduleDir, true, suite));
+                    // Also walk the suite module dir so new files under test/ are noticed even
+                    // when only resources exist (test/resources).
+                    if (TestSuites.DEFAULT.equals(suite)) {
+                        addDir(dirs, moduleDir.resolve("test"));
+                    } else {
+                        addDir(dirs, moduleDir.resolve(suite));
+                    }
                 }
-            } else {
-                // src covers suite sources; still fingerprint any named-suite resource dirs
-                // that live under src/<name>/resources (already under src walk). Default
-                // test-resources is src/test/resources — under src.
             }
         }
         return List.copyOf(dirs);

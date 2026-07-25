@@ -116,12 +116,12 @@ public final class CompileSupport {
      *
      * <ul>
      *   <li>Standard layout: {@code src/test/kotlin/} and {@code src/test/java/}
-     *   <li>Compact layout: {@code test/} (all {@code .kt} files)
+     *   <li>Compact (Mill-like) layout: {@code test/src/} (all {@code .kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinTestSources(Path projectDir, boolean compact) throws IOException {
         if (compact) {
-            return collectFilesWithExtension(projectDir.resolve("test"), ".kt");
+            return collectFilesWithExtension(projectDir.resolve("test").resolve("src"), ".kt");
         }
         List<Path> out = new ArrayList<>();
         out.addAll(collectFilesWithExtension(projectDir.resolve("src/test/kotlin"), ".kt"));

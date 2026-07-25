@@ -590,7 +590,22 @@ public final class EngineClient {
             Path jdksDir,
             boolean serial,
             boolean parallelTests,
-            boolean verbose) {}
+            boolean verbose,
+            boolean rebuild) {
+        /** Backward-compatible ctor (rebuild=false). */
+        public ExplainRequest(
+                Path entryDir,
+                Path cache,
+                int workers,
+                boolean skipTests,
+                String profile,
+                Path jdksDir,
+                boolean serial,
+                boolean parallelTests,
+                boolean verbose) {
+            this(entryDir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+        }
+    }
 
     /**
      * Pre-flight a build's dirty forecast against the engine — {@code jk build}'s fully-cached

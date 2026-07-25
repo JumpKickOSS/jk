@@ -56,6 +56,7 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value(
                 "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
         opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
+        // --rebuild is a global flag (same as `jk build --rebuild`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
@@ -63,7 +64,7 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"));
         opts.add(Opt.value(
                 "<fmt>",
-                "Emit a machine graph instead of the rebuild forecast. Supported: dot (module DAG).",
+                "Emit a machine graph instead of the rebuild forecast. Supported: dot | mermaid (module DAG).",
                 "--graph"));
         opts.add(Opt.value("<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
         return opts;
@@ -111,6 +112,8 @@ public final class ExplainCommand implements CliCommand {
         boolean serial = jobs == 1;
         int workers = in.value("workers").map(Integer::parseInt).orElse(1);
         boolean skipTests = in.isSet("skip-tests");
+        // Global --rebuild / --force: forecast full work + rebuild ETA priors (JK-1177).
+        boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         String affectedSince = in.value("affected-since").orElse(null);
@@ -159,7 +162,16 @@ public final class ExplainCommand implements CliCommand {
         plan = cc.jumpkick.cli.engine.EngineClient.explain(
                 cc.jumpkick.engine.EnginePaths.current(),
                 new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
-                        startDir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, global.verbose),
+                        startDir,
+                        cache,
+                        workers,
+                        skipTests,
+                        profile,
+                        jdksDir,
+                        serial,
+                        parallelTests,
+                        global.verbose,
+                        rebuild),
                 etaOut);
         etaMillis = etaOut[0];
 
@@ -181,8 +193,6 @@ public final class ExplainCommand implements CliCommand {
         // truthfully — see BuildPlanForecast.
         List<BuildPlan.Module> modules = plan.modules();
         boolean all = in.isSet("verbose");
-        int total = modules.size();
-        long rebuild = modules.stream().filter(BuildPlan.Module::dirty).count();
 
         // Header: a dark royal blue (#0F4786) " ≡ Build Plan " chip, capped by a matching ▶
         // segment arrow when nerdfont, then the build-time estimate (yellow).
@@ -493,20 +503,22 @@ public final class ExplainCommand implements CliCommand {
     }
 
     /**
-     * {@code jk explain --graph dot} — module dependency DAG as Graphviz DOT (no engine).
+     * {@code jk explain --graph dot|mermaid} — module dependency DAG (no engine).
      */
     private static int emitModuleGraph(
             Path startDir, Path buildFile, String format, String modulesSpec, String affectedSince, String outputPath)
             throws Exception {
         String fmt = format.trim().toLowerCase(Locale.ROOT);
-        if (!"dot".equals(fmt)) {
+        if (!ModuleDotGraph.isSupportedFormat(fmt)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Explain", "unsupported --graph format '" + format + "' (supported: dot)"));
+                    "Explain",
+                    "unsupported --graph format '" + format + "' (supported: " + String.join(" | ", ModuleDotGraph.FORMATS)
+                            + ")"));
             return Exit.CONFIG;
         }
         JkBuild entry = JkBuildParser.parse(buildFile);
         Path root = startDir.toAbsolutePath().normalize();
-        String dot;
+        String graph;
         if (entry.isWorkspaceRoot()) {
             Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, entry);
             ModuleSelection.Result selected =
@@ -518,11 +530,11 @@ public final class ExplainCommand implements CliCommand {
             Set<Path> only = selected != null ? selected.moduleDirs() : null;
             if (only != null && only.isEmpty()) {
                 // Nothing selected — still valid empty digraph
-                dot = ModuleDotGraph.toDot(root, Map.of(), null);
+                graph = ModuleDotGraph.render(fmt, root, Map.of(), null);
             } else {
                 // Workspace root may not be in modules map; graph is modules only (Mill-like module DAG).
                 Map<Path, JkBuild> forGraph = new LinkedHashMap<>(modules);
-                dot = ModuleDotGraph.toDot(root, forGraph, only);
+                graph = ModuleDotGraph.render(fmt, root, forGraph, only);
             }
         } else {
             // Single project: trivial one-node graph (selectors ignored / no-op).
@@ -535,18 +547,18 @@ public final class ExplainCommand implements CliCommand {
                     return Exit.CONFIG;
                 }
             }
-            dot = ModuleDotGraph.singleModuleDot(entry, root);
+            graph = ModuleDotGraph.singleModule(entry, root, fmt);
         }
         if (outputPath != null && !outputPath.isBlank()) {
             Path out = Path.of(outputPath);
             if (!out.isAbsolute()) out = root.resolve(out);
             Path parent = out.getParent();
             if (parent != null) Files.createDirectories(parent);
-            Files.writeString(out, dot);
+            Files.writeString(out, graph);
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Explain", "wrote " + out.toAbsolutePath().normalize()));
         } else {
-            CliOutput.out(dot.endsWith("\n") ? dot.substring(0, dot.length() - 1) : dot);
+            CliOutput.out(graph.endsWith("\n") ? graph.substring(0, graph.length() - 1) : graph);
         }
         return 0;
     }

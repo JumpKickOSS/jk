@@ -12,34 +12,34 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Mill-shaped test suite roots for a module (JK-1134).
+ * Mill-shaped test suite roots for a module (JK-1198).
  *
  * <p>Default suite is always {@code test}:
  *
  * <ul>
- *   <li>Simple layout: {@code test/}
- *   <li>Traditional: {@code src/test/java} + {@code src/test/kotlin}
+ *   <li>Simple layout: {@code test/src/} (sources by extension)
+ *   <li>Traditional: {@code src/test/java} + {@code src/test/kotlin} + {@code src/test/groovy}
  * </ul>
  *
- * <p>Additional suites are sibling names (e.g. {@code integration}):
+ * <p>Additional suites are sibling module dirs (e.g. {@code integration}):
  *
  * <ul>
- *   <li>Simple: {@code <name>/}
+ *   <li>Simple: {@code <name>/src/}
  *   <li>Traditional: {@code src/<name>/java} + {@code src/<name>/kotlin}
  * </ul>
  *
- * <p>A suite is "present" when at least one {@code .java}/{@code .kt} file exists under its roots.
+ * <p>A suite is "present" when at least one {@code .java}/{@code .kt}/{@code .groovy} file exists
+ * under its roots.
  */
 public final class TestSuites {
 
-    /** Canonical default suite name (maps to {@code test/} or {@code src/test/…}). */
+    /** Canonical default suite name (maps to {@code test/src} or {@code src/test/…}). */
     public static final String DEFAULT = "test";
 
     /** Top-level names that are never treated as optional test suites in simple layout. */
     private static final Set<String> SIMPLE_RESERVED = Set.of(
             "src",
             "test",
-            "test-resources",
             "resources",
             "target",
             "build",
@@ -132,11 +132,20 @@ public final class TestSuites {
         return true;
     }
 
+    /**
+     * Source root directory for a suite in SIMPLE layout: {@code test/src} or {@code <suite>/src}.
+     */
+    public static Path simpleSuiteSrc(Path projectDir, String suite) {
+        String s = suite == null || suite.isBlank() ? DEFAULT : suite;
+        if (DEFAULT.equals(s)) return projectDir.resolve("test").resolve("src");
+        return projectDir.resolve(s).resolve("src");
+    }
+
     /** Java source roots for one suite (may not exist). */
     public static List<Path> javaRoots(Path projectDir, boolean compact, String suite) {
         String s = suite == null || suite.isBlank() ? DEFAULT : suite;
         if (compact) {
-            return List.of(projectDir.resolve(s.equals(DEFAULT) ? "test" : s));
+            return List.of(simpleSuiteSrc(projectDir, s));
         }
         return List.of(projectDir.resolve("src").resolve(s).resolve("java"));
     }
@@ -145,8 +154,8 @@ public final class TestSuites {
     public static List<Path> kotlinRoots(Path projectDir, boolean compact, String suite) {
         String s = suite == null || suite.isBlank() ? DEFAULT : suite;
         if (compact) {
-            // Simple layout: .kt lives alongside .java under test/ or <suite>/
-            return List.of(projectDir.resolve(s.equals(DEFAULT) ? "test" : s));
+            // Simple layout: .kt lives alongside .java under test/src or <suite>/src
+            return List.of(simpleSuiteSrc(projectDir, s));
         }
         Path base = projectDir.resolve("src").resolve(s);
         return List.of(base.resolve("kotlin"), base.resolve("java"));
@@ -156,8 +165,7 @@ public final class TestSuites {
     public static List<Path> groovyRoots(Path projectDir, boolean compact, String suite) {
         String s = suite == null || suite.isBlank() ? DEFAULT : suite;
         if (compact) {
-            // Simple layout: .groovy lives alongside .java under test/ or <suite>/
-            return List.of(projectDir.resolve(s.equals(DEFAULT) ? "test" : s));
+            return List.of(simpleSuiteSrc(projectDir, s));
         }
         Path base = projectDir.resolve("src").resolve(s);
         return List.of(base.resolve("groovy"), base.resolve("java"));

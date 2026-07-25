@@ -184,10 +184,9 @@ public final class GradleExporter {
     }
 
     /**
-     * jk's {@link JkBuild.Layout#SIMPLE} layout is flat ({@code ./src}, {@code ./test}, {@code
-     * ./resources}) where Gradle defaults to {@code src/main/java}. Remap the source sets so the
-     * exported build compiles the same files. {@code TRADITIONAL} and {@code AUTO} already match
-     * Gradle's convention — no block needed.
+     * jk's {@link JkBuild.Layout#SIMPLE} layout is Mill-like ({@code ./src}, {@code ./test/src},
+     * {@code ./resources}, {@code ./test/resources}) where Gradle defaults to {@code src/main/java}.
+     * Remap the source sets so the exported build compiles the same files.
      */
     private static void appendSourceSets(StringBuilder sb, JkBuild.Layout layout, boolean kotlin) {
         if (layout != JkBuild.Layout.SIMPLE) return;
@@ -198,9 +197,9 @@ public final class GradleExporter {
         sb.append("        resources.setSrcDirs(listOf(\"resources\"))\n");
         sb.append("    }\n");
         sb.append("    test {\n");
-        sb.append("        java.setSrcDirs(listOf(\"test\"))\n");
-        if (kotlin) sb.append("        kotlin.setSrcDirs(listOf(\"test\"))\n");
-        sb.append("        resources.setSrcDirs(listOf(\"test-resources\"))\n");
+        sb.append("        java.setSrcDirs(listOf(\"test/src\"))\n");
+        if (kotlin) sb.append("        kotlin.setSrcDirs(listOf(\"test/src\"))\n");
+        sb.append("        resources.setSrcDirs(listOf(\"test/resources\"))\n");
         sb.append("    }\n");
         sb.append("}\n");
     }

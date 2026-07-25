@@ -39,8 +39,9 @@ public final class Lib {
 }
 EOF
   if [[ "$WITH_TESTS" == "1" ]]; then
-    mkdir -p "$dir/test"
-    cat >"$dir/test/LibTest.java" <<EOF
+    # Mill-like SIMPLE (JK-1198): test sources under test/src/
+    mkdir -p "$dir/test/src"
+    cat >"$dir/test/src/LibTest.java" <<EOF
 package bench;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

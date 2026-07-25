@@ -40,6 +40,42 @@ class ScaffoldOpsTest {
     }
 
     @Test
+    void spring_simple_layout_uses_mill_test_src(@TempDir Path tmp) {
+        var files = ScaffoldOps.scaffold(
+                tmp,
+                Map.of(
+                        "plugin", "spring",
+                        "lang", "java",
+                        "package", "com.example",
+                        "simpleLayout", "true",
+                        "sample", "true",
+                        "baseToml", "[project]\nname = \"demo\"\n"));
+        assertThat(files.error()).isNull();
+        assertThat(files.paths())
+                .anyMatch(p -> p.endsWith("src/com/example/Application.java"))
+                .anyMatch(p -> p.endsWith("test/src/com/example/ApplicationTest.java"))
+                .anyMatch(p -> p.endsWith("resources/application.properties"))
+                .noneMatch(p -> p.contains("src/test/java") || p.contains("/test/com/"));
+    }
+
+    @Test
+    void spring_traditional_layout_uses_maven_tree(@TempDir Path tmp) {
+        var files = ScaffoldOps.scaffold(
+                tmp,
+                Map.of(
+                        "plugin", "spring",
+                        "lang", "java",
+                        "package", "com.example",
+                        "simpleLayout", "false",
+                        "sample", "true",
+                        "baseToml", "[project]\nname = \"demo\"\n"));
+        assertThat(files.error()).isNull();
+        assertThat(files.paths())
+                .anyMatch(p -> p.endsWith("src/main/java/com/example/Application.java"))
+                .anyMatch(p -> p.endsWith("src/test/java/com/example/ApplicationTest.java"));
+    }
+
+    @Test
     void unknown_flag_reports_an_error() {
         var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "micronaut", "package", "x"));
         assertThat(files.error()).contains("micronaut");

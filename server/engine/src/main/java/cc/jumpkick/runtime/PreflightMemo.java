@@ -30,7 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * (fail-open).
  *
  * <p>Schema 3: module fingerprints cover every file under {@code src}/{@code test}/
- * {@code test-resources} (resources included); dirty rows are stored with fingerprints captured at
+ * suite resource dirs (resources included); dirty rows are stored with fingerprints captured at
  * preflight time, never post-build.
  */
 public final class PreflightMemo {
@@ -558,7 +558,7 @@ public final class PreflightMemo {
 
     /**
      * Every regular file under dirs the build consumes feeds the digest (JK-1144/1148): main
-     * sources, main resources, default + named test suites, test-resources. Derived from
+     * sources, main resources, default + named test suites and suite resources. Derived from
      * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */
     static String fingerprintModule(Path moduleDir, boolean skipTests) {

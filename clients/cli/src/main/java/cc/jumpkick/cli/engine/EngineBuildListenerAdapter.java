@@ -318,7 +318,8 @@ final class EngineBuildListenerAdapter {
                     req.jdksDir() != null ? req.jdksDir().toString() : null,
                     req.serial(),
                     req.parallelTests(),
-                    req.verbose()));
+                    req.verbose(),
+                    req.rebuild()));
             writer.write('\n');
             writer.flush();
 

@@ -58,7 +58,7 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods across every discovered suite (JK-1145) — not default-suite only.
+     * Count test methods across every discovered suite (JK-1198) — not default-suite only.
      * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
      */
     public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {

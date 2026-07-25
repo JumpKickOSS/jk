@@ -145,7 +145,7 @@ class RobolectricUnitTest {
 
                 public class MainActivity extends Activity {}
                 """);
-        Path test = Files.createDirectories(project.resolve("test/com/example/robo"));
+        Path test = Files.createDirectories(project.resolve("test/src/com/example/robo"));
         Files.writeString(test.resolve("GreetingResourceTest.java"), """
                 package com.example.robo;
 

@@ -200,12 +200,12 @@ public final class PomExporter {
         if (!anyPlugin && !simple) return;
 
         sb.append('\n').append("  <build>\n");
-        // jk's simple layout (flat ./src + ./test) → Maven's source/test dirs.
+        // jk's simple Mill-like layout (./src + ./test/src) → Maven's source/test dirs.
         if (simple) {
             sb.append("    <sourceDirectory>src</sourceDirectory>\n");
-            sb.append("    <testSourceDirectory>test</testSourceDirectory>\n");
+            sb.append("    <testSourceDirectory>test/src</testSourceDirectory>\n");
             sb.append("    <resources><resource><directory>resources</directory></resource></resources>\n");
-            sb.append("    <testResources><testResource><directory>test-resources</directory>")
+            sb.append("    <testResources><testResource><directory>test/resources</directory>")
                     .append("</testResource></testResources>\n");
         }
         if (anyPlugin) {

@@ -22,10 +22,10 @@ class IdeSuiteRunConfigTest {
     @Test
     void write_jk_test_run_configs_includes_extra_suite(@TempDir Path tmp) throws Exception {
         Path mod = tmp.resolve("mod");
-        Files.createDirectories(mod.resolve("test"));
-        Files.writeString(mod.resolve("test/T.java"), "class T {}");
-        Files.createDirectories(mod.resolve("integration"));
-        Files.writeString(mod.resolve("integration/I.java"), "class I {}");
+        Files.createDirectories(mod.resolve("test").resolve("src"));
+        Files.writeString(mod.resolve("test/src/T.java"), "class T {}");
+        Files.createDirectories(mod.resolve("integration").resolve("src"));
+        Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
         Files.writeString(
                 mod.resolve("jk.toml"),
                 """
@@ -50,10 +50,10 @@ class IdeSuiteRunConfigTest {
     @Test
     void vscode_tasks_json_lists_default_all_and_suite(@TempDir Path tmp) throws Exception {
         Path mod = tmp.resolve("m");
-        Files.createDirectories(mod.resolve("test"));
-        Files.writeString(mod.resolve("test/T.java"), "class T {}");
-        Files.createDirectories(mod.resolve("integration"));
-        Files.writeString(mod.resolve("integration/I.java"), "class I {}");
+        Files.createDirectories(mod.resolve("test").resolve("src"));
+        Files.writeString(mod.resolve("test/src/T.java"), "class T {}");
+        Files.createDirectories(mod.resolve("integration").resolve("src"));
+        Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
         Files.writeString(
                 mod.resolve("jk.toml"),
                 """

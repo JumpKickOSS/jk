@@ -849,7 +849,14 @@ public final class EngineServer implements AutoCloseable {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
         publishRequestStart(eventRequestId, eventKind, eventDir);
-        registerAccumulator(eventRequestId, eventKind, eventDir, "cli", Jsonl.bool(requestLine, "noTimeline", false));
+        boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
+        registerAccumulator(
+                eventRequestId,
+                eventKind,
+                eventDir,
+                "cli",
+                Jsonl.bool(requestLine, "noTimeline", false),
+                rebuildRun);
         if (pipeline) notePipelineStarted();
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
@@ -1884,8 +1891,25 @@ public final class EngineServer implements AutoCloseable {
             String cacheStr = Jsonl.str(requestLine, "cache");
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
+            // JK-1177: --rebuild rides the same session flag as jk build --rebuild so forecast
+            // (all steps RUN) and ETA (build:rebuild history) match the live rebuild path.
+            boolean rebuild = Jsonl.bool(requestLine, "rebuild", false);
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            boolean offline = Jsonl.bool(requestLine, "offline", false);
+            boolean verbose = Jsonl.bool(requestLine, "verbose", false);
+            JkConfig config = new JkConfig(
+                    Optional.empty(),
+                    Optional.of(offline),
+                    Optional.of(rebuild),
+                    Optional.empty(),
+                    Optional.empty(),
+                    Optional.of(verbose),
+                    Optional.empty(),
+                    Optional.of(force),
+                    Optional.empty());
+            Session session = Session.defaults().withConfig(config).withWorkingDir(entryDir).withCacheDir(cache);
             JkBuild entryBuild = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-            ExplainPlan plan = BuildService.explain(entryDir, entryBuild, cache);
+            ExplainPlan plan = SessionContext.where(session, () -> BuildService.explain(entryDir, entryBuild, cache));
             if (plan.hasErrors()) {
                 for (String err : plan.errors()) {
                     sendQuiet(writer, EngineProtocol.requestFailed(err));
@@ -1910,19 +1934,21 @@ public final class EngineServer implements AutoCloseable {
                     sendQuiet(writer, EngineProtocol.explainEdge(e.getKey().toString(), dep.toString()));
                 }
             }
-            // Schedule-aware ETA; 0 = unknown.
+            // Schedule-aware ETA; 0 = unknown. Under same session as explain (rebuild/force).
             String etaJdksDirStr = Jsonl.str(requestLine, "jdksDir");
-            long etaMillis = BuildService.estimateEtaMillis(
-                    plan,
-                    entryDir,
-                    cache,
-                    Jsonl.intValue(requestLine, "workers", 0),
-                    etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
-                    Jsonl.str(requestLine, "profile"),
-                    Jsonl.bool(requestLine, "skipTests", false),
-                    Jsonl.bool(requestLine, "verbose", false),
-                    Jsonl.bool(requestLine, "serial", false),
-                    Jsonl.bool(requestLine, "parallelTests", false));
+            long etaMillis = SessionContext.where(
+                    session,
+                    () -> BuildService.estimateEtaMillis(
+                            plan,
+                            entryDir,
+                            cache,
+                            Jsonl.intValue(requestLine, "workers", 0),
+                            etaJdksDirStr != null ? Path.of(etaJdksDirStr) : null,
+                            Jsonl.str(requestLine, "profile"),
+                            Jsonl.bool(requestLine, "skipTests", false),
+                            verbose,
+                            Jsonl.bool(requestLine, "serial", false),
+                            Jsonl.bool(requestLine, "parallelTests", false)));
             sendQuiet(writer, EngineProtocol.eta(etaMillis));
             sendQuiet(
                     writer,
@@ -3437,10 +3463,15 @@ public final class EngineServer implements AutoCloseable {
      * append itself is gated on {@code historyConfig.enabled()}.
      */
     private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
-        registerAccumulator(requestId, kind, dir, trigger, false);
+        registerAccumulator(requestId, kind, dir, trigger, false, false);
     }
 
     private void registerAccumulator(long requestId, String kind, String dir, String trigger, boolean noTimeline) {
+        registerAccumulator(requestId, kind, dir, trigger, noTimeline, false);
+    }
+
+    private void registerAccumulator(
+            long requestId, String kind, String dir, String trigger, boolean noTimeline, boolean rebuild) {
         if (!JOURNALED_KINDS.contains(kind)) return;
         Path projectDir = null;
         try {
@@ -3449,7 +3480,7 @@ public final class EngineServer implements AutoCloseable {
             projectDir = null;
         }
         ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
-        accumulators.put(requestId, new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline));
+        accumulators.put(requestId, new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild));
     }
 
     /** The project's {@code group:name}, or {@code null} when its {@code jk.toml} doesn't parse. */
@@ -3537,7 +3568,9 @@ public final class EngineServer implements AutoCloseable {
             // Folding metrics also mints this run's durable per-project build number; stamp it onto
             // the record so the journal (and the dashboard's #NNN pill) carry it. Metrics is folded
             // even when history is disabled, so the counter stays consistent regardless.
-            long buildNumber = BuildMetrics.record(metricsFile, toOutcome(record), finishedAt);
+            // JK-1178: rebuild/force must train build:rebuild priors even when SessionContext is
+            // already cleared (async runner finishes outside the request session).
+            long buildNumber = BuildMetrics.record(metricsFile, toOutcome(record, a.rebuild()), finishedAt);
             record = record.withBuildNumber(buildNumber);
             // Chrome timeline (web / late path): same step durations as metrics. Socket clients
             // usually already flushed via flushTimelineToClient before terminal events.
@@ -3590,6 +3623,10 @@ public final class EngineServer implements AutoCloseable {
      * record's own dir). Keeps journal types out of {@code cc.jumpkick.runtime}.
      */
     private static BuildMetrics.Outcome toOutcome(BuildRecord r) {
+        return toOutcome(r, false);
+    }
+
+    private static BuildMetrics.Outcome toOutcome(BuildRecord r, boolean rebuildFlag) {
         java.util.ArrayList<BuildMetrics.StepSample> steps = new java.util.ArrayList<>();
         for (BuildRecord.Step p : r.steps()) {
             steps.add(new BuildMetrics.StepSample(r.dir(), p.name(), p.status(), p.millis()));
@@ -3599,11 +3636,14 @@ public final class EngineServer implements AutoCloseable {
                 steps.add(new BuildMetrics.StepSample(m.dir(), p.name(), p.status(), p.millis()));
             }
         }
-        // JK-1156: shape-aware metrics key so rebuild vs incremental priors stay separate.
+        // JK-1156 / JK-1178: shape-aware metrics key so rebuild vs incremental priors stay separate.
+        // Prefer the accumulator's rebuild flag (set from the wire request) over ambient session —
+        // journal write often runs after SessionContext.where has exited.
         String kind = r.kind() == null ? "build" : r.kind();
         String dir = r.dir() == null ? "" : r.dir();
         if ("build".equals(kind) || kind.startsWith("build")) {
-            boolean rebuild = SessionContext.current().config().rebuildOr(false)
+            boolean rebuild = rebuildFlag
+                    || SessionContext.current().config().rebuildOr(false)
                     || SessionContext.current().config().forceOr(false);
             int dirty = r.modules() == null ? 0 : r.modules().size();
             // Single-module pipeline records often have empty modules list — treat as 1 when steps ran.
@@ -4662,6 +4702,8 @@ public final class EngineServer implements AutoCloseable {
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
+        /** JK-1178: request was {@code --rebuild}/{@code --force} — train {@code build:rebuild} metrics. */
+        private final boolean rebuild;
 
         private final java.util.List<ModuleOutcome> modules = new java.util.concurrent.CopyOnWriteArrayList<>();
         // Steps per module dir (name → Step, arrival order, last status wins). The single-pipeline path
@@ -4684,15 +4726,25 @@ public final class EngineServer implements AutoCloseable {
         private volatile int exitCode;
 
         BuildAccumulator(String kind, String dir, String coord, String trigger) {
-            this(kind, dir, coord, trigger, null);
+            this(kind, dir, coord, trigger, null, false);
         }
 
         BuildAccumulator(String kind, String dir, String coord, String trigger, ChromeTimeline timeline) {
+            this(kind, dir, coord, trigger, timeline, false);
+        }
+
+        BuildAccumulator(
+                String kind, String dir, String coord, String trigger, ChromeTimeline timeline, boolean rebuild) {
             this.kind = kind;
             this.dir = dir;
             this.coord = coord;
             this.trigger = trigger;
             this.timeline = timeline;
+            this.rebuild = rebuild;
+        }
+
+        boolean rebuild() {
+            return rebuild;
         }
 
         String dir() {

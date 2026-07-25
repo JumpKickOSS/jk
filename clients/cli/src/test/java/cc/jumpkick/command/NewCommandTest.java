@@ -30,7 +30,7 @@ class NewCommandTest {
         assertThat(tempDir.resolve("jk.lock")).doesNotExist();
         // Simple layout: both source roots exist from the start.
         assertThat(tempDir.resolve("src")).isDirectory();
-        assertThat(tempDir.resolve("test")).isDirectory();
+        assertThat(tempDir.resolve("test/src")).isDirectory();
 
         JkBuild parsed = JkBuildParser.parse(buildFile);
         assertThat(parsed.project().group()).isEqualTo("com.example");

@@ -1299,6 +1299,25 @@ public final class EngineProtocol {
             boolean serial,
             boolean parallelTests,
             boolean verbose) {
+        return explainRequest(
+                dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+    }
+
+    /**
+     * As {@link #explainRequest(String, String, int, boolean, String, String, boolean, boolean, boolean)}
+     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild} (JK-1177).
+     */
+    public static String explainRequest(
+            String dir,
+            String cache,
+            int workers,
+            boolean skipTests,
+            String profile,
+            String jdksDir,
+            boolean serial,
+            boolean parallelTests,
+            boolean verbose,
+            boolean rebuild) {
         return "{\"type\":\""
                 + EXPLAIN_REQUEST
                 + "\",\"dir\":"
@@ -1319,6 +1338,8 @@ public final class EngineProtocol {
                 + parallelTests
                 + ",\"verbose\":"
                 + verbose
+                + ",\"rebuild\":"
+                + rebuild
                 + "}";
     }
 

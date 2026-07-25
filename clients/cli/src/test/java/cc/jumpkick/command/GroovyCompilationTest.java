@@ -24,7 +24,7 @@ class GroovyCompilationTest {
     @Test
     void build_packages_scaffolded_groovy_classes_into_jar(@TempDir Path tempDir) throws IOException {
         run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
-        // Simple layout: package-less Calc.groovy at ./src, CalcTest.groovy at ./test.
+        // Simple layout: package-less Calc.groovy at ./src, CalcTest.groovy at ./test/src.
         assertThat(tempDir.resolve("src/Calc.groovy")).exists();
 
         int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
@@ -93,7 +93,7 @@ class GroovyCompilationTest {
                 .isEqualTo(0);
 
         // Break the assertion: a nonzero exit proves the Groovy test actually executed.
-        Path test = tempDir.resolve("test/CalcTest.groovy");
+        Path test = tempDir.resolve("test/src/CalcTest.groovy");
         assertThat(test).exists();
         Files.writeString(test, Files.readString(test).replace("assertEquals(10,", "assertEquals(11,"));
         assertThat(run("test", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg()))

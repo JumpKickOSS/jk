@@ -40,21 +40,37 @@ public final class BuildMetrics {
     /** Serializes concurrent request-finish folds within this engine process. */
     private static final ReentrantLock LOCK = new ReentrantLock();
 
-    /** Running aggregate of one outcome bucket: count, total, and the observed extremes. */
+    /**
+     * Running aggregate of one outcome bucket: count, total, and the observed extremes.
+     *
+     * <p>JK-1178 recency: {@link #plus} blends the new sample into a recent-biased average (EWMA
+     * alpha {@value #RECENCY_ALPHA}) so multi-year history does not dominate. {@link #avgMillis}
+     * returns that blended mean; min/max still track absolute extremes for clamp logic.
+     */
     public record Stats(long count, long totalMillis, long minMillis, long maxMillis) {
         public static final Stats EMPTY = new Stats(0, 0, 0, 0);
 
-        /** Mean duration, or 0 when nothing has been recorded. */
+        /** Same alpha as {@link StepTimings#DEFAULT_ALPHA} — recent-weighted, outlier-smoothed. */
+        public static final double RECENCY_ALPHA = 0.4;
+
+        /** Recent-biased mean duration, or 0 when nothing has been recorded. */
         public long avgMillis() {
             return count == 0 ? 0 : totalMillis / count;
         }
 
-        /** This bucket with one more sample folded in. */
+        /**
+         * Fold one more sample. After the first sample, the running mean is updated as {@code
+         * α·new + (1−α)·oldAvg} and re-encoded as {@code totalMillis = mean × count} so existing
+         * callers of {@link #avgMillis}/{@link #totalMillis} keep working. Count is capped so old
+         * volume does not overweight clamp confidence forever.
+         */
         Stats plus(long millis) {
             long m = Math.max(0, millis);
-            return count == 0
-                    ? new Stats(1, m, m, m)
-                    : new Stats(count + 1, totalMillis + m, Math.min(minMillis, m), Math.max(maxMillis, m));
+            if (count == 0) return new Stats(1, m, m, m);
+            long oldAvg = avgMillis();
+            long blended = Math.round(RECENCY_ALPHA * m + (1.0 - RECENCY_ALPHA) * oldAvg);
+            long newCount = Math.min(count + 1, 20);
+            return new Stats(newCount, blended * newCount, Math.min(minMillis, m), Math.max(maxMillis, m));
         }
     }
 

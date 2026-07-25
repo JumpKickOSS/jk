@@ -175,7 +175,7 @@ public record NewInputs(
         }
     }
 
-    /** True when the chosen layout is "simple" (flat ./src + ./test). */
+    /** True when the chosen layout is "simple" (Mill-like {@code ./src} + {@code ./test/src}). */
     public boolean isSimpleLayout() {
         return "simple".equalsIgnoreCase(layout);
     }

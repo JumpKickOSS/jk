@@ -308,7 +308,9 @@ public final class EffortWeights {
             } catch (IOException e) {
                 // fall back to default suite only
                 testSrc.addAll(CompileSupport.collectJavaSources(
-                        compact ? in.dir().resolve("test") : in.dir().resolve("src/test/java")));
+                        compact
+                                ? in.dir().resolve("test").resolve("src")
+                                : in.dir().resolve("src/test/java")));
                 testSrc.addAll(CompileSupport.collectKotlinTestSources(in.dir(), compact));
             }
             hadTestSources = !testSrc.isEmpty();

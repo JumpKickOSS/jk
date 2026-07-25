@@ -69,14 +69,15 @@ public final class ScaffoldOps {
     }
 
     /**
-     * Path variables: {@code ${main-root}} / {@code ${test-root}} / {@code ${resources-root}}
-     * (jk's own layout rule, resolved here so plugin data never encodes it) and
-     * {@code ${package-path}}.
+     * Path variables: {@code ${main-root}} / {@code ${test-root}} / {@code ${resources-root}} /
+     * {@code ${test-resources-root}} (jk's Mill-like SIMPLE vs traditional rule, resolved here so
+     * plugin data never encodes it) and {@code ${package-path}}.
      */
     private static String interpolatePath(String path, String lang, String pkg, boolean simple) {
         return path.replace("${main-root}", simple ? "src" : "src/main/" + lang)
-                .replace("${test-root}", simple ? "test" : "src/test/" + lang)
+                .replace("${test-root}", simple ? "test/src" : "src/test/" + lang)
                 .replace("${resources-root}", simple ? "resources" : "src/main/resources")
+                .replace("${test-resources-root}", simple ? "test/resources" : "src/test/resources")
                 .replace("${package-path}", pkg.replace('.', '/'));
     }
 }

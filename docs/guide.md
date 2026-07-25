@@ -500,7 +500,7 @@ ships — silent no-ops are not allowed.
 Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
 ticks only); see [progress-contract.md](perf/progress-contract.md).
 
-jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
+jk modules use a **Mill-like** source layout by default (`layout = "simple"` / AUTO when
 no Maven tree is present). Language is by file extension (`.java` / `.kt` / `.groovy` may
 share a dir).
 
@@ -508,10 +508,10 @@ share a dir).
 |-------|------------------|----------------------------|
 | Main sources | `src/` | `src/main/{java,kotlin,groovy}` |
 | Main resources | `resources/` | `src/main/resources` |
-| Default tests | `test/` | `src/test/{java,kotlin,groovy}` |
-| Default test resources | `test-resources/` | `src/test/resources` |
-| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin,groovy}` |
-| Named suite resources | `<name>-resources/` (e.g. `integration-resources/`) | `src/<name>/resources` |
+| Default tests | `test/src/` | `src/test/{java,kotlin,groovy}` |
+| Default test resources | `test/resources/` | `src/test/resources` |
+| Named test suite `<name>` | `<name>/src/` (e.g. `integration/src/`) | `src/<name>/{java,kotlin,groovy}` |
+| Named suite resources | `<name>/resources/` | `src/<name>/resources` |
 
 Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
 paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
@@ -522,9 +522,9 @@ classpath only when that suite is selected (`jk test --suite integration`, `--al
 
 ## Test suites and tags
 
-`jk test` runs the **default suite** only: sources under `test/` (simple layout) or
+`jk test` runs the **default suite** only: sources under `test/src/` (simple layout) or
 `src/test/{java,kotlin,groovy}` (traditional). Optional sibling suites are discovered when they
-exist — for example `integration/` or `src/integration/java`.
+exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
 jk test                           # default suite ("test") only
@@ -577,13 +577,16 @@ hit/miss per module and step (sources changed, dependency changed, options/class
 stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
 
 ```bash
-jk explain                   # full plan: cached vs rebuild sections
+jk explain                   # full plan: cached vs rebuild sections + ETA
 jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
+jk explain --rebuild         # global flag: forecast full rebuild ETA (same as `jk build --rebuild`)
 
-# Module dependency DAG as Graphviz DOT (no engine; pipe to graphviz yourself)
+# Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot
 dot -Tsvg modules.dot -o modules.svg
+jk explain --graph mermaid > build.mmd
+jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 
 # Pipeline tasks (Mill resolve-lite)
@@ -644,11 +647,11 @@ jk bsp install               # write .bsp/jk.json
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
-**Multi-suite tests (JK-1139–1142):** `jk ide` registers **every discovered test suite**
-(`test/`, `integration/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
+**Multi-suite tests (JK-1139–1142 / JK-1198):** `jk ide` registers **every discovered test suite**
+(`test/src/`, `integration/src/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
 in the same module — IntelliJ `.iml` and VS Code/JDT `.classpath`. One test output directory;
 no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots. Named suite
-resource dirs (`integration-resources/`, …) are marked as test resources when present.
+resource dirs (`integration/resources/`, …) are marked as test resources when present.
 
 Execution still follows the CLI default: `jk test` runs only the **test** suite. Use
 `jk test --suite integration`, `jk test --all`, or tags for other selections. After
@@ -712,7 +715,7 @@ directory (not a pure workspace root). Extra args after the verb are forwarded t
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**
 
-Watches **`src/`**, **`test/`**, and project-root **`jk.toml`** by default — not `target/`,
+Watches **`src/`**, **`test/src/`**, and project-root **`jk.toml`** by default — not `target/`,
 `out/`, `build/`, or VCS trees. Editor save bursts are debounced (default **150ms**).
 
 ```bash

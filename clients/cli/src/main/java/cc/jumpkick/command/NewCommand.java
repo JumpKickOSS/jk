@@ -918,14 +918,14 @@ public final class NewCommand implements CliCommand {
         }
 
         var javaLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple (sources in ./src, tests in ./test)")
+                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
                 .choice("traditional", "Traditional (sources in ./src/main/java, tests in ./src/test/java)")
                 .defaultChoice("simple")
                 .when(a -> "java".equals(a.get("lang")))
                 .build();
 
         var kotlinLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple (sources in ./src, tests in ./test)")
+                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
                 .choice("traditional", "Traditional (sources in ./src/main/kotlin, tests in ./src/test/kotlin)")
                 .defaultChoice("simple")
                 .when(a -> "kotlin".equals(a.get("lang")))

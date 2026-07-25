@@ -65,7 +65,7 @@ class NewScaffolderTest {
         assertThat(tempDir.resolve("src/main/java")).doesNotExist();
         // Sibling sample files share the package dir; the test lands under ./test/.
         assertThat(tempDir.resolve("src/com/example/Calc.java")).exists();
-        assertThat(tempDir.resolve("test/com/example/CalcTest.java")).exists();
+        assertThat(tempDir.resolve("test/src/com/example/CalcTest.java")).exists();
     }
 
     @Test
@@ -348,7 +348,7 @@ class NewScaffolderTest {
         NewScaffolder.write(runnable(tempDir, NewInputs.Language.JAVA, "com.example.Main", 25, true));
 
         assertThat(tempDir.resolve("src")).isDirectory();
-        assertThat(tempDir.resolve("test")).isDirectory();
+        assertThat(tempDir.resolve("test/src")).isDirectory();
         assertThat(tempDir.resolve("jk.lock")).doesNotExist();
     }
 

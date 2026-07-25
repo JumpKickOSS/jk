@@ -365,6 +365,9 @@ public final class BuildPlanForecast {
             }
 
             // ---- package-jar ----
+            // Tokens MUST match BuildPipelines.packageJarStep (classes/main/sbom/manifest).
+            // Omitting sbom: caused perpetual "repackage" in explain while live build restored
+            // the jar — cascading false depDirty downstream (JK-1176).
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
@@ -373,9 +376,18 @@ public final class BuildPlanForecast {
                 Path jar = layout.mainJar();
                 String mainClass = project.mainClass();
                 long tp = Perf.start();
+                byte[] sbom = null;
+                if (project.isApplication()) {
+                    try {
+                        sbom = BuildPipelines.applicationSbom(project, lock, cas);
+                    } catch (Exception ignored) {
+                        // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
+                    }
+                }
                 List<String> tokens = List.of(
                         "classes:" + ClasspathFingerprint.entry(layout.classesDir()),
                         "main:" + (mainClass == null ? "" : mainClass),
+                        "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
                 Perf.end("  package-fingerprint", tp);
                 String pkgKey = ActionKey.forArtifact(

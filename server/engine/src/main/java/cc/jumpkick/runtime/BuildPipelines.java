@@ -2037,7 +2037,7 @@ public final class BuildPipelines {
                     // processTestResources). Without this, getResourceAsStream fixtures NPE under
                     // self-host.
                     // JK-1149: copy resources for every suite in this run's selection
-                    // (default test-resources/ + e.g. integration-resources/).
+                    // (default test/resources/ + e.g. integration/resources/).
                     for (Path resTest :
                             cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames)) {
                         Files.createDirectories(testClasses);

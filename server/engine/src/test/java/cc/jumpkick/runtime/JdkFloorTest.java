@@ -53,8 +53,8 @@ class JdkFloorTest {
                     fun jvm(): String = System.getProperty("java.specification.version")
                 }
                 """);
-        Files.createDirectories(project.resolve("test"));
-        Files.writeString(project.resolve("test/FloorTest.kt"), """
+        Files.createDirectories(project.resolve("test").resolve("src"));
+        Files.writeString(project.resolve("test/src/FloorTest.kt"), """
                 package com.example.floor
 
                 import org.junit.jupiter.api.Assertions.assertEquals

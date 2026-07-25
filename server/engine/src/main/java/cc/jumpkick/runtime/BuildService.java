@@ -277,7 +277,11 @@ public final class BuildService {
             boolean distrust = SessionContext.current().config().forceOr(false)
                     || SessionContext.current().config().rebuildOr(false);
             int shapeHits = 0;
+            // Mirror live seedEta: only dirty modules reserve real work (JK-1176). Fully-cached
+            // modules would otherwise inflate the estimate (and history-prior of avg full builds
+            // would replace base=0 — wrong for "nothing to do").
             for (BuildPlan.Module m : plan.modules()) {
+                if (!distrust && !m.dirty()) continue;
                 Path mdir = m.dir();
                 Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
                 // JK-1114: ETA-only — use shape memo and skip coreBuilder when warm.
@@ -292,7 +296,7 @@ public final class BuildService {
                 }
                 BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
                         mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-                Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, m.dirty());
+                Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, true);
                 BuildPipelines.appendDeclaredTails(builder, inputs);
                 Pipeline pipeline = builder.build();
                 int weight = pipeline.estimatedTotalWeight();
@@ -304,8 +308,10 @@ public final class BuildService {
             }
             if (Perf.ENABLED && shapeHits > 0) {
                 System.err.println("[jk-perf] estimateEta shape-hits=" + shapeHits + "/"
-                        + plan.modules().size());
+                        + plan.modules().size() + " dirty-costs=" + costs.size());
             }
+            // Nothing dirty → nothing to do (do not inject whole-build history average).
+            if (costs.isEmpty()) return 0;
             int concurrency = serial
                     ? 1
                     : HeapPlan.requestedJvms(
@@ -329,7 +335,7 @@ public final class BuildService {
                     SessionContext.current().config().rebuildOr(false)
                             || SessionContext.current().config().forceOr(false),
                     costs.size());
-            return applyHistoryPrior(base, okHistory(entryDir, shape));
+            return applyHistoryPrior(base, okHistory(entryDir, shape), shape.rebuild());
         } catch (RuntimeException e) {
             return 0; // never fail explain over the estimate
         }
@@ -562,8 +568,15 @@ public final class BuildService {
                         req.cache(),
                         req.jdksDir()));
             } else {
-                // History-only early seed (rebuild/force or cold shapes) — JK-1151.
-                long early = applyHistoryPrior(0, okHistory(req.entryDir()));
+                // History-only early seed (rebuild/force or cold shapes) — JK-1151 / JK-1179.
+                // Prefer shape-aware rebuild history when this session is rebuild/force so the TUI
+                // can countdown before prepare finishes (never stay at 0 when journal has priors).
+                long early = applyHistoryPrior(0, okHistory(req.entryDir(), historyShape()));
+                if (early <= 0 && distrustShape && !dirtyUnits.isEmpty()) {
+                    // Cold machine: seed a coarse countdown from dirty-module count so rebuild does
+                    // not start in pure count-up mode (JK-1179). ~1.2s per module @ MS_PER_WEIGHT.
+                    early = (long) dirtyUnits.size() * EffortWeights.MS_PER_WEIGHT * 8L;
+                }
                 if (early > 0) listener.onEtaEstimate(early);
             }
         }
@@ -825,7 +838,7 @@ public final class BuildService {
                 false,
                 parallelTests,
                 dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
-        return applyHistoryPrior(base, okHistory(entryDir, shape));
+        return applyHistoryPrior(base, okHistory(entryDir, shape), shape.rebuild());
     }
 
     /**
@@ -836,10 +849,22 @@ public final class BuildService {
      * work, which legitimately beats the historical average — clamping up would wreck every
      * incremental estimate. Success-only stats: failed/cancelled runs have abnormal durations,
      * matching what {@link StepTimings}/{@link Calibration} learn from.
+     *
+     * <p>JK-1178: for rebuild-shaped history, when the schedule base still looks cold (≫ trained
+     * avg), blend toward history so {@code explain --rebuild} tracks measured rebuild wall.
      */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
+        return applyHistoryPrior(base, okHist, false);
+    }
+
+    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape) {
         if (okHist == null || okHist.count() == 0) return base;
         if (base == 0) return okHist.avgMillis();
+        long histAvg = okHist.avgMillis();
+        if (rebuildShape && histAvg > 0 && base > histAvg * 3 / 2) {
+            // Schedule overshot trained rebuilds — pull toward history (α≈0.3 schedule / 0.7 hist).
+            return Math.round(0.3 * base + 0.7 * histAvg);
+        }
         if (okHist.count() >= 3 && base > 2 * okHist.maxMillis()) return 2 * okHist.maxMillis();
         return base;
     }

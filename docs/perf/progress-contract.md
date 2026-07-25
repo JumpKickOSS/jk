@@ -38,12 +38,25 @@ At least one tick per phase that appears in the live tree.
 
 1. Schedule over dirty-module costs (warm dirs at `MS_PER_WEIGHT`, cold at host calibration or
    static `MS_PER_WEIGHT` so base is rarely zero).
-2. History prior: project `build` invocation avg → host `dir=""` avg.
+2. History prior: project shaped key (`build` or `build:rebuild`, optional `#dN` dirty count) →
+   bare project dir → host `dir=""` for that kind → host bare `build`.
 3. Clamp absurd over-estimates to 2× historical max when count ≥ 3 (one-sided; never clamp up).
 4. Live re-project: elapsed + remaining schedule using measured ms/weight.
 
-`--rebuild` / `--force` may distrust shape-memo weights but still seeds ETA early from history
-and schedule when costs are known.
+`--rebuild` / `--force` may distrust shape-memo weights but still seeds ETA early from
+**rebuild-shaped** history and a coarse dirty-module floor so the TUI can countdown (JK-1179).
+
+## Learning / recency (JK-1178)
+
+| Store | What is recorded | Recency |
+|---|---|---|
+| `StepTimings` (`timings.toml`) | Per-step rates from real SUCCESS work | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates) |
+| `BuildMetrics` (`metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
+| Calibration | Host ms/weight | Refined on successful runs with observed rates |
+
+Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
+flag stored on the accumulator — not ambient session at journal write). Newer successes supersede
+older ones via EWMA; multi-year raw averages are not used as the sole ETA prior.
 
 ## Hierarchical lookup (effort prediction)
 

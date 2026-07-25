@@ -34,7 +34,7 @@ class CompileTestProcessorTest {
     @Test
     void processorRunsOverTestSources_whenProcessorPathProvided(@TempDir Path dir) throws Exception {
         Path procDir = sourceGenProcessor(dir);
-        Path testSrc = dir.resolve("test");
+        Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
         Path out = dir.resolve("out");
 
@@ -66,7 +66,7 @@ class CompileTestProcessorTest {
         assumeTrue(Runtime.version().feature() >= 23, "javac classpath AP auto-run removed in 23");
 
         Path procDir = sourceGenProcessor(dir);
-        Path testSrc = dir.resolve("test");
+        Path testSrc = dir.resolve("test").resolve("src");
         write(testSrc, "app/WidgetTest.java", TEST_SRC);
         Path out = dir.resolve("out");
 

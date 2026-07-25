@@ -404,8 +404,9 @@ public record JkBuild(
     }
 
     /**
-     * Source layout: {@code simple} ({@code ./src}, {@code ./test}), {@code traditional} (Maven),
-     * or {@code auto} (infer; default when absent).
+     * Source layout: {@code simple} (Mill-like {@code ./src}, {@code ./test/src},
+     * {@code ./resources}, {@code ./test/resources}), {@code traditional} (Maven), or {@code auto}
+     * (infer; default when absent).
      */
     public enum Layout {
         SIMPLE,

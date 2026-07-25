@@ -350,17 +350,17 @@ public final class NewScaffolder {
     }
 
     /**
-     * Ensure production/test/resource roots exist: SIMPLE flat-siblings ({@code src/},
-     * {@code resources/}, {@code test/}, {@code test-resources/}) or traditional Maven tree
-     * (JK-1145/1146).
+     * Ensure production/test/resource roots exist: SIMPLE Mill-like ({@code src/},
+     * {@code resources/}, {@code test/src/}, {@code test/resources/}) or traditional Maven tree
+     * (JK-1198).
      */
     private static void createSourceTree(NewInputs inputs) throws IOException {
         var dir = inputs.directory();
         if (inputs.isSimpleLayout()) {
             Files.createDirectories(dir.resolve("src"));
             Files.createDirectories(dir.resolve("resources"));
-            Files.createDirectories(dir.resolve("test"));
-            Files.createDirectories(dir.resolve("test-resources"));
+            Files.createDirectories(dir.resolve("test").resolve("src"));
+            Files.createDirectories(dir.resolve("test").resolve("resources"));
         } else {
             String lang = inputs.lang().sourceDir();
             Files.createDirectories(dir.resolve("src").resolve("main").resolve(lang));
@@ -443,12 +443,12 @@ public final class NewScaffolder {
 
     private static void writeKotlinSample(NewInputs inputs) throws IOException {
         // Kotlin keeps its compact convention: the simple layout is package-less
-        // (files at ./src and ./test); the traditional layout nests by package.
+        // (files at ./src and ./test/src); the traditional layout nests by package.
         boolean simple = inputs.isSimpleLayout();
         String pkg = simple ? "" : inputs.group();
         String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
         Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/kotlin") + pkgPath);
-        Path testDir = inputs.directory().resolve((simple ? "test" : "src/test/kotlin") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test/src" : "src/test/kotlin") + pkgPath);
         Files.createDirectories(srcDir);
         Files.createDirectories(testDir);
 
@@ -461,12 +461,12 @@ public final class NewScaffolder {
 
     private static void writeGroovySample(NewInputs inputs) throws IOException {
         // Groovy mirrors Kotlin's compact convention: the simple layout is package-less
-        // (files at ./src and ./test); the traditional layout nests by package.
+        // (files at ./src and ./test/src); the traditional layout nests by package.
         boolean simple = inputs.isSimpleLayout();
         String pkg = simple ? "" : inputs.group();
         String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
         Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/groovy") + pkgPath);
-        Path testDir = inputs.directory().resolve((simple ? "test" : "src/test/groovy") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test/src" : "src/test/groovy") + pkgPath);
         Files.createDirectories(srcDir);
         Files.createDirectories(testDir);
 
@@ -482,9 +482,9 @@ public final class NewScaffolder {
         return inputs.isSimpleLayout() ? "src" : "src/main/" + inputs.lang().sourceDir();
     }
 
-    /** Test source root: {@code test} (simple) or {@code src/test/<lang>} (traditional). */
+    /** Test source root: {@code test/src} (simple Mill-like) or {@code src/test/<lang>} (traditional). */
     private static String testSourceRoot(NewInputs inputs) {
-        return inputs.isSimpleLayout() ? "test" : "src/test/" + inputs.lang().sourceDir();
+        return inputs.isSimpleLayout() ? "test/src" : "src/test/" + inputs.lang().sourceDir();
     }
 
     /**
