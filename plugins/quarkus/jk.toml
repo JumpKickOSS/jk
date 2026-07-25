@@ -1,0 +1,14 @@
+[project]
+group   = "cc.jumpkick"
+name    = "jk-quarkus"
+version = "0.10.1"
+jdk     = 25
+java    = 25
+layout  = "traditional"
+
+[application]
+main     = "cc.jumpkick.plugin.process.PluginMain"
+assembly = true
+
+[dependencies]
+jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }

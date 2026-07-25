@@ -276,6 +276,9 @@ public final class LockOrchestrator {
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
             testDeduped.putIfAbsent(JUNIT_JUPITER.module(), JUNIT_JUPITER);
         }
+        // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
+        // Engine classpath injection alone is not enough for standalone `java -jar`.
+        injectLanguageRuntimes(project, mainDeduped);
 
         List<Dependency> fileDeps = new ArrayList<>();
         List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
@@ -772,6 +775,41 @@ public final class LockOrchestrator {
             case VersionSelector.Range ignored -> null;
             case VersionSelector.Latest ignored -> null;
         };
+    }
+
+    /**
+     * When the project is Groovy/Kotlin, ensure the language runtime lands in the <em>main</em>
+     * lock graph (JK-1173). Engine-side classpath injection covers {@code jk run}/tests but not
+     * boot-jar nesting — packaging only sees lock artifacts.
+     *
+     * <p>{@code putIfAbsent}: an explicit user/Grails BOM dep wins. Version follows the project's
+     * {@code kotlin}/{@code groovy} pin when it has a literal; otherwise a floating major of the
+     * current jk default so PubGrub still picks a concrete release at lock time.
+     */
+    private static void injectLanguageRuntimes(JkBuild project, LinkedHashMap<String, Dependency> mainDeduped) {
+        JkBuild.Project p = project.project();
+        if (p.isGroovy()) {
+            mainDeduped.putIfAbsent(
+                    "org.apache.groovy:groovy",
+                    new Dependency("org.apache.groovy:groovy", languageRuntimeSelector(p.groovy(), "5")));
+        }
+        if (p.isKotlin()) {
+            mainDeduped.putIfAbsent(
+                    "org.jetbrains.kotlin:kotlin-stdlib",
+                    new Dependency(
+                            "org.jetbrains.kotlin:kotlin-stdlib", languageRuntimeSelector(p.kotlin(), "2")));
+        }
+    }
+
+    /** Exact pin when the project declared a version literal; else floating major of {@code fallbackMajor}. */
+    private static VersionSelector languageRuntimeSelector(VersionSelector declared, String fallbackMajor) {
+        if (declared != null) {
+            String lit = versionLiteral(declared);
+            if (lit != null && !lit.isBlank()) {
+                return VersionSelector.parse("=" + lit);
+            }
+        }
+        return VersionSelector.parse("@" + fallbackMajor);
     }
 
     /**

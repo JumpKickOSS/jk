@@ -1,8 +1,9 @@
 # Authoring build plugins
 
-A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[android]`, `[protobuf]` —
-and shapes the standard commands around it. First-party examples live under
-[`plugins/`](../plugins/) (start with [`plugins/spring-boot`](../plugins/spring-boot)).
+A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[grails]`, `[quarkus]`,
+`[android]`, `[protobuf]` — and shapes the standard commands around it. First-party examples
+live under [`plugins/`](../plugins/) (start with [`plugins/spring-boot`](../plugins/spring-boot)
+or [`plugins/quarkus`](../plugins/quarkus)).
 
 **Who this is for (pre-1.0):** **first-party** plugins in this monorepo, and **private/
 vendored** plugin jars (path or Maven pin + required `sha256`). A public third-party

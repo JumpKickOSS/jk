@@ -1,0 +1,77 @@
+# Built-in Quarkus build plugin — declarative layer (JK-1158/1159 MVP).
+# Worker code (fast-jar packager) lands in the jar; BOM + scaffold are pure data.
+
+[plugin]
+id        = "quarkus"
+table     = "quarkus"
+version   = "1.0.0"
+jk-compat = ">=0.10"
+
+[code]
+worker          = "jk-quarkus"
+protocol-prefix = "##JKQ:"
+
+[packaging]
+packager       = "quarkus-fast-jar"
+exec-mode      = "jar"
+self-contained = true
+classes-run    = false
+main-scan      = true
+
+[schema]
+version = { type = "string", required = true, example = "3.28.5", hint = "pins io.quarkus.platform:quarkus-bom" }
+# packaging modes beyond MVP fat-jar land with real augmentation (follow-up ticket)
+
+# Platform BOM so starters are versionless under [dependencies].
+[[contribute.platform-dependency]]
+coordinate = "io.quarkus.platform:quarkus-bom:${config.version}"
+
+# Quarkus REST / CDI reflect on parameter names.
+[[contribute.compiler-args]]
+javac  = ["-parameters"]
+kotlin = ["-java-parameters"]
+
+# ---- Scaffold: jk new --quarkus
+# Path variables: ${main-root} ${test-root} ${resources-root} ${test-resources-root} ${package-path}
+
+[scaffold]
+flag        = "quarkus"
+description = "Quarkus 3 application"
+
+[[scaffold.append]]
+template = "scaffold/jk-toml-java.toml.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.append]]
+template = "scaffold/jk-toml-kotlin.toml.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/Application.java"
+template = "scaffold/Application.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/GreetingResource.java"
+template = "scaffold/GreetingResource.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${test-root}/${package-path}/GreetingResourceTest.java"
+template = "scaffold/GreetingResourceTest.java.tmpl"
+when     = { lang = "java" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/Application.kt"
+template = "scaffold/Application.kt.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path     = "${main-root}/${package-path}/GreetingResource.kt"
+template = "scaffold/GreetingResource.kt.tmpl"
+when     = { lang = "kotlin" }
+
+[[scaffold.file]]
+path          = "${resources-root}/application.properties"
+template      = "scaffold/application.properties.tmpl"
+keep-existing = true

@@ -71,7 +71,17 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
                 Opt.flag("Grails application (implies --executable, --lang groovy).", "--grails"),
+                Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
+                Opt.value(
+                        "<ref>",
+                        "Giter8-style template: local path (MVP). Remote/git short names in JK-1182.",
+                        "--template"),
+                Opt.value(
+                                "<k=v>",
+                                "Template property override (repeatable; with --template).",
+                                "--param")
+                        .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
@@ -94,7 +104,10 @@ public final class NewCommand implements CliCommand {
     boolean nativeImage;
     boolean spring;
     boolean grails;
+    boolean quarkus;
     boolean plugin;
+    String templateRef;
+    java.util.List<String> templateParams = java.util.List.of();
     String depsCsv;
     String layoutFlag;
     String kotlinModule;
@@ -212,7 +225,10 @@ public final class NewCommand implements CliCommand {
         this.nativeImage = in.isSet("native");
         this.spring = in.isSet("spring");
         this.grails = in.isSet("grails");
+        this.quarkus = in.isSet("quarkus");
         this.plugin = in.isSet("plugin");
+        this.templateRef = in.value("template").orElse(null);
+        this.templateParams = in.values("param");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);
@@ -245,10 +261,84 @@ public final class NewCommand implements CliCommand {
         this.parent = resolveParent(detectionStartDir(cwd));
         this.defaultJdk = readDefaultJdk();
 
+        if (templateRef != null && !templateRef.isBlank()) {
+            return runTemplatePipeline(cwd);
+        }
+
         if (shouldRunWizard()) {
             return runWizardPipeline(cwd);
         }
         return runFlagPipeline(cwd);
+    }
+
+    /**
+     * {@code jk new --template <local-path>} (JK-1182 MVP). Remote/git short names still return a
+     * clear error until the engine-hosted Giter8 worker lands.
+     */
+    private int runTemplatePipeline(Path cwd) {
+        if (spring || grails || quarkus || plugin) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "New", "--template cannot be combined with --spring, --grails, --quarkus, or --plugin"));
+            return Exit.USAGE;
+        }
+        Path template = Path.of(templateRef);
+        if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
+        if (!Files.isDirectory(template)) {
+            // Git / short-name resolution is JK-1182 follow-up (engine worker + cache).
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "New",
+                    "template not found as a local directory: "
+                            + template
+                            + " (git/HTTPS short names not implemented yet — see docs/features/giter8-templates.md)"));
+            return Exit.USAGE;
+        }
+        Map<String, String> params = new java.util.LinkedHashMap<>();
+        for (String p : templateParams) {
+            int eq = p.indexOf('=');
+            if (eq <= 0) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "New", "--param expects key=value, got: " + p));
+                return Exit.USAGE;
+            }
+            params.put(p.substring(0, eq), p.substring(eq + 1));
+        }
+        var presetName = wizardPresetName(directory, cwd);
+        String resolvedName = (name != null && !name.isBlank())
+                ? name
+                : params.getOrDefault("name", presetName.orElse(template.getFileName().toString()));
+        params.putIfAbsent("name", resolvedName);
+        if (group != null && !group.isBlank()) {
+            params.putIfAbsent("organization", group);
+            params.putIfAbsent("group", group);
+            params.putIfAbsent("package", group);
+        }
+        Path target = resolveTarget(directory, cwd, resolvedName);
+        if (Files.exists(target.resolve("jk.toml")) || Files.exists(target.resolve("default.properties"))) {
+            // soft: still allow empty-ish dirs
+        }
+        if (Files.exists(target) && Files.isDirectory(target)) {
+            try (var s = Files.list(target)) {
+                if (s.findAny().isPresent() && Files.exists(target.resolve("jk.toml"))) {
+                    emitProjectExistsError(resolvedName, parent != null, false, null);
+                    return Exit.CONFIG;
+                }
+            } catch (IOException e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                return Exit.SOFTWARE;
+            }
+        }
+        try {
+            int n = Giter8LocalApply.apply(template, target, params);
+            CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                    cc.jumpkick.cli.tui.Glyphs.CHECK,
+                    "New Project",
+                    cc.jumpkick.config.GlobalConfig.nerdfont(),
+                    "Applied template (" + n + " files) → " + target.getFileName()));
+            return Exit.SUCCESS;
+        } catch (IOException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+            return Exit.SOFTWARE;
+        }
     }
 
     /**
@@ -501,7 +591,9 @@ public final class NewCommand implements CliCommand {
                 || nativeImage
                 || spring
                 || grails
+                || quarkus
                 || plugin
+                || (templateRef != null && !templateRef.isBlank())
                 || depsCsv != null
                 || layoutFlag != null
                 || kotlinModule != null;
@@ -527,13 +619,14 @@ public final class NewCommand implements CliCommand {
     }
 
     private NewInputs fromFlags(Path cwd) {
-        if (plugin && (spring || grails || nativeImage)) {
+        if (plugin && (spring || grails || quarkus || nativeImage)) {
             throw new IllegalArgumentException(
-                    "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails, or"
-                            + " --native");
+                    "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails,"
+                            + " --quarkus, or --native");
         }
-        if (spring && grails) {
-            throw new IllegalArgumentException("--spring and --grails are mutually exclusive");
+        int frameworks = (spring ? 1 : 0) + (grails ? 1 : 0) + (quarkus ? 1 : 0);
+        if (frameworks > 1) {
+            throw new IllegalArgumentException("--spring, --grails, and --quarkus are mutually exclusive");
         }
         if (grails && lang != null && !lang.isBlank() && !"groovy".equalsIgnoreCase(lang)) {
             throw new IllegalArgumentException("--grails scaffolds a Groovy application (--lang " + lang + "?)");
@@ -593,19 +686,24 @@ public final class NewCommand implements CliCommand {
                                 : (parent != null && parent.groovy())
                                         ? NewInputs.Language.GROOVY
                                         : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || plugin;
+        var isExecutable =
+                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
-        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot
-        // users also expect the Maven layout. An explicit --layout still wins.
+        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
+        // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
                 ? layoutFlag.toLowerCase()
-                : (spring || grails || plugin) ? "traditional" : "simple";
+                : (spring || grails || quarkus || plugin) ? "traditional" : "simple";
         var resolvedMain = plugin
                 ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
-                : (spring || grails)
+                : (spring || grails || quarkus)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
-                        ? Optional.of(resolvedGroup
-                                + (resolvedLang == NewInputs.Language.KOTLIN ? ".ApplicationKt" : ".Application"))
+                        // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
+                        ? Optional.of(
+                                resolvedGroup
+                                        + (resolvedLang == NewInputs.Language.KOTLIN && !quarkus
+                                                ? ".ApplicationKt"
+                                                : ".Application"))
                         : isExecutable
                                 ? Optional.of(deriveMainFqcn(
                                         resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
@@ -627,6 +725,7 @@ public final class NewCommand implements CliCommand {
                 nativeImage,
                 spring,
                 grails,
+                quarkus,
                 plugin,
                 resolvedLang,
                 resolvedLayout,

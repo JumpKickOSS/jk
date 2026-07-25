@@ -114,6 +114,7 @@ include(
     ":formatter",
     ":spring-boot",
     ":grails",
+    ":quarkus",
     ":android",
     ":protobuf",
     ":shrink",
@@ -149,6 +150,7 @@ project(":compat-bridge").projectDir  = file("plugins/compat-bridge")
 project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
 project(":grails").projectDir         = file("plugins/grails")
+project(":quarkus").projectDir        = file("plugins/quarkus")
 project(":android").projectDir        = file("plugins/android")
 project(":protobuf").projectDir       = file("plugins/protobuf")
 project(":shrink").projectDir         = file("plugins/shrink")

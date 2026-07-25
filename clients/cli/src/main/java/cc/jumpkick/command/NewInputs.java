@@ -19,6 +19,7 @@ public record NewInputs(
         boolean nativeImage,
         boolean spring,
         boolean grails,
+        boolean quarkus,
         boolean plugin,
         Language lang,
         String layout,
@@ -39,7 +40,7 @@ public record NewInputs(
         deps = List.copyOf(deps);
     }
 
-    /** Back-compat constructor: no framework scaffold (Spring/Grails) or plugin project. */
+    /** Back-compat constructor: no framework scaffold or plugin project. */
     public NewInputs(
             String group,
             String name,
@@ -69,6 +70,7 @@ public record NewInputs(
                 false,
                 false,
                 false,
+                false,
                 lang,
                 layout,
                 kotlinModuleName,
@@ -77,7 +79,7 @@ public record NewInputs(
                 directory);
     }
 
-    /** Back-compat constructor: spring/plugin flags, no Grails. */
+    /** Back-compat constructor: spring/plugin flags, no Grails/Quarkus. */
     public NewInputs(
             String group,
             String name,
@@ -107,6 +109,49 @@ public record NewInputs(
                 assembly,
                 nativeImage,
                 spring,
+                false,
+                false,
+                plugin,
+                lang,
+                layout,
+                kotlinModuleName,
+                deps,
+                sample,
+                directory);
+    }
+
+    /** Back-compat constructor: spring/grails/plugin, no Quarkus. */
+    public NewInputs(
+            String group,
+            String name,
+            String jdk,
+            int jdkMajor,
+            int javaRelease,
+            Optional<String> jdkIdentifier,
+            Optional<String> main,
+            boolean assembly,
+            boolean nativeImage,
+            boolean spring,
+            boolean grails,
+            boolean plugin,
+            Language lang,
+            String layout,
+            Optional<String> kotlinModuleName,
+            List<String> deps,
+            boolean sample,
+            Path directory) {
+        this(
+                group,
+                name,
+                jdk,
+                jdkMajor,
+                javaRelease,
+                jdkIdentifier,
+                main,
+                assembly,
+                nativeImage,
+                spring,
+                grails,
                 false,
                 plugin,
                 lang,
@@ -143,6 +188,8 @@ public record NewInputs(
                 main,
                 assembly,
                 nativeImage,
+                false,
+                false,
                 false,
                 false,
                 lang,
@@ -182,5 +229,18 @@ public record NewInputs(
 
     public boolean isRunnable() {
         return main.isPresent();
+    }
+
+    /** True when any framework plugin scaffold flag is set. */
+    public boolean frameworkScaffold() {
+        return spring || grails || quarkus;
+    }
+
+    /** Scaffold flag name for the engine ({@code spring} / {@code grails} / {@code quarkus}). */
+    public String frameworkPluginFlag() {
+        if (grails) return "grails";
+        if (quarkus) return "quarkus";
+        if (spring) return "spring";
+        throw new IllegalStateException("no framework scaffold flag set");
     }
 }

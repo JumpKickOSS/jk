@@ -74,7 +74,7 @@ public final class NewScaffolder {
         }
         var dir = inputs.directory();
         cc.jumpkick.engine.protocol.GeneratedFiles plugin =
-                inputs.spring() || inputs.grails() ? pluginScaffold(inputs) : null;
+                inputs.frameworkScaffold() ? pluginScaffold(inputs) : null;
 
         Files.createDirectories(dir);
         if (plugin != null) {
@@ -100,12 +100,13 @@ public final class NewScaffolder {
 
     /**
      * The engine-rendered plugin scaffold: base jk.toml + the plugin's fragments, and the sample
-     * files when requested. {@code plugin} is the scaffold flag ({@code spring} / {@code grails});
-     * generation is engine-hosted so the client carries none of the framework content.
+     * files when requested. {@code plugin} is the scaffold flag ({@code spring} / {@code grails} /
+     * {@code quarkus}); generation is engine-hosted so the client carries none of the framework
+     * content.
      */
     private static cc.jumpkick.engine.protocol.GeneratedFiles pluginScaffold(NewInputs inputs) throws IOException {
         var params = new java.util.LinkedHashMap<String, String>();
-        params.put("plugin", inputs.grails() ? "grails" : "spring");
+        params.put("plugin", inputs.frameworkPluginFlag());
         params.put(
                 "lang",
                 switch (inputs.lang()) {
