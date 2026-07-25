@@ -52,11 +52,30 @@ At least one tick per phase that appears in the live tree.
 |---|---|---|
 | `StepTimings` (`timings.toml`) | Per-step rates from real SUCCESS work | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates) |
 | `BuildMetrics` (`metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
-| Calibration | Host ms/weight | Refined on successful runs with observed rates |
+| Calibration | Host ms/weight + component probes | Full multi-probe on fresh install / `jk engine calibrate`; refined on successful runs |
 
 Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
 flag stored on the accumulator — not ambient session at journal write). Newer successes supersede
 older ones via EWMA; multi-year raw averages are not used as the sole ETA prior.
+
+## Host calibration suite (JK-1180)
+
+Offline micro-probes (no network), **pessimistic** aggregates (max of warm samples after one
+cold-cache discard). Stored in `~/.jk/state/builds/calibration.toml`:
+
+| Probe | What it stands for in real builds |
+|---|---|
+| `jvm-fork-ms` | `java -version` process spawn (warm worst-of) |
+| `javac-ms` | Micro compile (~12 sources) |
+| `disk-io-ms` | 4 MiB write+fsync+read (local I/O) |
+| `hash-cpu-ms` | 8 MiB SHA-256 (CPU-bound, CAS-like) |
+| `junit-fork-ms` / `junit-run-ms` | Synthetic test-worker JVM + known body work |
+| `engine-cold-start-ms` | Client-timed cold engine spawn (`jk engine calibrate`) |
+| `ms-per-weight` | Combined wall ÷ static weight model; floored near the historical constant |
+
+Triggers: first `Calibration.ensure` (explain/build when cold), or explicit `jk engine calibrate
+[--force]`. Network latency is **not** probed — project-tier metrics absorb fetch once real
+resolves run. Per-project `StepTimings` always win once present.
 
 ## Hierarchical lookup (effort prediction)
 

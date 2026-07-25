@@ -598,6 +598,7 @@ public final class EngineServer implements AutoCloseable {
                         send(writer, EngineProtocol.helloAck(version, pid, startedAtMillis, draining, buildId));
                     }
                     case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
+                    case EngineProtocol.CALIBRATE_REQUEST -> handleCalibrateRequest(line, writer);
                     case EngineProtocol.STATUS -> {
                         cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
                         send(
@@ -3653,6 +3654,40 @@ public final class EngineServer implements AutoCloseable {
             if (!dir.isEmpty()) dir = shape.dirKey(Path.of(dir));
         }
         return new BuildMetrics.Outcome(kind, dir, r.coord(), r.success(), r.cancelled(), r.millis(), steps);
+    }
+
+    /**
+     * JK-1180: offline multi-probe host calibration (or re-run with {@code force}). Optional
+     * {@code engineColdStartMs} from the CLI (timed cold engine spawn) is folded into the file.
+     */
+    private void handleCalibrateRequest(String requestLine, BufferedWriter writer) {
+        try {
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            long cold = Jsonl.longValue(requestLine, "engineColdStartMs", 0);
+            cc.jumpkick.runtime.Calibration cal = cc.jumpkick.runtime.Calibration.ensure(null, force);
+            if (cold > 0) {
+                cal = cc.jumpkick.runtime.Calibration.recordEngineColdStart(cold, System.currentTimeMillis());
+            }
+            sendQuiet(
+                    writer,
+                    EngineProtocol.calibrateAck(
+                            cal.present(),
+                            cal.msPerWeight(),
+                            cal.jvmForkMs(),
+                            cal.javacMs(),
+                            cal.diskIoMs(),
+                            cal.hashCpuMs(),
+                            cal.junitForkMs(),
+                            cal.junitRunMs(),
+                            cal.engineColdStartMs(),
+                            cal.measured(),
+                            cal.summary()));
+        } catch (Exception e) {
+            sendQuiet(
+                    writer,
+                    EngineProtocol.calibrateAck(
+                            false, 0, 0, 0, 0, 0, 0, 0, 0, false, "calibration failed: " + e.getMessage()));
+        }
     }
 
     /**

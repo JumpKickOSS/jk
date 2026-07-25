@@ -9,21 +9,21 @@ import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
 /**
- * Machine-scoped cold ETA anchor ({@code ms-per-weight}) for first builds before {@link StepTimings}
- * has data. Probes {@code java}/{@code javac} once; {@link #refine} EWMA-folds real throughput.
- * Stored under state (survives clean); failures are swallowed.
+ * Machine-scoped cold ETA anchor for first builds before {@link StepTimings} has data (JK-1180).
+ *
+ * <p>On a fresh install, {@link #ensure} runs an offline multi-phase {@link HardwareProbe} (JVM
+ * fork, javac, disk I/O, hash CPU, synthetic test-worker JVM) and stores <b>pessimistic</b> timings
+ * under {@code ~/.jk/state/builds/calibration.toml}. Later real builds {@link #refine} the
+ * {@code ms-per-weight} with EWMA. Optional {@link #withEngineColdStartMs} records client-measured
+ * engine cold-start (CLI {@code jk engine calibrate}).
  */
 public final class Calibration {
 
@@ -33,85 +33,158 @@ public final class Calibration {
     /** Re-probe once a stored calibration is older than this (hardware/VM may have changed). */
     private static final long MAX_AGE_MILLIS = 60L * 86_400_000L; // ~60 days
 
-    /** How many {@code java -version} forks to time (the first is discarded as a cold-cache warmup). */
-    private static final int FORK_SAMPLES = 4;
-
-    /** Sources in the synthetic javac probe — matches the divisor in {@link #deriveMsPerWeight}. */
-    private static final int PROBE_SOURCES = 5;
+    /** Schema for the richer multi-probe calibration file. */
+    public static final int SCHEMA = 2;
 
     private static final AtomicReference<Calibration> MEMO = new AtomicReference<>();
 
     private final double msPerWeight;
     private final long jvmForkMs;
     private final long javacMs;
+    private final long diskIoMs;
+    private final long hashCpuMs;
+    private final long junitForkMs;
+    private final long junitRunMs;
+    private final long engineColdStartMs;
     private final double loadAtCalibration;
     private final int cores;
     private final String jdk;
     private final String jkVersion;
     private final long updated;
-    /** False when the anchor is still the rough synthetic probe; true once a real build refined it. */
+    /**
+     * True once a full multi-probe suite (or a real build refine) produced this anchor; false for
+     * the legacy java/javac-only bootstrap.
+     */
     private final boolean measured;
+
+    private final int schema;
 
     private Calibration(
             double msPerWeight,
             long jvmForkMs,
             long javacMs,
+            long diskIoMs,
+            long hashCpuMs,
+            long junitForkMs,
+            long junitRunMs,
+            long engineColdStartMs,
             double loadAtCalibration,
             int cores,
             String jdk,
             String jkVersion,
             long updated,
-            boolean measured) {
+            boolean measured,
+            int schema) {
         this.msPerWeight = msPerWeight;
         this.jvmForkMs = jvmForkMs;
         this.javacMs = javacMs;
+        this.diskIoMs = diskIoMs;
+        this.hashCpuMs = hashCpuMs;
+        this.junitForkMs = junitForkMs;
+        this.junitRunMs = junitRunMs;
+        this.engineColdStartMs = engineColdStartMs;
         this.loadAtCalibration = loadAtCalibration;
         this.cores = cores;
         this.jdk = jdk;
         this.jkVersion = jkVersion;
         this.updated = updated;
         this.measured = measured;
+        this.schema = schema;
     }
 
     /**
      * The effective cold-estimate anchor: the measured {@code ms-per-weight} when a fresh, valid
-     * calibration exists, else {@link EffortWeights#MS_PER_WEIGHT} so callers are always safe.
+     * calibration exists, else {@link EffortWeights#MS_PER_WEIGHT}.
      */
     public double msPerWeight() {
         return msPerWeight > 0 ? msPerWeight : EffortWeights.MS_PER_WEIGHT;
     }
 
-    /** True when this instance carries a real stored/probed measurement (vs. the safe fallback). */
     public boolean present() {
         return msPerWeight > 0;
     }
 
-    /** False while the anchor is still the rough synthetic probe; true once a real build refined it. */
     public boolean measured() {
         return measured;
+    }
+
+    public long jvmForkMs() {
+        return jvmForkMs;
+    }
+
+    public long javacMs() {
+        return javacMs;
+    }
+
+    public long diskIoMs() {
+        return diskIoMs;
+    }
+
+    public long hashCpuMs() {
+        return hashCpuMs;
+    }
+
+    public long junitForkMs() {
+        return junitForkMs;
+    }
+
+    public long junitRunMs() {
+        return junitRunMs;
+    }
+
+    public long engineColdStartMs() {
+        return engineColdStartMs;
     }
 
     public double loadAtCalibration() {
         return loadAtCalibration;
     }
 
+    public int cores() {
+        return cores;
+    }
+
+    public String jdk() {
+        return jdk;
+    }
+
+    public long updated() {
+        return updated;
+    }
+
     /** Test seam: construct an instance directly (bypasses the probe/IO). */
     static Calibration testInstance(double msPerWeight, boolean measured, String version, long updated) {
-        return new Calibration(msPerWeight, 10, 20, 1.5, 8, "jdk-x", version, updated, measured);
+        return new Calibration(
+                msPerWeight, 10, 20, 5, 8, 15, 40, 0, 1.5, 8, "jdk-x", version, updated, measured, SCHEMA);
+    }
+
+    /** Copy with client-measured engine cold-start wall (ms). */
+    public Calibration withEngineColdStartMs(long coldMs) {
+        long c = Math.max(0, coldMs);
+        return new Calibration(
+                msPerWeight,
+                jvmForkMs,
+                javacMs,
+                diskIoMs,
+                hashCpuMs,
+                junitForkMs,
+                junitRunMs,
+                c,
+                loadAtCalibration,
+                cores,
+                jdk,
+                jkVersion,
+                updated,
+                measured,
+                schema);
     }
 
     // --- load / ensure -------------------------------------------------------
 
-    /** The calibration file: {@code ~/.jk/state/builds/calibration.toml}. */
     static Path file() {
         return JkDirs.builds().resolve("calibration.toml");
     }
 
-    /**
-     * Memoized read of the stored calibration. Returns the safe fallback (an instance whose {@link
-     * #present()} is false) when the file is missing, unreadable, or stale — so a caller can always
-     * use {@link #msPerWeight()} without a null check. Use {@link #ensure} to probe-if-absent.
-     */
     public static Calibration load() {
         Calibration cached = MEMO.get();
         if (cached != null) return cached;
@@ -121,28 +194,37 @@ public final class Calibration {
     }
 
     /**
-     * Return a usable calibration, running the one-time host probe when none is stored or the stored
-     * one is stale. This is the (sanctioned) exception to {@code jk explain} being a pure dry run:
-     * the very first explain/build on a fresh {@code ~/.jk} pays a ~1–2 s probe once, then every
-     * later run just reads the file. {@code jdksDir} mirrors the build's {@code --jdks-dir} override
-     * ({@code null} = the normal JDK probe chain). Never throws.
+     * Return a usable calibration, running the multi-phase host probe when none is stored or the
+     * stored one is stale. Never throws.
      */
     public static Calibration ensure(Path jdksDir) {
+        return ensure(jdksDir, false);
+    }
+
+    /**
+     * As {@link #ensure(Path)} with {@code force} — re-run the full suite even when a fresh
+     * calibration already exists ({@code jk engine calibrate --force}).
+     */
+    public static Calibration ensure(Path jdksDir, boolean force) {
         Calibration current = load();
-        if (current.present()) return current;
+        // Skip when we already have a full multi-probe (schema ≥2) result, unless forced.
+        if (!force && current.present() && current.measured && current.schema >= SCHEMA) return current;
         Calibration probed = probe(jdksDir);
         if (probed != null && probed.present()) {
+            // Preserve engine cold-start if we already had one and this is an upgrade re-probe.
+            if (current.engineColdStartMs > 0 && probed.engineColdStartMs == 0) {
+                probed = probed.withEngineColdStartMs(current.engineColdStartMs);
+            }
             persist(probed);
             MEMO.set(probed);
             return probed;
         }
-        return current; // absent → callers fall back to MS_PER_WEIGHT
+        return current;
     }
 
     /**
-     * Fold a completed build's measured throughput ({@code observedMsPerWeight}, i.e. median module
-     * ms ÷ module weight) into the stored anchor with an EWMA, so the calibration tracks the machine
-     * without a fresh probe. Seeds from the observation when nothing is stored. Best-effort.
+     * Fold a completed build's measured throughput into the stored anchor. First real measurement
+     * replaces an unmeasured probe; later ones EWMA-smooth.
      */
     public static void refine(double observedMsPerWeight, long nowMillis) {
         if (!(observedMsPerWeight > 0)) return;
@@ -152,11 +234,53 @@ public final class Calibration {
     }
 
     /**
-     * Pure EWMA/replace fold (no IO). A real build measures the whole per-weight cost (I/O, CAS,
-     * annotation processing, fork + framework init) that the synthetic probe can't — so the FIRST
-     * real measurement <em>replaces</em> the probe outright, and later ones EWMA-smooth. This
-     * converges to reality after one build, not five.
+     * Persist {@code engineColdStartMs} into the current calibration (or a minimal present row).
+     * Used by the CLI after timing a cold engine spawn.
      */
+    public static Calibration recordEngineColdStart(long coldMs, long nowMillis) {
+        long c = Math.max(0, coldMs);
+        Calibration cur = load();
+        Calibration next;
+        if (cur.present()) {
+            next = new Calibration(
+                    cur.msPerWeight,
+                    cur.jvmForkMs,
+                    cur.javacMs,
+                    cur.diskIoMs,
+                    cur.hashCpuMs,
+                    cur.junitForkMs,
+                    cur.junitRunMs,
+                    c,
+                    cur.loadAtCalibration,
+                    cur.cores,
+                    cur.jdk,
+                    JkVersion.VERSION,
+                    nowMillis,
+                    cur.measured,
+                    Math.max(cur.schema, SCHEMA));
+        } else {
+            next = new Calibration(
+                    EffortWeights.MS_PER_WEIGHT,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    c,
+                    safeLoadAverage(),
+                    Runtime.getRuntime().availableProcessors(),
+                    null,
+                    JkVersion.VERSION,
+                    nowMillis,
+                    false,
+                    SCHEMA);
+        }
+        persist(next);
+        MEMO.set(next);
+        return next;
+    }
+
     static Calibration foldRefine(Calibration prev, double observedMsPerWeight, long nowMillis) {
         double next = (prev.present() && prev.measured)
                 ? ALPHA * observedMsPerWeight + (1 - ALPHA) * prev.msPerWeight
@@ -165,57 +289,51 @@ public final class Calibration {
                 next,
                 prev.jvmForkMs,
                 prev.javacMs,
+                prev.diskIoMs,
+                prev.hashCpuMs,
+                prev.junitForkMs,
+                prev.junitRunMs,
+                prev.engineColdStartMs,
                 prev.loadAtCalibration,
                 prev.present() ? prev.cores : Runtime.getRuntime().availableProcessors(),
                 prev.jdk,
                 JkVersion.VERSION,
                 nowMillis,
-                true);
+                true,
+                Math.max(prev.schema, SCHEMA));
     }
 
     // --- the host probe ------------------------------------------------------
 
-    /**
-     * Measure this host once: fork the resolved JDK's {@code java -version} (dominant, most
-     * machine/OS/disk-variable fixed cost) and {@code javac} over a few trivial sources, then derive
-     * a self-consistent {@code ms-per-weight}. Returns {@code null} (→ caller keeps the constant) if
-     * no JDK resolves without installing, or on any failure.
-     *
-     * <p>Caveat: {@code java -version} times JVM bootstrap, not JUnit-platform init, so it slightly
-     * under-measures a real test fork; learning and {@link #refine} correct this over the next runs.
-     */
     private static Calibration probe(Path jdksDir) {
         try {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
             Path home = javaHome.get();
-            Path javaExe = home.resolve("bin").resolve(isWindows() ? "java.exe" : "java");
-            Path javacExe = home.resolve("bin").resolve(isWindows() ? "javac.exe" : "javac");
-            if (!Files.isRegularFile(javaExe) || !Files.isRegularFile(javacExe)) return null;
-
-            long forkMs = measureFork(javaExe);
-            long javacMs = measureJavac(javacExe);
-            if (forkMs <= 0 || javacMs <= 0) return null;
-
-            double msPerWeight = deriveMsPerWeight(forkMs, javacMs);
-            double load = Math.max(0.0, safeLoadAverage());
+            HardwareProbe.Result r = HardwareProbe.run(home);
+            if (r == null || !(r.msPerWeight() > 0)) return null;
             String jdkId = JdkRegistry.identifierFor(home);
             return new Calibration(
-                    msPerWeight,
-                    forkMs,
-                    javacMs,
-                    load,
+                    r.msPerWeight(),
+                    r.jvmForkMs(),
+                    r.javacMs(),
+                    r.diskIoMs(),
+                    r.hashCpuMs(),
+                    r.junitForkMs(),
+                    r.junitRunMs(),
+                    0,
+                    Math.max(0.0, safeLoadAverage()),
                     Runtime.getRuntime().availableProcessors(),
                     jdkId,
                     JkVersion.VERSION,
                     System.currentTimeMillis(),
-                    false); // probe bootstrap — first real build will replace it
+                    true, // full multi-probe suite
+                    SCHEMA);
         } catch (Exception | LinkageError e) {
-            return null; // advisory — never fail over calibration
+            return null;
         }
     }
 
-    /** Resolve a JDK home the same way the build does; empty when only an install would satisfy it. */
     private static Optional<Path> resolveJavaHome(Path jdksDir) {
         try {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
@@ -234,103 +352,22 @@ public final class Calibration {
         }
     }
 
-    /** Median of {@link #FORK_SAMPLES} {@code java -version} forks, discarding the first (cold cache). */
-    private static long measureFork(Path javaExe) throws IOException, InterruptedException {
-        List<Long> samples = new ArrayList<>();
-        for (int i = 0; i < FORK_SAMPLES; i++) {
-            long ms = timeProcess(new ProcessBuilder(javaExe.toString(), "-version"));
-            if (i > 0 && ms >= 0) samples.add(ms); // drop the warmup run
-        }
-        return median(samples);
-    }
-
-    /** Compile a handful of trivial classes and time it — javac cold init + a little throughput. */
-    private static long measureJavac(Path javacExe) throws IOException, InterruptedException {
-        Path dir = Files.createTempDirectory("jk-calib");
-        try {
-            Path out = Files.createDirectory(dir.resolve("out"));
-            List<String> cmd = new ArrayList<>();
-            cmd.add(javacExe.toString());
-            cmd.add("-d");
-            cmd.add(out.toString());
-            for (int i = 0; i < PROBE_SOURCES; i++) {
-                Path src = dir.resolve("Probe" + i + ".java");
-                Files.writeString(
-                        src,
-                        "final class Probe" + i + " { static int f(int x){ return x*" + (i + 1) + "; } }\n",
-                        StandardCharsets.UTF_8);
-                cmd.add(src.toString());
-            }
-            return timeProcess(new ProcessBuilder(cmd));
-        } finally {
-            deleteTree(dir);
-        }
-    }
-
     /**
-     * {@code ms-per-weight} anchored to the model itself: the measured wall-clock of the probe's
-     * fork + compile, over the static weight {@link EffortWeights} would assign that same synthetic
-     * unit (a test-startup floor plus a {@value #PROBE_SOURCES}-source compile). Self-consistent by
-     * construction, so cold estimates scale with the measured host.
+     * Legacy helper kept for unit tests that pin the old (fork+javac)/weight formula.
+     * Production uses {@link HardwareProbe#deriveMsPerWeight}.
      */
     static double deriveMsPerWeight(long forkMs, long javacMs) {
-        int weight =
-                EffortWeights.TEST_STARTUP + EffortWeights.COMPILE_FLOOR + EffortWeights.compileWeight(PROBE_SOURCES);
-        return (forkMs + javacMs) / (double) Math.max(1, weight);
-    }
-
-    /** Run {@code pb} to completion (output discarded) and return its wall-clock ms, or -1 on failure. */
-    private static long timeProcess(ProcessBuilder pb) throws IOException, InterruptedException {
-        pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);
-        pb.redirectError(ProcessBuilder.Redirect.DISCARD);
-        long t0 = System.nanoTime();
-        Process p = pb.start();
-        if (!p.waitFor(60, TimeUnit.SECONDS)) {
-            p.destroyForcibly();
-            return -1;
-        }
-        long ms = (System.nanoTime() - t0) / 1_000_000;
-        return p.exitValue() == 0 ? ms : -1;
-    }
-
-    private static long median(List<Long> values) {
-        if (values.isEmpty()) return -1;
-        List<Long> sorted = new ArrayList<>(values);
-        sorted.sort(Long::compareTo);
-        int n = sorted.size();
-        return n % 2 == 1 ? sorted.get(n / 2) : (sorted.get(n / 2 - 1) + sorted.get(n / 2)) / 2;
+        return HardwareProbe.deriveMsPerWeight(forkMs, javacMs, 0, 0, 0, 0);
     }
 
     private static double safeLoadAverage() {
         try {
-            return java.lang.management.ManagementFactory.getOperatingSystemMXBean()
-                    .getSystemLoadAverage();
+            return java.lang.management.ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
         } catch (Exception e) {
             return -1;
         }
     }
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "")
-                .toLowerCase(java.util.Locale.ROOT)
-                .contains("win");
-    }
-
-    private static void deleteTree(Path dir) {
-        try (var walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.deleteIfExists(p);
-                } catch (IOException ignored) {
-                    // best-effort cleanup
-                }
-            });
-        } catch (IOException ignored) {
-            // best-effort cleanup
-        }
-    }
-
-    /** Stale when a different jk built it (weights may have changed) or it has aged out (HW/VM drift). */
     static boolean stale(String version, long updated, long nowMillis) {
         if (!JkVersion.VERSION.equals(version)) return true;
         return updated > 0 && nowMillis - updated > MAX_AGE_MILLIS;
@@ -338,12 +375,10 @@ public final class Calibration {
 
     // --- IO ------------------------------------------------------------------
 
-    /** Read the stored calibration at the global path; the safe fallback when missing/stale. */
     private static Calibration readOrAbsent() {
         return readFrom(file(), System.currentTimeMillis());
     }
 
-    /** Read a calibration from {@code f}; the safe fallback when missing, unreadable, or stale. */
     static Calibration readFrom(Path f, long nowMillis) {
         Calibration absent = absent();
         try {
@@ -354,51 +389,100 @@ public final class Calibration {
             String version = t.getString("jk-version");
             if (mpw <= 0) return absent;
             if (stale(version, updated, nowMillis)) return absent;
+            int schema = t.getLong("schema") != null ? Math.toIntExact(t.getLong("schema")) : 1;
             return new Calibration(
                     mpw,
-                    t.getLong("jvm-fork-ms") != null ? t.getLong("jvm-fork-ms") : 0L,
-                    t.getLong("javac-ms") != null ? t.getLong("javac-ms") : 0L,
+                    longOr(t, "jvm-fork-ms", 0),
+                    longOr(t, "javac-ms", 0),
+                    longOr(t, "disk-io-ms", 0),
+                    longOr(t, "hash-cpu-ms", 0),
+                    longOr(t, "junit-fork-ms", 0),
+                    longOr(t, "junit-run-ms", 0),
+                    longOr(t, "engine-cold-start-ms", 0),
                     t.getDouble("load-at-calibration") != null ? t.getDouble("load-at-calibration") : -1,
                     t.getLong("cores") != null ? Math.toIntExact(t.getLong("cores")) : 0,
                     t.getString("jdk"),
                     version,
                     updated,
-                    t.getBoolean("measured") != null ? t.getBoolean("measured") : false);
+                    t.getBoolean("measured") != null ? t.getBoolean("measured") : false,
+                    schema);
         } catch (Exception e) {
-            return absent; // corrupt/unreadable → treat as uncalibrated
+            return absent;
         }
     }
 
-    /** The safe fallback: {@link #present()} is false, {@link #msPerWeight()} returns the constant. */
-    private static Calibration absent() {
-        return new Calibration(0, 0, 0, -1, 0, null, null, 0, false);
+    private static long longOr(TomlParseResult t, String key, long dflt) {
+        Long v = t.getLong(key);
+        return v != null ? v : dflt;
     }
 
-    /** Atomically write {@code c} to the global calibration file; swallows IO failure (advisory). */
+    private static Calibration absent() {
+        return new Calibration(0, 0, 0, 0, 0, 0, 0, 0, -1, 0, null, null, 0, false, 0);
+    }
+
     private static void persist(Calibration c) {
         try {
             writeTo(file(), c);
         } catch (IOException | RuntimeException ignored) {
-            // advisory — never fail over the calibration file
+            // advisory
         }
     }
 
-    /** Atomically write {@code c} to {@code file} (mirrors {@link StepTimings}'s IO). */
     static void writeTo(Path file, Calibration c) throws IOException {
         AtomicWrites.replace(file, c.render());
     }
 
     private String render() {
-        return "# jk build-time calibration for this host. Regenerated automatically; safe to delete.\n"
-                + "ms-per-weight       = " + round3(msPerWeight) + '\n'
-                + "jvm-fork-ms         = " + jvmForkMs + '\n'
-                + "javac-ms            = " + javacMs + '\n'
-                + "load-at-calibration = " + round3(loadAtCalibration) + '\n'
-                + "cores               = " + cores + '\n'
-                + "jdk                 = " + quote(jdk == null ? "" : jdk) + '\n'
-                + "jk-version          = " + quote(jkVersion == null ? "" : jkVersion) + '\n'
-                + "measured            = " + measured + '\n'
-                + "updated             = " + updated + '\n';
+        return """
+                # jk host calibration (JK-1180). Offline multi-probe; safe to delete (re-runs on next build).
+                schema               = %d
+                ms-per-weight        = %s
+                jvm-fork-ms          = %d
+                javac-ms             = %d
+                disk-io-ms           = %d
+                hash-cpu-ms          = %d
+                junit-fork-ms        = %d
+                junit-run-ms         = %d
+                engine-cold-start-ms = %d
+                load-at-calibration  = %s
+                cores                = %d
+                jdk                  = %s
+                jk-version           = %s
+                measured             = %s
+                updated              = %d
+                """
+                .formatted(
+                        schema <= 0 ? SCHEMA : schema,
+                        round3(msPerWeight),
+                        jvmForkMs,
+                        javacMs,
+                        diskIoMs,
+                        hashCpuMs,
+                        junitForkMs,
+                        junitRunMs,
+                        engineColdStartMs,
+                        round3(loadAtCalibration),
+                        cores,
+                        quote(jdk == null ? "" : jdk),
+                        quote(jkVersion == null ? "" : jkVersion),
+                        measured,
+                        updated);
+    }
+
+    /** Human-readable summary for {@code jk engine calibrate}. */
+    public String summary() {
+        if (!present()) return "uncalibrated (using static ms-per-weight=" + EffortWeights.MS_PER_WEIGHT + ")";
+        StringBuilder sb = new StringBuilder();
+        sb.append(String.format("ms-per-weight=%.1f (pessimistic host anchor)%n", msPerWeight()));
+        if (jvmForkMs > 0) sb.append(String.format("  jvm-fork            %d ms%n", jvmForkMs));
+        if (javacMs > 0) sb.append(String.format("  javac (micro)       %d ms%n", javacMs));
+        if (diskIoMs > 0) sb.append(String.format("  disk io (4 MiB)     %d ms%n", diskIoMs));
+        if (hashCpuMs > 0) sb.append(String.format("  sha-256 (8 MiB)     %d ms%n", hashCpuMs));
+        if (junitForkMs > 0) sb.append(String.format("  test-worker fork    %d ms%n", junitForkMs));
+        if (junitRunMs > 0) sb.append(String.format("  test-worker body    %d ms%n", junitRunMs));
+        if (engineColdStartMs > 0) sb.append(String.format("  engine cold start   %d ms%n", engineColdStartMs));
+        sb.append(String.format("  cores=%d  measured=%s  schema=%d%n", cores, measured, schema));
+        return sb.toString().stripTrailing();
     }
 
     private static String quote(String s) {
@@ -409,7 +493,6 @@ public final class Calibration {
         return Math.round(v * 1000.0) / 1000.0;
     }
 
-    /** Test seam: drop the memo so a freshly-written file is re-read. */
     static void clearMemo() {
         MEMO.set(null);
     }

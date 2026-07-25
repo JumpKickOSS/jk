@@ -24,6 +24,7 @@ public final class EngineCommand extends GroupCommand {
                 new EngineStartCommand(),
                 new EngineStopCommand(),
                 new EngineStatusCommand(),
+                new EngineCalibrateCommand(),
                 new EngineRotateTokenCommand());
     }
 }
