@@ -91,6 +91,31 @@ class GradleModuleMetadataTest {
     }
 
     @Test
+    void in_place_runtime_wins_over_a_later_feature_variant_redirect(@TempDir Path dir) throws Exception {
+        // grails-core's real shape: runtimeElements ships the jar in place; the cli FEATURE
+        // variants carry available-at → grails-core-cli. The first matching runtime variant
+        // decides — this is NOT a KMP root, and no redirect may be taken.
+        String featureVariants = """
+                { "formatVersion": "1.1", "variants": [ {
+                    "name": "runtimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                    "files": [ { "name": "grails-core-8.0.0-M4.jar" } ]
+                  }, {
+                    "name": "cliRuntimeElements",
+                    "attributes": { "org.gradle.category": "library", "org.gradle.usage": "java-runtime" },
+                    "available-at": {
+                      "group": "org.apache.grails", "module": "grails-core-cli", "version": "8.0.0-M4"
+                    }
+                } ] }
+                """;
+        Path module = Files.writeString(dir.resolve("m.module"), featureVariants);
+        var gmm = GradleModuleMetadata.parse(module);
+
+        assertThat(gmm.runtimeRedirect("standard-jvm")).isEmpty();
+        assertThat(gmm.runtimeRedirect("android")).isEmpty();
+    }
+
+    @Test
     void an_in_place_publication_reads_as_no_redirect(@TempDir Path dir) throws Exception {
         String inPlace = """
                 { "formatVersion": "1.1", "variants": [ {

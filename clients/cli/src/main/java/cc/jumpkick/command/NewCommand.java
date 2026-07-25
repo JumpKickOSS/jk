@@ -70,6 +70,7 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
+                Opt.flag("Grails application (implies --executable, --lang groovy).", "--grails"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
@@ -92,6 +93,7 @@ public final class NewCommand implements CliCommand {
     boolean assembly;
     boolean nativeImage;
     boolean spring;
+    boolean grails;
     boolean plugin;
     String depsCsv;
     String layoutFlag;
@@ -209,6 +211,7 @@ public final class NewCommand implements CliCommand {
         this.assembly = in.isSet("assembly");
         this.nativeImage = in.isSet("native");
         this.spring = in.isSet("spring");
+        this.grails = in.isSet("grails");
         this.plugin = in.isSet("plugin");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
@@ -496,6 +499,8 @@ public final class NewCommand implements CliCommand {
                 || executable != null
                 || assembly
                 || nativeImage
+                || spring
+                || grails
                 || plugin
                 || depsCsv != null
                 || layoutFlag != null
@@ -522,9 +527,16 @@ public final class NewCommand implements CliCommand {
     }
 
     private NewInputs fromFlags(Path cwd) {
-        if (plugin && (spring || nativeImage)) {
+        if (plugin && (spring || grails || nativeImage)) {
             throw new IllegalArgumentException(
-                    "--plugin scaffolds a build-plugin project and can't be combined with --spring or --native");
+                    "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails, or"
+                            + " --native");
+        }
+        if (spring && grails) {
+            throw new IllegalArgumentException("--spring and --grails are mutually exclusive");
+        }
+        if (grails && lang != null && !lang.isBlank() && !"groovy".equalsIgnoreCase(lang)) {
+            throw new IllegalArgumentException("--grails scaffolds a Groovy application (--lang " + lang + "?)");
         }
         var presetName = wizardPresetName(directory, cwd);
         var resolvedName = (name != null && !name.isBlank()) ? name : presetName.orElse("untitled");
@@ -572,21 +584,25 @@ public final class NewCommand implements CliCommand {
                         + " was requested");
             }
         }
-        var resolvedLang = (lang != null && !lang.isBlank())
-                ? parseLanguage(lang)
-                : (parent != null && parent.kotlin())
-                        ? NewInputs.Language.KOTLIN
-                        : (parent != null && parent.groovy()) ? NewInputs.Language.GROOVY : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || plugin;
+        var resolvedLang = grails
+                ? NewInputs.Language.GROOVY
+                : (lang != null && !lang.isBlank())
+                        ? parseLanguage(lang)
+                        : (parent != null && parent.kotlin())
+                                ? NewInputs.Language.KOTLIN
+                                : (parent != null && parent.groovy())
+                                        ? NewInputs.Language.GROOVY
+                                        : NewInputs.Language.JAVA;
+        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
         // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot
         // users also expect the Maven layout. An explicit --layout still wins.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
                 ? layoutFlag.toLowerCase()
-                : (spring || plugin) ? "traditional" : "simple";
+                : (spring || grails || plugin) ? "traditional" : "simple";
         var resolvedMain = plugin
                 ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
-                : spring
+                : (spring || grails)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
                         ? Optional.of(resolvedGroup
                                 + (resolvedLang == NewInputs.Language.KOTLIN ? ".ApplicationKt" : ".Application"))
@@ -610,6 +626,7 @@ public final class NewCommand implements CliCommand {
                 assembly || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
                 nativeImage,
                 spring,
+                grails,
                 plugin,
                 resolvedLang,
                 resolvedLayout,

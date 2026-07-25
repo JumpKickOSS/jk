@@ -119,6 +119,11 @@ boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", 
 web = { group = "org.springframework.boot", name = "spring-boot-starter-web" }  # versionless OK
 ```
 
+Plugin tables inject their platform for you: `[spring-boot] version` imports
+`spring-boot-dependencies`, `[grails] version` imports the Apache `grails-bom`
+(which itself imports `spring-boot-dependencies`) — versionless `grails-*` /
+starter entries resolve under either.
+
 - BOM is **not** on the runtime classpath as a normal jar of “everything.”
 - Managed GAs receive **soft-prefer** recommendations at resolve (highest-wins still applies;
   stricter floors may lift).

@@ -61,7 +61,12 @@ coordinate = "org.springframework.boot:spring-boot-dependencies:${config.version
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]
+groovy = ["--parameters"]
 ksp    = ["room.schemaLocation=…"]
+
+[[contribute.source-roots]]
+dir  = "grails-app/domain"    # module-relative; absolute or ..-escaping dirs fail at load
+kind = "source"               # source | resource — joins roots()/compile/IDE/BSP/fingerprints
 
 [[contribute.kotlin-plugin]]
 id         = "org.jetbrains.kotlin.noarg"

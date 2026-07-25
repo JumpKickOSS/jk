@@ -62,6 +62,36 @@ public final class PluginContributions {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::kotlin);
     }
 
+    /** The groovyc args every present plugin contributes (e.g. grails' {@code --parameters}). */
+    public static List<String> groovyArgs(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+        return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::groovy);
+    }
+
+    /** One resolved plugin-contributed module input root (relative dir + resource/source kind). */
+    public record SourceRoot(String dir, boolean resource) {}
+
+    /**
+     * The active plugins' {@code [[contribute.source-roots]]} entries with conditions evaluated —
+     * module-relative dirs that join the module's roots (compile inputs, resource copy, IDE/BSP,
+     * fingerprints) exactly like the conventional layout dirs. Evaluated before resolution
+     * (classpath-has was rejected at manifest load).
+     */
+    public static List<SourceRoot> sourceRoots(JkBuild build, java.nio.file.Path moduleDir) {
+        List<SourceRoot> out = new ArrayList<>();
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
+            if (config == null) continue;
+            for (PluginDescriptor.SourceRoot root : manifest.contributions().sourceRoots()) {
+                if (!holds(
+                        root.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                    continue;
+                }
+                out.add(new SourceRoot(root.dir(), root.resource()));
+            }
+        }
+        return out;
+    }
+
     /**
      * The KSP processor options ({@code key=value}) every present plugin contributes — handed to
      * the KSP round as {@code -processor-options} (Hilt's superclass-validation toggle et al.).

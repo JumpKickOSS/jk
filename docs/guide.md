@@ -363,6 +363,7 @@ do not force main classpath versions.
 | Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
+| Grails jar (Boot layout) | grails plugin | `jk build` (not `assembly`) |
 
 One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
 `--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
@@ -379,6 +380,27 @@ assembly = true       # fat jar — jk assembly / jk assemble
 ```
 
 R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
+
+### Grails (`[grails]`)
+
+Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaffolds a
+minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
+
+```toml
+[project]
+groovy = "5.0.7"
+
+[grails]
+version = "8.0.0-M4"          # pins org.apache.grails:grails-bom (imports the Boot BOM)
+
+[dependencies]                # versionless under the BOM
+grails-core     = { group = "org.apache.grails", name = "grails-core" }
+grails-web-boot = { group = "org.apache.grails", name = "grails-web-boot" }
+```
+
+The plugin contributes the `grails-app/*` source/resource roots (domain, controllers,
+services, taglib, init, jobs compile; conf, i18n, views package as resources), compiles
+with `--parameters`, and `jk build` produces a Boot-launcher executable jar.
 
 ## Common commands
 

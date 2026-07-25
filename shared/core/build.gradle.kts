@@ -33,6 +33,13 @@ tasks.processResources {
     from(rootProject.file("plugins/spring-boot/scaffold")) {
         into("cc/jumpkick/plugin/manifest/spring-boot/scaffold")
     }
+    from(rootProject.file("plugins/grails/jk-plugin.toml")) {
+        into("cc/jumpkick/plugin/manifest")
+        rename { "grails.jk-plugin.toml" }
+    }
+    from(rootProject.file("plugins/grails/scaffold")) {
+        into("cc/jumpkick/plugin/manifest/grails/scaffold")
+    }
     from(rootProject.file("plugins/android/jk-plugin.toml")) {
         into("cc/jumpkick/plugin/manifest")
         rename { "android.jk-plugin.toml" }

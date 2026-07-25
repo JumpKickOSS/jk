@@ -98,6 +98,46 @@ class ModuleLayoutTest {
                 .containsExactly(tmp.resolve("test/FooSpec.groovy"));
     }
 
+    @Test
+    void plugin_contributed_roots_join_roots_and_fingerprints(@TempDir Path tmp) throws Exception {
+        Files.writeString(tmp.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "app"
+                version = "1.0.0"
+                jdk = 21
+                groovy = "5.0.7"
+                layout = "simple"
+
+                [grails]
+                version = "8.0.0-M4"
+                """);
+        Files.createDirectories(tmp.resolve("grails-app/domain"));
+        Files.createDirectories(tmp.resolve("grails-app/conf"));
+
+        assertThat(ModuleLayout.pluginContributedRoots(tmp))
+                .contains(
+                        new ModuleLayout.Root("grails-app/domain", ModuleLayout.Kind.SOURCE),
+                        new ModuleLayout.Root("grails-app/conf", ModuleLayout.Kind.RESOURCE));
+        // roots() surfaces only the dirs that exist on disk.
+        assertThat(ModuleLayout.roots(tmp))
+                .contains(
+                        new ModuleLayout.Root("grails-app/domain", ModuleLayout.Kind.SOURCE),
+                        new ModuleLayout.Root("grails-app/conf", ModuleLayout.Kind.RESOURCE))
+                .noneMatch(r -> r.relative().equals("grails-app/views"));
+        List<Path> dirs = ModuleLayout.fingerprintDirs(tmp, true);
+        assertThat(dirs).anyMatch(p -> p.endsWith("grails-app/domain"));
+        assertThat(dirs).anyMatch(p -> p.endsWith("grails-app/conf"));
+    }
+
+    @Test
+    void plugin_roots_absent_without_the_owning_table(@TempDir Path tmp) throws Exception {
+        writeToml(tmp, "simple");
+        Files.createDirectories(tmp.resolve("grails-app/domain"));
+        assertThat(ModuleLayout.pluginContributedRoots(tmp)).isEmpty();
+        assertThat(ModuleLayout.roots(tmp)).noneMatch(r -> r.relative().startsWith("grails-app"));
+    }
+
     private static void writeToml(Path dir, String layout) throws Exception {
         Files.writeString(
                 dir.resolve("jk.toml"),

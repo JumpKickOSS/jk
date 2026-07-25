@@ -105,6 +105,7 @@ class SelfHostingTomlTest {
                         "plugins/compat-bridge",
                         "plugins/formatter",
                         "plugins/spring-boot",
+                        "plugins/grails",
                         "plugins/android",
                         "plugins/protobuf",
                         "plugins/shrink");

@@ -62,8 +62,10 @@ public final class GradleModuleMetadata {
             Object env = attrs.get("org.gradle.jvm.environment");
             boolean matches = env == null ? "standard-jvm".equals(jvmEnvironment) : env.equals(jvmEnvironment);
             if (!matches) continue;
-            Redirect r = availableAt(variant);
-            if (r != null) return Optional.of(r);
+            // The FIRST matching runtime variant decides. In-place files (no available-at) mean
+            // this module ships its own jar — scanning on would misread later FEATURE variants
+            // (grails-core's cliRuntimeElements → grails-core-cli) as a KMP-root redirect.
+            return Optional.ofNullable(availableAt(variant));
         }
         return Optional.empty();
     }

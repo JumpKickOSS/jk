@@ -93,6 +93,16 @@ tasks.withType<Test>().configureEach {
     doFirst { systemProperty("jk.spring-boot.plugin.jar", testSpringBootWorkerJar.singleFile.absolutePath) }
 }
 
+// Pass the grails worker jar to tests (the Grails e2e integration test forks it).
+val testGrailsWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { testGrailsWorkerJar(project(":grails")) }
+tasks.withType<Test>().configureEach {
+    dependsOn(testGrailsWorkerJar)
+    doFirst { systemProperty("jk.grails.plugin.jar", testGrailsWorkerJar.singleFile.absolutePath) }
+}
+
 // Pass the android worker jar to tests (the Android-spike integration test forks it).
 val testAndroidWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false

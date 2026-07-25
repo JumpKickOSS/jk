@@ -113,6 +113,7 @@ include(
     ":compat-bridge",
     ":formatter",
     ":spring-boot",
+    ":grails",
     ":android",
     ":protobuf",
     ":shrink",
@@ -147,6 +148,7 @@ project(":image-builder").projectDir  = file("plugins/image-builder")
 project(":compat-bridge").projectDir  = file("plugins/compat-bridge")
 project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
+project(":grails").projectDir         = file("plugins/grails")
 project(":android").projectDir        = file("plugins/android")
 project(":protobuf").projectDir       = file("plugins/protobuf")
 project(":shrink").projectDir         = file("plugins/shrink")

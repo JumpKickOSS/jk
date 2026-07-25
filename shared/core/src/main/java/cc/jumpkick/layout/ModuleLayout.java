@@ -124,8 +124,30 @@ public final class ModuleLayout {
     }
 
     /**
-     * All input roots that exist on disk: main source/resource + every discovered test suite +
-     * suite resource dirs. Prefer this over hand-rolled path literals.
+     * Plugin-contributed module roots (JK-1166): the active manifests' {@code
+     * [[contribute.source-roots]]} entries (Grails' {@code grails-app} tree), relative dirs
+     * regardless of on-disk presence. Empty when {@code jk.toml} is absent or unparseable.
+     */
+    public static List<Root> pluginContributedRoots(Path moduleDir) {
+        Path toml = moduleDir.resolve("jk.toml");
+        if (!Files.isRegularFile(toml)) return List.of();
+        try {
+            JkBuild build = JkBuildParser.parse(toml);
+            List<Root> out = new ArrayList<>();
+            for (cc.jumpkick.plugin.manifest.PluginContributions.SourceRoot root :
+                    cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(build, moduleDir)) {
+                out.add(new Root(root.dir(), root.resource() ? Kind.RESOURCE : Kind.SOURCE));
+            }
+            return List.copyOf(out);
+        } catch (Exception ignored) {
+            return List.of();
+        }
+    }
+
+    /**
+     * All input roots that exist on disk: main source/resource + plugin-contributed roots +
+     * every discovered test suite + suite resource dirs. Prefer this over hand-rolled path
+     * literals.
      */
     public static List<Root> roots(Path moduleDir) {
         boolean compact = isCompact(moduleDir);
@@ -140,6 +162,9 @@ public final class ModuleLayout {
             addIfDir(out, seen, moduleDir, "src/main/kotlin", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/groovy", Kind.SOURCE);
             addIfDir(out, seen, moduleDir, "src/main/resources", Kind.RESOURCE);
+        }
+        for (Root root : pluginContributedRoots(moduleDir)) {
+            addIfDir(out, seen, moduleDir, root.relative(), root.kind());
         }
 
         List<String> suites = TestSuites.discover(moduleDir, compact);
@@ -181,6 +206,10 @@ public final class ModuleLayout {
         } else {
             // Walking src/ covers main + traditional test + named suites under src/<name>
             addDir(dirs, moduleDir.resolve("src"));
+        }
+        // Plugin-contributed roots (grails-app/…) are main inputs — always fingerprinted.
+        for (Root root : pluginContributedRoots(moduleDir)) {
+            addDir(dirs, moduleDir.resolve(root.relative()));
         }
         if (!skipTests) {
             if (compact) {

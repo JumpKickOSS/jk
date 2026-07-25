@@ -18,6 +18,7 @@ public record NewInputs(
         boolean assembly,
         boolean nativeImage,
         boolean spring,
+        boolean grails,
         boolean plugin,
         Language lang,
         String layout,
@@ -38,7 +39,7 @@ public record NewInputs(
         deps = List.copyOf(deps);
     }
 
-    /** Back-compat constructor: no Spring Boot. */
+    /** Back-compat constructor: no framework scaffold (Spring/Grails) or plugin project. */
     public NewInputs(
             String group,
             String name,
@@ -67,6 +68,47 @@ public record NewInputs(
                 nativeImage,
                 false,
                 false,
+                false,
+                lang,
+                layout,
+                kotlinModuleName,
+                deps,
+                sample,
+                directory);
+    }
+
+    /** Back-compat constructor: spring/plugin flags, no Grails. */
+    public NewInputs(
+            String group,
+            String name,
+            String jdk,
+            int jdkMajor,
+            int javaRelease,
+            Optional<String> jdkIdentifier,
+            Optional<String> main,
+            boolean assembly,
+            boolean nativeImage,
+            boolean spring,
+            boolean plugin,
+            Language lang,
+            String layout,
+            Optional<String> kotlinModuleName,
+            List<String> deps,
+            boolean sample,
+            Path directory) {
+        this(
+                group,
+                name,
+                jdk,
+                jdkMajor,
+                javaRelease,
+                jdkIdentifier,
+                main,
+                assembly,
+                nativeImage,
+                spring,
+                false,
+                plugin,
                 lang,
                 layout,
                 kotlinModuleName,

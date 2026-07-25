@@ -758,9 +758,13 @@ public final class BuildPipelines {
                         groovyMainSrcRef.compareAndSet(null, groovyMainSrcs);
                         groovyMainSrcs = groovyMainSrcRef.get();
                     }
-                    // [build] extra-src roots (variant overlays folded in by VariantApply) join
-                    // the source set here — the tick suppliers' pre-walk never saw them.
-                    List<Path> extraSrcDirs = CompileSupport.extraSrcDirs(project, in.dir());
+                    // [build] extra-src roots (variant overlays folded in by VariantApply) and
+                    // plugin-contributed source roots ([[contribute.source-roots]] — grails-app/…)
+                    // join the source set here — the tick suppliers' pre-walk never saw them.
+                    List<Path> extraSrcDirs = new ArrayList<>(CompileSupport.extraSrcDirs(project, in.dir()));
+                    for (var root : cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(project, in.dir())) {
+                        if (!root.resource()) extraSrcDirs.add(in.dir().resolve(root.dir()));
+                    }
                     if (!extraSrcDirs.isEmpty()) {
                         javaMainSrcs = CompileSupport.withExtraSources(javaMainSrcs, extraSrcDirs, ".java");
                         kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
@@ -1742,10 +1746,18 @@ public final class BuildPipelines {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     // JK-1144/1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
+                    // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
+                    List<Path> resDirs = new ArrayList<>();
                     Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
-                    if (Files.isDirectory(resMain)) {
+                    if (Files.isDirectory(resMain)) resDirs.add(resMain);
+                    for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(in.dir())) {
+                        if (!root.resource()) continue;
+                        Path dir = in.dir().resolve(root.relative());
+                        if (Files.isDirectory(dir)) resDirs.add(dir);
+                    }
+                    if (!resDirs.isEmpty()) {
                         ctx.label("copy resources");
-                        copyResources(resMain, classes);
+                        for (Path dir : resDirs) copyResources(dir, classes);
                     } else {
                         ctx.label("no static resources");
                     }
@@ -3607,6 +3619,13 @@ public final class BuildPipelines {
         compileCp.add(gv.groovyJar());
         Files.createDirectories(outputDir);
         if (stubsOut != null) Files.createDirectories(stubsOut);
+        // Contributed groovyc args (e.g. grails' --parameters — data binding reflects on
+        // parameter names), deduped; mirrors the javac/kotlinc lanes.
+        List<String> gvArgs = new ArrayList<>();
+        for (String arg : cc.jumpkick.plugin.manifest.PluginContributions.groovyArgs(
+                ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
+            if (!gvArgs.contains(arg)) gvArgs.add(arg);
+        }
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
@@ -3615,6 +3634,7 @@ public final class BuildPipelines {
                 .stubsOut(stubsOut)
                 .jvmTarget(ctx.require(RELEASE))
                 .workerClasspath(gv.workerClasspath())
+                .extraArgs(gvArgs)
                 .build();
         boolean rerun = in.session().config().rebuildOr(false);
         // Reweight from the real request: a CAS hit is a cheap restore (3), else a

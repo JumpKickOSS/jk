@@ -98,6 +98,109 @@ class PluginContributionsTest {
         assertThat(noarg.options()).containsExactly("preset=jpa");
     }
 
+    // ---- the grails manifest: groovy compiler lane + source roots -----------------------------
+
+    private static JkBuild grails(String extra) {
+        return JkBuildParser.parse("""
+                [project]
+                name = "gapp"
+                group = "com.example"
+                version = "1.0.0"
+                jdk = "25"
+                groovy = "5.0.7"
+
+                [grails]
+                version = "8.0.0-M4"
+                """ + extra);
+    }
+
+    @Test
+    void grails_injects_the_apache_bom_and_parameter_args() {
+        JkBuild build = grails("");
+        assertThat(build.dependencies().of(Scope.PLATFORM))
+                .extracting(Dependency::module, d -> d.version().raw())
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("org.apache.grails:grails-bom", "=8.0.0-M4"));
+        assertThat(PluginContributions.javacArgs(build, null, Set.of())).containsExactly("-parameters");
+        assertThat(PluginContributions.groovyArgs(build, null, Set.of())).containsExactly("--parameters");
+        assertThat(PluginContributions.kotlinArgs(build, null, Set.of())).isEmpty();
+    }
+
+    @Test
+    void grails_contributes_the_grails_app_roots() {
+        assertThat(PluginContributions.sourceRoots(grails(""), null))
+                .containsExactly(
+                        new PluginContributions.SourceRoot("grails-app/domain", false),
+                        new PluginContributions.SourceRoot("grails-app/controllers", false),
+                        new PluginContributions.SourceRoot("grails-app/services", false),
+                        new PluginContributions.SourceRoot("grails-app/taglib", false),
+                        new PluginContributions.SourceRoot("grails-app/init", false),
+                        new PluginContributions.SourceRoot("grails-app/jobs", false),
+                        new PluginContributions.SourceRoot("grails-app/conf", true),
+                        new PluginContributions.SourceRoot("grails-app/i18n", true),
+                        new PluginContributions.SourceRoot("grails-app/views", true));
+        assertThat(PluginContributions.sourceRoots(boot(""), null)).isEmpty();
+    }
+
+    // ---- [[contribute.source-roots]] parse validation ------------------------------------------
+
+    @Test
+    void source_roots_reject_absolute_escaping_or_untyped_dirs() {
+        String base = """
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.source-roots]]
+                %s
+                """;
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("dir = \"/abs/path\"\nkind = \"source\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must be module-relative");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("dir = \"../outside\"\nkind = \"source\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must not escape the module");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted("dir = \"a/../../b\"\nkind = \"source\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("must not escape the module");
+        assertThatThrownBy(
+                        () -> PluginDescriptors.parse(base.formatted("dir = \"grails-app/domain\""), "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("kind must be \"source\" or \"resource\"");
+        assertThatThrownBy(() -> PluginDescriptors.parse(
+                        base.formatted(
+                                "dir = \"x\"\nkind = \"source\"\nwhen = { classpath-has = \"a:b\" }"),
+                        "p.toml"))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("classpath-has cannot gate a source-root");
+    }
+
+    @Test
+    void source_roots_parse_dir_kind_and_condition() {
+        var parsed = PluginDescriptors.parse("""
+                [plugin]
+                id = "p"
+                table = "p"
+
+                [[contribute.source-roots]]
+                dir = "extra/src"
+                kind = "source"
+
+                [[contribute.source-roots]]
+                dir = "extra/res"
+                kind = "resource"
+                when = { native-declared = true }
+                """, "p.toml");
+        assertThat(parsed.contributions().sourceRoots())
+                .containsExactly(
+                        new PluginDescriptor.SourceRoot("extra/src", false, null),
+                        new PluginDescriptor.SourceRoot(
+                                "extra/res", true, new PluginDescriptor.Condition.NativeDeclared()));
+    }
+
     // ---- manifest-load validation --------------------------------------------------------------
 
     @Test

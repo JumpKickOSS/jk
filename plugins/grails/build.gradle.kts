@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+
+plugins {
+    id("jk.plugin-conventions")
+}
+
+description = "jk-grails: the built-in Grails build plugin's code layer — the grails-jar " +
+        "packager, which delegates to jk-spring-boot's BootJarPackager (a Grails 8 jar IS a " +
+        "Boot 4.1 jar). The declarative layer (schema, grails-bom, compiler args, grails-app " +
+        "source roots, scaffold) lives in jk-plugin.toml; this jar carries only the packager."
+
+dependencies {
+    implementation(project(":plugin-sdk"))
+    // BootJarPackager — bundled into this fat jar below so the worker runs standalone.
+    implementation(project(":spring-boot"))
+}
+
+// Fat JAR: bundle the runtime closure (plugin-api + jk-spring-boot classes) so the worker
+// runs as `java -jar`. Own resources win duplicates (this jar's services file registers
+// GrailsPlugin, not the bundled SpringBootPlugin).
+tasks.jar {
+    dependsOn(configurations.runtimeClasspath)
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+}

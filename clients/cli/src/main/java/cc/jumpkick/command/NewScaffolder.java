@@ -73,7 +73,8 @@ public final class NewScaffolder {
             return;
         }
         var dir = inputs.directory();
-        cc.jumpkick.engine.protocol.GeneratedFiles plugin = inputs.spring() ? pluginScaffold(inputs) : null;
+        cc.jumpkick.engine.protocol.GeneratedFiles plugin =
+                inputs.spring() || inputs.grails() ? pluginScaffold(inputs) : null;
 
         Files.createDirectories(dir);
         if (plugin != null) {
@@ -99,13 +100,19 @@ public final class NewScaffolder {
 
     /**
      * The engine-rendered plugin scaffold: base jk.toml + the plugin's fragments, and the sample
-     * files when requested. {@code plugin} is the scaffold flag ({@code spring}); generation is
-     * engine-hosted so the client carries none of the framework content.
+     * files when requested. {@code plugin} is the scaffold flag ({@code spring} / {@code grails});
+     * generation is engine-hosted so the client carries none of the framework content.
      */
     private static cc.jumpkick.engine.protocol.GeneratedFiles pluginScaffold(NewInputs inputs) throws IOException {
         var params = new java.util.LinkedHashMap<String, String>();
-        params.put("plugin", "spring");
-        params.put("lang", inputs.lang() == NewInputs.Language.KOTLIN ? "kotlin" : "java");
+        params.put("plugin", inputs.grails() ? "grails" : "spring");
+        params.put(
+                "lang",
+                switch (inputs.lang()) {
+                    case KOTLIN -> "kotlin";
+                    case GROOVY -> "groovy";
+                    case JAVA -> "java";
+                });
         params.put("package", inputs.group());
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
