@@ -91,6 +91,12 @@ public final class TestRunner implements Plugin {
     // --- mode 1: one-shot ----------------------------------------------------
 
     private static int runOneShot(Args args, JsonEventWriter writer) {
+        // Prefer Launcher so framework SPI (Quarkus LauncherSessionListener / FacadeClassLoader)
+        // runs. Raw TestEngine.execute skips those hooks.
+        if (LauncherPath.available()) {
+            return LauncherPath.runOneShot(
+                    args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
+        }
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
         var engines = java.util.ServiceLoader.load(TestEngine.class);
@@ -110,6 +116,11 @@ public final class TestRunner implements Plugin {
     // --- mode 2: discovery ---------------------------------------------------
 
     private static void runListOnly(Args args, JsonEventWriter writer) {
+        if (LauncherPath.available()) {
+            LauncherPath.runListOnly(
+                    args.scanClasspath, args.filter, args.includeTags, args.excludeTags, args.workerId, writer);
+            return;
+        }
         var streaming = new StreamingListener(writer, args.workerId);
         var request = baseRequest(args);
         var engines = java.util.ServiceLoader.load(TestEngine.class);
@@ -148,9 +159,13 @@ public final class TestRunner implements Plugin {
 
     private static int runPullMode(Args args, JsonEventWriter writer) throws Exception {
         var streaming = new StreamingListener(writer, args.workerId);
-        var engines = java.util.ServiceLoader.load(TestEngine.class).stream()
-                .map(java.util.ServiceLoader.Provider::get)
-                .toList();
+        boolean useLauncher = LauncherPath.available();
+        var engines = useLauncher
+                ? List.<TestEngine>of()
+                : java.util.ServiceLoader.load(TestEngine.class).stream()
+                        .map(java.util.ServiceLoader.Provider::get)
+                        .toList();
+        boolean launcherFailed = false;
 
         streaming.emitReady();
 
@@ -163,18 +178,25 @@ public final class TestRunner implements Plugin {
                     continue;
                 }
                 String className = line.substring(4).trim();
-                var classRequest = discoveryRequest(List.of(DiscoverySelectors.selectClass(className)), List.of());
-                for (var engine : engines) {
-                    var uid = UniqueId.root("[engine]", engine.getId());
-                    var descriptor = engine.discover(classRequest, uid);
-                    pruneByTags(descriptor, args.includeTags, args.excludeTags);
-                    if (descriptor.getChildren().isEmpty()) continue;
-                    engine.execute(makeExecutionRequest(descriptor, streaming));
+                if (useLauncher) {
+                    if (LauncherPath.runClass(
+                            className, args.includeTags, args.excludeTags, args.workerId, writer)) {
+                        launcherFailed = true;
+                    }
+                } else {
+                    var classRequest = discoveryRequest(List.of(DiscoverySelectors.selectClass(className)), List.of());
+                    for (var engine : engines) {
+                        var uid = UniqueId.root("[engine]", engine.getId());
+                        var descriptor = engine.discover(classRequest, uid);
+                        pruneByTags(descriptor, args.includeTags, args.excludeTags);
+                        if (descriptor.getChildren().isEmpty()) continue;
+                        engine.execute(makeExecutionRequest(descriptor, streaming));
+                    }
                 }
                 streaming.emitReady();
             }
         }
-        return streaming.hasFailures() ? 1 : 0;
+        return (streaming.hasFailures() || launcherFailed) ? 1 : 0;
     }
 
     // --- shared --------------------------------------------------------------
@@ -269,18 +291,27 @@ public final class TestRunner implements Plugin {
     }
 
     /**
-     * JUnit 6.x {@code ExecutionRequest.create(...)} when available; else the JUnit 5.x 3-arg
-     * constructor. No JUnit-6-only types appear in this method's signature.
+     * Build an {@link ExecutionRequest} for the Platform on the classpath.
+     *
+     * <ul>
+     *   <li>JUnit 6: {@code create(..., OutputDirectoryCreator, store, CancellationToken)}
+     *   <li>Platform 1.12–1.13 (Jupiter 5.12–5.13 / Quarkus 3.x BOMs): {@code create(...,
+     *       OutputDirectoryProvider, NamespacedHierarchicalStore)} — the 3-arg ctor leaves store
+     *       null and Jupiter 5.13 fails with "No NamespacedHierarchicalStore was configured"
+     *   <li>Older 1.x: 3-arg constructor
+     * </ul>
+     *
+     * <p>No JUnit-6-only types appear in this method's signature (reflection only).
      */
     @SuppressWarnings("deprecation")
     private static ExecutionRequest makeExecutionRequest(TestDescriptor descriptor, EngineExecutionListener listener) {
-        // Prefer JUnit 6 factory via reflection so linking this method never requires Platform 6.
+        ConfigurationParameters config = SystemPropertyConfigParams.INSTANCE;
+
+        // 1) JUnit Platform 6.x
         try {
             Class<?> storeClass = Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
             Class<?> cancelClass = Class.forName("org.junit.platform.engine.CancellationToken");
-            Constructor<?> storeCtor = storeClass.getConstructor(storeClass);
-            Object parentStore = storeCtor.newInstance(new Object[] {null});
-            Object store = storeClass.getMethod("newChild").invoke(parentStore);
+            Object store = newRequestLevelStore(storeClass);
             Object cancel = cancelClass.getMethod("disabled").invoke(null);
             Object outDir = outputDirectoryCreator();
             Method create = ExecutionRequest.class.getMethod(
@@ -291,12 +322,53 @@ public final class TestRunner implements Plugin {
                     Class.forName("org.junit.platform.engine.OutputDirectoryCreator"),
                     storeClass,
                     cancelClass);
-            return (ExecutionRequest) create.invoke(
-                    null, descriptor, listener, SystemPropertyConfigParams.INSTANCE, outDir, store, cancel);
-        } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
-            // JUnit 5.x: 3-arg constructor (Platform 1.x / Jupiter 5.x — Spring Boot 3 BOMs).
-            return new ExecutionRequest(descriptor, listener, SystemPropertyConfigParams.INSTANCE);
+            return (ExecutionRequest) create.invoke(null, descriptor, listener, config, outDir, store, cancel);
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) {
+            // fall through
         }
+
+        // 2) Platform 1.12–1.13: store is required (Jupiter 5.13 getStore() notNull)
+        try {
+            Class<?> storeClass = Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
+            Object store = newRequestLevelStore(storeClass);
+            Class<?> providerClass = Class.forName("org.junit.platform.engine.reporting.OutputDirectoryProvider");
+            Object provider = outputDirectoryProvider(providerClass);
+            Method create = ExecutionRequest.class.getMethod(
+                    "create",
+                    TestDescriptor.class,
+                    EngineExecutionListener.class,
+                    ConfigurationParameters.class,
+                    providerClass,
+                    storeClass);
+            return (ExecutionRequest) create.invoke(null, descriptor, listener, config, provider, store);
+        } catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) {
+            // fall through
+        }
+
+        // 3) Pre-store Platform 1.x
+        return new ExecutionRequest(descriptor, listener, config);
+    }
+
+    /** Root + child store pair matching Launcher's request-level store setup. */
+    private static Object newRequestLevelStore(Class<?> storeClass) throws ReflectiveOperationException {
+        Constructor<?> storeCtor = storeClass.getConstructor(storeClass);
+        Object parentStore = storeCtor.newInstance(new Object[] {null});
+        return storeClass.getMethod("newChild").invoke(parentStore);
+    }
+
+    /** Platform 1.12+ {@code OutputDirectoryProvider} no-op (tmp root). */
+    private static Object outputDirectoryProvider(Class<?> iface) {
+        Path tmp = Path.of(System.getProperty("java.io.tmpdir", "/tmp"));
+        return Proxy.newProxyInstance(iface.getClassLoader(), new Class<?>[] {iface}, (proxy, method, args) -> {
+            return switch (method.getName()) {
+                case "getRootDirectory" -> tmp;
+                case "createOutputDirectory" -> tmp;
+                case "equals" -> proxy == args[0];
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "toString" -> "jk-NoOpOutputDirectoryProvider";
+                default -> null;
+            };
+        });
     }
 
     /**

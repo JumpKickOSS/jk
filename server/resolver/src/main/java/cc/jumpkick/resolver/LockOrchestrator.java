@@ -618,6 +618,58 @@ public final class LockOrchestrator {
                             + ". Pick one BOM or pin the coord explicitly.");
                 }
             }
+            // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
+            // often omit named-locks. PubGrub highest-wins then pulls named-locks 2.x next to
+            // 1.9 api → NoSuchMethodError at @QuarkusTest bootstrap. Align the family.
+            alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
+        }
+    }
+
+    /**
+     * Artifacts that must share one {@code maven-resolver} line. When a platform BOM manages any
+     * core resolver jar (or declares {@code maven-resolver.version}), pin the rest of the family
+     * to that line if still unconstrained.
+     */
+    private static final List<String> MAVEN_RESOLVER_FAMILY = List.of(
+            "maven-resolver-api",
+            "maven-resolver-spi",
+            "maven-resolver-util",
+            "maven-resolver-impl",
+            "maven-resolver-named-locks",
+            "maven-resolver-connector-basic",
+            "maven-resolver-transport-wagon",
+            "maven-resolver-transport-http",
+            "maven-resolver-transport-file");
+
+    /**
+     * Fill gaps in {@code bomConstraints} for the maven-resolver family so named-locks cannot
+     * float to a major line that breaks {@code NamedLockFactory.getLock(String)}.
+     */
+    static void alignMavenResolverFamily(
+            Map<String, String> bomConstraints,
+            Map<String, String> constraintProvenance,
+            EffectivePom bomPom,
+            String bomLabel) {
+        String line = bomPom.properties().get("maven-resolver.version");
+        if (line == null || line.isBlank()) {
+            // Prefer the BOM's own managed api/impl pin over a line already present from an
+            // earlier BOM (those are already in bomConstraints; we only fill gaps).
+            for (Pom.Dep m : bomPom.managedDependencies()) {
+                if (m.version() == null || m.version().isBlank() || m.module() == null) continue;
+                if ("org.apache.maven.resolver:maven-resolver-api".equals(m.module())
+                        || "org.apache.maven.resolver:maven-resolver-impl".equals(m.module())) {
+                    line = m.version();
+                    if (m.module().endsWith(":maven-resolver-api")) break;
+                }
+            }
+        }
+        if (line == null || line.isBlank()) return;
+        String provenance = bomLabel + " (maven-resolver family)";
+        for (String art : MAVEN_RESOLVER_FAMILY) {
+            String mod = "org.apache.maven.resolver:" + art;
+            if (bomConstraints.putIfAbsent(mod, line) == null) {
+                constraintProvenance.put(mod, provenance);
+            }
         }
     }
 

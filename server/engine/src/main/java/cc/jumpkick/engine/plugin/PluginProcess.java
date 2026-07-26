@@ -7,6 +7,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -89,8 +91,24 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
+        return converse(command, extraEnv, null, prefix, onProtocol, onPassthrough);
+    }
+
+    /**
+     * As {@link #converse(List, Map, String, BiConsumer, Consumer)} with an optional working
+     * directory (Quarkus {@code @QuarkusTest} resolves the project from the process cwd).
+     */
+    public static int converse(
+            List<String> command,
+            java.util.Map<String, String> extraEnv,
+            Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (extraEnv != null && !extraEnv.isEmpty()) pb.environment().putAll(extraEnv);
+        if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
         // Hold a worker slot for the child's whole lifetime so no more than the
         // memory plan's parallelism run at once (open gate when unconfigured).
         try (PluginSlots.Lease lease = PluginSlots.acquire()) {
