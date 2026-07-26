@@ -158,12 +158,13 @@ public final class LockCommand implements CliCommand {
             }
 
             @Override
-            public void onPackage(String moduleDir, String name, String version) {
+            public void onPackage(String moduleDir, String name, String version, int totalSeen) {
                 String coord = coordByDir.get(moduleDir);
                 // Show active dep in the step row (module › dep via renderActiveRow).
                 view.stepMessage(coord, "lock", Coords.module(name, version));
-                // Record as a completion line with an absolute count bracket.
-                int n = globalLocked.incrementAndGet();
+                // Absolute count: prefer engine cumulative total (coalesced samples); else +1.
+                int n = totalSeen >= 0 ? totalSeen : globalLocked.incrementAndGet();
+                if (totalSeen >= 0) globalLocked.set(Math.max(globalLocked.get(), totalSeen));
                 Theme t = Theme.active();
                 String line = Theme.colorize(Glyphs.CHECK, t.success())
                         + " "
@@ -180,6 +181,10 @@ public final class LockCommand implements CliCommand {
             @Override
             public void onModuleFinish(String moduleDir, PipelineResult result, EngineClient.LockCounts counts) {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
+                // Authoritative package count from the written lockfile (not wire event cardinality).
+                if (counts != null && counts.packages() >= 0) {
+                    globalLocked.set(Math.max(globalLocked.get(), (int) counts.packages()));
+                }
                 if (!result.success()) {
                     for (PipelineResult.Diagnostic d : result.errors()) {
                         errorLines.add(ConsoleSpec.renderError(d));

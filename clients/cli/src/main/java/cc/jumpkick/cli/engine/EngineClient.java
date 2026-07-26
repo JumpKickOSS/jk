@@ -708,6 +708,15 @@ public final class EngineClient {
 
         default void onPackage(String dir, String name, String version) {}
 
+        /**
+         * @param totalSeen cumulative packages at this sample ({@code ≥ 0}), or {@code -1} when the
+         *     event is a single unbatched package (legacy). Defaults to {@link #onPackage(String,
+         *     String, String)}.
+         */
+        default void onPackage(String dir, String name, String version, int totalSeen) {
+            onPackage(dir, name, version);
+        }
+
         default void onModuleFinish(String dir, cc.jumpkick.run.PipelineResult result, LockCounts counts) {}
     }
 

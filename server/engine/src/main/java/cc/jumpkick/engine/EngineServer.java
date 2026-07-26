@@ -3123,6 +3123,8 @@ public final class EngineServer implements AutoCloseable {
             String dirTag = dir.toString();
             sendQuiet(writer, EngineProtocol.lockModule(dirTag, coords.get(dir)));
 
+            CoalescingLockPackages lockPkgs = new CoalescingLockPackages((d, name, ver, total) -> sendQuiet(
+                    writer, EngineProtocol.lockPackage(d, name, ver, total)));
             cc.jumpkick.resolver.ResolveObserver observer = new cc.jumpkick.resolver.ResolveObserver() {
                 @Override
                 public void onTotal(int total) {
@@ -3131,7 +3133,7 @@ public final class EngineServer implements AutoCloseable {
 
                 @Override
                 public void onPackage(String module, String version) {
-                    sendQuiet(writer, EngineProtocol.lockPackage(dirTag, module, version));
+                    lockPkgs.onPackage(dirTag, module, version);
                 }
             };
             cc.jumpkick.run.Pipeline pipeline = update
@@ -3148,6 +3150,8 @@ public final class EngineServer implements AutoCloseable {
             sendQuiet(writer, EngineProtocol.planDone(1));
             pipeline.addListener(wirePipelineListener(
                     dirTag, writer, (java.util.function.Function<PipelineResult, String>) result -> {
+                        lockPkgs.flush();
+                        lockPkgs.close();
                         cc.jumpkick.lock.Lockfile lock = pipeline.get(cc.jumpkick.runtime.LockPipelines.LOCKFILE)
                                 .orElse(null);
                         return EngineProtocol.pipelineFinishLock(
@@ -3163,6 +3167,7 @@ public final class EngineServer implements AutoCloseable {
                     }));
 
             PipelineResult result = pipeline.run();
+            lockPkgs.close();
             if (!result.success()) {
                 sendQuiet(
                         writer,
@@ -3970,7 +3975,8 @@ public final class EngineServer implements AutoCloseable {
         // Created on the runner's thread (directly, or via wireListener's onModuleStart which runs
         // on a scheduler thread — there the ThreadLocal is unset and module events carry the id).
         long eventRequestId = eventRequestId();
-        return new PipelineListener() {
+        // Human-paced progress/label/tick (JK-1202): structural events still flush immediately.
+        return new CoalescingPipelineListener(new PipelineListener() {
             @Override
             public void pipelineStart(PipelineView view) {
                 sendQuiet(
@@ -4072,7 +4078,7 @@ public final class EngineServer implements AutoCloseable {
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
                 accPipelineFinish(eventRequestId, dir, result);
             }
-        };
+        });
     }
 
     /** Write chrome timeline (if any) and notify the socket client. Idempotent per request. */
