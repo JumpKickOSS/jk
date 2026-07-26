@@ -43,7 +43,9 @@ class RepoGroupExclusiveTest {
     }
 
     @Test
-    void unbound_group_still_unions_all_repos(@TempDir Path tmp) throws Exception {
+    void unbound_group_skips_exclusive_specialists(@TempDir Path tmp) throws Exception {
+        // Exclusive-bound repos only serve their claimed groups (JK-1202): internal claims
+        // com.acme, so junit is not looked up there even though a phantom version exists.
         Path aDir = tmp.resolve("a");
         Path bDir = tmp.resolve("b");
         writeMeta(aDir, "junit", "junit", "4.12");
@@ -54,7 +56,26 @@ class RepoGroupExclusiveTest {
         RepoGroup group = new RepoGroup(List.of(a, b), List.of(List.of("com.acme"), List.of()));
 
         assertThat(group.availableVersions(Coordinate.of("junit", "junit", "0")))
-                .containsExactlyInAnyOrder("4.12", "4.13.2");
+                .containsExactly("4.13.2");
+        assertThat(group.eligibleRepos(Coordinate.of("junit", "junit", "0")))
+                .extracting(MavenRepo::name)
+                .containsExactly("central");
+    }
+
+    @Test
+    void local_first_prefers_central_mirror_without_hitting_specialist(@TempDir Path tmp) throws Exception {
+        Path centralDir = tmp.resolve("central-repo");
+        writePom(centralDir, "com.example", "widget", "1.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        // Specialist first (would 404 on a real network); central has the local POM.
+        MavenRepo jumpkick = new MavenRepo("jumpkick", tmp.resolve("empty").toUri(), new Http(), cas);
+        MavenRepo central = new MavenRepo("central", centralDir.toUri(), new Http(), cas);
+        RepoGroup group =
+                new RepoGroup(List.of(jumpkick, central), List.of(List.of("cc.jumpkick", "cc.jumpkick.*"), List.of()));
+
+        Optional<RepoGroup.RepoFetched> hit = group.tryFetchPom(Coordinate.of("com.example", "widget", "1.0"));
+        assertThat(hit).isPresent();
+        assertThat(hit.get().repo().name()).isEqualTo("central");
     }
 
     private static void writeMeta(Path repoRoot, String group, String artifact, String... versions) throws Exception {

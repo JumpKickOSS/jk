@@ -54,15 +54,39 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
+        // Local-first across eligible repos so JumpKick/Google do not HTTP-404 every Central GAV
+        // on a warm re-lock (JK-1202).
+        Optional<RepoFetched> local = tryLocalPom(coord);
+        if (local.isPresent()) return local;
         return tryFetch(coord, MavenRepo::fetchPom);
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
+        Optional<RepoFetched> local = tryLocalArtifact(coord);
+        if (local.isPresent()) return local;
         return tryFetch(coord, MavenRepo::fetchArtifact);
     }
 
     public Optional<RepoFetched> tryFetchMetadata(Coordinate coord) throws IOException, InterruptedException {
         return tryFetch(coord, MavenRepo::fetchMetadata);
+    }
+
+    /** Any eligible repo's local mirror of the artifact, without network. */
+    public Optional<RepoFetched> tryLocalArtifact(Coordinate coord) {
+        for (MavenRepo repo : eligibleRepos(coord)) {
+            Optional<MavenRepo.Fetched> f = repo.tryLocalArtifact(coord);
+            if (f.isPresent()) return Optional.of(new RepoFetched(repo, f.get()));
+        }
+        return Optional.empty();
+    }
+
+    /** Any eligible repo's local mirror of the POM, without network. */
+    public Optional<RepoFetched> tryLocalPom(Coordinate coord) {
+        for (MavenRepo repo : eligibleRepos(coord)) {
+            Optional<MavenRepo.Fetched> f = repo.tryLocalPom(coord);
+            if (f.isPresent()) return Optional.of(new RepoFetched(repo, f.get()));
+        }
+        return Optional.empty();
     }
 
     /**
@@ -78,15 +102,32 @@ public final class RepoGroup {
     }
 
     /**
-     * Repos that may discover/fetch {@code coord}: claimants when the group is exclusively bound,
-     * otherwise the full ordered list.
+     * Repos that may discover/fetch {@code coord}:
+     *
+     * <ul>
+     *   <li>When the group is exclusively claimed — only the claiming repos (dependency-confusion
+     *       defense).
+     *   <li>Otherwise — general (no exclusive binding) repos only. Exclusive-bound specialists
+     *       (e.g. JumpKick first-party) are skipped so warm multi-repo re-locks do not HTTP-404
+     *       every Maven Central GAV against them (JK-1202).
+     * </ul>
      */
     List<MavenRepo> eligibleRepos(Coordinate coord) {
         List<Integer> claimants = ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group());
-        if (claimants.isEmpty()) return repos;
-        List<MavenRepo> out = new ArrayList<>(claimants.size());
-        for (int i : claimants) out.add(repos.get(i));
-        return out;
+        if (!claimants.isEmpty()) {
+            List<MavenRepo> out = new ArrayList<>(claimants.size());
+            for (int i : claimants) out.add(repos.get(i));
+            return out;
+        }
+        List<MavenRepo> general = new ArrayList<>();
+        for (int i = 0; i < repos.size(); i++) {
+            if (exclusiveGroups.get(i).isEmpty()) {
+                general.add(repos.get(i));
+            }
+        }
+        // Safety: if every repo is exclusive and none claimed this group, fall back to all
+        // (otherwise unbound coords would be unresolvable).
+        return general.isEmpty() ? repos : general;
     }
 
     private Optional<RepoFetched> tryFetch(Coordinate coord, Fetcher fetcher) throws IOException, InterruptedException {
