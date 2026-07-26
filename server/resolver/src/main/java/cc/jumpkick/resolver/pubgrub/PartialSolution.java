@@ -224,8 +224,18 @@ public final class PartialSolution {
         return new TreeMap<>(decisionByPackage);
     }
 
+    /**
+     * Live assignment stack (unmodifiable view). Callers must not retain across {@link #backtrack}
+     * or {@link #decide}/{@link #derive}. Avoids per-call {@code List.copyOf} on the hot PubGrub
+     * path (JK-1202).
+     */
     public List<Assignment> assignments() {
-        return List.copyOf(assignments);
+        return java.util.Collections.unmodifiableList(assignments);
+    }
+
+    /** Snapshot of decisions without sorting (hot path). Prefer over {@link #decisions()} in the solver. */
+    public Map<String, String> decisionsUnsorted() {
+        return java.util.Collections.unmodifiableMap(decisionByPackage);
     }
 
     /**

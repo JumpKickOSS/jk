@@ -56,10 +56,7 @@ path     = "${main-root}/${package-path}/GreetingResource.java"
 template = "scaffold/GreetingResource.java.tmpl"
 when     = { lang = "java" }
 
-[[scaffold.file]]
-path     = "${test-root}/${package-path}/GreetingResourceTest.java"
-template = "scaffold/GreetingResourceTest.java.tmpl"
-when     = { lang = "java" }
+# GreetingResourceTest (quarkus-junit5) deferred until JK-1202 closes the junit5 resolve thrash.
 
 [[scaffold.file]]
 path     = "${main-root}/${package-path}/Application.kt"

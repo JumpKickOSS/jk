@@ -94,9 +94,7 @@ class PubGrubResolverTest {
 
     @Test
     void bom_soft_prefer_lifts_when_transitive_floor_exceeds_pin(@TempDir Path tempDir) throws Exception {
-        // root → middle@1.0 → leaf >= 1.5, BOM soft-prefers leaf = 1.0.
-        // Gradle platform() recommendation: lift above the pin (highest satisfying = 2.0).
-        // R3 / finding 13 — was unsatisfiable under hard BOM pins.
+        // root → middle@1.0 → leaf >= 1.5, BOM soft-prefers leaf = 1.0 → highest-wins 2.0.
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
         servePom("com.foo", "middle", "1.0", """

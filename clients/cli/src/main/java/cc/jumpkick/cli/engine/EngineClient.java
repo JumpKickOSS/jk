@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -1913,6 +1914,9 @@ public final class EngineClient {
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);
+        // JK-1204: forward resolve budgets into the engine process. PubGrubSolver reads these from
+        // its own env; client-only exports were previously ignored for resident engines.
+        forwardResolveEnv(pb.environment());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
         // never the spawning client's CWD. A resident engine outlives the shell that started it, and
         // if it inherited an ephemeral CWD (a /tmp scratch dir, a git worktree, a since-deleted
@@ -1934,6 +1938,14 @@ public final class EngineClient {
         Process p = pb.start();
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
         return new Spawned(p);
+    }
+
+    /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
+    private static void forwardResolveEnv(Map<String, String> env) {
+        for (String key : List.of("JK_RESOLVE_TIMEOUT_MS", "JK_RESOLVE_MAX_DECISIONS")) {
+            String v = System.getenv(key);
+            if (v != null && !v.isBlank()) env.put(key, v);
+        }
     }
 
     /**

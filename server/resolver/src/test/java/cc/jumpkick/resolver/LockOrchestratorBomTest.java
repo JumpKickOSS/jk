@@ -200,8 +200,7 @@ class LockOrchestratorBomTest {
 
     @Test
     void platform_bom_soft_prefer_lifts_when_transitive_demands_higher(@TempDir Path tempDir) throws Exception {
-        // Compose/nav finding 13: BOM recommends leaf 1.0; middle requires leaf >= 1.5 → lift to 2.0.
-        // pinned-by must be null after a lift (recommendation not held).
+        // BOM soft-prefer leaf 1.0; middle requires leaf 1.5 as floor → highest-wins lifts to 2.0.
         servePom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
