@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.quarkus;
 
-import java.io.BufferedReader;
+import io.quarkus.bootstrap.app.AugmentResult;
+import io.quarkus.bootstrap.app.CuratedApplication;
+import io.quarkus.bootstrap.app.QuarkusBootstrap;
+import io.quarkus.bootstrap.model.PlatformImportsImpl;
+import io.quarkus.bootstrap.resolver.BootstrapAppModelResolver;
+import io.quarkus.bootstrap.resolver.maven.BootstrapMavenContext;
+import io.quarkus.bootstrap.resolver.maven.MavenArtifactResolver;
+import io.quarkus.maven.dependency.ArtifactCoords;
+import io.quarkus.maven.dependency.ArtifactDependency;
+import io.quarkus.maven.dependency.Dependency;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -15,11 +23,13 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 /**
  * Forked entry point for Quarkus production packaging (JK-1160/1202).
@@ -27,13 +37,9 @@ import java.util.jar.JarOutputStream;
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
  * quarkusVersion}
  *
- * <p>Strategy: drive {@code quarkus-maven-plugin} via Maven (when {@code mvn} is on PATH) with a
- * synthetic POM that imports the platform BOM and depends on discovered Quarkus extensions. Classes
- * are copied into {@code target/classes}; the plugin writes {@code target/quarkus-app/quarkus-run.jar}
- * which we promote into {@code targetDir}.
- *
- * <p>Pure bootstrap (no Maven) remains a follow-up — SmallRye config mapping under a synthetic
- * ApplicationModel still needs platform-properties wiring that the Maven plugin already owns.
+ * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
+ * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
+ * then runs {@code createProductionApplication()} to produce {@code quarkus-app/}.
  */
 public final class QuarkusAugmentMain {
 
@@ -55,94 +61,80 @@ public final class QuarkusAugmentMain {
 
         List<RuntimeCoord> runtime = parseRuntimeList(runtimeList);
         List<RuntimeCoord> extensions = discoverExtensions(runtime);
-        System.err.println("jk-quarkus-augment: runtime=" + runtime.size() + " extensions=" + extensions.size());
+        System.err.println("jk-quarkus-augment: runtime=" + runtime.size() + " extensions=" + extensions.size()
+                + " pure-bootstrap");
 
-        Path mvn = findMaven();
-        if (mvn == null) {
-            throw new IllegalStateException(
-                    "Quarkus packaging needs `mvn` on PATH for the quarkus-maven-plugin bridge (JK-1160). "
-                            + "Install Maven or ensure `mvn` is available.");
-        }
-
-        Path scratch = Files.createDirectories(targetDir.resolve(".jk-quarkus-maven"));
-        Path projectDir = Files.createDirectories(scratch.resolve("project"));
-        Path targetClasses = Files.createDirectories(projectDir.resolve("target/classes"));
-
-        // Copy compiled classes + resources into the synthetic Maven project's target/classes.
-        if (Files.isDirectory(classesDir)) {
-            copyTree(classesDir, targetClasses);
-        }
-        Path appProps = appProjectRoot.resolve("src/main/resources/application.properties");
-        if (Files.isRegularFile(appProps) && !Files.isRegularFile(targetClasses.resolve("application.properties"))) {
-            Files.copy(appProps, targetClasses.resolve("application.properties"), StandardCopyOption.REPLACE_EXISTING);
-        }
-
-        Files.writeString(
-                projectDir.resolve("pom.xml"),
-                mavenPom(group, artifact, version, quarkusVersion, extensions),
-                StandardCharsets.UTF_8);
-
-        List<String> cmd = List.of(
-                mvn.toString(),
-                "-f",
-                projectDir.resolve("pom.xml").toString(),
-                "-q",
-                "package",
-                "-DskipTests",
-                "-Dquarkus.package.jar.type=fast-jar",
-                "-Dquarkus.analytics.disabled=true");
-        System.err.println("jk-quarkus-augment: " + String.join(" ", cmd));
-        ProcessBuilder pb = new ProcessBuilder(cmd)
-                .directory(projectDir.toFile())
-                .redirectErrorStream(true);
-        // Prefer a private local repo under scratch so we do not thrash ~/.m2 unnecessarily, but still
-        // allow Maven Central for deployment artifacts.
+        Files.createDirectories(targetDir);
+        Path scratch = Files.createDirectories(targetDir.resolve(".jk-quarkus-bootstrap"));
         Path localRepo = Files.createDirectories(scratch.resolve("m2"));
-        // Seed runtime jars into the private local repo for faster offline hits.
-        for (RuntimeCoord d : runtime) {
-            installJar(localRepo, d);
-        }
-        pb.environment().put("MAVEN_OPTS", pb.environment().getOrDefault("MAVEN_OPTS", ""));
-        List<String> fullCmd = new ArrayList<>(cmd);
-        // Inject -Dmaven.repo.local after mvn binary
-        fullCmd.add(2, "-Dmaven.repo.local=" + localRepo);
-        // Fix: -f is at index 1-2; rebuild cleanly
-        fullCmd = new ArrayList<>();
-        fullCmd.add(mvn.toString());
-        fullCmd.add("-Dmaven.repo.local=" + localRepo);
-        fullCmd.add("-f");
-        fullCmd.add(projectDir.resolve("pom.xml").toString());
-        fullCmd.add("-q");
-        fullCmd.add("package");
-        fullCmd.add("-DskipTests");
-        fullCmd.add("-Dquarkus.package.jar.type=fast-jar");
-        fullCmd.add("-Dquarkus.analytics.disabled=true");
-        pb.command(fullCmd);
+        Path appJar = scratch.resolve("app.jar");
+        jarDir(classesDir, appJar);
 
-        Process proc = pb.start();
-        StringBuilder out = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                out.append(line).append('\n');
-                System.err.println(line);
+        // Prefer jk CAS + user m2 as tails so already-fetched jars are reused.
+        String jkCentral = Path.of(System.getProperty("user.home"), ".jk/cache/repos/central").toString();
+        String m2 = Path.of(System.getProperty("user.home"), ".m2/repository").toString();
+
+        var cfg = BootstrapMavenContext.config()
+                .setLocalRepository(localRepo.toString())
+                .setLocalRepositoryTail(jkCentral, m2)
+                .setWorkspaceDiscovery(false);
+        MavenArtifactResolver maven = new MavenArtifactResolver(new BootstrapMavenContext(cfg));
+        BootstrapAppModelResolver modelResolver = new BootstrapAppModelResolver(maven);
+
+        ArtifactCoords appCoords = ArtifactCoords.jar(group, artifact, version);
+        modelResolver.install(appCoords, appJar);
+        // Point the app artifact at compiled classes for augmentation root content.
+        modelResolver.relink(appCoords, classesDir);
+
+        List<Dependency> direct = new ArrayList<>();
+        for (RuntimeCoord e : extensions) {
+            direct.add(new ArtifactDependency(e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
+        }
+        if (direct.isEmpty()) {
+            // Fall back to all non-unknown runtime coords as direct deps.
+            for (RuntimeCoord r : runtime) {
+                if (r.group().startsWith("unknown")) continue;
+                direct.add(new ArtifactDependency(r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
             }
         }
-        boolean finished = proc.waitFor(15, TimeUnit.MINUTES);
-        if (!finished) {
-            proc.destroyForcibly();
-            throw new IllegalStateException("quarkus-maven-plugin package timed out after 15m\n" + out);
-        }
-        if (proc.exitValue() != 0) {
-            throw new IllegalStateException(
-                    "quarkus-maven-plugin package failed (exit " + proc.exitValue() + "):\n" + out);
+        ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
+
+        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + ")…");
+        var model = modelResolver.resolveManagedModel(appCoords, direct, managing, Set.of(appCoords.getKey()));
+        System.err.println("jk-quarkus-augment: model deps=" + model.getDependencies().size());
+
+        // Platform properties + descriptor (required for config expansion + alignment checks).
+        injectPlatform(model, quarkusVersion, jkCentral, m2, maven);
+
+        Properties bsp = new Properties();
+        bsp.setProperty("quarkus.package.jar.type", "fast-jar");
+        bsp.setProperty("quarkus.analytics.disabled", "true");
+
+        Path augmentOut = Files.createDirectories(scratch.resolve("out"));
+        QuarkusBootstrap bs = QuarkusBootstrap.builder()
+                .setApplicationRoot(classesDir)
+                .setProjectRoot(appProjectRoot)
+                .setTargetDirectory(augmentOut)
+                .setBaseName(baseName)
+                .setOriginalBaseName(baseName)
+                .setMode(QuarkusBootstrap.Mode.PROD)
+                .setIsolateDeployment(true)
+                .setLocalProjectDiscovery(false)
+                .setExistingModel(model)
+                .setBuildSystemProperties(bsp)
+                .setRebuild(false)
+                .build();
+
+        System.err.println("jk-quarkus-augment: bootstrap + createProductionApplication…");
+        try (CuratedApplication curated = bs.bootstrap()) {
+            AugmentResult result = curated.createAugmentor().createProductionApplication();
+            System.err.println("jk-quarkus-augment: result jar=" + result.getJar());
         }
 
-        Path quarkusApp = projectDir.resolve("target/quarkus-app");
+        Path quarkusApp = augmentOut.resolve("quarkus-app");
         Path runJar = quarkusApp.resolve("quarkus-run.jar");
         if (!Files.isRegularFile(runJar)) {
-            // Some plugin versions place the runner differently
-            try (var walk = Files.walk(projectDir.resolve("target"), 4)) {
+            try (var walk = Files.walk(augmentOut, 4)) {
                 runJar = walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                         .filter(Files::isRegularFile)
                         .findFirst()
@@ -150,18 +142,65 @@ public final class QuarkusAugmentMain {
             }
         }
         if (runJar == null || !Files.isRegularFile(runJar)) {
-            throw new IllegalStateException("quarkus-run.jar not produced under " + projectDir.resolve("target"));
+            throw new IllegalStateException("quarkus-run.jar not produced under " + augmentOut);
         }
 
-        // Promote quarkus-app layout into the step output root (targetDir).
         Path destApp = targetDir.resolve("quarkus-app");
         if (Files.isDirectory(destApp)) {
             deleteTree(destApp);
         }
-        copyTree(quarkusApp, destApp);
-        // Also place quarkus-run.jar at targetDir root for the packager finder.
+        // Promote the layout next to the runner (lib/app/quarkus siblings).
+        Path layoutRoot = runJar.getParent();
+        copyTree(layoutRoot, destApp);
         Files.copy(runJar, targetDir.resolve("quarkus-run.jar"), StandardCopyOption.REPLACE_EXISTING);
         System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
+    }
+
+    private static void injectPlatform(
+            io.quarkus.bootstrap.model.ApplicationModel model,
+            String quarkusVersion,
+            String jkCentral,
+            String m2,
+            MavenArtifactResolver maven)
+            throws Exception {
+        if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
+            System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
+                    + (model.getPlatforms() == null ? "null" : model.getPlatforms().getClass().getName()) + ")");
+            return;
+        }
+        Path propsPath = Path.of(
+                jkCentral,
+                "io/quarkus/platform/quarkus-bom-quarkus-platform-properties",
+                quarkusVersion,
+                "quarkus-bom-quarkus-platform-properties-" + quarkusVersion + ".properties");
+        if (!Files.isRegularFile(propsPath)) {
+            propsPath = Path.of(
+                    m2,
+                    "io/quarkus/platform/quarkus-bom-quarkus-platform-properties",
+                    quarkusVersion,
+                    "quarkus-bom-quarkus-platform-properties-" + quarkusVersion + ".properties");
+        }
+        if (!Files.isRegularFile(propsPath)) {
+            var art = new org.eclipse.aether.artifact.DefaultArtifact(
+                    "io.quarkus.platform",
+                    "quarkus-bom-quarkus-platform-properties",
+                    "",
+                    "properties",
+                    quarkusVersion);
+            propsPath = maven.resolve(art).getArtifact().getFile().toPath();
+        }
+        platforms.addPlatformProperties(
+                "io.quarkus.platform",
+                "quarkus-bom-quarkus-platform-properties",
+                "",
+                "properties",
+                quarkusVersion,
+                propsPath);
+        // Marks the BOM import as having a platform descriptor (alignment check).
+        platforms.addPlatformDescriptor(
+                "io.quarkus.platform", "quarkus-bom-quarkus-platform-descriptor", "", "json", quarkusVersion);
+        System.err.println("jk-quarkus-augment: platform props=" + model.getPlatformProperties().size()
+                + " boms=" + platforms.getImportedPlatformBoms());
     }
 
     private record RuntimeCoord(String group, String artifact, String version, Path jar) {}
@@ -200,7 +239,6 @@ public final class QuarkusAugmentMain {
                 }
             }
         }
-        // Prefer top-level extensions first.
         Set<String> seen = new LinkedHashSet<>();
         List<RuntimeCoord> ordered = new ArrayList<>();
         for (String want : List.of("quarkus-rest", "quarkus-arc", "quarkus-core")) {
@@ -215,7 +253,8 @@ public final class QuarkusAugmentMain {
                 ordered.add(d);
             }
         }
-        return ordered.size() > 20 ? ordered.subList(0, 20) : ordered;
+        // Cap direct deps — resolver still walks the full managed graph.
+        return ordered.size() > 30 ? ordered.subList(0, 30) : ordered;
     }
 
     private static boolean isQuarkusExtension(Path jar) {
@@ -229,94 +268,22 @@ public final class QuarkusAugmentMain {
         }
     }
 
-    private static Path findMaven() {
-        String path = System.getenv("PATH");
-        if (path == null) return null;
-        String[] parts = path.split(java.io.File.pathSeparator);
-        String name = System.getProperty("os.name", "").toLowerCase().contains("win") ? "mvn.cmd" : "mvn";
-        for (String p : parts) {
-            Path cand = Path.of(p, name);
-            if (Files.isExecutable(cand) || Files.isRegularFile(cand)) return cand;
-        }
-        // sdkman / common locations
-        String home = System.getProperty("user.home");
-        for (String rel : List.of(
-                ".sdkman/candidates/maven/current/bin/mvn", "apache-maven/bin/mvn", ".mvn/wrapper/maven-wrapper.jar")) {
-            Path cand = Path.of(home, rel);
-            if (Files.isExecutable(cand)) return cand;
-        }
-        return null;
-    }
-
-    private static String mavenPom(
-            String group, String artifact, String version, String quarkusVersion, List<RuntimeCoord> extensions) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        sb.append("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n");
-        sb.append("  <modelVersion>4.0.0</modelVersion>\n");
-        sb.append("  <groupId>").append(xml(group)).append("</groupId>\n");
-        sb.append("  <artifactId>").append(xml(artifact)).append("</artifactId>\n");
-        sb.append("  <version>").append(xml(version)).append("</version>\n");
-        sb.append("  <properties>\n");
-        sb.append("    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n");
-        sb.append("    <maven.compiler.release>17</maven.compiler.release>\n");
-        sb.append("    <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>\n");
-        sb.append("    <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>\n");
-        sb.append("    <quarkus.platform.version>").append(xml(quarkusVersion)).append("</quarkus.platform.version>\n");
-        sb.append("    <quarkus.package.jar.type>fast-jar</quarkus.package.jar.type>\n");
-        sb.append("    <quarkus.analytics.disabled>true</quarkus.analytics.disabled>\n");
-        sb.append("  </properties>\n");
-        sb.append("  <dependencyManagement>\n");
-        sb.append("    <dependencies>\n");
-        sb.append("      <dependency>\n");
-        sb.append("        <groupId>${quarkus.platform.group-id}</groupId>\n");
-        sb.append("        <artifactId>${quarkus.platform.artifact-id}</artifactId>\n");
-        sb.append("        <version>${quarkus.platform.version}</version>\n");
-        sb.append("        <type>pom</type>\n");
-        sb.append("        <scope>import</scope>\n");
-        sb.append("      </dependency>\n");
-        sb.append("    </dependencies>\n");
-        sb.append("  </dependencyManagement>\n");
-        sb.append("  <dependencies>\n");
-        for (RuntimeCoord d : extensions) {
-            sb.append("    <dependency>\n");
-            sb.append("      <groupId>").append(xml(d.group())).append("</groupId>\n");
-            sb.append("      <artifactId>").append(xml(d.artifact())).append("</artifactId>\n");
-            sb.append("    </dependency>\n");
-        }
-        sb.append("  </dependencies>\n");
-        sb.append("  <build>\n");
-        sb.append("    <plugins>\n");
-        sb.append("      <plugin>\n");
-        sb.append("        <groupId>${quarkus.platform.group-id}</groupId>\n");
-        sb.append("        <artifactId>quarkus-maven-plugin</artifactId>\n");
-        sb.append("        <version>${quarkus.platform.version}</version>\n");
-        sb.append("        <extensions>true</extensions>\n");
-        sb.append("        <executions>\n");
-        sb.append("          <execution>\n");
-        sb.append("            <goals>\n");
-        sb.append("              <goal>build</goal>\n");
-        sb.append("            </goals>\n");
-        sb.append("          </execution>\n");
-        sb.append("        </executions>\n");
-        sb.append("      </plugin>\n");
-        sb.append("    </plugins>\n");
-        sb.append("  </build>\n");
-        sb.append("</project>\n");
-        return sb.toString();
-    }
-
-    private static void installJar(Path localRepo, RuntimeCoord d) throws IOException {
-        if (d.jar == null || !Files.isRegularFile(d.jar)) return;
-        if (d.group.startsWith("unknown")) return;
-        Path dir = localRepo;
-        for (String part : d.group.split("\\.")) {
-            dir = dir.resolve(part);
-        }
-        dir = Files.createDirectories(dir.resolve(d.artifact).resolve(d.version));
-        Path dest = dir.resolve(d.artifact + "-" + d.version + ".jar");
-        if (!Files.exists(dest)) {
-            Files.copy(d.jar, dest);
+    private static void jarDir(Path dir, Path jar) throws IOException {
+        Manifest man = new Manifest();
+        man.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        try (OutputStream fos = Files.newOutputStream(jar);
+                JarOutputStream jos = new JarOutputStream(fos, man)) {
+            if (!Files.isDirectory(dir)) return;
+            Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    String name = dir.relativize(file).toString().replace('\\', '/');
+                    jos.putNextEntry(new JarEntry(name));
+                    Files.copy(file, jos);
+                    jos.closeEntry();
+                    return FileVisitResult.CONTINUE;
+                }
+            });
         }
     }
 
@@ -324,6 +291,8 @@ public final class QuarkusAugmentMain {
         Files.walkFileTree(from, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
+                if (name.startsWith(".jk-")) return FileVisitResult.SKIP_SUBTREE;
                 Files.createDirectories(to.resolve(from.relativize(dir).toString()));
                 return FileVisitResult.CONTINUE;
             }
@@ -353,10 +322,6 @@ public final class QuarkusAugmentMain {
                 return FileVisitResult.CONTINUE;
             }
         });
-    }
-
-    private static String xml(String s) {
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
     private QuarkusAugmentMain() {}

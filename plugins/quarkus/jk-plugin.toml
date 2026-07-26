@@ -38,11 +38,42 @@ artifact   = "quarkus-bootstrap-maven"
 coordinate = "io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"
 transitive = true
 
-# Parent-CL types used by QuarkusAugmentor finally-block + config SPI.
+# Aligned smallrye-common (2.13.x) for the augment parent CL. The maven-resolver closure
+# can pull older smallrye-common; parent-first loading then fails config mapping with
+# NoSuchMethodError on Assert.checkMinimumParameter. Pin the set Quarkus 3.28 uses.
 [[contribute.step-dependency]]
-artifact   = "smallrye-config"
-coordinate = "io.smallrye.config:smallrye-config:3.13.4"
-transitive = true# Quarkus REST / CDI reflect on parameter names.
+artifact   = "smallrye-common-constraint"
+coordinate = "io.smallrye.common:smallrye-common-constraint:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-cpu"
+coordinate = "io.smallrye.common:smallrye-common-cpu:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-expression"
+coordinate = "io.smallrye.common:smallrye-common-expression:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-function"
+coordinate = "io.smallrye.common:smallrye-common-function:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-io"
+coordinate = "io.smallrye.common:smallrye-common-io:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-net"
+coordinate = "io.smallrye.common:smallrye-common-net:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-os"
+coordinate = "io.smallrye.common:smallrye-common-os:2.13.9"
+
+[[contribute.step-dependency]]
+artifact   = "smallrye-common-ref"
+coordinate = "io.smallrye.common:smallrye-common-ref:2.13.9"
+
+# Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]

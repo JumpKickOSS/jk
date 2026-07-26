@@ -8,7 +8,12 @@ description = "jk-quarkus: Quarkus build plugin worker (augment + fast-jar). Dec
 
 dependencies {
     implementation(project(":plugin-sdk"))
-    // Augment currently shells out to quarkus-maven-plugin (no compile dep on bootstrap).
+    // Compile against bootstrap APIs; at runtime the engine supplies step-dependency jars on the
+    // forked worker CP (quarkus-bootstrap + maven-resolver + aligned smallrye-common).
+    val quarkusBootstrap = "3.28.5"
+    compileOnly("io.quarkus:quarkus-bootstrap-core:$quarkusBootstrap")
+    compileOnly("io.quarkus:quarkus-bootstrap-maven-resolver:$quarkusBootstrap")
+    compileOnly("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
 }
 
 tasks.jar {
