@@ -294,7 +294,7 @@ public final class PluginBuild {
                 }
                 if (repos == null) repos = RepoGroupBuilder.buildFor(project, null, cas);
                 if (dep.transitive()) {
-                    out.put(dep.artifact(), toolClosureDir(dep.coordinateSpec(), repos, cas));
+                    out.put(dep.artifact(), toolClosureDir(dep, repos, cas));
                     continue;
                 }
                 cc.jumpkick.model.Coordinate coord = cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec());
@@ -314,28 +314,56 @@ public final class PluginBuild {
         return out;
     }
 
-    /** Materialize a transitive step-dep's runtime closure under the CAS for {@code -cp <dir>/*}. */
-    private static Path toolClosureDir(String coordinateSpec, cc.jumpkick.repo.RepoGroup repos, Cas cas)
+    /**
+     * Materialize a transitive step-dep's runtime closure under the CAS for {@code -cp <dir>/*}.
+     *
+     * <p>When {@code managed-by} and/or {@code with} are set, roots resolve as <em>one</em> graph
+     * under BOM pins (PubGrub) — Maven-like tool classpath alignment, not freestyle dual trees.
+     */
+    private static Path toolClosureDir(
+            PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
             throws IOException, InterruptedException {
-        Path dir = cas.root().resolve("plugin-tools").resolve(coordinateSpec.replace(':', '_'));
+        String cacheKey = toolClosureCacheKey(dep);
+        Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey);
         if (Files.isDirectory(dir)) {
             try (var listing = Files.list(dir)) {
                 if (listing.findFirst().isPresent()) return dir;
             }
         }
-        cc.jumpkick.model.Coordinate root = cc.jumpkick.model.Coordinate.parse(coordinateSpec);
-        var declared = List.of(new cc.jumpkick.model.Dependency(
-                root.group() + ":" + root.artifact(), cc.jumpkick.model.VersionSelector.parse("=" + root.version())));
-        var resolution = new cc.jumpkick.resolver.NaiveResolver(new cc.jumpkick.repo.EffectivePomBuilder(repos))
-                .resolve(declared);
-        java.util.LinkedHashSet<String> modules = new java.util.LinkedHashSet<>();
-        modules.add(root.group() + ":" + root.artifact());
-        modules.addAll(resolution.modules().keySet());
+
+        List<cc.jumpkick.model.Coordinate> roots = new ArrayList<>();
+        roots.add(cc.jumpkick.model.Coordinate.parse(dep.coordinateSpec()));
+        for (String w : dep.with()) {
+            roots.add(cc.jumpkick.model.Coordinate.parse(w));
+        }
+
+        List<cc.jumpkick.model.Dependency> declared = new ArrayList<>();
+        for (cc.jumpkick.model.Coordinate root : roots) {
+            declared.add(new cc.jumpkick.model.Dependency(
+                    root.group() + ":" + root.artifact(),
+                    cc.jumpkick.model.VersionSelector.parse("=" + root.version())));
+        }
+
+        Map<String, String> bomConstraints = Map.of();
+        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
+            bomConstraints = loadBomConstraints(repos, dep.managedBy());
+        }
+
+        cc.jumpkick.resolver.Resolution resolution;
+        if (!bomConstraints.isEmpty() || !dep.with().isEmpty()) {
+            // One graph, BOM-aligned (or multi-root highest-wins under PubGrub).
+            resolution = new cc.jumpkick.resolver.PubGrubResolver(repos, bomConstraints).resolve(declared);
+        } else {
+            resolution = new cc.jumpkick.resolver.NaiveResolver(new cc.jumpkick.repo.EffectivePomBuilder(repos))
+                    .resolve(declared);
+        }
 
         Path staging = Files.createTempDirectory(Files.createDirectories(dir.getParent()), ".closure-");
-        for (String module : modules) {
-            var resolved = resolution.modules().get(module);
-            cc.jumpkick.model.Coordinate coord = resolved != null ? resolved.coordinate() : root;
+        // Dedupe by GAV so package-id keys (g:a:type:classifier) don't double-link the same jar.
+        java.util.LinkedHashSet<String> seenGav = new java.util.LinkedHashSet<>();
+        for (var resolved : resolution.modules().values()) {
+            cc.jumpkick.model.Coordinate coord = resolved.coordinate();
+            if (!seenGav.add(coord.toGav())) continue;
             Path jar = repos.tryFetchArtifact(coord)
                     .orElseThrow(() -> new IOException("cannot fetch " + coord
                             + " — a transitive step-dependency's closure must exist in a declared repo"))
@@ -348,12 +376,85 @@ public final class PluginBuild {
                 Files.copy(jar, alias);
             }
         }
+        // Ensure declared roots are present even if the solver key form differed.
+        for (cc.jumpkick.model.Coordinate root : roots) {
+            if (!seenGav.add(root.toGav())) continue;
+            Path jar = repos.tryFetchArtifact(root)
+                    .orElseThrow(() -> new IOException("cannot fetch " + root
+                            + " — a transitive step-dependency's closure must exist in a declared repo"))
+                    .fetched()
+                    .cachePath();
+            Path alias = staging.resolve(root.artifact() + "-" + root.version() + ".jar");
+            try {
+                Files.createLink(alias, jar);
+            } catch (IOException | UnsupportedOperationException e) {
+                Files.copy(jar, alias);
+            }
+        }
         try {
             cc.jumpkick.util.AtomicWrites.publishDir(staging, dir);
         } catch (IOException e) {
             if (!Files.isDirectory(dir)) throw e; // lost a race → the winner's dir serves
         }
         return dir;
+    }
+
+    /** Stable CAS dir name for a tool closure (includes BOM + extra roots). */
+    private static String toolClosureCacheKey(PluginContributions.StepDep dep) {
+        StringBuilder sb = new StringBuilder(dep.coordinateSpec().replace(':', '_'));
+        for (String w : dep.with()) {
+            sb.append("__").append(w.replace(':', '_'));
+        }
+        if (dep.managedBy() != null && !dep.managedBy().isBlank()) {
+            sb.append("__bom_").append(dep.managedBy().replace(':', '_'));
+        }
+        // Keep path components reasonable on case-sensitive FS / path length limits.
+        String key = sb.toString();
+        if (key.length() > 180) {
+            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40)
+                    + "_"
+                    + dep.artifact();
+        }
+        return key;
+    }
+
+    /**
+     * Load {@code group:artifact → version} pins from a BOM POM (and its imported BOMs via
+     * EffectivePom expansion).
+     */
+    private static Map<String, String> loadBomConstraints(cc.jumpkick.repo.RepoGroup repos, String bomGav)
+            throws IOException, InterruptedException {
+        // BOM coordinates are type=pom (default parse is jar).
+        String spec = bomGav.contains("@") ? bomGav : bomGav + "@pom";
+        cc.jumpkick.model.Coordinate bom = cc.jumpkick.model.Coordinate.parse(spec);
+        cc.jumpkick.repo.EffectivePom bomPom = new cc.jumpkick.repo.EffectivePomBuilder(repos).build(bom);
+        Map<String, String> constraints = new LinkedHashMap<>();
+        for (cc.jumpkick.repo.Pom.Dep m : bomPom.managedDependencies()) {
+            if (m.version() == null || m.version().isBlank()) continue;
+            constraints.putIfAbsent(m.module(), m.version());
+        }
+        // Quarkus bootstrap-bom pins maven-resolver.* via ${maven-resolver.version} but often
+        // omits named-locks from <dependencyManagement>; without a pin PubGrub highest-wins
+        // pulls 2.x named-locks next to 1.9 api → NoSuchMethodError. Align the family.
+        String resolverLine = bomPom.properties().get("maven-resolver.version");
+        if (resolverLine != null && !resolverLine.isBlank()) {
+            for (String art : List.of(
+                    "maven-resolver-api",
+                    "maven-resolver-spi",
+                    "maven-resolver-util",
+                    "maven-resolver-impl",
+                    "maven-resolver-named-locks",
+                    "maven-resolver-connector-basic",
+                    "maven-resolver-transport-wagon",
+                    "maven-resolver-transport-http",
+                    "maven-resolver-transport-file")) {
+                constraints.putIfAbsent("org.apache.maven.resolver:" + art, resolverLine);
+            }
+        }
+        if (constraints.isEmpty()) {
+            throw new IOException("managed-by BOM " + bomGav + " contributed no managed dependency pins");
+        }
+        return constraints;
     }
 
     /** The {@code [[sdk]]} revision pins of {@code lockFile}, or empty (no lock / none recorded). */

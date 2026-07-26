@@ -176,6 +176,10 @@ public record PluginDescriptor(
     /**
      * Tool artifact for a step: either a Maven {@code coordinate} ({@code transitive} → full
      * runtime closure) or an {@code sdk-component} (+ optional {@code sdk-path}). Fetch-only.
+     *
+     * <p>{@code with} adds extra roots into the <em>same</em> resolve graph (one version per GA).
+     * {@code managedBy} is a BOM GAV whose managed pins apply during that resolve — Maven-like
+     * tool classpath alignment (no freestyle dual trees).
      */
     public record StepDependency(
             String artifact,
@@ -183,10 +187,16 @@ public record PluginDescriptor(
             boolean transitive,
             String sdkComponent,
             String sdkPath,
+            String managedBy,
+            List<String> with,
             Condition when) {
 
+        public StepDependency {
+            with = with == null ? List.of() : List.copyOf(with);
+        }
+
         public StepDependency(String artifact, String coordinate, Condition when) {
-            this(artifact, coordinate, false, null, null, when);
+            this(artifact, coordinate, false, null, null, null, List.of(), when);
         }
     }
 

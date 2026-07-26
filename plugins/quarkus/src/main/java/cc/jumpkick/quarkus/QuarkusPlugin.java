@@ -38,10 +38,9 @@ import java.util.zip.ZipFile;
  * Quarkus build plugin (JK-1159/1160/1202): {@code quarkus-augment} step + {@code quarkus-fast-jar}
  * packager.
  *
- * <p>Augmentation forks {@link QuarkusAugmentMain} on an isolated bootstrap classpath (step-dep
- * {@code quarkus-bootstrap}) so deployment resolution does not mix with the app's test-time Maven
- * embedder jars. The packager prefers the augmentor's {@code quarkus-run.jar}; if augmentation is
- * unavailable it falls back to the MVP fat-jar so lock/build still produces an artifact.
+ * <p>Augmentation forks {@link QuarkusAugmentMain} on a BOM-aligned bootstrap tool classpath
+ * (one step-dep {@code quarkus-bootstrap}: core + maven-resolver under {@code quarkus-bootstrap-bom}).
+ * The packager prefers {@code quarkus-run.jar}; if augmentation fails it falls back to an MVP fat-jar.
  */
 public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension {
 
@@ -94,37 +93,20 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
         Files.write(listFile, lines, StandardCharsets.UTF_8);
 
-        // Pure bootstrap: worker jar + step-dep closures (bootstrap-core, maven-resolver, smallrye-common).
-        // smallrye-common must be 2.13.x matching Quarkus 3.28 — older jars on the parent CL cause
-        // NoSuchMethodError in Assert during config mapping (parent-first for io.smallrye.common).
+        // Pure bootstrap: worker jar + one BOM-aligned tool closure (step-dep quarkus-bootstrap).
+        // Engine resolves core + maven-resolver under quarkus-bootstrap-bom — no dual freestyle
+        // trees, no hand-pinned smallrye modules.
         Path workerJar = pluginJar();
         List<Path> cp = new ArrayList<>();
         cp.add(workerJar);
-        addExtraJars(cp, exec, BOOTSTRAP_EXTRA, true);
-        addExtraJars(cp, exec, "quarkus-bootstrap-maven", true);
-        addExtraJars(cp, exec, "smallrye-common", false);
-        // Also accept per-module smallrye-common-* extras if declared individually.
-        for (String name : List.of(
-                "smallrye-common-constraint",
-                "smallrye-common-cpu",
-                "smallrye-common-expression",
-                "smallrye-common-function",
-                "smallrye-common-io",
-                "smallrye-common-net",
-                "smallrye-common-os",
-                "smallrye-common-ref")) {
-            exec.extra(name).ifPresent(p -> {
-                if (Files.isRegularFile(p)) cp.add(p);
-                else if (Files.isDirectory(p)) {
-                    try {
-                        cp.addAll(jarsIn(p));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            });
+        Path tools = exec.requireExtra(BOOTSTRAP_EXTRA);
+        if (Files.isDirectory(tools)) {
+            cp.addAll(jarsIn(tools));
+        } else if (Files.isRegularFile(tools)) {
+            cp.add(tools);
+        } else {
+            throw new IOException("step-dependency `" + BOOTSTRAP_EXTRA + "` missing at " + tools);
         }
-        dedupeClasspathPreferNewestSmallrye(cp);
 
         String baseName = exec.project().name();
         exec.label("quarkus augment (" + baseName + ")");
@@ -156,57 +138,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                     tail(run.output()),
                     StandardCharsets.UTF_8);
         }
-    }
-
-    private static void addExtraJars(List<Path> cp, StepExec exec, String name, boolean skipOldSmallrye)
-            throws IOException {
-        Path extra = exec.extra(name).orElse(null);
-        if (extra == null) return;
-        if (Files.isRegularFile(extra)) {
-            if (!(skipOldSmallrye && isSmallryeCommon(extra))) cp.add(extra);
-            return;
-        }
-        if (Files.isDirectory(extra)) {
-            for (Path j : jarsIn(extra)) {
-                if (skipOldSmallrye && isSmallryeCommon(j)) continue;
-                cp.add(j);
-            }
-        }
-    }
-
-    private static boolean isSmallryeCommon(Path jar) {
-        String n = jar.getFileName().toString();
-        return n.startsWith("smallrye-common-") || n.contains("smallrye-common-");
-    }
-
-    /**
-     * When multiple smallrye-common versions land on the CP, keep the highest version per module
-     * name so parent-first loading does not bind an older Assert (NoSuchMethodError).
-     */
-    private static void dedupeClasspathPreferNewestSmallrye(List<Path> cp) {
-        java.util.LinkedHashMap<String, Path> byKey = new java.util.LinkedHashMap<>();
-        List<Path> others = new ArrayList<>();
-        for (Path p : cp) {
-            String name = p.getFileName().toString();
-            if (name.startsWith("smallrye-common-") && name.endsWith(".jar")) {
-                // smallrye-common-<module>-<version>.jar
-                int lastDash = name.lastIndexOf('-');
-                int prevDash = name.lastIndexOf('-', lastDash - 1);
-                // module id = everything before last version-ish segment is ambiguous; use full
-                // prefix before version: strip trailing -<ver>.jar by finding first digit after common-
-                String key = name.replaceAll("-\\d+\\.\\d+.*\\.jar$", "");
-                Path existing = byKey.get(key);
-                if (existing == null || name.compareTo(existing.getFileName().toString()) > 0) {
-                    byKey.put(key, p);
-                }
-            } else {
-                others.add(p);
-            }
-        }
-        cp.clear();
-        // smallrye-common first so parent CL loads the aligned set.
-        cp.addAll(byKey.values());
-        cp.addAll(others);
     }
 
     private static List<Path> jarsIn(Path dir) throws IOException {

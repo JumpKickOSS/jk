@@ -365,14 +365,36 @@ public final class PluginDescriptors {
             if (transitive && coordinate == null) {
                 throw new JkBuildParseException(where + ": transitive only applies to a coordinate entry");
             }
+            String managedBy = t.getString("managed-by");
+            if (managedBy != null) {
+                Interpolation.validate(managedBy, schemaKeys, where + ".managed-by");
+                if (coordinate == null) {
+                    throw new JkBuildParseException(where + ": managed-by only applies to a coordinate entry");
+                }
+                if (!transitive) {
+                    throw new JkBuildParseException(where + ": managed-by requires transitive = true"
+                            + " (BOM pins apply to the tool closure graph)");
+                }
+            }
+            List<String> with = stringList(t, "with", where);
+            for (String w : with) {
+                Interpolation.validate(w, schemaKeys, where + ".with");
+            }
+            if (!with.isEmpty() && coordinate == null) {
+                throw new JkBuildParseException(where + ": with only applies to a coordinate entry");
+            }
+            if (!with.isEmpty() && !transitive) {
+                throw new JkBuildParseException(where + ": with requires transitive = true"
+                        + " (extra roots join the same tool closure graph)");
+            }
             PluginDescriptor.Condition when = parseCondition(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(
                         where + ": classpath-has cannot gate a step-dependency (tool fetches are"
                                 + " decided from config/facts, not the resolved classpath)");
             }
-            stepDeps.add(
-                    new PluginDescriptor.StepDependency(artifact, coordinate, transitive, sdkComponent, sdkPath, when));
+            stepDeps.add(new PluginDescriptor.StepDependency(
+                    artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, when));
         }
 
         List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();

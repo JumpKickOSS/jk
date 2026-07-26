@@ -1,5 +1,5 @@
-# Built-in Quarkus build plugin — declarative layer (JK-1158/1159 MVP).
-# Worker code (fast-jar packager) lands in the jar; BOM + scaffold are pure data.
+# Built-in Quarkus build plugin — declarative layer (JK-1158/1159/1160/1202).
+# Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
 
 [plugin]
 id        = "quarkus"
@@ -20,58 +20,20 @@ main-scan      = true
 
 [schema]
 version = { type = "string", required = true, example = "3.28.5", hint = "pins io.quarkus.platform:quarkus-bom" }
-# packaging modes beyond MVP fat-jar land with real augmentation (follow-up ticket)
 
 # Platform BOM so starters are versionless under [dependencies].
 [[contribute.platform-dependency]]
 coordinate = "io.quarkus.platform:quarkus-bom:${config.version}"
 
-# Isolated bootstrap classpath for the quarkus-augment step (not mixed into the app graph).
-# maven-resolver is provided on bootstrap-core — pin it as its own transitive root.
+# Single augment tool classpath: bootstrap-core + maven-resolver roots, resolved as ONE graph
+# under quarkus-bootstrap-bom (same idea as Maven plugin deps under a BOM). No freestyle dual
+# trees, no hard-coded smallrye pins — versions track ${config.version}.
 [[contribute.step-dependency]]
 artifact   = "quarkus-bootstrap"
 coordinate = "io.quarkus:quarkus-bootstrap-core:${config.version}"
+with       = ["io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"]
 transitive = true
-
-[[contribute.step-dependency]]
-artifact   = "quarkus-bootstrap-maven"
-coordinate = "io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"
-transitive = true
-
-# Aligned smallrye-common (2.13.x) for the augment parent CL. The maven-resolver closure
-# can pull older smallrye-common; parent-first loading then fails config mapping with
-# NoSuchMethodError on Assert.checkMinimumParameter. Pin the set Quarkus 3.28 uses.
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-constraint"
-coordinate = "io.smallrye.common:smallrye-common-constraint:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-cpu"
-coordinate = "io.smallrye.common:smallrye-common-cpu:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-expression"
-coordinate = "io.smallrye.common:smallrye-common-expression:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-function"
-coordinate = "io.smallrye.common:smallrye-common-function:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-io"
-coordinate = "io.smallrye.common:smallrye-common-io:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-net"
-coordinate = "io.smallrye.common:smallrye-common-net:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-os"
-coordinate = "io.smallrye.common:smallrye-common-os:2.13.9"
-
-[[contribute.step-dependency]]
-artifact   = "smallrye-common-ref"
-coordinate = "io.smallrye.common:smallrye-common-ref:2.13.9"
+managed-by = "io.quarkus:quarkus-bootstrap-bom:${config.version}"
 
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
