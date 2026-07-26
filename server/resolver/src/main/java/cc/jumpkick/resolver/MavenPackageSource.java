@@ -324,23 +324,30 @@ public final class MavenPackageSource implements PackageSource {
         if (VersionSelectors.looksLikeMavenRange(trimmed)) {
             return VersionSelectors.constraintFromPomVersion(trimmed);
         }
+        PackageId id = PackageId.parse(depPkg);
+        // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
+        // that often have no classifier POM → Unavailable thrash (JK-1202).
+        if (!id.classifier().isEmpty()) {
+            return VersionSet.exact(preferredVersion(depPkg).orElse(trimmed));
+        }
         // No platform/lock map: historical highest-wins bare versions.
         if (bomConstraints.isEmpty() && lockedVersionPrefs.isEmpty()) {
             return VersionSelectors.constraintFromPomVersion(trimmed);
         }
         VersionSet asFloor = VersionSelectors.constraintFromPomVersion(trimmed);
         Optional<String> prefer = preferredVersion(depPkg);
-        if (prefer.isPresent() && asFloor.contains(prefer.get())) {
-            // Compatible BOM/lock pin → exact (singleton, no metadata).
+        if (prefer.isPresent()) {
+            // Platform/lock map entry for this GA: pin is law (enforcedPlatform for the managed set).
             return VersionSet.exact(prefer.get());
         }
-        // JK-1202: do not highest-wins-lift io.quarkus.* past the version the BOM line declared.
-        // Lifting quarkus-bootstrap-maven4-resolver 3.28.5 → 3.38.0 while the rest of the graph
-        // stays on 3.28.x caused multi-minute PubGrub thrash. Other groups keep atLeast floors.
-        String ga = PackageId.parse(depPkg).ga();
+        // JK-1202: do not highest-wins-lift io.quarkus.* past the declared BOM line.
+        // Lifting bootstrap-maven4-resolver 3.28.5 → 3.38.x caused multi-minute thrash.
+        // General multi-group platform-line policy: JK-1205.
+        String ga = id.ga();
         if (ga.startsWith("io.quarkus:") || ga.startsWith("io.quarkus.")) {
             return VersionSet.exact(trimmed);
         }
+        // Unmanaged plain jars: highest-wins floor.
         return asFloor;
     }
 

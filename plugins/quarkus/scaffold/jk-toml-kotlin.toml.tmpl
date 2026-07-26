@@ -6,4 +6,7 @@ quarkus-rest   = { group = "io.quarkus", name = "quarkus-rest" }
 quarkus-arc    = { group = "io.quarkus", name = "quarkus-arc" }
 quarkus-kotlin = { group = "io.quarkus", name = "quarkus-kotlin" }
 
-# quarkus-junit5: add under [test-dependencies] after JK-1202 junit5 path is fully fast.
+# Stay on [test-dependencies] only — MAIN/DEV must not pull maven-embedder (JK-1202).
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured   = { group = "io.rest-assured", name = "rest-assured" }

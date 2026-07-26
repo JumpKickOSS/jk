@@ -199,8 +199,9 @@ class LockOrchestratorBomTest {
     }
 
     @Test
-    void platform_bom_soft_prefer_lifts_when_transitive_demands_higher(@TempDir Path tempDir) throws Exception {
-        // BOM soft-prefer leaf 1.0; middle requires leaf 1.5 as floor → highest-wins lifts to 2.0.
+    void platform_bom_enforces_managed_pin_on_transitive_edges(@TempDir Path tempDir) throws Exception {
+        // JK-1202: GAs in the platform map use the BOM pin on POM edges (enforced), not a lift to
+        // the highest metadata release. Soft lift for unmapped GAs is unchanged.
         servePom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
@@ -245,8 +246,7 @@ class LockOrchestratorBomTest {
                 .filter(p -> p.packageKey().equals("com.foo:leaf:jar:"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(leafArt.version()).isEqualTo("2.0");
-        assertThat(leafArt.pinnedBy()).isNull();
+        assertThat(leafArt.version()).isEqualTo("1.0");
     }
 
     @Test

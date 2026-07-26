@@ -93,8 +93,10 @@ class PubGrubResolverTest {
     }
 
     @Test
-    void bom_soft_prefer_lifts_when_transitive_floor_exceeds_pin(@TempDir Path tempDir) throws Exception {
-        // root → middle@1.0 → leaf >= 1.5, BOM soft-prefers leaf = 1.0 → highest-wins 2.0.
+    void bom_managed_pin_is_enforced_on_transitive_edges(@TempDir Path tempDir) throws Exception {
+        // JK-1202: when a GA is in the platform map, the pin is enforced on POM edges (not lifted
+        // by a higher bare version on middle→leaf). Soft-prefer lift remains for GAs absent from
+        // the map; multi-group policy discussion is JK-1205.
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
         servePom("com.foo", "middle", "1.0", """
@@ -119,7 +121,7 @@ class PubGrubResolverTest {
 
         Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
 
-        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("2.0");
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
     }
 
     @Test

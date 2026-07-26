@@ -34,12 +34,10 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
-    void higher_pom_floor_than_platform_pin_stays_at_least(@TempDir Path tmp) {
+    void platform_pin_enforced_even_when_pom_declares_higher(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"));
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.5.0");
-        assertThat(vs.asExactSingleton()).isEmpty();
-        assertThat(vs.contains("1.5.0")).isTrue();
-        assertThat(vs.contains("1.0.0")).isFalse();
+        assertThat(vs.asExactSingleton()).contains("1.0.0");
     }
 
     @Test
@@ -49,6 +47,20 @@ class MavenPackageSourceConstraintTest {
         assertThat(vs.asExactSingleton()).isEmpty();
         assertThat(vs.contains("1.2.3")).isTrue();
         assertThat(vs.contains("9.0.0")).isTrue();
+    }
+
+    @Test
+    void classified_artifact_pins_exact_declared_or_bom(@TempDir Path tmp) {
+        // guice:jar:classes — highest-wins on the GA list misses classifier jars (JK-1202).
+        MavenPackageSource withBom = source(tmp, Map.of("com.google.inject:guice", "5.1.0"));
+        assertThat(withBom
+                        .constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+                        .asExactSingleton())
+                .contains("5.1.0");
+        MavenPackageSource noBom = source(tmp, Map.of());
+        assertThat(noBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+                        .asExactSingleton())
+                .contains("5.1.0");
     }
 
     private static MavenPackageSource source(Path tmp, Map<String, String> bom) {
