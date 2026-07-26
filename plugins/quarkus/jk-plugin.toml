@@ -26,6 +26,17 @@ version = { type = "string", required = true, example = "3.28.5", hint = "pins i
 [[contribute.platform-dependency]]
 coordinate = "io.quarkus.platform:quarkus-bom:${config.version}"
 
+# Isolated bootstrap classpath for the quarkus-augment step (not mixed into the app graph).
+# maven-resolver is provided on bootstrap-core — pin it as its own transitive root.
+[[contribute.step-dependency]]
+artifact   = "quarkus-bootstrap"
+coordinate = "io.quarkus:quarkus-bootstrap-core:${config.version}"
+transitive = true
+
+[[contribute.step-dependency]]
+artifact   = "quarkus-bootstrap-maven"
+coordinate = "io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"
+transitive = true
 # Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
