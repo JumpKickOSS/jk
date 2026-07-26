@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
-import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -365,11 +364,15 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        // Parallel jar materialize (HostRateLimiter + io pool). Progress ticks on *completion*
-        // order (JK-1091) via a queue drained on this thread so wedge/UI stays single-threaded;
-        // lock rows are still assembled in declaration order.
+        // Parallel jar materialize (io pool). Progress ticks on *completion* order (JK-1091)
+        // via a queue drained on this thread so wedge/UI stays single-threaded; lock rows are
+        // still assembled in declaration order.
+        //
+        // JK-1202: do not wrap every toArtifact in HostRateLimiter on the Maven Central host.
+        // Warm re-locks serve immutable GAVs from the local mirror (no HTTP); rate-limiting
+        // those to 6 concurrent turns a ~1s CAS walk into multi-minute wall time. Network
+        // politeness remains inside the HTTP transport for actual downloads.
         List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
-        HostRateLimiter limiter = HostRateLimiter.shared();
         int n = ordered.size();
         Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
@@ -380,17 +383,15 @@ public final class LockOrchestrator {
             CompletableFuture.supplyAsync(
                             () -> {
                                 try {
-                                    return limiter.run(
-                                            first.baseUrl(),
-                                            () -> toArtifact(
-                                                    e.getValue(),
-                                                    tags,
-                                                    kmp,
-                                                    pomBuilder,
-                                                    fallbackSource,
-                                                    bomConstraints,
-                                                    constraintProvenance,
-                                                    ResolveObserver.NOOP));
+                                    return toArtifact(
+                                            e.getValue(),
+                                            tags,
+                                            kmp,
+                                            pomBuilder,
+                                            fallbackSource,
+                                            bomConstraints,
+                                            constraintProvenance,
+                                            ResolveObserver.NOOP);
                                 } catch (IOException | InterruptedException ex) {
                                     throw new CompletionException(ex);
                                 }
@@ -696,8 +697,13 @@ public final class LockOrchestrator {
 
         String packageName = mod.module();
         String artifactFile = null;
+        // JK-1202: only probe packaging when the solver package type is not already a plain jar.
+        // Building EffectivePom for every package on materialize dominated warm re-lock wall time
+        // (hundreds of POM expansions for Quarkus-sized graphs).
         try {
-            if (!kmpAlias && "aar".equals(pomBuilder.build(coord).packaging())) {
+            PackageId id = PackageId.isMavenPackageKey(mod.module()) ? PackageId.parse(mod.module()) : null;
+            boolean maybeAar = id != null && "aar".equals(id.type());
+            if (!kmpAlias && maybeAar && "aar".equals(pomBuilder.build(coord).packaging())) {
                 coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
                 packageName =
                         PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
