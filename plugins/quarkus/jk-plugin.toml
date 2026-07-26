@@ -37,7 +37,12 @@ transitive = true
 artifact   = "quarkus-bootstrap-maven"
 coordinate = "io.quarkus:quarkus-bootstrap-maven-resolver:${config.version}"
 transitive = true
-# Quarkus REST / CDI reflect on parameter names.
+
+# Parent-CL types used by QuarkusAugmentor finally-block + config SPI.
+[[contribute.step-dependency]]
+artifact   = "smallrye-config"
+coordinate = "io.smallrye.config:smallrye-config:3.13.4"
+transitive = true# Quarkus REST / CDI reflect on parameter names.
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]

@@ -75,22 +75,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
     }
 
     private static void runAugment(StepExec exec) throws Exception {
-        Path bootstrap = exec.extra(BOOTSTRAP_EXTRA).orElse(null);
-        if (bootstrap == null) {
-            exec.label("quarkus-augment skipped (no quarkus-bootstrap step-dependency)");
-            return;
-        }
-        List<Path> rawBootstrap = new ArrayList<>(jarsOn(bootstrap));
-        Path bootstrapMaven = exec.extra("quarkus-bootstrap-maven").orElse(null);
-        if (bootstrapMaven != null) {
-            rawBootstrap.addAll(jarsOn(bootstrapMaven));
-        }
-        // Dedup by file name (core + maven-resolver overlap on app-model etc.).
-        List<Path> bootstrapJars = dedupeJars(rawBootstrap);
-        if (bootstrapJars.isEmpty()) {
-            throw new IOException("quarkus-bootstrap step-dependency resolved empty: " + bootstrap);
-        }
-
         Path classes = exec.classesDir();
         if (!Files.isDirectory(classes)) {
             throw new IOException("no classes to augment at " + classes);
@@ -104,25 +88,21 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             if (jar == null || !Files.isRegularFile(jar)) continue;
             String gav = gavFromPath(jar);
             if (gav == null) {
-                // Fall back to filename stem — bootstrap may still resolve via local repo.
                 gav = "unknown:unknown:0";
             }
             lines.add(gav + "\t" + jar.toAbsolutePath().normalize());
         }
         Files.write(listFile, lines, StandardCharsets.UTF_8);
 
+        // AugmentMain only needs the worker jar (shells out to mvn / quarkus-maven-plugin).
         Path workerJar = pluginJar();
-        List<Path> cp = new ArrayList<>();
-        cp.add(workerJar);
-        cp.addAll(bootstrapJars);
+        List<Path> cp = List.of(workerJar);
 
         String baseName = exec.project().name();
         exec.label("quarkus augment (" + baseName + ")");
 
         String quarkusVersion = exec.config().string("version");
         StepExec.ToolRun.Result run = exec.java()
-                .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
-                .arg("-Djava.util.concurrent.ForkJoinPool.common.threadFactory=io.quarkus.bootstrap.forkjoin.QuarkusForkJoinWorkerThreadFactory")
                 .classpath(cp)
                 .mainClass(QuarkusAugmentMain.class.getName())
                 .arg(exec.moduleDir().toString())
@@ -154,24 +134,32 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path outJar = io.artifactPath();
         Files.createDirectories(outJar.getParent());
 
-        // Prefer real augmentor output: quarkus-app/**/quarkus-run.jar or the jar path printed.
+        // Prefer real augmentor output: quarkus-app layout (runner + lib/ + app/).
         Path augmentRoot = io.stepOutput(AUGMENT_STEP).orElse(null);
         if (augmentRoot != null) {
             Path runJar = findQuarkusRunJar(augmentRoot);
             if (runJar != null) {
+                Path layoutRoot = runJar.getParent(); // directory containing quarkus-run.jar + lib/
                 io.label("package " + outJar.getFileName() + " (quarkus-run.jar)");
-                Files.copy(runJar, outJar, StandardCopyOption.REPLACE_EXISTING);
-                // Also keep the full quarkus-app tree next to the main artifact for lib/ layout.
-                Path appDir = outJar.getParent().resolve("quarkus-app");
-                if (Files.isDirectory(augmentRoot.resolve("quarkus-app"))) {
-                    copyTree(augmentRoot.resolve("quarkus-app"), appDir);
-                } else if (Files.isDirectory(augmentRoot)) {
-                    // targetDir itself may already be the quarkus-app layout
-                    Path lib = augmentRoot.resolve("lib");
-                    if (Files.isDirectory(lib)) {
-                        copyTree(augmentRoot, appDir);
+                // Fast-jar Class-Path is relative (lib/boot/…): place lib/app next to the main jar.
+                Path outDir = outJar.getParent();
+                for (String child : List.of("lib", "app", "quarkus")) {
+                    Path src = layoutRoot.resolve(child);
+                    if (Files.isDirectory(src)) {
+                        Path dest = outDir.resolve(child);
+                        if (Files.exists(dest)) {
+                            deleteTree(dest);
+                        }
+                        copyTree(src, dest);
                     }
                 }
+                Files.copy(runJar, outJar, StandardCopyOption.REPLACE_EXISTING);
+                // Also materialize the canonical quarkus-app/ tree for docs / docker layering.
+                Path appDir = outDir.resolve("quarkus-app");
+                if (Files.exists(appDir)) {
+                    deleteTree(appDir);
+                }
+                copyTree(layoutRoot, appDir);
                 return;
             }
         }
@@ -188,15 +176,21 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     private static Path findQuarkusRunJar(Path root) throws IOException {
         if (!Files.isDirectory(root)) return null;
-        Path direct = root.resolve("quarkus-run.jar");
-        if (Files.isRegularFile(direct)) return direct;
+        // Prefer a runner whose sibling lib/ exists (fast-jar Class-Path is relative).
         Path nested = root.resolve("quarkus-app").resolve("quarkus-run.jar");
-        if (Files.isRegularFile(nested)) return nested;
-        try (Stream<Path> walk = Files.walk(root, 4)) {
+        if (Files.isRegularFile(nested) && Files.isDirectory(nested.getParent().resolve("lib"))) {
+            return nested;
+        }
+        Path direct = root.resolve("quarkus-run.jar");
+        if (Files.isRegularFile(direct) && Files.isDirectory(root.resolve("lib"))) {
+            return direct;
+        }
+        try (Stream<Path> walk = Files.walk(root, 5)) {
             return walk.filter(p -> p.getFileName().toString().equals("quarkus-run.jar"))
                     .filter(Files::isRegularFile)
+                    .filter(p -> Files.isDirectory(p.getParent().resolve("lib")))
                     .findFirst()
-                    .orElse(null);
+                    .orElse(Files.isRegularFile(direct) ? direct : null);
         }
     }
 
@@ -286,6 +280,9 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Files.walkFileTree(from, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                // Skip nested bootstrap/maven scratch dirs if present under the layout root.
+                String name = dir.getFileName() != null ? dir.getFileName().toString() : "";
+                if (name.startsWith(".jk-")) return FileVisitResult.SKIP_SUBTREE;
                 Files.createDirectories(to.resolve(from.relativize(dir).toString()));
                 return FileVisitResult.CONTINUE;
             }
@@ -295,6 +292,23 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 Path dest = to.resolve(from.relativize(file).toString());
                 Files.createDirectories(dest.getParent());
                 Files.copy(file, dest, StandardCopyOption.REPLACE_EXISTING);
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        if (!Files.exists(root)) return;
+        Files.walkFileTree(root, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.deleteIfExists(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.deleteIfExists(dir);
                 return FileVisitResult.CONTINUE;
             }
         });

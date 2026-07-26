@@ -8,9 +8,7 @@ description = "jk-quarkus: Quarkus build plugin worker (augment + fast-jar). Dec
 
 dependencies {
     implementation(project(":plugin-sdk"))
-    // Compile-only: forked at package time on the step-dep bootstrap classpath (matches [quarkus] version).
-    compileOnly("io.quarkus:quarkus-bootstrap-core:3.28.5")
-    compileOnly("io.quarkus:quarkus-bootstrap-maven-resolver:3.28.5")
+    // Augment currently shells out to quarkus-maven-plugin (no compile dep on bootstrap).
 }
 
 tasks.jar {
