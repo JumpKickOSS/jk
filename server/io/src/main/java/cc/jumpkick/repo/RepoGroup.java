@@ -18,6 +18,12 @@ public final class RepoGroup {
     private final List<MavenRepo> repos;
     /** Parallel to {@link #repos}: exclusive group patterns per repo (empty = no exclusive claim). */
     private final List<List<String>> exclusiveGroups;
+    /**
+     * The first {@code priorityCount} repos are workspace-local materializations (path/git):
+     * always eligible and always consulted first, even for exclusively-claimed groups — a
+     * locally-built artifact outranks any remote binding (JK-1214).
+     */
+    private final int priorityCount;
 
     public RepoGroup(List<MavenRepo> repos) {
         this(repos, null);
@@ -28,12 +34,17 @@ public final class RepoGroup {
      *     shorter lists are treated as no bindings for those entries
      */
     public RepoGroup(List<MavenRepo> repos, List<List<String>> exclusiveGroups) {
+        this(repos, exclusiveGroups, 0);
+    }
+
+    private RepoGroup(List<MavenRepo> repos, List<List<String>> exclusiveGroups, int priorityCount) {
         Objects.requireNonNull(repos, "repos");
         if (repos.isEmpty()) {
             throw new IllegalArgumentException("RepoGroup must contain at least one repo");
         }
         this.repos = List.copyOf(repos);
         this.exclusiveGroups = normalizeExclusive(this.repos.size(), exclusiveGroups);
+        this.priorityCount = priorityCount;
     }
 
     public static RepoGroup of(MavenRepo single) {
@@ -41,10 +52,10 @@ public final class RepoGroup {
     }
 
     /**
-     * Prepend {@code leading} repos (no exclusive claims) ahead of this group, keeping this
-     * group's exclusive bindings aligned with the trailing repos. Used for path/git materialize
-     * repos that must answer before remotes without stripping JumpKick exclusive groups (which
-     * would make every Central GAV HTTP-404 on jumpkick first).
+     * Prepend {@code leading} repos ahead of this group, keeping this group's exclusive bindings
+     * aligned with the trailing repos. Used for path/git materialize repos: they answer before
+     * remotes — including for exclusively-claimed groups (JK-1214) — without stripping JumpKick
+     * exclusive groups (which would make every Central GAV HTTP-404 on jumpkick first).
      */
     public RepoGroup withReposPrepended(List<MavenRepo> leading) {
         if (leading == null || leading.isEmpty()) return this;
@@ -54,7 +65,7 @@ public final class RepoGroup {
         List<List<String>> excl = new ArrayList<>(merged.size());
         for (int i = 0; i < leading.size(); i++) excl.add(List.of());
         excl.addAll(exclusiveGroups);
-        return new RepoGroup(merged, excl);
+        return new RepoGroup(merged, excl, leading.size() + priorityCount);
     }
 
     public List<MavenRepo> repos() {
@@ -71,39 +82,15 @@ public final class RepoGroup {
     }
 
     public Optional<RepoFetched> tryFetchPom(Coordinate coord) throws IOException, InterruptedException {
-        // Local-first across eligible repos so JumpKick/Google do not HTTP-404 every Central GAV
-        // on a warm re-lock (JK-1202).
-        Optional<RepoFetched> local = tryLocalPom(coord);
-        if (local.isPresent()) return local;
-        return tryFetch(coord, MavenRepo::fetchPom);
+        return tryFetch(coord, MavenRepo::tryLocalPom, MavenRepo::fetchPom);
     }
 
     public Optional<RepoFetched> tryFetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        Optional<RepoFetched> local = tryLocalArtifact(coord);
-        if (local.isPresent()) return local;
-        return tryFetch(coord, MavenRepo::fetchArtifact);
+        return tryFetch(coord, MavenRepo::tryLocalArtifact, MavenRepo::fetchArtifact);
     }
 
     public Optional<RepoFetched> tryFetchMetadata(Coordinate coord) throws IOException, InterruptedException {
-        return tryFetch(coord, MavenRepo::fetchMetadata);
-    }
-
-    /** Any eligible repo's local mirror of the artifact, without network. */
-    public Optional<RepoFetched> tryLocalArtifact(Coordinate coord) {
-        for (MavenRepo repo : eligibleRepos(coord)) {
-            Optional<MavenRepo.Fetched> f = repo.tryLocalArtifact(coord);
-            if (f.isPresent()) return Optional.of(new RepoFetched(repo, f.get()));
-        }
-        return Optional.empty();
-    }
-
-    /** Any eligible repo's local mirror of the POM, without network. */
-    public Optional<RepoFetched> tryLocalPom(Coordinate coord) {
-        for (MavenRepo repo : eligibleRepos(coord)) {
-            Optional<MavenRepo.Fetched> f = repo.tryLocalPom(coord);
-            if (f.isPresent()) return Optional.of(new RepoFetched(repo, f.get()));
-        }
-        return Optional.empty();
+        return tryFetch(coord, (repo, c) -> Optional.empty(), MavenRepo::fetchMetadata);
     }
 
     /**
@@ -130,25 +117,44 @@ public final class RepoGroup {
      * </ul>
      */
     List<MavenRepo> eligibleRepos(Coordinate coord) {
+        // Priority (path/git) repos always answer first — even for claimed groups (JK-1214):
+        // the workspace build outranks whatever an exclusive remote binding would serve.
+        List<MavenRepo> out = new ArrayList<>(repos.subList(0, priorityCount));
         List<Integer> claimants = ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group());
         if (!claimants.isEmpty()) {
-            List<MavenRepo> out = new ArrayList<>(claimants.size());
-            for (int i : claimants) out.add(repos.get(i));
+            for (int i : claimants) {
+                if (i >= priorityCount) out.add(repos.get(i));
+            }
             return out;
         }
-        List<MavenRepo> general = new ArrayList<>();
-        for (int i = 0; i < repos.size(); i++) {
+        int before = out.size();
+        for (int i = priorityCount; i < repos.size(); i++) {
             if (exclusiveGroups.get(i).isEmpty()) {
-                general.add(repos.get(i));
+                out.add(repos.get(i));
             }
         }
-        // Safety: if every repo is exclusive and none claimed this group, fall back to all
-        // (otherwise unbound coords would be unresolvable).
-        return general.isEmpty() ? repos : general;
+        // Safety: if every trailing repo is exclusive and none claimed this group, fall back to
+        // all of them (otherwise unbound coords would be unresolvable).
+        if (out.size() == before) {
+            out.addAll(repos.subList(priorityCount, repos.size()));
+        }
+        return out;
     }
 
-    private Optional<RepoFetched> tryFetch(Coordinate coord, Fetcher fetcher) throws IOException, InterruptedException {
+    /**
+     * Per-repo local-then-remote, in repo order (JK-1215): each eligible repo's warm mirror is
+     * probed before its remote leg, but a LATER repo's warm mirror can never shadow an EARLIER
+     * repo — order is the precedence contract. (The JK-1202 no-HTTP-404 property still holds:
+     * exclusive specialists are already skipped by {@link #eligibleRepos}, and the first
+     * eligible repo's warm mirror short-circuits without network.)
+     */
+    private Optional<RepoFetched> tryFetch(Coordinate coord, LocalProbe localProbe, Fetcher fetcher)
+            throws IOException, InterruptedException {
         for (MavenRepo repo : eligibleRepos(coord)) {
+            Optional<MavenRepo.Fetched> local = localProbe.probe(repo, coord);
+            if (local.isPresent()) {
+                return Optional.of(new RepoFetched(repo, local.get()));
+            }
             try {
                 MavenRepo.Fetched f = fetcher.fetch(repo, coord);
                 return Optional.of(new RepoFetched(repo, f));
@@ -179,5 +185,9 @@ public final class RepoGroup {
     @FunctionalInterface
     private interface Fetcher {
         MavenRepo.Fetched fetch(MavenRepo repo, Coordinate coord) throws IOException, InterruptedException;
+    }
+
+    private interface LocalProbe {
+        Optional<MavenRepo.Fetched> probe(MavenRepo repo, Coordinate coord);
     }
 }
