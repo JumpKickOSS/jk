@@ -23,11 +23,25 @@ export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      // Reconcile with a durable in-flight history row (refresh / other tab) when buildNumber matches.
+      const existing = cards.find(
+        (c) =>
+          c.state === 'running' &&
+          c.dir === (d.dir || '') &&
+          d.buildNumber &&
+          c.buildNumber === d.buildNumber,
+      );
+      if (existing) {
+        existing.id = d.requestId; // prefer live request id for subsequent SSE
+        if (d.coord) existing.coord = d.coord;
+        break;
+      }
       cards.unshift({
         id: d.requestId,
         kind: d.kind || 'request',
         dir: d.dir || '',
         coord: d.coord || null,
+        buildNumber: d.buildNumber || null,
         state: 'running',
         startedAt: event.at ?? null,
         finishedAt: null,
@@ -204,11 +218,18 @@ export function seedFromHistory(cards, records) {
         (typeof c.id === 'number' &&
           c.dir === rec.dir &&
           c.finishedAt != null &&
-          Math.abs(c.finishedAt - rec.finishedAt) < 2000),
+          Math.abs(c.finishedAt - rec.finishedAt) < 2000) ||
+        // JK-1251: match a live SSE card to a durable in-flight journal row
+        (c.state === 'running' &&
+          rec.running &&
+          c.dir === rec.dir &&
+          rec.buildNumber &&
+          c.buildNumber === rec.buildNumber),
     );
     if (live) {
       live.historyId = rec.id; // reconcile: the live card is this run — make it deletable
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
+      if (rec.running) live.state = 'running';
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
@@ -219,8 +240,9 @@ export function seedFromHistory(cards, records) {
   return cards;
 }
 
-/** One persisted record → a finished card matching {@link foldEvent}'s shape. */
+/** One persisted record → a card matching {@link foldEvent}'s shape (finished or still running). */
 function historyCard(rec) {
+  const running = !!rec.running;
   return {
     id: 'h:' + rec.id,
     historyId: rec.id,
@@ -228,14 +250,21 @@ function historyCard(rec) {
     kind: rec.kind || 'build',
     dir: rec.dir || '',
     coord: rec.coord || null,
-    state: 'finished',
+    state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
-    finishedAt: rec.finishedAt ?? null,
-    millis: rec.millis ?? null,
+    finishedAt: running ? null : rec.finishedAt ?? null,
+    millis: running ? null : rec.millis ?? null,
     cancelled: !!rec.cancelled,
-    success: typeof rec.success === 'boolean' ? rec.success : null,
+    success: running ? null : typeof rec.success === 'boolean' ? rec.success : null,
     modules: historyModules(rec),
     output: [],
+    mods: {},
+    planWeight: 0,
+    progressPercent: null,
+    progressNum: 0,
+    progressDen: 0,
+    etaMillis: null,
+    etaAt: null,
   };
 }
 

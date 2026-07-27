@@ -77,6 +77,7 @@ final class Json {
 
         o.put("trigger", r.trigger());
         o.put("commit", r.commit());
+        o.put("running", r.running());
 
         if (r.benefit() == null) {
             o.put("benefit", null);
@@ -176,7 +177,8 @@ final class Json {
                 diagnostics,
                 str(o, "trigger"),
                 str(o, "commit"),
-                benefit);
+                benefit,
+                bool(o, "running"));
     }
 
     private static String str(Map<String, Object> o, String key) {

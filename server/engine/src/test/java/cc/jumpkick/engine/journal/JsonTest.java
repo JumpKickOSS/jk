@@ -47,7 +47,8 @@ class JsonTest {
                         "org.opentest4j.AssertionFailedError")),
                 "web",
                 "abc1234",
-                new BuildRecord.CacheBenefit(9000, 6000, 3, 4));
+                new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
+                false);
 
         BuildRecord back = Json.read(Json.write(original));
 
@@ -103,7 +104,8 @@ class JsonTest {
                 List.of(),
                 null,
                 null,
-                null);
+                null,
+                false);
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.coord()).isNull();
         assertThat(back.tests()).isNull();

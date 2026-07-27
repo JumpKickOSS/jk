@@ -12,6 +12,9 @@ import java.util.List;
  *
  * <p>Deliberately a plain value object with no engine dependencies so it round-trips cleanly through
  * {@link Json}. {@code schema} lets a future reader detect and reject/upgrade an older layout.
+ *
+ * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
+ * rehydrate active builds after refresh (JK-1251). Finished records keep {@code running=false}.
  */
 public record BuildRecord(
         String id,
@@ -33,15 +36,14 @@ public record BuildRecord(
         List<Diag> diagnostics,
         String trigger,
         String commit,
-        CacheBenefit benefit) {
+        CacheBenefit benefit,
+        boolean running) {
 
     /**
      * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
      * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics}) —
-     * was added. {@code trigger} (how the build was started: {@code "cli"}/{@code "web"}) and {@code
-     * commit} (the project's git HEAD at build time) and {@code benefit} (the cache's estimated
-     * wall-clock saving) were added without a bump — pre-1.0 additive fields simply read back as
-     * {@code null} on older records.
+     * was added. {@code trigger}, {@code commit}, {@code benefit}, and {@code running} were added
+     * without a bump — pre-1.0 additive fields simply read back as defaults on older records.
      */
     public static final int SCHEMA = 2;
 
@@ -51,7 +53,7 @@ public record BuildRecord(
         diagnostics = diagnostics == null ? List.of() : List.copyOf(diagnostics);
     }
 
-    /** This record with its per-project build number set (assigned at journal-append time). */
+    /** This record with its per-project build number set. */
     public BuildRecord withBuildNumber(long buildNumber) {
         return new BuildRecord(
                 id,
@@ -73,7 +75,67 @@ public record BuildRecord(
                 diagnostics,
                 trigger,
                 commit,
-                benefit);
+                benefit,
+                running);
+    }
+
+    /** This record with its journal id set (begin path). */
+    public BuildRecord withId(String id) {
+        return new BuildRecord(
+                id,
+                buildNumber,
+                schema,
+                kind,
+                dir,
+                coord,
+                startedAt,
+                finishedAt,
+                millis,
+                success,
+                cancelled,
+                exitCode,
+                jkVersion,
+                tests,
+                modules,
+                steps,
+                diagnostics,
+                trigger,
+                commit,
+                benefit,
+                running);
+    }
+
+    /** In-flight stub at admission (JK-1250 / JK-1251). */
+    public static BuildRecord running(
+            long buildNumber,
+            String kind,
+            String dir,
+            String coord,
+            long startedAt,
+            String jkVersion,
+            String trigger) {
+        return new BuildRecord(
+                null,
+                buildNumber,
+                SCHEMA,
+                kind,
+                dir,
+                coord,
+                startedAt,
+                0L,
+                0L,
+                false,
+                false,
+                0,
+                jkVersion,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                trigger,
+                null,
+                null,
+                true);
     }
 
     /** Aggregate test counts for the run, or {@code null} when no tests ran. */

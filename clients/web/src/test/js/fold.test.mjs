@@ -269,6 +269,40 @@ test('seedFromHistory is idempotent (no duplicate on re-seed)', () => {
   assert.equal(cards.length, 1);
 });
 
+test('seedFromHistory seeds a running in-flight journal row', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      success: false,
+      running: true,
+      buildNumber: 27,
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].state, 'running');
+  assert.equal(cards[0].buildNumber, 27);
+  assert.equal(outcomeOf(cards[0]), 'running');
+});
+
+test('seedFromHistory reconciles running SSE card with durable in-flight row', () => {
+  const cards = [];
+  foldEvent(cards, start(9, '/w/a', { buildNumber: 27 }));
+  seedFromHistory(cards, [
+    historyRecord('20260101T000000000-run1', '/w/a', {
+      finishedAt: 0,
+      millis: 0,
+      running: true,
+      buildNumber: 27,
+    }),
+  ]);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].id, 9);
+  assert.equal(cards[0].historyId, '20260101T000000000-run1');
+  assert.equal(cards[0].buildNumber, 27);
+});
+
 test('seedFromHistory reconciles a live card instead of duplicating it', () => {
   const cards = [];
   foldEvent(cards, start(7, '/w/a'));

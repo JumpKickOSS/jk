@@ -168,9 +168,25 @@ public final class EngineServer implements AutoCloseable {
     /** The running invocation/step aggregates every finished build/test folds into. */
     private Path metricsFile = BuildMetrics.defaultFile();
 
+    /** Durable start-time build numbers (JK-1250). */
+    private Path runNumbersFile = cc.jumpkick.runtime.BuildNumberAllocator.defaultFile();
+
+    /** Exclusive same-fingerprint slots + in-flight holds (JK-1249 / JK-1251). */
+    private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
+
     /** Test seam: point the metrics store at a sandbox file instead of the user's real state dir. */
     void metricsFileForTests(Path file) {
         this.metricsFile = file;
+    }
+
+    /** Test seam: isolate run-number counters. */
+    void runNumbersFileForTests(Path file) {
+        this.runNumbersFile = file;
+    }
+
+    /** Test seam: inspect exclusive holds. */
+    InFlightBuilds inFlightBuildsForTests() {
+        return inFlightBuilds;
     }
 
     /** Event-request id for the hosted op on this thread (set around the runner). */
@@ -362,6 +378,11 @@ public final class EngineServer implements AutoCloseable {
         // fixed port until it exits, so binding earlier loses the handoff race with "Address already in
         // use" and (being advisory, never retried for the engine's life) sticks in `jk engine status`.
         startHttpIfEnabled();
+        // JK-1251: leftover running=true journal rows from a killed engine cannot still be live.
+        int abandoned = journal.abandonStaleRunning(version);
+        if (abandoned > 0) {
+            log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
+        }
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -857,15 +878,31 @@ public final class EngineServer implements AutoCloseable {
         String eventKind = kind;
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
-        publishRequestStart(eventRequestId, eventKind, eventDir);
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
+        // JK-1249 / JK-1250: exclusive fingerprint + start-time build number for journaled kinds.
+        AdmitResult admit = admitJob(
+                eventRequestId, eventKind, eventDir, BuildJobFingerprint.ofRequest(eventKind, requestLine), "cli");
+        if (admit.rejected() != null) {
+            try {
+                InFlightBuilds.Hold h = admit.rejected();
+                String label = "test".equals(eventKind) ? "Test" : "Build";
+                String msg = label + " #" + h.buildNumber() + " is already running";
+                send(writer, EngineProtocol.alreadyRunning(h.buildNumber(), h.requestId(), msg));
+            } catch (IOException ignored) {
+                // client gone
+            }
+            return;
+        }
+        publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
         registerAccumulator(
                 eventRequestId,
                 eventKind,
                 eventDir,
                 "cli",
                 Jsonl.bool(requestLine, "noTimeline", false),
-                rebuildRun);
+                rebuildRun,
+                admit.buildNumber(),
+                admit.journalId());
         if (pipeline) notePipelineStarted();
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
@@ -1000,7 +1037,60 @@ public final class EngineServer implements AutoCloseable {
                             eventRequestId));
             clearProgress(eventRequestId);
             writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
+            inFlightBuilds.release(eventRequestId);
         }
+    }
+
+    /**
+     * Result of {@link #admitJob}: either a rejection hold (same fingerprint already running) or
+     * allocated build number + optional journal id for the new request.
+     */
+    private record AdmitResult(InFlightBuilds.Hold rejected, long buildNumber, String journalId) {
+        static AdmitResult reject(InFlightBuilds.Hold h) {
+            return new AdmitResult(h, 0, null);
+        }
+
+        static AdmitResult ok(long buildNumber, String journalId) {
+            return new AdmitResult(null, buildNumber, journalId);
+        }
+    }
+
+    /**
+     * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required,
+     * and persist an in-flight journal stub (JK-1249 / JK-1250 / JK-1251).
+     */
+    private AdmitResult admitJob(long requestId, String kind, String dir, String fingerprint, String trigger) {
+        boolean exclusive = BuildJobFingerprint.isExclusiveKind(kind);
+        String fp = exclusive && fingerprint != null ? fingerprint : "";
+        // Reject before allocating a build number so collisions do not burn sequence values.
+        if (exclusive && !fp.isEmpty()) {
+            var existing = inFlightBuilds.peek(fp);
+            if (existing.isPresent()) return AdmitResult.reject(existing.get());
+        }
+        String canonDir = BuildJobFingerprint.canonicalDir(dir);
+        long buildNumber = 0L;
+        if (JOURNALED_KINDS.contains(kind) && canonDir != null && !canonDir.isBlank()) {
+            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(runNumbersFile, metricsFile, canonDir);
+        }
+        String coord = coordOf(dir);
+        long startedAt = clockMillis.getAsLong();
+        String journalId = null;
+        if (JOURNALED_KINDS.contains(kind) && historyConfig.enabled() && buildNumber > 0) {
+            journalId = journal.begin(
+                    BuildRecord.running(buildNumber, kind, dir, coord, startedAt, version, trigger));
+        }
+        InFlightBuilds.Hold candidate = new InFlightBuilds.Hold(
+                requestId, buildNumber, fp, kind, dir, coord, startedAt, journalId, trigger);
+        if (exclusive && !fp.isEmpty()) {
+            var raced = inFlightBuilds.tryAcquire(candidate);
+            if (raced.isPresent()) {
+                if (journalId != null) journal.delete(journalId);
+                return AdmitResult.reject(raced.get());
+            }
+        } else {
+            inFlightBuilds.tryAcquire(candidate);
+        }
+        return AdmitResult.ok(buildNumber, journalId);
     }
 
     /**
@@ -1210,6 +1300,10 @@ public final class EngineServer implements AutoCloseable {
      * (the design's coord coloring). Best-effort and only attempted with a subscriber connected.
      */
     private void publishRequestStart(long requestId, String kind, String dir) {
+        publishRequestStart(requestId, kind, dir, 0L);
+    }
+
+    private void publishRequestStart(long requestId, String kind, String dir, long buildNumber) {
         if (!eventsWanted()) return;
         String coord = null;
         try {
@@ -1218,17 +1312,15 @@ public final class EngineServer implements AutoCloseable {
         } catch (Exception e) {
             // unparseable/missing jk.toml — the dashboard falls back to showing the dir
         }
-        publishEvent(
-                "request-start",
-                withProgress(
-                        cc.jumpkick.engine.http.JsonOut.object()
-                                .put("schema", 1)
-                                .put("type", "request-start")
-                                .put("requestId", requestId)
-                                .put("kind", kind)
-                                .put("dir", dir)
-                                .put("coord", coord),
-                        requestId));
+        var payload = cc.jumpkick.engine.http.JsonOut.object()
+                .put("schema", 1)
+                .put("type", "request-start")
+                .put("requestId", requestId)
+                .put("kind", kind)
+                .put("dir", dir)
+                .put("coord", coord);
+        if (buildNumber > 0) payload = payload.put("buildNumber", buildNumber);
+        publishEvent("request-start", withProgress(payload, requestId));
     }
 
     private void publishStepStart(long requestId, String dir, String step, String phase) {
@@ -3503,15 +3595,22 @@ public final class EngineServer implements AutoCloseable {
      * append itself is gated on {@code historyConfig.enabled()}.
      */
     private void registerAccumulator(long requestId, String kind, String dir, String trigger) {
-        registerAccumulator(requestId, kind, dir, trigger, false, false);
+        registerAccumulator(requestId, kind, dir, trigger, false, false, 0L, null);
     }
 
     private void registerAccumulator(long requestId, String kind, String dir, String trigger, boolean noTimeline) {
-        registerAccumulator(requestId, kind, dir, trigger, noTimeline, false);
+        registerAccumulator(requestId, kind, dir, trigger, noTimeline, false, 0L, null);
     }
 
     private void registerAccumulator(
-            long requestId, String kind, String dir, String trigger, boolean noTimeline, boolean rebuild) {
+            long requestId,
+            String kind,
+            String dir,
+            String trigger,
+            boolean noTimeline,
+            boolean rebuild,
+            long buildNumber,
+            String journalId) {
         if (!JOURNALED_KINDS.contains(kind)) return;
         Path projectDir = null;
         try {
@@ -3520,7 +3619,9 @@ public final class EngineServer implements AutoCloseable {
             projectDir = null;
         }
         ChromeTimeline timeline = ChromeTimeline.open(projectDir, noTimeline);
-        accumulators.put(requestId, new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild));
+        accumulators.put(
+                requestId,
+                new BuildAccumulator(kind, dir, coordOf(dir), trigger, timeline, rebuild, buildNumber, journalId));
     }
 
     /** The project's {@code group:name}, or {@code null} when its {@code jk.toml} doesn't parse. */
@@ -3605,12 +3706,12 @@ public final class EngineServer implements AutoCloseable {
             // Estimate the cache's wall-clock benefit from baselines as of BEFORE this run's fold.
             CacheBenefit.Result benefit = computeBenefit(a, millis);
             BuildRecord record = a.toRecord(finishedAt, cancelled, millis, version, commit, benefit);
-            // Folding metrics also mints this run's durable per-project build number; stamp it onto
-            // the record so the journal (and the dashboard's #NNN pill) carry it. Metrics is folded
-            // even when history is disabled, so the counter stays consistent regardless.
+            // Prefer start-time number (JK-1250); metrics fold trains stats without minting a second #.
             // JK-1178: rebuild/force must train build:rebuild priors even when SessionContext is
             // already cleared (async runner finishes outside the request session).
-            long buildNumber = BuildMetrics.record(metricsFile, toOutcome(record, a.rebuild()), finishedAt);
+            long buildNumber = BuildMetrics.record(
+                    metricsFile, toOutcome(record, a.rebuild()), finishedAt, a.buildNumber());
+            if (buildNumber <= 0) buildNumber = a.buildNumber();
             record = record.withBuildNumber(buildNumber);
             // Chrome timeline (web / late path): same step durations as metrics. Socket clients
             // usually already flushed via flushTimelineToClient before terminal events.
@@ -3625,7 +3726,15 @@ public final class EngineServer implements AutoCloseable {
                     dir.resolve("target").resolve("reports").resolve("test-results.md"),
                     dir.resolve("jk.lock"),
                     a.diagnosticsText());
-            journal.append(record, snapshot);
+            String jid = a.journalId();
+            if (jid != null && !jid.isBlank()) {
+                // Complete the in-flight stub (same history id / build number) — JK-1251.
+                if (!journal.complete(jid, record, snapshot)) {
+                    journal.append(record, snapshot);
+                }
+            } else {
+                journal.append(record, snapshot);
+            }
         } catch (RuntimeException e) {
             log.accept("jk engine: build journal append failed: " + e);
         }
@@ -4251,10 +4360,18 @@ public final class EngineServer implements AutoCloseable {
         }
         long eventRequestId = requestIds.incrementAndGet();
         long startMillis = clockMillis.getAsLong();
+        String fp = BuildJobFingerprint.ofHttp(kind, entryDir, skipTests, testOnly);
+        AdmitResult admit = admitJob(eventRequestId, kind, entryDir.toString(), fp, "web");
+        if (admit.rejected() != null) {
+            InFlightBuilds.Hold h = admit.rejected();
+            String label = "test".equals(kind) ? "Test" : "Build";
+            throw new IllegalStateException(label + " #" + h.buildNumber() + " is already running");
+        }
         Session.CancelToken cancelToken = Session.CancelToken.live();
         httpCancelTokens.put(eventRequestId, cancelToken);
-        publishRequestStart(eventRequestId, kind, entryDir.toString());
-        registerAccumulator(eventRequestId, kind, entryDir.toString(), "web");
+        publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
+        registerAccumulator(
+                eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
         notePipelineStarted();
         Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).start(() -> {
             cacheGate.readLock().lock();
@@ -4289,6 +4406,7 @@ public final class EngineServer implements AutoCloseable {
                                 eventRequestId));
                 clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
+                inFlightBuilds.release(eventRequestId);
             }
         });
         httpJobThreads.put(eventRequestId, t);
@@ -4828,18 +4946,45 @@ public final class EngineServer implements AutoCloseable {
             this(kind, dir, coord, trigger, timeline, false);
         }
 
+        /** Start-time build number (JK-1250); 0 when unnumbered. */
+        private final long buildNumber;
+        /** In-flight journal id from begin(); null when history disabled or non-journaled. */
+        private final String journalId;
+
         BuildAccumulator(
                 String kind, String dir, String coord, String trigger, ChromeTimeline timeline, boolean rebuild) {
+            this(kind, dir, coord, trigger, timeline, rebuild, 0L, null);
+        }
+
+        BuildAccumulator(
+                String kind,
+                String dir,
+                String coord,
+                String trigger,
+                ChromeTimeline timeline,
+                boolean rebuild,
+                long buildNumber,
+                String journalId) {
             this.kind = kind;
             this.dir = dir;
             this.coord = coord;
             this.trigger = trigger;
             this.timeline = timeline;
             this.rebuild = rebuild;
+            this.buildNumber = buildNumber;
+            this.journalId = journalId;
         }
 
         boolean rebuild() {
             return rebuild;
+        }
+
+        long buildNumber() {
+            return buildNumber;
+        }
+
+        String journalId() {
+            return journalId;
         }
 
         String dir() {
@@ -5048,7 +5193,8 @@ public final class EngineServer implements AutoCloseable {
                     new java.util.ArrayList<>(diagnostics),
                     trigger,
                     commit,
-                    benefitRow);
+                    benefitRow,
+                    false);
         }
 
         private static boolean notBlank(String s) {

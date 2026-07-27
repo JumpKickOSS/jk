@@ -838,8 +838,15 @@ final class EngineBuildListenerAdapter {
                     listener.onWorkspaceFinish(result);
                     return result;
                 }
-                case EngineProtocol.ERROR ->
-                    throw new IOException("jk engine: build failed: " + Jsonl.str(line, "message"));
+                case EngineProtocol.ERROR -> {
+                    String code = Jsonl.str(line, "code");
+                    String msg = Jsonl.str(line, "message");
+                    // JK-1249: surface as the wedge message body without engine noise.
+                    if (EngineProtocol.ERR_ALREADY_RUNNING.equals(code)) {
+                        throw new IOException(msg == null || msg.isBlank() ? "Build is already running" : msg);
+                    }
+                    throw new IOException("jk engine: build failed: " + msg);
+                }
                 default -> {
                     /* forward-compatible no-op */
                 }

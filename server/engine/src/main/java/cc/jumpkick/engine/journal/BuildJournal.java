@@ -65,8 +65,10 @@ public final class BuildJournal {
     public String append(BuildRecord record, Snapshot snapshot) {
         try {
             Files.createDirectories(journalDir);
-            long finishedAt = record.finishedAt() > 0 ? record.finishedAt() : System.currentTimeMillis();
-            String stamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(finishedAt), ZoneOffset.UTC));
+            long stampMillis = record.finishedAt() > 0
+                    ? record.finishedAt()
+                    : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
+            String stamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
             for (int attempt = 0; attempt < APPEND_RETRIES; attempt++) {
                 String id = stamp + "-" + randomHex();
                 Path target = journalDir.resolve(id);
@@ -92,6 +94,93 @@ public final class BuildJournal {
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    /**
+     * Open an in-flight journal entry at request-start (JK-1251). Returns the assigned id, or
+     * {@code null} on failure.
+     */
+    public String begin(BuildRecord running) {
+        if (running == null) return null;
+        return append(running, Snapshot.NONE);
+    }
+
+    /**
+     * Replace an in-flight entry with its finished record (same id). Returns {@code false} if the
+     * entry is missing or the write fails — never throws.
+     */
+    public boolean complete(String id, BuildRecord finished, Snapshot snapshot) {
+        if (!validId(id) || finished == null) return false;
+        Path target = journalDir.resolve(id);
+        if (!Files.isDirectory(target)) return false;
+        Path tmp = journalDir.resolve("." + id + ".complete.tmp");
+        try {
+            deleteTreeQuietly(tmp);
+            Files.createDirectory(tmp);
+            Files.writeString(tmp.resolve(RECORD), Json.write(withId(finished, id)), StandardCharsets.UTF_8);
+            writeSnapshot(tmp, snapshot);
+            // Replace record.json in place; keep entry dir id stable for dashboard historyId.
+            Path rec = target.resolve(RECORD);
+            Files.move(tmp.resolve(RECORD), rec, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            if (snapshot != null) {
+                if (snapshot.testResultsMd() != null && Files.isRegularFile(tmp.resolve(TEST_RESULTS_MD))) {
+                    Files.move(
+                            tmp.resolve(TEST_RESULTS_MD),
+                            target.resolve(TEST_RESULTS_MD),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (snapshot.lockfile() != null && Files.isRegularFile(tmp.resolve(LOCKFILE))) {
+                    Files.move(tmp.resolve(LOCKFILE), target.resolve(LOCKFILE), StandardCopyOption.REPLACE_EXISTING);
+                }
+                if (snapshot.diagnosticsText() != null && Files.isRegularFile(tmp.resolve(DIAGNOSTICS_TXT))) {
+                    Files.move(
+                            tmp.resolve(DIAGNOSTICS_TXT),
+                            target.resolve(DIAGNOSTICS_TXT),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            deleteTreeQuietly(tmp);
+            return true;
+        } catch (IOException | RuntimeException e) {
+            deleteTreeQuietly(tmp);
+            return false;
+        }
+    }
+
+    /**
+     * On engine start: mark leftover {@code running=true} entries as cancelled (process died).
+     * Returns how many were abandoned.
+     */
+    public int abandonStaleRunning(String jkVersion) {
+        int n = 0;
+        long now = System.currentTimeMillis();
+        for (BuildRecord r : list()) {
+            if (r == null || !r.running()) continue;
+            BuildRecord done = new BuildRecord(
+                    r.id(),
+                    r.buildNumber(),
+                    r.schema(),
+                    r.kind(),
+                    r.dir(),
+                    r.coord(),
+                    r.startedAt(),
+                    now,
+                    Math.max(0, now - r.startedAt()),
+                    false,
+                    true,
+                    130,
+                    jkVersion != null ? jkVersion : r.jkVersion(),
+                    null,
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    r.trigger(),
+                    r.commit(),
+                    null,
+                    false);
+            if (complete(r.id(), done, Snapshot.NONE)) n++;
+        }
+        return n;
     }
 
     private static void writeSnapshot(Path dir, Snapshot s) throws IOException {
@@ -300,26 +389,6 @@ public final class BuildJournal {
     }
 
     private static BuildRecord withId(BuildRecord r, String id) {
-        return new BuildRecord(
-                id,
-                r.buildNumber(),
-                r.schema(),
-                r.kind(),
-                r.dir(),
-                r.coord(),
-                r.startedAt(),
-                r.finishedAt(),
-                r.millis(),
-                r.success(),
-                r.cancelled(),
-                r.exitCode(),
-                r.jkVersion(),
-                r.tests(),
-                r.modules(),
-                r.steps(),
-                r.diagnostics(),
-                r.trigger(),
-                r.commit(),
-                r.benefit());
+        return r.withId(id);
     }
 }

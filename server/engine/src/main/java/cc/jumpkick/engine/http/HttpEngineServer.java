@@ -682,10 +682,19 @@ public final class HttpEngineServer implements AutoCloseable {
         try {
             requestId = jobs.triggerBuild(dir);
         } catch (IllegalStateException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            // JK-1249: same fingerprint already running — 409 with human message for the UI.
+            if (msg.contains("already running")) {
+                sendJson(
+                        exchange,
+                        409,
+                        JsonOut.object().put("error", msg).toString());
+                return;
+            }
             // Engine is draining (graceful shutdown in progress) — refuse new builds.
             exchange.getResponseHeaders().set("Retry-After", "1");
             sendJson(
-                    exchange, 503, JsonOut.object().put("error", e.getMessage()).toString());
+                    exchange, 503, JsonOut.object().put("error", msg).toString());
             return;
         } catch (IllegalArgumentException e) {
             sendJson(
