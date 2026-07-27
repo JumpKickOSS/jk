@@ -79,7 +79,16 @@ public final class GlobalOptions {
                     .directory()
                     .orElse(Path.of(""));
         }
-        return raw.toAbsolutePath().normalize();
+        // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
+        // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir —
+        // a command that didn't (explain) queried a different identity than the build stored,
+        // reporting a full rebuild right after a green build (JK-1247).
+        Path abs = raw.toAbsolutePath().normalize();
+        try {
+            return abs.toRealPath();
+        } catch (java.io.IOException e) {
+            return abs; // not on disk yet (jk new target) — textual identity is all there is
+        }
     }
 
     public boolean help;

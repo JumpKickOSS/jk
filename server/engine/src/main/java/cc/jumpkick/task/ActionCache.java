@@ -178,6 +178,21 @@ public final class ActionCache {
         for (String sha : record.outputs().values()) {
             if (!Files.isRegularFile(cas.pathFor(sha))) return false;
         }
+        // Clear the DIRECTORY roots this record owns before copying (JK-1245): a multi-file
+        // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
+        // otherwise keeps stale extras beside the restored set — real packager runs clean
+        // up, restores must too. Top-level FILE outputs are handled per-file below.
+        java.util.Set<String> dirRoots = new java.util.TreeSet<>();
+        for (String rel : record.outputs().keySet()) {
+            int slash = rel.indexOf('/');
+            if (slash > 0) dirRoots.add(rel.substring(0, slash));
+        }
+        for (String root : dirRoots) {
+            Path dir = baseDir.resolve(root);
+            if (Files.isDirectory(dir)) {
+                cc.jumpkick.util.PathUtil.deleteRecursively(dir);
+            }
+        }
         AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());

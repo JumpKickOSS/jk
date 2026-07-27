@@ -3982,9 +3982,11 @@ public final class BuildPipelines {
     }
 
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
+        // Forecast callers mirror `jk build`: DEFAULT selection folded with the module's
+        // [test] default-exclude-tags — exactly what run-tests stamps with (JK-1229/JK-1243).
         return testStampExtras(
                 workerJarProps(dir, project.build().testPluginJars()),
-                cc.jumpkick.config.TestSelection.DEFAULT);
+                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir));
     }
 
     private static List<String> testStampExtras(

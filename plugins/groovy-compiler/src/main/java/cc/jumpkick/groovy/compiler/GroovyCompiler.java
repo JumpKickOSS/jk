@@ -88,7 +88,15 @@ public final class GroovyCompiler implements Plugin {
             Map<String, Object> joint0 = new LinkedHashMap<>();
             joint0.put("stubDir", stubDir);
             joint0.put("keepStubs", spec.stubsOut != null);
-            List<String> named = new ArrayList<>(List.of("d", discard.getAbsolutePath()));
+            // Pin the swept javac pass to the project's release (JK-1244): without it the
+            // sweep typechecks at the worker JVM's level — newer-language sources pass here
+            // and fail in jk's real javac lane (or vice versa). namedValues keys are javac
+            // flags minus the leading dash; -source/-target is the pairing groovy's javac
+            // tool spells natively.
+            List<String> named = new ArrayList<>(List.of(
+                    "d", discard.getAbsolutePath(),
+                    "source", spec.jvmTarget,
+                    "target", spec.jvmTarget));
             if (!spec.processorPath.isEmpty()) {
                 // Mixed module with annotation processors (Lombok, source generators): the swept
                 // javac pass must run them or references to generated members fail resolution

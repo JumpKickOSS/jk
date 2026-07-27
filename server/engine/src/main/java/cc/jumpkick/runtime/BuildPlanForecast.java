@@ -344,15 +344,22 @@ public final class BuildPlanForecast {
                 if (compileDirty || testDirty) {
                     steps.add(new BuildPlan.Step("run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Mirror the build's run-tests stamp EXACTLY: main classes are a
-                    // separate computeKey arg, NOT part of the runtime classpath.
+                    // Mirror the build's run-tests stamp EXACTLY (JK-1243): `jk build` runs the
+                    // DEFAULT suite selection, so the stamp's sources and resource dirs must be
+                    // default-selection-scoped — the all-suite view above sizes compile-test,
+                    // but feeding it into the stamp made the key never match the stored green
+                    // marker on any module with a non-default suite.
+                    List<String> defaultSuites = defaultSelectionSuites(dir, compact);
+                    List<Path> stampSrcs = new ArrayList<>();
+                    stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, defaultSuites));
+                    stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(dir, compact, defaultSuites));
+                    stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(dir, compact, defaultSuites));
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
                     String stampKey = TestStamp.computeKey(
-                            allTestSrc,
+                            stampSrcs,
                             layout.classesDir(),
-                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(
-                                    dir, compact, cc.jumpkick.layout.TestSuites.discover(dir, compact)),
+                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, defaultSuites),
                             lockFile,
                             testRt,
                             BuildPipelines.testStampExtras(dir, project));
@@ -502,6 +509,13 @@ public final class BuildPlanForecast {
             }
         }
         return cp;
+    }
+
+    /** The suites `jk build`'s DEFAULT selection resolves to (falls back to the default suite). */
+    private static List<String> defaultSelectionSuites(Path dir, boolean compact) {
+        List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
+        var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
+        return resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
     }
 
     private static List<Path> testRuntimeClasspath(Path dir, JkBuild project, Lockfile lock, ClasspathResolver resolver)
