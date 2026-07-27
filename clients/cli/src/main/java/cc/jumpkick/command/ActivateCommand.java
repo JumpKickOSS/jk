@@ -268,10 +268,26 @@ public final class ActivateCommand implements CliCommand {
         return cc.jumpkick.cli.tui.Interactivity.canPrompt();
     }
 
+    /**
+     * Path embedded in shell hooks as {@code __JK_EXE}. Prefer the stable {@code ~/.jk/bin/jk}
+     * shim (do <em>not</em> {@code toRealPath}) so a later {@code install.sh} / {@code self update}
+     * that flips the symlink is picked up without re-running activate. Falling back to the running
+     * process path used to pin hooks at a frozen {@code versions/<v>/bin/jk}, so dogfood reinstalls
+     * left shells serving yesterday's binary (and missing TUI fixes).
+     */
     private static String resolveJkExe() {
-        var argv0 = System.getProperty("sun.java.command");
         var envOverride = System.getenv("JK_EXE");
         if (envOverride != null && !envOverride.isBlank()) return envOverride;
+        try {
+            Path shim = cc.jumpkick.util.JkDirs.binDir().resolve("jk");
+            // isExecutable follows the symlink target; isSymbolicLink catches a freshly written
+            // link whose target is still being materialized.
+            if (Files.isSymbolicLink(shim) || Files.isExecutable(shim)) {
+                return shim.toAbsolutePath().normalize().toString();
+            }
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
         try {
             var info = ProcessHandle.current().info();
             var cmd = info.command();
@@ -282,6 +298,7 @@ public final class ActivateCommand implements CliCommand {
             }
         } catch (RuntimeException ignored) {
         }
+        var argv0 = System.getProperty("sun.java.command");
         return argv0 != null && argv0.startsWith("/") ? argv0 : "jk";
     }
 }
