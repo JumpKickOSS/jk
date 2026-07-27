@@ -28,7 +28,7 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 | **Task DAG UX** | **Closer** | Mill still deeper path algebra; jk has `tasks`/`show`/`inspect`, DOT, timeline, watch |
 | **Selective CI** | **Closer** | jk has `--affected-since`, `selective prepare/run` + content-hash; Mill still richer inputs |
 | **IDE / BSP** | **Closer** | jk BSP + VS Code/IntelliJ wire-only plugins; Mill still broader IDE polish |
-| **Language surface** | **Mill** | Java + Kotlin + Scala (+ more); jk is Java/Kotlin-first |
+| **Language surface** | **Mill** | Java + Kotlin + Scala (+ more); jk is Java/Kotlin/Groovy-first |
 | **Extensibility model** | **Mill** (today) | OO traits; jk has out-of-process plugins, not yet a Mill-like task escape hatch |
 | **Lockfile / resolve diagnostics** | **JumpKick** | Canonical `jk.lock`, PubGrub prose; Mill is Coursier-resolve-on-demand |
 | **Supply chain defaults** | **JumpKick** (intent) | audit / deny / sigstore / SLSA / dual SBOM are first-class product claims |
@@ -245,7 +245,7 @@ That model is a **Mill steal**, not a reject. JumpKick’s constraint is narrowe
 **Improvement to capture (without becoming Gradle)**
 
 - Design a **programmable escape hatch** inspired by Mill: tasks as first-class graph nodes (inputs/outputs, CAS, inspectable), override/splice into compile–resource–package pipelines, share traits across workspace modules.  
-- Prefer **Java/Kotlin** for the hatch language (same stack as application code; IDE-friendly) over inventing a TOML DSL or embedding scripts in the manifest.  
+- Prefer **JVM-language** source (Java/Kotlin/Groovy — same stack as application code; IDE-friendly) over inventing a TOML DSL or embedding scripts in the manifest.  
 - `jk.toml` may *point at* hatch modules (e.g. path / coordinate / feature flag) but must not *contain* executable code.  
 - Richer first-party hooks remain valuable so most projects never open the hatch.  
 - Keep anti-goal: **no scripting language inside `jk.toml`**—not “no programmability.”
@@ -406,7 +406,7 @@ Mill proves programmable builds can stay *understandable* if tasks are pure, gra
 | Override / super to splice into pipelines | Splice into first-party verb graphs without rewriting core |
 | Shared traits for monorepo module presets | Workspace-level reuse without copy-paste TOML |
 | Free caching, parallelism, inspect/show | Hatch tasks appear in `jk explain`, profiles, selective plans |
-| Real language + IDE navigation | Prefer **Java/Kotlin** source beside the project, not Scala-required |
+| Real language + IDE navigation | Prefer **Java/Kotlin/Groovy** source beside the project, not Scala-required |
 | | **`jk.toml` remains pure data**—may reference hatch entrypoints only |
 
 Default UX stays Cargo-like: most projects never open a hatch file. Escape hatch is for the long tail Mill already handles well.

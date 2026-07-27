@@ -280,29 +280,34 @@ public final class BspServer {
         if (requestJson == null || requestJson.isBlank()) {
             return cc.jumpkick.config.TestSelection.DEFAULT;
         }
-        // Prefer a "data":{...} object if present; else allow top-level fields (lenient).
-        String slice = requestJson;
-        int dataIdx = requestJson.indexOf("\"data\"");
-        if (dataIdx >= 0) {
-            int brace = requestJson.indexOf('{', dataIdx);
-            if (brace >= 0) {
-                int depth = 0;
-                int end = brace;
-                for (; end < requestJson.length(); end++) {
-                    char c = requestJson.charAt(end);
-                    if (c == '{') depth++;
-                    else if (c == '}') {
-                        depth--;
-                        if (depth == 0) {
-                            end++;
-                            break;
-                        }
-                    }
-                }
-                if (depth == 0) slice = requestJson.substring(brace, end);
+        // Structural parse (JK-1237): the old needle/brace-slicing degraded silently on
+        // pretty-printed payloads ("suites" : [...]) and non-object data values.
+        try {
+            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(requestJson);
+            if (!(parsed instanceof java.util.Map<?, ?> outer)) {
+                return cc.jumpkick.config.TestSelection.DEFAULT;
             }
+            // Full request envelope or bare params object — unwrap either.
+            java.util.Map<?, ?> params = outer.get("params") instanceof java.util.Map<?, ?> inner ? inner : outer;
+            java.util.Map<?, ?> src = params.get("data") instanceof java.util.Map<?, ?> d ? d : params;
+            boolean all = Boolean.TRUE.equals(src.get("allSuites"));
+            return cc.jumpkick.config.TestSelection.of(
+                    stringList(src.get("suites")),
+                    all,
+                    stringList(src.get("includeTags")),
+                    stringList(src.get("excludeTags")));
+        } catch (RuntimeException e) {
+            return cc.jumpkick.config.TestSelection.DEFAULT;
         }
-        return cc.jumpkick.engine.protocol.EngineProtocol.testSelectionOf(slice);
+    }
+
+    private static List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<String> out = new ArrayList<>(list.size());
+        for (Object o : list) {
+            if (o instanceof String str && !str.isBlank()) out.add(str);
+        }
+        return out;
     }
 
     private static String statusResult(IdeEngineClient.BuildOutcome outcome, String defaultFail) {
@@ -327,6 +332,9 @@ public final class BspServer {
     private Path resolveTargetModule(String requestJson) throws IOException {
         List<String> uris = extractTargetUris(requestJson);
         if (uris.isEmpty()) return null; // whole project / workspace
+        // Multiple distinct targets: build the whole workspace rather than silently honoring
+        // only the first (JK-1237) — a superset that keeps every requested target correct.
+        if (uris.stream().distinct().count() > 1) return null;
         String uri = uris.getFirst();
         int hash = uri.indexOf('#');
         if (hash < 0) return null;
@@ -359,14 +367,26 @@ public final class BspServer {
 
     /** Collect target URIs from a BSP params object (targets array or single target). */
     static List<String> extractTargetUris(String json) {
-        List<String> out = new ArrayList<>();
-        // "uri":"file://...#name" inside targets
-        Matcher m = Pattern.compile("\"uri\"\\s*:\\s*\"([^\"]+)\"").matcher(json);
-        while (m.find()) {
-            String u = m.group(1);
-            if (u.contains("#") || u.startsWith("file:")) out.add(u);
+        // Structural (JK-1237): the old regex collected any "uri" anywhere — including ones
+        // nested inside data payloads.
+        try {
+            Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(json);
+            if (!(parsed instanceof java.util.Map<?, ?> outer)) return List.of();
+            java.util.Map<?, ?> params = outer.get("params") instanceof java.util.Map<?, ?> inner ? inner : outer;
+            Object targets = params.get("targets");
+            List<?> list = targets instanceof List<?> l
+                    ? l
+                    : params.get("target") instanceof Object single ? List.of(single) : List.of();
+            List<String> out = new ArrayList<>();
+            for (Object t : list) {
+                if (t instanceof java.util.Map<?, ?> m && m.get("uri") instanceof String u && !u.isBlank()) {
+                    out.add(u);
+                }
+            }
+            return out;
+        } catch (RuntimeException e) {
+            return List.of();
         }
-        return out;
     }
 
     private void respond(String id, String resultJson) throws IOException {

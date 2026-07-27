@@ -284,7 +284,13 @@ public final class NewCommand implements CliCommand {
         Path template = Path.of(templateRef);
         if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
         Path extractScratch = null;
-        if (!Files.isDirectory(template)) {
+        // Only a template-SHAPED local dir wins over the catalog: a stray cwd subdirectory
+        // sharing a short name (./quarkus) must not have its arbitrary contents copied as a
+        // project (JK-1234).
+        boolean localTemplate = Files.isDirectory(template)
+                && (Files.isRegularFile(template.resolve("default.properties"))
+                        || Files.isDirectory(template.resolve("src/main/g8")));
+        if (!localTemplate) {
             try {
                 extractScratch = Files.createTempDirectory("jk-g8-");
                 var shortResolved = Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch);
@@ -319,9 +325,16 @@ public final class NewCommand implements CliCommand {
             params.put(p.substring(0, eq), p.substring(eq + 1));
         }
         var presetName = wizardPresetName(directory, cwd);
+        // Fallback order: explicit --name, --param name, wizard preset, the template's own
+        // default.properties name, then the short name minus ".g8" — never the raw catalog
+        // filename, which produced projects literally named "quarkus.g8" (JK-1234).
+        String templateDefault = Giter8LocalApply.defaultName(template).orElse(null);
+        String fileBase = template.getFileName().toString();
+        if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
         String resolvedName = (name != null && !name.isBlank())
                 ? name
-                : params.getOrDefault("name", presetName.orElse(template.getFileName().toString()));
+                : params.getOrDefault(
+                        "name", presetName.orElse(templateDefault != null ? templateDefault : fileBase));
         params.putIfAbsent("name", resolvedName);
         if (group != null && !group.isBlank()) {
             params.putIfAbsent("organization", group);
@@ -329,9 +342,6 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("package", group);
         }
         Path target = resolveTarget(directory, cwd, resolvedName);
-        if (Files.exists(target.resolve("jk.toml")) || Files.exists(target.resolve("default.properties"))) {
-            // soft: still allow empty-ish dirs
-        }
         if (Files.exists(target) && Files.isDirectory(target)) {
             try (var s = Files.list(target)) {
                 if (s.findAny().isPresent() && Files.exists(target.resolve("jk.toml"))) {
@@ -354,6 +364,14 @@ public final class NewCommand implements CliCommand {
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
             return Exit.SOFTWARE;
+        } finally {
+            if (extractScratch != null) {
+                try {
+                    cc.jumpkick.util.PathUtil.deleteRecursively(extractScratch);
+                } catch (RuntimeException ignored) {
+                    // temp dir — the OS reaps it eventually
+                }
+            }
         }
     }
 
@@ -1014,7 +1032,8 @@ public final class NewCommand implements CliCommand {
         // Modules inherit the parent's group, JDK, and language as defaults; a
         // standalone project guesses the group and defaults to the latest LTS.
         String effectiveGroup = module ? parent.group() : groupGuess;
-        String langDefault = (module && parent.kotlin()) ? "kotlin" : "java";
+        String langDefault =
+                module && parent.kotlin() ? "kotlin" : module && parent.groovy() ? "groovy" : "java";
 
         // The wizard opens with the "native" toggle off, so the initial radio
         // list is whatever filter() produces for the non-native case — which
@@ -1155,6 +1174,7 @@ public final class NewCommand implements CliCommand {
                 .step(WizardStep.RadioStep.horizontal("lang", "Project language:")
                         .choice("java", "Java")
                         .choice("kotlin", "Kotlin")
+                        .choice("groovy", "Groovy")
                         .defaultChoice(langDefault)
                         .build())
                 .step(javaVersion)

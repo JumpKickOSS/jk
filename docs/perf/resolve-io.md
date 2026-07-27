@@ -39,7 +39,7 @@ laptop if the CAS is empty; warm re-lock is seconds. Tips:
 
 Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:
 
-1. **maven-metadata.xml** per GA (disk TTL 24h + conditional GET when warm) — **skipped on happy path when constraint is exact or soft-prefer pin seeds a singleton**
+1. **maven-metadata.xml** per GA (disk TTL 24h + conditional GET when warm) — **skipped on happy path when the constraint is exact (platform pins under enforced) or a lock soft-prefer seeds a singleton**
 2. **POM + parent chain** fetches per package (online path local-first after first fetch)
 3. **Three scope solves** (main / test / processor) with shared in-memory caches
 4. **Jar download + CAS + upstream checksum** per package (`toArtifact`, parallel with host rate limit)
@@ -56,7 +56,7 @@ by themselves skip POM/jar download work for the chosen GAV.
 | Shared `EffectivePomBuilder` + `MavenPackageSource` across scopes | Avoid re-walking overlapping Spring GAs thrice |
 | Graph-phase progress (`onGraphPackage` / `onPhase`) | Bar advances during solve, not only jar fetch |
 | Dual-phase tick budget (~2× packages) | Graph + materialize each contribute to the bar |
-| **Lazy exact / soft-prefer universes** | Exact constraints and BOM/lock pins seed `{v}` without `availableVersions`; expand to full metadata only on conflict / unavailable / empty projection |
+| **Lazy exact / soft-prefer universes** | Exact constraints (incl. enforced-platform pins) and lock soft-prefers seed `{v}` without `availableVersions`; expand to full metadata only on conflict / unavailable / empty projection |
 | **Prefetch skip** for pinned/exact children | Do not eagerly fetch metadata the solver will not need |
 | **Parallel lock-time materialize** | `toArtifact` jar fetches on `JkThreads.io()` + `HostRateLimiter` (same pattern as CacheSync) |
 | **POM prefetch for pinned children** | After expanding a package, async full `EffectivePomBuilder.build` for preferred/exact children (parents + imports) |

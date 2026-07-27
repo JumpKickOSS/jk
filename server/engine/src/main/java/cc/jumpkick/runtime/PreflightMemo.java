@@ -494,6 +494,18 @@ public final class PreflightMemo {
                     }
                 }
                 byKey.put(shapeRowKey(rel, fp), newLine);
+                // Bounded per-module rows (JK-1239): fingerprints embed skipTests (JK-1124), so
+                // a live module keeps a couple of valid rows — but every jk.toml/lock edit mints
+                // a NEW fingerprint and stale rows can never hit again. Rotate out the oldest
+                // beyond a small cap instead of growing the memo forever.
+                final int maxRowsPerModule = 4;
+                List<String> sameRel = new ArrayList<>();
+                for (String key : byKey.keySet()) {
+                    if (key.startsWith(rel + "\u0000")) sameRel.add(key);
+                }
+                for (int i = 0; sameRel.size() - i > maxRowsPerModule; i++) {
+                    byKey.remove(sameRel.get(i)); // insertion order — oldest first
+                }
 
                 StringBuilder sb = new StringBuilder();
                 sb.append("schema=").append(SCHEMA).append('\n');

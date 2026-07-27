@@ -52,6 +52,7 @@ public final class TestCommand implements CliCommand {
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
                 Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
+                Opt.flag("Skip profile tag filters (incl. the auto ci profile).", "--no-profile"),
                 Opt.value(
                         "<N>",
                         "Test-runner JVMs per module (class pull-queue). 0=auto min(jobs,classes) (default); 1=serial.",
@@ -393,15 +394,19 @@ public final class TestCommand implements CliCommand {
         if (exclude.isEmpty()) {
             exclude.addAll(cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(toml));
         }
-        // Profile exclude/include tags when a profile is selected / auto.
+        // Profile exclude/include tags when a profile is selected / auto. --no-profile skips
+        // entirely, and an AUTO-selected profile defers to explicit CLI tags — on CI,
+        // `jk test --include-tag slow` used to silently run nothing because the ci profile's
+        // exclude beat the explicit include with no escape hatch (JK-1238).
+        boolean cliTags = !include.isEmpty() || !exclude.isEmpty();
         try {
-            if (java.nio.file.Files.isRegularFile(toml)) {
+            if (!in.isSet("no-profile") && java.nio.file.Files.isRegularFile(toml)) {
                 var build = cc.jumpkick.config.JkBuildParser.parse(toml);
                 String explicit = in.value("profile").orElse(null);
-                String name = (explicit != null && !explicit.isBlank())
-                        ? explicit
-                        : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
-                if (name != null && build.profiles().contains(name)) {
+                boolean explicitProfile = explicit != null && !explicit.isBlank();
+                String name = explicitProfile ? explicit : cc.jumpkick.model.Profiles.autoSelect(System.getenv());
+                boolean apply = name != null && build.profiles().contains(name) && (explicitProfile || !cliTags);
+                if (apply) {
                     var p = build.profiles().resolve(name);
                     exclude.addAll(p.excludeTags());
                     if (include.isEmpty()) include.addAll(p.includeTags());

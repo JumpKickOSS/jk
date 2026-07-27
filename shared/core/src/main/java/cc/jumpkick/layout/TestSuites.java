@@ -124,10 +124,14 @@ public final class TestSuites {
     /** True if {@code name} is a legal suite identifier ({@code [a-z][a-z0-9_-]*}). */
     public static boolean isSuiteName(String name) {
         if (name == null || name.isEmpty()) return false;
-        if (!Character.isLetter(name.charAt(0))) return false;
-        for (int i = 0; i < name.length(); i++) {
+        // Enforce the documented grammar (JK-1238): the permissive isLetter start turned any
+        // capitalized/Unicode sibling dir with sources (Demo/, Beispiele/) into a test suite.
+        char first = name.charAt(0);
+        if (first < 'a' || first > 'z') return false;
+        for (int i = 1; i < name.length(); i++) {
             char c = name.charAt(i);
-            if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_')) return false;
+            boolean ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_';
+            if (!ok) return false;
         }
         return true;
     }

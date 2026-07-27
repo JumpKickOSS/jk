@@ -1,6 +1,6 @@
 # jk documentation
 
-Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
+Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and Groovy.
 
 | Doc | Audience |
 |---|---|

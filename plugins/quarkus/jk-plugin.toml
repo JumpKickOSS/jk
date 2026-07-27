@@ -82,6 +82,13 @@ path     = "${main-root}/${package-path}/GreetingResource.kt"
 template = "scaffold/GreetingResource.kt.tmpl"
 when     = { lang = "kotlin" }
 
+# Kotlin gets the same example test the java scaffold ships — the [test-dependencies]
+# fragment already added quarkus-junit5 + rest-assured for both languages (JK-1234).
+[[scaffold.file]]
+path     = "${test-root}/${package-path}/GreetingResourceTest.kt"
+template = "scaffold/GreetingResourceTest.kt.tmpl"
+when     = { lang = "kotlin" }
+
 [[scaffold.file]]
 path          = "${resources-root}/application.properties"
 template      = "scaffold/application.properties.tmpl"

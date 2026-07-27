@@ -119,8 +119,8 @@ public final class NewScaffolder {
         params.put("group", inputs.group());
         params.put("name", inputs.name());
         params.put("version", "0.1.0");
-        // Match quarkus scaffold default in jk-toml-*.toml.tmpl; override when wizard pins a line.
-        params.putIfAbsent("quarkus.version", "3.28.5");
+        // One default (ToolDefaults) — jk-toml-*.toml.tmpl interpolates ${quarkus.version}.
+        params.putIfAbsent("quarkus.version", cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION);
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
         params.put("baseToml", NewJkBuildRenderer.render(inputs));

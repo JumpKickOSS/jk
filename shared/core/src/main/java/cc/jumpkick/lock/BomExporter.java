@@ -58,6 +58,23 @@ public final class BomExporter {
             if (a.inAnyScope(scopes)) selected.add(a);
         }
         selected.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));
+        // One dependencyManagement entry per module (JK-1239): the lock can carry main/test
+        // duals of the same G:A at different versions, and Maven consumers warn on duplicate
+        // managed entries then keep one arbitrarily. MAIN-scoped rows outrank test duals;
+        // same-priority collisions keep the higher version (the later row after the sort).
+        java.util.Map<String, Lockfile.Artifact> byModule = new java.util.LinkedHashMap<>();
+        for (Lockfile.Artifact a : selected) {
+            Lockfile.Artifact prev = byModule.get(a.name());
+            if (prev == null) {
+                byModule.put(a.name(), a);
+                continue;
+            }
+            boolean prevMain = prev.scopes().contains(cc.jumpkick.model.Scope.MAIN);
+            boolean curMain = a.scopes().contains(cc.jumpkick.model.Scope.MAIN);
+            if (curMain && !prevMain) byModule.put(a.name(), a);
+            else if (curMain == prevMain) byModule.put(a.name(), a); // sorted ascending — keep higher
+        }
+        selected = new ArrayList<>(byModule.values());
 
         StringBuilder sb = new StringBuilder(512);
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");

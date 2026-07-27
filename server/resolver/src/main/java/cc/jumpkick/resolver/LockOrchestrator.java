@@ -590,15 +590,7 @@ public final class LockOrchestrator {
             if (existing != null) {
                 existing.addAll(tags);
             } else {
-                // If another version of this module already exists, keep this row's scopes
-                // specialized (don't leak MAIN onto a test-only dual).
-                boolean otherVersion =
-                        tagsByKey.keySet().stream().anyMatch(k -> k.startsWith(mod.module() + "@") && !k.equals(key));
-                EnumSet<Scope> rowTags = EnumSet.copyOf(tags);
-                if (otherVersion) {
-                    // Keep only scopes from this graph's tag set (already the case).
-                }
-                tagsByKey.put(key, rowTags);
+                tagsByKey.put(key, EnumSet.copyOf(tags));
                 modByKey.put(key, mod);
             }
         }

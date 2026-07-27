@@ -191,11 +191,14 @@ public final class MavenPackageSource implements PackageSource {
         sorted.sort((a, b) -> Versions.compare(b, a));
 
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
+        // Later calls win the front — mirror preferredVersion's precedence exactly
+        // (lock pkg > lock ga > bom ga > bom pkg) or classifier duals pick divergent
+        // versions between the lazy-seed and expanded paths (JK-1239).
         String ga = PackageId.parse(pkg).ga();
-        preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
-        preferFirst(sorted, lockedVersionPrefs.get(pkg));
+        preferBom(sorted, bomConstraints.get(ga));
         preferFirst(sorted, lockedVersionPrefs.get(ga));
+        preferFirst(sorted, lockedVersionPrefs.get(pkg));
         return sorted;
     }
 
@@ -347,11 +350,6 @@ public final class MavenPackageSource implements PackageSource {
             out.add(g + ":" + a);
         }
         return out;
-    }
-
-    private static String exclusionCacheKey(Set<String> excl) {
-        if (excl == null || excl.isEmpty()) return "";
-        return String.join(",", excl.stream().sorted().toList());
     }
 
     /**

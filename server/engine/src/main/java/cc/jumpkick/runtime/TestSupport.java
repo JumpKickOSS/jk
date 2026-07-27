@@ -74,6 +74,30 @@ public final class TestSupport {
     }
 
     /**
+     * Count test methods for the suites a SELECTION will actually run (JK-1238) — sizing the
+     * bar/ETA with every discovered suite made plain `jk test` under-fill and snap to 100 when
+     * an integration suite existed. Unresolvable selections fall back to all discovered suites.
+     */
+    public static int estimateSelectedSuiteTestCount(
+            Path moduleDir, boolean compact, cc.jumpkick.config.TestSelection selection) {
+        java.util.List<String> discovered = cc.jumpkick.layout.TestSuites.discover(moduleDir, compact);
+        java.util.List<String> suites = discovered;
+        if (selection != null) {
+            var resolved = selection.resolve(discovered);
+            if (resolved.ok()) suites = resolved.suites();
+        }
+        int total = 0;
+        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
+        for (String suite : suites) {
+            roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
+        }
+        for (Path r : roots) total += estimateTestCount(r);
+        return total;
+    }
+
+    /**
      * Best-effort count of test <em>classes</em> (source files with ≥1 test annotation) under
      * discovered suites — hierarchical effort tier between method and step (JK-1152).
      */

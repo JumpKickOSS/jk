@@ -54,9 +54,10 @@ public final class Giter8LocalApply {
             }
         }
         if (overrides != null) props.putAll(overrides);
-        // Common aliases
-        if (props.containsKey("name") && !props.containsKey("name_normalized")) {
-            props.putIfAbsent("name", props.get("name"));
+        // Giter8 convention: $name_normalized$ is the lowercase-hyphenated name (JK-1234 —
+        // this used to assign name to itself, leaving the token unreplaced).
+        if (props.containsKey("name")) {
+            props.putIfAbsent("name_normalized", normalize(props.get("name")));
         }
 
         Files.createDirectories(dest);
@@ -112,4 +113,29 @@ public final class Giter8LocalApply {
         m.appendTail(sb);
         return sb.toString();
     }
+
+    /** Giter8 name normalization: lowercase, runs of non-alphanumerics collapse to '-'. */
+    static String normalize(String name) {
+        return name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+    }
+
+    /** The template's own {@code default.properties} {@code name}, when present. */
+    static java.util.Optional<String> defaultName(Path templateRoot) {
+        Path g8 = templateRoot.resolve("src/main/g8");
+        Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
+        for (Path propsFile :
+                new Path[] {templateRoot.resolve("default.properties"), contentRoot.resolve("default.properties")}) {
+            if (!Files.isRegularFile(propsFile)) continue;
+            Properties p = new Properties();
+            try (var in = Files.newInputStream(propsFile)) {
+                p.load(in);
+            } catch (IOException e) {
+                return java.util.Optional.empty();
+            }
+            String n = p.getProperty("name");
+            if (n != null && !n.isBlank()) return java.util.Optional.of(n.trim());
+        }
+        return java.util.Optional.empty();
+    }
+
 }

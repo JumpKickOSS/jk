@@ -219,22 +219,6 @@ public final class EffortWeights {
         return residual / Math.max(1, count);
     }
 
-    /** Predict the weights for {@code in}; never throws (degrades to skip-ish). */
-    public static Plan predict(BuildPipelines.Inputs in, Cas cas, boolean compact, boolean useJava, boolean useKotlin) {
-        return predict(in, cas, compact, useJava, useKotlin, false, false);
-    }
-
-    /** Back-compat overload (no Groovy lane). */
-    public static Plan predict(
-            BuildPipelines.Inputs in,
-            Cas cas,
-            boolean compact,
-            boolean useJava,
-            boolean useKotlin,
-            boolean forceRebuild) {
-        return predict(in, cas, compact, useJava, useKotlin, false, forceRebuild);
-    }
-
     /**
      * Predict weights; {@code forceRebuild} reserves full compile/test/package even when stamps
      * look fresh (upstream dirty). Over-reserves only — runtime reweight can shrink, never grow.

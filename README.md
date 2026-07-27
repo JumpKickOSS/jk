@@ -7,7 +7,7 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
 
-**JumpKick** (CLI: **`jk`**) is Cargo for Java and Kotlin. One native binary. One TOML file.
+**JumpKick** (CLI: **`jk`**) is Cargo for the JVM — Java, Kotlin, and Groovy. One native binary. One TOML file.
 A real lockfile. Conflicts you can read. Builds that skip work they can prove is already done.
 
 > The fastest way to run your existing Maven or Gradle build — and a better tool

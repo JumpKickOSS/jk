@@ -614,6 +614,11 @@ the test stamp: changing selection re-runs tests even if sources are unchanged.
 | **Java lint** (analysis) | Documented **Checkstyle recipe** via `jk tool install` (ticket-1033) |
 | **Kotlin analysis** | **Deferred** — use `jk format` for style; detekt later as the same recipe pattern |
 
+`jk format` also optimizes imports by default (shortens FQCNs, adds the imports): opt out per
+run with `--no-optimize-imports`, per project with `[format] optimize-imports = false`, or via
+`JK_FORMAT_OPTIMIZE_IMPORTS=false`. `--rewrite-config <file>` (or `JK_FORMAT_REWRITE_CONFIG`)
+points at an OpenRewrite YAML that overrides/extends the recipes.
+
 ```bash
 jk format
 jk tool install com.puppycrawl.tools:checkstyle:10.21.4
