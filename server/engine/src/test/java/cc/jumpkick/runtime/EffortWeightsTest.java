@@ -92,6 +92,71 @@ class EffortWeightsTest {
     }
 
     @Test
+    void groovy_compile_is_a_first_class_plan_slot() {
+        // Same learnable floor as the other compilers.
+        assertThat(EffortWeights.floor("compile-groovy")).isEqualTo(EffortWeights.floor("compile-kotlin"));
+        // Plan carries the groovy slice and folds it into fully-cached detection.
+        var plan = new EffortWeights.Plan(1, 1, 1, 5, 1, 1, 1, false);
+        assertThat(plan.compileGroovy()).isEqualTo(5);
+        assertThat(EffortWeights.isTokenOrSkip(plan.compileGroovy())).isFalse();
+    }
+
+    @Test
+    void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
+        java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "g"
+                version = "0.1.0"
+                jdk = 21
+                groovy = "5.0.4"
+                layout = "simple"
+                """);
+        Path src = java.nio.file.Files.createDirectories(dir.resolve("src"));
+        // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.
+        java.util.List<Path> sources = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            Path f = src.resolve("Foo" + i + ".groovy");
+            java.nio.file.Files.writeString(f, "class Foo" + i + " {}");
+            sources.add(f);
+        }
+        BuildPipelines.Inputs in = new BuildPipelines.Inputs(
+                dir,
+                dir.resolve("cache"),
+                dir.resolve("jk.toml"),
+                dir.resolve("jk.lock"),
+                dir,
+                1,
+                0,
+                null,
+                null,
+                true,
+                false,
+                false,
+                false,
+                java.util.Set.of(),
+                cc.jumpkick.config.SessionContext.current());
+        var cas = new cc.jumpkick.cache.Cas(dir.resolve("cache"));
+
+        var cold = EffortWeights.predict(in, cas, true, false, false, true, false);
+        assertThat(cold.compileGroovy()).isGreaterThan(EffortWeights.TOKEN);
+
+        // The groovy stamp lives in the merged classes dir (where write-stamp-groovy writes it).
+        var layout = cc.jumpkick.layout.BuildLayout.of(dir, cc.jumpkick.config.JkBuildParser.parse(dir.resolve(
+                "jk.toml")));
+        cc.jumpkick.task.FreshnessStamp.write(
+                layout.classesDir(),
+                cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
+                "compile-groovy",
+                "",
+                sources,
+                java.util.List.of(),
+                21);
+        var warm = EffortWeights.predict(in, cas, true, false, false, true, false);
+        assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);
+    }
+
+    @Test
     void running_tests_carry_a_startup_floor_plus_per_method() {
         // The JVM-startup floor is paid even by a zero-method suite, so a small,
         // serialized test run still reserves real bar space instead of ~nothing.

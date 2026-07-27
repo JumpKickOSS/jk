@@ -33,7 +33,7 @@ jackson3-databind = "3.0.0"   # means ^3.0.0 (caret by default)
 [test-dependencies]
 junit-jupiter = "6.0.0"
 
-[platform-dependencies]       # BOMs — soft recommendations, like Gradle platform()
+[platform-dependencies]       # BOMs — enforced platforms (Maven depMgmt contract)
 spring-boot-dependencies = "4.1.0"
 ```
 
@@ -49,7 +49,7 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs, GPG/Sigstore, `~/.m2`-friendly cache |
 | **Reproducible builds by default** | `jk.lock` is law; CI doesn't re-resolve unless you say so |
-| **Correct resolution** | PubGrub + highest-version-wins — never Maven's nearest-wins footgun |
+| **Correct resolution** | PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present |
 | **Speed without a bloated daemon** | Content-addressed action cache; slim engine hard-capped at ~256 MiB |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
 | **Supply chain built in** | `audit` (OSV), `deny`, signing, Sigstore, SLSA, CycloneDX/SPDX SBOM |
@@ -64,9 +64,9 @@ Coming from **Gradle**: think “declarative TOML + real lockfile, without the c
 
 ### Dependencies & lockfile
 - PubGrub solver with **English conflict diagnostics**
-- **Highest-version-wins** across the whole graph
+- **Highest-version-wins** for bare edges when no platform BOM; **enforced platform** when one is present
 - Canonical **`jk.lock`** (commit it); `jk build` never re-resolves
-- Caret / tilde / exact / range selectors; BOM soft-prefer (`platform()`-style)
+- Caret / tilde / exact / range selectors; platform BOMs as enforced dependencyManagement
 - Separate **main / test / processor** resolution so annotation processors don't force main versions
 - Git and path dependencies, SHA-pinned in the lock
 - `jk tree` · `jk why` · offline-friendly after `jk sync`

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.resolver;
 
-import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
@@ -276,6 +275,9 @@ public final class LockOrchestrator {
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
             testDeduped.putIfAbsent(JUNIT_JUPITER.module(), JUNIT_JUPITER);
         }
+        // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
+        // Engine classpath injection alone is not enough for standalone `java -jar`.
+        injectLanguageRuntimes(project, mainDeduped);
 
         List<Dependency> fileDeps = new ArrayList<>();
         List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
@@ -362,11 +364,15 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        // Parallel jar materialize (HostRateLimiter + io pool). Progress ticks on *completion*
-        // order (JK-1091) via a queue drained on this thread so wedge/UI stays single-threaded;
-        // lock rows are still assembled in declaration order.
+        // Parallel jar materialize (io pool). Progress ticks on *completion* order (JK-1091)
+        // via a queue drained on this thread so wedge/UI stays single-threaded; lock rows are
+        // still assembled in declaration order.
+        //
+        // JK-1202: do not wrap every toArtifact in HostRateLimiter on the Maven Central host.
+        // Warm re-locks serve immutable GAVs from the local mirror (no HTTP); rate-limiting
+        // those to 6 concurrent turns a ~1s CAS walk into multi-minute wall time. Network
+        // politeness remains inside the HTTP transport for actual downloads.
         List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
-        HostRateLimiter limiter = HostRateLimiter.shared();
         int n = ordered.size();
         Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
@@ -377,17 +383,15 @@ public final class LockOrchestrator {
             CompletableFuture.supplyAsync(
                             () -> {
                                 try {
-                                    return limiter.run(
-                                            first.baseUrl(),
-                                            () -> toArtifact(
-                                                    e.getValue(),
-                                                    tags,
-                                                    kmp,
-                                                    pomBuilder,
-                                                    fallbackSource,
-                                                    bomConstraints,
-                                                    constraintProvenance,
-                                                    ResolveObserver.NOOP));
+                                    return toArtifact(
+                                            e.getValue(),
+                                            tags,
+                                            kmp,
+                                            pomBuilder,
+                                            fallbackSource,
+                                            bomConstraints,
+                                            constraintProvenance,
+                                            ResolveObserver.NOOP);
                                 } catch (IOException | InterruptedException ex) {
                                     throw new CompletionException(ex);
                                 }
@@ -614,6 +618,59 @@ public final class LockOrchestrator {
                             + ". Pick one BOM or pin the coord explicitly.");
                 }
             }
+            // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
+            // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
+            // but keep the family in the platform map for preferredVersion / pinned-by when an
+            // edge arrives without a fill.
+            alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
+        }
+    }
+
+    /**
+     * Artifacts that must share one {@code maven-resolver} line. When a platform BOM manages any
+     * core resolver jar (or declares {@code maven-resolver.version}), pin the rest of the family
+     * to that line if still unconstrained.
+     */
+    private static final List<String> MAVEN_RESOLVER_FAMILY = List.of(
+            "maven-resolver-api",
+            "maven-resolver-spi",
+            "maven-resolver-util",
+            "maven-resolver-impl",
+            "maven-resolver-named-locks",
+            "maven-resolver-connector-basic",
+            "maven-resolver-transport-wagon",
+            "maven-resolver-transport-http",
+            "maven-resolver-transport-file");
+
+    /**
+     * Fill gaps in {@code bomConstraints} for the maven-resolver family so named-locks cannot
+     * float to a major line that breaks {@code NamedLockFactory.getLock(String)}.
+     */
+    static void alignMavenResolverFamily(
+            Map<String, String> bomConstraints,
+            Map<String, String> constraintProvenance,
+            EffectivePom bomPom,
+            String bomLabel) {
+        String line = bomPom.properties().get("maven-resolver.version");
+        if (line == null || line.isBlank()) {
+            // Prefer the BOM's own managed api/impl pin over a line already present from an
+            // earlier BOM (those are already in bomConstraints; we only fill gaps).
+            for (Pom.Dep m : bomPom.managedDependencies()) {
+                if (m.version() == null || m.version().isBlank() || m.module() == null) continue;
+                if ("org.apache.maven.resolver:maven-resolver-api".equals(m.module())
+                        || "org.apache.maven.resolver:maven-resolver-impl".equals(m.module())) {
+                    line = m.version();
+                    if (m.module().endsWith(":maven-resolver-api")) break;
+                }
+            }
+        }
+        if (line == null || line.isBlank()) return;
+        String provenance = bomLabel + " (maven-resolver family)";
+        for (String art : MAVEN_RESOLVER_FAMILY) {
+            String mod = "org.apache.maven.resolver:" + art;
+            if (bomConstraints.putIfAbsent(mod, line) == null) {
+                constraintProvenance.put(mod, provenance);
+            }
         }
     }
 
@@ -693,8 +750,13 @@ public final class LockOrchestrator {
 
         String packageName = mod.module();
         String artifactFile = null;
+        // JK-1202: only probe packaging when the solver package type is not already a plain jar.
+        // Building EffectivePom for every package on materialize dominated warm re-lock wall time
+        // (hundreds of POM expansions for Quarkus-sized graphs).
         try {
-            if (!kmpAlias && "aar".equals(pomBuilder.build(coord).packaging())) {
+            PackageId id = PackageId.isMavenPackageKey(mod.module()) ? PackageId.parse(mod.module()) : null;
+            boolean maybeAar = id != null && "aar".equals(id.type());
+            if (!kmpAlias && maybeAar && "aar".equals(pomBuilder.build(coord).packaging())) {
                 coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
                 packageName =
                         PackageId.of(coord.group(), coord.artifact(), "aar", "").key();
@@ -772,6 +834,41 @@ public final class LockOrchestrator {
             case VersionSelector.Range ignored -> null;
             case VersionSelector.Latest ignored -> null;
         };
+    }
+
+    /**
+     * When the project is Groovy/Kotlin, ensure the language runtime lands in the <em>main</em>
+     * lock graph (JK-1173). Engine-side classpath injection covers {@code jk run}/tests but not
+     * boot-jar nesting — packaging only sees lock artifacts.
+     *
+     * <p>{@code putIfAbsent}: an explicit user/Grails BOM dep wins. Version follows the project's
+     * {@code kotlin}/{@code groovy} pin when it has a literal; otherwise a floating major of the
+     * current jk default so PubGrub still picks a concrete release at lock time.
+     */
+    private static void injectLanguageRuntimes(JkBuild project, LinkedHashMap<String, Dependency> mainDeduped) {
+        JkBuild.Project p = project.project();
+        if (p.isGroovy()) {
+            mainDeduped.putIfAbsent(
+                    "org.apache.groovy:groovy",
+                    new Dependency("org.apache.groovy:groovy", languageRuntimeSelector(p.groovy(), "5")));
+        }
+        if (p.isKotlin()) {
+            mainDeduped.putIfAbsent(
+                    "org.jetbrains.kotlin:kotlin-stdlib",
+                    new Dependency(
+                            "org.jetbrains.kotlin:kotlin-stdlib", languageRuntimeSelector(p.kotlin(), "2")));
+        }
+    }
+
+    /** Exact pin when the project declared a version literal; else floating major of {@code fallbackMajor}. */
+    private static VersionSelector languageRuntimeSelector(VersionSelector declared, String fallbackMajor) {
+        if (declared != null) {
+            String lit = versionLiteral(declared);
+            if (lit != null && !lit.isBlank()) {
+                return VersionSelector.parse("=" + lit);
+            }
+        }
+        return VersionSelector.parse("@" + fallbackMajor);
     }
 
     /**

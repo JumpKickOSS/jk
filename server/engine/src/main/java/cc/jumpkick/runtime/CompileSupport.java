@@ -21,37 +21,41 @@ public final class CompileSupport {
     private CompileSupport() {}
 
     /** Which languages a project compiles. */
-    public record Languages(boolean java, boolean kotlin) {}
+    public record Languages(boolean java, boolean kotlin, boolean groovy) {}
 
     /**
      * Resolve which languages a project compiles. Explicit {@code jk.toml} opt-ins win: {@code java =
-     * <int>} enables Java, {@code kotlin = "<ver>"} enables Kotlin (either or both). When
-     * <em>neither</em> is declared, infer from the tree — a {@code src/main/java} dir or any {@code
-     * .java} under {@code src/} enables Java (at the jdk release); a {@code src/main/kotlin} dir or
-     * any {@code .kt} enables Kotlin (at the default release). A project with nothing to go on
-     * defaults to Java (a bare {@code jdk = N} project).
+     * <int>} enables Java, {@code kotlin = "<ver>"} enables Kotlin, {@code groovy = "<ver>"} enables
+     * Groovy (any combination). When <em>none</em> is declared, infer from the tree — a {@code
+     * src/main/java} dir or any {@code .java} under {@code src/} enables Java (at the jdk release);
+     * likewise {@code src/main/kotlin}/{@code .kt} and {@code src/main/groovy}/{@code .groovy}. A
+     * project with nothing to go on defaults to Java (a bare {@code jdk = N} project).
      */
     public static Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
         boolean javaDeclared = project.java() > 0;
         boolean kotlinDeclared = project.isKotlin();
-        if (javaDeclared || kotlinDeclared) {
-            return new Languages(javaDeclared, kotlinDeclared);
+        boolean groovyDeclared = project.isGroovy();
+        if (javaDeclared || kotlinDeclared || groovyDeclared) {
+            return new Languages(javaDeclared, kotlinDeclared, groovyDeclared);
         }
         Path src = projectDir.resolve("src");
         boolean java = Files.isDirectory(projectDir.resolve("src/main/java")) || anySourceUnder(src, ".java");
         boolean kotlin = Files.isDirectory(projectDir.resolve("src/main/kotlin")) || anySourceUnder(src, ".kt");
-        if (!java && !kotlin) {
-            return new Languages(true, false); // nothing detected — default to Java
+        boolean groovy = Files.isDirectory(projectDir.resolve("src/main/groovy")) || anySourceUnder(src, ".groovy");
+        if (!java && !kotlin && !groovy) {
+            return new Languages(true, false, false); // nothing detected — default to Java
         }
-        return new Languages(java, kotlin);
+        return new Languages(java, kotlin, groovy);
     }
 
-    /** True if {@code projectDir} contains any Java or Kotlin source files. */
+    /** True if {@code projectDir} contains any Java, Kotlin, or Groovy source files. */
     static boolean hasSources(Path projectDir) {
         return Files.isDirectory(projectDir.resolve("src/main/java"))
                 || Files.isDirectory(projectDir.resolve("src/main/kotlin"))
+                || Files.isDirectory(projectDir.resolve("src/main/groovy"))
                 || anySourceUnder(projectDir.resolve("src"), ".java")
-                || anySourceUnder(projectDir.resolve("src"), ".kt");
+                || anySourceUnder(projectDir.resolve("src"), ".kt")
+                || anySourceUnder(projectDir.resolve("src"), ".groovy");
     }
 
     /** True if any regular file ending in {@code ext} exists anywhere under {@code root}. */
@@ -112,17 +116,35 @@ public final class CompileSupport {
      *
      * <ul>
      *   <li>Standard layout: {@code src/test/kotlin/} and {@code src/test/java/}
-     *   <li>Compact layout: {@code test/} (all {@code .kt} files)
+     *   <li>Compact (Mill-like) layout: {@code test/src/} (all {@code .kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinTestSources(Path projectDir, boolean compact) throws IOException {
         if (compact) {
-            return collectFilesWithExtension(projectDir.resolve("test"), ".kt");
+            return collectFilesWithExtension(projectDir.resolve("test").resolve("src"), ".kt");
         }
         List<Path> out = new ArrayList<>();
         out.addAll(collectFilesWithExtension(projectDir.resolve("src/test/kotlin"), ".kt"));
         out.addAll(collectFilesWithExtension(projectDir.resolve("src/test/java"), ".kt"));
         return out;
+    }
+
+    /**
+     * All main {@code .groovy} files for a project — roots from {@link
+     * cc.jumpkick.layout.ModuleLayout#mainGroovyRoots} (SIMPLE shares {@code src/} by extension).
+     */
+    public static List<Path> collectGroovySources(Path projectDir, boolean compact) throws IOException {
+        var out = new java.util.LinkedHashSet<Path>();
+        for (Path root : cc.jumpkick.layout.ModuleLayout.mainGroovyRoots(projectDir, compact)) {
+            out.addAll(collectFilesWithExtension(root, ".groovy"));
+        }
+        return new ArrayList<>(out);
+    }
+
+    /** All default-suite test {@code .groovy} files (roots from {@link cc.jumpkick.layout.TestSuites}). */
+    public static List<Path> collectGroovyTestSources(Path projectDir, boolean compact) throws IOException {
+        return cc.jumpkick.layout.TestSuites.collectGroovySources(
+                projectDir, compact, List.of(cc.jumpkick.layout.TestSuites.DEFAULT));
     }
 
     /**

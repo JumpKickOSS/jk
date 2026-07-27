@@ -15,6 +15,9 @@ public final class NewJkBuildRenderer {
      */
     private static final String DEFAULT_KOTLIN_VERSION = cc.jumpkick.kotlin.KotlinResolver.DEFAULT_VERSION;
 
+    /** Default Groovy compiler version selector when language=groovy. */
+    private static final String DEFAULT_GROOVY_VERSION = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
+
     private NewJkBuildRenderer() {}
 
     public static String render(NewInputs inputs) {
@@ -28,6 +31,8 @@ public final class NewJkBuildRenderer {
             case JAVA -> sb.append("java     = ").append(inputs.javaRelease()).append('\n');
             case KOTLIN ->
                 sb.append("kotlin   = \"").append(DEFAULT_KOTLIN_VERSION).append("\"\n");
+            case GROOVY ->
+                sb.append("groovy   = \"").append(DEFAULT_GROOVY_VERSION).append("\"\n");
         }
         if (inputs.layout() != null && !inputs.layout().isBlank() && !"auto".equalsIgnoreCase(inputs.layout())) {
             sb.append("layout   = \"").append(inputs.layout().toLowerCase()).append("\"\n");

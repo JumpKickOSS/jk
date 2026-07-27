@@ -1,8 +1,9 @@
 # Authoring build plugins
 
-A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[android]`, `[protobuf]` —
-and shapes the standard commands around it. First-party examples live under
-[`plugins/`](../plugins/) (start with [`plugins/spring-boot`](../plugins/spring-boot)).
+A build plugin teaches jk a new `jk.toml` table — `[spring-boot]`, `[grails]`, `[quarkus]`,
+`[android]`, `[protobuf]` — and shapes the standard commands around it. First-party examples
+live under [`plugins/`](../plugins/) (start with [`plugins/spring-boot`](../plugins/spring-boot)
+or [`plugins/quarkus`](../plugins/quarkus)).
 
 **Who this is for (pre-1.0):** **first-party** plugins in this monorepo, and **private/
 vendored** plugin jars (path or Maven pin + required `sha256`). A public third-party
@@ -61,7 +62,12 @@ coordinate = "org.springframework.boot:spring-boot-dependencies:${config.version
 [[contribute.compiler-args]]
 javac  = ["-parameters"]
 kotlin = ["-java-parameters"]
+groovy = ["--parameters"]
 ksp    = ["room.schemaLocation=…"]
+
+[[contribute.source-roots]]
+dir  = "grails-app/domain"    # module-relative; absolute or ..-escaping dirs fail at load
+kind = "source"               # source | resource — joins roots()/compile/IDE/BSP/fingerprints
 
 [[contribute.kotlin-plugin]]
 id         = "org.jetbrains.kotlin.noarg"

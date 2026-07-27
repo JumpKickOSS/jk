@@ -17,6 +17,8 @@ public record ProjectInfo(
         int javaRelease,
         boolean kotlin,
         String kotlinVersion,
+        boolean groovy,
+        String groovyVersion,
         boolean layoutSimple,
         boolean workspaceRoot,
         String workspaceRootDir,
@@ -58,6 +60,8 @@ public record ProjectInfo(
                 0,
                 false,
                 "",
+                false,
+                "",
                 true,
                 false,
                 "",
@@ -95,6 +99,8 @@ public record ProjectInfo(
                 + ",\"javaRelease\":" + javaRelease
                 + ",\"kotlin\":" + kotlin
                 + ",\"kotlinVersion\":" + Jsonl.quote(kotlinVersion)
+                + ",\"groovy\":" + groovy
+                + ",\"groovyVersion\":" + Jsonl.quote(groovyVersion)
                 + ",\"layoutSimple\":" + layoutSimple
                 + ",\"workspaceRoot\":" + workspaceRoot
                 + ",\"workspaceRootDir\":" + Jsonl.quote(workspaceRootDir)
@@ -134,6 +140,8 @@ public record ProjectInfo(
                 Jsonl.intValue(line, "javaRelease", 0),
                 Jsonl.bool(line, "kotlin", false),
                 orEmpty(Jsonl.str(line, "kotlinVersion")),
+                Jsonl.bool(line, "groovy", false),
+                orEmpty(Jsonl.str(line, "groovyVersion")),
                 Jsonl.bool(line, "layoutSimple", true),
                 Jsonl.bool(line, "workspaceRoot", false),
                 orEmpty(Jsonl.str(line, "workspaceRootDir")),

@@ -13,16 +13,17 @@ public final class SourceLayout {
     private SourceLayout() {}
 
     /**
-     * True for simple layout ({@code src/}+{@code test/}): always for SIMPLE, never TRADITIONAL,
-     * AUTO when Maven source roots are empty/absent.
+     * True for simple Mill-like layout ({@code src/} + {@code test/src/}): always for SIMPLE, never
+     * TRADITIONAL, AUTO when Maven source roots are empty/absent.
      */
     public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
         return switch (project.layout()) {
             case SIMPLE -> true;
             case TRADITIONAL -> false;
             case AUTO ->
-                !anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java")
-                        && !anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java");
+                !anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java", ".groovy")
+                        && !anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java", ".groovy")
+                        && !anySourceUnder(projectDir.resolve("src/main/groovy"), ".kt", ".java", ".groovy");
         };
     }
 

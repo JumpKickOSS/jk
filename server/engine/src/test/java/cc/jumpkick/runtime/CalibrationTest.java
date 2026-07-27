@@ -17,8 +17,24 @@ class CalibrationTest {
 
     @Test
     void deriveMsPerWeight_anchors_measured_time_to_the_synthetic_weight() {
-        // weight = TEST_STARTUP(15) + COMPILE_FLOOR(2) + compileWeight(5)=1 = 18; (fork+javac)/18.
-        assertThat(Calibration.deriveMsPerWeight(180, 180)).isCloseTo(20.0, within(1e-6));
+        // Full model weight from HardwareProbe; wall = fork+javac+fork (test-worker proxy).
+        double mpw = Calibration.deriveMsPerWeight(180, 180);
+        assertThat(mpw).isGreaterThan(0);
+        assertThat(mpw)
+                .isCloseTo(
+                        HardwareProbe.deriveMsPerWeight(180, 180, 0, 0, 0, 0), within(1e-6));
+    }
+
+    @Test
+    void hardware_probe_model_weight_is_positive() {
+        assertThat(HardwareProbe.modelWeight()).isGreaterThan(EffortWeights.TEST_STARTUP);
+    }
+
+    @Test
+    void max_warm_is_pessimistic() {
+        assertThat(HardwareProbe.maxWarm(java.util.List.of(10L, 20L, 15L, 40L))).isEqualTo(40L);
+        // first sample dropped as cold-cache warmup
+        assertThat(HardwareProbe.maxWarm(java.util.List.of(100L, 12L, 11L))).isEqualTo(12L);
     }
 
     @Test

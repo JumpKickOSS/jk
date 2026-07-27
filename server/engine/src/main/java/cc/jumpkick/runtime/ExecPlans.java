@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.protocol.ExecPlan;
 import cc.jumpkick.engine.protocol.ProjectInfo;
@@ -24,7 +25,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -81,6 +84,10 @@ public final class ExecPlans {
                     build.project().kotlin() == null
                             ? ""
                             : build.project().kotlin().raw(),
+                    build.project().isGroovy(),
+                    build.project().groovy() == null
+                            ? ""
+                            : build.project().groovy().raw(),
                     SourceLayout.isSimpleLayout(build.project(), dir),
                     build.isWorkspaceRoot(),
                     workspaceRootDir,
@@ -186,6 +193,11 @@ public final class ExecPlans {
      */
     private static ExecPlan runPlan(Path dir, Path cache, JkBuild project, BuildLayout layout, boolean dev)
             throws IOException, InterruptedException {
+        // Workspace root: pick the runnable module (declared [application] main, else unique scan).
+        // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
+        if (project.isWorkspaceRoot()) {
+            return runWorkspace(dir, cache, project, dev);
+        }
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
         // the run story; a generic java exec would be nonsense.
         var hostShape = PluginBuild.shape(project, dir);
@@ -265,6 +277,29 @@ public final class ExecPlans {
                         false,
                         false,
                         List.of());
+            }
+            // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
+            // Do not fall through to -cp + scanned main — the thin Class-Path layout or nested
+            // BOOT-INF is not a normal compile classpath, and Application main is not enough.
+            if (hostShape
+                    .map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))
+                    .orElse(false)) {
+                Path mainJar = layout.mainJar();
+                if (Files.isRegularFile(mainJar)) {
+                    return runAck(
+                            "run",
+                            List.of(java, "-jar", mainJar.toAbsolutePath().toString()),
+                            dir,
+                            javaHome,
+                            "java -jar " + dir.relativize(mainJar),
+                            false,
+                            false,
+                            List.of());
+                }
+                return ExecPlan.error(
+                        "run",
+                        "self-contained jar not found at " + layout.mainJar() + " — run `jk build` first",
+                        "missing");
             }
         }
 
@@ -348,6 +383,101 @@ public final class ExecPlans {
         if (dev && Files.isDirectory(dir.resolve("src")))
             watchRoots.add(dir.resolve("src").toString());
         return runAck(dev ? "dev" : "run", argv, dir, javaHome, display, hotReload, devtoolsInjected, watchRoots);
+    }
+
+    /**
+     * {@code jk run} at a workspace root: select the module to launch, then reuse the single-module
+     * run plan. Preference: exactly one module with {@code [application] main}; else exactly one
+     * module with a unique scanned {@code main} in its classes/jar; else a clear missing/ambiguous
+     * error naming the candidates.
+     */
+    private static ExecPlan runWorkspace(Path root, Path cache, JkBuild rootBuild, boolean dev)
+            throws IOException, InterruptedException {
+        String kind = dev ? "dev" : "run";
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(root, rootBuild);
+        if (modules.isEmpty()) {
+            return ExecPlan.error(kind, "workspace has no modules — nothing to run", "missing");
+        }
+
+        // 1) Declared [application] main wins.
+        List<Map.Entry<Path, JkBuild>> declared = new ArrayList<>();
+        for (var e : modules.entrySet()) {
+            String m = e.getValue().mainClass();
+            if (m != null && !m.isBlank()) declared.add(e);
+        }
+        if (declared.size() == 1) {
+            Path modDir = declared.get(0).getKey();
+            JkBuild mod = declared.get(0).getValue();
+            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
+        }
+        if (declared.size() > 1) {
+            List<String> names = new ArrayList<>();
+            for (var e : declared) {
+                Path rel;
+                try {
+                    rel = root.relativize(e.getKey());
+                } catch (IllegalArgumentException ex) {
+                    rel = e.getKey();
+                }
+                names.add(rel + " → " + e.getValue().mainClass());
+            }
+            return ExecPlan.error(
+                    kind,
+                    "multiple modules declare [application] main ("
+                            + String.join("; ", names)
+                            + ") — run from a module directory or leave only one declared",
+                    "ambiguous");
+        }
+
+        // 2) Best-effort scan: classes dir first, then main jar.
+        Map<String, Path> mainToModule = new LinkedHashMap<>();
+        for (var e : modules.entrySet()) {
+            Path modDir = e.getKey();
+            BuildLayout layout = BuildLayout.of(modDir, e.getValue());
+            List<String> found = new ArrayList<>();
+            if (Files.isDirectory(layout.classesDir())) {
+                found.addAll(MainClassScanner.scan(layout.classesDir()));
+            }
+            if (found.isEmpty() && Files.isRegularFile(layout.mainJar())) {
+                found.addAll(MainClassScanner.scan(layout.mainJar()));
+            }
+            for (String main : found) {
+                Path prev = mainToModule.putIfAbsent(main, modDir);
+                if (prev != null && !prev.equals(modDir)) {
+                    // Same FQCN in two modules — treat as ambiguous
+                    return ExecPlan.error(
+                            kind,
+                            "multiple modules define main class " + main + " ("
+                                    + root.relativize(prev)
+                                    + " and "
+                                    + root.relativize(modDir)
+                                    + ")",
+                            "ambiguous");
+                }
+            }
+        }
+        if (mainToModule.isEmpty()) {
+            return ExecPlan.error(
+                    kind,
+                    "no launchable main found in workspace modules — set `[application] main = \"...\"` "
+                            + "on the app module (or run from that module directory)",
+                    "missing");
+        }
+        if (mainToModule.size() > 1) {
+            List<String> names = new ArrayList<>();
+            for (var e : mainToModule.entrySet()) {
+                names.add(e.getKey() + " (" + root.relativize(e.getValue()) + ")");
+            }
+            return ExecPlan.error(
+                    kind,
+                    "multiple main classes found in workspace ("
+                            + String.join(", ", names)
+                            + ") — set `[application] main` on one module or run from a module directory",
+                    "ambiguous");
+        }
+        Path modDir = mainToModule.values().iterator().next();
+        JkBuild mod = modules.get(modDir);
+        return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
     }
 
     private static ExecPlan runAck(

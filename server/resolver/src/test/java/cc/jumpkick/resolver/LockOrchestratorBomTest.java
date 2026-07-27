@@ -199,9 +199,9 @@ class LockOrchestratorBomTest {
     }
 
     @Test
-    void platform_bom_soft_prefer_lifts_when_transitive_demands_higher(@TempDir Path tempDir) throws Exception {
-        // Compose/nav finding 13: BOM recommends leaf 1.0; middle requires leaf >= 1.5 → lift to 2.0.
-        // pinned-by must be null after a lift (recommendation not held).
+    void platform_bom_enforces_managed_pin_on_transitive_edges(@TempDir Path tempDir) throws Exception {
+        // GAs in the platform map use the BOM pin on POM edges (enforced), not a lift to the
+        // highest metadata release. Unmapped bare edges are also exact under a platform.
         servePom("org.example", "the-bom", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
@@ -246,8 +246,7 @@ class LockOrchestratorBomTest {
                 .filter(p -> p.packageKey().equals("com.foo:leaf:jar:"))
                 .findFirst()
                 .orElseThrow();
-        assertThat(leafArt.version()).isEqualTo("2.0");
-        assertThat(leafArt.pinnedBy()).isNull();
+        assertThat(leafArt.version()).isEqualTo("1.0");
     }
 
     @Test

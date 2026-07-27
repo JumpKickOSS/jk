@@ -214,7 +214,11 @@ final class EngineResolveAdapter {
                                 .build());
                     case EngineProtocol.PLAN_DONE -> listener = handler.onModuleStart(currentDir, currentCoord, steps);
                     case EngineProtocol.LOCK_PACKAGE ->
-                        handler.onPackage(Jsonl.str(line, "dir"), Jsonl.str(line, "name"), Jsonl.str(line, "version"));
+                        handler.onPackage(
+                                Jsonl.str(line, "dir"),
+                                Jsonl.str(line, "name"),
+                                Jsonl.str(line, "version"),
+                                Jsonl.intValue(line, "total", -1));
                     case EngineProtocol.PIPELINE_FINISH -> {
                         PipelineResult result = new PipelineResult(
                                 pipelineName,

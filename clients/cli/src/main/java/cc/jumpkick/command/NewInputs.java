@@ -18,6 +18,8 @@ public record NewInputs(
         boolean assembly,
         boolean nativeImage,
         boolean spring,
+        boolean grails,
+        boolean quarkus,
         boolean plugin,
         Language lang,
         String layout,
@@ -38,7 +40,7 @@ public record NewInputs(
         deps = List.copyOf(deps);
     }
 
-    /** Back-compat constructor: no Spring Boot. */
+    /** Back-compat constructor: no framework scaffold or plugin project. */
     public NewInputs(
             String group,
             String name,
@@ -67,6 +69,91 @@ public record NewInputs(
                 nativeImage,
                 false,
                 false,
+                false,
+                false,
+                lang,
+                layout,
+                kotlinModuleName,
+                deps,
+                sample,
+                directory);
+    }
+
+    /** Back-compat constructor: spring/plugin flags, no Grails/Quarkus. */
+    public NewInputs(
+            String group,
+            String name,
+            String jdk,
+            int jdkMajor,
+            int javaRelease,
+            Optional<String> jdkIdentifier,
+            Optional<String> main,
+            boolean assembly,
+            boolean nativeImage,
+            boolean spring,
+            boolean plugin,
+            Language lang,
+            String layout,
+            Optional<String> kotlinModuleName,
+            List<String> deps,
+            boolean sample,
+            Path directory) {
+        this(
+                group,
+                name,
+                jdk,
+                jdkMajor,
+                javaRelease,
+                jdkIdentifier,
+                main,
+                assembly,
+                nativeImage,
+                spring,
+                false,
+                false,
+                plugin,
+                lang,
+                layout,
+                kotlinModuleName,
+                deps,
+                sample,
+                directory);
+    }
+
+    /** Back-compat constructor: spring/grails/plugin, no Quarkus. */
+    public NewInputs(
+            String group,
+            String name,
+            String jdk,
+            int jdkMajor,
+            int javaRelease,
+            Optional<String> jdkIdentifier,
+            Optional<String> main,
+            boolean assembly,
+            boolean nativeImage,
+            boolean spring,
+            boolean grails,
+            boolean plugin,
+            Language lang,
+            String layout,
+            Optional<String> kotlinModuleName,
+            List<String> deps,
+            boolean sample,
+            Path directory) {
+        this(
+                group,
+                name,
+                jdk,
+                jdkMajor,
+                javaRelease,
+                jdkIdentifier,
+                main,
+                assembly,
+                nativeImage,
+                spring,
+                grails,
+                false,
+                plugin,
                 lang,
                 layout,
                 kotlinModuleName,
@@ -103,6 +190,8 @@ public record NewInputs(
                 nativeImage,
                 false,
                 false,
+                false,
+                false,
                 lang,
                 layout,
                 kotlinModuleName,
@@ -113,12 +202,14 @@ public record NewInputs(
 
     public enum Language {
         JAVA,
-        KOTLIN;
+        KOTLIN,
+        GROOVY;
 
         public String hoconValue() {
             return switch (this) {
                 case JAVA -> "java";
                 case KOTLIN -> "kotlin";
+                case GROOVY -> "groovy";
             };
         }
 
@@ -126,16 +217,30 @@ public record NewInputs(
             return switch (this) {
                 case JAVA -> "java";
                 case KOTLIN -> "kotlin";
+                case GROOVY -> "groovy";
             };
         }
     }
 
-    /** True when the chosen layout is "simple" (flat ./src + ./test). */
+    /** True when the chosen layout is "simple" (Mill-like {@code ./src} + {@code ./test/src}). */
     public boolean isSimpleLayout() {
         return "simple".equalsIgnoreCase(layout);
     }
 
     public boolean isRunnable() {
         return main.isPresent();
+    }
+
+    /** True when any framework plugin scaffold flag is set. */
+    public boolean frameworkScaffold() {
+        return spring || grails || quarkus;
+    }
+
+    /** Scaffold flag name for the engine ({@code spring} / {@code grails} / {@code quarkus}). */
+    public String frameworkPluginFlag() {
+        if (grails) return "grails";
+        if (quarkus) return "quarkus";
+        if (spring) return "spring";
+        throw new IllegalStateException("no framework scaffold flag set");
     }
 }

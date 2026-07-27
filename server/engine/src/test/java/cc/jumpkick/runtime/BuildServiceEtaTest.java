@@ -63,4 +63,17 @@ class BuildServiceEtaTest {
         assertThat(reb.dirKey(Path.of("/ws"))).isEqualTo("/ws#d200");
         assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws"))).isEqualTo("/ws");
     }
+
+    @Test
+    void rebuild_shape_blends_cold_schedule_toward_history() {
+        // Schedule base 60s, trained rebuild avg 3s → pull toward history (not leave 60s).
+        long blended = BuildService.applyHistoryPrior(60_000, ok(2, 3000, 2800, 3200), true);
+        assertThat(blended).isLessThan(60_000);
+        assertThat(blended).isGreaterThan(3000);
+        // 0.3*60000 + 0.7*3000 = 20100
+        assertThat(blended).isEqualTo(20_100);
+        // Incremental shape keeps the old one-sided clamp rules (no blend).
+        assertThat(BuildService.applyHistoryPrior(60_000, ok(2, 3000, 2800, 3200), false))
+                .isEqualTo(60_000);
+    }
 }

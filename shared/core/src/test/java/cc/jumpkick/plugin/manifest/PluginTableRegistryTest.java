@@ -93,4 +93,44 @@ class PluginTableRegistryTest {
                         && r.missingVersionWarning() != null)
                 .anyMatch(r -> r.id().equals("io.spring.dependency-management") && r.versionTo() == null);
     }
+
+    @Test
+    void built_in_grails_manifest_loads_with_packaging_roots_and_scaffold() {
+        var grails = PluginTableRegistry.byTable("grails").orElseThrow();
+        assertThat(grails.id()).isEqualTo("grails");
+        assertThat(grails.schema()).containsKeys("version", "boot-version");
+        assertThat(grails.schema().get("version").required()).isTrue();
+        assertThat(grails.schema().get("boot-version").defaultValue()).isEqualTo("4.1.0");
+        assertThat(grails.code().worker()).isEqualTo("jk-grails");
+
+        var packaging = grails.packaging();
+        assertThat(packaging.packager()).isEqualTo("grails-jar");
+        assertThat(packaging.execMode()).isEqualTo("jar");
+        assertThat(packaging.selfContained()).isTrue();
+        assertThat(packaging.classesRun()).isTrue();
+        assertThat(packaging.mainScan()).isTrue();
+        assertThat(packaging.layeredImage()).isTrue();
+
+        assertThat(grails.contributions().sourceRoots())
+                .extracting(PluginDescriptor.SourceRoot::dir)
+                .containsExactly(
+                        "grails-app/domain",
+                        "grails-app/controllers",
+                        "grails-app/services",
+                        "grails-app/taglib",
+                        "grails-app/init",
+                        "grails-app/jobs",
+                        "grails-app/conf",
+                        "grails-app/i18n",
+                        "grails-app/views");
+
+        var scaffold = grails.scaffold();
+        assertThat(scaffold.flag()).isEqualTo("grails");
+        for (var a : scaffold.appends()) {
+            assertThat(PluginTableRegistry.resourceText(grails, a.template())).contains("[grails]");
+        }
+        for (var f : scaffold.files()) {
+            assertThat(PluginTableRegistry.resourceText(grails, f.template())).isNotBlank();
+        }
+    }
 }

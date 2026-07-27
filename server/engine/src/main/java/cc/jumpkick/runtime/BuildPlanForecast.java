@@ -82,6 +82,7 @@ public final class BuildPlanForecast {
                             .anyMatch(p -> !p.cached()
                                     && (p.name().startsWith("compile-main")
                                             || p.name().startsWith("compile-kotlin")
+                                            || p.name().startsWith("compile-groovy")
                                             || p.name().startsWith("package-jar")))
                     || depDirty) {
                 dirty.add(u.dir());
@@ -254,7 +255,26 @@ public final class BuildPlanForecast {
                 if (!fresh) compileDirty = true;
             }
 
-            producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty();
+            // ---- compile-groovy (stamp-only, like Kotlin's — no content key yet) ----
+            // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
+            // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
+            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            if (!gvSrc.isEmpty()) {
+                boolean fresh = !depDirty
+                        && !force
+                        && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, gvSrc);
+                steps.add(
+                        fresh
+                                ? new BuildPlan.Step("compile-groovy", BuildPlan.Status.CACHED, "", null)
+                                : new BuildPlan.Step(
+                                        "compile-groovy",
+                                        BuildPlan.Status.FULL,
+                                        "full compile · " + count(gvSrc.size(), "source"),
+                                        null));
+                if (!fresh) compileDirty = true;
+            }
+
+            producesJar = !mainSrc.isEmpty() || !ktSrc.isEmpty() || !gvSrc.isEmpty();
             try {
                 var img = ImageConfigParser.parse(dir.resolve("jk.toml"));
                 producesImage = img.base() != null || img.registry() != null;
@@ -275,7 +295,7 @@ public final class BuildPlanForecast {
                     .filter(p -> p.getFileName().toString().endsWith(".kt"))
                     .toList();
             boolean haveTests = !allTestSrc.isEmpty();
-            sourceCount = mainSrc.size() + ktSrc.size() + allTestSrc.size();
+            sourceCount = mainSrc.size() + ktSrc.size() + gvSrc.size() + allTestSrc.size();
             boolean testDirty = false;
             // --skip-tests composes no compile-test/run-tests steps, so don't forecast
             // (or content-hash the inputs of) steps the build will not run.
@@ -313,7 +333,7 @@ public final class BuildPlanForecast {
                     steps.add(p);
                     if (!p.cached()) testDirty = true;
                 } else {
-                    // Kotlin-only tests: no content predictor — assume fresh when main is clean.
+                    // Kotlin/Groovy-only tests: no content predictor — assume fresh when main is clean.
                     steps.add(new BuildPlan.Step("compile-test", BuildPlan.Status.CACHED, "", null));
                 }
 
@@ -345,7 +365,10 @@ public final class BuildPlanForecast {
             }
 
             // ---- package-jar ----
-            if (mainSrc.isEmpty() && ktSrc.isEmpty()) {
+            // Tokens MUST match BuildPipelines.packageJarStep (classes/main/sbom/manifest).
+            // Omitting sbom: caused perpetual "repackage" in explain while live build restored
+            // the jar — cascading false depDirty downstream (JK-1176).
+            if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
                 steps.add(new BuildPlan.Step("package-jar", BuildPlan.Status.RUN, "repackage · compile changed", null));
@@ -353,9 +376,18 @@ public final class BuildPlanForecast {
                 Path jar = layout.mainJar();
                 String mainClass = project.mainClass();
                 long tp = Perf.start();
+                byte[] sbom = null;
+                if (project.isApplication()) {
+                    try {
+                        sbom = BuildPipelines.applicationSbom(project, lock, cas);
+                    } catch (Exception ignored) {
+                        // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
+                    }
+                }
                 List<String> tokens = List.of(
                         "classes:" + ClasspathFingerprint.entry(layout.classesDir()),
                         "main:" + (mainClass == null ? "" : mainClass),
+                        "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
                 Perf.end("  package-fingerprint", tp);
                 String pkgKey = ActionKey.forArtifact(
@@ -368,7 +400,7 @@ public final class BuildPlanForecast {
             }
 
             // ---- package-assembly (fat jar) — only when configured ----
-            if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty())) {
+            if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
                 boolean fresh = !compileDirty && Files.isRegularFile(layout.assemblyJar());
                 steps.add(
                         fresh

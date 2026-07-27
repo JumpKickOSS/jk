@@ -81,7 +81,8 @@ public final class ImagePipelines {
             String dockerExecutableArg) {
         Path jkBuildPath = projectDir.resolve("jk.toml");
         Path lockFile = projectDir.resolve("jk.lock");
-        int estimatedTestCount = TestSupport.estimateTestCount(projectDir.resolve("src/test/java"));
+        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
+        int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
                 projectDir,
                 cache,

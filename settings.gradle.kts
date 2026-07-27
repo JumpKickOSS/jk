@@ -105,6 +105,7 @@ include(
     // plugins/ — first-party, shipped with jk (one module per plugin)
     ":test-runner",
     ":kotlin-compiler",
+    ":groovy-compiler",
     ":java-compiler",
     ":auditor",
     ":publisher",
@@ -112,6 +113,8 @@ include(
     ":compat-bridge",
     ":formatter",
     ":spring-boot",
+    ":grails",
+    ":quarkus",
     ":android",
     ":protobuf",
     ":shrink",
@@ -138,6 +141,7 @@ project(":web").projectDir        = file("clients/web")
 // Plugin modules live under plugins/
 project(":test-runner").projectDir    = file("plugins/test-runner")
 project(":kotlin-compiler").projectDir = file("plugins/kotlin-compiler")
+project(":groovy-compiler").projectDir = file("plugins/groovy-compiler")
 project(":java-compiler").projectDir  = file("plugins/java-compiler")
 project(":auditor").projectDir        = file("plugins/auditor")
 project(":publisher").projectDir      = file("plugins/publisher")
@@ -145,6 +149,8 @@ project(":image-builder").projectDir  = file("plugins/image-builder")
 project(":compat-bridge").projectDir  = file("plugins/compat-bridge")
 project(":formatter").projectDir      = file("plugins/formatter")
 project(":spring-boot").projectDir    = file("plugins/spring-boot")
+project(":grails").projectDir         = file("plugins/grails")
+project(":quarkus").projectDir        = file("plugins/quarkus")
 project(":android").projectDir        = file("plugins/android")
 project(":protobuf").projectDir       = file("plugins/protobuf")
 project(":shrink").projectDir         = file("plugins/shrink")

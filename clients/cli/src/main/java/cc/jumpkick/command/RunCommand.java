@@ -32,8 +32,8 @@ public final class RunCommand {
 
     /** Package-private: {@code jk tool run <dir>} delegates a jk-project directory here. */
     int runProject(Path projectDir, List<String> appArgs) throws IOException, InterruptedException {
-        // No client-side jk.toml parse: the engine computes the exec plan (artifact
-        // preference, classpath, main-class scan) after the build — thin-client contract.
+        // Engine computes the exec plan (artifact preference, classpath, main-class scan)
+        // after the build. Workspace roots build the whole graph, then pick a module to run.
         Path cache = cacheDir();
 
         String coord = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
@@ -69,32 +69,68 @@ public final class RunCommand {
 
         PipelineResult result;
         cc.jumpkick.run.TestSummary testResult;
-        // Engine-hosted build half (SINGLE_BUILD_REQUEST, skipTests); exec below owns the TTY.
         var session = cc.jumpkick.config.SessionContext.current();
         cc.jumpkick.run.TestSummary[] testResultHolder = new cc.jumpkick.run.TestSummary[1];
         try {
-            result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
-                    cc.jumpkick.engine.EnginePaths.current(),
-                    new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
-                            projectDir,
-                            cache,
-                            jdksDir,
-                            1,
-                            null,
-                            buildOpts.skipTests,
-                            global.verbose,
-                            session.offline(),
-                            session.force(),
-                            session.variant(),
-                            session.clientEnv()),
-                    steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, coord),
-                    testResultHolder,
-                    new String[1]);
+            boolean workspace = false;
+            try {
+                workspace = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml")).isWorkspaceRoot();
+            } catch (Exception ignored) {
+                // fall through to single-module path
+            }
+            if (workspace) {
+                // Build every module (path deps, sibling jars), then execPlan picks the app module.
+                var rootBuild = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"));
+                int jobs = global.jobsEffective();
+                var wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.runtime.WorkspaceRequest(
+                                projectDir,
+                                rootBuild,
+                                cache,
+                                jdksDir,
+                                1,
+                                null,
+                                buildOpts.skipTests,
+                                global.verbose,
+                                jobs,
+                                null,
+                                true,
+                                true),
+                        new cc.jumpkick.runtime.WorkspaceBuildListener() {});
+                if (!wr.success()) {
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "workspace build failed"));
+                    return 1;
+                }
+                // Synthetic success result so the exec chip path continues unchanged.
+                result = new PipelineResult(
+                        "workspace", true, java.time.Duration.ZERO, List.of(), List.of(), List.of(), false);
+                testResult = null;
+            } else {
+                // Engine-hosted single-module build (SINGLE_BUILD_REQUEST, skipTests).
+                result = cc.jumpkick.cli.engine.EngineClient.runSingleBuild(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.cli.engine.EngineClient.SingleBuildRequest(
+                                projectDir,
+                                cache,
+                                jdksDir,
+                                1,
+                                null,
+                                buildOpts.skipTests,
+                                global.verbose,
+                                session.offline(),
+                                session.force(),
+                                session.variant(),
+                                session.clientEnv()),
+                        steps -> PipelineConsole.chooseConsoleListener(steps, mode, spec, coord),
+                        testResultHolder,
+                        new String[1]);
+                testResult = testResultHolder[0];
+            }
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
             return Exit.SOFTWARE;
         }
-        testResult = testResultHolder[0];
 
         if (!result.success()) {
             if (testResult != null && !testResult.allPassed()) return 4;

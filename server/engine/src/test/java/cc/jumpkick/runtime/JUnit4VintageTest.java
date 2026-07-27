@@ -52,7 +52,7 @@ class JUnit4VintageTest {
                     public static int add(int a, int b) { return a + b; }
                 }
                 """);
-        Path test = Files.createDirectories(project.resolve("test/com/example"));
+        Path test = Files.createDirectories(project.resolve("test/src/com/example"));
         Files.writeString(test.resolve("AdderTest.java"), """
                 package com.example;
 

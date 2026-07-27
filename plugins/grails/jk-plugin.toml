@@ -1,0 +1,125 @@
+# The built-in grails build plugin's declarative manifest (Grails 8 on Spring Boot 4.1).
+# Owns the [grails] table; contributes the Apache grails-bom, the groovyc/javac parameter
+# args Grails' data binding reflects on, and the grails-app source/resource roots. The
+# packager is boot-jar-shaped (a Grails 8 jar IS a Boot 4.1 jar) — the worker delegates
+# to jk-spring-boot's BootJarPackager. Baked into core as a classpath resource.
+
+[plugin]
+id        = "grails"
+table     = "grails"
+version   = "1.0.0"
+jk-compat = ">=0.10"
+
+# The code layer: the worker jar carrying the grails-jar packager body (bundles the
+# jk-spring-boot classes it delegates to) — forked by the engine, never classloaded.
+[code]
+worker          = "jk-grails"
+protocol-prefix = "##JKGR:"
+
+# Boot-jar-shaped artifact descriptor: run/install/image consult these flags only.
+[packaging]
+packager       = "grails-jar"  # replaces the main artifact
+exec-mode      = "jar"         # the produced jar is the self-contained executable
+self-contained = true          # install links one artifact, no dependency jars
+classes-run    = true          # run/dev exec from classes (BOOT-INF nesting isn't classpath-able)
+main-scan      = true          # a unique main may be discovered by scanning compiled classes
+layered-image  = true          # images split release/snapshot dep layers + exploded classes
+
+[schema]
+version      = { type = "string", required = true, example = "8.0.0-M4", hint = "it pins the Apache grails-bom (org.grails is the pre-ASF line and has no 8.x)" }
+boot-version = { type = "string", default = "4.1.0", hint = "the Spring Boot loader line matching this Grails release" }
+
+# ---- Declarative contributions — pure data, evaluated engine-side with zero plugin code.
+
+# Auto-import the Grails BOM (which itself imports spring-boot-dependencies) so the
+# [dependencies] grails-* entries need no versions.
+[[contribute.platform-dependency]]
+coordinate = "org.apache.grails:grails-bom:${config.version}"
+
+# Grails reflects on constructor/action parameter names (data binding, command objects) —
+# compile with parameter names kept, in both the Groovy and (mixed-module) Java lanes.
+[[contribute.compiler-args]]
+javac  = ["-parameters"]
+groovy = ["--parameters"]
+
+# The grails-app conventional tree joins the module's input roots: compiled Groovy sources
+# for the artefact dirs, packaged resources for conf/i18n/views.
+[[contribute.source-roots]]
+dir  = "grails-app/domain"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/controllers"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/services"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/taglib"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/init"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/jobs"
+kind = "source"
+
+[[contribute.source-roots]]
+dir  = "grails-app/conf"
+kind = "resource"
+
+[[contribute.source-roots]]
+dir  = "grails-app/i18n"
+kind = "resource"
+
+[[contribute.source-roots]]
+dir  = "grails-app/views"
+kind = "resource"
+
+# The Boot loader the grails-jar packager explodes at the jar root — version-locked to the
+# Boot line this Grails release targets, fetched engine-side, handed to the worker by name.
+[[contribute.packager-dependency]]
+artifact   = "spring-boot-loader"
+coordinate = "org.springframework.boot:spring-boot-loader:${config.boot-version}"
+
+# ---- Scaffold — `jk new --grails` renders these engine-side; the client writes the
+# returned payloads. Paths are literal grails-app conventions plus ${package-path}.
+
+[scaffold]
+flag        = "grails"
+description = "Grails application (Groovy)"
+
+[[scaffold.append]]
+template = "scaffold/jk-toml-grails.toml.tmpl"
+
+[[scaffold.file]]
+path     = "grails-app/init/${package-path}/Application.groovy"
+template = "scaffold/Application.groovy.tmpl"
+
+[[scaffold.file]]
+path     = "grails-app/init/${package-path}/BootStrap.groovy"
+template = "scaffold/BootStrap.groovy.tmpl"
+
+[[scaffold.file]]
+path     = "grails-app/domain/${package-path}/Note.groovy"
+template = "scaffold/Note.groovy.tmpl"
+
+[[scaffold.file]]
+path     = "grails-app/controllers/${package-path}/NoteController.groovy"
+template = "scaffold/NoteController.groovy.tmpl"
+
+[[scaffold.file]]
+path          = "grails-app/conf/application.yml"
+template      = "scaffold/application.yml.tmpl"
+keep-existing = true
+
+# ---- Import — jk import's Gradle-plugin mapping: the Grails Gradle plugin id is
+# recognized and consumed (its version is the Grails Gradle tooling line, not the BOM pin —
+# the importer leaves `[grails] version` to the user).
+
+[[import.gradle-plugin]]
+id = "org.apache.grails.gradle.grails-web"

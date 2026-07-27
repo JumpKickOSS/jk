@@ -288,11 +288,13 @@ public class PubGrubSolver {
     // --- decisions ---------------------------------------------------------
 
     protected String makeDecision() throws IOException, InterruptedException {
+        // JK-1202: iterate the assignment stack once without copying into a TreeMap decisions()
+        // each time — both were dominant alloc sources on large BOM graphs.
         Set<String> seen = new LinkedHashSet<>();
         for (PartialSolution.Assignment a : solution.assignments()) {
             seen.add(a.term().pkg());
         }
-        Map<String, String> decided = solution.decisions();
+        Map<String, String> decided = solution.decisionsUnsorted();
 
         for (String pkg : seen) {
             if (decided.containsKey(pkg)) continue;
@@ -338,7 +340,8 @@ public class PubGrubSolver {
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
                     addIncompatibility(new Incompatibility(
                             List.of(Term.positive(pkg, allowed)),
-                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                            new Incompatibility.Cause.NoVersions(
+                                    pkg, allowed, unknownPackage, sampleAvailable(pkg))));
                     return pkg;
                 }
                 addIncompatibility(new Incompatibility(
@@ -399,13 +402,28 @@ public class PubGrubSolver {
         solution.bindUniverse(pkg);
     }
 
-    /** Replace a lazy singleton with the full advertised list and re-project constraints. */
+    /**
+     * Replace a lazy singleton with the advertised list and re-project constraints.
+     *
+     * <p>JK-1202: filter to versions that satisfy the package's positive constraint, and cap the
+     * list. Full maven-metadata histories (hundreds of releases) made AllowedSet/BitSet work and
+     * soft-prefer scans dominate CPU on large BOM graphs once any pin failed.
+     */
     private void expandUniverse(String pkg) throws IOException, InterruptedException {
         if (!lazyUniverses.remove(pkg)) return;
         List<String> versions = source.versions(pkg);
+        // Cap long metadata histories (JK-1202). Do not filter against the continuous positive set
+        // here: after a failed soft-prefer pin the discrete rebind must still see every advertised
+        // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
+        if (versions.size() > MAX_EXPANDED_VERSIONS) {
+            versions = List.copyOf(versions.subList(0, MAX_EXPANDED_VERSIONS));
+        }
         universes.put(pkg, VersionUniverse.of(pkg, versions));
         solution.rebindAfterUniverseExpand(pkg);
     }
+
+    /** Max candidates kept after expand (highest-first order already applied by PackageSource). */
+    private static final int MAX_EXPANDED_VERSIONS = 48;
 
     protected void addIncompatibility(Incompatibility inco) {
         incompatibilities.add(inco);

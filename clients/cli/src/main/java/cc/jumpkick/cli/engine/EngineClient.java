@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -296,6 +297,36 @@ public final class EngineClient {
      */
     public static List<String> metrics(EnginePaths.Paths paths, String dir) throws IOException {
         return streamHistory(paths, EngineProtocol.metricsRequest(dir));
+    }
+
+    /**
+     * JK-1180: run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
+     * client-measured cold-spawn component. Returns the {@code calibrate-ack} JSONL line, or empty
+     * on protocol failure.
+     */
+    public static Optional<String> calibrate(EnginePaths.Paths paths, boolean force, long engineColdStartMs)
+            throws IOException {
+        return calibrate(paths, force, engineColdStartMs, false);
+    }
+
+    public static Optional<String> calibrate(
+            EnginePaths.Paths paths, boolean force, long engineColdStartMs, boolean allowNetwork) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            writer.write(EngineProtocol.calibrateRequest(force, engineColdStartMs, allowNetwork));
+            writer.write('\n');
+            writer.flush();
+            BufferedReader reader = protocolReader(ch);
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String type = EngineProtocol.typeOf(line);
+                if (EngineProtocol.CALIBRATE_ACK.equals(type)) return Optional.of(line);
+                if (EngineProtocol.ERROR.equals(type)) return Optional.empty();
+            }
+        }
+        return Optional.empty();
     }
 
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
@@ -590,7 +621,22 @@ public final class EngineClient {
             Path jdksDir,
             boolean serial,
             boolean parallelTests,
-            boolean verbose) {}
+            boolean verbose,
+            boolean rebuild) {
+        /** Backward-compatible ctor (rebuild=false). */
+        public ExplainRequest(
+                Path entryDir,
+                Path cache,
+                int workers,
+                boolean skipTests,
+                String profile,
+                Path jdksDir,
+                boolean serial,
+                boolean parallelTests,
+                boolean verbose) {
+            this(entryDir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+        }
+    }
 
     /**
      * Pre-flight a build's dirty forecast against the engine — {@code jk build}'s fully-cached
@@ -661,6 +707,15 @@ public final class EngineClient {
         cc.jumpkick.run.PipelineListener onModuleStart(String dir, String coord, List<cc.jumpkick.run.Step> steps);
 
         default void onPackage(String dir, String name, String version) {}
+
+        /**
+         * @param totalSeen cumulative packages at this sample ({@code ≥ 0}), or {@code -1} when the
+         *     event is a single unbatched package (legacy). Defaults to {@link #onPackage(String,
+         *     String, String)}.
+         */
+        default void onPackage(String dir, String name, String version, int totalSeen) {
+            onPackage(dir, name, version);
+        }
 
         default void onModuleFinish(String dir, cc.jumpkick.run.PipelineResult result, LockCounts counts) {}
     }
@@ -1868,6 +1923,9 @@ public final class EngineClient {
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);
+        // JK-1204: forward resolve budgets into the engine process. PubGrubSolver reads these from
+        // its own env; client-only exports were previously ignored for resident engines.
+        forwardResolveEnv(pb.environment());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
         // never the spawning client's CWD. A resident engine outlives the shell that started it, and
         // if it inherited an ephemeral CWD (a /tmp scratch dir, a git worktree, a since-deleted
@@ -1889,6 +1947,14 @@ public final class EngineClient {
         Process p = pb.start();
         p.getOutputStream().close(); // EOF immediately; the engine doesn't read stdin
         return new Spawned(p);
+    }
+
+    /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
+    private static void forwardResolveEnv(Map<String, String> env) {
+        for (String key : List.of("JK_RESOLVE_TIMEOUT_MS", "JK_RESOLVE_MAX_DECISIONS")) {
+            String v = System.getenv(key);
+            if (v != null && !v.isBlank()) env.put(key, v);
+        }
     }
 
     /**

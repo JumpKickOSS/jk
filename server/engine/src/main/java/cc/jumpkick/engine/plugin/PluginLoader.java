@@ -64,8 +64,28 @@ public final class PluginLoader {
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return PluginProcess.run(
-                command(javaExe, classpath, jvmFlags, args), extraEnv, prefix, onProtocol, onPassthrough);
+        return run(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
+    }
+
+    /** As {@link #run} with an optional working directory for the child process. */
+    public static int run(
+            Path javaExe,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            Map<String, String> extraEnv,
+            Path workDir,
+            Consumer<String> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        return PluginProcess.converse(
+                command(javaExe, classpath, jvmFlags, args),
+                extraEnv,
+                workDir,
+                prefix,
+                (json, convo) -> onProtocol.accept(json),
+                onPassthrough);
     }
 
     /**
@@ -99,8 +119,23 @@ public final class PluginLoader {
             BiConsumer<String, PluginProcess.Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
+        return converse(javaExe, classpath, jvmFlags, prefix, args, extraEnv, null, onProtocol, onPassthrough);
+    }
+
+    /** As {@link #converse} with optional working directory. */
+    public static int converse(
+            Path javaExe,
+            String classpath,
+            List<String> jvmFlags,
+            String prefix,
+            List<String> args,
+            Map<String, String> extraEnv,
+            Path workDir,
+            BiConsumer<String, PluginProcess.Conversation> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
         return PluginProcess.converse(
-                command(javaExe, classpath, jvmFlags, args), extraEnv, prefix, onProtocol, onPassthrough);
+                command(javaExe, classpath, jvmFlags, args), extraEnv, workDir, prefix, onProtocol, onPassthrough);
     }
 
     /**

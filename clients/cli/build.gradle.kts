@@ -53,6 +53,9 @@ application {
 val kotlinWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
+val groovyWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
 val testRunnerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
 }
@@ -76,6 +79,7 @@ val androidWorkerJar by configurations.creating {
 }
 dependencies {
     kotlinWorkerJar(project(":kotlin-compiler"))
+    groovyWorkerJar(project(":groovy-compiler"))
     testRunnerJar(project(":test-runner"))
     auditorWorkerJar(project(":auditor"))
     publisherWorkerJar(project(":publisher"))
@@ -129,7 +133,7 @@ tasks.named<Test>("integrationTest") {
     maxParallelForks = 1
     dependsOn(
             ":engine:shadowJar",
-            kotlinWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
+            kotlinWorkerJar, groovyWorkerJar, testRunnerJar, auditorWorkerJar, publisherWorkerJar,
             imageBuilderWorkerJar, compatBridgeWorkerJar, springBootWorkerJar, androidWorkerJar)
     environment("TERM", "xterm-256color")
     environment("CI", "false")
@@ -159,6 +163,7 @@ tasks.named<Test>("integrationTest") {
                 .get().archiveFile.get().asFile
         systemProperty("jk.engine.jar", engineJar.absolutePath)
         systemProperty("jk.kotlin.plugin.jar", kotlinWorkerJar.singleFile.absolutePath)
+        systemProperty("jk.groovy.plugin.jar", groovyWorkerJar.singleFile.absolutePath)
         systemProperty("jk.test.runner.jar", testRunnerJar.singleFile.absolutePath)
         systemProperty("jk.auditor.plugin.jar", auditorWorkerJar.singleFile.absolutePath)
         systemProperty("jk.publisher.plugin.jar", publisherWorkerJar.singleFile.absolutePath)

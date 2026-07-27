@@ -1,0 +1,11 @@
+package ${package}
+
+import io.quarkus.runtime.Quarkus
+
+/** Plain main — avoid {@code @QuarkusMain} with jk's classes/main layout (see Java scaffold). */
+object Application {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        Quarkus.run(*args)
+    }
+}

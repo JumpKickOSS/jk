@@ -25,9 +25,10 @@ import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()} when no soft-prefer pin is known. BOM/lock soft-prefer
- * front-loads candidates (and seeds lazy singleton universes via {@link #preferredVersion}); POM
- * exclusions strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no preferred pin is known. A non-empty platform BOM map
+ * makes bare POM edges exact (enforced platform contract); without a BOM, bare edges stay
+ * highest-wins floors. BOM/lock prefs also seed lazy singleton universes via {@link
+ * #preferredVersion}. POM exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -46,10 +47,13 @@ public final class MavenPackageSource implements PackageSource {
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     /**
-     * Dep-list cache keyed by {@code pkg@version!exclusionKey} so a package expanded under different
-     * inherited exclusion sets is not served a stale list.
+     * Raw POM edge cache keyed by {@code pkg@version} only (JK-1202). Exclusion filtering is applied
+     * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
      */
-    private final Map<String, List<Term>> depsCache = new ConcurrentHashMap<>();
+    private final Map<String, List<RawEdge>> rawDepsCache = new ConcurrentHashMap<>();
+
+    /** One compile/runtime edge before inherited-exclusion filtering. */
+    private record RawEdge(String depPkg, VersionSet constraint, Set<String> edgeExclusions) {}
 
     /**
      * Modules to strip when expanding a package (union of exclusions registered by parents, cascaded
@@ -135,26 +139,49 @@ public final class MavenPackageSource implements PackageSource {
         sorted.sort((a, b) -> Versions.compare(b, a));
 
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
-        // Soft-prefer keeps the full list (Gradle platform() parity — pin first, backtrack if needed).
         String ga = PackageId.parse(pkg).ga();
         preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
         preferFirst(sorted, lockedVersionPrefs.get(pkg));
         preferFirst(sorted, lockedVersionPrefs.get(ga));
 
+        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
+        sorted = compactVersionCandidates(sorted);
+
         List<String> result = List.copyOf(sorted);
         versionCache.put(pkg, result);
         return result;
     }
 
+    /** Cap candidate list while preserving soft-prefer front and highest releases. */
+    static List<String> compactVersionCandidates(List<String> sortedHighestFirst) {
+        if (sortedHighestFirst.size() <= 4) return sortedHighestFirst;
+        List<String> out = new ArrayList<>(4);
+        // Keep order: soft-prefer may already be at index 0.
+        for (String v : sortedHighestFirst) {
+            if (out.contains(v)) continue;
+            out.add(v);
+            if (out.size() == 4) break;
+        }
+        return out;
+    }
+
     /**
-     * BOM soft-prefer: move {@code pin} to front, inserting it if metadata does not list it
-     * (platform-managed versionless deps often have no maven-metadata hit before first fetch).
+     * BOM soft-prefer: move {@code pin} to front when it is already in the metadata list. Does
+     * <em>not</em> invent a missing pin (JK-1202): inserting unreleased/stale pins that sit below
+     * transitive floors made PubGrub thrash on Quarkus-sized graphs.
      */
     static void preferBom(List<String> versions, String pin) {
         if (pin == null || pin.isBlank()) return;
-        versions.remove(pin);
-        versions.add(0, pin);
+        if (versions.isEmpty()) {
+            // Empty metadata: keep pin as the only candidate (versionless platform roots).
+            versions.add(pin);
+            return;
+        }
+        if (versions.remove(pin)) {
+            versions.add(0, pin);
+        }
     }
 
     /**
@@ -173,9 +200,28 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
         Set<String> excl = exclusionsWhenExpanding.getOrDefault(pkg, Set.of());
-        String key = pkg + "@" + version + "!" + exclusionCacheKey(excl);
-        List<Term> cached = depsCache.get(key);
-        if (cached != null) return cached;
+        List<RawEdge> raw = rawEdges(pkg, version);
+        List<Term> out = new ArrayList<>(raw.size());
+        for (RawEdge edge : raw) {
+            if (isExcluded(edge.depPkg(), excl)) continue;
+            // Cascade parent exclusions + edge exclusions onto the child for later expansion.
+            if (!excl.isEmpty() || !edge.edgeExclusions().isEmpty()) {
+                Set<String> merged = new LinkedHashSet<>(excl);
+                merged.addAll(edge.edgeExclusions());
+                registerExclusions(edge.depPkg(), merged);
+            }
+            out.add(Term.positive(edge.depPkg(), edge.constraint()));
+        }
+        List<Term> immutable = List.copyOf(out);
+        prefetchTransitiveAsync(immutable);
+        return immutable;
+    }
+
+    /** POM edges for {@code pkg@version}, cached without inherited exclusions (JK-1202). */
+    private List<RawEdge> rawEdges(String pkg, String version) throws IOException, InterruptedException {
+        String key = pkg + "@" + version;
+        List<RawEdge> hit = rawDepsCache.get(key);
+        if (hit != null) return hit;
 
         Coordinate coord = withVersion(pkg, version);
         EffectivePom pom;
@@ -184,18 +230,14 @@ public final class MavenPackageSource implements PackageSource {
         } catch (MavenRepo.ArtifactNotFoundException e) {
             throw new VersionUnavailableException(e.getMessage());
         }
-        List<Term> out = new ArrayList<>();
+        List<RawEdge> out = new ArrayList<>();
         var kmpSelection = kmp.selectionFor(pkg, version);
         Set<String> kmpDropped = Set.of();
         if (kmpSelection.isPresent()) {
             var target = kmpSelection.get().target();
             String targetPkg =
                     PackageId.ofGa(target.group() + ":" + target.module()).key();
-            if (!isExcluded(targetPkg, excl)) {
-                out.add(Term.positive(targetPkg, VersionSet.exact(target.version())));
-                // Cascade parent exclusions onto the redirect target.
-                registerExclusions(targetPkg, excl);
-            }
+            out.add(new RawEdge(targetPkg, VersionSet.exact(target.version()), Set.of()));
             kmpDropped = kmpSelection.get().allTargets();
         }
         for (Pom.Dep dep : pom.dependencies()) {
@@ -205,22 +247,11 @@ public final class MavenPackageSource implements PackageSource {
             if (scope != null && !scope.isEmpty() && !FOLLOWED_SCOPES.contains(scope)) continue;
             if (dep.version() == null || dep.version().isBlank()) continue;
             String depPkg = packageKey(dep);
-            if (isExcluded(depPkg, excl)) continue;
-
-            // Register this edge's exclusions for when the child is expanded, and cascade
-            // exclusions inherited from our own parents (Maven subtree exclusion).
-            Set<String> childExcl = modulesOf(dep.exclusions());
-            if (!excl.isEmpty() || !childExcl.isEmpty()) {
-                Set<String> merged = new LinkedHashSet<>(excl);
-                merged.addAll(childExcl);
-                registerExclusions(depPkg, merged);
-            }
-
-            out.add(Term.positive(depPkg, VersionSelectors.constraintFromPomVersion(dep.version())));
+            Set<String> edgeExcl = modulesOf(dep.exclusions());
+            out.add(new RawEdge(depPkg, constraintForManagedEdge(depPkg, dep.version()), edgeExcl));
         }
-        List<Term> immutable = List.copyOf(out);
-        depsCache.put(key, immutable);
-        prefetchTransitiveAsync(immutable);
+        List<RawEdge> immutable = List.copyOf(out);
+        rawDepsCache.put(key, immutable);
         return immutable;
     }
 
@@ -279,6 +310,51 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
+     * PubGrub constraint for one POM edge.
+     *
+     * <p>Bare versions (after {@link EffectivePom} fills dependencyManagement) are not Maven
+     * floors — Maven treats them as the chosen version. jk's historical default without a
+     * platform was highest-wins ({@code atLeast}). That must <em>not</em> apply under a platform
+     * BOM: lifting a filled pin (parent or import depMgmt) silently breaks the BOM contract
+     * (e.g. {@code named-locks} 2.x next to {@code maven-resolver-api} 1.9).
+     *
+     * <ul>
+     *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
+     *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
+     *   <li><b>Platform BOM present</b>: bare → {@code exact} (the EffectivePom-filled string).
+     *       GAs listed in the platform map use the BOM pin ({@code exact}), which overrides a
+     *       different bare string on the edge (enforced platform). Explicit Maven ranges on the
+     *       edge still pass through as ranges.
+     * </ul>
+     */
+    VersionSet constraintForManagedEdge(String depPkg, String version) {
+        String trimmed = version.trim();
+        if (VersionSelectors.looksLikeMavenRange(trimmed)) {
+            return VersionSelectors.constraintFromPomVersion(trimmed);
+        }
+        PackageId id = PackageId.parse(depPkg);
+        String ga = id.ga();
+        // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
+        // that often have no classifier POM → Unavailable thrash (JK-1202).
+        if (!id.classifier().isEmpty()) {
+            String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+            return VersionSet.exact(bomPin != null ? bomPin : trimmed);
+        }
+
+        // Platform map entry: enforced pin (not soft-prefer; not overridden by lock prefs).
+        String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+        if (bomPin != null) {
+            return VersionSet.exact(bomPin);
+        }
+        if (!bomConstraints.isEmpty()) {
+            // Platform active: EffectivePom-filled bare version is exact — do not highest-wins-lift.
+            return VersionSet.exact(trimmed);
+        }
+        // No platform: historical highest-wins bare versions. Lock prefs only reorder candidates.
+        return VersionSelectors.constraintFromPomVersion(trimmed);
+    }
+
+    /**
      * Speculative I/O for children of a just-expanded package (JK-1088):
      *
      * <ul>
@@ -287,9 +363,19 @@ public final class MavenPackageSource implements PackageSource {
      *   <li>When the child needs a full version list (open range, no prefer), prefetch
      *       maven-metadata as before.
      * </ul>
+     *
+     * <p>JK-1202: only prefetch the first few children (breadth limit) so large Quarkus-style
+     * fan-outs do not stampede parallel BOM expansions under a 256 MiB engine cap.
      */
     private void prefetchTransitiveAsync(List<Term> deps) {
+        // JK-1202: skip speculative prefetch when a large platform BOM is in play — parallel
+        // EffectivePom expansions of quarkus-bom parents dominated CPU/heap without helping the
+        // exact-pin happy path. Small graphs still warm a few children.
+        if (bomConstraints.size() > 200) return;
+        int budget = 4;
         for (Term dep : deps) {
+            if (budget <= 0) return;
+            budget--;
             String pkg = dep.pkg();
             String pin = dep.versions()
                     .asExactSingleton()

@@ -404,8 +404,9 @@ public record JkBuild(
     }
 
     /**
-     * Source layout: {@code simple} ({@code ./src}, {@code ./test}), {@code traditional} (Maven),
-     * or {@code auto} (infer; default when absent).
+     * Source layout: {@code simple} (Mill-like {@code ./src}, {@code ./test/src},
+     * {@code ./resources}, {@code ./test/resources}), {@code traditional} (Maven), or {@code auto}
+     * (infer; default when absent).
      */
     public enum Layout {
         SIMPLE,
@@ -469,10 +470,26 @@ public record JkBuild(
             String jdk,
             int java,
             VersionSelector kotlin,
+            VersionSelector groovy,
             SourcesMode sourcesMode,
             String description,
             boolean m2install,
             Layout layout) {
+
+        /** Back-compat constructor: no groovy pin. */
+        public Project(
+                String group,
+                String name,
+                String version,
+                String jdk,
+                int java,
+                VersionSelector kotlin,
+                SourcesMode sourcesMode,
+                String description,
+                boolean m2install,
+                Layout layout) {
+            this(group, name, version, jdk, java, kotlin, null, sourcesMode, description, m2install, layout);
+        }
 
         public Project {
             Objects.requireNonNull(group, "group");
@@ -492,7 +509,7 @@ public record JkBuild(
 
         /** Library project — bare-major {@code jdk} (0 → unset). */
         public Project(String group, String name, String version, int jdk) {
-            this(group, name, version, majorSpec(jdk), jdk, null, null, null, false, Layout.AUTO);
+            this(group, name, version, majorSpec(jdk), jdk, null, null, null, null, false, Layout.AUTO);
         }
 
         /** A bare-major int as a jdk spec string ({@code 25} → {@code "25"}); 0/negative → unset. */
@@ -513,6 +530,7 @@ public record JkBuild(
             private String jdk;
             private int java;
             private VersionSelector kotlin;
+            private VersionSelector groovy;
             private SourcesMode sourcesMode = SourcesMode.DISABLED;
             private String description;
             private boolean m2install;
@@ -547,6 +565,11 @@ public record JkBuild(
                 return this;
             }
 
+            public Builder groovy(VersionSelector groovy) {
+                this.groovy = groovy;
+                return this;
+            }
+
             public Builder sourcesMode(SourcesMode sourcesMode) {
                 this.sourcesMode = sourcesMode;
                 return this;
@@ -569,13 +592,18 @@ public record JkBuild(
 
             public Project build() {
                 return new Project(
-                        group, name, version, jdk, java, kotlin, sourcesMode, description, m2install, layout);
+                        group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
             }
         }
 
         /** True when this is a Kotlin project (i.e. a {@code kotlin} version is set). */
         public boolean isKotlin() {
             return kotlin != null;
+        }
+
+        /** True when this is a Groovy project (i.e. a {@code groovy} version is set). */
+        public boolean isGroovy() {
+            return groovy != null;
         }
 
         /** {@code java} release, or {@code jdk} major when {@code java} is unset. */
@@ -614,9 +642,9 @@ public record JkBuild(
             return false;
         }
 
-        /** {@code "java"} / {@code "kotlin"} — derived from which compiler field is non-zero. */
+        /** {@code "java"} / {@code "kotlin"} / {@code "groovy"} — derived from which compiler field is set. */
         public String languageName() {
-            return isKotlin() ? "kotlin" : "java";
+            return isKotlin() ? "kotlin" : isGroovy() ? "groovy" : "java";
         }
     }
 

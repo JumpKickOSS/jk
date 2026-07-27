@@ -108,12 +108,18 @@ public final class StepTimings {
     /** A measured per-unit rate for one step of one module, to fold into the ledger. */
     public record Sample(String dir, String step, double observedPerUnit) {}
 
-    /** EWMA-fold samples into the ledger and persist (best-effort; advisory only). */
+    /**
+     * EWMA-fold samples into the ledger and persist (best-effort; advisory only).
+     *
+     * <p>JK-1178: near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
+     * learned rates toward zero. Alpha defaults to {@link #DEFAULT_ALPHA}.
+     */
     public static void record(Path cache, List<Sample> samples, double alpha, long nowMillis) {
         if (samples == null || samples.isEmpty()) return;
         Map<String, Entry> m = new HashMap<>(read(cache).entries);
         for (Sample s : samples) {
-            if (s.observedPerUnit() < 0) continue;
+            // Ignore negative and near-zero (cache-hit / empty work) so rates stay about real work.
+            if (s.observedPerUnit() < 1e-6) continue;
             String k = key(s.dir(), s.step());
             Entry prev = m.get(k);
             double next =

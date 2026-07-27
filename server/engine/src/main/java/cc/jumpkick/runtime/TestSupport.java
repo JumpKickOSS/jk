@@ -41,7 +41,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -58,7 +58,7 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods across every discovered suite (JK-1145) — not default-suite only.
+     * Count test methods across every discovered suite (JK-1198) — not default-suite only.
      * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
      */
     public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
@@ -67,6 +67,7 @@ public final class TestSupport {
         for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestCount(r);
         return total;
@@ -82,6 +83,7 @@ public final class TestSupport {
         for (String suite : cc.jumpkick.layout.TestSuites.discover(moduleDir, compact)) {
             roots.addAll(cc.jumpkick.layout.TestSuites.javaRoots(moduleDir, compact, suite));
             roots.addAll(cc.jumpkick.layout.TestSuites.kotlinRoots(moduleDir, compact, suite));
+            roots.addAll(cc.jumpkick.layout.TestSuites.groovyRoots(moduleDir, compact, suite));
         }
         for (Path r : roots) total += estimateTestClassCount(r);
         return total;
@@ -94,7 +96,7 @@ public final class TestSupport {
         try (Stream<Path> walk = Files.walk(testSrcDir)) {
             for (Path file : (Iterable<Path>) walk.filter(Files::isRegularFile).filter(p -> {
                 String n = p.getFileName().toString();
-                return n.endsWith(".java") || n.endsWith(".kt");
+                return n.endsWith(".java") || n.endsWith(".kt") || n.endsWith(".groovy");
             })::iterator) {
                 try {
                     String content = Files.readString(file);
@@ -119,6 +121,7 @@ public final class TestSupport {
         }
         out.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(moduleDir, compact, suites));
         out.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(moduleDir, compact, suites));
+        out.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(moduleDir, compact, suites));
         return new java.util.ArrayList<>(out);
     }
 

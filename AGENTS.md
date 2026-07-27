@@ -11,7 +11,7 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
-- Correct resolution: PubGrub + highest-version-wins; readable conflict diagnostics.
+- Correct resolution: PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present; readable conflict diagnostics.
 - Small mental model: declarative `jk.toml`, no build-script programming language.
 - Adoption path: run existing Maven/Gradle builds; import/export when ready.
 - Client/engine split: thin native client, heavy work in a capped engine process.

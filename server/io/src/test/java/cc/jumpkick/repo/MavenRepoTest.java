@@ -111,6 +111,13 @@ class MavenRepoTest {
                 .isEqualTo("com/fasterxml/jackson/core/jackson-databind/2.18.2/jackson-databind-2.18.2.jar");
         assertThat(MavenLayout.metadataPath(widget))
                 .isEqualTo("com/fasterxml/jackson/core/jackson-databind/maven-metadata.xml");
+        // Classified secondary artifacts share the main GAV POM (never guice-5.1.0-classes.pom).
+        Coordinate guiceClasses =
+                new Coordinate("com.google.inject", "guice", "5.1.0", "classes", "jar");
+        assertThat(MavenLayout.pomPath(guiceClasses))
+                .isEqualTo("com/google/inject/guice/5.1.0/guice-5.1.0.pom");
+        assertThat(MavenLayout.artifactPath(guiceClasses))
+                .isEqualTo("com/google/inject/guice/5.1.0/guice-5.1.0-classes.jar");
     }
 
     @Test

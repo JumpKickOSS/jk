@@ -117,11 +117,9 @@ public final class GitSourceResolution {
                 .manifest(effective.manifest())
                 .build();
 
-        // Git artifact repos first: the pinned coordinate is built locally, so
-        // the file:// repo answers before any remote is consulted.
-        List<MavenRepo> merged = new ArrayList<>(extraRepos);
-        merged.addAll(baseRepos.repos());
-        return new Prepared(project, new RepoGroup(merged), gitInfo);
+        // Git artifact repos first: the pinned coordinate is built locally, so the file://
+        // repo answers before any remote is consulted. Preserve exclusive bindings on baseRepos.
+        return new Prepared(project, baseRepos.withReposPrepended(extraRepos), gitInfo);
     }
 
     /**

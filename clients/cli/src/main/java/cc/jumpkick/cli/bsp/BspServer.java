@@ -69,8 +69,8 @@ public final class BspServer {
                             "{\"displayName\":\"jk\",\"version\":"
                                     + q(cc.jumpkick.cli.Jk.VERSION)
                                     + ",\"bspVersion\":\"2.1.0\","
-                                    + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
-                                    + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\"]},"
+                                    + "\"capabilities\":{\"compileProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
+                                    + "\"testProvider\":{\"languageIds\":[\"java\",\"kotlin\",\"groovy\"]},"
                                     + "\"canReload\":true}}");
                 case "build/initialized" -> {
                     /* notification */
@@ -154,7 +154,7 @@ public final class BspServer {
                 + q(display)
                 + ",\"baseDirectory\":"
                 + q(baseDir)
-                + ",\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\"],\"dependencies\":[],"
+                + ",\"tags\":[\"library\"],\"languageIds\":[\"java\",\"kotlin\",\"groovy\"],\"dependencies\":[],"
                 + "\"capabilities\":{\"canCompile\":true,\"canTest\":true,\"canRun\":false}}";
     }
 

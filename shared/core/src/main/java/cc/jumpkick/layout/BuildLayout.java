@@ -150,6 +150,25 @@ public final class BuildLayout {
         return buildDir().resolve("kotlin").resolve("test");
     }
 
+    /**
+     * {@code target/groovy/main/} — groovyc output for main sources. Same merge-into-{@code
+     * classes/} rationale as {@link #kotlinClassesDir()}: the worker's action-cache snapshots its
+     * whole output dir, so it must never share a dir with javac's output.
+     */
+    public Path groovyClassesDir() {
+        return buildDir().resolve("groovy").resolve("main");
+    }
+
+    /** {@code target/groovy/test/} — groovyc output for test sources. */
+    public Path groovyTestClassesDir() {
+        return buildDir().resolve("groovy").resolve("test");
+    }
+
+    /** {@code target/groovy/stubs/} — Java-visible stubs retained by a joint Groovy compile. */
+    public Path groovyStubsDir() {
+        return buildDir().resolve("groovy").resolve("stubs");
+    }
+
     /** {@code target/resources/main/} — copied main resources. */
     public Path resourcesDir() {
         return buildDir().resolve("resources").resolve("main");

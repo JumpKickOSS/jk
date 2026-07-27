@@ -130,11 +130,12 @@ public record PluginDescriptor(
             List<PackagerDependency> packagerDependencies,
             List<StepDependency> stepDependencies,
             List<ProvidedClasspath> providedClasspath,
+            List<SourceRoot> sourceRoots,
             /** GMM {@code org.gradle.jvm.environment} (e.g. {@code "android"}), or null. */
             String jvmEnvironment) {
 
         public static final Contributions NONE =
-                new Contributions(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
+                new Contributions(List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
 
         public Contributions {
             platformDependencies = platformDependencies == null ? List.of() : List.copyOf(platformDependencies);
@@ -143,6 +144,7 @@ public record PluginDescriptor(
             packagerDependencies = packagerDependencies == null ? List.of() : List.copyOf(packagerDependencies);
             stepDependencies = stepDependencies == null ? List.of() : List.copyOf(stepDependencies);
             providedClasspath = providedClasspath == null ? List.of() : List.copyOf(providedClasspath);
+            sourceRoots = sourceRoots == null ? List.of() : List.copyOf(sourceRoots);
         }
 
         public boolean isEmpty() {
@@ -151,7 +153,20 @@ public record PluginDescriptor(
                     && kotlinPlugins.isEmpty()
                     && packagerDependencies.isEmpty()
                     && stepDependencies.isEmpty()
-                    && providedClasspath.isEmpty();
+                    && providedClasspath.isEmpty()
+                    && sourceRoots.isEmpty();
+        }
+    }
+
+    /**
+     * One {@code [[contribute.source-roots]]} entry: a module-relative directory the plugin adds
+     * to the module's input roots (Grails' {@code grails-app/domain}). {@code resource} = the
+     * {@code kind = "resource"} spelling; source otherwise. Always relative and non-escaping —
+     * the parser rejects absolute or {@code ..} dirs at manifest load.
+     */
+    public record SourceRoot(String dir, boolean resource, Condition when) {
+        public SourceRoot {
+            Objects.requireNonNull(dir, "dir");
         }
     }
 
@@ -161,6 +176,10 @@ public record PluginDescriptor(
     /**
      * Tool artifact for a step: either a Maven {@code coordinate} ({@code transitive} → full
      * runtime closure) or an {@code sdk-component} (+ optional {@code sdk-path}). Fetch-only.
+     *
+     * <p>{@code with} adds extra roots into the <em>same</em> resolve graph (one version per GA).
+     * {@code managedBy} is a BOM GAV whose managed pins apply during that resolve — Maven-like
+     * tool classpath alignment (no freestyle dual trees).
      */
     public record StepDependency(
             String artifact,
@@ -168,10 +187,16 @@ public record PluginDescriptor(
             boolean transitive,
             String sdkComponent,
             String sdkPath,
+            String managedBy,
+            List<String> with,
             Condition when) {
 
+        public StepDependency {
+            with = with == null ? List.of() : List.copyOf(with);
+        }
+
         public StepDependency(String artifact, String coordinate, Condition when) {
-            this(artifact, coordinate, false, null, null, when);
+            this(artifact, coordinate, false, null, null, null, List.of(), when);
         }
     }
 
@@ -186,13 +211,20 @@ public record PluginDescriptor(
     public record PlatformDependency(String coordinate, Condition when) {}
 
     /**
-     * Default javac/kotlinc/ksp args; skipped when the user already supplied the same arg.
+     * Default javac/kotlinc/groovyc/ksp args; skipped when the user already supplied the same arg.
      */
-    public record CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, Condition when) {
+    public record CompilerArgs(
+            List<String> javac, List<String> kotlin, List<String> groovy, List<String> ksp, Condition when) {
         public CompilerArgs {
             javac = javac == null ? List.of() : List.copyOf(javac);
             kotlin = kotlin == null ? List.of() : List.copyOf(kotlin);
+            groovy = groovy == null ? List.of() : List.copyOf(groovy);
             ksp = ksp == null ? List.of() : List.copyOf(ksp);
+        }
+
+        /** Back-compat constructor: no groovy lane. */
+        public CompilerArgs(List<String> javac, List<String> kotlin, List<String> ksp, Condition when) {
+            this(javac, kotlin, List.of(), ksp, when);
         }
     }
 

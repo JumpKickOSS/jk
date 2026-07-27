@@ -44,7 +44,8 @@ support” means for 1.0-quality adoption.
 4. **Do not** evaluate Gradle/Groovy/Kotlin build scripts to “fully” understand catalogs
    (string-level import + on-disk `libs.versions.toml` remains the fidelity ceiling unless a
    later PRD says otherwise).
-5. **Do not** collapse platform BOM soft-prefer into hard pins at catalog time.
+5. **Do not** collapse platform BOM pins into the **catalog** (catalog stays name→GA only);
+   enforcement belongs to resolve, not catalog layers.
 6. **Do not** grow unbounded public user docs for this — guide stays short; this PRD is the
    deep reference for tickets.
 
@@ -55,7 +56,7 @@ support” means for 1.0-quality adoption.
 | Term | Meaning | Versions? | Graph edges? |
 |---|---|---|---|
 | **Library catalog** | Layered map **short name → `group:artifact`** | No | No |
-| **Platform / BOM** | `[platform-dependencies]` entry; Maven BOM soft-prefer (Gradle `platform()` style) | Yes (on the BOM pin) | Manages versions of other GAs at resolve |
+| **Platform / BOM** | `[platform-dependencies]` entry; enforced Maven-style dependencyManagement at resolve | Yes (on the BOM pin) | Manages versions of other GAs at resolve |
 | **Starter** | A **published** Maven module (e.g. `spring-boot-starter-web`, Quarkus extension) whose POM expands a curated transitive set | Usually versionless under a BOM | Via real POM, not catalog |
 | **Bundle** (optional future) | jk data expand: one name → N catalog short names / GAs at **parse** time | No in the bundle definition | Fan-out only; not a Maven artifact |
 | **Feature** | Optional capability set on a **library** (`[features]` / consumer `features = […]`) | Via optional deps’ own pins / BOM | Yes, on that library’s graph |
@@ -119,9 +120,14 @@ boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", 
 web = { group = "org.springframework.boot", name = "spring-boot-starter-web" }  # versionless OK
 ```
 
+Plugin tables inject their platform for you: `[spring-boot] version` imports
+`spring-boot-dependencies`, `[grails] version` imports the Apache `grails-bom`
+(which itself imports `spring-boot-dependencies`) — versionless `grails-*` /
+starter entries resolve under either.
+
 - BOM is **not** on the runtime classpath as a normal jar of “everything.”
-- Managed GAs receive **soft-prefer** recommendations at resolve (highest-wins still applies;
-  stricter floors may lift).
+- Managed GAs are **enforced** at resolve (BOM pin on the edge). While any platform BOM is
+  active, bare EffectivePom-filled versions are exact as well — not highest-wins floors.
 - The BOM pin itself must be exact or caret/tilde-anchored (not floating `latest`).
 
 ### 6.2 Catalog interaction
@@ -265,7 +271,7 @@ version *strings*. That is **not** a catalog layer and **not** a BOM:
 | ID | Requirement |
 |---|---|
 | R1 | Catalog remains layered name→GA only (project / local / global / bundled). |
-| R2 | Platform BOMs remain soft-prefer; lockfile is law for builds. |
+| R2 | Platform BOMs are enforced at resolve (managed GAs + bare EffectivePom fills); lockfile is law for builds. |
 | R3 | Starters are normal Maven deps; golden path documented with BOM + versionless roots. |
 | R4 | User/docs vocabulary distinguishes catalog, platform, starter, bundle, feature. |
 | R5 | Import never silently drops version-less catalog libs when a BOM can own them (track in tickets). |
@@ -297,7 +303,7 @@ kanartist tickets (`JK-NNNN`) should link this PRD when touching:
 
 - Library catalog layers, registry, `jk library *`
 - `[libraries]`, shorthand deps, `jk add` short names
-- `[platform-dependencies]`, BOM soft-prefer, platform-managed roots
+- `[platform-dependencies]`, enforced platform BOMs, platform-managed roots
 - Gradle/Maven import of catalogs, version-less deps, bundles
 - Spring/Quarkus scaffold and “starter” UX wording
 - Optional bundles / `[versions]` designs

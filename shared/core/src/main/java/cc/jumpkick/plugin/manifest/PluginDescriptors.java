@@ -282,11 +282,41 @@ public final class PluginDescriptors {
             String where = displayPath + ".contribute.compiler-args";
             List<String> javac = stringList(t, "javac", where);
             List<String> kotlin = stringList(t, "kotlin", where);
+            List<String> groovy = stringList(t, "groovy", where);
             List<String> ksp = stringList(t, "ksp", where);
             for (String arg : javac) Interpolation.validate(arg, schemaKeys, where + ".javac");
             for (String arg : kotlin) Interpolation.validate(arg, schemaKeys, where + ".kotlin");
+            for (String arg : groovy) Interpolation.validate(arg, schemaKeys, where + ".groovy");
             for (String arg : ksp) Interpolation.validate(arg, schemaKeys, where + ".ksp");
-            compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, ksp, parseCondition(t, where)));
+            compilerArgs.add(new PluginDescriptor.CompilerArgs(javac, kotlin, groovy, ksp, parseCondition(t, where)));
+        }
+
+        // [[contribute.source-roots]] — extra module input roots (Grails' grails-app tree).
+        // Dirs must stay inside the module: absolute or ..-escaping entries fail at load.
+        List<PluginDescriptor.SourceRoot> sourceRoots = new ArrayList<>();
+        for (TomlTable t : tableArray(contribute, "source-roots", displayPath)) {
+            String where = displayPath + ".contribute.source-roots";
+            String dir = requireString(t, "dir", where);
+            String normalized = dir.replace('\\', '/');
+            if (normalized.startsWith("/") || normalized.matches("^[A-Za-z]:.*")) {
+                throw new JkBuildParseException(where + ".dir must be module-relative — got: " + dir);
+            }
+            if (normalized.equals("..")
+                    || normalized.startsWith("../")
+                    || normalized.contains("/../")
+                    || normalized.endsWith("/..")) {
+                throw new JkBuildParseException(where + ".dir must not escape the module (`..`) — got: " + dir);
+            }
+            String kind = t.getString("kind");
+            if (!"source".equals(kind) && !"resource".equals(kind)) {
+                throw new JkBuildParseException(where + ".kind must be \"source\" or \"resource\" — got: " + kind);
+            }
+            PluginDescriptor.Condition when = parseCondition(t, where);
+            if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
+                throw new JkBuildParseException(where + ": classpath-has cannot gate a source-root (roots are"
+                        + " resolved before resolution)");
+            }
+            sourceRoots.add(new PluginDescriptor.SourceRoot(normalized, "resource".equals(kind), when));
         }
 
         List<PluginDescriptor.KotlinPlugin> kotlinPlugins = new ArrayList<>();
@@ -335,14 +365,36 @@ public final class PluginDescriptors {
             if (transitive && coordinate == null) {
                 throw new JkBuildParseException(where + ": transitive only applies to a coordinate entry");
             }
+            String managedBy = t.getString("managed-by");
+            if (managedBy != null) {
+                Interpolation.validate(managedBy, schemaKeys, where + ".managed-by");
+                if (coordinate == null) {
+                    throw new JkBuildParseException(where + ": managed-by only applies to a coordinate entry");
+                }
+                if (!transitive) {
+                    throw new JkBuildParseException(where + ": managed-by requires transitive = true"
+                            + " (BOM pins apply to the tool closure graph)");
+                }
+            }
+            List<String> with = stringList(t, "with", where);
+            for (String w : with) {
+                Interpolation.validate(w, schemaKeys, where + ".with");
+            }
+            if (!with.isEmpty() && coordinate == null) {
+                throw new JkBuildParseException(where + ": with only applies to a coordinate entry");
+            }
+            if (!with.isEmpty() && !transitive) {
+                throw new JkBuildParseException(where + ": with requires transitive = true"
+                        + " (extra roots join the same tool closure graph)");
+            }
             PluginDescriptor.Condition when = parseCondition(t, where);
             if (when instanceof PluginDescriptor.Condition.ClasspathHas) {
                 throw new JkBuildParseException(
                         where + ": classpath-has cannot gate a step-dependency (tool fetches are"
                                 + " decided from config/facts, not the resolved classpath)");
             }
-            stepDeps.add(
-                    new PluginDescriptor.StepDependency(artifact, coordinate, transitive, sdkComponent, sdkPath, when));
+            stepDeps.add(new PluginDescriptor.StepDependency(
+                    artifact, coordinate, transitive, sdkComponent, sdkPath, managedBy, with, when));
         }
 
         List<PluginDescriptor.ProvidedClasspath> provided = new ArrayList<>();
@@ -371,7 +423,8 @@ public final class PluginDescriptors {
         }
 
         return new PluginDescriptor.Contributions(
-                platformDeps, compilerArgs, kotlinPlugins, packagerDeps, stepDeps, provided, jvmEnvironment);
+                platformDeps, compilerArgs, kotlinPlugins, packagerDeps, stepDeps, provided, sourceRoots,
+                jvmEnvironment);
     }
 
     /**

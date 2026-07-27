@@ -93,6 +93,16 @@ tasks.withType<Test>().configureEach {
     doFirst { systemProperty("jk.spring-boot.plugin.jar", testSpringBootWorkerJar.singleFile.absolutePath) }
 }
 
+// Pass the grails worker jar to tests (the Grails e2e integration test forks it).
+val testGrailsWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { testGrailsWorkerJar(project(":grails")) }
+tasks.withType<Test>().configureEach {
+    dependsOn(testGrailsWorkerJar)
+    doFirst { systemProperty("jk.grails.plugin.jar", testGrailsWorkerJar.singleFile.absolutePath) }
+}
+
 // Pass the android worker jar to tests (the Android-spike integration test forks it).
 val testAndroidWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
@@ -131,6 +141,16 @@ dependencies { testKotlinWorkerJar(project(":kotlin-compiler")) }
 tasks.withType<Test>().configureEach {
     dependsOn(testKotlinWorkerJar)
     doFirst { systemProperty("jk.kotlin.plugin.jar", testKotlinWorkerJar.singleFile.absolutePath) }
+}
+
+// Pass the groovy-compiler worker jar to tests (the Groovy compile integration test forks it).
+val testGroovyWorkerJar by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
+}
+dependencies { testGroovyWorkerJar(project(":groovy-compiler")) }
+tasks.withType<Test>().configureEach {
+    dependsOn(testGroovyWorkerJar)
+    doFirst { systemProperty("jk.groovy.plugin.jar", testGroovyWorkerJar.singleFile.absolutePath) }
 }
 
 // Pass the auditor jar path to tests (EngineServerTest's hosted jk audit round-trip forks it).

@@ -1,6 +1,6 @@
 # User guide
 
-jk is a declarative, lockfile-first build tool for **Java and Kotlin** (JDK 17+).
+jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** (JDK 17+).
 This guide covers the commands and files you touch every day.
 
 ## Install
@@ -93,6 +93,10 @@ junit = "5.11.0"
 ```
 
 - **TOML is data** — no embedded scripts. Safe for `jk add` / `jk remove` to edit.
+- **Language**: Java by default (`java = 25` sets the compile target). Kotlin modules pin the
+  compiler with `kotlin = "2.4.0"`, Groovy modules with `groovy = "5.0.4"` (Groovy 5+) —
+  `jk new --lang kotlin|groovy` scaffolds either. A module may mix Java with Kotlin or with
+  Groovy (cross-references resolve both directions); Kotlin + Groovy in one module is rejected.
 - Version strings: bare `"1.2.3"` means `^1.2.3`; use `"=1.2.3"` for exact, `"~1.2.3"` for patch-only, or ranges like `">=1.2,<2"`.
 - Dependency scopes: `[dependencies]`, `[test-dependencies]`, `[provided-dependencies]`,
   `[runtime-dependencies]`, `[processor-dependencies]`, `[platform-dependencies]` (BOMs),
@@ -127,11 +131,11 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
 
-**Pre-release pins:** a lock (or BOM) that pins an RC/M/beta is a soft prefer. Conservative
-re-locks (e.g. after editing another dep) keep that pin when it still satisfies the range.
-Unpinned `latest` selection still prefers the newest **stable** over a newer pre-release.
-Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
-the conservative path.
+**Pre-release pins:** a lock that records an RC/M/beta is kept on conservative re-locks when
+it still satisfies the declared range. A platform BOM pin (including a pre-release line) is
+enforced on managed GAs while the platform is active. Unpinned `latest` selection still
+prefers the newest **stable** over a newer pre-release. Deliberate upgrades off a pre-release
+belong on `jk update` (within-range re-resolve), not on the conservative path.
 
 ### Parallelism (`-j` jobs, `-w` test workers)
 
@@ -341,15 +345,20 @@ and Latest.
 mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
-Platform BOMs (`[platform-dependencies]` / `[spring-boot] version`) are **recommendations**
-(Gradle `platform()` style): the pin is preferred first; a stricter transitive floor may lift
-past it. Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a
-**pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree`
-shows it under the platform section with its version and a `(platform)` tag, not as missing.
+Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
+**enforced platforms**, not soft recommendations: GAs listed in the BOM map use the BOM pin
+on transitive edges, and any bare version already filled by EffectivePom (parent or import
+dependencyManagement) stays **exact** for the whole solve. jk does **not** highest-wins-lift
+past those pins while a platform is active — that is what silently broke incomplete stacks
+(e.g. `maven-resolver` 1.9 api next to named-locks 2.x). Explicit Maven ranges on a POM edge
+remain open ranges. Use an exact or caret/tilde version on the BOM itself — not `latest`.
+The BOM is a **pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar;
+`jk tree` shows it under the platform section with its version and a `(platform)` tag, not as
+missing.
 
-Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub prose on conflict.
-Main, test, and processor graphs are solved separately so annotation-processor constraints
-do not force main classpath versions.
+Without a platform BOM, bare transitive POM versions still use **highest-version-wins** floors
+(not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are
+solved separately so annotation-processor constraints do not force main classpath versions.
 
 ## Packaging (thin / assembly / shrink / Boot)
 
@@ -359,6 +368,7 @@ do not force main classpath versions.
 | Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
+| Grails jar (Boot layout) | grails plugin | `jk build` (not `assembly`) |
 
 One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
 `--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
@@ -375,6 +385,27 @@ assembly = true       # fat jar — jk assembly / jk assemble
 ```
 
 R8 is **opt-in** via `assembly = "shrink"` (or a legacy `[shrink]` table) — never the default.
+
+### Grails (`[grails]`)
+
+Grails 8 (Apache, Spring Boot 4.1) on the Groovy lane — `jk new --grails` scaffolds a
+minimal REST app (GORM domain, controller, `grails-app/conf/application.yml`):
+
+```toml
+[project]
+groovy = "5.0.7"
+
+[grails]
+version = "8.0.0-M4"          # pins org.apache.grails:grails-bom (imports the Boot BOM)
+
+[dependencies]                # versionless under the BOM
+grails-core     = { group = "org.apache.grails", name = "grails-core" }
+grails-web-boot = { group = "org.apache.grails", name = "grails-web-boot" }
+```
+
+The plugin contributes the `grails-app/*` source/resource roots (domain, controllers,
+services, taglib, init, jobs compile; conf, i18n, views package as resources), compiles
+with `--parameters`, and `jk build` produces a Boot-launcher executable jar.
 
 ## Common commands
 
@@ -474,17 +505,18 @@ ships — silent no-ops are not allowed.
 Progress bar and ETA are **run-wide aggregates** of outstanding real work (cache skips are token
 ticks only); see [progress-contract.md](perf/progress-contract.md).
 
-jk modules use a **flat-siblings** source layout by default (`layout = "simple"` / AUTO when
-no Maven tree is present). Language is by file extension (`.java` / `.kt` may share a dir).
+jk modules use a **Mill-like** source layout by default (`layout = "simple"` / AUTO when
+no Maven tree is present). Language is by file extension (`.java` / `.kt` / `.groovy` may
+share a dir).
 
 | Input | Simple (default) | Traditional (Maven import) |
 |-------|------------------|----------------------------|
-| Main sources | `src/` | `src/main/java`, `src/main/kotlin` |
+| Main sources | `src/` | `src/main/{java,kotlin,groovy}` |
 | Main resources | `resources/` | `src/main/resources` |
-| Default tests | `test/` | `src/test/java`, `src/test/kotlin` |
-| Default test resources | `test-resources/` | `src/test/resources` |
-| Named test suite `<name>` | `<name>/` (e.g. `integration/`) | `src/<name>/{java,kotlin}` |
-| Named suite resources | `<name>-resources/` (e.g. `integration-resources/`) | `src/<name>/resources` |
+| Default tests | `test/src/` | `src/test/{java,kotlin,groovy}` |
+| Default test resources | `test/resources/` | `src/test/resources` |
+| Named test suite `<name>` | `<name>/src/` (e.g. `integration/src/`) | `src/<name>/{java,kotlin,groovy}` |
+| Named suite resources | `<name>/resources/` | `src/<name>/resources` |
 
 Outputs always land under `target/`. `jk new` scaffolds the simple columns; use traditional
 paths (or `layout = "traditional"`) when importing a Maven tree. Suite resources ride the test
@@ -495,9 +527,9 @@ classpath only when that suite is selected (`jk test --suite integration`, `--al
 
 ## Test suites and tags
 
-`jk test` runs the **default suite** only: sources under `test/` (simple layout) or
-`src/test/{java,kotlin}` (traditional). Optional sibling suites are discovered when they
-exist — for example `integration/` or `src/integration/java`.
+`jk test` runs the **default suite** only: sources under `test/src/` (simple layout) or
+`src/test/{java,kotlin,groovy}` (traditional). Optional sibling suites are discovered when they
+exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
 jk test                           # default suite ("test") only
@@ -550,14 +582,23 @@ hit/miss per module and step (sources changed, dependency changed, options/class
 stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
 
 ```bash
-jk explain                   # full plan: cached vs rebuild sections
+jk explain                   # full plan: cached vs rebuild sections + ETA
 jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
+jk explain --rebuild         # global flag: forecast full rebuild ETA (same as `jk build --rebuild`)
 
-# Module dependency DAG as Graphviz DOT (no engine; pipe to graphviz yourself)
+# Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot
 dot -Tsvg modules.dot -o modules.svg
+jk explain --graph mermaid > build.mmd
+jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
+
+# Host calibration for cold ETAs (JK-1180)
+jk engine calibrate                   # offline multi-probe; skip if already measured
+jk engine calibrate --force           # re-run + retime cold engine start
+jk engine calibrate --force --with-network  # also: HTTP resolve probe + JUnit jars if missing
+
 
 # Pipeline tasks (Mill resolve-lite)
 jk tasks                         # list first-party steps
@@ -617,11 +658,11 @@ jk bsp install               # write .bsp/jk.json
 jk ide                       # offline .idea / .vscode files (export path)
 ```
 
-**Multi-suite tests (JK-1139–1142):** `jk ide` registers **every discovered test suite**
-(`test/`, `integration/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
+**Multi-suite tests (JK-1139–1142 / JK-1198):** `jk ide` registers **every discovered test suite**
+(`test/src/`, `integration/src/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
 in the same module — IntelliJ `.iml` and VS Code/JDT `.classpath`. One test output directory;
 no extra IDE module per suite. BSP `buildTarget/sources` lists the same roots. Named suite
-resource dirs (`integration-resources/`, …) are marked as test resources when present.
+resource dirs (`integration/resources/`, …) are marked as test resources when present.
 
 Execution still follows the CLI default: `jk test` runs only the **test** suite. Use
 `jk test --suite integration`, `jk test --all`, or tags for other selections. After
@@ -685,7 +726,7 @@ directory (not a pure workspace root). Extra args after the verb are forwarded t
 
 One mechanism: re-run a verb when sources change. **`jk dev` is only an alias for `jk watch run`.**
 
-Watches **`src/`**, **`test/`**, and project-root **`jk.toml`** by default — not `target/`,
+Watches **`src/`**, **`test/src/`**, and project-root **`jk.toml`** by default — not `target/`,
 `out/`, `build/`, or VCS trees. Editor save bursts are debounced (default **150ms**).
 
 ```bash

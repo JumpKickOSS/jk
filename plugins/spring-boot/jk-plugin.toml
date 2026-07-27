@@ -79,8 +79,8 @@ when       = { config = "include-tools", equals = "true" }
 # ---- Scaffold (P4) — pure data (plan row 9). `jk new --spring` renders these engine-side
 # (the thin client ships no plugin content); the client writes the returned payloads.
 # The appends extend the client-rendered base jk.toml; the files are the --sample sources.
-# Path variables: ${main-root} ${test-root} ${resources-root} ${package-path};
-# template variable: ${package}.
+# Path variables: ${main-root} ${test-root} ${resources-root} ${test-resources-root}
+# ${package-path}; template variable: ${package}. SIMPLE maps test-root → test/src.
 
 [scaffold]
 flag        = "spring"

@@ -154,7 +154,7 @@ public final class SourceWatch implements AutoCloseable {
 
     /** Default source roots for a simple project layout. */
     public static List<Path> defaultRoots(Path projectDir) {
-        return List.of(projectDir.resolve("src"), projectDir.resolve("test")).stream()
+        return List.of(projectDir.resolve("src"), projectDir.resolve("test").resolve("src")).stream()
                 .filter(Files::isDirectory)
                 .toList();
     }

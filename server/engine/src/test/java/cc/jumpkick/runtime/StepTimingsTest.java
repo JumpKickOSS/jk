@@ -59,6 +59,14 @@ class StepTimingsTest {
     }
 
     @Test
+    void near_zero_observations_do_not_poison_learned_rates(@TempDir Path cache) {
+        // JK-1178: cache-hit / empty work residuals must not drag rates toward zero.
+        record(cache, NOW, new StepTimings.Sample("/m/x", "compile-java", 50.0));
+        record(cache, NOW + 1, new StepTimings.Sample("/m/x", "compile-java", 0.0));
+        assertThat(StepTimings.load(cache).perUnit("/m/x", "compile-java")).hasValue(50.0);
+    }
+
+    @Test
     void median_per_unit_is_empty_when_no_module_has_recorded_the_phase(@TempDir Path cache) {
         record(cache, NOW, new StepTimings.Sample("/m/a", "compile-java", 7.0));
         assertThat(StepTimings.load(cache).medianPerUnit("run-tests")).isEmpty();

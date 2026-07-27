@@ -25,10 +25,14 @@ class MavenPackageSourcePreferTest {
     }
 
     @Test
-    void preferBom_inserts_pin_when_missing_from_metadata() {
-        List<String> v = new ArrayList<>();
+    void preferBom_inserts_pin_only_when_metadata_empty() {
+        List<String> empty = new ArrayList<>();
+        MavenPackageSource.preferBom(empty, "1.0");
+        assertThat(empty).containsExactly("1.0");
+        // Non-empty metadata: do not invent a missing pin (JK-1202).
+        List<String> v = new ArrayList<>(List.of("2.0", "1.5"));
         MavenPackageSource.preferBom(v, "1.0");
-        assertThat(v).containsExactly("1.0");
+        assertThat(v).containsExactly("2.0", "1.5");
     }
 
     @Test

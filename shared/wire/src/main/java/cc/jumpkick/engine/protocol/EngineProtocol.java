@@ -40,6 +40,15 @@ public final class EngineProtocol {
     /** Server → client: the status snapshot. */
     public static final String STATUS_ACK = "status-ack";
 
+    /**
+     * Client → server: run (or re-run) host hardware calibration (JK-1180). Optional {@code force},
+     * {@code engineColdStartMs} (client-measured cold engine spawn).
+     */
+    public static final String CALIBRATE_REQUEST = "calibrate-request";
+
+    /** Server → client: calibration finished ({@code ok}, component timings, summary text). */
+    public static final String CALIBRATE_ACK = "calibrate-ack";
+
     /** Client → server: ask the engine to shut down gracefully. */
     public static final String SHUTDOWN = "shutdown";
 
@@ -446,6 +455,82 @@ public final class EngineProtocol {
 
     public static String statusRequest() {
         return "{\"type\":\"" + STATUS + "\"}";
+    }
+
+    /**
+     * JK-1180: run host hardware calibration. {@code engineColdStartMs} ≤0 means omit.
+     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing.
+     */
+    public static String calibrateRequest(boolean force, long engineColdStartMs) {
+        return calibrateRequest(force, engineColdStartMs, false);
+    }
+
+    public static String calibrateRequest(boolean force, long engineColdStartMs, boolean allowNetwork) {
+        StringBuilder b = new StringBuilder("{\"type\":\"")
+                .append(CALIBRATE_REQUEST)
+                .append("\",\"force\":")
+                .append(force)
+                .append(",\"allowNetwork\":")
+                .append(allowNetwork);
+        if (engineColdStartMs > 0) {
+            b.append(",\"engineColdStartMs\":").append(engineColdStartMs);
+        }
+        return b.append('}').toString();
+    }
+
+    /**
+     * JK-1180: calibration result. Component ms fields are 0 when not measured; {@code summary} is
+     * human-readable multi-line text for the CLI.
+     */
+    public static String calibrateAck(
+            boolean ok,
+            double msPerWeight,
+            long jvmForkMs,
+            long javacMs,
+            long diskIoMs,
+            long hashCpuMs,
+            long junitForkMs,
+            long junitRunMs,
+            long junitPlatformMs,
+            long resolveMs,
+            long engineColdStartMs,
+            boolean measured,
+            boolean junitPlatformUsed,
+            boolean resolveUsed,
+            String summary) {
+        return "{\"type\":\""
+                + CALIBRATE_ACK
+                + "\",\"ok\":"
+                + ok
+                + ",\"msPerWeight\":"
+                + msPerWeight
+                + ",\"jvmForkMs\":"
+                + jvmForkMs
+                + ",\"javacMs\":"
+                + javacMs
+                + ",\"diskIoMs\":"
+                + diskIoMs
+                + ",\"hashCpuMs\":"
+                + hashCpuMs
+                + ",\"junitForkMs\":"
+                + junitForkMs
+                + ",\"junitRunMs\":"
+                + junitRunMs
+                + ",\"junitPlatformMs\":"
+                + junitPlatformMs
+                + ",\"resolveMs\":"
+                + resolveMs
+                + ",\"engineColdStartMs\":"
+                + engineColdStartMs
+                + ",\"measured\":"
+                + measured
+                + ",\"junitPlatformUsed\":"
+                + junitPlatformUsed
+                + ",\"resolveUsed\":"
+                + resolveUsed
+                + ",\"summary\":"
+                + Jsonl.quote(summary == null ? "" : summary)
+                + "}";
     }
 
     /**
@@ -1299,6 +1384,25 @@ public final class EngineProtocol {
             boolean serial,
             boolean parallelTests,
             boolean verbose) {
+        return explainRequest(
+                dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+    }
+
+    /**
+     * As {@link #explainRequest(String, String, int, boolean, String, String, boolean, boolean, boolean)}
+     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild} (JK-1177).
+     */
+    public static String explainRequest(
+            String dir,
+            String cache,
+            int workers,
+            boolean skipTests,
+            String profile,
+            String jdksDir,
+            boolean serial,
+            boolean parallelTests,
+            boolean verbose,
+            boolean rebuild) {
         return "{\"type\":\""
                 + EXPLAIN_REQUEST
                 + "\",\"dir\":"
@@ -1319,6 +1423,8 @@ public final class EngineProtocol {
                 + parallelTests
                 + ",\"verbose\":"
                 + verbose
+                + ",\"rebuild\":"
+                + rebuild
                 + "}";
     }
 
@@ -1869,15 +1975,28 @@ public final class EngineProtocol {
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
     public static String lockPackage(String dir, String name, String version) {
-        return "{\"type\":\""
-                + LOCK_PACKAGE
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"name\":"
-                + Jsonl.quote(name)
-                + ",\"version\":"
-                + Jsonl.quote(version)
-                + "}";
+        return lockPackage(dir, name, version, -1);
+    }
+
+    /**
+     * One resolved package (or a coalesced sample). {@code totalSeen} ≥ 0 is the cumulative package
+     * count at emit time (human-paced coalescing, JK-1202); {@code -1} means “one package, no total”.
+     */
+    public static String lockPackage(String dir, String name, String version, int totalSeen) {
+        StringBuilder sb = new StringBuilder(128);
+        sb.append("{\"type\":\"")
+                .append(LOCK_PACKAGE)
+                .append("\",\"dir\":")
+                .append(Jsonl.quote(dir))
+                .append(",\"name\":")
+                .append(Jsonl.quote(name))
+                .append(",\"version\":")
+                .append(Jsonl.quote(version));
+        if (totalSeen >= 0) {
+            sb.append(",\"total\":").append(totalSeen);
+        }
+        sb.append('}');
+        return sb.toString();
     }
 
     /**

@@ -64,13 +64,24 @@ public final class NewCommand implements CliCommand {
                 Opt.value("<group>", "Maven groupId (default: from git config).", "--group"),
                 // --jdk rides the GLOBAL option (same canonical key "jdk"); a local
                 // re-declaration would collide with it in the dispatcher.
-                Opt.value("<lang>", "Language: java | kotlin. Default: java.", "--lang"),
+                Opt.value("<lang>", "Language: java | kotlin | groovy. Default: java.", "--lang"),
                 Opt.flag("Executable project (default is a library).", "--executable")
                         .negate(),
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
+                Opt.flag("Grails application (implies --executable, --lang groovy).", "--grails"),
+                Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
+                Opt.value(
+                        "<ref>",
+                        "Giter8-style template: local path (MVP). Remote/git short names in JK-1182.",
+                        "--template"),
+                Opt.value(
+                                "<k=v>",
+                                "Template property override (repeatable; with --template).",
+                                "--param")
+                        .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
                 Opt.value("<module>", "Kotlin module name (-> project.module).", "--kotlin-module"),
@@ -92,7 +103,11 @@ public final class NewCommand implements CliCommand {
     boolean assembly;
     boolean nativeImage;
     boolean spring;
+    boolean grails;
+    boolean quarkus;
     boolean plugin;
+    String templateRef;
+    java.util.List<String> templateParams = java.util.List.of();
     String depsCsv;
     String layoutFlag;
     String kotlinModule;
@@ -137,6 +152,10 @@ public final class NewCommand implements CliCommand {
 
         boolean kotlin() {
             return info.kotlin();
+        }
+
+        boolean groovy() {
+            return info.groovy();
         }
 
         /** The JDK toolchain version (which JDK runs the build). */
@@ -205,7 +224,11 @@ public final class NewCommand implements CliCommand {
         this.assembly = in.isSet("assembly");
         this.nativeImage = in.isSet("native");
         this.spring = in.isSet("spring");
+        this.grails = in.isSet("grails");
+        this.quarkus = in.isSet("quarkus");
         this.plugin = in.isSet("plugin");
+        this.templateRef = in.value("template").orElse(null);
+        this.templateParams = in.values("param");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);
@@ -238,10 +261,84 @@ public final class NewCommand implements CliCommand {
         this.parent = resolveParent(detectionStartDir(cwd));
         this.defaultJdk = readDefaultJdk();
 
+        if (templateRef != null && !templateRef.isBlank()) {
+            return runTemplatePipeline(cwd);
+        }
+
         if (shouldRunWizard()) {
             return runWizardPipeline(cwd);
         }
         return runFlagPipeline(cwd);
+    }
+
+    /**
+     * {@code jk new --template <local-path>} (JK-1182 MVP). Remote/git short names still return a
+     * clear error until the engine-hosted Giter8 worker lands.
+     */
+    private int runTemplatePipeline(Path cwd) {
+        if (spring || grails || quarkus || plugin) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "New", "--template cannot be combined with --spring, --grails, --quarkus, or --plugin"));
+            return Exit.USAGE;
+        }
+        Path template = Path.of(templateRef);
+        if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
+        if (!Files.isDirectory(template)) {
+            // Git / short-name resolution is JK-1182 follow-up (engine worker + cache).
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "New",
+                    "template not found as a local directory: "
+                            + template
+                            + " (git/HTTPS short names not implemented yet — see docs/features/giter8-templates.md)"));
+            return Exit.USAGE;
+        }
+        Map<String, String> params = new java.util.LinkedHashMap<>();
+        for (String p : templateParams) {
+            int eq = p.indexOf('=');
+            if (eq <= 0) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                        "New", "--param expects key=value, got: " + p));
+                return Exit.USAGE;
+            }
+            params.put(p.substring(0, eq), p.substring(eq + 1));
+        }
+        var presetName = wizardPresetName(directory, cwd);
+        String resolvedName = (name != null && !name.isBlank())
+                ? name
+                : params.getOrDefault("name", presetName.orElse(template.getFileName().toString()));
+        params.putIfAbsent("name", resolvedName);
+        if (group != null && !group.isBlank()) {
+            params.putIfAbsent("organization", group);
+            params.putIfAbsent("group", group);
+            params.putIfAbsent("package", group);
+        }
+        Path target = resolveTarget(directory, cwd, resolvedName);
+        if (Files.exists(target.resolve("jk.toml")) || Files.exists(target.resolve("default.properties"))) {
+            // soft: still allow empty-ish dirs
+        }
+        if (Files.exists(target) && Files.isDirectory(target)) {
+            try (var s = Files.list(target)) {
+                if (s.findAny().isPresent() && Files.exists(target.resolve("jk.toml"))) {
+                    emitProjectExistsError(resolvedName, parent != null, false, null);
+                    return Exit.CONFIG;
+                }
+            } catch (IOException e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                return Exit.SOFTWARE;
+            }
+        }
+        try {
+            int n = Giter8LocalApply.apply(template, target, params);
+            CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
+                    cc.jumpkick.cli.tui.Glyphs.CHECK,
+                    "New Project",
+                    cc.jumpkick.config.GlobalConfig.nerdfont(),
+                    "Applied template (" + n + " files) → " + target.getFileName()));
+            return Exit.SUCCESS;
+        } catch (IOException e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+            return Exit.SOFTWARE;
+        }
     }
 
     /**
@@ -492,7 +589,11 @@ public final class NewCommand implements CliCommand {
                 || executable != null
                 || assembly
                 || nativeImage
+                || spring
+                || grails
+                || quarkus
                 || plugin
+                || (templateRef != null && !templateRef.isBlank())
                 || depsCsv != null
                 || layoutFlag != null
                 || kotlinModule != null;
@@ -518,9 +619,17 @@ public final class NewCommand implements CliCommand {
     }
 
     private NewInputs fromFlags(Path cwd) {
-        if (plugin && (spring || nativeImage)) {
+        if (plugin && (spring || grails || quarkus || nativeImage)) {
             throw new IllegalArgumentException(
-                    "--plugin scaffolds a build-plugin project and can't be combined with --spring or --native");
+                    "--plugin scaffolds a build-plugin project and can't be combined with --spring, --grails,"
+                            + " --quarkus, or --native");
+        }
+        int frameworks = (spring ? 1 : 0) + (grails ? 1 : 0) + (quarkus ? 1 : 0);
+        if (frameworks > 1) {
+            throw new IllegalArgumentException("--spring, --grails, and --quarkus are mutually exclusive");
+        }
+        if (grails && lang != null && !lang.isBlank() && !"groovy".equalsIgnoreCase(lang)) {
+            throw new IllegalArgumentException("--grails scaffolds a Groovy application (--lang " + lang + "?)");
         }
         var presetName = wizardPresetName(directory, cwd);
         var resolvedName = (name != null && !name.isBlank()) ? name : presetName.orElse("untitled");
@@ -568,22 +677,33 @@ public final class NewCommand implements CliCommand {
                         + " was requested");
             }
         }
-        var resolvedLang = (lang != null && !lang.isBlank())
-                ? parseLanguage(lang)
-                : (parent != null && parent.kotlin()) ? NewInputs.Language.KOTLIN : NewInputs.Language.JAVA;
-        var isExecutable = Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || plugin;
+        var resolvedLang = grails
+                ? NewInputs.Language.GROOVY
+                : (lang != null && !lang.isBlank())
+                        ? parseLanguage(lang)
+                        : (parent != null && parent.kotlin())
+                                ? NewInputs.Language.KOTLIN
+                                : (parent != null && parent.groovy())
+                                        ? NewInputs.Language.GROOVY
+                                        : NewInputs.Language.JAVA;
+        var isExecutable =
+                Boolean.TRUE.equals(executable) || assembly || nativeImage || spring || grails || quarkus || plugin;
         // A plugin project is a fat jar whose "main" is the SDK's PluginMain; it uses the Maven
-        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot
-        // users also expect the Maven layout. An explicit --layout still wins.
+        // layout so its jk-plugin.toml resource lands at the jar root (src/main/resources). Boot /
+        // Quarkus / Grails users also expect the Maven layout. An explicit --layout still wins.
         var resolvedLayout = (layoutFlag != null && !layoutFlag.isBlank())
                 ? layoutFlag.toLowerCase()
-                : (spring || plugin) ? "traditional" : "simple";
+                : (spring || grails || quarkus || plugin) ? "traditional" : "simple";
         var resolvedMain = plugin
                 ? Optional.of("cc.jumpkick.plugin.process.PluginMain")
-                : spring
+                : (spring || grails || quarkus)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
-                        ? Optional.of(resolvedGroup
-                                + (resolvedLang == NewInputs.Language.KOTLIN ? ".ApplicationKt" : ".Application"))
+                        // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
+                        ? Optional.of(
+                                resolvedGroup
+                                        + (resolvedLang == NewInputs.Language.KOTLIN && !quarkus
+                                                ? ".ApplicationKt"
+                                                : ".Application"))
                         : isExecutable
                                 ? Optional.of(deriveMainFqcn(
                                         resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
@@ -604,6 +724,8 @@ public final class NewCommand implements CliCommand {
                 assembly || plugin, // a plugin ships a fat jar (jk-plugin-sdk shaded in)
                 nativeImage,
                 spring,
+                grails,
+                quarkus,
                 plugin,
                 resolvedLang,
                 resolvedLayout,
@@ -709,7 +831,10 @@ public final class NewCommand implements CliCommand {
         return switch (value.toLowerCase(Locale.ROOT)) {
             case "java" -> NewInputs.Language.JAVA;
             case "kotlin", "kt" -> NewInputs.Language.KOTLIN;
-            default -> throw new IllegalArgumentException("jk new: --lang must be 'java' or 'kotlin', got: " + value);
+            case "groovy" -> NewInputs.Language.GROOVY;
+            default ->
+                throw new IllegalArgumentException(
+                        "jk new: --lang must be 'java', 'kotlin', or 'groovy', got: " + value);
         };
     }
 
@@ -850,12 +975,15 @@ public final class NewCommand implements CliCommand {
      *   <li>Kotlin compact → {@code MainKt} (no package; Kotlin emits a {@code FilenameKt} synthetic
      *       class for top-level {@code fun main}).
      *   <li>Kotlin standard → {@code <group>.MainKt}.
+     *   <li>Groovy compact → {@code Main} (package-less, like compact Kotlin); standard →
+     *       {@code <group>.Main}.
      * </ul>
      */
     private static String deriveMainFqcn(String group, NewInputs.Language lang, boolean compact) {
         return switch (lang) {
             case JAVA -> group + ".Main";
             case KOTLIN -> compact ? "MainKt" : group + ".MainKt";
+            case GROOVY -> compact ? "Main" : group + ".Main";
         };
     }
 
@@ -889,14 +1017,14 @@ public final class NewCommand implements CliCommand {
         }
 
         var javaLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple (sources in ./src, tests in ./test)")
+                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
                 .choice("traditional", "Traditional (sources in ./src/main/java, tests in ./src/test/java)")
                 .defaultChoice("simple")
                 .when(a -> "java".equals(a.get("lang")))
                 .build();
 
         var kotlinLayoutStep = WizardStep.RadioStep.vertical("layout", "Project layout:")
-                .choice("simple", "Simple (sources in ./src, tests in ./test)")
+                .choice("simple", "Simple / Mill-like (./src, ./test/src, ./resources, ./test/resources)")
                 .choice("traditional", "Traditional (sources in ./src/main/kotlin, tests in ./src/test/kotlin)")
                 .defaultChoice("simple")
                 .when(a -> "kotlin".equals(a.get("lang")))

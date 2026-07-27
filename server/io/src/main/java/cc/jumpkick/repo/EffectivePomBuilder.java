@@ -150,8 +150,14 @@ public final class EffectivePomBuilder {
         }
         finalDeps = substituteAll(finalDeps, props);
 
+        // JK-1202: retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
+        // artifacts already had management applied into finalDeps; keeping a full flattened
+        // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
+        List<Pom.Dep> retainedManaged =
+                "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
+
         return new EffectivePom(
-                groupId, child.artifactId(), version, child.packaging(), props, finalDeps, mergedManaged);
+                groupId, child.artifactId(), version, child.packaging(), props, finalDeps, retainedManaged);
     }
 
     // --- merge helpers -----------------------------------------------------

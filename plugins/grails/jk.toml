@@ -1,0 +1,20 @@
+[project]
+group       = "cc.jumpkick"
+name        = "jk-grails"
+version     = "0.10.1"
+description = "jk-grails: Grails packaging plugin worker."
+jdk         = 25
+java        = 25
+
+[application]
+main     = "cc.jumpkick.plugin.process.PluginMain"
+assembly = true
+
+[dependencies]
+jk-plugin-api  = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.1" }
+jk-spring-boot = { group = "cc.jumpkick", name = "jk-spring-boot", version = "0.10.1" }
+
+[test-dependencies]
+assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
+junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
+junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }

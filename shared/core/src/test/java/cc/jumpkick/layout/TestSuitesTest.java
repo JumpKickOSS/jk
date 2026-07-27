@@ -14,19 +14,19 @@ class TestSuitesTest {
 
     @Test
     void discover_default_and_integration_simple(@TempDir Path tmp) throws Exception {
-        Files.createDirectories(tmp.resolve("test"));
-        Files.writeString(tmp.resolve("test/FooTest.java"), "class FooTest {}");
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/SlowIT.java"), "class SlowIT {}");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/FooTest.java"), "class FooTest {}");
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/SlowIT.java"), "class SlowIT {}");
         assertThat(TestSuites.discover(tmp, true)).containsExactly("test", "integration");
     }
 
     @Test
     void collect_only_selected_suite(@TempDir Path tmp) throws Exception {
-        Files.createDirectories(tmp.resolve("test"));
-        Files.writeString(tmp.resolve("test/ATest.java"), "class ATest {}");
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/BTest.java"), "class BTest {}");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/ATest.java"), "class ATest {}");
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/BTest.java"), "class BTest {}");
         var onlyInt = TestSuites.collectJavaSources(tmp, true, List.of("integration"));
         assertThat(onlyInt).hasSize(1);
         assertThat(onlyInt.getFirst().getFileName().toString()).isEqualTo("BTest.java");

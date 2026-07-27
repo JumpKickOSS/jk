@@ -24,20 +24,20 @@ class ModuleLayoutTest {
         writeToml(tmp, "simple");
         Files.createDirectories(tmp.resolve("src"));
         Files.writeString(tmp.resolve("src/Main.java"), "class Main {}");
-        Files.createDirectories(tmp.resolve("test"));
-        Files.writeString(tmp.resolve("test/T.java"), "class T {}");
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/I.java"), "class I {}");
+        Files.createDirectories(tmp.resolve("test/src"));
+        Files.writeString(tmp.resolve("test/src/T.java"), "class T {}");
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/I.java"), "class I {}");
         Files.createDirectories(tmp.resolve("resources"));
         Files.writeString(tmp.resolve("resources/a.txt"), "a");
-        Files.createDirectories(tmp.resolve("integration-resources"));
-        Files.writeString(tmp.resolve("integration-resources/f.txt"), "f");
+        Files.createDirectories(tmp.resolve("integration/resources"));
+        Files.writeString(tmp.resolve("integration/resources/f.txt"), "f");
 
         List<Path> dirs = ModuleLayout.fingerprintDirs(tmp, false);
-        assertThat(dirs).anyMatch(p -> p.endsWith("integration"));
+        assertThat(dirs).anyMatch(p -> p.endsWith("integration") || p.toString().contains("integration"));
         assertThat(dirs).anyMatch(p -> p.endsWith("resources"));
-        assertThat(dirs).anyMatch(p -> p.endsWith("test"));
-        assertThat(dirs).anyMatch(p -> p.endsWith("integration-resources"));
+        assertThat(dirs).anyMatch(p -> p.endsWith("test") || p.toString().contains("test/src"));
+        assertThat(dirs).anyMatch(p -> p.toString().contains("integration") && p.toString().contains("resources"));
     }
 
     @Test
@@ -50,18 +50,17 @@ class ModuleLayoutTest {
     @Test
     void named_suite_resources_convention(@TempDir Path tmp) throws Exception {
         writeToml(tmp, "simple");
-        assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "test").endsWith("test-resources")).isTrue();
-        assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "integration").endsWith("integration-resources"))
-                .isTrue();
-        // Suite sources discover "integration"; resource dir is then surfaced as TEST_RESOURCE.
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest {}");
-        Files.createDirectories(tmp.resolve("integration-resources"));
-        Files.writeString(tmp.resolve("integration-resources/f.txt"), "x");
+        assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "test")).isEqualTo(tmp.resolve("test/resources"));
+        assertThat(ModuleLayout.suiteResourcesDir(tmp, true, "integration"))
+                .isEqualTo(tmp.resolve("integration/resources"));
+        Files.createDirectories(tmp.resolve("integration/src"));
+        Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest {}");
+        Files.createDirectories(tmp.resolve("integration/resources"));
+        Files.writeString(tmp.resolve("integration/resources/f.txt"), "x");
         assertThat(ModuleLayout.suiteResourceDirs(tmp, true, List.of("integration")))
-                .anyMatch(p -> p.endsWith("integration-resources"));
+                .anyMatch(p -> p.endsWith("resources") && p.toString().contains("integration"));
         assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative))
-                .contains("integration", "integration-resources");
+                .contains("integration/src", "integration/resources");
     }
 
     private static void writeToml(Path dir, String layout) throws Exception {

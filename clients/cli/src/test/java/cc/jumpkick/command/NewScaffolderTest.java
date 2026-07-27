@@ -65,7 +65,7 @@ class NewScaffolderTest {
         assertThat(tempDir.resolve("src/main/java")).doesNotExist();
         // Sibling sample files share the package dir; the test lands under ./test/.
         assertThat(tempDir.resolve("src/com/example/Calc.java")).exists();
-        assertThat(tempDir.resolve("test/com/example/CalcTest.java")).exists();
+        assertThat(tempDir.resolve("test/src/com/example/CalcTest.java")).exists();
     }
 
     @Test
@@ -118,6 +118,44 @@ class NewScaffolderTest {
         assertThat(Files.readString(calc)).contains("package com.example");
         assertThat(test).exists();
         assertThat(tempDir.resolve("src/main/kotlin/com/example/Main.kt")).doesNotExist();
+    }
+
+    @Test
+    void library_groovy_writes_calc_and_test(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(library(tempDir, NewInputs.Language.GROOVY, true, 25));
+
+        var calc = tempDir.resolve("src/main/groovy/com/example/Calc.groovy");
+        var test = tempDir.resolve("src/test/groovy/com/example/CalcTest.groovy");
+        assertThat(calc).exists();
+        assertThat(Files.readString(calc)).contains("package com.example");
+        assertThat(test).exists();
+        assertThat(Files.readString(test)).contains("class CalcTest");
+        assertThat(tempDir.resolve("src/main/groovy/com/example/Main.groovy")).doesNotExist();
+        // language pin in the rendered manifest
+        assertThat(Files.readString(tempDir.resolve("jk.toml"))).contains("groovy   = \"");
+    }
+
+    @Test
+    void runnable_groovy_compact_writes_unpackaged_main_under_src(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(runnable(tempDir, NewInputs.Language.GROOVY, "Main", 25, true));
+
+        var main = tempDir.resolve("src/Main.groovy");
+        assertThat(main).exists();
+        var body = Files.readString(main);
+        assertThat(body).doesNotContain("package ");
+        assertThat(body).contains("static void main");
+        assertThat(tempDir.resolve("src/main/groovy")).doesNotExist();
+    }
+
+    @Test
+    void traditional_groovy_layout_creates_language_roots(@TempDir Path tempDir) throws IOException {
+        NewScaffolder.write(runnable(tempDir, NewInputs.Language.GROOVY, "com.example.Main", 25, false));
+
+        assertThat(tempDir.resolve("src/main/groovy")).isDirectory();
+        assertThat(tempDir.resolve("src/test/groovy")).isDirectory();
+        var main = tempDir.resolve("src/main/groovy/com/example/Main.groovy");
+        assertThat(main).exists();
+        assertThat(Files.readString(main)).contains("package com.example");
     }
 
     @Test
@@ -310,7 +348,7 @@ class NewScaffolderTest {
         NewScaffolder.write(runnable(tempDir, NewInputs.Language.JAVA, "com.example.Main", 25, true));
 
         assertThat(tempDir.resolve("src")).isDirectory();
-        assertThat(tempDir.resolve("test")).isDirectory();
+        assertThat(tempDir.resolve("test/src")).isDirectory();
         assertThat(tempDir.resolve("jk.lock")).doesNotExist();
     }
 

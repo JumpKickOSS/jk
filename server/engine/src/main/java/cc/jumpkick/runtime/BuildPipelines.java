@@ -7,6 +7,7 @@ import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
+import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.JkBuildParser;
@@ -79,6 +80,9 @@ public final class BuildPipelines {
     public static final PipelineKey<List> KOTLIN_SOURCES = PipelineKey.of("kotlin-sources", List.class);
 
     @SuppressWarnings("rawtypes")
+    public static final PipelineKey<List> GROOVY_SOURCES = PipelineKey.of("groovy-sources", List.class);
+
+    @SuppressWarnings("rawtypes")
     public static final PipelineKey<List> JAVAC_ARGS = PipelineKey.of("javac-args", List.class);
 
     @SuppressWarnings("rawtypes")
@@ -105,6 +109,7 @@ public final class BuildPipelines {
 
     public static final PipelineKey<String> BUILD_OUTCOME = PipelineKey.of("build-outcome", String.class);
     public static final PipelineKey<String> KOTLIN_OUTCOME = PipelineKey.of("kotlin-outcome", String.class);
+    public static final PipelineKey<String> GROOVY_OUTCOME = PipelineKey.of("groovy-outcome", String.class);
     public static final PipelineKey<Path> JAR_PATH = PipelineKey.of("jar-path", Path.class);
     public static final PipelineKey<Path> MAIN_CLASSES = PipelineKey.of("main-classes", Path.class);
     public static final PipelineKey<Path> TEST_CLASSES = PipelineKey.of("test-classes", Path.class);
@@ -246,6 +251,7 @@ public final class BuildPipelines {
     static final int W_JDK = 3;
     static final int W_COMPILE = 30;
     static final int W_COMPILE_KT = 30;
+    static final int W_COMPILE_GROOVY = 30;
     static final int W_ASSEMBLE = 2;
     static final int W_RESOURCES = 1;
     static final int W_COMPILE_TEST = 12;
@@ -274,6 +280,7 @@ public final class BuildPipelines {
         // opt-ins (java/kotlin) win; otherwise the languages are inferred from
         // the source tree (see CompileSupport.resolveLanguages).
         boolean useKotlin = false;
+        boolean useGroovy = false;
         boolean useJava = true;
         boolean compactLayout = false;
         boolean workspaceNoSources = false;
@@ -303,6 +310,7 @@ public final class BuildPipelines {
             CompileSupport.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
             useJava = langs.java();
             useKotlin = langs.kotlin();
+            useGroovy = langs.groovy();
             // [processor-dependencies] on a Kotlin module can generate Java sources (Hilt's
             // components are Java) — route through the mixed pipeline so javac compiles them.
             if (useKotlin && !useJava && hasProcessorDeps(jkBuild)) {
@@ -313,10 +321,17 @@ public final class BuildPipelines {
             if (jkBuild.isWorkspaceRoot() && !CompileSupport.hasSources(in.dir())) {
                 useJava = false;
                 useKotlin = false;
+                useGroovy = false;
                 workspaceNoSources = true;
             }
         } catch (Exception ignored) {
             // Unparseable/missing jk.toml — parse-build will surface the real error.
+        }
+        // Triple-language modules are out of scope (JK-1165): fail loudly rather than guess an
+        // ordering between two stub-generating compilers.
+        if (useKotlin && useGroovy) {
+            throw new IllegalStateException(
+                    "groovy+kotlin in one module is not supported yet — split the languages into separate modules");
         }
 
         // Build-plugin code layer: learn the registered steps/packager
@@ -370,9 +385,17 @@ public final class BuildPipelines {
         // classes. The terminal step downstream steps wait on is the assembler
         // when mixed, else whichever single compiler ran.
         final boolean mixed = useJava && useKotlin;
+        // Groovy takes the same shape: joint groovyc first (sweeps .java for resolution,
+        // emits ONLY Groovy classes + Java-visible stubs), then javac (stubs on its
+        // sourcepath, Groovy classes on its classpath), then assemble merges.
+        final boolean mixedGroovy = useJava && useGroovy;
         final boolean kotlinModule = useKotlin; // effectively-final copy for lambdas
-        String mainCompile =
-                mixed ? StepNames.ASSEMBLE_CLASSES : (useKotlin ? StepNames.COMPILE_KOTLIN : StepNames.COMPILE_JAVA);
+        final boolean groovyModule = useGroovy;
+        String mainCompile = (mixed || mixedGroovy)
+                ? StepNames.ASSEMBLE_CLASSES
+                : (useKotlin
+                        ? StepNames.COMPILE_KOTLIN
+                        : (useGroovy ? StepNames.COMPILE_GROOVY : StepNames.COMPILE_JAVA));
 
         // Predict each step's bar weight from the work it will actually do this
         // run (skipped/cached steps collapse to ~1; real work dominates). Computed
@@ -384,7 +407,9 @@ public final class BuildPipelines {
             EffortWeights.Plan p = planRef.get();
             if (p == null) {
                 planRef.compareAndSet(
-                        null, EffortWeights.predict(in, cas, compact, mixedWithJava, kotlinModule, forceRebuild));
+                        null,
+                        EffortWeights.predict(
+                                in, cas, compact, mixedWithJava, kotlinModule, groovyModule, forceRebuild));
                 p = planRef.get();
             }
             return p;
@@ -400,6 +425,8 @@ public final class BuildPipelines {
                 new java.util.concurrent.atomic.AtomicReference<>();
         final java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
         final Path javaMainSrcDir = compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java");
 
         // ---- parse-build ------------------------------------------------
@@ -411,10 +438,13 @@ public final class BuildPipelines {
                 plan,
                 javaMainSrcRef,
                 kotlinMainSrcRef,
+                groovyMainSrcRef,
                 javaMainSrcDir,
                 compact,
                 mixed,
+                mixedGroovy,
                 kotlinModule,
+                groovyModule,
                 mixedWithJava,
                 mainCompile,
                 kspEnabled);
@@ -432,6 +462,9 @@ public final class BuildPipelines {
 
         // ---- compile-kotlin ---------------------------------------------
         Step compileKotlin = compileKotlinStep(cx, pluginDeclsF);
+
+        // ---- compile-groovy ---------------------------------------------
+        Step compileGroovy = compileGroovyStep(cx, pluginDeclsF);
 
         // ---- copy-resources ---------------------------------------------
         Step copyResources = copyResourcesStep(cx);
@@ -464,6 +497,10 @@ public final class BuildPipelines {
         // path leaves it empty until incremental Kotlin lands.
         Step writeStampKotlin = writeStampKotlinStep(cx);
 
+        // ---- write-stamp-groovy -----------------------------------------
+        // Groovy's freshness companion, mirroring write-stamp-kotlin.
+        Step writeStampGroovy = writeStampGroovyStep(cx);
+
         // ---- assemble-classes (mixed modules only) ----------------------
         // Merge the per-language output dirs into the shared classes dir that
         // packaging, tests, and the run/native tails all read.
@@ -476,13 +513,16 @@ public final class BuildPipelines {
         if (kspEnabled) {
             b.addStep(kspStep(cx, pluginDeclsF));
         }
+        if (useGroovy) {
+            b.addStep(compileGroovy);
+        }
         if (useJava) {
             b.addStep(compileJava);
         }
         if (useKotlin) {
             b.addStep(compileKotlin);
         }
-        if (mixed) {
+        if (mixed || mixedGroovy) {
             b.addStep(assembleClasses);
         }
         // `jk compile` stops here: lock → sync → compile (+ freshness stamps),
@@ -493,6 +533,9 @@ public final class BuildPipelines {
             }
             if (useKotlin) {
                 b.addStep(writeStampKotlin);
+            }
+            if (useGroovy) {
+                b.addStep(writeStampGroovy);
             }
             return b;
         }
@@ -517,6 +560,10 @@ public final class BuildPipelines {
         if (useKotlin) {
             b.addStep(writeStampKotlin);
         }
+        // write-stamp-groovy is the Groovy-compile freshness companion.
+        if (useGroovy) {
+            b.addStep(writeStampGroovy);
+        }
         return b;
     }
 
@@ -531,10 +578,13 @@ public final class BuildPipelines {
             java.util.function.Supplier<EffortWeights.Plan> plan,
             java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef,
             java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef,
+            java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef,
             Path javaMainSrcDir,
             boolean compact,
             boolean mixed,
+            boolean mixedGroovy,
             boolean kotlinModule,
+            boolean groovyModule,
             boolean mixedWithJava,
             String mainCompile,
             boolean ksp) {}
@@ -546,6 +596,7 @@ public final class BuildPipelines {
         java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
         java.util.concurrent.atomic.AtomicReference<List<Path>> javaMainSrcRef = cx.javaMainSrcRef();
         java.util.concurrent.atomic.AtomicReference<List<Path>> kotlinMainSrcRef = cx.kotlinMainSrcRef();
+        java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
         Path javaMainSrcDir = cx.javaMainSrcDir();
         boolean compact = cx.compact();
         boolean mixed = cx.mixed();
@@ -701,17 +752,30 @@ public final class BuildPipelines {
                         kotlinMainSrcRef.compareAndSet(null, kotlinMainSrcs);
                         kotlinMainSrcs = kotlinMainSrcRef.get();
                     }
-                    // [build] extra-src roots (variant overlays folded in by VariantApply) join
-                    // the source set here — the tick suppliers' pre-walk never saw them.
-                    List<Path> extraSrcDirs = CompileSupport.extraSrcDirs(project, in.dir());
+                    List<Path> groovyMainSrcs = groovyMainSrcRef.get();
+                    if (groovyMainSrcs == null) {
+                        groovyMainSrcs = CompileSupport.collectGroovySources(in.dir(), compact);
+                        groovyMainSrcRef.compareAndSet(null, groovyMainSrcs);
+                        groovyMainSrcs = groovyMainSrcRef.get();
+                    }
+                    // [build] extra-src roots (variant overlays folded in by VariantApply) and
+                    // plugin-contributed source roots ([[contribute.source-roots]] — grails-app/…)
+                    // join the source set here — the tick suppliers' pre-walk never saw them.
+                    List<Path> extraSrcDirs = new ArrayList<>(CompileSupport.extraSrcDirs(project, in.dir()));
+                    for (var root : cc.jumpkick.plugin.manifest.PluginContributions.sourceRoots(project, in.dir())) {
+                        if (!root.resource()) extraSrcDirs.add(in.dir().resolve(root.dir()));
+                    }
                     if (!extraSrcDirs.isEmpty()) {
                         javaMainSrcs = CompileSupport.withExtraSources(javaMainSrcs, extraSrcDirs, ".java");
                         kotlinMainSrcs = CompileSupport.withExtraSources(kotlinMainSrcs, extraSrcDirs, ".kt");
+                        groovyMainSrcs = CompileSupport.withExtraSources(groovyMainSrcs, extraSrcDirs, ".groovy");
                         javaMainSrcRef.set(javaMainSrcs);
                         kotlinMainSrcRef.set(kotlinMainSrcs);
+                        groovyMainSrcRef.set(groovyMainSrcs);
                     }
                     ctx.put(JAVA_SOURCES, javaMainSrcs);
                     ctx.put(KOTLIN_SOURCES, kotlinMainSrcs);
+                    ctx.put(GROOVY_SOURCES, groovyMainSrcs);
                     ctx.put(RELEASE, project.project().javaRelease());
                     ctx.put(MAIN_CLASSES, layout.classesDir());
                     ctx.put(TEST_CLASSES, layout.testClassesDir());
@@ -1166,7 +1230,7 @@ public final class BuildPipelines {
                 .phase(Phase.COMPILE)
                 .label("Compiling")
                 .kind(StepKind.CPU)
-                .requires(javaCompileRequires(mixed, pluginDecls, cx.ksp()))
+                .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
                 // Ticks count sources (granularity); weight is the bar share. javac
                 // is opaque — one progress(sources.size()) on completion — so ease the
                 // slice forward over time while it runs instead of sitting flat.
@@ -1217,6 +1281,14 @@ public final class BuildPipelines {
                         classpath = new ArrayList<>(classpath);
                         classpath.add(ctx.require(LAYOUT).kotlinClassesDir());
                     }
+                    if (cx.mixedGroovy()) {
+                        // See Groovy's output so Java can reference Groovy types — plus the
+                        // version-matched groovy jar: every Groovy class implements
+                        // groovy.lang.GroovyObject, which javac must resolve.
+                        classpath = new ArrayList<>(classpath);
+                        classpath.add(ctx.require(LAYOUT).groovyClassesDir());
+                        classpath.add(groovyCompileJar(ctx, cas));
+                    }
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
@@ -1244,6 +1316,18 @@ public final class BuildPipelines {
                     }
                     @SuppressWarnings("unchecked")
                     List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
+                    if (cx.mixedGroovy()) {
+                        // The joint Groovy compile retained Java-visible stubs — put them on
+                        // javac's sourcepath so Java→Groovy references resolve even before the
+                        // real Groovy classes are visible; the assemble merge overwrites any
+                        // stub-compiled .class with the real Groovy output afterwards.
+                        Path stubs = ctx.require(LAYOUT).groovyStubsDir();
+                        if (Files.isDirectory(stubs)) {
+                            javacArgs = new ArrayList<>(javacArgs);
+                            javacArgs.add("--source-path");
+                            javacArgs.add(stubs.toAbsolutePath().toString());
+                        }
+                    }
                     CompileRequest request = CompileRequest.builder()
                             .sources(sources)
                             .classpath(classpath)
@@ -1356,11 +1440,20 @@ public final class BuildPipelines {
         return requires.toArray(new String[0]);
     }
 
-    private static String[] javaCompileRequires(boolean mixed, PluginBuild.Declarations decls, boolean ksp) {
+    private static String[] javaCompileRequires(
+            boolean mixed, boolean mixedGroovy, PluginBuild.Declarations decls, boolean ksp) {
         List<String> requires =
                 new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
         if (mixed) requires.add(StepNames.COMPILE_KOTLIN);
+        if (mixedGroovy) requires.add(StepNames.COMPILE_GROOVY);
         if (ksp) requires.add("ksp");
+        requires.addAll(sourceGenStepSteps(decls));
+        return requires.toArray(new String[0]);
+    }
+
+    private static String[] groovyCompileRequires(PluginBuild.Declarations decls) {
+        List<String> requires =
+                new ArrayList<>(List.of(StepNames.PARSE_BUILD, StepNames.RESOLVE_DEPS, StepNames.ENSURE_JDK));
         requires.addAll(sourceGenStepSteps(decls));
         return requires.toArray(new String[0]);
     }
@@ -1510,6 +1603,125 @@ public final class BuildPipelines {
                 .build();
     }
 
+    private static Step compileGroovyStep(Ctx cx, PluginBuild.Declarations pluginDecls) {
+        Inputs in = cx.in();
+        Cas cas = cx.cas();
+        ActionCache actionCache = cx.actionCache();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        java.util.concurrent.atomic.AtomicReference<List<Path>> groovyMainSrcRef = cx.groovyMainSrcRef();
+        boolean compact = cx.compact();
+        boolean mixedGroovy = cx.mixedGroovy();
+        return Step.builder(StepNames.COMPILE_GROOVY)
+                .phase(Phase.COMPILE)
+                .label("Groovy")
+                .kind(StepKind.CPU)
+                // Groovy compiles first (joint mode reads Java *declarations* by sweeping the
+                // .java roots; javac runs after it in a mixed module), so it only needs the
+                // base steps plus any source-generating plugin steps.
+                .requires(groovyCompileRequires(pluginDecls))
+                .weight(() -> plan.get().compileGroovy())
+                .interpolated()
+                .ticks(() -> {
+                    List<Path> srcs = groovyMainSrcRef.get();
+                    if (srcs == null) {
+                        try {
+                            srcs = CompileSupport.collectGroovySources(in.dir(), compact);
+                        } catch (Exception ignored) {
+                            srcs = List.of();
+                        }
+                        groovyMainSrcRef.compareAndSet(null, srcs);
+                        srcs = groovyMainSrcRef.get();
+                    }
+                    return srcs.size();
+                })
+                .execute(ctx -> {
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    Files.createDirectories(classes); // compile-java may be skipped
+                    List<Path> gvSources = groovySources(ctx);
+                    // Plugin-contributed generated Groovy joins the source list exactly like the
+                    // Kotlin side — the freshness stamp and the worker see generated files as
+                    // ordinary sources.
+                    List<Path> generatedGv = pluginContributedSources(ctx.require(LAYOUT), pluginDecls, ".groovy");
+                    if (!generatedGv.isEmpty()) {
+                        gvSources = new ArrayList<>(gvSources);
+                        gvSources.addAll(generatedGv);
+                        // Re-publish so write-stamp-groovy records what this compile checked.
+                        ctx.put(GROOVY_SOURCES, gvSources);
+                    }
+                    if (gvSources.isEmpty()) {
+                        ctx.label("no Groovy sources");
+                        ctx.put(GROOVY_OUTCOME, "no-sources");
+                        return;
+                    }
+                    @SuppressWarnings("unchecked")
+                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    // Freshness inputs: Groovy sources plus — in a mixed module — the Java
+                    // sources, since joint mode resolves against them (any Java edit can make
+                    // our .class files or retained stubs stale). Same conservative posture as
+                    // compile-kotlin; the action cache behind decides precisely.
+                    List<Path> freshInputs = new ArrayList<>(gvSources);
+                    if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
+                    // A shrunken Groovy source set must not leave dropped classes in the merged
+                    // output (the assemble merge into classes/ is additive).
+                    if (cc.jumpkick.task.FreshnessStamp.hasRemovedSources(
+                            classes, cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP, freshInputs)) {
+                        cc.jumpkick.util.PathUtil.deleteRecursively(classes);
+                        Files.createDirectories(classes);
+                    }
+                    boolean rerun = in.session().config().rebuildOr(false);
+                    if (!rerun
+                            && cc.jumpkick.task.FreshnessStamp.isFresh(
+                                    classes,
+                                    cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
+                                    freshInputs,
+                                    classpath,
+                                    ctx.require(RELEASE))) {
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
+                        ctx.label("up to date");
+                        ctx.cached();
+                        ctx.put(GROOVY_OUTCOME, "up-to-date");
+                        ctx.progress(gvSources.size());
+                        return;
+                    }
+                    ctx.label("compiling " + gvSources.size() + " Groovy sources");
+                    // Groovy compiles into its own dir, then we merge into the shared classes
+                    // dir (the worker's action cache snapshots its whole output dir — it must
+                    // never share one with javac).
+                    Path gvOut = ctx.require(LAYOUT).groovyClassesDir();
+                    String taskId = ActionKey.qualifiedTaskId(StepNames.COMPILE_GROOVY, classes);
+                    // Mixed module: joint mode sweeps the Java roots for resolution only —
+                    // stubs are retained for javac's sourcepath; jk's javac worker stays
+                    // authoritative for the real Java outputs.
+                    cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
+                            ctx,
+                            in,
+                            cas,
+                            actionCache,
+                            gvSources,
+                            classpath,
+                            gvOut,
+                            taskId,
+                            mixedGroovy
+                                    ? kotlinJavaSourceRoots(true, compact, in.dir(), ctx.require(LAYOUT), pluginDecls)
+                                    : null,
+                            mixedGroovy ? ctx.require(LAYOUT).groovyStubsDir() : null);
+                    if (!gr.success()) {
+                        ctx.error("groovyc", gr.output());
+                        throw new RuntimeException("groovyc reported errors");
+                    }
+                    if (gr.cacheHit()) {
+                        ctx.label("cache hit " + gr.actionKey().substring(0, 8));
+                        ctx.cached();
+                    }
+                    // Groovy-only: publish straight into the classes dir. Mixed:
+                    // leave it in gvOut for `assemble-classes` to merge after javac.
+                    if (!mixedGroovy) copyResources(gvOut, classes);
+                    ctx.put(GROOVY_OUTCOME, "compiled");
+                    ctx.progress(gvSources.size());
+                })
+                .build();
+    }
+
     private static Step copyResourcesStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -1534,10 +1746,18 @@ public final class BuildPipelines {
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     // JK-1144/1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
+                    // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
+                    List<Path> resDirs = new ArrayList<>();
                     Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
-                    if (Files.isDirectory(resMain)) {
+                    if (Files.isDirectory(resMain)) resDirs.add(resMain);
+                    for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(in.dir())) {
+                        if (!root.resource()) continue;
+                        Path dir = in.dir().resolve(root.relative());
+                        if (Files.isDirectory(dir)) resDirs.add(dir);
+                    }
+                    if (!resDirs.isEmpty()) {
                         ctx.label("copy resources");
-                        copyResources(resMain, classes);
+                        for (Path dir : resDirs) copyResources(dir, classes);
                     } else {
                         ctx.label("no static resources");
                     }
@@ -1670,7 +1890,9 @@ public final class BuildPipelines {
                             cc.jumpkick.layout.TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
                     List<Path> ktTest =
                             cc.jumpkick.layout.TestSuites.collectKotlinSources(in.dir(), compact, suiteNames);
-                    if (javaTest.isEmpty() && ktTest.isEmpty()) {
+                    List<Path> gvTest =
+                            cc.jumpkick.layout.TestSuites.collectGroovySources(in.dir(), compact, suiteNames);
+                    if (javaTest.isEmpty() && ktTest.isEmpty() && gvTest.isEmpty()) {
                         ctx.label("no test sources");
                         ctx.put(NO_TEST_SOURCES, true);
                         ctx.progress(1);
@@ -1680,14 +1902,45 @@ public final class BuildPipelines {
                     List<Path> allTestSources = new ArrayList<>();
                     allTestSources.addAll(javaTest);
                     allTestSources.addAll(ktTest);
+                    allTestSources.addAll(gvTest);
                     ctx.put(TEST_SOURCES, allTestSources);
                     @SuppressWarnings("unchecked")
                     List<Path> compileCp = (List<Path>) ctx.require(COMPILE_TEST_CP);
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(ctx.require(MAIN_CLASSES));
                     baseCp.addAll(compileCp);
+                    // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject —
+                    // javac (and groovyc itself) must resolve it from the version-matched jar.
+                    if (cx.groovyModule() || !gvTest.isEmpty()) {
+                        baseCp.add(groovyCompileJar(ctx, cas));
+                    }
                     Path testClasses = ctx.require(TEST_CLASSES);
                     boolean mixedTest = !javaTest.isEmpty() && !ktTest.isEmpty();
+                    boolean mixedTestGv = !javaTest.isEmpty() && !gvTest.isEmpty();
+
+                    // Groovy test sources first (joint mode sweeps the Java test roots for
+                    // resolution), so Java tests can reference Groovy test types. In a mixed
+                    // test module each language gets its own output dir, merged below.
+                    Path gvTestOut = mixedTestGv ? ctx.require(LAYOUT).groovyTestClassesDir() : testClasses;
+                    if (!gvTest.isEmpty()) {
+                        ctx.label("compiling " + gvTest.size() + " Groovy test sources");
+                        String gvTaskId = ActionKey.qualifiedTaskId("compile-test-groovy", testClasses);
+                        List<Path> gvJavaRoots = null;
+                        if (mixedTestGv) {
+                            gvJavaRoots = new ArrayList<>();
+                            for (String suite : suiteNames) {
+                                for (Path root : cc.jumpkick.layout.TestSuites.javaRoots(in.dir(), compact, suite)) {
+                                    if (Files.isDirectory(root)) gvJavaRoots.add(root);
+                                }
+                            }
+                        }
+                        cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
+                                ctx, in, cas, actionCache, gvTest, baseCp, gvTestOut, gvTaskId, gvJavaRoots, null);
+                        if (!gr.success()) {
+                            ctx.error("groovyc", gr.output());
+                            throw new RuntimeException("test groovyc reported errors");
+                        }
+                    }
 
                     // Kotlin test sources first, so Java tests can reference Kotlin
                     // test types (mirrors the main mixed-module ordering). In a mixed
@@ -1717,13 +1970,14 @@ public final class BuildPipelines {
                         }
                     }
 
-                    // Java test sources, against the Kotlin test output in a mixed module.
+                    // Java test sources, against the Kotlin/Groovy test output in a mixed module.
                     if (!javaTest.isEmpty()) {
                         Path javaTestOut = testClasses; // javac always writes to java/test/
                         List<Path> javaCp = baseCp;
-                        if (mixedTest) {
+                        if (mixedTest || mixedTestGv) {
                             javaCp = new ArrayList<>(baseCp);
-                            javaCp.add(ktTestOut);
+                            if (mixedTest) javaCp.add(ktTestOut);
+                            if (mixedTestGv) javaCp.add(gvTestOut);
                         }
                         @SuppressWarnings("unchecked")
                         List<String> javacArgs = (List<String>) ctx.require(JAVAC_ARGS);
@@ -1769,17 +2023,21 @@ public final class BuildPipelines {
                         if (!ok) throw new RuntimeException("test compile failed");
                     }
 
-                    // In mixed test mode, kotlin output needs to be merged into testClasses
-                    // (java/test/). Java test output already went there directly.
+                    // In mixed test mode, kotlin/groovy output needs to be merged into
+                    // testClasses (java/test/). Java test output already went there directly.
                     if (mixedTest && !ktTest.isEmpty()) {
                         Files.createDirectories(testClasses);
                         copyResources(ktTestOut, testClasses);
+                    }
+                    if (mixedTestGv && !gvTest.isEmpty()) {
+                        Files.createDirectories(testClasses);
+                        copyResources(gvTestOut, testClasses);
                     }
                     // Test resources ride the test classpath next to compiled tests (Gradle's
                     // processTestResources). Without this, getResourceAsStream fixtures NPE under
                     // self-host.
                     // JK-1149: copy resources for every suite in this run's selection
-                    // (default test-resources/ + e.g. integration-resources/).
+                    // (default test/resources/ + e.g. integration/resources/).
                     for (Path resTest :
                             cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames)) {
                         Files.createDirectories(testClasses);
@@ -1907,6 +2165,14 @@ public final class BuildPipelines {
                             || !CompileSupport.collectKotlinTestSources(in.dir(), compact)
                                     .isEmpty()) {
                         runtimeCp.add(kotlinStdlib(ctx, cas));
+                    }
+                    // Groovy output (main or test) needs the version-matched runtime closure.
+                    if (cx.groovyModule()
+                            || !CompileSupport.collectGroovyTestSources(in.dir(), compact)
+                                    .isEmpty()) {
+                        for (Path jar : groovyRuntime(ctx, cas)) {
+                            if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
+                        }
                     }
 
                     // Module pin ([test] workers / [build] test-workers) wins over CLI for hermetic
@@ -2558,6 +2824,11 @@ public final class BuildPipelines {
                         classpath = new ArrayList<>(classpath);
                         classpath.add(ctx.require(LAYOUT).kotlinClassesDir());
                     }
+                    if (cx.mixedGroovy()) { // match compile-java's freshness inputs
+                        classpath = new ArrayList<>(classpath);
+                        classpath.add(ctx.require(LAYOUT).groovyClassesDir());
+                        classpath.add(groovyCompileJar(ctx, cx.cas()));
+                    }
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     cc.jumpkick.task.FreshnessStamp.write(
                             javaOut,
@@ -2616,6 +2887,41 @@ public final class BuildPipelines {
                 .build();
     }
 
+    private static Step writeStampGroovyStep(Ctx cx) {
+        Inputs in = cx.in();
+        java.util.function.Supplier<EffortWeights.Plan> plan = cx.plan();
+        boolean mixedGroovy = cx.mixedGroovy();
+        return Step.builder(StepNames.WRITE_STAMP_GROOVY)
+                .phase(Phase.COMPILE)
+                .requires(StepNames.COMPILE_GROOVY)
+                .weight(() -> plan.get().fullyCached() ? 0 : W_STAMP)
+                .ticks(1)
+                .execute(ctx -> {
+                    String outcome = ctx.get(GROOVY_OUTCOME).orElse("");
+                    if ("up-to-date".equals(outcome) || "no-sources".equals(outcome)) {
+                        ctx.label("stamp unchanged");
+                        ctx.progress(1);
+                        return;
+                    }
+                    ctx.label("write freshness stamp");
+                    Path classes = ctx.require(MAIN_CLASSES);
+                    @SuppressWarnings("unchecked")
+                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> freshInputs = new ArrayList<>(groovySources(ctx));
+                    if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
+                    cc.jumpkick.task.FreshnessStamp.write(
+                            classes,
+                            cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
+                            StepNames.COMPILE_GROOVY,
+                            "",
+                            freshInputs,
+                            classpath,
+                            ctx.require(RELEASE));
+                    ctx.progress(1);
+                })
+                .build();
+    }
+
     private static Step assembleClassesStep(Ctx cx) {
         Inputs in = cx.in();
         Cas cas = cx.cas();
@@ -2629,31 +2935,45 @@ public final class BuildPipelines {
         boolean kotlinModule = cx.kotlinModule();
         boolean mixedWithJava = cx.mixedWithJava();
         String mainCompile = cx.mainCompile();
+        boolean mixedGroovy = cx.mixedGroovy();
+        List<String> requires = new ArrayList<>();
+        requires.add(StepNames.COMPILE_JAVA);
+        if (mixed) requires.add(StepNames.COMPILE_KOTLIN);
+        if (mixedGroovy) requires.add(StepNames.COMPILE_GROOVY);
         return Step.builder(StepNames.ASSEMBLE_CLASSES)
                 .phase(Phase.COMPILE)
                 .label("Assembling")
                 .kind(StepKind.CPU)
-                .requires(StepNames.COMPILE_JAVA, StepNames.COMPILE_KOTLIN)
+                .requires(requires.toArray(new String[0]))
                 .weight(() -> plan.get().fullyCached() ? 0 : W_ASSEMBLE)
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
                     String jOutcome = ctx.get(BUILD_OUTCOME).orElse("");
                     String kOutcome = ctx.get(KOTLIN_OUTCOME).orElse("");
-                    boolean settled = (jOutcome.equals("up-to-date") || jOutcome.equals("no-sources"))
-                            && (kOutcome.equals("up-to-date") || kOutcome.equals("no-sources"));
-                    if (settled) { // both unchanged → classes already holds both
+                    String gOutcome = ctx.get(GROOVY_OUTCOME).orElse("");
+                    boolean settled = settledOutcome(jOutcome)
+                            && (!mixed || settledOutcome(kOutcome))
+                            && (!mixedGroovy || settledOutcome(gOutcome));
+                    if (settled) { // all unchanged → classes already holds every language's output
                         ctx.label("up to date");
                         ctx.progress(1);
                         return;
                     }
                     ctx.label("assemble classes");
                     Files.createDirectories(classes);
-                    // Java output already lives in classes (java/main/); merge kotlin.
-                    copyResources(ctx.require(LAYOUT).kotlinClassesDir(), classes);
+                    // Java output already lives in classes (java/main/); merge the other
+                    // language dirs in. The Groovy merge runs after javac, so real Groovy
+                    // classes overwrite any stub-compiled duplicates.
+                    if (mixed) copyResources(ctx.require(LAYOUT).kotlinClassesDir(), classes);
+                    if (mixedGroovy) copyResources(ctx.require(LAYOUT).groovyClassesDir(), classes);
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    private static boolean settledOutcome(String outcome) {
+        return outcome.equals("up-to-date") || outcome.equals("no-sources");
     }
 
     /**
@@ -3066,6 +3386,11 @@ public final class BuildPipelines {
         return (List<Path>) ctx.get(KOTLIN_SOURCES).orElse(List.of());
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<Path> groovySources(StepContext ctx) {
+        return (List<Path>) ctx.get(GROOVY_SOURCES).orElse(List.of());
+    }
+
     /**
      * The main-compile classpath contributed by the lockfile and workspace siblings: {@code
      * COMPILE_MAIN} lockfile deps + each depended sibling's built jar + those siblings' own {@code
@@ -3255,6 +3580,113 @@ public final class BuildPipelines {
         }
         return cc.jumpkick.task.KotlinCompile.run(
                 taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+    }
+
+    /**
+     * Compile Groovy {@code sources} into {@code outputDir} via the plugin (action-cached: restores
+     * from the CAS on an exact-input hit without launching the plugin, else forks a full compile —
+     * Groovy has no incremental state). Shared by the main {@code compile-groovy} and {@code
+     * compile-test} steps. The caller owns freshness stamps, output assembly, and outcome reporting.
+     *
+     * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code .java} under them
+     *     for resolution only (jk's javac worker owns the real Java outputs)
+     * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
+     */
+    private static cc.jumpkick.task.GroovyCompile.Result compileGroovySources(
+            StepContext ctx,
+            Inputs in,
+            Cas cas,
+            ActionCache actionCache,
+            List<Path> sources,
+            List<Path> classpath,
+            Path outputDir,
+            String taskId,
+            List<Path> javaSourceRoots,
+            Path stubsOut)
+            throws IOException {
+        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
+        GroovyPluginSetup.Prepared gv;
+        try {
+            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            gv = GroovyPluginSetup.prepare(repos, cas, groovyVersion);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted resolving the Groovy compiler", e);
+        }
+        // Compilation classpath: project deps + the version-matched groovy jar (user Groovy
+        // code compiles against the Groovy runtime types).
+        List<Path> compileCp = new ArrayList<>(classpath);
+        compileCp.add(gv.groovyJar());
+        Files.createDirectories(outputDir);
+        if (stubsOut != null) Files.createDirectories(stubsOut);
+        // Contributed groovyc args (e.g. grails' --parameters — data binding reflects on
+        // parameter names), deduped; mirrors the javac/kotlinc lanes.
+        List<String> gvArgs = new ArrayList<>();
+        for (String arg : cc.jumpkick.plugin.manifest.PluginContributions.groovyArgs(
+                ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
+            if (!gvArgs.contains(arg)) gvArgs.add(arg);
+        }
+        GroovycRequest req = GroovycRequest.builder()
+                .sources(sources)
+                .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
+                .classpath(compileCp)
+                .outputDir(outputDir)
+                .stubsOut(stubsOut)
+                .jvmTarget(ctx.require(RELEASE))
+                .workerClasspath(gv.workerClasspath())
+                .extraArgs(gvArgs)
+                .build();
+        boolean rerun = in.session().config().rebuildOr(false);
+        // Reweight from the real request: a CAS hit is a cheap restore (3), else a
+        // full groovyc. Same forGroovyc key GroovyCompile.run looks up.
+        if (!rerun) {
+            try {
+                boolean restores = actionCache
+                        .lookup(ActionKey.forGroovyc(taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion()))
+                        .isPresent();
+                ctx.reweight(restores ? EffortWeights.RESTORE : EffortWeights.compileWeight(sources.size()));
+            } catch (Exception ignored) {
+                /* keep the up-front estimate */
+            }
+        }
+        return cc.jumpkick.task.GroovyCompile.run(
+                taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+    }
+
+    /**
+     * The version-matched {@code groovy} jar for javac's classpath in a mixed module: every Groovy
+     * class implements {@code groovy.lang.GroovyObject}, so Java code referencing a Groovy type
+     * needs the jar to resolve the supertype. Warm after compile-groovy's setup (CAS-memoized).
+     */
+    private static Path groovyCompileJar(StepContext ctx, Cas cas) throws IOException {
+        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
+        try {
+            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            return GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted resolving the Groovy compile jar", e);
+        }
+    }
+
+    /**
+     * The version-matched Groovy runtime closure (already in the CAS from the worker setup).
+     * Groovy output needs it on the <em>runtime</em> classpath — compilation pairs the groovy jar
+     * onto the compile classpath, but the JVM still needs the full runtime closure when the code
+     * runs (mirrors {@link #kotlinStdlib}).
+     */
+    private static List<Path> groovyRuntime(StepContext ctx, Cas cas) throws IOException {
+        String groovyVersion = CompileToolchain.groovyVersionFor(ctx.require(LOCKFILE), ctx.require(PROJECT));
+        if (groovyVersion == null || groovyVersion.isBlank()) {
+            groovyVersion = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
+        }
+        try {
+            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(ctx.require(PROJECT), null, cas);
+            return GroovyToolResolver.resolveRuntime(repos, cas, groovyVersion);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted resolving the Groovy runtime", e);
+        }
     }
 
     /** The resolved lock's {@code group:artifact} names — the classpath-has condition's universe. */

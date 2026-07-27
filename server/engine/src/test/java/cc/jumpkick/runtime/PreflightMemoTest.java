@@ -85,7 +85,7 @@ class PreflightMemoTest {
     @Test
     void simple_test_resource_change_misses_memo(@TempDir Path tmp) throws Exception {
         writeSimpleProject(tmp);
-        Path res = tmp.resolve("test-resources");
+        Path res = tmp.resolve("test").resolve("resources");
         Files.createDirectories(res);
         Files.writeString(res.resolve("fixture.json"), "{}\n");
         BuildGraph.Result graph =
@@ -403,10 +403,10 @@ class PreflightMemoTest {
     @Test
     void fingerprint_includes_compact_named_suite(@TempDir Path tmp) throws Exception {
         writeSimpleProject(tmp);
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest {}");
+        Files.createDirectories(tmp.resolve("integration").resolve("src"));
+        Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest {}");
         String fp1 = PreflightMemo.fingerprintModule(tmp, false);
-        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest { int x; }");
+        Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest { int x; }");
         String fp2 = PreflightMemo.fingerprintModule(tmp, false);
         assertThat(fp1).isNotEqualTo(fp2);
     }
@@ -414,17 +414,17 @@ class PreflightMemoTest {
     @Test
     void fingerprint_includes_named_suite_resources(@TempDir Path tmp) throws Exception {
         writeSimpleProject(tmp);
-        Files.createDirectories(tmp.resolve("integration"));
-        Files.writeString(tmp.resolve("integration/ITest.java"), "class ITest {}");
-        Files.createDirectories(tmp.resolve("integration-resources"));
-        Files.writeString(tmp.resolve("integration-resources/fix.txt"), "a");
+        Files.createDirectories(tmp.resolve("integration").resolve("src"));
+        Files.writeString(tmp.resolve("integration/src/ITest.java"), "class ITest {}");
+        Files.createDirectories(tmp.resolve("integration").resolve("resources"));
+        Files.writeString(tmp.resolve("integration/resources/fix.txt"), "a");
         String fp1 = PreflightMemo.fingerprintModule(tmp, false);
-        Files.writeString(tmp.resolve("integration-resources/fix.txt"), "b");
+        Files.writeString(tmp.resolve("integration/resources/fix.txt"), "b");
         String fp2 = PreflightMemo.fingerprintModule(tmp, false);
         assertThat(fp1).isNotEqualTo(fp2);
     }
 
-    /** SIMPLE flat-siblings fixture (layout=simple, no Maven src/main tree). */
+    /** SIMPLE Mill-like fixture (layout=simple, no Maven src/main tree). */
     private static void writeSimpleProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src"));
         Files.writeString(dir.resolve("src/App.java"), "class App {}\n");

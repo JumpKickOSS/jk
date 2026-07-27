@@ -25,6 +25,7 @@ import java.util.List;
 public enum PluginJar {
     TEST_RUNNER("jk-test-runner", "jk.test.runner.jar", ":test-runner:installLocal"),
     KOTLIN_COMPILER("jk-kotlin-compiler", "jk.kotlin.plugin.jar", ":kotlin-compiler:installLocal"),
+    GROOVY_COMPILER("jk-groovy-compiler", "jk.groovy.plugin.jar", ":groovy-compiler:installLocal"),
     JAVA_COMPILER("jk-java-compiler", "jk.java.plugin.jar", ":java-compiler:installLocal"),
     AUDITOR("jk-auditor", "jk.auditor.plugin.jar", ":auditor:installLocal"),
     PUBLISHER("jk-publisher", "jk.publisher.plugin.jar", ":publisher:installLocal"),
@@ -32,6 +33,8 @@ public enum PluginJar {
     COMPAT_BRIDGE("jk-compat-bridge", "jk.compat-bridge.plugin.jar", ":compat-bridge:installLocal"),
     FORMATTER("jk-formatter", "jk.formatter.plugin.jar", ":formatter:installLocal"),
     SPRING_BOOT("jk-spring-boot", "jk.spring-boot.plugin.jar", ":spring-boot:installLocal"),
+    GRAILS("jk-grails", "jk.grails.plugin.jar", ":grails:installLocal"),
+    QUARKUS("jk-quarkus", "jk.quarkus.plugin.jar", ":quarkus:installLocal"),
     ANDROID("jk-android", "jk.android.plugin.jar", ":android:installLocal"),
     PROTOBUF("jk-protobuf", "jk.protobuf.plugin.jar", ":protobuf:installLocal"),
     SHRINK("jk-shrink", "jk.shrink.plugin.jar", ":shrink:installLocal");

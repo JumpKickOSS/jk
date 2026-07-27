@@ -62,6 +62,36 @@ public final class PluginContributions {
         return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::kotlin);
     }
 
+    /** The groovyc args every present plugin contributes (e.g. grails' {@code --parameters}). */
+    public static List<String> groovyArgs(JkBuild build, java.nio.file.Path moduleDir, Set<String> classpathModules) {
+        return compilerArgs(build, moduleDir, classpathModules, PluginDescriptor.CompilerArgs::groovy);
+    }
+
+    /** One resolved plugin-contributed module input root (relative dir + resource/source kind). */
+    public record SourceRoot(String dir, boolean resource) {}
+
+    /**
+     * The active plugins' {@code [[contribute.source-roots]]} entries with conditions evaluated —
+     * module-relative dirs that join the module's roots (compile inputs, resource copy, IDE/BSP,
+     * fingerprints) exactly like the conventional layout dirs. Evaluated before resolution
+     * (classpath-has was rejected at manifest load).
+     */
+    public static List<SourceRoot> sourceRoots(JkBuild build, java.nio.file.Path moduleDir) {
+        List<SourceRoot> out = new ArrayList<>();
+        for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
+            PluginConfig config = build.pluginConfig(manifest.id()).orElse(null);
+            if (config == null) continue;
+            for (PluginDescriptor.SourceRoot root : manifest.contributions().sourceRoots()) {
+                if (!holds(
+                        root.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                    continue;
+                }
+                out.add(new SourceRoot(root.dir(), root.resource()));
+            }
+        }
+        return out;
+    }
+
     /**
      * The KSP processor options ({@code key=value}) every present plugin contributes — handed to
      * the KSP round as {@code -processor-options} (Hilt's superclass-validation toggle et al.).
@@ -142,12 +172,28 @@ public final class PluginContributions {
      * One resolved step-dependency, handed to the step as {@code artifact}: a Maven coordinate
      * spec ({@code group:artifact:version[:classifier]}, {@code transitive} = the runtime closure)
      * or a provisioned SDK component ({@code sdkComponent}/{@code sdkPath}).
+     *
+     * <p>{@code managedBy} / {@code with} mirror the manifest: BOM-aligned multi-root tool graphs.
      */
     public record StepDep(
-            String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
+            String artifact,
+            String coordinateSpec,
+            boolean transitive,
+            String sdkComponent,
+            String sdkPath,
+            String managedBy,
+            java.util.List<String> with) {
+
+        public StepDep {
+            with = with == null ? java.util.List.of() : java.util.List.copyOf(with);
+        }
 
         public StepDep(String artifact, String coordinateSpec) {
-            this(artifact, coordinateSpec, false, null, null);
+            this(artifact, coordinateSpec, false, null, null, null, java.util.List.of());
+        }
+
+        public StepDep(String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
+            this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, java.util.List.of());
         }
     }
 
@@ -168,7 +214,7 @@ public final class PluginContributions {
                 }
                 if (sd.sdkComponent() != null) {
                     String component = Interpolation.resolve(sd.sdkComponent(), config, build.project(), null);
-                    out.add(new StepDep(sd.artifact(), null, false, component, sd.sdkPath()));
+                    out.add(new StepDep(sd.artifact(), null, false, component, sd.sdkPath(), null, java.util.List.of()));
                     continue;
                 }
                 String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);
@@ -177,7 +223,20 @@ public final class PluginContributions {
                     throw new JkBuildParseException("[" + manifest.id() + "] step-dependency coordinate must be"
                             + " \"group:artifact:version[:classifier]\" — got: " + coordinate);
                 }
-                out.add(new StepDep(sd.artifact(), coordinate, sd.transitive(), null, null));
+                String managedBy = sd.managedBy() == null
+                        ? null
+                        : Interpolation.resolve(sd.managedBy(), config, build.project(), null);
+                java.util.List<String> with = new java.util.ArrayList<>();
+                for (String w : sd.with()) {
+                    String resolved = Interpolation.resolve(w, config, build.project(), null);
+                    String[] wp = resolved.split(":");
+                    if (wp.length < 3 || wp.length > 4) {
+                        throw new JkBuildParseException("[" + manifest.id() + "] step-dependency with entry must be"
+                                + " \"group:artifact:version[:classifier]\" — got: " + resolved);
+                    }
+                    with.add(resolved);
+                }
+                out.add(new StepDep(sd.artifact(), coordinate, sd.transitive(), null, null, managedBy, with));
             }
         }
         return out;

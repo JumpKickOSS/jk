@@ -73,7 +73,8 @@ public final class NewScaffolder {
             return;
         }
         var dir = inputs.directory();
-        cc.jumpkick.engine.protocol.GeneratedFiles plugin = inputs.spring() ? pluginScaffold(inputs) : null;
+        cc.jumpkick.engine.protocol.GeneratedFiles plugin =
+                inputs.frameworkScaffold() ? pluginScaffold(inputs) : null;
 
         Files.createDirectories(dir);
         if (plugin != null) {
@@ -99,14 +100,27 @@ public final class NewScaffolder {
 
     /**
      * The engine-rendered plugin scaffold: base jk.toml + the plugin's fragments, and the sample
-     * files when requested. {@code plugin} is the scaffold flag ({@code spring}); generation is
-     * engine-hosted so the client carries none of the framework content.
+     * files when requested. {@code plugin} is the scaffold flag ({@code spring} / {@code grails} /
+     * {@code quarkus}); generation is engine-hosted so the client carries none of the framework
+     * content.
      */
     private static cc.jumpkick.engine.protocol.GeneratedFiles pluginScaffold(NewInputs inputs) throws IOException {
         var params = new java.util.LinkedHashMap<String, String>();
-        params.put("plugin", "spring");
-        params.put("lang", inputs.lang() == NewInputs.Language.KOTLIN ? "kotlin" : "java");
+        params.put("plugin", inputs.frameworkPluginFlag());
+        params.put(
+                "lang",
+                switch (inputs.lang()) {
+                    case KOTLIN -> "kotlin";
+                    case GROOVY -> "groovy";
+                    case JAVA -> "java";
+                });
         params.put("package", inputs.group());
+        // pom.xml.tmpl and other tooling files use project coords + platform version.
+        params.put("group", inputs.group());
+        params.put("name", inputs.name());
+        params.put("version", "0.1.0");
+        // Match quarkus scaffold default in jk-toml-*.toml.tmpl; override when wizard pins a line.
+        params.putIfAbsent("quarkus.version", "3.28.5");
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
         params.put("baseToml", NewJkBuildRenderer.render(inputs));
@@ -343,19 +357,19 @@ public final class NewScaffolder {
     }
 
     /**
-     * Ensure production/test/resource roots exist: SIMPLE flat-siblings ({@code src/},
-     * {@code resources/}, {@code test/}, {@code test-resources/}) or traditional Maven tree
-     * (JK-1145/1146).
+     * Ensure production/test/resource roots exist: SIMPLE Mill-like ({@code src/},
+     * {@code resources/}, {@code test/src/}, {@code test/resources/}) or traditional Maven tree
+     * (JK-1198).
      */
     private static void createSourceTree(NewInputs inputs) throws IOException {
         var dir = inputs.directory();
         if (inputs.isSimpleLayout()) {
             Files.createDirectories(dir.resolve("src"));
             Files.createDirectories(dir.resolve("resources"));
-            Files.createDirectories(dir.resolve("test"));
-            Files.createDirectories(dir.resolve("test-resources"));
+            Files.createDirectories(dir.resolve("test").resolve("src"));
+            Files.createDirectories(dir.resolve("test").resolve("resources"));
         } else {
-            String lang = inputs.lang() == NewInputs.Language.KOTLIN ? "kotlin" : "java";
+            String lang = inputs.lang().sourceDir();
             Files.createDirectories(dir.resolve("src").resolve("main").resolve(lang));
             Files.createDirectories(dir.resolve("src").resolve("main").resolve("resources"));
             Files.createDirectories(dir.resolve("src").resolve("test").resolve(lang));
@@ -412,6 +426,7 @@ public final class NewScaffolder {
         switch (inputs.lang()) {
             case JAVA -> writeJavaSample(inputs);
             case KOTLIN -> writeKotlinSample(inputs);
+            case GROOVY -> writeGroovySample(inputs);
         }
     }
 
@@ -435,12 +450,12 @@ public final class NewScaffolder {
 
     private static void writeKotlinSample(NewInputs inputs) throws IOException {
         // Kotlin keeps its compact convention: the simple layout is package-less
-        // (files at ./src and ./test); the traditional layout nests by package.
+        // (files at ./src and ./test/src); the traditional layout nests by package.
         boolean simple = inputs.isSimpleLayout();
         String pkg = simple ? "" : inputs.group();
         String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
         Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/kotlin") + pkgPath);
-        Path testDir = inputs.directory().resolve((simple ? "test" : "src/test/kotlin") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test/src" : "src/test/kotlin") + pkgPath);
         Files.createDirectories(srcDir);
         Files.createDirectories(testDir);
 
@@ -451,14 +466,32 @@ public final class NewScaffolder {
         }
     }
 
+    private static void writeGroovySample(NewInputs inputs) throws IOException {
+        // Groovy mirrors Kotlin's compact convention: the simple layout is package-less
+        // (files at ./src and ./test/src); the traditional layout nests by package.
+        boolean simple = inputs.isSimpleLayout();
+        String pkg = simple ? "" : inputs.group();
+        String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
+        Path srcDir = inputs.directory().resolve((simple ? "src" : "src/main/groovy") + pkgPath);
+        Path testDir = inputs.directory().resolve((simple ? "test/src" : "src/test/groovy") + pkgPath);
+        Files.createDirectories(srcDir);
+        Files.createDirectories(testDir);
+
+        Files.writeString(srcDir.resolve("Calc.groovy"), renderGroovyCalc(pkg), StandardCharsets.UTF_8);
+        Files.writeString(testDir.resolve("CalcTest.groovy"), renderGroovyCalcTest(pkg), StandardCharsets.UTF_8);
+        if (inputs.isRunnable()) {
+            Files.writeString(srcDir.resolve(MAIN_CLASS + ".groovy"), renderGroovyMain(pkg), StandardCharsets.UTF_8);
+        }
+    }
+
     /** Production source root: {@code src} (simple) or {@code src/main/<lang>} (traditional). */
     private static String mainSourceRoot(NewInputs inputs) {
         return inputs.isSimpleLayout() ? "src" : "src/main/" + inputs.lang().sourceDir();
     }
 
-    /** Test source root: {@code test} (simple) or {@code src/test/<lang>} (traditional). */
+    /** Test source root: {@code test/src} (simple Mill-like) or {@code src/test/<lang>} (traditional). */
     private static String testSourceRoot(NewInputs inputs) {
-        return inputs.isSimpleLayout() ? "test" : "src/test/" + inputs.lang().sourceDir();
+        return inputs.isSimpleLayout() ? "test/src" : "src/test/" + inputs.lang().sourceDir();
     }
 
     /**
@@ -554,7 +587,44 @@ public final class NewScaffolder {
                 """;
     }
 
-    /** {@code "package <pkg>\n\n"}, or empty for the package-less (compact Kotlin) case. */
+    private static String renderGroovyMain(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                class Main {
+                    static void main(String[] args) {
+                        def value = 5
+                        def calc = new Calc()
+                        println "Hello, world! 5 * 2 = ${calc.doubleValue(value)}"
+                    }
+                }
+                """;
+    }
+
+    private static String renderGroovyCalc(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                class Calc {
+                    int doubleValue(int value) {
+                        value * 2
+                    }
+                }
+                """;
+    }
+
+    private static String renderGroovyCalcTest(String pkg) {
+        return pkgHeaderKt(pkg) + """
+                import org.junit.jupiter.api.Test
+
+                import static org.junit.jupiter.api.Assertions.assertEquals
+
+                class CalcTest {
+                    @Test
+                    void doubleValueReturnsTwiceTheInput() {
+                        assertEquals(10, new Calc().doubleValue(5))
+                    }
+                }
+                """;
+    }
+
+    /** {@code "package <pkg>\n\n"}, or empty for the package-less (compact Kotlin/Groovy) case. */
     private static String pkgHeaderKt(String pkg) {
         return pkg.isEmpty() ? "" : "package " + pkg + "\n\n";
     }

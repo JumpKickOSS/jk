@@ -116,4 +116,86 @@ class ModuleDotGraphTest {
     void quote_escapes_specials() {
         assertThat(ModuleDotGraph.quote("a\"b")).isEqualTo("\"a\\\"b\"");
     }
+
+    @Test
+    void mermaid_multi_module_emits_edge() {
+        JkBuild lib = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        JkBuild app = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+        Path root = Path.of("/ws").toAbsolutePath().normalize();
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(root.resolve("lib"), lib);
+        modules.put(root.resolve("app"), app);
+
+        String mmd = ModuleDotGraph.toMermaid(root, modules, null);
+
+        assertThat(mmd).startsWith("flowchart LR\n");
+        assertThat(mmd).contains("[\"com.example:lib\"]");
+        assertThat(mmd).contains("[\"com.example:app\"]");
+        assertThat(mmd).containsPattern("m\\d+ --> m\\d+");
+        long edges = mmd.lines().filter(l -> l.contains("-->")).count();
+        assertThat(edges).isEqualTo(1);
+    }
+
+    @Test
+    void mermaid_filter_and_empty() {
+        JkBuild lib = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "lib"
+                version = "1.0.0"
+                """);
+        JkBuild app = JkBuildParser.parse("""
+                [project]
+                group = "com.example"
+                name = "app"
+                version = "1.0.0"
+
+                [dependencies]
+                lib = { group = "com.example", name = "lib", version = "1.0.0" }
+                """);
+        Path root = Path.of("/ws").toAbsolutePath().normalize();
+        Path libDir = root.resolve("lib");
+        Map<Path, JkBuild> modules = new LinkedHashMap<>();
+        modules.put(libDir, lib);
+        modules.put(root.resolve("app"), app);
+
+        String filtered = ModuleDotGraph.render("mermaid", root, modules, Set.of(libDir));
+        assertThat(filtered).contains("com.example:lib");
+        assertThat(filtered).doesNotContain("com.example:app");
+        assertThat(filtered.lines().filter(l -> l.contains("-->")).count()).isZero();
+
+        assertThat(ModuleDotGraph.toMermaid(root, Map.of(), null)).isEqualTo("flowchart LR\n");
+    }
+
+    @Test
+    void single_module_mermaid() {
+        JkBuild b = JkBuildParser.parse("""
+                [project]
+                group = "g"
+                name = "n"
+                version = "1"
+                """);
+        String mmd = ModuleDotGraph.singleModuleMermaid(b, Path.of("/proj"));
+        assertThat(mmd).isEqualTo("flowchart LR\n  m0[\"g:n\"]\n");
+    }
+
+    @Test
+    void is_supported_format() {
+        assertThat(ModuleDotGraph.isSupportedFormat("dot")).isTrue();
+        assertThat(ModuleDotGraph.isSupportedFormat("Mermaid")).isTrue();
+        assertThat(ModuleDotGraph.isSupportedFormat("plantuml")).isFalse();
+    }
 }

@@ -64,7 +64,8 @@ public final class NativePipelines {
             boolean verbose) {
         Path buildFile = moduleDir.resolve("jk.toml");
         Path lockFile = moduleDir.resolve("jk.lock");
-        int estimatedTests = TestSupport.estimateTestCount(moduleDir.resolve("src/test/java"));
+        boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
+        int estimatedTests = TestSupport.estimateAllSuiteTestCount(moduleDir, compact);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
                 moduleDir,
                 cache,

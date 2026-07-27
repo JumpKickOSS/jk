@@ -199,11 +199,13 @@ class EffectivePomBuilderTest {
                   </dependencyManagement>
                 </project>
                 """);
+        // packaging=pom: managed lists are retained (JK-1202 drops them on jar packaging).
         registerPom("org.example", "child", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
                   <artifactId>child</artifactId>
                   <version>1.0</version>
+                  <packaging>pom</packaging>
                   <dependencyManagement>
                     <dependencies>
                       <dependency>
@@ -283,6 +285,7 @@ class EffectivePomBuilderTest {
                   <groupId>org.example</groupId>
                   <artifactId>child</artifactId>
                   <version>1.0</version>
+                  <packaging>pom</packaging>
                   <dependencyManagement>
                     <dependencies>
                       <dependency>
@@ -307,6 +310,48 @@ class EffectivePomBuilderTest {
                 .filteredOn(d -> d.module().equals("org.example:widget"))
                 .singleElement()
                 .satisfies(d -> assertThat(d.version()).isEqualTo("2.0"));
+    }
+
+    @Test
+    void jar_packaging_drops_retained_managed_after_apply(@TempDir Path tempDir) throws Exception {
+        registerPom("org.example", "parent", "1.0", """
+                <project>
+                  <groupId>org.example</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1.0</version>
+                  <packaging>pom</packaging>
+                  <dependencyManagement>
+                    <dependencies>
+                      <dependency>
+                        <groupId>org.example</groupId>
+                        <artifactId>widget</artifactId>
+                        <version>1.5</version>
+                      </dependency>
+                    </dependencies>
+                  </dependencyManagement>
+                </project>
+                """);
+        registerPom("org.example", "app", "1.0", """
+                <project>
+                  <parent>
+                    <groupId>org.example</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                  </parent>
+                  <artifactId>app</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>widget</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "app", "1.0"));
+        assertThat(pom.managedDependencies()).isEmpty();
+        assertThat(pom.dependencies())
+                .singleElement()
+                .satisfies(d -> assertThat(d.version()).isEqualTo("1.5"));
     }
 
     @Test
