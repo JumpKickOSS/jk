@@ -351,6 +351,8 @@ public final class BuildPlanForecast {
                     String stampKey = TestStamp.computeKey(
                             allTestSrc,
                             layout.classesDir(),
+                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(
+                                    dir, compact, cc.jumpkick.layout.TestSuites.discover(dir, compact)),
                             lockFile,
                             testRt,
                             BuildPipelines.testStampExtras(dir, project));

@@ -107,6 +107,10 @@ public final class BuildPipelines {
     @SuppressWarnings("rawtypes")
     public static final PipelineKey<List> TEST_SOURCES = PipelineKey.of("test-sources", List.class);
 
+    /** Suite resource dirs copied into classes/test — a TestStamp input (JK-1208). */
+    @SuppressWarnings("rawtypes")
+    public static final PipelineKey<List> TEST_RESOURCE_DIRS = PipelineKey.of("test-resource-dirs", List.class);
+
     public static final PipelineKey<String> BUILD_OUTCOME = PipelineKey.of("build-outcome", String.class);
     public static final PipelineKey<String> KOTLIN_OUTCOME = PipelineKey.of("kotlin-outcome", String.class);
     public static final PipelineKey<String> GROOVY_OUTCOME = PipelineKey.of("groovy-outcome", String.class);
@@ -2038,11 +2042,15 @@ public final class BuildPipelines {
                     // self-host.
                     // JK-1149: copy resources for every suite in this run's selection
                     // (default test/resources/ + e.g. integration/resources/).
-                    for (Path resTest :
-                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames)) {
+                    List<Path> suiteResDirs =
+                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
+                    for (Path resTest : suiteResDirs) {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);
                     }
+                    // Fixtures affect test outcomes but classes/test is not on the runtime cp —
+                    // run-tests folds these dirs into its TestStamp key (JK-1208).
+                    ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
                     ctx.progress(1);
                 })
                 .build();
@@ -2104,9 +2112,12 @@ public final class BuildPipelines {
                     // the outcome — own main output, test sources, the *content* of the
                     // runtime classpath (sibling modules included), the lock, and the
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
+                    @SuppressWarnings("unchecked")
+                    List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
                             testSrcs,
                             ctx.require(MAIN_CLASSES),
+                            testResDirs,
                             in.lockFile(),
                             testRtCp,
                             testStampExtras(workerJars, in.session().testSelection()));

@@ -33,9 +33,9 @@ class TestStampTest {
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEPBYTES");
 
         String k1 = TestStamp.computeKey(
-                List.of(testSrc), mainClasses, lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
+                List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
         String k2 = TestStamp.computeKey(
-                List.of(testSrc), mainClasses, lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
+                List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of("jk:1.0", "runner:abc"));
         assertThat(k1).isNotNull().isEqualTo(k2);
     }
 
@@ -46,9 +46,9 @@ class TestStampTest {
         Path mainClass = write(mainClasses.resolve("Foo.class"), "AAAA");
         Path lock = write(dir.resolve("jk.lock"), "v=1");
 
-        String before = TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of());
+        String before = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
         Files.writeString(mainClass, "BBBB"); // main code changed; test source untouched
-        String after = TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of());
+        String after = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
 
         assertThat(after).isNotEqualTo(before);
     }
@@ -60,18 +60,18 @@ class TestStampTest {
         Path lock = write(dir.resolve("jk.lock"), "v=1");
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEP-V1");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(sibJar), List.of());
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of());
 
         // jk re-jars every build: identical bytes, new file mtime → must NOT bust.
         Files.writeString(sibJar, "DEP-V1");
         Files.setLastModifiedTime(sibJar, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(sibJar), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of()))
                 .as("byte-identical sibling rebuild keeps the key")
                 .isEqualTo(base);
 
         // A real content change in the dependency → must bust (retest the dependent).
         Files.writeString(sibJar, "DEP-V2");
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(sibJar), List.of()))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of()))
                 .as("dependency content change busts the dependent's key")
                 .isNotEqualTo(base);
     }
@@ -82,20 +82,55 @@ class TestStampTest {
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path lock = write(dir.resolve("jk.lock"), "v=1");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of("jk:1.0"));
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
 
         Files.writeString(testSrc, "class FooTest { void t() {} }");
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of("jk:1.0")))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
                 .isNotEqualTo(base);
 
         Files.writeString(testSrc, "class FooTest {}"); // restore
         Files.writeString(lock, "v=2"); // dep set changed
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of("jk:1.0")))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
                 .isNotEqualTo(base);
 
         Files.writeString(lock, "v=1"); // restore
-        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, lock, List.of(), List.of("jk:2.0")))
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:2.0")))
                 .as("a toolchain/runner identity change retests")
                 .isNotEqualTo(base);
+    }
+
+    @Test
+    void resource_fixture_change_busts_but_identical_rewrite_does_not(@TempDir Path dir) throws IOException {
+        Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
+        Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
+        Path lock = write(dir.resolve("jk.lock"), "v=1");
+        Path resDir = dir.resolve("test/resources");
+        Path fixture = write(resDir.resolve("fixture.json"), "{\"v\":1}");
+
+        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of());
+
+        // Byte-identical rewrite (new mtime) must NOT bust.
+        Files.writeString(fixture, "{\"v\":1}");
+        Files.setLastModifiedTime(fixture, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+                .isEqualTo(base);
+
+        // A fixture-only edit must retest (JK-1208: false green).
+        Files.writeString(fixture, "{\"v\":2}");
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+                .as("resource-only edit busts the key")
+                .isNotEqualTo(base);
+
+        // A new fixture file must retest too.
+        write(resDir.resolve("extra.txt"), "x");
+        Files.writeString(fixture, "{\"v\":1}"); // restore original content
+        assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
+                .as("added resource file busts the key")
+                .isNotEqualTo(base);
+
+        // Missing resource dir behaves like empty (no I/O failure, key stable).
+        assertThat(TestStamp.computeKey(
+                        List.of(testSrc), mainClasses, List.of(dir.resolve("integration/resources")), lock, List.of(), List.of()))
+                .isNotNull();
     }
 }

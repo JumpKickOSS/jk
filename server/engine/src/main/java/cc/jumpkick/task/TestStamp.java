@@ -14,14 +14,14 @@ import java.util.List;
 /**
  * Content-hashed key for incremental test skipping. On green runs the build stores a CAS marker
  * under this key (survives {@code jk clean}); a later matching key skips the runner. Inputs: test
- * sources, main classes, lockfile, runtime classpath by content ({@link ClasspathFingerprint}),
- * and toolchain/runner tokens. {@link #computeKey} returns {@code null} on any I/O failure —
- * callers treat that as uncached and retest.
+ * sources, main classes, suite resource dirs, lockfile, runtime classpath by content
+ * ({@link ClasspathFingerprint}), and toolchain/runner tokens. {@link #computeKey} returns
+ * {@code null} on any I/O failure — callers treat that as uncached and retest.
  */
 public final class TestStamp {
 
     /** Prefix embedded in the key so a future format change invalidates it. */
-    private static final String FORMAT_VERSION = "test-stamp-v2";
+    private static final String FORMAT_VERSION = "test-stamp-v3";
 
     private TestStamp() {}
 
@@ -30,7 +30,12 @@ public final class TestStamp {
      * unreadable (callers must retest).
      */
     public static String computeKey(
-            List<Path> testSources, Path mainClasses, Path lockFile, List<Path> runtimeCp, List<String> extraInputs) {
+            List<Path> testSources,
+            Path mainClasses,
+            List<Path> resourceRoots,
+            Path lockFile,
+            List<Path> runtimeCp,
+            List<String> extraInputs) {
         try {
             MessageDigest md = Hashing.newSha256();
             feed(md, FORMAT_VERSION);
@@ -47,6 +52,17 @@ public final class TestStamp {
             // stamp even when no test source changed (the tests exercise this code).
             if (mainClasses != null) {
                 feed(md, "main:" + ClasspathFingerprint.entry(mainClasses));
+            }
+
+            // Suite resource dirs (test/resources/, <suite>/resources/) by tree content —
+            // fixtures reach tests via classes/test, which is NOT on runtimeCp (JK-1208).
+            if (resourceRoots != null) {
+                List<Path> sortedRes = new ArrayList<>(resourceRoots);
+                sortedRes.sort(Comparator.comparing(Path::toString));
+                for (Path res : sortedRes) {
+                    if (!Files.isDirectory(res)) continue;
+                    feed(md, "res:" + res.toAbsolutePath().normalize() + ":" + ClasspathFingerprint.entry(res));
+                }
             }
 
             // Lock file: content hash — catches any dep version / JDK change.
