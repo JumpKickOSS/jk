@@ -20,32 +20,9 @@ public final class CompileSupport {
 
     private CompileSupport() {}
 
-    /** Which languages a project compiles. */
-    public record Languages(boolean java, boolean kotlin, boolean groovy) {}
-
-    /**
-     * Resolve which languages a project compiles. Explicit {@code jk.toml} opt-ins win: {@code java =
-     * <int>} enables Java, {@code kotlin = "<ver>"} enables Kotlin, {@code groovy = "<ver>"} enables
-     * Groovy (any combination). When <em>none</em> is declared, infer from the tree — a {@code
-     * src/main/java} dir or any {@code .java} under {@code src/} enables Java (at the jdk release);
-     * likewise {@code src/main/kotlin}/{@code .kt} and {@code src/main/groovy}/{@code .groovy}. A
-     * project with nothing to go on defaults to Java (a bare {@code jdk = N} project).
-     */
-    public static Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
-        boolean javaDeclared = project.java() > 0;
-        boolean kotlinDeclared = project.isKotlin();
-        boolean groovyDeclared = project.isGroovy();
-        if (javaDeclared || kotlinDeclared || groovyDeclared) {
-            return new Languages(javaDeclared, kotlinDeclared, groovyDeclared);
-        }
-        Path src = projectDir.resolve("src");
-        boolean java = Files.isDirectory(projectDir.resolve("src/main/java")) || anySourceUnder(src, ".java");
-        boolean kotlin = Files.isDirectory(projectDir.resolve("src/main/kotlin")) || anySourceUnder(src, ".kt");
-        boolean groovy = Files.isDirectory(projectDir.resolve("src/main/groovy")) || anySourceUnder(src, ".groovy");
-        if (!java && !kotlin && !groovy) {
-            return new Languages(true, false, false); // nothing detected — default to Java
-        }
-        return new Languages(java, kotlin, groovy);
+    /** One shared language answer for engine lanes and the resolver inject (JK-1218). */
+    public static cc.jumpkick.layout.Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
+        return cc.jumpkick.layout.Languages.resolve(project, projectDir);
     }
 
     /** True if {@code projectDir} contains any Java, Kotlin, or Groovy source files. */
@@ -53,20 +30,9 @@ public final class CompileSupport {
         return Files.isDirectory(projectDir.resolve("src/main/java"))
                 || Files.isDirectory(projectDir.resolve("src/main/kotlin"))
                 || Files.isDirectory(projectDir.resolve("src/main/groovy"))
-                || anySourceUnder(projectDir.resolve("src"), ".java")
-                || anySourceUnder(projectDir.resolve("src"), ".kt")
-                || anySourceUnder(projectDir.resolve("src"), ".groovy");
-    }
-
-    /** True if any regular file ending in {@code ext} exists anywhere under {@code root}. */
-    private static boolean anySourceUnder(Path root, String ext) {
-        if (!Files.isDirectory(root)) return false;
-        try (Stream<Path> stream = Files.walk(root)) {
-            return stream.anyMatch(
-                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(ext));
-        } catch (IOException e) {
-            return false;
-        }
+                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".java")
+                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".kt")
+                || cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ".groovy");
     }
 
     /** Whether this project uses the flat ({@code src/}/{@code test/}) layout. */

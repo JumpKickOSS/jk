@@ -83,7 +83,7 @@ public final class LocalProjectBuilder {
         Files.createDirectories(classes);
 
         boolean simple = CompileSupport.isSimpleLayout(project.project(), projectDir);
-        CompileSupport.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
+        cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
         Path javaRoot = simple ? projectDir.resolve("src") : projectDir.resolve("src/main/java");
 
         // 2a. Kotlin first — a mixed module's Kotlin reads Java *declarations*

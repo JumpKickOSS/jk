@@ -88,7 +88,23 @@ public final class GroovyCompiler implements Plugin {
             Map<String, Object> joint0 = new LinkedHashMap<>();
             joint0.put("stubDir", stubDir);
             joint0.put("keepStubs", spec.stubsOut != null);
-            joint0.put("namedValues", new String[] {"d", discard.getAbsolutePath()});
+            List<String> named = new ArrayList<>(List.of("d", discard.getAbsolutePath()));
+            if (!spec.processorPath.isEmpty()) {
+                // Mixed module with annotation processors (Lombok, source generators): the swept
+                // javac pass must run them or references to generated members fail resolution
+                // (JK-1232). Generated sources land in scratch; their classes go to the discard
+                // dir like all swept output.
+                File generated = new File(scratch, "javac-generated");
+                generated.mkdirs();
+                named.addAll(List.of(
+                        "processorpath",
+                        spec.processorPath.stream()
+                                .map(File::getAbsolutePath)
+                                .collect(java.util.stream.Collectors.joining(File.pathSeparator)),
+                        "s",
+                        generated.getAbsolutePath()));
+            }
+            joint0.put("namedValues", named.toArray(String[]::new));
             cfg.setJointCompilationOptions(joint0);
             JavaAwareCompilationUnit jacu = new JavaAwareCompilationUnit(cfg);
             // Post-javac re-resolution loads the Java classes through the unit's loader; the

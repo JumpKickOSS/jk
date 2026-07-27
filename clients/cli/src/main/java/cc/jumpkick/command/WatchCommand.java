@@ -138,7 +138,7 @@ public final class WatchCommand implements CliCommand {
         if (roots.isEmpty()) roots = List.of(projectDir);
 
         CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.working(
-                "Watch", verb + " on change (src/, test/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops."));
+                "Watch", verb + " on change (src/, test/src/, jk.toml; debounce " + debounceMs + "ms). Ctrl-C stops."));
 
         try (SourceWatch watch = SourceWatch.open(projectDir, roots, debounceMs)) {
             while (true) {

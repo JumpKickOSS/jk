@@ -20,6 +20,7 @@ final class CompileSpec {
     String jvmTarget;
     final List<File> sources = new ArrayList<>();
     final List<File> classpath = new ArrayList<>();
+    final List<File> processorPath = new ArrayList<>();
     final List<File> javaSourceRoots = new ArrayList<>();
     final List<String> extraArgs = new ArrayList<>();
 
@@ -50,6 +51,7 @@ final class CompileSpec {
         for (String root : c.stringList("javaSourceRoots")) s.javaSourceRoots.add(new File(root));
         for (Path p : spec.sources()) s.sources.add(p.toFile());
         for (Path p : spec.compileClasspath()) s.classpath.add(p.toFile());
+        for (Path p : spec.processorClasspath()) s.processorPath.add(p.toFile());
         s.extraArgs.addAll(spec.args());
         if (s.outputDir == null) throw new IllegalArgumentException("spec missing layout.classesDir (OUTPUT)");
         if (s.jvmTarget == null) throw new IllegalArgumentException("spec missing config jvmTarget");

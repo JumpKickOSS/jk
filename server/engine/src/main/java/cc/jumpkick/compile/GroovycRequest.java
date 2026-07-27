@@ -17,6 +17,7 @@ public record GroovycRequest(
         List<Path> sources,
         List<Path> javaSourceRoots,
         List<Path> classpath,
+        List<Path> processorPath,
         Path outputDir,
         Path stubsOut,
         int jvmTarget,
@@ -32,6 +33,7 @@ public record GroovycRequest(
         sources = List.copyOf(sources);
         javaSourceRoots = javaSourceRoots == null ? List.of() : List.copyOf(javaSourceRoots);
         classpath = List.copyOf(classpath);
+        processorPath = processorPath == null ? List.of() : List.copyOf(processorPath);
         workerClasspath = List.copyOf(workerClasspath);
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         if (jvmTarget < 8) {
@@ -50,6 +52,7 @@ public record GroovycRequest(
         private List<Path> sources = List.of();
         private List<Path> javaSourceRoots = List.of();
         private List<Path> classpath = List.of();
+        private List<Path> processorPath = List.of();
         private Path outputDir;
         private Path stubsOut;
         private int jvmTarget = 21;
@@ -69,6 +72,12 @@ public record GroovycRequest(
 
         public Builder classpath(List<Path> v) {
             this.classpath = v;
+            return this;
+        }
+
+        /** Annotation-processor classpath for the joint-mode javac sweep (JK-1232). */
+        public Builder processorPath(List<Path> v) {
+            this.processorPath = v;
             return this;
         }
 
@@ -104,7 +113,7 @@ public record GroovycRequest(
 
         public GroovycRequest build() {
             return new GroovycRequest(
-                    sources, javaSourceRoots, classpath, outputDir, stubsOut, jvmTarget, workerClasspath, workDir,
+                    sources, javaSourceRoots, classpath, processorPath, outputDir, stubsOut, jvmTarget, workerClasspath, workDir,
                     extraArgs);
         }
     }

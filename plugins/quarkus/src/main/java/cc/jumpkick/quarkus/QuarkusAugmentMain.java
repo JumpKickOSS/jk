@@ -274,7 +274,9 @@ public final class QuarkusAugmentMain {
     /** Path/workspace jars written as {@code unknown:unknown:0} by the packager, or non-Maven paths. */
     private static boolean isPathOrUnknown(RuntimeCoord r) {
         return r.group().startsWith("unknown")
-                || "0".equals(r.version()) && r.jar() != null && !r.jar().toString().contains("/repos/");
+                || "0".equals(r.version())
+                        && r.jar() != null
+                        && !r.jar().toString().replace('\\', '/').contains("/repos/");
     }
 
     /**

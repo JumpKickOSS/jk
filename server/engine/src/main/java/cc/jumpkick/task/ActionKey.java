@@ -144,6 +144,11 @@ public final class ActionKey {
         for (Path entry : cp) {
             sb.append("cp:").append(entry.toAbsolutePath().normalize()).append('\n');
         }
+        List<Path> pp = new ArrayList<>(request.processorPath());
+        pp.sort(Comparator.comparing(Path::toString));
+        for (Path entry : pp) {
+            sb.append("pp:").append(entry.toAbsolutePath().normalize()).append('\n');
+        }
         return Hashing.sha256Hex(sb.toString());
     }
 

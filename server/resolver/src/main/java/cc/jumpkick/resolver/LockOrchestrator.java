@@ -292,7 +292,7 @@ public final class LockOrchestrator {
         }
         // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
         // Engine classpath injection alone is not enough for standalone `java -jar`.
-        injectLanguageRuntimes(project, mainDeduped);
+        injectLanguageRuntimes(project, projectDir, mainDeduped);
 
         List<Dependency> fileDeps = new ArrayList<>();
         List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
@@ -861,14 +861,22 @@ public final class LockOrchestrator {
      * {@code kotlin}/{@code groovy} pin when it has a literal; otherwise a floating major of the
      * current jk default so PubGrub still picks a concrete release at lock time.
      */
-    private static void injectLanguageRuntimes(JkBuild project, LinkedHashMap<String, Dependency> mainDeduped) {
+    static void injectLanguageRuntimes(
+            JkBuild project, Path projectDir, LinkedHashMap<String, Dependency> mainDeduped) {
         JkBuild.Project p = project.project();
-        if (p.isGroovy()) {
+        // Same inference the engine uses to enable lanes (JK-1218): an unpinned project with
+        // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
+        // jk run and packaging read the lock only. Pin-only keying shipped jars that died with
+        // NoClassDefFoundError: groovy/lang/GroovyObject.
+        cc.jumpkick.layout.Languages langs = projectDir != null
+                ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
+                : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy());
+        if (langs.groovy()) {
             mainDeduped.putIfAbsent(
                     "org.apache.groovy:groovy",
                     new Dependency("org.apache.groovy:groovy", languageRuntimeSelector(p.groovy(), "5")));
         }
-        if (p.isKotlin()) {
+        if (langs.kotlin()) {
             mainDeduped.putIfAbsent(
                     "org.jetbrains.kotlin:kotlin-stdlib",
                     new Dependency(

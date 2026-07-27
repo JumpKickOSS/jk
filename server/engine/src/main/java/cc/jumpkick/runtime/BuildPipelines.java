@@ -311,7 +311,7 @@ public final class BuildPipelines {
             variantSecrets = applied.secrets();
             parsedBuild = jkBuild;
             var project = jkBuild.project();
-            CompileSupport.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
+            cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
             useJava = langs.java();
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
@@ -363,11 +363,11 @@ public final class BuildPipelines {
         final PluginBuild.Declarations pluginDeclsF = pluginDecls;
         final Map<String, String> variantSecretsF = variantSecrets;
 
-        // Plugin-contributed generated sources can be Java even in a Kotlin-only module
-        // (protoc's --kotlin_out DSL wraps its own --java_out classes) — same mixed-pipeline
-        // routing the KSP/Hilt case above takes, decided here because the declarations only
-        // exist after the describe round.
-        if (useKotlin && !useJava && pluginDecls != null) {
+        // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
+        // module (protoc's --kotlin_out DSL wraps its own --java_out classes) — same
+        // mixed-pipeline routing the KSP/Hilt case above takes, decided here because the
+        // declarations only exist after the describe round (JK-1240).
+        if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
             for (PluginBuild.StepDecl step : pluginDecls.steps()) {
                 if (!step.contributesSources().isEmpty()) {
                     useJava = true;
@@ -3659,10 +3659,17 @@ public final class BuildPipelines {
                 ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
             if (!gvArgs.contains(arg)) gvArgs.add(arg);
         }
+        // Joint mode sweeps .java sources through a real javac pass — annotation processors
+        // must run there or generated members fail resolution (JK-1232).
+        @SuppressWarnings("unchecked")
+        List<Path> processorCp = javaSourceRoots == null
+                ? List.of()
+                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(java.util.List.of());
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
                 .classpath(compileCp)
+                .processorPath(processorCp)
                 .outputDir(outputDir)
                 .stubsOut(stubsOut)
                 .jvmTarget(ctx.require(RELEASE))
