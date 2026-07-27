@@ -25,11 +25,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end tests for {@link PubGrubResolver}'s soft BOM prefer (R3 / finding 13). Other PubGrub
- * semantics are covered by the in-memory solver tests under {@code pubgrub/} — these focus on the
- * {@code bomConstraints} map being threaded through {@link MavenPackageSource#versions}: full
- * candidate list with the BOM pin first (Gradle {@code platform()} recommendation), lifting when a
- * transitive floor demands it.
+ * End-to-end tests for {@link PubGrubResolver} with a platform BOM map. Other PubGrub semantics are
+ * covered under {@code pubgrub/}. With a non-empty platform map, bare POM edges are exact
+ * (enforced); GAs listed in the map use the BOM pin over a different bare string on the edge.
  */
 class PubGrubResolverTest {
 
@@ -60,10 +58,8 @@ class PubGrubResolverTest {
     }
 
     @Test
-    void bom_soft_prefer_wins_when_compatible_with_transitive_floor(@TempDir Path tempDir) throws Exception {
-        // root → middle@1.0 → leaf >= 1.0 (would pick highest 2.0 without a prefer)
-        // BOM soft-prefers leaf = 1.5
-        // Expected: leaf = 1.5 (recommendation holds when no stricter floor).
+    void bom_pin_overrides_lower_bare_on_transitive_edge(@TempDir Path tempDir) throws Exception {
+        // root → middle@1.0 → leaf@1.0 bare; BOM pins leaf = 1.5 → enforced 1.5 (not soft lift).
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
         servePom("com.foo", "middle", "1.0", """
@@ -93,10 +89,41 @@ class PubGrubResolverTest {
     }
 
     @Test
+    void platform_active_unmapped_bare_transitive_stays_at_declared_not_highest(@TempDir Path tempDir)
+            throws Exception {
+        // Platform map has an unrelated pin (project still "has a BOM"). middle → leaf@1.0 bare;
+        // metadata offers 2.0. Must lock leaf=1.0 (exact fill), not highest-wins 2.0.
+        serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
+        serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
+        servePom("com.foo", "middle", "1.0", """
+                <project>
+                  <groupId>com.foo</groupId>
+                  <artifactId>middle</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>com.foo</groupId><artifactId>leaf</artifactId><version>1.0</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        servePom("com.foo", "leaf", "1.0", emptyPom("com.foo", "leaf", "1.0"));
+        servePom("com.foo", "leaf", "1.5", emptyPom("com.foo", "leaf", "1.5"));
+        servePom("com.foo", "leaf", "2.0", emptyPom("com.foo", "leaf", "2.0"));
+
+        RepoGroup repos = repoGroup(tempDir);
+        Map<String, String> bom = Map.of("com.foo:unrelated", "0.1");
+        PubGrubResolver resolver = new PubGrubResolver(repos, bom);
+
+        Resolution result = resolver.resolve(List.of(new Dependency("com.foo:middle", VersionSelector.parse("=1.0"))));
+
+        assertThat(result.modules().get("com.foo:leaf:jar:").version()).isEqualTo("1.0");
+    }
+
+    @Test
     void bom_managed_pin_is_enforced_on_transitive_edges(@TempDir Path tempDir) throws Exception {
-        // JK-1202: when a GA is in the platform map, the pin is enforced on POM edges (not lifted
-        // by a higher bare version on middle→leaf). Soft-prefer lift remains for GAs absent from
-        // the map; multi-group policy discussion is JK-1205.
+        // When a GA is in the platform map, the pin is enforced on POM edges (not lifted by a
+        // higher bare version on middle→leaf).
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));
         serveMetadata("/com/foo/leaf/maven-metadata.xml", "com.foo", "leaf", List.of("1.0", "1.5", "2.0"));
         servePom("com.foo", "middle", "1.0", """

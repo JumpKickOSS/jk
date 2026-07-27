@@ -619,8 +619,9 @@ public final class LockOrchestrator {
                 }
             }
             // Quarkus (and other) BOMs pin maven-resolver-api/impl via dependencyManagement but
-            // often omit named-locks. PubGrub highest-wins then pulls named-locks 2.x next to
-            // 1.9 api → NoSuchMethodError at @QuarkusTest bootstrap. Align the family.
+            // often omit named-locks. Bare edges are exact under a platform (EffectivePom fill),
+            // but keep the family in the platform map for preferredVersion / pinned-by when an
+            // edge arrives without a fill.
             alignMavenResolverFamily(bomConstraints, constraintProvenance, bomPom, bomLabel);
         }
     }
