@@ -2,13 +2,13 @@
 package cc.jumpkick.model;
 
 /**
- * How platform BOM managed pins constrain PubGrub edges (JK-1206).
+ * How platform BOM managed pins constrain PubGrub edges (JK-1206). Fills for GAs the BOM does
+ * NOT manage are governed separately by {@link UnmappedPolicy} (JK-1241).
  *
  * <ul>
- *   <li>{@link #ENFORCED} (default) — BOM map pin is exact; bare EffectivePom fills under a
- *       platform are exact (Maven depMgmt contract).
+ *   <li>{@link #ENFORCED} (default) — BOM map pin is exact (Maven depMgmt contract).
  *   <li>{@link #FLOOR} (opt-in) — BOM map pin is a lower bound ({@code atLeast}); highest-wins may
- *       lift above the pin. Unmapped bare fills stay exact.
+ *       lift above the pin.
  * </ul>
  */
 public enum PlatformPolicy {

@@ -41,6 +41,23 @@ class JkBuildParserTest {
     }
 
     @Test
+    void resolve_unmapped_parses_and_survives_kotlin_plugins_rebuild() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                kotlin = "2.1.0"
+
+                [resolve]
+                unmapped = "strict"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization"
+                """);
+        assertThat(parsed.build().unmappedPolicy()).isEqualTo(cc.jumpkick.model.UnmappedPolicy.STRICT);
+        // Default is mediate (JK-1241).
+        assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy())
+                .isEqualTo(cc.jumpkick.model.UnmappedPolicy.MEDIATE);
+    }
+
+    @Test
     void parses_minimal_project_block() {
         JkBuild parsed = JkBuildParser.parse(PROJECT);
         assertThat(parsed.project().group()).isEqualTo("com.example");

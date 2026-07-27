@@ -45,11 +45,21 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
-    void platform_present_unmapped_bare_is_exact_not_highest_wins(@TempDir Path tmp) {
-        // BOM maps an unrelated GA — platform is still active. Bare filled version must not
-        // become atLeast (named-locks / incomplete-BOM failure mode).
+    void platform_present_unmapped_bare_mediates_by_default(@TempDir Path tmp) {
+        // JK-1241: unmapped GAs go back to highest-wins mediation (Maven/Gradle parity) — the
+        // named-locks hazard class is covered by family-align MAPPING those GAs into the BOM.
         MavenPackageSource src = source(tmp, Map.of("com.foo:other", "9.0.0"));
-        VersionSet vs = src.constraintForManagedEdge("org.apache.maven.resolver:maven-resolver-named-locks:jar:", "1.9.24");
+        VersionSet vs = src.constraintForManagedEdge("org.example:unmanaged:jar:", "1.9.24");
+        assertThat(vs.asExactSingleton()).isEmpty();
+        assertThat(vs.contains("1.9.24")).isTrue();
+        assertThat(vs.contains("2.0.21")).isTrue(); // diamond skew mediates instead of hard-failing
+    }
+
+    @Test
+    void unmapped_strict_opt_in_restores_exact_fills(@TempDir Path tmp) {
+        // [resolve] unmapped = "strict": incomplete-BOM reproducibility posture.
+        MavenPackageSource src = strictSource(tmp, Map.of("com.foo:other", "9.0.0"), PlatformPolicy.ENFORCED);
+        VersionSet vs = src.constraintForManagedEdge("org.example:unmanaged:jar:", "1.9.24");
         assertThat(vs.asExactSingleton()).contains("1.9.24");
         assertThat(vs.contains("2.0.21")).isFalse();
     }
@@ -120,8 +130,8 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
-    void floor_policy_unmapped_bare_stays_exact(@TempDir Path tmp) {
-        MavenPackageSource src = source(tmp, Map.of("com.foo:other", "1.0"), PlatformPolicy.FLOOR);
+    void floor_policy_unmapped_strict_stays_exact(@TempDir Path tmp) {
+        MavenPackageSource src = strictSource(tmp, Map.of("com.foo:other", "1.0"), PlatformPolicy.FLOOR);
         VersionSet vs = src.constraintForManagedEdge("org.example:leaf:jar:", "1.9.24");
         assertThat(vs.asExactSingleton()).contains("1.9.24");
         assertThat(vs.contains("2.0.0")).isFalse();
@@ -136,5 +146,18 @@ class MavenPackageSourceConstraintTest {
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(
                 group, new EffectivePomBuilder(group), bom, Map.of(), cc.jumpkick.resolver.KmpRedirects.NONE, policy);
+    }
+
+    private static MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
+        MavenRepo repo = new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
+        RepoGroup group = RepoGroup.of(repo);
+        return new MavenPackageSource(
+                group,
+                new EffectivePomBuilder(group),
+                bom,
+                Map.of(),
+                cc.jumpkick.resolver.KmpRedirects.NONE,
+                policy,
+                cc.jumpkick.model.UnmappedPolicy.STRICT);
     }
 }

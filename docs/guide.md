@@ -376,19 +376,22 @@ More packaging detail: [features/packaging.md](features/packaging.md). Giter8 ca
 
 Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
-edges, and any bare version already filled by EffectivePom (parent or import
-dependencyManagement) stays **exact**. Explicit Maven ranges on a POM edge remain open ranges.
-Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a **pin
-source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree` shows it
-under the platform section with its version and a `(platform)` tag, not as missing.
+edges. Explicit Maven ranges on a POM edge remain open ranges. Use an exact or caret/tilde
+version on the BOM itself — not `latest`. The BOM is a **pin source** (recorded on managed
+lock rows as `pinned-by`), not a runtime jar; `jk tree` shows it under the platform section
+with its version and a `(platform)` tag, not as missing.
 
 | Policy | Config / flag | BOM-map pin |
 |--------|---------------|-------------|
 | **enforced** (default) | omit / `[resolve] platform = "enforced"` | exact |
 | **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update --platform=floor` | lower bound (may highest-wins lift) |
 
-Unmapped bare fills under a platform stay exact even in `floor` mode (avoids incomplete-BOM
-skew). Exact user roots still override the BOM for that GA.
+GAs the platform does **not** manage keep highest-wins mediation by default (Maven/Gradle
+parity — an everyday diamond on an unmanaged GA resolves instead of hard-conflicting); risky
+incomplete-BOM families (maven-resolver named-locks) are covered by family alignment mapping
+them **into** the BOM. Opt into exact fills for unmanaged GAs with
+`[resolve] unmapped = "strict"` (maximum reproducibility: every unmanaged diamond is a hard
+error). Exact user roots still override the BOM for that GA.
 
 Without a platform BOM, bare transitive POM versions still use **highest-version-wins** floors
 (not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are

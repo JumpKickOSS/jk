@@ -74,6 +74,7 @@ public final class LocalProjectBuilder {
                 .withProjectDir(projectDir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(project, projectDir))
                 .withPlatformPolicy(project.build().platformPolicy())
+                .withUnmappedPolicy(project.build().unmappedPolicy())
                 .lock(project, jkVersion);
         List<Path> classpath =
                 new ArrayList<>(new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN));

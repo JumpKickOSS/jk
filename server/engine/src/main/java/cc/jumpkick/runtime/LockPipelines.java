@@ -146,7 +146,8 @@ public final class LockPipelines {
                             .withProjectDir(dir)
                             .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
                                     pathPrep.project(), dir))
-                            .withPlatformPolicy(pathPrep.project().build().platformPolicy());
+                            .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                            .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
                     // Wrap the caller's observer so it also drives ctx.label/progress
                     // (the bar under a console listener; wire progress events when hosted).
                     ResolveObserver wrappedObserver = new ResolveObserver() {
@@ -390,6 +391,7 @@ public final class LockPipelines {
                                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
                                         pathPrep.project(), dir))
                                 .withPlatformPolicy(policy)
+                                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         ctx.put(LOCKFILE, lock);
@@ -513,6 +515,7 @@ public final class LockPipelines {
                 .withJvmEnvironment(
                         cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(pathPrep.project(), dir))
                 .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
         newLock = GitSourceResolution.stamp(newLock, prep.gitInfoByKey());
 

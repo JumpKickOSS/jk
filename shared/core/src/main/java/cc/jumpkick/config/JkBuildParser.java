@@ -143,7 +143,8 @@ public final class JkBuildParser {
                     build.kspOptions(),
                     build.extraSrc(),
                     build.testWorkers(),
-                    build.platformPolicy());
+                    build.platformPolicy(),
+                    build.unmappedPolicy());
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
@@ -1515,6 +1516,7 @@ public final class JkBuildParser {
         TomlTable test = root.getTable("test");
         TomlTable resolve = root.getTable("resolve");
         PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
+        cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
         if (resolve != null && resolve.contains("platform")) {
             String raw = resolve.getString("platform");
             if (raw == null || raw.isBlank()) {
@@ -1526,10 +1528,21 @@ public final class JkBuildParser {
                 throw new JkBuildParseException("[resolve].platform: " + e.getMessage());
             }
         }
+        if (resolve != null && resolve.contains("unmapped")) {
+            String raw = resolve.getString("unmapped");
+            if (raw == null || raw.isBlank()) {
+                throw new JkBuildParseException("[resolve].unmapped must be a string (mediate or strict)");
+            }
+            try {
+                unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.parse(raw);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[resolve].unmapped: " + e.getMessage());
+            }
+        }
         if (build == null && test == null && resolve == null) return JkBuild.Build.EMPTY;
         if (build == null && test == null) {
             return new JkBuild.Build(
-                    List.of(), List.of(), true, List.of(), List.of(), List.of(), null, platformPolicy);
+                    List.of(), List.of(), true, List.of(), List.of(), List.of(), null, platformPolicy, unmappedPolicy);
         }
 
         List<String> orderAfter = new ArrayList<>();
@@ -1610,7 +1623,15 @@ public final class JkBuildParser {
             }
         }
         return new JkBuild.Build(
-                orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc, testWorkers, platformPolicy);
+                orderAfter,
+                testPluginJars,
+                lint,
+                List.of(),
+                kspOptions,
+                extraSrc,
+                testWorkers,
+                platformPolicy,
+                unmappedPolicy);
     }
 
     /**

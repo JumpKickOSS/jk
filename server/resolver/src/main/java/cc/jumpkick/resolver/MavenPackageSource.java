@@ -42,6 +42,7 @@ public final class MavenPackageSource implements PackageSource {
     private final EffectivePomBuilder pomBuilder;
     private final Map<String, String> bomConstraints;
     private final PlatformPolicy platformPolicy;
+    private final cc.jumpkick.model.UnmappedPolicy unmappedPolicy;
     private final KmpRedirects kmp;
 
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
@@ -103,7 +104,7 @@ public final class MavenPackageSource implements PackageSource {
         this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
     }
 
-    /** Full constructor with {@link PlatformPolicy} (JK-1206). */
+    /** As above with {@link PlatformPolicy} (JK-1206); unmapped fills default to MEDIATE. */
     public MavenPackageSource(
             RepoGroup repos,
             EffectivePomBuilder pomBuilder,
@@ -111,12 +112,26 @@ public final class MavenPackageSource implements PackageSource {
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp,
             PlatformPolicy platformPolicy) {
+        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, null);
+    }
+
+    /** Full constructor with both platform policies (JK-1206/JK-1241). */
+    public MavenPackageSource(
+            RepoGroup repos,
+            EffectivePomBuilder pomBuilder,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy,
+            cc.jumpkick.model.UnmappedPolicy unmappedPolicy) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.pomBuilder = Objects.requireNonNull(pomBuilder, "pomBuilder");
         this.bomConstraints = Map.copyOf(Objects.requireNonNull(bomConstraints, "bomConstraints"));
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(lockedVersionPrefs, "lockedVersionPrefs"));
         this.kmp = Objects.requireNonNull(kmp, "kmp");
         this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+        this.unmappedPolicy =
+                unmappedPolicy == null ? cc.jumpkick.model.UnmappedPolicy.MEDIATE : unmappedPolicy;
     }
 
     public PlatformPolicy platformPolicy() {
@@ -364,11 +379,13 @@ public final class MavenPackageSource implements PackageSource {
      * <ul>
      *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
      *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
-     *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): bare →
-     *       {@code exact}; BOM-map GAs use {@code exact(bomPin)}.
+     *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): BOM-map GAs
+     *       use {@code exact(bomPin)}; unmapped bare fills follow {@link
+     *       cc.jumpkick.model.UnmappedPolicy} — highest-wins by default, {@code exact} under
+     *       {@code strict} (JK-1241).
      *   <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
      *       atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
-     *       version — JK-1212); unmapped bare fills stay {@code exact}.
+     *       version — JK-1212); unmapped bare fills follow {@link cc.jumpkick.model.UnmappedPolicy}.
      * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
@@ -397,11 +414,14 @@ public final class MavenPackageSource implements PackageSource {
             }
             return VersionSet.exact(bomPin);
         }
-        if (!bomConstraints.isEmpty()) {
-            // Platform active but GA unmapped: keep exact fill in both policies (named-locks safety).
+        if (!bomConstraints.isEmpty() && unmappedPolicy == cc.jumpkick.model.UnmappedPolicy.STRICT) {
+            // [resolve] unmapped = "strict": exact fills for unmanaged GAs — every diamond on
+            // them is a hard error (maximum reproducibility). Default is MEDIATE (JK-1241):
+            // fall through to highest-wins, Maven/Gradle parity; the named-locks hazard class
+            // is covered by family-align MAPPING those GAs into the BOM constraints.
             return VersionSet.exact(trimmed);
         }
-        // No platform: historical highest-wins bare versions. Lock prefs only reorder candidates.
+        // No platform, or unmapped-mediate: highest-wins bare versions. Lock prefs only reorder candidates.
         return VersionSelectors.constraintFromPomVersion(trimmed);
     }
 

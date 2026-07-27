@@ -106,7 +106,8 @@ public final class LockFlow {
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
                 .withProjectDir(dir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(effective, dir))
-                .withPlatformPolicy(pathPrep.project().build().platformPolicy());
+                .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
 
         Lockfile lock;
         try {

@@ -102,6 +102,9 @@ public final class LockOrchestrator {
     /** BOM pin policy (JK-1206); default {@link PlatformPolicy#ENFORCED}. */
     private PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
 
+    /** Unmapped-fill policy (JK-1241); default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
+    private cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
+
     /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
     public LockOrchestrator withProjectDir(Path projectDir) {
         this.projectDir = projectDir;
@@ -111,6 +114,12 @@ public final class LockOrchestrator {
     /** Platform BOM edge policy (see {@link PlatformPolicy}). */
     public LockOrchestrator withPlatformPolicy(PlatformPolicy policy) {
         if (policy != null) this.platformPolicy = policy;
+        return this;
+    }
+
+    /** Unmapped-fill policy under a platform (see {@link cc.jumpkick.model.UnmappedPolicy}). */
+    public LockOrchestrator withUnmappedPolicy(cc.jumpkick.model.UnmappedPolicy policy) {
+        if (policy != null) this.unmappedPolicy = policy;
         return this;
     }
 
@@ -150,7 +159,7 @@ public final class LockOrchestrator {
             java.util.Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
         PubGrubResolver r =
-                new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy);
+                new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
         if (diagnosticPalette != null) r.palette = diagnosticPalette;
         return r;
     }
@@ -320,7 +329,7 @@ public final class LockOrchestrator {
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null
                 : new MavenPackageSource(
-                        repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy);
+                        repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
 
         // Progress budget: graph phase + materialize phase (≈2× package count). Grow estimate as we go.
         int declared = mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size();

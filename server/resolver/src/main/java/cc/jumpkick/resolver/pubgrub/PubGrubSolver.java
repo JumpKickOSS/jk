@@ -86,6 +86,28 @@ public class PubGrubSolver {
         this.deadlineNanos = timeoutMs <= 0 ? Long.MAX_VALUE : System.nanoTime() + timeoutMs * 1_000_000L;
     }
 
+    /**
+     * Wide mode (JK-1241/JK-1216): load full advertised histories up front instead of compact
+     * lists and lazy preferred-singleton seeds. Used for the one bounded retry after an unsat
+     * verdict that involved potentially-incomplete universes — conflict resolution can derive
+     * root-level unsat from capped candidate lists without ever revisiting a decision, so the
+     * decision-time widen hooks alone cannot recover those graphs.
+     */
+    private boolean wideUniverses;
+
+    /** True when any universe was seeded from a compact list or preferred singleton. */
+    private boolean usedCompactUniverse;
+
+    public PubGrubSolver withWideUniverses() {
+        this.wideUniverses = true;
+        return this;
+    }
+
+    /** An unsat verdict from this solver might be a cap artifact — worth one wide retry. */
+    public boolean maybeIncomplete() {
+        return usedCompactUniverse;
+    }
+
     /** Progress hook for live graph ticks during solve (LockOrchestrator / JK-1091). */
     public PubGrubSolver withOnDecision(BiConsumer<String, String> onDecision) {
         this.onDecision = onDecision;
@@ -391,15 +413,23 @@ public class PubGrubSolver {
                 // want metadata samples on failure (handled at NoVersions).
                 universes.put(pkg, VersionUniverse.of(pkg, List.of(exact.get())));
                 lazyUniverses.add(pkg);
+            } else if (wideUniverses) {
+                List<String> versions = source.expandedVersions(pkg);
+                if (versions.size() > MAX_EXPANDED_VERSIONS) {
+                    versions = List.copyOf(versions.subList(0, MAX_EXPANDED_VERSIONS));
+                }
+                universes.put(pkg, VersionUniverse.of(pkg, versions));
             } else {
                 Optional<String> preferred = source.preferredVersion(pkg);
                 if (preferred.isPresent() && positive.contains(preferred.get())) {
                     universes.put(pkg, VersionUniverse.of(pkg, List.of(preferred.get())));
                     lazyUniverses.add(pkg);
+                    usedCompactUniverse = true;
                 } else {
                     List<String> versions = source.versions(pkg);
                     universes.put(pkg, VersionUniverse.of(pkg, versions));
                     cappedUniverses.add(pkg); // compact list — widenable on exhaustion (JK-1216)
+                    usedCompactUniverse = true;
                 }
             }
         }

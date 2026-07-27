@@ -44,9 +44,10 @@ Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:
 3. **Three scope solves** (main / test / processor) with shared in-memory caches
 4. **Jar download + CAS + upstream checksum** per package (`toArtifact`, parallel with host rate limit)
 
-Platform BOM pins (and bare EffectivePom fills under a platform) are **exact** on edges; they
-also seed a lazy version universe so metadata is not required unless the pin fails. They do not
-by themselves skip POM/jar download work for the chosen GAV.
+Platform BOM pins are **exact** on edges (unmapped fills mediate by default —
+`[resolve] unmapped = "strict"` makes them exact too); pins seed a lazy version universe so
+metadata is not required unless the pin fails. They do not by themselves skip POM/jar download
+work for the chosen GAV.
 
 ## Optimizations landed
 

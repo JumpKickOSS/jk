@@ -230,7 +230,8 @@ public final class AutoLock {
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
                     .withProjectDir(dir)
                     .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir))
-                    .withPlatformPolicy(effective.build().platformPolicy());
+                    .withPlatformPolicy(effective.build().platformPolicy())
+                    .withUnmappedPolicy(effective.build().unmappedPolicy());
 
             Lockfile updated = orchestrator.lockConservative(
                     effective, existing, jkVersion, features == null ? List.of() : features, withDefaults, observer);

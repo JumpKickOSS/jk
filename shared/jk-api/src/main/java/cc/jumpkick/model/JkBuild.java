@@ -704,10 +704,23 @@ public record JkBuild(
              * {@code [resolve] platform}: how BOM managed pins constrain the graph (JK-1206). Default
              * {@link PlatformPolicy#ENFORCED}.
              */
-            PlatformPolicy platformPolicy) {
+            PlatformPolicy platformPolicy,
+            /**
+             * {@code [resolve] unmapped}: how bare fills for GAs the platform does NOT manage are
+             * constrained (JK-1241). Default {@link UnmappedPolicy#MEDIATE}.
+             */
+            UnmappedPolicy unmappedPolicy) {
 
-        public static final Build EMPTY =
-                new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null, PlatformPolicy.ENFORCED);
+        public static final Build EMPTY = new Build(
+                List.of(),
+                List.of(),
+                true,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                PlatformPolicy.ENFORCED,
+                UnmappedPolicy.MEDIATE);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -717,6 +730,7 @@ public record JkBuild(
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+            unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -725,7 +739,15 @@ public record JkBuild(
             var all = new java.util.ArrayList<>(extraSrc);
             all.addAll(dirs);
             return new Build(
-                    orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers, platformPolicy);
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    all,
+                    testWorkers,
+                    platformPolicy,
+                    unmappedPolicy);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -737,7 +759,8 @@ public record JkBuild(
                     kspOptions,
                     extraSrc,
                     testWorkers,
-                    policy == null ? PlatformPolicy.ENFORCED : policy);
+                    policy == null ? PlatformPolicy.ENFORCED : policy,
+                    unmappedPolicy);
         }
 
         /**
