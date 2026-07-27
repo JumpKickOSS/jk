@@ -41,6 +41,24 @@ class ActionCacheTest {
     }
 
     @Test
+    void store_excludes_jk_scratch_dirs(@TempDir Path tempDir) throws IOException {
+        Cas cas = new Cas(tempDir.resolve("cas"));
+        ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
+
+        Path outputs = tempDir.resolve("outputs");
+        Files.createDirectories(outputs.resolve(".jk-quarkus-bootstrap/m2/g/a/1"));
+        Files.writeString(outputs.resolve("quarkus-run.jar"), "RUN");
+        Files.writeString(outputs.resolve(".jk-quarkus-bootstrap/m2/g/a/1/a-1.jar"), "PRIVATE");
+        Files.writeString(outputs.resolve(".jk-note"), "PRIVATE-FILE");
+
+        cache.store("quarkus-augment", "key-jk", Map.of("src/App.java", "abc"), outputs);
+
+        var record = cache.lookup("key-jk").orElseThrow();
+        // JK-1220: plugin-private `.jk-*` scratch never enters the action record or the CAS walk.
+        assertThat(record.outputs()).containsOnlyKeys("quarkus-run.jar");
+    }
+
+    @Test
     void restore_recreates_outputs_from_cas(@TempDir Path tempDir) throws IOException {
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));

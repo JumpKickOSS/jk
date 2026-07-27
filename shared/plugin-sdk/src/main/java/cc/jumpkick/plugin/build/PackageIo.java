@@ -75,4 +75,11 @@ public interface PackageIo {
 
     /** Progress label surfaced in the build UI. */
     void label(String text);
+
+    /**
+     * Declare an extra produced file or directory (beyond {@link #artifactPath()}) that the
+     * engine must cache and restore with the artifact — e.g. the quarkus fast-jar {@code lib/}
+     * siblings. Must live under the artifact's directory. Directories are stored recursively.
+     */
+    default void produced(Path path) {}
 }

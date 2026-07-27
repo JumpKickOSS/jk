@@ -547,5 +547,11 @@ public final class BuildPluginHarness {
         public void label(String text) {
             out.emit("{\"t\":\"label\",\"text\":" + Jsonl.quote(text) + "}");
         }
+
+        @Override
+        public void produced(Path path) {
+            out.emit("{\"t\":\"produced\",\"path\":"
+                    + Jsonl.quote(path.toAbsolutePath().normalize().toString()) + "}");
+        }
     }
 }

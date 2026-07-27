@@ -62,6 +62,9 @@ public final class ActionCache {
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
                     if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                    // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
+                    // plugin-sdk copyTree convention) is never an action output (JK-1220).
+                    if (hasJkScratchSegment(outputDir.relativize(file))) continue;
                     // Hash once, then COPY into the CAS (never link — see Cas.putFile).
                     String hex = Hashing.sha256Hex(file);
                     cas.putFile(file, hex);
@@ -76,6 +79,14 @@ public final class ActionCache {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs);
+    }
+
+    /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
+    static boolean hasJkScratchSegment(Path rel) {
+        for (Path seg : rel) {
+            if (seg.toString().startsWith(".jk-")) return true;
+        }
+        return false;
     }
 
     /** True when {@code inputs} includes at least one source-file fingerprint (not only flags/cp). */

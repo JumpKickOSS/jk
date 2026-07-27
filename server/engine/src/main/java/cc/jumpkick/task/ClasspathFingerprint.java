@@ -99,6 +99,9 @@ public final class ClasspathFingerprint {
             for (Path f : (Iterable<Path>) walk::iterator) {
                 if (!Files.isRegularFile(f)) continue;
                 if (isBuildMetadata(f.getFileName().toString())) continue;
+                // `.jk-*` plugin scratch (bootstrap m2/staging) is not output content and
+                // re-hashing it on every no-op build is pure waste (JK-1220).
+                if (ActionCache.hasJkScratchSegment(dir.relativize(f))) continue;
                 files.add(dir.relativize(f).toString().replace('\\', '/') + ":" + Hashing.sha256Hex(f));
             }
         }

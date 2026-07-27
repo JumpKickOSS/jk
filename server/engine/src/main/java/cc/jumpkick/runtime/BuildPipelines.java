@@ -2736,8 +2736,9 @@ public final class BuildPipelines {
         if (staleDot > 0 && !staleName.endsWith(".jar")) {
             Files.deleteIfExists(jarPath.resolveSibling(staleName.substring(0, staleDot) + ".jar"));
         }
+        List<String> workerLines;
         try {
-            PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
+            workerLines = PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
         } catch (IOException e) {
             ctx.error("package", e.getMessage());
             throw e;
@@ -2759,6 +2760,27 @@ public final class BuildPipelines {
         if (dot > 0 && !artifactName.endsWith(".jar")) {
             Path conventional = jarPath.resolveSibling(artifactName.substring(0, dot) + ".jar");
             if (Files.isRegularFile(conventional)) produced.add(conventional);
+        }
+        // Packager-declared extras (PackageIo.produced — quarkus fast-jar lib/ siblings): a
+        // multi-file layout must cache whole or a hit after `jk clean` restores a broken
+        // artifact (JK-1210). Directories expand recursively; escapes of the artifact dir
+        // are a packager bug.
+        Path outBase = jarPath.getParent().toAbsolutePath().normalize();
+        for (String line : workerLines) {
+            if (!"produced".equals(cc.jumpkick.plugin.protocol.Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(cc.jumpkick.plugin.protocol.Jsonl.str(line, "path")))
+                    .toAbsolutePath()
+                    .normalize();
+            if (!p.startsWith(outBase)) {
+                throw new IOException("packager declared produced path outside the artifact dir: " + p);
+            }
+            if (Files.isRegularFile(p)) {
+                produced.add(p);
+            } else if (Files.isDirectory(p)) {
+                try (java.util.stream.Stream<Path> walk = Files.walk(p)) {
+                    walk.filter(Files::isRegularFile).forEach(produced::add);
+                }
+            }
         }
         storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), produced);
         ctx.put(JAR_PATH, jarPath);
