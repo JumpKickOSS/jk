@@ -129,6 +129,14 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.ConcurrentHashMap<Long, Double> lastProgressByRequest =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /**
+     * Denominator behind each request's held peak: when the tracker's denominator grows
+     * (calibrate — preflight band joins the execute total), the held percent is stale by
+     * construction and must rebase instead of pinning the rider at the preflight peak (JK-1219).
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Long> lastProgressDenByRequest =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /** Per-request workspace aggregate progress (JK-1120). */
     private final java.util.concurrent.ConcurrentHashMap<Long, cc.jumpkick.runtime.WorkspaceProgressTracker>
             progressTrackers = new java.util.concurrent.ConcurrentHashMap<>();
@@ -1091,6 +1099,7 @@ public final class EngineServer implements AutoCloseable {
     private void clearProgress(long requestId) {
         if (requestId <= 0) return;
         lastProgressByRequest.remove(requestId);
+        lastProgressDenByRequest.remove(requestId);
         progressTrackers.remove(requestId);
         progressRoots.remove(requestId);
         progressWeights.remove(requestId);
@@ -1140,13 +1149,18 @@ public final class EngineServer implements AutoCloseable {
             if (tracker == null) return;
             var snap = tracker.snapshot();
             if (snap.hasPercent()) {
-                // Peak-hold machine progress (JK-1130): never publish a lower % than already emitted.
+                // Peak-hold machine progress (JK-1130): never publish a lower % than already
+                // emitted — but rebase when the denominator grew (calibrate), or the preflight
+                // peak pins the rider for the whole execute phase (JK-1219).
                 Double prevPct = lastProgressByRequest.get(requestId);
+                Long prevDen = lastProgressDenByRequest.get(requestId);
                 double pct = snap.percent();
-                if (prevPct != null && pct + 1e-9 < prevPct) {
+                boolean denGrew = prevDen != null && snap.denominator() > prevDen;
+                if (!denGrew && prevPct != null && pct + 1e-9 < prevPct) {
                     pct = prevPct;
                 }
                 lastProgressByRequest.put(requestId, pct);
+                lastProgressDenByRequest.put(requestId, snap.denominator());
             }
             if (!force && !shouldEmitWorkspaceProgress(requestId, snap)) return;
             String dir = progressRoots.getOrDefault(requestId, "");

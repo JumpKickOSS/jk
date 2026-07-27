@@ -678,7 +678,13 @@ public final class BuildService {
                             long elapsed = (System.nanoTime() - start) / 1_000_000;
                             listener.onEtaEstimate(elapsed
                                     + EffortWeights.scheduleMillis(
-                                            rem, concurrency, false, parallelTests, Math.round(liveMpw)));
+                                            rem,
+                                            concurrency,
+                                            false,
+                                            parallelTests,
+                                            // sub-0.5 rates round to 0 and multiply every bound
+                                            // away — the countdown snapped to elapsed (JK-1226)
+                                            Math.max(1, Math.round(liveMpw))));
                         }
                         return null;
                     },
@@ -913,9 +919,11 @@ public final class BuildService {
             String shaped = s.dirKey(entryDir);
             var exact = metrics.invocation(kind, shaped).map(BuildMetrics.Entry::ok);
             if (exact.isPresent() && exact.get().count() > 0) return exact.get();
-            // Same path, any dirty-count for this kind.
-            var bare = metrics.invocation(kind, entryDir.toString()).map(BuildMetrics.Entry::ok);
-            if (bare.isPresent() && bare.get().count() > 0) return bare.get();
+            // Same path, any dirty-count for this kind — the write side always shapes the
+            // key (path#dN), so merge across shapes instead of an exact bare lookup that
+            // reads a never-written key (JK-1226).
+            BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, entryDir.toString());
+            if (shapes.count() > 0) return shapes;
             // Fall back to plain "build" for the path (pre-1156 rows).
             if (!"build".equals(kind)) {
                 var legacy = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);

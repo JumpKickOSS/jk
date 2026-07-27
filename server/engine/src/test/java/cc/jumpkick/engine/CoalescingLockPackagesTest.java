@@ -25,4 +25,18 @@ class CoalescingLockPackagesTest {
             assertThat(out).containsExactly("c@3#3", "d@4#4");
         }
     }
+
+    @Test
+    void close_flushes_pending_events() {
+        // JK-1233: close() marked closed before flushing, and flush() no-ops when closed —
+        // the documented close-flushes contract silently dropped the final event.
+        List<String> out = new ArrayList<>();
+        CoalescingLockPackages c = new CoalescingLockPackages(
+                (dir, name, ver, total) -> out.add(name + "@" + ver + "#" + total), 60_000L);
+        c.onPackage("/p", "a", "1");
+        c.close();
+        assertThat(out).containsExactly("a@1#1");
+        c.close(); // idempotent
+        assertThat(out).hasSize(1);
+    }
 }

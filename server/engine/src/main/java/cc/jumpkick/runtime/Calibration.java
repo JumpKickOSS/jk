@@ -248,17 +248,58 @@ public final class Calibration {
         Calibration current = load();
         // Skip when we already have a current-schema multi-probe result, unless forced.
         if (!force && current.present() && current.measured && current.schema >= SCHEMA) return current;
+        // Negative cache (JK-1225): a failed probe used to re-run the FULL multi-fork suite
+        // synchronously in the ETA path of every build and explain, forever. Back off instead;
+        // --force (jk engine calibrate --force) always retries.
+        if (!force && failedRecently()) return current;
         Calibration probed = probe(jdksDir, allowNetwork);
         if (probed != null && probed.present()) {
             // Preserve engine cold-start if we already had one and this is an upgrade re-probe.
             if (current.engineColdStartMs > 0 && probed.engineColdStartMs == 0) {
                 probed = probed.withEngineColdStartMs(current.engineColdStartMs);
             }
+            clearFailureMarker();
             persist(probed);
             MEMO.set(probed);
             return probed;
         }
+        recordFailure();
         return current;
+    }
+
+    /** Probe-failure backoff: don't re-run the expensive suite for a day after a failure. */
+    private static final long FAILURE_BACKOFF_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(24);
+
+    static Path failureMarker() {
+        return JkDirs.builds().resolve("calibration.failed");
+    }
+
+    private static boolean failedRecently() {
+        try {
+            Path marker = failureMarker();
+            if (!Files.isRegularFile(marker)) return false;
+            long at = Long.parseLong(Files.readString(marker).trim());
+            return System.currentTimeMillis() - at < FAILURE_BACKOFF_MS;
+        } catch (Exception e) {
+            return false; // unreadable marker — probe
+        }
+    }
+
+    private static void recordFailure() {
+        try {
+            Files.createDirectories(failureMarker().getParent());
+            Files.writeString(failureMarker(), Long.toString(System.currentTimeMillis()));
+        } catch (IOException ignored) {
+            // best-effort; worst case we probe again next build
+        }
+    }
+
+    private static void clearFailureMarker() {
+        try {
+            Files.deleteIfExists(failureMarker());
+        } catch (IOException ignored) {
+            // stale marker only delays the next re-probe after a later failure
+        }
     }
 
     /**

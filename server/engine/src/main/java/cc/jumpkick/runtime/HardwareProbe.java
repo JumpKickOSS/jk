@@ -94,10 +94,12 @@ final class HardwareProbe {
 
             long forkMs = maxWarm(sample(javaExe, "-version"));
             long javacMs = measureJavac(javacExe);
+            // Validity gate BEFORE the expensive probes (JK-1225): a broken javac used to pay
+            // disk I/O + hash CPU + the full worker-JVM suite just to discard the result.
+            if (forkMs <= 0 || javacMs <= 0) return null;
             long diskMs = measureDiskIo();
             long hashMs = measureHashCpu();
             WorkerTimes worker = measureWorkerJvm(javaExe, javacExe);
-            if (forkMs <= 0 || javacMs <= 0) return null;
 
             long synthFork = worker != null ? worker.forkMs : 0;
             long synthRun = worker != null ? worker.runMs : 0;
@@ -456,6 +458,17 @@ final class HardwareProbe {
         try {
             byte[] body = httpGet(CENTRAL_BASE + relativeMavenPath);
             if (body == null || body.length == 0) return null;
+            // This lands in the SHARED repos mirror that later resolution trusts by presence —
+            // never persist unverified bytes (JK-1225). No .sha1, no cache entry.
+            byte[] sha1 = httpGet(CENTRAL_BASE + relativeMavenPath + ".sha1");
+            if (sha1 == null || sha1.length == 0) return null;
+            String expected = new String(sha1, java.nio.charset.StandardCharsets.US_ASCII)
+                    .trim()
+                    .split("\\s+")[0]
+                    .toLowerCase(java.util.Locale.ROOT);
+            String actual = java.util.HexFormat.of()
+                    .formatHex(java.security.MessageDigest.getInstance("SHA-1").digest(body));
+            if (!actual.equals(expected)) return null;
             Path dest = cacheRoot.resolve("repos").resolve("central").resolve(relativeMavenPath);
             Files.createDirectories(dest.getParent());
             Files.write(dest, body);

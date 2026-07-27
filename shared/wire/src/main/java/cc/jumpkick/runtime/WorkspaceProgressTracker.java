@@ -222,7 +222,10 @@ public final class WorkspaceProgressTracker {
             case "plan" -> {
                 if (total <= 0) yield 0.45;
                 double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                yield 0.40 + 0.60 * within;
+                // Cap below 1.0: before calibrate() the denominator is the preflight band
+                // alone, and a plan-complete 100/100 snapshot pins every peak-holding
+                // consumer at 100% for the whole execute phase (JK-1219).
+                yield 0.40 + 0.55 * within;
             }
             default -> 0.10;
         };

@@ -103,7 +103,10 @@ class WorkspaceProgressTrackerTest {
         assertThat(s.numerator()).isGreaterThan(0);
         assertThat(s.phase()).isEqualTo("preflight");
         s = t.preflight("plan", 10, 10);
-        assertThat(s.numerator()).isEqualTo(PF);
+        // Plan-complete stays below the full band: a 100% snapshot before calibrate would pin
+        // peak-holding riders at 100 for the whole execute phase (JK-1219).
+        assertThat(s.numerator()).isEqualTo(95);
+        assertThat(s.percent()).isLessThan(100.0);
         s = t.calibrate(200, 3);
         assertThat(bar(t)).isEqualTo(PF + " of " + (PF + 200));
         assertThat(s.phase()).isEqualTo("execute");

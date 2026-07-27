@@ -137,6 +137,40 @@ public final class BuildMetrics {
         return Optional.ofNullable(invocations.get(kind + SEP + dir));
     }
 
+    /**
+     * Merged OK stats for {@code kind} across every dirty-count shape of {@code dir}
+     * ({@code dir} itself plus {@code dir#dN} rows). JK-1156 shaped the write side, which made
+     * exact bare-path lookups read a key that is never written (JK-1226).
+     */
+    public Stats okAcrossShapes(String kind, String dir) {
+        long count = 0, total = 0, min = Long.MAX_VALUE, max = 0;
+        for (Entry e : invocations.values()) {
+            if (!kind.equals(e.kind()) || !sameBaseDir(dir, e.dir())) continue;
+            Stats ok = e.ok();
+            if (ok.count() == 0) continue;
+            count += ok.count();
+            total += ok.totalMillis();
+            min = Math.min(min, ok.minMillis());
+            max = Math.max(max, ok.maxMillis());
+        }
+        return count == 0 ? Stats.EMPTY : new Stats(count, total, min, max);
+    }
+
+    /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
+    static boolean sameBaseDir(String dir, String candidate) {
+        return dir.equals(candidate) || dir.equals(baseDir(candidate));
+    }
+
+    /** Strip a trailing {@code #dN} shape suffix (JK-1156) — {@code path#d3} → {@code path}. */
+    static String baseDir(String dir) {
+        int i = dir.lastIndexOf("#d");
+        if (i <= 0) return dir;
+        for (int j = i + 2; j < dir.length(); j++) {
+            if (!Character.isDigit(dir.charAt(j))) return dir;
+        }
+        return i + 2 == dir.length() ? dir : dir.substring(0, i);
+    }
+
     /** The step aggregate for {@code (dir, step)}; {@code dir ""} = the global tier. */
     public Optional<Entry> step(String dir, String step) {
         return Optional.ofNullable(steps.get(dir + SEP + step));
@@ -200,9 +234,12 @@ public final class BuildMetrics {
      * eviction spares them — which is what makes it a stable per-project sequence.
      */
     private static long projectRunCount(Map<String, Entry> inv, String dir) {
+        // Shaped keys (path#dN) all belong to ONE project: fold them together or the
+        // documented monotonic per-project sequence forks per dirty-count (JK-1226).
+        String base = baseDir(dir);
         long n = 0;
         for (Entry e : inv.values()) {
-            if (dir.equals(e.dir()))
+            if (sameBaseDir(base, e.dir()))
                 n += e.ok().count() + e.failed().count() + e.cancelled().count();
         }
         return n;

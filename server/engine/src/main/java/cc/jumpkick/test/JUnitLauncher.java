@@ -495,7 +495,7 @@ public TestSummary run(
             if (e != 0) worstExit = e;
         }
         // Merge per-worker aggregators into one TestSummary.
-        long total = 0, succeeded = 0, failed = 0, skipped = 0;
+        long total = 0, succeeded = 0, failed = 0, skipped = 0, classCount = 0;
         var allFailures = new ArrayList<TestSummary.Failure>();
         for (var agg : aggregators) {
             var r = agg.snapshot();
@@ -503,6 +503,7 @@ public TestSummary run(
             succeeded += r.succeeded();
             failed += r.failed();
             skipped += r.skipped();
+            classCount += r.classes();
             allFailures.addAll(r.failures());
         }
         if (total == 0 && worstExit != 0) {
@@ -537,7 +538,7 @@ public TestSummary run(
                 /* non-fatal */
             }
         }
-        return new TestSummary(total, succeeded, failed, skipped, allFailures);
+        return new TestSummary(total, succeeded, failed, skipped, classCount, allFailures);
     }
 
     /**
@@ -710,6 +711,10 @@ public TestSummary run(
         // to mark their later `finished`/`skipped` events as wasStatic=false
         // so progress UIs can keep a stable static-plan denominator.
         private final java.util.Set<String> dynamicIds = new java.util.HashSet<>();
+        // Distinct classes with at least one executed (finished/skipped) test — the
+        // class-rate ETA prior's denominator (JK-1226). Workers partition by class, so
+        // per-worker counts sum without overlap.
+        private final java.util.Set<String> executedClasses = new java.util.HashSet<>();
 
         /** Test-friendly ctor: no listener, no worker id, no reports. */
         ResultAggregator() {
@@ -781,6 +786,8 @@ public TestSummary run(
             long duration = Jsonl.intValue(json, "duration_ms", 0);
             boolean wasStatic = isTest && !dynamicIds.contains(id);
             if (isTest) {
+                String cls = classFromUniqueId(id);
+                if (!cls.isEmpty()) executedClasses.add(cls);
                 switch (status != null ? status : "") {
                     case "SUCCESSFUL" -> succeeded++;
                     case "FAILED" -> captureFailure(id, display, json);
@@ -827,7 +834,11 @@ public TestSummary run(
             boolean isTest = "TEST".equals(Jsonl.str(json, "type"));
             String id = Jsonl.str(json, "id");
             boolean wasStatic = isTest && !dynamicIds.contains(id);
-            if (isTest) skipped++;
+            if (isTest) {
+                skipped++;
+                String cls = classFromUniqueId(id);
+                if (!cls.isEmpty()) executedClasses.add(cls);
+            }
             String reason = Jsonl.str(json, "reason");
             listener.onTestSkipped(
                     id, Jsonl.str(json, "display"), reason != null ? reason : "", isTest, wasStatic, workerId);
@@ -864,13 +875,15 @@ public TestSummary run(
                                 "",
                                 workerId)));
             }
-            return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
+            return new TestSummary(
+                    total, succeeded, failed, skipped, executedClasses.size(), List.copyOf(failures));
         }
 
         /** Snapshot of just the counters — used by the parallel-merge path. */
         synchronized TestSummary snapshot() {
             long total = succeeded + failed + skipped;
-            return new TestSummary(total, succeeded, failed, skipped, List.copyOf(failures));
+            return new TestSummary(
+                    total, succeeded, failed, skipped, executedClasses.size(), List.copyOf(failures));
         }
     }
 
