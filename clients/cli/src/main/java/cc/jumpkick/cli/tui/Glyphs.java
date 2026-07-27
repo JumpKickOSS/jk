@@ -32,6 +32,12 @@ public final class Glyphs {
     /** List-item bullet — for detail lines under a wedge. Paint dim. */
     public static final String BULLET = "•";
 
+    /**
+     * Table / menu marker — U+2261 identical to (triple bar). Used on blue {@link CommandWedge}
+     * chips that title a box-drawn table ({@link BoxTable#titleBar}).
+     */
+    public static final String MENU = "≡";
+
     // Nerd Font powerline pill caps for badges (gated on [global].nerdfont).
     // Paint the cap in the badge's *background* color (as foreground) so it reads
     // as the chip's rounded edge. Without a Nerd Font there's no good half-circle,

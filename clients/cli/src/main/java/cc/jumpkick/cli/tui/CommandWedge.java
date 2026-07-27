@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 
 /**
@@ -41,6 +42,19 @@ public final class CommandWedge {
     /** Blue / neutral working chip (play glyph) + message. */
     public static String working(String command, String message) {
         return PipelineWedge.chipLine(Glyphs.PLAY, command, GlobalConfig.nerdfont(), message);
+    }
+
+    /**
+     * Blue menu chip used as the left half of a box-table title ({@link BoxTable#titleBar}): {@code
+     * ≡ Title} on the pipeline-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
+     */
+    public static String menu(String title) {
+        Theme t = Theme.active();
+        if (!t.isAnsi()) {
+            return "= " + (title == null ? "" : title);
+        }
+        return PipelineWedge.chip(Glyphs.MENU, title == null ? "" : title, t.pipelineChip())
+                + PipelineWedge.cap(t.planBadgeColor(), GlobalConfig.nerdfont());
     }
 
     /** Generic chip with caller-chosen glyph. */
