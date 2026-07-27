@@ -49,12 +49,15 @@ public final class EngineTestSupport {
                     Files.createDirectories(Path.of(state));
                 }
                 VersionStore store = VersionStore.current();
-                if (store.resolve(JkVersion.VERSION).isEmpty()) {
-                    Path cacheRoot = JkDirs.cache();
-                    Files.createDirectories(cacheRoot);
-                    Cas cas = new Cas(cacheRoot);
-                    store.materializeFromFiles(JkVersion.VERSION, cas, engineJar, null);
-                }
+                // ALWAYS materialize — VersionStore is content-aware (same bytes return
+                // immediately; same version + different bytes replaces the tree, JK-1059).
+                // The old presence-check skipped the refresh, so a persistent test JK_HOME
+                // kept serving a STALE engine across rebuilds (JK-1246: every
+                // :cli:integrationTest run tonight resolved with last week's resolver).
+                Path cacheRoot = JkDirs.cache();
+                Files.createDirectories(cacheRoot);
+                Cas cas = new Cas(cacheRoot);
+                store.materializeFromFiles(JkVersion.VERSION, cas, engineJar, null);
             } catch (IOException e) {
                 throw new IllegalStateException("failed to materialize engine jar into JK_HOME", e);
             }

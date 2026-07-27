@@ -914,13 +914,29 @@ public final class LockOrchestrator {
         cc.jumpkick.layout.Languages langs = projectDir != null
                 ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
                 : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy());
-        if (langs.groovy()) {
+        // Only when the language has actual sources (src/ or plugin-contributed roots like
+        // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
+        // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
+        // against repos that don't host the stdlib (JK-1246).
+        if (langs.groovy() && hasLangSources(projectDir, ".groovy")) {
             addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", p.groovy(), "5");
         }
-        if (langs.kotlin()) {
+        if (langs.kotlin() && hasLangSources(projectDir, ".kt")) {
             addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2");
         }
         return added;
+    }
+
+    /** True when any {@code ext} source exists under src/ or a plugin-contributed root. */
+    private static boolean hasLangSources(Path projectDir, String ext) {
+        if (projectDir == null) return true; // no dir context — keep the inject (fail-safe)
+        if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve("src"), ext)) return true;
+        for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(projectDir)) {
+            if (cc.jumpkick.layout.Languages.anySourceUnder(projectDir.resolve(root.relative()), ext)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Inject one runtime; BOM-following injects (no exact pin) join the strip skip-list. */

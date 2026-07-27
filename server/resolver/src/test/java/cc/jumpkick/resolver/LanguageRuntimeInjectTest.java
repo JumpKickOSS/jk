@@ -27,6 +27,7 @@ class LanguageRuntimeInjectTest {
     @Test
     void inferred_groovy_without_pin_injects_the_runtime(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
@@ -49,6 +50,8 @@ class LanguageRuntimeInjectTest {
     void exact_pin_wins_over_the_bom_and_keeps_the_strip(@TempDir Path dir) throws IOException {
         // JK-1223: an explicit exact pin is deliberate (grails needs a groovy NEWER than its
         // own bom manages) — it wins and is NOT in the strip skip-list.
+        Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.7\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LockOrchestrator.injectLanguageRuntimes(
@@ -60,6 +63,7 @@ class LanguageRuntimeInjectTest {
     @Test
     void unpinned_inferred_runtime_follows_the_bom_and_skips_the_strip(@TempDir Path dir) throws IOException {
         Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         var skipStrip = LockOrchestrator.injectLanguageRuntimes(
@@ -69,7 +73,19 @@ class LanguageRuntimeInjectTest {
     }
 
     @Test
+    void sourceless_pin_does_not_inject_the_runtime(@TempDir Path dir) throws IOException {
+        // A compiler-version pin on a module with no sources of that language locks the
+        // compiler but has nothing to run — no runtime dep (JK-1246).
+        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"=2.1.0\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
+        assertThat(deps).isEmpty();
+    }
+
+    @Test
     void pinned_groovy_still_injects_and_user_dep_wins(@TempDir Path dir) throws IOException {
+        Files.createDirectories(dir.resolve("src/main/groovy"));
+        Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=5.0.7"));
