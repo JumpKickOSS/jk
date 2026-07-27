@@ -126,6 +126,41 @@ class PubGrubSolverTest {
     }
 
     /** Wraps {@code inner}; counts {@link PackageSource#versions} and optionally injects prefs. */
+    @Test
+    void widens_capped_universe_when_constraint_needs_an_older_release() throws Exception {
+        // JK-1216: versions() is compacted to the top releases (MavenPackageSource caps at 4);
+        // a range below them must trigger expandedVersions(), not NoVersions.
+        InMemoryPackageSource full = InMemoryPackageSource.builder()
+                .version("leaf", "1.0")
+                .version("leaf", "2.0")
+                .version("leaf", "3.0")
+                .version("leaf", "4.0")
+                .version("leaf", "5.0")
+                .build();
+        PackageSource capped = new PackageSource() {
+            @Override
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
+                List<String> all = full.versions(pkg);
+                return all.size() <= 4 ? all : all.subList(0, 4); // [5.0, 4.0, 3.0, 2.0]
+            }
+
+            @Override
+            public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+                return full.versions(pkg);
+            }
+
+            @Override
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
+                return full.dependencies(pkg, version);
+            }
+        };
+
+        Map<String, String> solution = new PubGrubSolver(capped)
+                .solve("root", "1.0", List.of(Term.positive("leaf", VersionSet.lessThan("2.0", false))));
+
+        assertThat(solution).containsEntry("leaf", "1.0");
+    }
+
     private static PackageSource counting(
             PackageSource inner, AtomicInteger versionsCalls, Map<String, String> preferredOrNull) {
         return new PackageSource() {

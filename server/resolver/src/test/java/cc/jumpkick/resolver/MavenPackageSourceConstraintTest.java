@@ -96,6 +96,30 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
+    void floor_never_clamps_below_the_edges_declared_version(@TempDir Path tmp) {
+        // JK-1212: platform pins 1.0.0 as a floor, but this edge's POM requires 2.17.1 —
+        // the constraint must be atLeast(2.17.1), not atLeast(1.0.0).
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
+        VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "2.17.1");
+        assertThat(vs.contains("1.0.0")).isFalse();
+        assertThat(vs.contains("2.17.1")).isTrue();
+        assertThat(vs.contains("3.0.0")).isTrue();
+
+        // Edge below the pin: the pin is the floor.
+        VersionSet below = src.constraintForManagedEdge("com.foo:widget:jar:", "0.9.0");
+        assertThat(below.contains("0.9.0")).isFalse();
+        assertThat(below.contains("1.0.0")).isTrue();
+    }
+
+    @Test
+    void floor_classifier_edge_also_lifts_to_the_declared_version(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
+        VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:classes", "2.0.0");
+        assertThat(vs.contains("1.0.0")).isFalse();
+        assertThat(vs.contains("2.0.0")).isTrue();
+    }
+
+    @Test
     void floor_policy_unmapped_bare_stays_exact(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:other", "1.0"), PlatformPolicy.FLOOR);
         VersionSet vs = src.constraintForManagedEdge("org.example:leaf:jar:", "1.9.24");

@@ -48,6 +48,7 @@ public final class MavenPackageSource implements PackageSource {
     private volatile Map<String, String> lockedVersionPrefs;
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
     /**
      * Raw POM edge cache keyed by {@code pkg@version} only (JK-1202). Exclusion filtering is applied
      * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
@@ -147,11 +148,44 @@ public final class MavenPackageSource implements PackageSource {
         return null;
     }
 
+    /**
+     * FLOOR lower bound: the higher of the platform pin and the edge's own declared version —
+     * a floor must never clamp an edge below what its POM requires (JK-1212).
+     */
+    private static String floorOf(String bomPin, String edgeVersion) {
+        if (edgeVersion == null || edgeVersion.isEmpty()) return bomPin;
+        return Versions.compare(edgeVersion, bomPin) > 0 ? edgeVersion : bomPin;
+    }
+
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
+        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
+        List<String> result = List.copyOf(compactVersionCandidates(orderedVersions(pkg)));
+        versionCache.put(pkg, result);
+        return result;
+    }
+
+    /**
+     * Un-capped candidate list for the solver's widen-on-failure path (JK-1216): when every
+     * compact candidate is ruled out (a Maven range below the top releases, backtracking past
+     * the pin), the solver re-expands from the full advertised history instead of hard-failing
+     * a satisfiable graph. The solver applies its own cap.
+     */
+    @Override
+    public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+        List<String> cached = expandedVersionCache.get(pkg);
+        if (cached != null) return cached;
+        List<String> result = List.copyOf(orderedVersions(pkg));
+        expandedVersionCache.put(pkg, result);
+        return result;
+    }
+
+    /** Advertised versions, highest-first, BOM/lock soft-prefers front-loaded. */
+    private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
         List<String> available = repos.availableVersions(withVersion(pkg, "any"));
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
@@ -162,14 +196,7 @@ public final class MavenPackageSource implements PackageSource {
         preferBom(sorted, bomConstraints.get(pkg));
         preferFirst(sorted, lockedVersionPrefs.get(pkg));
         preferFirst(sorted, lockedVersionPrefs.get(ga));
-
-        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
-        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
-        sorted = compactVersionCandidates(sorted);
-
-        List<String> result = List.copyOf(sorted);
-        versionCache.put(pkg, result);
-        return result;
+        return sorted;
     }
 
     /** Cap candidate list while preserving soft-prefer front and highest releases. */
@@ -342,7 +369,8 @@ public final class MavenPackageSource implements PackageSource {
      *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): bare →
      *       {@code exact}; BOM-map GAs use {@code exact(bomPin)}.
      *   <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
-     *       atLeast(bomPin)} (may lift); unmapped bare fills stay {@code exact}.
+     *       atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
+     *       version — JK-1212); unmapped bare fills stay {@code exact}.
      * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
@@ -357,7 +385,7 @@ public final class MavenPackageSource implements PackageSource {
         if (!id.classifier().isEmpty()) {
             String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
             if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
-                return VersionSet.atLeast(bomPin, true);
+                return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
             }
             return VersionSet.exact(bomPin != null ? bomPin : trimmed);
         }
@@ -367,7 +395,7 @@ public final class MavenPackageSource implements PackageSource {
         if (bomPin != null) {
             if (platformPolicy == PlatformPolicy.FLOOR) {
                 // Opt-in soft platform: pin is a floor; preferBom still front-loads the pin.
-                return VersionSet.atLeast(bomPin, true);
+                return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
             }
             return VersionSet.exact(bomPin);
         }

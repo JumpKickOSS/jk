@@ -45,6 +45,9 @@ public class PubGrubSolver {
      */
     private final Set<String> lazyUniverses = new HashSet<>();
 
+    /** Packages whose universe is the compact {@code versions()} list — widenable (JK-1216). */
+    private final Set<String> cappedUniverses = new HashSet<>();
+
     protected final PartialSolution solution;
     protected final List<Incompatibility> incompatibilities = new ArrayList<>();
 
@@ -302,14 +305,14 @@ public class PubGrubSolver {
 
             ensureUniverse(pkg);
             // Lazy singleton may project empty (pref outside constraint) or after Unavailable.
-            if (solution.hasNoCandidates(pkg) && lazyUniverses.contains(pkg)) {
+            if (solution.hasNoCandidates(pkg) && widenable(pkg)) {
                 expandUniverse(pkg);
             }
 
             String pick = solution.hasNoCandidates(pkg) ? null : solution.choosePreferred(pkg);
             if (pick == null) {
-                // Diagnostics: if we never loaded metadata, expand once for a useful sample.
-                if (lazyUniverses.contains(pkg)) {
+                // Diagnostics: if we never widened, expand once for a useful sample.
+                if (widenable(pkg)) {
                     expandUniverse(pkg);
                 }
                 boolean unknownPackage = universes.get(pkg).size() == 0;
@@ -329,7 +332,7 @@ public class PubGrubSolver {
                 // Expand before recording Unavailable so unit-prop can exclude `pick` against a
                 // full candidate list (a lazy singleton of only `pick` would mark the inco as
                 // already SATISFIED and short-circuit into a false unsatisfiable).
-                if (lazyUniverses.contains(pkg)) {
+                if (widenable(pkg)) {
                     expandUniverse(pkg);
                 }
                 // Exact pin that was never advertised (or only candidate failed): NoVersions gives
@@ -396,6 +399,7 @@ public class PubGrubSolver {
                 } else {
                     List<String> versions = source.versions(pkg);
                     universes.put(pkg, VersionUniverse.of(pkg, versions));
+                    cappedUniverses.add(pkg); // compact list — widenable on exhaustion (JK-1216)
                 }
             }
         }
@@ -410,8 +414,13 @@ public class PubGrubSolver {
      * soft-prefer scans dominate CPU on large BOM graphs once any pin failed.
      */
     private void expandUniverse(String pkg) throws IOException, InterruptedException {
-        if (!lazyUniverses.remove(pkg)) return;
-        List<String> versions = source.versions(pkg);
+        boolean wasLazy = lazyUniverses.remove(pkg);
+        boolean wasCapped = cappedUniverses.remove(pkg);
+        if (!wasLazy && !wasCapped) return;
+        // Widen from the FULL advertised history (JK-1216): versions() is compacted for the
+        // happy path, and re-reading it here left MAX_EXPANDED_VERSIONS dead — a range below
+        // the compact candidates (or backtracking past them) hard-failed a satisfiable graph.
+        List<String> versions = source.expandedVersions(pkg);
         // Cap long metadata histories (JK-1202). Do not filter against the continuous positive set
         // here: after a failed soft-prefer pin the discrete rebind must still see every advertised
         // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
@@ -420,6 +429,11 @@ public class PubGrubSolver {
         }
         universes.put(pkg, VersionUniverse.of(pkg, versions));
         solution.rebindAfterUniverseExpand(pkg);
+    }
+
+    /** A universe that can still grow: a lazy singleton or a compact (capped) candidate list. */
+    private boolean widenable(String pkg) {
+        return lazyUniverses.contains(pkg) || cappedUniverses.contains(pkg);
     }
 
     /** Max candidates kept after expand (highest-first order already applied by PackageSource). */

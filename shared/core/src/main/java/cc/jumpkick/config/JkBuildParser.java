@@ -142,7 +142,8 @@ public final class JkBuildParser {
                     kotlinPlugins,
                     build.kspOptions(),
                     build.extraSrc(),
-                    build.testWorkers());
+                    build.testWorkers(),
+                    build.platformPolicy());
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
@@ -1418,6 +1419,7 @@ public final class JkBuildParser {
                 "build",
                 "format",
                 "test",
+                "resolve",
                 "variants",
                 "libraries",
                 "jvm",

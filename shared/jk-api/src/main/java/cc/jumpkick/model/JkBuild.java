@@ -476,21 +476,6 @@ public record JkBuild(
             boolean m2install,
             Layout layout) {
 
-        /** Back-compat constructor: no groovy pin. */
-        public Project(
-                String group,
-                String name,
-                String version,
-                String jdk,
-                int java,
-                VersionSelector kotlin,
-                SourcesMode sourcesMode,
-                String description,
-                boolean m2install,
-                Layout layout) {
-            this(group, name, version, jdk, java, kotlin, null, sourcesMode, description, m2install, layout);
-        }
-
         public Project {
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(name, "name");
@@ -732,26 +717,6 @@ public record JkBuild(
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
-        }
-
-        /** 7-arg back-compat (pre platform policy). */
-        public Build(
-                List<String> orderAfter,
-                List<String> testPluginJars,
-                boolean lint,
-                List<KotlinPluginDecl> kotlinPlugins,
-                List<String> kspOptions,
-                List<String> extraSrc,
-                Integer testWorkers) {
-            this(
-                    orderAfter,
-                    testPluginJars,
-                    lint,
-                    kotlinPlugins,
-                    kspOptions,
-                    extraSrc,
-                    testWorkers,
-                    PlatformPolicy.ENFORCED);
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */

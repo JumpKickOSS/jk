@@ -25,6 +25,22 @@ class JkBuildParserTest {
             """;
 
     @Test
+    void platform_policy_survives_kotlin_plugins_rebuild() {
+        // JK-1213: the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                kotlin = "2.1.0"
+
+                [resolve]
+                platform = "floor"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization"
+                """);
+        assertThat(parsed.build().kotlinPlugins()).hasSize(1);
+        assertThat(parsed.build().platformPolicy()).isEqualTo(cc.jumpkick.model.PlatformPolicy.FLOOR);
+    }
+
+    @Test
     void parses_minimal_project_block() {
         JkBuild parsed = JkBuildParser.parse(PROJECT);
         assertThat(parsed.project().group()).isEqualTo("com.example");

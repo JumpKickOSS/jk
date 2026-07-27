@@ -106,6 +106,7 @@ class SelfHostingTomlTest {
                         "plugins/formatter",
                         "plugins/spring-boot",
                         "plugins/grails",
+                        "plugins/quarkus",
                         "plugins/android",
                         "plugins/protobuf",
                         "plugins/shrink");

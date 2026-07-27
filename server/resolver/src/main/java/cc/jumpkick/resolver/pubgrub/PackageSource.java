@@ -20,6 +20,15 @@ public interface PackageSource {
     List<String> versions(String pkg) throws IOException, InterruptedException;
 
     /**
+     * The full advertised candidate list for widen-on-failure (JK-1216). Sources whose
+     * {@link #versions} is compacted for the happy path return the un-capped history here;
+     * the solver caps it. Default: same as {@link #versions}.
+     */
+    default List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+        return versions(pkg);
+    }
+
+    /**
      * Soft-prefer pin for {@code pkg} when known (BOM or prior lock), without consulting
      * maven-metadata. Empty when the source has no preference. The solver may seed a singleton
      * universe from this and only call {@link #versions} if that pin fails or cannot satisfy

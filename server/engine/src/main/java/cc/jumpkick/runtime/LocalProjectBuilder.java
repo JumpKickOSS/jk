@@ -171,6 +171,7 @@ public final class LocalProjectBuilder {
                 p.jdk(),
                 p.java(),
                 p.kotlin(),
+                p.groovy(),
                 p.sourcesMode(),
                 p.description(),
                 p.m2install(),
