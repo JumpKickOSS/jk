@@ -99,7 +99,8 @@ final class EngineResolveAdapter {
                 gitTarget,
                 req.offline(),
                 req.force(),
-                req.verbose());
+                req.verbose(),
+                req.platform());
     }
 
     /**

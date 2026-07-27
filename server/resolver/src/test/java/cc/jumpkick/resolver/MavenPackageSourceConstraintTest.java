@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.http.Http;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
 import cc.jumpkick.repo.RepoGroup;
@@ -85,9 +86,31 @@ class MavenPackageSourceConstraintTest {
                 .contains("5.1.0");
     }
 
+    @Test
+    void floor_policy_bom_pin_is_at_least_not_exact(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
+        VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");
+        assertThat(vs.asExactSingleton()).isEmpty();
+        assertThat(vs.contains("1.0.0")).isTrue();
+        assertThat(vs.contains("2.0.0")).isTrue(); // may lift above BOM pin
+    }
+
+    @Test
+    void floor_policy_unmapped_bare_stays_exact(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:other", "1.0"), PlatformPolicy.FLOOR);
+        VersionSet vs = src.constraintForManagedEdge("org.example:leaf:jar:", "1.9.24");
+        assertThat(vs.asExactSingleton()).contains("1.9.24");
+        assertThat(vs.contains("2.0.0")).isFalse();
+    }
+
     private static MavenPackageSource source(Path tmp, Map<String, String> bom) {
+        return source(tmp, bom, PlatformPolicy.ENFORCED);
+    }
+
+    private static MavenPackageSource source(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
         MavenRepo repo = new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
         RepoGroup group = RepoGroup.of(repo);
-        return new MavenPackageSource(group, new EffectivePomBuilder(group), bom);
+        return new MavenPackageSource(
+                group, new EffectivePomBuilder(group), bom, Map.of(), cc.jumpkick.resolver.KmpRedirects.NONE, policy);
     }
 }

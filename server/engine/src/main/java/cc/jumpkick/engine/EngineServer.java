@@ -2224,6 +2224,9 @@ public final class EngineServer implements AutoCloseable {
             String gitTarget = Jsonl.str(requestLine, "gitTarget");
             Session session = resolveSession(requestLine, cancelToken, false);
             java.net.URI repoUrl = repoUrlOf(requestLine);
+            String platformOverride = Jsonl.str(requestLine, "platform");
+            if (platformOverride != null && platformOverride.isBlank()) platformOverride = null;
+            String platformFinal = platformOverride;
             SessionContext.where(session, () -> {
                 Path entryDir = session.workingDir();
                 Path cache = session.cacheDir();
@@ -2252,7 +2255,8 @@ public final class EngineServer implements AutoCloseable {
                                     outcome.error() != null ? java.util.List.of(outcome.error()) : java.util.List.of(),
                                     outcome.refreshed()));
                 } else {
-                    lockCascade(entryDir, cache, repoUrl, features, withDefaults, false, true, writer);
+                    lockCascade(
+                            entryDir, cache, repoUrl, features, withDefaults, false, true, platformFinal, writer);
                 }
                 return null;
             });
@@ -3074,6 +3078,20 @@ public final class EngineServer implements AutoCloseable {
             boolean update,
             BufferedWriter writer)
             throws Exception {
+        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, null, writer);
+    }
+
+    private void lockCascade(
+            Path entryDir,
+            Path cache,
+            java.net.URI repoUrl,
+            java.util.List<String> features,
+            boolean withDefaults,
+            boolean sources,
+            boolean update,
+            String platformOverride,
+            BufferedWriter writer)
+            throws Exception {
         java.nio.file.Files.createDirectories(cache);
         JkBuild root;
         try {
@@ -3138,7 +3156,7 @@ public final class EngineServer implements AutoCloseable {
             };
             cc.jumpkick.run.Pipeline pipeline = update
                     ? cc.jumpkick.runtime.LockPipelines.updatePipeline(
-                            dir, scope.getValue(), cache, repoUrl, features, withDefaults)
+                            dir, scope.getValue(), cache, repoUrl, features, withDefaults, platformOverride)
                     : cc.jumpkick.runtime.LockPipelines.lockPipeline(
                             dir, scope.getValue(), cache, repoUrl, features, withDefaults, sources, observer, null);
             for (Step p : pipeline.steps()) {

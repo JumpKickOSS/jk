@@ -714,9 +714,15 @@ public record JkBuild(
             List<String> kspOptions,
             List<String> extraSrc,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
-            Integer testWorkers) {
+            Integer testWorkers,
+            /**
+             * {@code [resolve] platform}: how BOM managed pins constrain the graph (JK-1206). Default
+             * {@link PlatformPolicy#ENFORCED}.
+             */
+            PlatformPolicy platformPolicy) {
 
-        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null);
+        public static final Build EMPTY =
+                new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null, PlatformPolicy.ENFORCED);
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -725,6 +731,27 @@ public record JkBuild(
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
+            platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+        }
+
+        /** 7-arg back-compat (pre platform policy). */
+        public Build(
+                List<String> orderAfter,
+                List<String> testPluginJars,
+                boolean lint,
+                List<KotlinPluginDecl> kotlinPlugins,
+                List<String> kspOptions,
+                List<String> extraSrc,
+                Integer testWorkers) {
+            this(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    extraSrc,
+                    testWorkers,
+                    PlatformPolicy.ENFORCED);
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -732,7 +759,20 @@ public record JkBuild(
             if (dirs.isEmpty()) return this;
             var all = new java.util.ArrayList<>(extraSrc);
             all.addAll(dirs);
-            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers);
+            return new Build(
+                    orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers, platformPolicy);
+        }
+
+        public Build withPlatformPolicy(PlatformPolicy policy) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    extraSrc,
+                    testWorkers,
+                    policy == null ? PlatformPolicy.ENFORCED : policy);
         }
 
         /**

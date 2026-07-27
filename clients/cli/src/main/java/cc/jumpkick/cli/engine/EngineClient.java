@@ -680,7 +680,22 @@ public final class EngineClient {
             java.net.URI repoUrl,
             boolean offline,
             boolean force,
-            boolean verbose) {}
+            boolean verbose,
+            /** Optional {@code enforced}|{@code floor} platform override (JK-1206); null = project default. */
+            String platform) {
+        /** Back-compat without platform override. */
+        public UpdateRequest(
+                Path entryDir,
+                Path cache,
+                List<String> features,
+                boolean noDefaultFeatures,
+                java.net.URI repoUrl,
+                boolean offline,
+                boolean force,
+                boolean verbose) {
+            this(entryDir, cache, features, noDefaultFeatures, repoUrl, offline, force, verbose, null);
+        }
+    }
 
     /** Everything an engine-hosted {@code jk sync} needs — mirrors {@code SyncCommand}'s local fields. */
     public record SyncRequest(

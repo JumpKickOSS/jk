@@ -126,9 +126,13 @@ Plugin tables inject their platform for you: `[spring-boot] version` imports
 starter entries resolve under either.
 
 - BOM is **not** on the runtime classpath as a normal jar of “everything.”
-- Managed GAs are **enforced** at resolve (BOM pin on the edge). While any platform BOM is
-  active, bare EffectivePom-filled versions are exact as well — not highest-wins floors.
+- Managed GAs are **enforced** at resolve by default (BOM pin on the edge). While any platform
+  BOM is active, bare EffectivePom-filled versions are exact as well. Opt-in
+  `[resolve] platform = "floor"` (or `jk update --platform=floor`) treats managed pins as
+  floors only (JK-1206).
 - The BOM pin itself must be exact or caret/tilde-anchored (not floating `latest`).
+- **Export:** `jk export bom` freezes lockfile versions for a scope into a publishable Maven
+  BOM (JK-1207) — producer side of the platform story.
 
 ### 6.2 Catalog interaction
 

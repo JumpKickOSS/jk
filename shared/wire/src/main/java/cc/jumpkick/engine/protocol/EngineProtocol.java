@@ -957,6 +957,27 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
+        return updateRequest(
+                dir, cache, features, noDefaultFeatures, repoUrl, gitOnly, gitTarget, offline, force, verbose, null);
+    }
+
+    /**
+     * As {@link #updateRequest(String, String, List, boolean, String, boolean, String, boolean, boolean, boolean)}
+     * with optional {@code platform} ({@code enforced}|{@code floor}, JK-1206). Null/blank =
+     * project default.
+     */
+    public static String updateRequest(
+            String dir,
+            String cache,
+            List<String> features,
+            boolean noDefaultFeatures,
+            String repoUrl,
+            boolean gitOnly,
+            String gitTarget,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            String platform) {
         return "{\"type\":\""
                 + UPDATE_REQUEST
                 + "\",\"dir\":"
@@ -979,6 +1000,8 @@ public final class EngineProtocol {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"platform\":"
+                + Jsonl.quote(platform == null ? "" : platform)
                 + "}";
     }
 

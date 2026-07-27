@@ -6,6 +6,7 @@ import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.repo.EffectivePom;
@@ -98,10 +99,23 @@ public final class LockOrchestrator {
 
     private cc.jumpkick.resolver.pubgrub.Diagnostics.Palette diagnosticPalette;
 
+    /** BOM pin policy (JK-1206); default {@link PlatformPolicy#ENFORCED}. */
+    private PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
+
     /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
     public LockOrchestrator withProjectDir(Path projectDir) {
         this.projectDir = projectDir;
         return this;
+    }
+
+    /** Platform BOM edge policy (see {@link PlatformPolicy}). */
+    public LockOrchestrator withPlatformPolicy(PlatformPolicy policy) {
+        if (policy != null) this.platformPolicy = policy;
+        return this;
+    }
+
+    public PlatformPolicy platformPolicy() {
+        return platformPolicy;
     }
 
     public LockOrchestrator(MavenRepo repo) {
@@ -135,7 +149,8 @@ public final class LockOrchestrator {
             java.util.Map<String, String> bomConstraints,
             java.util.Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
-        PubGrubResolver r = new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp);
+        PubGrubResolver r =
+                new PubGrubResolver(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy);
         if (diagnosticPalette != null) r.palette = diagnosticPalette;
         return r;
     }
@@ -302,7 +317,8 @@ public final class LockOrchestrator {
         // Shared package source across main/test/processor so version/deps caches survive scope splits.
         MavenPackageSource sharedSource = resolverOverride != null
                 ? null
-                : new MavenPackageSource(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp);
+                : new MavenPackageSource(
+                        repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy);
 
         // Progress budget: graph phase + materialize phase (≈2× package count). Grow estimate as we go.
         int declared = mainRoots.size() + testRoots.size() + processorRoots.size() + fileDeps.size();

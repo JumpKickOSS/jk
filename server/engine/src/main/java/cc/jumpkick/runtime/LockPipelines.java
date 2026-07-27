@@ -15,6 +15,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.WorkspaceMerge;
@@ -144,7 +145,8 @@ public final class LockPipelines {
                     LockOrchestrator orchestrator = new LockOrchestrator(repos)
                             .withProjectDir(dir)
                             .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                    pathPrep.project(), dir));
+                                    pathPrep.project(), dir))
+                            .withPlatformPolicy(pathPrep.project().build().platformPolicy());
                     // Wrap the caller's observer so it also drives ctx.label/progress
                     // (the bar under a console listener; wire progress events when hosted).
                     ResolveObserver wrappedObserver = new ResolveObserver() {
@@ -339,7 +341,23 @@ public final class LockPipelines {
     /** {@code jk update}: same as {@link #lockPipeline} but always resolves fresh. */
     public static Pipeline updatePipeline(
             Path dir, JkBuild effective, Path cache, URI repoUrl, List<String> features, boolean withDefaultFeatures) {
+        return updatePipeline(dir, effective, cache, repoUrl, features, withDefaultFeatures, null);
+    }
+
+    /**
+     * As {@link #updatePipeline(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
+     * platform-policy override ({@code enforced}|{@code floor}, JK-1206).
+     */
+    public static Pipeline updatePipeline(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            String platformOverride) {
         Path lockFile = dir.resolve("jk.lock");
+        PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
                 .ticks(1)
@@ -371,6 +389,7 @@ public final class LockPipelines {
                                 .withProjectDir(dir)
                                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
                                         pathPrep.project(), dir))
+                                .withPlatformPolicy(policy)
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         ctx.put(LOCKFILE, lock);
@@ -493,6 +512,7 @@ public final class LockPipelines {
                 .withProjectDir(dir)
                 .withJvmEnvironment(
                         cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(pathPrep.project(), dir))
+                .withPlatformPolicy(pathPrep.project().build().platformPolicy())
                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
         newLock = GitSourceResolution.stamp(newLock, prep.gitInfoByKey());
 
@@ -525,6 +545,19 @@ public final class LockPipelines {
                 oldLock != null ? oldLock.plugins() : newLock.plugins());
         LockfileWriter.write(finalLock, lockFile);
         return refreshed;
+    }
+
+    /**
+     * CLI {@code --platform} override wins; else {@code [resolve] platform} from the project
+     * (default enforced).
+     */
+    static PlatformPolicy effectivePlatformPolicy(JkBuild project, String override) {
+        if (override != null && !override.isBlank()) {
+            return PlatformPolicy.parse(override.trim());
+        }
+        return project != null && project.build() != null
+                ? project.build().platformPolicy()
+                : PlatformPolicy.ENFORCED;
     }
 
     private static String gitKey(GitSource s) {
