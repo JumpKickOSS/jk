@@ -11,5 +11,6 @@ boundaries so agents and humans stay aligned.
 | [**Packaging matrix**](packaging.md) | Thin / fat (`jk assembly`) / R8 shrink / Spring Boot / Quarkus / Grails — rules and samples |
 | [**Giter8 templates**](giter8-templates.md) | `jk new --template`: local path + short-name catalog (`java-cli`, `quarkus`); remotes later |
 | [**CLI ↔ web visual alignment**](cli-web-visual-alignment.md) | Color-means-state contract; web CSS ↔ `JkDarkTheme` token map (JK-1081) |
+| [**Exclusive builds + durable in-flight**](exclusive-builds.md) | Same-fingerprint reject (`Build #N already running`); start-time numbers; journal `running` for web refresh (JK-1248–1251) |
 
 Planning board: [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
