@@ -272,8 +272,8 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path>} (JK-1182 MVP). Remote/git short names still return a
-     * clear error until the engine-hosted Giter8 worker lands.
+     * {@code jk new --template <local-path|short-name>} (JK-1182 + catalog short names JK-1183/1188).
+     * Git/HTTPS remotes remain JK-1203.
      */
     private int runTemplatePipeline(Path cwd) {
         if (spring || grails || quarkus || plugin) {
@@ -283,14 +283,30 @@ public final class NewCommand implements CliCommand {
         }
         Path template = Path.of(templateRef);
         if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
+        Path extractScratch = null;
         if (!Files.isDirectory(template)) {
-            // Git / short-name resolution is JK-1182 follow-up (engine worker + cache).
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "New",
-                    "template not found as a local directory: "
-                            + template
-                            + " (git/HTTPS short names not implemented yet — see docs/features/giter8-templates.md)"));
-            return Exit.USAGE;
+            try {
+                extractScratch = Files.createTempDirectory("jk-g8-");
+                var shortResolved = Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch);
+                if (shortResolved.isPresent()) {
+                    template = shortResolved.get();
+                } else {
+                    String known = String.join(", ", Giter8Catalog.descriptions().keySet());
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "New",
+                            "template not found as a local directory: "
+                                    + template
+                                    + (Giter8Catalog.isShortName(templateRef)
+                                            ? " (short name not in local catalog; known: "
+                                                    + known
+                                                    + "; git/HTTPS remotes: JK-1203 — see docs/features/giter8-templates.md)"
+                                            : " (git/HTTPS remotes not implemented yet — see docs/features/giter8-templates.md)")));
+                    return Exit.USAGE;
+                }
+            } catch (IOException e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                return Exit.SOFTWARE;
+            }
         }
         Map<String, String> params = new java.util.LinkedHashMap<>();
         for (String p : templateParams) {

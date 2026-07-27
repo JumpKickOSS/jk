@@ -105,6 +105,29 @@ Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 Use the spring-boot first-party plugin — a **different** layout (`BOOT-INF/…`), not `assembly`.
 Do not combine assembly with Boot packaging for the same product.
 
+## Quarkus
+
+Use the `[quarkus]` first-party plugin (JK-1160/1202). Packaging is **augmented**, not
+`assembly` / thin jar:
+
+| `package` | Output | Notes |
+|-----------|--------|--------|
+| **`fast-jar`** (default) | `quarkus-run.jar` + sibling `lib/` (and `quarkus-app/`) | Prefer for production layering |
+| **`uber-jar`** | single runner jar | Opt-in via `[quarkus] package = "uber-jar"` |
+
+```toml
+[quarkus]
+version = "3.28.5"
+# package = "uber-jar"   # optional; default is fast-jar
+```
+
+`jk run` executes the packaged runner. Prefer a **plain** `Application.main` calling
+`Quarkus.run` over `@QuarkusMain` so `@QuarkusTest` does not double-index under jk’s
+`target/classes/main` layout.
+
+Cold first-lock of the Quarkus platform still materializes a large jar set; subsequent
+locks are cache-hit heavy. See [docs/perf/resolve-io.md](../perf/resolve-io.md).
+
 ## Mental model
 
 ```text
@@ -112,4 +135,5 @@ thin      → package-jar
 assembly  → package-assembly   (jk assembly / jk assemble)
 shrunk    → shrunk-jar packager (R8)
 boot      → spring-boot packager
+quarkus   → quarkus-fast-jar (augment; fast-jar default / uber-jar opt-in)
 ```

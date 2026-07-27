@@ -55,16 +55,29 @@ Flow:
 **MVP implementable subset (JK-1182):** local path + git HTTPS clone + string props only (no
 conditional `src/main/g8` includes unless already supported by the chosen Giter8 version).
 
-## Catalog (JK-1183)
+## Catalog (JK-1183 / JK-1188)
 
-Ship short names in-repo or as data:
+Short names resolve **locally** (no git clone yet — remotes are JK-1203):
+
+1. `$JK_TEMPLATES/<name>.g8`
+2. `~/.jk/templates/<name>.g8`
+3. Walk up from cwd for `templates/<name>.g8` (monorepo dogfood)
+4. Classpath bundle shipped in the CLI (`giter8/<name>/`)
 
 | Name | Intent |
 |------|--------|
 | `java-cli` | Simple Java 25 executable (Mill SIMPLE layout) |
-| `kotlin-cli` | Simple Kotlin executable |
+| `kotlin-cli` | Simple Kotlin executable (catalog entry; template may land with JK-1183) |
+| `quarkus` | Quarkus 3.x REST app (`[quarkus]` plugin, plain `Application` main, `@QuarkusTest`) |
 
-Complex multi-module examples stay in `jk-examples` and optional `workspace-*` G8 templates later.
+```bash
+jk new --template quarkus my-api
+jk new --template java-cli my-tool
+jk new --template /path/to/local.g8 other
+```
+
+Complex multi-module examples stay in `jk-examples` (e.g. `java/quarkus-petshop`) and optional
+`workspace-*` G8 templates later.
 
 ## Coexistence with plugin scaffolds
 

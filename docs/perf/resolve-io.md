@@ -23,6 +23,18 @@ See [guide.md](../guide.md) (`JK_HOME` / `JK_CACHE_DIR` / `--cache-dir`).
 
 Pre-1088 dogfood (same laptop, first-ish cache): multi-minute Spring Boot locks with sparse progress.
 
+### Quarkus platform (post JK-1202)
+
+`jk new --quarkus` / `[quarkus] version` pulls **`io.quarkus.platform:quarkus-bom`** plus REST
+starters — often **200+** packages on first lock. Expect multi-minute cold materialize on a
+laptop if the CAS is empty; warm re-lock is seconds. Tips:
+
+- Prefer a warm `~/.jk/cache` (or CI cache of `repos/central/`) for dogfood/CI.
+- Engine heap defaults were raised for large BOMs; if lock thrashs, check engine memory flags
+  in the guide / architecture notes.
+- Residual: further cold-materialize wall-clock work is tracked as product polish (not a
+  packaging blocker). Packaging itself is pure bootstrap + fast-jar (JK-1160/1202).
+
 ## What costs time on first lock
 
 Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:

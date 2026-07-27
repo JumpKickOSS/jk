@@ -345,6 +345,22 @@ and Latest.
 mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
+### Quarkus notes
+
+```bash
+jk new --quarkus my-api          # plugin [scaffold]
+jk new --template quarkus my-api # Giter8 short name (same shape)
+```
+
+- Pin with `[quarkus] version = "3.28.5"` (platform BOM). Starters are versionless under
+  `[dependencies]`.
+- Default package is **fast-jar** (`quarkus-run.jar` + `lib/`). Set
+  `package = "uber-jar"` for a single runner.
+- Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
+  `target/classes/main` layout — QuarkusTest can report two mains with the same name.
+- Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
+  Maven embedder.
+
 Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
 edges, and any bare version already filled by EffectivePom (parent or import

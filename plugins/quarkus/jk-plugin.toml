@@ -20,6 +20,8 @@ main-scan      = true
 
 [schema]
 version = { type = "string", required = true, example = "3.28.5", hint = "pins io.quarkus.platform:quarkus-bom" }
+# fast-jar (default): quarkus-run.jar + lib/ layout. uber-jar: single fat runner jar.
+package = { type = "string", example = "fast-jar", hint = "fast-jar (default) or uber-jar" }
 
 # Platform BOM so starters are versionless under [dependencies].
 [[contribute.platform-dependency]]
