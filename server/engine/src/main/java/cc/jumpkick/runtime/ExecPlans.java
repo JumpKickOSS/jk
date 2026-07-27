@@ -278,6 +278,29 @@ public final class ExecPlans {
                         false,
                         List.of());
             }
+            // Self-contained packager output (Quarkus fast-jar / Boot fat-jar): run via -jar.
+            // Do not fall through to -cp + scanned main — the thin Class-Path layout or nested
+            // BOOT-INF is not a normal compile classpath, and Application main is not enough.
+            if (hostShape
+                    .map(sh -> sh.selfContained() && "jar".equals(sh.execMode()))
+                    .orElse(false)) {
+                Path mainJar = layout.mainJar();
+                if (Files.isRegularFile(mainJar)) {
+                    return runAck(
+                            "run",
+                            List.of(java, "-jar", mainJar.toAbsolutePath().toString()),
+                            dir,
+                            javaHome,
+                            "java -jar " + dir.relativize(mainJar),
+                            false,
+                            false,
+                            List.of());
+                }
+                return ExecPlan.error(
+                        "run",
+                        "self-contained jar not found at " + layout.mainJar() + " — run `jk build` first",
+                        "missing");
+            }
         }
 
         // Classes-dir + RUN classpath: dev-scope deps ride; a classes-run packager's jar

@@ -25,9 +25,10 @@ import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()} when no soft-prefer pin is known. BOM/lock soft-prefer
- * front-loads candidates (and seeds lazy singleton universes via {@link #preferredVersion}); POM
- * exclusions strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no preferred pin is known. A non-empty platform BOM map
+ * makes bare POM edges exact (enforced platform contract); without a BOM, bare edges stay
+ * highest-wins floors. BOM/lock prefs also seed lazy singleton universes via {@link
+ * #preferredVersion}. POM exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -309,39 +310,48 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * PubGrub constraint for one POM edge (JK-1202).
+     * PubGrub constraint for one POM edge.
      *
-     * <p>Without a platform BOM, bare POM versions stay highest-wins ({@code atLeast}) — the
-     * historical jk rule. <b>With</b> a platform BOM map present, bare versions become
-     * {@code exact}: EffectivePom already applied dependencyManagement, so the string is a filled
-     * Maven pin, not a floor. Open floors + soft-prefer pins <em>below</em> those floors (common on
-     * Quarkus/Maven-resolver stacks) caused multi-minute PubGrub thrash. Explicit Maven ranges still
-     * pass through. When the BOM pin is compatible with the declared version's atLeast floor, the
-     * BOM pin wins (platform alignment).
+     * <p>Bare versions (after {@link EffectivePom} fills dependencyManagement) are not Maven
+     * floors — Maven treats them as the chosen version. jk's historical default without a
+     * platform was highest-wins ({@code atLeast}). That must <em>not</em> apply under a platform
+     * BOM: lifting a filled pin (parent or import depMgmt) silently breaks the BOM contract
+     * (e.g. {@code named-locks} 2.x next to {@code maven-resolver-api} 1.9).
+     *
+     * <ul>
+     *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
+     *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
+     *   <li><b>Platform BOM present</b>: bare → {@code exact} (the EffectivePom-filled string).
+     *       GAs listed in the platform map use the BOM pin ({@code exact}), which overrides a
+     *       different bare string on the edge (enforced platform). Explicit Maven ranges on the
+     *       edge still pass through as ranges.
+     * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
         String trimmed = version.trim();
         if (VersionSelectors.looksLikeMavenRange(trimmed)) {
             return VersionSelectors.constraintFromPomVersion(trimmed);
         }
-        // No platform/lock map: historical highest-wins bare versions.
-        if (bomConstraints.isEmpty() && lockedVersionPrefs.isEmpty()) {
-            return VersionSelectors.constraintFromPomVersion(trimmed);
+        PackageId id = PackageId.parse(depPkg);
+        String ga = id.ga();
+        // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
+        // that often have no classifier POM → Unavailable thrash (JK-1202).
+        if (!id.classifier().isEmpty()) {
+            String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+            return VersionSet.exact(bomPin != null ? bomPin : trimmed);
         }
-        VersionSet asFloor = VersionSelectors.constraintFromPomVersion(trimmed);
-        Optional<String> prefer = preferredVersion(depPkg);
-        if (prefer.isPresent() && asFloor.contains(prefer.get())) {
-            // Compatible BOM/lock pin → exact (singleton, no metadata).
-            return VersionSet.exact(prefer.get());
+
+        // Platform map entry: enforced pin (not soft-prefer; not overridden by lock prefs).
+        String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+        if (bomPin != null) {
+            return VersionSet.exact(bomPin);
         }
-        // JK-1202: do not highest-wins-lift io.quarkus.* past the version the BOM line declared.
-        // Lifting quarkus-bootstrap-maven4-resolver 3.28.5 → 3.38.0 while the rest of the graph
-        // stays on 3.28.x caused multi-minute PubGrub thrash. Other groups keep atLeast floors.
-        String ga = PackageId.parse(depPkg).ga();
-        if (ga.startsWith("io.quarkus:") || ga.startsWith("io.quarkus.")) {
+        if (!bomConstraints.isEmpty()) {
+            // Platform active: EffectivePom-filled bare version is exact — do not highest-wins-lift.
             return VersionSet.exact(trimmed);
         }
-        return asFloor;
+        // No platform: historical highest-wins bare versions. Lock prefs only reorder candidates.
+        return VersionSelectors.constraintFromPomVersion(trimmed);
     }
 
     /**

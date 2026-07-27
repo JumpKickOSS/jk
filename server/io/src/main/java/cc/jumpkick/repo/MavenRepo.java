@@ -133,6 +133,23 @@ public final class MavenRepo {
         return fetch(coord, MavenLayout.artifactPath(coord), true);
     }
 
+    /**
+     * Local-only artifact probe (no HTTP). Used by {@link RepoGroup} to hit any repo's CAS mirror
+     * before walking remotes that would 404 (JK-1202 warm multi-repo re-lock).
+     */
+    public Optional<Fetched> tryLocalArtifact(Coordinate coord) {
+        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        if (force) return Optional.empty();
+        return tryLocalMirror(coord, MavenLayout.artifactPath(coord));
+    }
+
+    /** Local-only POM probe (no HTTP). See {@link #tryLocalArtifact}. */
+    public Optional<Fetched> tryLocalPom(Coordinate coord) {
+        boolean force = cc.jumpkick.config.SessionContext.current().config().forceOr(false);
+        if (force) return Optional.empty();
+        return tryLocalMirror(coord, MavenLayout.pomPath(coord));
+    }
+
     public Fetched fetchMetadata(Coordinate coord) throws IOException, InterruptedException {
         // maven-metadata.xml has no version key and is stale offline, so it's
         // never mirrored; offline version enumeration uses availableVersions().

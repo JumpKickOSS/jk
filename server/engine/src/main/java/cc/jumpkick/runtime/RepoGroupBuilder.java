@@ -25,8 +25,15 @@ import java.util.Map;
  * (exclusive {@code cc.jumpkick.*} / {@code build.jumpkick.*}), then Maven Central, then Google
  * Maven. Shares one {@link Http} and {@link Cas} across the resulting repos.
  *
+ * <p>Remote selection by groupId:
+ *
+ * <ul>
+ *   <li>{@code cc.jumpkick} / {@code build.jumpkick} (and subpackages) → JumpKick only
+ *   <li>everything else → Central, then Google (JumpKick is not probed)
+ * </ul>
+ *
  * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
- * remotes in declaration order.
+ * remotes among the eligible set above.
  */
 public final class RepoGroupBuilder {
 

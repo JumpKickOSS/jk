@@ -33,8 +33,10 @@ Same bucket as **releases** (`releases/<ver>/jk`, `jk-engine-…jar`); only the 
 ## Resolution rules (jk client)
 
 1. Built-in remotes (when you declare none, or as fill-ins): **jumpkick → central → google**.
-2. JumpKick repo has **exclusive groups**: `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`,
-   `build.jumpkick.*` — those coordinates never resolve from Central (dependency-confusion safe).
+2. JumpKick is an **exclusive specialist** for `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`,
+   `build.jumpkick.*` only. Those coordinates never resolve from Central (dependency-confusion
+   safe). For every other groupId, remotes are **central then google** — JumpKick is **not**
+   probed (no 404-then-fallthrough on first-party CDN for third-party GAVs).
 3. **Plugin workers** (`PluginJar`): look in `repos/local`, then `repos/jumpkick`, then
    `repos/central`; on miss, **HTTP-fetch** from the official repo into `repos/jumpkick/`.
 

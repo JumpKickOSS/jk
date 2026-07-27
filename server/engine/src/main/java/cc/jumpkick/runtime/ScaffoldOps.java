@@ -38,7 +38,7 @@ public final class ScaffoldOps {
         if (toml.length() > 0 && toml.charAt(toml.length() - 1) != '\n') toml.append('\n');
         for (PluginDescriptor.Append append : scaffold.appends()) {
             if (append.whenLang() != null && !append.whenLang().equals(lang)) continue;
-            toml.append(interpolate(PluginTableRegistry.resourceText(manifest, append.template()), pkg));
+            toml.append(interpolate(PluginTableRegistry.resourceText(manifest, append.template()), params));
         }
         paths.add(dir.resolve("jk.toml").toString());
         contents.add(toml.toString());
@@ -49,7 +49,7 @@ public final class ScaffoldOps {
                 Path target = dir.resolve(interpolatePath(file.path(), lang, pkg, simple));
                 if (file.keepExisting() && Files.exists(target)) continue;
                 paths.add(target.toString());
-                contents.add(interpolate(PluginTableRegistry.resourceText(manifest, file.template()), pkg));
+                contents.add(interpolate(PluginTableRegistry.resourceText(manifest, file.template()), params));
             }
         }
         return new GeneratedFiles(null, paths, contents, List.of());
@@ -63,9 +63,23 @@ public final class ScaffoldOps {
         return null;
     }
 
-    /** Template variables: {@code ${package}}. */
-    private static String interpolate(String template, String pkg) {
-        return template.replace("${package}", pkg);
+    /**
+     * Template variables: every {@code ${key}} from {@code params} (plus {@code package} →
+     * params.package). Unknown keys are left unchanged.
+     */
+    static String interpolate(String template, Map<String, String> params) {
+        if (template == null || template.isEmpty()) return template;
+        String out = template;
+        // Longer keys first so ${quarkus.version} wins over partial matches (we only replace exact
+        // ${key} tokens).
+        List<String> keys = new ArrayList<>(params.keySet());
+        keys.sort((a, b) -> Integer.compare(b.length(), a.length()));
+        for (String key : keys) {
+            String val = params.get(key);
+            if (val == null) continue;
+            out = out.replace("${" + key + "}", val);
+        }
+        return out;
     }
 
     /**

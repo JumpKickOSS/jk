@@ -1975,15 +1975,28 @@ public final class EngineProtocol {
 
     /** One resolved package, streamed as it is recorded (see {@link #LOCK_PACKAGE}). */
     public static String lockPackage(String dir, String name, String version) {
-        return "{\"type\":\""
-                + LOCK_PACKAGE
-                + "\",\"dir\":"
-                + Jsonl.quote(dir)
-                + ",\"name\":"
-                + Jsonl.quote(name)
-                + ",\"version\":"
-                + Jsonl.quote(version)
-                + "}";
+        return lockPackage(dir, name, version, -1);
+    }
+
+    /**
+     * One resolved package (or a coalesced sample). {@code totalSeen} ≥ 0 is the cumulative package
+     * count at emit time (human-paced coalescing, JK-1202); {@code -1} means “one package, no total”.
+     */
+    public static String lockPackage(String dir, String name, String version, int totalSeen) {
+        StringBuilder sb = new StringBuilder(128);
+        sb.append("{\"type\":\"")
+                .append(LOCK_PACKAGE)
+                .append("\",\"dir\":")
+                .append(Jsonl.quote(dir))
+                .append(",\"name\":")
+                .append(Jsonl.quote(name))
+                .append(",\"version\":")
+                .append(Jsonl.quote(version));
+        if (totalSeen >= 0) {
+            sb.append(",\"total\":").append(totalSeen);
+        }
+        sb.append('}');
+        return sb.toString();
     }
 
     /**

@@ -32,7 +32,9 @@ Cold `jk lock` for large graphs (Spring Boot ~90 packages) is dominated by:
 3. **Three scope solves** (main / test / processor) with shared in-memory caches
 4. **Jar download + CAS + upstream checksum** per package (`toArtifact`, parallel with host rate limit)
 
-BOM pins **prefer** versions; they do not by themselves skip POM/jar work. Soft-prefer pins **do** seed a lazy version universe so metadata is not required unless the pin fails.
+Platform BOM pins (and bare EffectivePom fills under a platform) are **exact** on edges; they
+also seed a lazy version universe so metadata is not required unless the pin fails. They do not
+by themselves skip POM/jar download work for the chosen GAV.
 
 ## Optimizations landed
 
@@ -56,7 +58,8 @@ BOM pins **prefer** versions; they do not by themselves skip POM/jar work. Soft-
 | Open range + BOM/lock `preferredVersion` | Seed `{pin}` if pin ∈ constraint | Pin POM 404, or pin outside remaining candidates |
 | Open range, no prefer | Full `maven-metadata.xml` as before | — |
 
-Bare POM versions remain **highest-wins** (`atLeast`); those packages still need metadata unless a soft-prefer pin seeds them.
+Without a platform BOM, bare POM versions remain **highest-wins** (`atLeast`) and still need
+metadata unless a prefer pin seeds them. With a platform BOM, bare fills are exact singletons.
 
 Exact pins **do not** need metadata on the happy path. Existence is proven by the POM (or jar) fetch.
 

@@ -23,8 +23,9 @@ public record RepositorySpec(
     public static final RepositorySpec MAVEN_CENTRAL =
             new RepositorySpec("central", URI.create("https://repo.maven.apache.org/maven2/"));
 
+    /** Google's Android / Play services Maven repository (after Central in the built-in list). */
     public static final RepositorySpec GOOGLE_MAVEN =
-            new RepositorySpec("google", URI.create("https://maven.google.com/"));
+            new RepositorySpec("google", URI.create("https://dl.google.com/dl/android/maven2/"));
 
     /**
      * JumpKick's first-party Maven repository (GCS-backed). Exclusive for {@code cc.jumpkick.*}

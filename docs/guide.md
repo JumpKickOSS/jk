@@ -131,11 +131,11 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 | `jk build` | Builds from the lock — does not re-resolve |
 | `jk tree` / `jk why` | Inspect the graph offline |
 
-**Pre-release pins:** a lock (or BOM) that pins an RC/M/beta is a soft prefer. Conservative
-re-locks (e.g. after editing another dep) keep that pin when it still satisfies the range.
-Unpinned `latest` selection still prefers the newest **stable** over a newer pre-release.
-Deliberate upgrades off a pre-release belong on `jk update` (within-range re-resolve), not on
-the conservative path.
+**Pre-release pins:** a lock that records an RC/M/beta is kept on conservative re-locks when
+it still satisfies the declared range. A platform BOM pin (including a pre-release line) is
+enforced on managed GAs while the platform is active. Unpinned `latest` selection still
+prefers the newest **stable** over a newer pre-release. Deliberate upgrades off a pre-release
+belong on `jk update` (within-range re-resolve), not on the conservative path.
 
 ### Parallelism (`-j` jobs, `-w` test workers)
 
@@ -345,15 +345,20 @@ and Latest.
 mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints a note so that is
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
-Platform BOMs (`[platform-dependencies]` / `[spring-boot] version`) are **recommendations**
-(Gradle `platform()` style): the pin is preferred first; a stricter transitive floor may lift
-past it. Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a
-**pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree`
-shows it under the platform section with its version and a `(platform)` tag, not as missing.
+Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
+**enforced platforms**, not soft recommendations: GAs listed in the BOM map use the BOM pin
+on transitive edges, and any bare version already filled by EffectivePom (parent or import
+dependencyManagement) stays **exact** for the whole solve. jk does **not** highest-wins-lift
+past those pins while a platform is active — that is what silently broke incomplete stacks
+(e.g. `maven-resolver` 1.9 api next to named-locks 2.x). Explicit Maven ranges on a POM edge
+remain open ranges. Use an exact or caret/tilde version on the BOM itself — not `latest`.
+The BOM is a **pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar;
+`jk tree` shows it under the platform section with its version and a `(platform)` tag, not as
+missing.
 
-Resolution is **highest-version-wins** (not Maven nearest-wins), with PubGrub prose on conflict.
-Main, test, and processor graphs are solved separately so annotation-processor constraints
-do not force main classpath versions.
+Without a platform BOM, bare transitive POM versions still use **highest-version-wins** floors
+(not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are
+solved separately so annotation-processor constraints do not force main classpath versions.
 
 ## Packaging (thin / assembly / shrink / Boot)
 

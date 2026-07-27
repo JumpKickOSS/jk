@@ -5,5 +5,7 @@ version = "3.28.5"
 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
 quarkus-arc  = { group = "io.quarkus", name = "quarkus-arc" }
 
-# quarkus-junit5 pulls maven-embedder; keep off [dev-dependencies] (MAIN graph).
-# Add under [test-dependencies] when JK-1202 junit5 thrash is fully closed.
+# Stay on [test-dependencies] only — MAIN/DEV must not pull maven-embedder (JK-1202).
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured   = { group = "io.rest-assured", name = "rest-assured" }

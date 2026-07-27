@@ -15,7 +15,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1202: platform-aligned edges become exact, open floors stay highest-wins. */
+/**
+ * Platform BOM present → bare EffectivePom versions are exact (enforced contract). Without a
+ * platform, bare versions stay highest-wins floors.
+ */
 class MavenPackageSourceConstraintTest {
 
     @Test
@@ -26,20 +29,28 @@ class MavenPackageSourceConstraintTest {
     }
 
     @Test
-    void platform_pin_above_pom_floor_hard_aligns(@TempDir Path tmp) {
-        // POM says 1.0 (highest-wins floor); BOM pins 1.2.3 which satisfies >=1.0 → exact pin.
+    void platform_pin_overrides_different_bare_on_edge(@TempDir Path tmp) {
+        // POM says 1.0; BOM pins 1.2.3 → enforced platform pin, not a soft prefer.
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.2.3"));
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.0.0");
         assertThat(vs.asExactSingleton()).contains("1.2.3");
     }
 
     @Test
-    void higher_pom_floor_than_platform_pin_stays_at_least(@TempDir Path tmp) {
+    void platform_pin_enforced_even_when_pom_declares_higher(@TempDir Path tmp) {
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"));
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "1.5.0");
-        assertThat(vs.asExactSingleton()).isEmpty();
-        assertThat(vs.contains("1.5.0")).isTrue();
-        assertThat(vs.contains("1.0.0")).isFalse();
+        assertThat(vs.asExactSingleton()).contains("1.0.0");
+    }
+
+    @Test
+    void platform_present_unmapped_bare_is_exact_not_highest_wins(@TempDir Path tmp) {
+        // BOM maps an unrelated GA — platform is still active. Bare filled version must not
+        // become atLeast (named-locks / incomplete-BOM failure mode).
+        MavenPackageSource src = source(tmp, Map.of("com.foo:other", "9.0.0"));
+        VersionSet vs = src.constraintForManagedEdge("org.apache.maven.resolver:maven-resolver-named-locks:jar:", "1.9.24");
+        assertThat(vs.asExactSingleton()).contains("1.9.24");
+        assertThat(vs.contains("2.0.21")).isFalse();
     }
 
     @Test
@@ -49,6 +60,29 @@ class MavenPackageSourceConstraintTest {
         assertThat(vs.asExactSingleton()).isEmpty();
         assertThat(vs.contains("1.2.3")).isTrue();
         assertThat(vs.contains("9.0.0")).isTrue();
+    }
+
+    @Test
+    void maven_range_still_open_under_platform(@TempDir Path tmp) {
+        MavenPackageSource src = source(tmp, Map.of("com.foo:other", "1.0"));
+        VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "[1.0,2.0)");
+        assertThat(vs.asExactSingleton()).isEmpty();
+        assertThat(vs.contains("1.5.0")).isTrue();
+        assertThat(vs.contains("2.0.0")).isFalse();
+    }
+
+    @Test
+    void classified_artifact_pins_exact_declared_or_bom(@TempDir Path tmp) {
+        // guice:jar:classes — highest-wins on the GA list misses classifier jars (JK-1202).
+        MavenPackageSource withBom = source(tmp, Map.of("com.google.inject:guice", "5.1.0"));
+        assertThat(withBom
+                        .constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+                        .asExactSingleton())
+                .contains("5.1.0");
+        MavenPackageSource noBom = source(tmp, Map.of());
+        assertThat(noBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+                        .asExactSingleton())
+                .contains("5.1.0");
     }
 
     private static MavenPackageSource source(Path tmp, Map<String, String> bom) {

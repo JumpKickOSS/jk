@@ -175,9 +175,16 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
 ## Dependency resolution
 
 - **Algorithm:** PubGrub (same family as Dart `pub` / `uv`).
-- **Conflict policy:** highest-version-wins across a graph; Maven nearest-wins is rejected.
+- **Conflict policy:** without a platform BOM, bare POM versions are highest-wins floors
+  (not Maven nearest-wins). **With** a `[platform-dependencies]` / plugin platform BOM,
+  bare EffectivePom-filled versions are **exact** (Maven depMgmt contract); GAs listed in
+  the BOM map use the BOM pin over a different bare string on the edge. Explicit Maven
+  ranges on an edge stay open ranges. Highest-wins lift past a filled pin is not the default
+  under a platform.
 - **Lockfile:** one root `jk.lock`; builds never re-resolve.
-- **BOMs:** soft prefer (pin first, full candidate list); stricter floors may lift.
+- **BOMs:** enforced platform for managed GAs + exact bare fills while the platform map is
+  non-empty; incomplete BOM families (e.g. maven-resolver named-locks) may still get
+  explicit family alignment into the map.
 - **Scopes:** **main**, **test**, and **processor** graphs are solved separately so processor
   constraints do not force main versions. Dual lock rows are allowed when versions diverge;
   classpaths select by scope.
