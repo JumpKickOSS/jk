@@ -135,12 +135,20 @@ public final class JUnitLauncher {
     static void ensureQuarkusToolingPom(Path moduleDir) {
         if (moduleDir == null || !Files.isDirectory(moduleDir)) return;
         Path pom = moduleDir.resolve("pom.xml");
-        if (Files.isRegularFile(pom)) return;
         Path jkToml = moduleDir.resolve("jk.toml");
         if (!Files.isRegularFile(jkToml)) return;
         try {
             String toml = Files.readString(jkToml);
             if (!toml.contains("[quarkus]")) return;
+            // Rewrite scaffold poms that still contain uninterpolated ${group}/${name}/… placeholders.
+            if (Files.isRegularFile(pom)) {
+                String existing = Files.readString(pom);
+                if (!existing.contains("${group}")
+                        && !existing.contains("${name}")
+                        && !existing.contains("${quarkus.version}")) {
+                    return;
+                }
+            }
             String group = tomlField(toml, "group", "com.example");
             String name = tomlField(toml, "name", moduleDir.getFileName().toString());
             String version = tomlField(toml, "version", "0.1.0");

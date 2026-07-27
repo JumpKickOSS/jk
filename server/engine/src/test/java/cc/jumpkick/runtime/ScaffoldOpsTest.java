@@ -80,4 +80,32 @@ class ScaffoldOpsTest {
         var files = ScaffoldOps.scaffold(Path.of("."), Map.of("plugin", "micronaut", "package", "x"));
         assertThat(files.error()).contains("micronaut");
     }
+
+    @Test
+    void quarkus_pom_interpolates_project_coords(@TempDir Path tmp) {
+        var files = ScaffoldOps.scaffold(
+                tmp,
+                Map.of(
+                        "plugin", "quarkus",
+                        "lang", "java",
+                        "package", "com.example",
+                        "group", "com.example",
+                        "name", "demo",
+                        "version", "0.1.0",
+                        "quarkus.version", "3.28.5",
+                        "simpleLayout", "false",
+                        "sample", "true",
+                        "baseToml", "[project]\nname = \"demo\"\ngroup = \"com.example\"\n"));
+        assertThat(files.error()).isNull();
+        int pom = -1;
+        for (int i = 0; i < files.paths().size(); i++) {
+            if (files.paths().get(i).endsWith("pom.xml")) pom = i;
+        }
+        assertThat(pom).isGreaterThanOrEqualTo(0);
+        String xml = files.contents().get(pom);
+        assertThat(xml).contains("<groupId>com.example</groupId>");
+        assertThat(xml).contains("<artifactId>demo</artifactId>");
+        assertThat(xml).contains("<quarkus.platform.version>3.28.5</quarkus.platform.version>");
+        assertThat(xml).doesNotContain("${group}").doesNotContain("${name}");
+    }
 }
