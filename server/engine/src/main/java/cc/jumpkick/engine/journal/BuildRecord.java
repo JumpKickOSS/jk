@@ -37,13 +37,15 @@ public record BuildRecord(
         String trigger,
         String commit,
         CacheBenefit benefit,
-        boolean running) {
+        boolean running,
+        Io io) {
 
     /**
      * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
      * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics}) —
-     * was added. {@code trigger}, {@code commit}, {@code benefit}, and {@code running} were added
-     * without a bump — pre-1.0 additive fields simply read back as defaults on older records.
+     * was added. {@code trigger}, {@code commit}, {@code benefit}, {@code running}, and {@code io}
+     * (the run's byte counts) were added without a bump — pre-1.0 additive fields simply read back as
+     * defaults on older records.
      */
     public static final int SCHEMA = 2;
 
@@ -76,7 +78,8 @@ public record BuildRecord(
                 trigger,
                 commit,
                 benefit,
-                running);
+                running,
+                io);
     }
 
     /** This record with its journal id set (begin path). */
@@ -102,7 +105,8 @@ public record BuildRecord(
                 trigger,
                 commit,
                 benefit,
-                running);
+                running,
+                io);
     }
 
     /** In-flight stub at admission (JK-1250 / JK-1251). */
@@ -135,11 +139,21 @@ public record BuildRecord(
                 trigger,
                 null,
                 null,
-                true);
+                true,
+                null);
     }
 
     /** Aggregate test counts for the run, or {@code null} when no tests ran. */
     public record Tests(long total, long succeeded, long failed, long skipped) {}
+
+    /**
+     * Bytes this run moved, or {@code null} when it moved none (and on older records). {@code remote}
+     * is network traffic — {@code down} fetched from repositories / toolchain downloads, {@code up}
+     * published to a remote; {@code local} is build-cache traffic — {@code up} stored into the cache,
+     * {@code down} restored back out of it. Every number is stat'ed off files at rest, never counted
+     * through a stream. See {@link cc.jumpkick.task.IoLedger}.
+     */
+    public record Io(long remoteUp, long remoteDown, long localUp, long localDown) {}
 
     /**
      * The cache's estimated wall-clock benefit for the run, or {@code null} for a build that didn't

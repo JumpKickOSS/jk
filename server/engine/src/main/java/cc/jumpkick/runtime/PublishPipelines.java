@@ -140,7 +140,14 @@ public final class PublishPipelines {
                 String[] error = {null};
                 StringBuilder workerDiag = new StringBuilder();
                 int exit = new PluginClient("##JKPU:")
-                        .on(PluginProtocol.RESULT, json -> files[0] = Jsonl.intValue(json, "files", 0))
+                        .on(PluginProtocol.RESULT, json -> {
+                            files[0] = Jsonl.intValue(json, "files", 0);
+                            // The worker knows what it PUT (body lengths); the run's ledger shows it
+                            // as remote-up on the dashboard.
+                            cc.jumpkick.config.SessionContext.current()
+                                    .io()
+                                    .remoteUp(Jsonl.longValue(json, "bytes", 0L));
+                        })
                         .on(PluginProtocol.ERROR, json -> error[0] = Jsonl.str(json, PluginProtocol.MESSAGE))
                         .passthrough(line -> workerDiag.append(line).append('\n'))
                         .run(PluginLaunch.javaCommand(workerJar, spec));

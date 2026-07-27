@@ -48,7 +48,8 @@ class JsonTest {
                 "web",
                 "abc1234",
                 new BuildRecord.CacheBenefit(9000, 6000, 3, 4),
-                false);
+                false,
+                new BuildRecord.Io(1_024, 8_388_608, 2_048, 4_096));
 
         BuildRecord back = Json.read(Json.write(original));
 
@@ -80,6 +81,11 @@ class JsonTest {
         assertThat(back.benefit().savedMillis()).isEqualTo(6000);
         assertThat(back.benefit().coveredSkips()).isEqualTo(3);
         assertThat(back.benefit().totalSkips()).isEqualTo(4);
+        assertThat(back.io()).isNotNull();
+        assertThat(back.io().remoteUp()).isEqualTo(1_024);
+        assertThat(back.io().remoteDown()).isEqualTo(8_388_608);
+        assertThat(back.io().localUp()).isEqualTo(2_048);
+        assertThat(back.io().localDown()).isEqualTo(4_096);
     }
 
     @Test
@@ -105,7 +111,8 @@ class JsonTest {
                 null,
                 null,
                 null,
-                false);
+                false,
+                null);
         BuildRecord back = Json.read(Json.write(original));
         assertThat(back.coord()).isNull();
         assertThat(back.tests()).isNull();
@@ -114,11 +121,12 @@ class JsonTest {
         assertThat(back.steps()).isEmpty();
         assertThat(back.diagnostics()).isEmpty();
         assertThat(back.benefit()).isNull();
+        assertThat(back.io()).isNull();
     }
 
     @Test
-    void reads_an_older_record_that_predates_the_benefit_field() {
-        // A pre-benefit record.json (no "benefit" key) must still parse, with benefit == null.
+    void reads_an_older_record_that_predates_the_benefit_and_io_fields() {
+        // A pre-benefit record.json (no "benefit"/"io" keys) must still parse, both reading null.
         String legacy = "{\"id\":\"old-1\",\"buildNumber\":7,\"schema\":2,\"kind\":\"build\","
                 + "\"dir\":\"/p\",\"coord\":\"g:a\",\"startedAt\":0,\"finishedAt\":10,\"millis\":10,"
                 + "\"success\":true,\"cancelled\":false,\"exitCode\":0,\"jkVersion\":\"9\","
@@ -128,5 +136,6 @@ class JsonTest {
         assertThat(back.id()).isEqualTo("old-1");
         assertThat(back.success()).isTrue();
         assertThat(back.benefit()).isNull();
+        assertThat(back.io()).isNull();
     }
 }

@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.File;
@@ -121,6 +122,7 @@ public final class ActionCache {
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
+        meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file (JK-1069). Order preserved: key before task pointer.
@@ -153,6 +155,7 @@ public final class ActionCache {
         for (Map.Entry<String, byte[]> e : stamps.entrySet()) {
             Files.write(outputDir.resolve(e.getKey()), e.getValue());
         }
+        meter(record.outputs(), false); // cache hit: these bytes come back out of the cache
         AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> entry : record.outputs().entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
@@ -193,6 +196,7 @@ public final class ActionCache {
                 cc.jumpkick.util.PathUtil.deleteRecursively(dir);
             }
         }
+        meter(record.outputs(), false);
         AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
@@ -224,6 +228,35 @@ public final class ActionCache {
             outputs.put(baseDir.relativize(a).toString().replace(File.separatorChar, '/'), hex);
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs);
+    }
+
+    /**
+     * Fold one action's output bytes into the run's ledger: {@code intoCache} for a store, else a
+     * restore. Sizes come off the CAS blobs at rest — a stat per output, nothing wrapped around the
+     * copy — and land as the run's {@code local} traffic on the dashboard.
+     */
+    private void meter(Map<String, String> outputs, boolean intoCache) {
+        if (outputs.isEmpty()) return;
+        long bytes = 0;
+        for (String sha : outputs.values()) {
+            // Not every record's values are blob hashes: a marker record (run-tests) parks small
+            // scalars here instead, so meter only what is actually a CAS object.
+            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(cas.pathFor(sha));
+        }
+        IoLedger io = SessionContext.current().io();
+        if (intoCache) io.localUp(bytes);
+        else io.localDown(bytes);
+    }
+
+    /** True for a 64-char lowercase-or-uppercase hex string — the shape {@link Cas} keys blobs by. */
+    private static boolean isSha256Hex(String s) {
+        if (s == null || s.length() != 64) return false;
+        for (int i = 0; i < 64; i++) {
+            char c = s.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 
     // --- record + serialization --------------------------------------------

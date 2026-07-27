@@ -912,9 +912,13 @@ public final class EngineServer implements AutoCloseable {
                 if (pipeline) cacheGate.readLock().lock();
                 currentEventRequestId.set(eventRequestId);
                 JobWorkers.open(eventRequestId);
+                // Every Session this request builds adopts this ledger, so fetches/cache traffic on
+                // the shared pools all land in one place (see IoLedger).
+                cc.jumpkick.task.IoLedger.open(runIo(eventRequestId));
                 try {
                     runner.run(requestLine, cancelToken, writer);
                 } finally {
+                    cc.jumpkick.task.IoLedger.close();
                     JobWorkers.close();
                     JobWorkers.clear(eventRequestId);
                     currentEventRequestId.remove();
@@ -1026,14 +1030,16 @@ public final class EngineServer implements AutoCloseable {
             publishEvent(
                     "request-finish",
                     withProgress(
-                            cc.jumpkick.engine.http.JsonOut.object()
-                                    .put("schema", 1)
-                                    .put("type", "request-finish")
-                                    .put("requestId", eventRequestId)
-                                    .put("kind", eventKind)
-                                    .put("dir", eventDir)
-                                    .put("cancelled", cancelled)
-                                    .put("millis", elapsedMillis),
+                            withIo(
+                                    cc.jumpkick.engine.http.JsonOut.object()
+                                            .put("schema", 1)
+                                            .put("type", "request-finish")
+                                            .put("requestId", eventRequestId)
+                                            .put("kind", eventKind)
+                                            .put("dir", eventDir)
+                                            .put("cancelled", cancelled)
+                                            .put("millis", elapsedMillis),
+                                    eventRequestId),
                             eventRequestId));
             clearProgress(eventRequestId);
             writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
@@ -1184,6 +1190,30 @@ public final class EngineServer implements AutoCloseable {
     private cc.jumpkick.engine.http.JsonOut withProgress(cc.jumpkick.engine.http.JsonOut payload, long requestId) {
         Double p = requestId > 0 ? lastProgressByRequest.get(requestId) : null;
         return payload.putNullable("progress", p);
+    }
+
+    /**
+     * The ambient byte ledger for a request: the journal accumulator's when the kind is journaled,
+     * else a throwaway so metering call sites never branch on whether anyone is recording.
+     */
+    private cc.jumpkick.task.IoLedger runIo(long requestId) {
+        BuildAccumulator a = accumulators.get(requestId);
+        return a != null ? a.io() : new cc.jumpkick.task.IoLedger();
+    }
+
+    /**
+     * Add the run's byte counters to a terminal event so a live dashboard card shows them without
+     * waiting for the history backfill. Omitted entirely for a run that moved nothing.
+     */
+    private cc.jumpkick.engine.http.JsonOut withIo(cc.jumpkick.engine.http.JsonOut payload, long requestId) {
+        BuildAccumulator a = accumulators.get(requestId);
+        if (a == null) return payload;
+        cc.jumpkick.task.IoLedger.Totals t = a.io().totals();
+        if (t.isEmpty()) return payload;
+        return payload.put("remoteUpBytes", t.remoteUp())
+                .put("remoteDownBytes", t.remoteDown())
+                .put("localUpBytes", t.localUp())
+                .put("localDownBytes", t.localDown());
     }
 
     private void clearProgress(long requestId) {
@@ -4377,12 +4407,14 @@ public final class EngineServer implements AutoCloseable {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
+            cc.jumpkick.task.IoLedger.open(runIo(eventRequestId));
             boolean success = false;
             boolean cancelled = false;
             try {
                 success = runHttpWorkspace(entryDir, skipTests, testOnly, cancelToken);
                 cancelled = cancelToken.cancelled() && !success;
             } finally {
+                cc.jumpkick.task.IoLedger.close();
                 JobWorkers.close();
                 httpCancelTokens.remove(eventRequestId);
                 httpJobThreads.remove(eventRequestId);
@@ -4394,15 +4426,17 @@ public final class EngineServer implements AutoCloseable {
                 publishEvent(
                         "request-finish",
                         withProgress(
-                                cc.jumpkick.engine.http.JsonOut.object()
-                                        .put("schema", 1)
-                                        .put("type", "request-finish")
-                                        .put("requestId", eventRequestId)
-                                        .put("kind", kind)
-                                        .put("dir", entryDir.toString())
-                                        .put("success", success)
-                                        .put("cancelled", cancelled)
-                                        .put("millis", elapsedMillis),
+                                withIo(
+                                        cc.jumpkick.engine.http.JsonOut.object()
+                                                .put("schema", 1)
+                                                .put("type", "request-finish")
+                                                .put("requestId", eventRequestId)
+                                                .put("kind", kind)
+                                                .put("dir", entryDir.toString())
+                                                .put("success", success)
+                                                .put("cancelled", cancelled)
+                                                .put("millis", elapsedMillis),
+                                        eventRequestId),
                                 eventRequestId));
                 clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
@@ -4435,12 +4469,14 @@ public final class EngineServer implements AutoCloseable {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
+            cc.jumpkick.task.IoLedger.open(runIo(eventRequestId));
             boolean success = false;
             boolean cancelled = false;
             try {
                 success = runHttpLock(entryDir, cancelToken);
                 cancelled = cancelToken.cancelled() && !success;
             } finally {
+                cc.jumpkick.task.IoLedger.close();
                 JobWorkers.close();
                 httpCancelTokens.remove(eventRequestId);
                 httpJobThreads.remove(eventRequestId);
@@ -4452,15 +4488,17 @@ public final class EngineServer implements AutoCloseable {
                 publishEvent(
                         "request-finish",
                         withProgress(
-                                cc.jumpkick.engine.http.JsonOut.object()
-                                        .put("schema", 1)
-                                        .put("type", "request-finish")
-                                        .put("requestId", eventRequestId)
-                                        .put("kind", "lock")
-                                        .put("dir", entryDir.toString())
-                                        .put("success", success)
-                                        .put("cancelled", cancelled)
-                                        .put("millis", elapsedMillis),
+                                withIo(
+                                        cc.jumpkick.engine.http.JsonOut.object()
+                                                .put("schema", 1)
+                                                .put("type", "request-finish")
+                                                .put("requestId", eventRequestId)
+                                                .put("kind", "lock")
+                                                .put("dir", entryDir.toString())
+                                                .put("success", success)
+                                                .put("cancelled", cancelled)
+                                                .put("millis", elapsedMillis),
+                                        eventRequestId),
                                 eventRequestId));
                 clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
@@ -4918,6 +4956,12 @@ public final class EngineServer implements AutoCloseable {
         /** JK-1178: request was {@code --rebuild}/{@code --force} — train {@code build:rebuild} metrics. */
         private final boolean rebuild;
 
+        /**
+         * This run's byte accounting. Opened as the ambient ledger on the runner thread, so every
+         * session the request builds meters into it (see {@link cc.jumpkick.task.IoLedger}).
+         */
+        private final cc.jumpkick.task.IoLedger io = new cc.jumpkick.task.IoLedger();
+
         private final java.util.List<ModuleOutcome> modules = new java.util.concurrent.CopyOnWriteArrayList<>();
         // Steps per module dir (name → Step, arrival order, last status wins). The single-pipeline path
         // uses the "" (SINGLE_PIPELINE_DIR) bucket; workspace modules use their real dir. Rendered as a
@@ -4985,6 +5029,10 @@ public final class EngineServer implements AutoCloseable {
 
         String journalId() {
             return journalId;
+        }
+
+        cc.jumpkick.task.IoLedger io() {
+            return io;
         }
 
         String dir() {
@@ -5173,6 +5221,11 @@ public final class EngineServer implements AutoCloseable {
                             benefit.savedMillis(),
                             benefit.coveredSkips(),
                             benefit.totalSkips());
+            cc.jumpkick.task.IoLedger.Totals bytes = io.totals();
+            BuildRecord.Io ioRow = bytes.isEmpty()
+                    ? null
+                    : new BuildRecord.Io(
+                            bytes.remoteUp(), bytes.remoteDown(), bytes.localUp(), bytes.localDown());
             return new BuildRecord(
                     null,
                     0L,
@@ -5194,7 +5247,8 @@ public final class EngineServer implements AutoCloseable {
                     trigger,
                     commit,
                     benefitRow,
-                    false);
+                    false,
+                    ioRow);
         }
 
         private static boolean notBlank(String s) {

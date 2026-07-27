@@ -177,7 +177,8 @@ public final class BuildJournal {
                     r.trigger(),
                     r.commit(),
                     null,
-                    false);
+                    false,
+                    r.io()); // whatever the abandoned run had metered (null for an in-flight stub)
             if (complete(r.id(), done, Snapshot.NONE)) n++;
         }
         return n;

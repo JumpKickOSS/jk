@@ -61,7 +61,8 @@ public final class MavenPublisher {
         }
     }
 
-    public record Result(Map<String, Integer> statusByPath) {
+    /** Per-path upload status plus the total payload {@code bytes} PUT (bodies only, no framing). */
+    public record Result(Map<String, Integer> statusByPath, long bytes) {
         public Result {
             statusByPath = Map.copyOf(statusByPath);
         }
@@ -89,42 +90,45 @@ public final class MavenPublisher {
             throws IOException, InterruptedException {
         if (signing == null) signing = SigningOptions.none();
         Map<String, Integer> results = new LinkedHashMap<>();
+        long[] bytes = {0};
         String groupPath = project.group().replace('.', '/');
         String prefix = groupPath + "/" + project.name() + "/" + project.version() + "/";
         String stem = project.name() + "-" + project.version();
 
         for (Artifact a : artifacts) {
             String relPath = prefix + stem + a.filenameSuffix();
-            putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results);
+            putWithChecksums(relPath, a.body(), contentType(a.filenameSuffix()), results, bytes);
 
             if (signing.gpg() != null) {
                 byte[] asc = signing.gpg().signArmored(a.body());
-                putWithChecksums(relPath + ".asc", asc, contentType(".asc"), results);
+                putWithChecksums(relPath + ".asc", asc, contentType(".asc"), results, bytes);
             }
             if (signing.sigstore() != null) {
                 byte[] bundle = signing.sigstore().signBundle(a.body());
-                putWithChecksums(relPath + ".sigstore", bundle, contentType(".sigstore"), results);
+                putWithChecksums(relPath + ".sigstore", bundle, contentType(".sigstore"), results, bytes);
             }
         }
-        return new Result(results);
+        return new Result(results, bytes[0]);
     }
 
-    private void putWithChecksums(String relPath, byte[] body, String contentType, Map<String, Integer> results)
+    private void putWithChecksums(
+            String relPath, byte[] body, String contentType, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
-        put(relPath, body, contentType, results);
+        put(relPath, body, contentType, results, bytes);
         Checksums.Set sums = Checksums.of(body);
-        put(relPath + ".md5", sums.md5().getBytes(StandardCharsets.US_ASCII), "text/plain", results);
-        put(relPath + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII), "text/plain", results);
-        put(relPath + ".sha256", sums.sha256().getBytes(StandardCharsets.US_ASCII), "text/plain", results);
-        put(relPath + ".sha512", sums.sha512().getBytes(StandardCharsets.US_ASCII), "text/plain", results);
+        put(relPath + ".md5", sums.md5().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        put(relPath + ".sha1", sums.sha1().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        put(relPath + ".sha256", sums.sha256().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
+        put(relPath + ".sha512", sums.sha512().getBytes(StandardCharsets.US_ASCII), "text/plain", results, bytes);
     }
 
-    private void put(String relPath, byte[] body, String contentType, Map<String, Integer> out)
+    private void put(String relPath, byte[] body, String contentType, Map<String, Integer> out, long[] bytes)
             throws IOException, InterruptedException {
         URI uri = repoBase.resolve(relPath);
         // The transport carries the offline guard, auth header, and retry policy.
         int status = transport.put(uri, body, contentType, credential);
         out.put(relPath, status);
+        bytes[0] += body.length;
         if (status < 200 || status >= 300) {
             throw new IOException("PUT " + uri + " returned " + status);
         }

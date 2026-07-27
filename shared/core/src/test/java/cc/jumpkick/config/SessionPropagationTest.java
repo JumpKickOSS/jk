@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.JkThreads;
 import cc.jumpkick.run.SessionCancel;
+import cc.jumpkick.task.IoLedger;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CyclicBarrier;
@@ -25,6 +26,7 @@ class SessionPropagationTest {
     void tidy() {
         SessionContext.reset();
         SessionCancel.bind(null); // undo any probe binding this test installed
+        IoLedger.close(); // drop any ambient run ledger a test opened
     }
 
     private static Session sessionAt(String dir) {
@@ -124,6 +126,39 @@ class SessionPropagationTest {
                 SessionContext.where(live, () -> CompletableFuture.supplyAsync(SessionCancel::cancelled, JkThreads.io())
                         .get());
         assertThat(seenLive).isFalse();
+    }
+
+    @Test
+    void sessions_built_inside_a_run_share_the_runs_io_ledger() {
+        IoLedger run = new IoLedger();
+        IoLedger.open(run); // what the engine does on a request's runner thread
+
+        Session session = sessionAt("/tmp/jk-io-adopt");
+
+        assertThat(session.io()).isSameAs(run);
+        assertThat(session.withCacheDir(Path.of("/tmp/jk-cache")).io()).isSameAs(run); // copies share it
+
+        IoLedger.close();
+        assertThat(Session.defaults().io()).isNotSameAs(run); // outside a run: detached ledger
+    }
+
+    @Test
+    void a_pool_task_meters_into_the_runs_ledger() throws Exception {
+        IoLedger run = new IoLedger();
+        IoLedger.open(run);
+        Session session = sessionAt("/tmp/jk-io-pool");
+
+        // The pool worker pre-dates the request, so it inherits no thread state — it reaches the
+        // run's ledger only through the propagated session. This is how MavenRepo/ActionCache meter.
+        SessionContext.where(session, () -> CompletableFuture.supplyAsync(
+                        () -> {
+                            SessionContext.current().io().remoteDown(1_234);
+                            return null;
+                        },
+                        JkThreads.io())
+                .get());
+
+        assertThat(run.totals().remoteDown()).isEqualTo(1_234);
     }
 
     @Test

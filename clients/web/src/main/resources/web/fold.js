@@ -170,6 +170,7 @@ export function foldEvent(cards, event) {
         card.success = typeof d.success === 'boolean' ? d.success : null;
         card.output = []; // the console tail is an in-flight affordance; finished cards are compact
         card.etaMillis = null; // the countdown is an in-flight affordance; a finished card is 100%
+        card.io = ioOf(d); // byte counters, absent when the run moved nothing
       }
       break;
     }
@@ -265,7 +266,68 @@ function historyCard(rec) {
     progressDen: 0,
     etaMillis: null,
     etaAt: null,
+    io: rec.io ? normalizeIo(rec.io) : null,
   };
+}
+
+/**
+ * Byte counters off a `request-finish` event. The engine keeps the SSE payload flat (one scalar per
+ * key, like the wire protocol), so the four counters arrive as `*Bytes` fields; `record.json` nests
+ * them under `io` instead (see {@link normalizeIo}). Null when the run moved nothing — the engine
+ * omits the fields rather than sending zeros.
+ */
+function ioOf(d) {
+  const io = normalizeIo({
+    remoteUp: d.remoteUpBytes,
+    remoteDown: d.remoteDownBytes,
+    localUp: d.localUpBytes,
+    localDown: d.localDownBytes,
+  });
+  return io.remoteUp || io.remoteDown || io.localUp || io.localDown ? io : null;
+}
+
+/** The four counters as numbers, defaulting anything missing/non-numeric to 0. */
+function normalizeIo(io) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  return { remoteUp: n(io.remoteUp), remoteDown: n(io.remoteDown), localUp: n(io.localUp), localDown: n(io.localDown) };
+}
+
+/**
+ * The card's I/O rows, newest-relevant first: `remote` (network) then `local` (build cache), each
+ * `{scope, label, up, down}` — `scope` is the stable key the UI branches on, `label` the text it
+ * renders. A scope with no traffic in either direction is dropped rather than rendered as zeros, so a
+ * fully-cached offline build shows one line and a run that moved nothing shows none.
+ */
+export function ioLines(card) {
+  const io = card && card.io;
+  if (!io) return [];
+  const lines = [];
+  if (io.remoteUp || io.remoteDown) {
+    lines.push({ scope: 'remote', label: 'remote data', up: io.remoteUp, down: io.remoteDown });
+  }
+  if (io.localUp || io.localDown) {
+    lines.push({ scope: 'local', label: 'local data', up: io.localUp, down: io.localDown });
+  }
+  return lines;
+}
+
+/**
+ * Human byte size, 1024-based, picking the unit that keeps the number small: `512 B`, `100 KiB`,
+ * `12.4 MiB`, `1.5 GiB` — never `1533 MiB`. One decimal below 100, whole numbers above it, and a
+ * trailing `.0` is dropped.
+ */
+export function fmtBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return Math.round(bytes) + ' B';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  let v = bytes;
+  let u = -1;
+  do {
+    v /= 1024;
+    u++;
+  } while (v >= 1024 && u < units.length - 1);
+  const n = v >= 100 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, '');
+  return n + ' ' + units[u];
 }
 
 /** A persisted diagnostic → the client's flat failure-output shape (errors only; warnings dropped). */

@@ -96,6 +96,21 @@
           <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
         </div>
 
+        <!-- Bytes the run moved, right-aligned under the elapsed/ago pair: one row per scope
+             ("remote data" = network, "local data" = build cache), read as `label  N ↑ / N ↓` — each
+             arrow trails the number it belongs to. Rows with no traffic are dropped, so an offline
+             warm build shows only "local data" and a no-op run shows nothing. -->
+        <div v-if="ioLines(card).length" class="io">
+          <span v-for="l in ioLines(card)" :key="l.scope" class="io-row" :title="l.scope === 'remote'
+                ? 'network: ' + bytes(l.up) + ' uploaded / ' + bytes(l.down) + ' downloaded'
+                : 'build cache: ' + bytes(l.up) + ' stored / ' + bytes(l.down) + ' restored'">
+            <span class="io-scope">{{ l.label }}</span>
+            <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
+            <span class="io-sep">/</span>
+            <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+          </span>
+        </div>
+
         <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
           <span class="cardbar-fill" :style="{ width: progress(card) + '%' }"></span>
         </div>

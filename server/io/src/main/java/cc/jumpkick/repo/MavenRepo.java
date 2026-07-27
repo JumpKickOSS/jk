@@ -199,6 +199,9 @@ public final class MavenRepo {
         Cas.Stored stored = limitHost
                 ? cc.jumpkick.http.HostRateLimiter.shared().run(host, () -> downloadAndVerify(coord, uri, relativePath, mirror))
                 : downloadAndVerify(coord, uri, relativePath, mirror);
+        // Metered off the blob at rest, not the stream: this is the run's only artifact download leg
+        // (warm mirror hits returned above), so every jar/pom/metadata byte off the network lands here.
+        cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
         if (mirror) {
             // Primary store: materialise a human-readable, hard-linked copy under repos/<name>/.
             repoStore.materialize(relativePath, stored.path(), stored.sha256());

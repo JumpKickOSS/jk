@@ -117,6 +117,8 @@ public final class JdkInstaller {
             long bytes =
                     streamingDownload(entry.url(), entry.sha256(), entry.installFolderName(), archive, onBytesRead);
             keep = true;
+            // Metered once off the finished archive, not per chunk (onBytesRead is a progress hook).
+            cc.jumpkick.config.SessionContext.current().io().remoteDown(bytes);
             return new DownloadedArchive(archive, bytes);
         } finally {
             if (!keep) Files.deleteIfExists(archive);
@@ -223,6 +225,7 @@ public final class JdkInstaller {
                 }
             }
             Files.write(archive, body);
+            cc.jumpkick.config.SessionContext.current().io().remoteDown(archive);
 
             // Stage under the jdks root so the final rename is on the same
             // filesystem as the target. Otherwise (/tmp on tmpfs vs. $HOME on

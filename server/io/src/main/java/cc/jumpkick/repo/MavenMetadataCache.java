@@ -61,6 +61,8 @@ public final class MavenMetadataCache {
             }
             if (status == 200) {
                 store(body, meta, resp);
+                // A fresh index off the network — a 304 revalidation costs no payload, so isn't metered.
+                cc.jumpkick.config.SessionContext.current().io().remoteDown(body);
                 return resp.body();
             }
             if (status == 404) {

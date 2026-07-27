@@ -6,9 +6,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 
-const { foldEvent, outcomeOf, moduleSummary, phaseChainOf, seedFromHistory, MAX_CARDS, MAX_OUTPUT_LINES } = await import(
-  pathToFileURL(process.env.JK_FOLD_MJS)
-);
+const {
+  foldEvent,
+  outcomeOf,
+  moduleSummary,
+  phaseChainOf,
+  seedFromHistory,
+  ioLines,
+  fmtBytes,
+  MAX_CARDS,
+  MAX_OUTPUT_LINES,
+} = await import(pathToFileURL(process.env.JK_FOLD_MJS));
 
 const historyRecord = (id, dir, extra = {}) => ({
   id,
@@ -407,4 +415,62 @@ test('phaseChainOf keeps an unphased step as its own node, keyed by name', () =>
   assert.equal(chain[0].phase, '');
   assert.equal(chain[0].key, 'lock'); // last-resort: keyed by the step name so it is never dropped
   assert.equal(chain[0].label, 'Lock');
+});
+
+test('request-finish folds the run\'s byte counters onto the card', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, finish(1, {
+    success: true,
+    millis: 900,
+    remoteUpBytes: 0,
+    remoteDownBytes: 8_388_608,
+    localUpBytes: 2_048,
+    localDownBytes: 4_096,
+  }));
+  assert.deepEqual(cards[0].io, { remoteUp: 0, remoteDown: 8_388_608, localUp: 2_048, localDown: 4_096 });
+  assert.deepEqual(ioLines(cards[0]), [
+    { scope: 'remote', label: 'remote data', up: 0, down: 8_388_608 },
+    { scope: 'local', label: 'local data', up: 2_048, down: 4_096 },
+  ]);
+});
+
+test('a run that moved no bytes gets no io block', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, finish(1, { success: true, millis: 12 })); // engine omits the fields entirely
+  assert.equal(cards[0].io, null);
+  assert.deepEqual(ioLines(cards[0]), []);
+});
+
+test('ioLines drops a scope with no traffic (warm offline build shows local only)', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, finish(1, { success: true, millis: 40, localDownBytes: 1_000 }));
+  assert.deepEqual(ioLines(cards[0]), [{ scope: 'local', label: 'local data', up: 0, down: 1_000 }]);
+  assert.deepEqual(ioLines({}), []); // no card / no io → nothing to render
+});
+
+test('history records carry their nested io block onto the seeded card', () => {
+  const cards = [];
+  seedFromHistory(cards, [
+    historyRecord('h1', '/w', { io: { remoteUp: 10, remoteDown: 20, localUp: 30, localDown: 40 } }),
+    historyRecord('h2', '/w2'),
+  ]);
+  const seeded = cards.find((c) => c.historyId === 'h1');
+  assert.deepEqual(seeded.io, { remoteUp: 10, remoteDown: 20, localUp: 30, localDown: 40 });
+  assert.equal(cards.find((c) => c.historyId === 'h2').io, null); // older record, no io key
+});
+
+test('fmtBytes picks the unit that keeps the number small', () => {
+  assert.equal(fmtBytes(0), '0 B');
+  assert.equal(fmtBytes(-1), '0 B');
+  assert.equal(fmtBytes(null), '0 B');
+  assert.equal(fmtBytes(512), '512 B');
+  assert.equal(fmtBytes(1024), '1 KiB'); // trailing .0 dropped
+  assert.equal(fmtBytes(102_400), '100 KiB');
+  assert.equal(fmtBytes(13_000_000), '12.4 MiB');
+  assert.equal(fmtBytes(536_870_912), '512 MiB'); // >= 100 → whole numbers
+  assert.equal(fmtBytes(1_607_467_008), '1.5 GiB'); // never 1533 MiB
+  assert.equal(fmtBytes(1_099_511_627_776), '1 TiB');
 });

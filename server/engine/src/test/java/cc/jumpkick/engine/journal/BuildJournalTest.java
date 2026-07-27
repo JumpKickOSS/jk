@@ -40,7 +40,8 @@ class BuildJournalTest {
                 "cli",
                 null,
                 null,
-                false);
+                false,
+                null);
     }
 
     @Test
