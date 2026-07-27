@@ -63,6 +63,37 @@ class RepoGroupExclusiveTest {
     }
 
     @Test
+    void prepended_local_repos_preserve_exclusive_bindings(@TempDir Path tmp) throws Exception {
+        // Path/git materialize used to rebuild RepoGroup without exclusive groups → jumpkick
+        // was tried for every Central GAV. Prepend must keep exclusive specialists exclusive.
+        Path pathDir = tmp.resolve("path-repo");
+        Path centralDir = tmp.resolve("central-repo");
+        writePom(pathDir, "com.local", "pathlib", "1.0");
+        writePom(centralDir, "org.junit.jupiter", "junit-jupiter", "5.10.0");
+        writeMeta(centralDir, "org.junit.jupiter", "junit-jupiter", "5.10.0");
+        Cas cas = new Cas(tmp.resolve("cas"));
+        MavenRepo pathRepo = new MavenRepo("path", pathDir.toUri(), new Http(), cas);
+        MavenRepo jumpkick = new MavenRepo("jumpkick", tmp.resolve("empty-jk").toUri(), new Http(), cas);
+        MavenRepo central = new MavenRepo("central", centralDir.toUri(), new Http(), cas);
+        RepoGroup base = new RepoGroup(
+                List.of(jumpkick, central),
+                List.of(List.of("cc.jumpkick", "cc.jumpkick.*", "build.jumpkick", "build.jumpkick.*"), List.of()));
+        RepoGroup merged = base.withReposPrepended(List.of(pathRepo));
+
+        assertThat(merged.eligibleRepos(Coordinate.of("org.junit.jupiter", "junit-jupiter", "0")))
+                .extracting(MavenRepo::name)
+                .containsExactly("path", "central");
+        assertThat(merged.eligibleRepos(Coordinate.of("cc.jumpkick", "jk-test-runner", "0")))
+                .extracting(MavenRepo::name)
+                .containsExactly("jumpkick");
+        assertThat(merged.tryFetchPom(Coordinate.of("com.local", "pathlib", "1.0")))
+                .isPresent()
+                .get()
+                .extracting(f -> f.repo().name())
+                .isEqualTo("path");
+    }
+
+    @Test
     void local_first_prefers_central_mirror_without_hitting_specialist(@TempDir Path tmp) throws Exception {
         Path centralDir = tmp.resolve("central-repo");
         writePom(centralDir, "com.example", "widget", "1.0");

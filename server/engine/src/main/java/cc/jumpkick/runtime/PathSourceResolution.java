@@ -92,9 +92,9 @@ public final class PathSourceResolution {
                 .build();
 
         // Path artifact repos first: the pinned coordinate is built locally, so the file:// repo
-        // answers before any remote is consulted.
-        List<MavenRepo> merged = new ArrayList<>(extraRepos);
-        merged.addAll(baseRepos.repos());
-        return new Prepared(project, new RepoGroup(merged));
+        // answers before any remote is consulted. Preserve exclusive group bindings on baseRepos
+        // (JumpKick first-party) — rebuilding without them re-opens jumpkick→404→central for every
+        // Central GAV.
+        return new Prepared(project, baseRepos.withReposPrepended(extraRepos));
     }
 }

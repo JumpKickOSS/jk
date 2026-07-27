@@ -40,6 +40,23 @@ public final class RepoGroup {
         return new RepoGroup(List.of(single));
     }
 
+    /**
+     * Prepend {@code leading} repos (no exclusive claims) ahead of this group, keeping this
+     * group's exclusive bindings aligned with the trailing repos. Used for path/git materialize
+     * repos that must answer before remotes without stripping JumpKick exclusive groups (which
+     * would make every Central GAV HTTP-404 on jumpkick first).
+     */
+    public RepoGroup withReposPrepended(List<MavenRepo> leading) {
+        if (leading == null || leading.isEmpty()) return this;
+        List<MavenRepo> merged = new ArrayList<>(leading.size() + repos.size());
+        merged.addAll(leading);
+        merged.addAll(repos);
+        List<List<String>> excl = new ArrayList<>(merged.size());
+        for (int i = 0; i < leading.size(); i++) excl.add(List.of());
+        excl.addAll(exclusiveGroups);
+        return new RepoGroup(merged, excl);
+    }
+
     public List<MavenRepo> repos() {
         return repos;
     }
