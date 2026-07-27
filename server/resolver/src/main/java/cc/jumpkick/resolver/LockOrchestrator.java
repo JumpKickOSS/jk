@@ -300,16 +300,16 @@ public final class LockOrchestrator {
         // Engine classpath injection alone is not enough for standalone `java -jar`.
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
         // owns its version — the inject must not smuggle the scaffold default past it (JK-1223).
-        injectLanguageRuntimes(project, projectDir, bomConstraints, mainDeduped);
+        Set<String> injected = injectLanguageRuntimes(project, projectDir, bomConstraints, mainDeduped);
 
         List<Dependency> fileDeps = new ArrayList<>();
         List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
         List<Dependency> testDeclared = splitFile(testDeduped, fileDeps);
         List<Dependency> processorDeclared = splitFile(processorDeduped, fileDeps);
 
-        stripBomForExactRoots(mainDeclared, bomConstraints, constraintProvenance);
-        stripBomForExactRoots(testDeclared, bomConstraints, constraintProvenance);
-        stripBomForExactRoots(processorDeclared, bomConstraints, constraintProvenance);
+        stripBomForExactRoots(mainDeclared, bomConstraints, constraintProvenance, injected);
+        stripBomForExactRoots(testDeclared, bomConstraints, constraintProvenance, injected);
+        stripBomForExactRoots(processorDeclared, bomConstraints, constraintProvenance, injected);
 
         List<Dependency> mainRoots = materializePlatformManaged(mainDeclared, bomConstraints);
         List<Dependency> testRoots = materializePlatformManaged(testDeclared, bomConstraints);
@@ -693,10 +693,18 @@ public final class LockOrchestrator {
     }
 
     private static void stripBomForExactRoots(
-            List<Dependency> declared, Map<String, String> bomConstraints, Map<String, String> constraintProvenance) {
+            List<Dependency> declared,
+            Map<String, String> bomConstraints,
+            Map<String, String> constraintProvenance,
+            Set<String> injectedRuntimes) {
         for (Dependency d : declared) {
             if (d.isPlatformManaged()) continue;
             if (!(d.version() instanceof VersionSelector.Exact)) continue;
+            // An INJECTED runtime root is jk's own bookkeeping, not a user override — it
+            // already carries the BOM's managed version, and stripping the BOM here would
+            // flip every other edge of the GA to raw POM fills (grails-core declares a
+            // groovy NEWER than grails-bom manages → unsat, JK-1223).
+            if (injectedRuntimes.contains(d.module())) continue;
             if (bomConstraints.containsKey(d.module())) {
                 bomConstraints.remove(d.module());
                 constraintProvenance.remove(d.module());
@@ -882,11 +890,13 @@ public final class LockOrchestrator {
      * {@code kotlin}/{@code groovy} pin when it has a literal; otherwise a floating major of the
      * current jk default so PubGrub still picks a concrete release at lock time.
      */
-    static void injectLanguageRuntimes(
+    /** @return the module keys this call added (skip-list for the exact-root BOM strip). */
+    static Set<String> injectLanguageRuntimes(
             JkBuild project,
             Path projectDir,
             Map<String, String> bomConstraints,
             LinkedHashMap<String, Dependency> mainDeduped) {
+        Set<String> added = new LinkedHashSet<>();
         JkBuild.Project p = project.project();
         // Same inference the engine uses to enable lanes (JK-1218): an unpinned project with
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
@@ -896,28 +906,45 @@ public final class LockOrchestrator {
                 ? cc.jumpkick.layout.Languages.resolve(p, projectDir)
                 : new cc.jumpkick.layout.Languages(true, p.isKotlin(), p.isGroovy());
         if (langs.groovy()) {
-            mainDeduped.putIfAbsent(
-                    "org.apache.groovy:groovy",
-                    new Dependency(
-                            "org.apache.groovy:groovy",
-                            runtimeSelector(bomConstraints, "org.apache.groovy:groovy", p.groovy(), "5")));
+            addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", p.groovy(), "5");
         }
         if (langs.kotlin()) {
-            mainDeduped.putIfAbsent(
-                    "org.jetbrains.kotlin:kotlin-stdlib",
-                    new Dependency(
-                            "org.jetbrains.kotlin:kotlin-stdlib",
-                            runtimeSelector(bomConstraints, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2")));
+            addRuntime(bomConstraints, mainDeduped, added, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2");
+        }
+        return added;
+    }
+
+    /** Inject one runtime; BOM-following injects (no exact pin) join the strip skip-list. */
+    private static void addRuntime(
+            Map<String, String> bomConstraints,
+            LinkedHashMap<String, Dependency> mainDeduped,
+            Set<String> added,
+            String module,
+            VersionSelector declared,
+            String fallbackMajor) {
+        String pinLit = declared != null ? versionLiteral(declared) : null;
+        boolean pinned = pinLit != null && !pinLit.isBlank();
+        Dependency dep = new Dependency(module, runtimeSelector(bomConstraints, module, declared, fallbackMajor));
+        if (mainDeduped.putIfAbsent(module, dep) == null && !pinned) {
+            added.add(module);
         }
     }
 
     /**
-     * A platform that manages the runtime GA wins over the project pin (grails-bom's groovy is
-     * the version Grails certified; the scaffold default must not strip it via the exact-root
-     * rule, JK-1223). Otherwise: exact pin literal, else floating major.
+     * An explicit exact pin literal wins (the user's — or a framework scaffold's — deliberate
+     * choice; it strips the BOM entry via the normal exact-root rule, which Grails needs: its
+     * M4 bom manages a groovy OLDER than grails-core requires). Without a literal, a platform
+     * that manages the GA owns the version (Maven parity — the inject then skips the strip so
+     * every edge agrees); else floating major (JK-1223).
      */
     private static VersionSelector runtimeSelector(
             Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
+        String lit = declared != null ? versionLiteral(declared) : null;
+        if (lit != null && !lit.isBlank()) {
+            // Any [project] version literal (bare/caret/tilde all carry one) is a deliberate
+            // choice — same contract as the original inject.
+            return VersionSelector.parse("=" + lit);
+        }
         String managed = bomConstraints.get(module);
         if (managed != null && !managed.isBlank()) {
             return VersionSelector.parse("=" + managed);

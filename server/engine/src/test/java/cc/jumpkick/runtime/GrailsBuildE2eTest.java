@@ -39,7 +39,7 @@ class GrailsBuildE2eTest {
                 group   = "com.example"
                 version = "1.0.0"
                 jdk     = 21
-                groovy  = "5.0.4" // scaffold default — grails-bom's managed groovy wins at lock (JK-1223)
+                groovy  = "5.0.7" # grails scaffold pin (GRAILS_GROOVY_VERSION) — overrides the M4 bom (JK-1223)
                 layout  = "simple"
 
                 [application]
