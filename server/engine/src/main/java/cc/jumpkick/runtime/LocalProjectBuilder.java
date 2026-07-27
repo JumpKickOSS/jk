@@ -73,6 +73,7 @@ public final class LocalProjectBuilder {
         Lockfile lock = new LockOrchestrator(repos)
                 .withProjectDir(projectDir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(project, projectDir))
+                .withPlatformPolicy(project.build().platformPolicy())
                 .lock(project, jkVersion);
         List<Path> classpath =
                 new ArrayList<>(new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN));

@@ -346,19 +346,34 @@ mirrors. Unreachable remotes look empty on Compatible/Latest — the CLI prints 
 not mistaken for “everything is current.” Prefer `jk sync --offline-prepare` before offline CI.
 
 Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
-**enforced platforms**, not soft recommendations: GAs listed in the BOM map use the BOM pin
-on transitive edges, and any bare version already filled by EffectivePom (parent or import
-dependencyManagement) stays **exact** for the whole solve. jk does **not** highest-wins-lift
-past those pins while a platform is active — that is what silently broke incomplete stacks
-(e.g. `maven-resolver` 1.9 api next to named-locks 2.x). Explicit Maven ranges on a POM edge
-remain open ranges. Use an exact or caret/tilde version on the BOM itself — not `latest`.
-The BOM is a **pin source** (recorded on managed lock rows as `pinned-by`), not a runtime jar;
-`jk tree` shows it under the platform section with its version and a `(platform)` tag, not as
-missing.
+**enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
+edges, and any bare version already filled by EffectivePom (parent or import
+dependencyManagement) stays **exact**. Explicit Maven ranges on a POM edge remain open ranges.
+Use an exact or caret/tilde version on the BOM itself — not `latest`. The BOM is a **pin
+source** (recorded on managed lock rows as `pinned-by`), not a runtime jar; `jk tree` shows it
+under the platform section with its version and a `(platform)` tag, not as missing.
+
+| Policy | Config / flag | BOM-map pin |
+|--------|---------------|-------------|
+| **enforced** (default) | omit / `[resolve] platform = "enforced"` | exact |
+| **floor** (opt-in) | `[resolve] platform = "floor"` or `jk update --platform=floor` | lower bound (may highest-wins lift) |
+
+Unmapped bare fills under a platform stay exact even in `floor` mode (avoids incomplete-BOM
+skew). Exact user roots still override the BOM for that GA.
 
 Without a platform BOM, bare transitive POM versions still use **highest-version-wins** floors
 (not Maven nearest-wins), with PubGrub prose on conflict. Main, test, and processor graphs are
 solved separately so annotation-processor constraints do not force main classpath versions.
+
+**Export a freeze of the lock as a Maven BOM** (library / platform authors):
+
+```bash
+jk export bom                 # target/<name>-bom.pom from main scopes
+jk export bom --scope test
+jk export bom --out dist/my-bom.pom --overwrite
+```
+
+Import that POM like any other platform BOM (`[platform-dependencies]`).
 
 ## Packaging (thin / assembly / shrink / Boot)
 

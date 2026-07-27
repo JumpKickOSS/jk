@@ -11,6 +11,7 @@ import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.ObjectStoreConfig;
 import cc.jumpkick.model.PathSource;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.PluginDeclaration;
 import cc.jumpkick.model.Profile;
 import cc.jumpkick.model.Profiles;
@@ -1510,7 +1511,24 @@ public final class JkBuildParser {
     private static JkBuild.Build parseBuild(TomlTable root) {
         TomlTable build = root.getTable("build");
         TomlTable test = root.getTable("test");
-        if (build == null && test == null) return JkBuild.Build.EMPTY;
+        TomlTable resolve = root.getTable("resolve");
+        PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
+        if (resolve != null && resolve.contains("platform")) {
+            String raw = resolve.getString("platform");
+            if (raw == null || raw.isBlank()) {
+                throw new JkBuildParseException("[resolve].platform must be a string (enforced or floor)");
+            }
+            try {
+                platformPolicy = PlatformPolicy.parse(raw);
+            } catch (IllegalArgumentException e) {
+                throw new JkBuildParseException("[resolve].platform: " + e.getMessage());
+            }
+        }
+        if (build == null && test == null && resolve == null) return JkBuild.Build.EMPTY;
+        if (build == null && test == null) {
+            return new JkBuild.Build(
+                    List.of(), List.of(), true, List.of(), List.of(), List.of(), null, platformPolicy);
+        }
 
         List<String> orderAfter = new ArrayList<>();
         List<String> testPluginJars = new ArrayList<>();
@@ -1589,7 +1607,8 @@ public final class JkBuildParser {
                 testWorkers = 1;
             }
         }
-        return new JkBuild.Build(orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc, testWorkers);
+        return new JkBuild.Build(
+                orderAfter, testPluginJars, lint, List.of(), kspOptions, extraSrc, testWorkers, platformPolicy);
     }
 
     /**

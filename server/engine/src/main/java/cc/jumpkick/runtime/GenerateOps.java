@@ -7,6 +7,7 @@ import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.gradle.GradleExporter;
 import cc.jumpkick.layout.SourceLayout;
+import cc.jumpkick.lock.BomExporter;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -38,6 +39,7 @@ public final class GenerateOps {
             return switch (kind) {
                 case "export-maven" -> exportMaven(dir);
                 case "export-gradle" -> exportGradle(dir);
+                case "export-bom" -> exportBom(dir, params);
                 case "scaffold" -> ScaffoldOps.scaffold(dir, params);
                 default -> GeneratedFiles.error("unknown generate kind: " + kind);
             };
@@ -69,6 +71,37 @@ public final class GenerateOps {
             addNotes(notes, r.report());
         }
         return new GeneratedFiles(null, paths, contents, notes);
+    }
+
+    /**
+     * JK-1207: freeze lockfile versions for a scope into a Maven BOM POM.
+     *
+     * <p>Params: {@code scope}=main|test|all (default main); {@code out}=optional relative path
+     * (default {@code target/<name>-bom.pom}).
+     */
+    private static GeneratedFiles exportBom(Path dir, Map<String, String> params) throws IOException {
+        Loaded loaded = load(dir);
+        Path lockPath = dir.resolve("jk.lock");
+        if (!Files.isRegularFile(lockPath)) {
+            return GeneratedFiles.error("no jk.lock — run `jk lock` before `jk export bom`");
+        }
+        Lockfile lock = LockfileReader.read(lockPath);
+        String scopeName = params.getOrDefault("scope", "main");
+        String xml = BomExporter.render(loaded.root(), lock, BomExporter.scopesFor(scopeName));
+        String outRel = params.get("out");
+        if (outRel == null || outRel.isBlank()) {
+            String name = loaded.root().project().name();
+            outRel = "target/" + name + "-bom.pom";
+        }
+        Path out = dir.resolve(outRel).normalize();
+        if (!out.startsWith(dir.normalize())) {
+            return GeneratedFiles.error("out path escapes project directory: " + outRel);
+        }
+        return new GeneratedFiles(
+                null,
+                List.of(out.toString()),
+                List.of(xml),
+                List.of("BOM scope=" + scopeName + " from " + lockPath.getFileName()));
     }
 
     private static GeneratedFiles exportGradle(Path dir) throws IOException {

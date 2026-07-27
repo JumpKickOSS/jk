@@ -176,15 +176,15 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
 
 - **Algorithm:** PubGrub (same family as Dart `pub` / `uv`).
 - **Conflict policy:** without a platform BOM, bare POM versions are highest-wins floors
-  (not Maven nearest-wins). **With** a `[platform-dependencies]` / plugin platform BOM,
-  bare EffectivePom-filled versions are **exact** (Maven depMgmt contract); GAs listed in
-  the BOM map use the BOM pin over a different bare string on the edge. Explicit Maven
-  ranges on an edge stay open ranges. Highest-wins lift past a filled pin is not the default
-  under a platform.
+  (not Maven nearest-wins). **With** a platform BOM and default policy **enforced**, bare
+  EffectivePom-filled versions are **exact**; BOM-map GAs use the BOM pin exactly. Opt-in
+  **`[resolve] platform = "floor"`** / `jk update --platform=floor` treats BOM-map pins as
+  lower bounds only. Unmapped bare fills stay exact in both modes. Explicit Maven ranges
+  stay open.
 - **Lockfile:** one root `jk.lock`; builds never re-resolve.
-- **BOMs:** enforced platform for managed GAs + exact bare fills while the platform map is
-  non-empty; incomplete BOM families (e.g. maven-resolver named-locks) may still get
-  explicit family alignment into the map.
+- **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
+  named-locks) still get family alignment into the map. **`jk export bom`** freezes a lock
+  scope into a Maven BOM POM for consumers.
 - **Scopes:** **main**, **test**, and **processor** graphs are solved separately so processor
   constraints do not force main versions. Dual lock rows are allowed when versions diverge;
   classpaths select by scope.

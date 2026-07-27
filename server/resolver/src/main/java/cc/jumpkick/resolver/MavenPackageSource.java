@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -25,10 +26,10 @@ import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()} when no preferred pin is known. A non-empty platform BOM map
- * makes bare POM edges exact (enforced platform contract); without a BOM, bare edges stay
- * highest-wins floors. BOM/lock prefs also seed lazy singleton universes via {@link
- * #preferredVersion}. POM exclusions strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no preferred pin is known. Platform policy (default
+ * {@link PlatformPolicy#ENFORCED}) controls BOM-map pins; without a BOM map, bare edges stay
+ * highest-wins floors. BOM/lock prefs seed lazy singleton universes via {@link #preferredVersion}.
+ * POM exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -40,6 +41,7 @@ public final class MavenPackageSource implements PackageSource {
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
     private final Map<String, String> bomConstraints;
+    private final PlatformPolicy platformPolicy;
     private final KmpRedirects kmp;
 
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
@@ -97,11 +99,27 @@ public final class MavenPackageSource implements PackageSource {
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
+        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
+    }
+
+    /** Full constructor with {@link PlatformPolicy} (JK-1206). */
+    public MavenPackageSource(
+            RepoGroup repos,
+            EffectivePomBuilder pomBuilder,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.pomBuilder = Objects.requireNonNull(pomBuilder, "pomBuilder");
         this.bomConstraints = Map.copyOf(Objects.requireNonNull(bomConstraints, "bomConstraints"));
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(lockedVersionPrefs, "lockedVersionPrefs"));
         this.kmp = Objects.requireNonNull(kmp, "kmp");
+        this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+    }
+
+    public PlatformPolicy platformPolicy() {
+        return platformPolicy;
     }
 
     /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
@@ -321,10 +339,10 @@ public final class MavenPackageSource implements PackageSource {
      * <ul>
      *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
      *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
-     *   <li><b>Platform BOM present</b>: bare → {@code exact} (the EffectivePom-filled string).
-     *       GAs listed in the platform map use the BOM pin ({@code exact}), which overrides a
-     *       different bare string on the edge (enforced platform). Explicit Maven ranges on the
-     *       edge still pass through as ranges.
+     *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): bare →
+     *       {@code exact}; BOM-map GAs use {@code exact(bomPin)}.
+     *   <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
+     *       atLeast(bomPin)} (may lift); unmapped bare fills stay {@code exact}.
      * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
@@ -338,16 +356,23 @@ public final class MavenPackageSource implements PackageSource {
         // that often have no classifier POM → Unavailable thrash (JK-1202).
         if (!id.classifier().isEmpty()) {
             String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+            if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
+                return VersionSet.atLeast(bomPin, true);
+            }
             return VersionSet.exact(bomPin != null ? bomPin : trimmed);
         }
 
-        // Platform map entry: enforced pin (not soft-prefer; not overridden by lock prefs).
+        // Platform map entry.
         String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
         if (bomPin != null) {
+            if (platformPolicy == PlatformPolicy.FLOOR) {
+                // Opt-in soft platform: pin is a floor; preferBom still front-loads the pin.
+                return VersionSet.atLeast(bomPin, true);
+            }
             return VersionSet.exact(bomPin);
         }
         if (!bomConstraints.isEmpty()) {
-            // Platform active: EffectivePom-filled bare version is exact — do not highest-wins-lift.
+            // Platform active but GA unmapped: keep exact fill in both policies (named-locks safety).
             return VersionSet.exact(trimmed);
         }
         // No platform: historical highest-wins bare versions. Lock prefs only reorder candidates.

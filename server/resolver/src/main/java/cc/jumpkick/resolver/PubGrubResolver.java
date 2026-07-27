@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -71,10 +72,21 @@ public final class PubGrubResolver implements Resolver {
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
+        this(repos, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
+    }
+
+    /** Full constructor with {@link PlatformPolicy} (JK-1206). */
+    public PubGrubResolver(
+            RepoGroup repos,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy) {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         this.pomBuilder = builder;
         this.kmp = kmp;
-        this.source = new MavenPackageSource(repos, builder, bomConstraints, lockedVersionPrefs, kmp);
+        this.source = new MavenPackageSource(
+                repos, builder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy);
     }
 
     /** Test seam: lets unit tests inject an in-memory {@link PackageSource}. */

@@ -33,6 +33,8 @@ public final class UpdateCommand implements CliCommand {
     private URI repoUrl;
     private Path cacheDir;
     private GlobalOptions global;
+    /** Optional {@code enforced}|{@code floor} (JK-1206); null = project {@code [resolve] platform}. */
+    private String platform;
 
     @Override
     public String name() {
@@ -59,6 +61,12 @@ public final class UpdateCommand implements CliCommand {
                         .withFallback("*"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
+                Opt.value(
+                        "<enforced|floor>",
+                        "Platform BOM policy for this re-resolve only (default: project"
+                                + " [resolve] platform, else enforced). floor = BOM pins are lower"
+                                + " bounds (JK-1206).",
+                        "--platform"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 
@@ -68,6 +76,7 @@ public final class UpdateCommand implements CliCommand {
         this.noDefaultFeatures = in.isSet("no-default-features");
         this.repoUrl = in.value("repo-url").map(URI::create).orElse(null);
         this.cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+        this.platform = in.value("platform").orElse(null);
         this.global = GlobalOptions.from(in);
 
         Path dir = global.workingDir();
@@ -93,7 +102,15 @@ public final class UpdateCommand implements CliCommand {
     private EngineClient.UpdateRequest updateRequest(Path dir, Path cache) {
         var session = cc.jumpkick.config.SessionContext.current();
         return new EngineClient.UpdateRequest(
-                dir, cache, features, noDefaultFeatures, repoUrl, session.offline(), session.force(), global.verbose);
+                dir,
+                cache,
+                features,
+                noDefaultFeatures,
+                repoUrl,
+                session.offline(),
+                session.force(),
+                global.verbose,
+                platform);
     }
 
     /** Hosted full re-resolve: one console listener per cascade module, summary line per lockfile. */
