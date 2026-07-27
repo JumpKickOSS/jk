@@ -1885,6 +1885,16 @@ public final class BuildPipelines {
                             cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
                     var resolved = sel.resolve(discovered);
                     if (!resolved.ok()) {
+                        // Workspace run: a named suite need not exist in EVERY module — the
+                        // IDE-generated `jk test --suite integration` config must run where the
+                        // suite exists and skip the rest, not fail the workspace (JK-1230).
+                        // Single-module runs keep the hard error (typo protection).
+                        if (in.projectModules().size() > 1) {
+                            ctx.label("suite not present — skipped");
+                            ctx.put(NO_TEST_SOURCES, true);
+                            ctx.progress(1);
+                            return;
+                        }
                         throw new IllegalArgumentException(resolved.missingMessage());
                     }
                     List<String> suiteNames = resolved.suites();
@@ -1919,6 +1929,27 @@ public final class BuildPipelines {
                         baseCp.add(groovyCompileJar(ctx, cas));
                     }
                     Path testClasses = ctx.require(TEST_CLASSES);
+                    // All suites share classes/test and run-tests scans it: when the SELECTION
+                    // changes, wipe the shared output and the per-language merge sources, or the
+                    // previous selection's classes and copied resources keep running/shadowing
+                    // under the new one indefinitely (JK-1228). `.jk-suites` records the
+                    // selection that produced the tree (excluded from action stores/fingerprints
+                    // by the .jk- rule).
+                    String selectionKey = String.join(",", suiteNames);
+                    Path suiteMarker = testClasses.resolve(".jk-suites");
+                    String prevSelection = Files.isRegularFile(suiteMarker)
+                            ? Files.readString(suiteMarker).trim()
+                            : null;
+                    if (prevSelection != null && !prevSelection.equals(selectionKey)) {
+                        cc.jumpkick.util.PathUtil.deleteRecursively(testClasses);
+                        for (Path langOut : List.of(
+                                ctx.require(LAYOUT).kotlinTestClassesDir(),
+                                ctx.require(LAYOUT).groovyTestClassesDir())) {
+                            if (Files.isDirectory(langOut)) {
+                                cc.jumpkick.util.PathUtil.deleteRecursively(langOut);
+                            }
+                        }
+                    }
                     boolean mixedTest = !javaTest.isEmpty() && !ktTest.isEmpty();
                     boolean mixedTestGv = !javaTest.isEmpty() && !gvTest.isEmpty();
 
@@ -2051,6 +2082,8 @@ public final class BuildPipelines {
                     // Fixtures affect test outcomes but classes/test is not on the runtime cp —
                     // run-tests folds these dirs into its TestStamp key (JK-1208).
                     ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
+                    Files.createDirectories(testClasses);
+                    Files.writeString(suiteMarker, selectionKey);
                     ctx.progress(1);
                 })
                 .build();
@@ -2114,13 +2147,18 @@ public final class BuildPipelines {
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
                     @SuppressWarnings("unchecked")
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
+                    // [test] default-exclude-tags reaches jk build / BSP too (JK-1229): the CLI
+                    // resolves defaults only for `jk test`; when the session selection carries
+                    // no tags at all, apply this module's own config defaults here. The
+                    // effective selection feeds BOTH the stamp and the runner.
+                    var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
                             testSrcs,
                             ctx.require(MAIN_CLASSES),
                             testResDirs,
                             in.lockFile(),
                             testRtCp,
-                            testStampExtras(workerJars, in.session().testSelection()));
+                            testStampExtras(workerJars, effectiveSel));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -2171,16 +2209,19 @@ public final class BuildPipelines {
                     List<Path> runtimeCp = new ArrayList<>();
                     runtimeCp.add(ctx.require(MAIN_CLASSES));
                     runtimeCp.addAll(testRtCp);
-                    // Kotlin output (main or test) needs the stdlib at runtime.
-                    if (kotlinModule
-                            || !CompileSupport.collectKotlinTestSources(in.dir(), compact)
-                                    .isEmpty()) {
+                    // Language runtimes keyed on the SELECTED suites' sources (TEST_SOURCES is
+                    // selection-scoped) — the old default-suite-only collectors missed a
+                    // Kotlin/Groovy-only named suite and the forked JVM lacked the runtime
+                    // (JK-1229).
+                    boolean ktTestSources = testSrcs.stream()
+                            .anyMatch(p -> p.toString().endsWith(".kt")
+                                    || p.toString().endsWith(".kts"));
+                    boolean gvTestSources =
+                            testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
+                    if (kotlinModule || ktTestSources) {
                         runtimeCp.add(kotlinStdlib(ctx, cas));
                     }
-                    // Groovy output (main or test) needs the version-matched runtime closure.
-                    if (cx.groovyModule()
-                            || !CompileSupport.collectGroovyTestSources(in.dir(), compact)
-                                    .isEmpty()) {
+                    if (cx.groovyModule() || gvTestSources) {
                         for (Path jar : groovyRuntime(ctx, cas)) {
                             if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
                         }
@@ -2200,10 +2241,9 @@ public final class BuildPipelines {
                     boolean gated = !in.session().parallelTests();
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
-                        var sel = in.session().testSelection();
                         result = new JUnitLauncher()
                                 .withModuleLabel(moduleLabel)
-                                .withTagFilters(sel.includeTags(), sel.excludeTags())
+                                .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),
@@ -3926,6 +3966,21 @@ public final class BuildPipelines {
      * build folds into its {@code TestStamp} key, exposed so {@code jk explain}'s forecast predicts
      * test-skip without drifting.
      */
+    /**
+     * The selection the runner actually executes: the session's, with this module's
+     * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
+     * (jk build / BSP without data — JK-1229). `jk test` resolves defaults CLI-side and its
+     * selection already carries them.
+     */
+    static cc.jumpkick.config.TestSelection effectiveSelection(
+            cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+        if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
+        List<String> defaults =
+                cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
+        if (defaults.isEmpty()) return sel;
+        return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
+    }
+
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
         return testStampExtras(
                 workerJarProps(dir, project.build().testPluginJars()),

@@ -82,9 +82,10 @@ public final class RunCommand {
                 // Build every module (path deps, sibling jars), then execPlan picks the app module.
                 var rootBuild = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"));
                 int jobs = global.jobsEffective();
-                var wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.runtime.WorkspaceRequest(
+                // Session variant/clientEnv ride the request like `jk build` at a root does —
+                // `jk run --release` used to build debug and then exec release artifacts that
+                // were never produced (JK-1231).
+                var request = new cc.jumpkick.runtime.WorkspaceRequest(
                                 projectDir,
                                 rootBuild,
                                 cache,
@@ -96,8 +97,28 @@ public final class RunCommand {
                                 jobs,
                                 null,
                                 true,
-                                true),
-                        new cc.jumpkick.runtime.WorkspaceBuildListener() {});
+                                true)
+                        .withVariant(session.variant(), session.clientEnv());
+                // Not a silent build: surface per-module completions while the graph runs.
+                java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+                int[] total = {0};
+                var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                    @Override
+                    public void onPlan(java.util.List<cc.jumpkick.runtime.ModulePlan> plan) {
+                        total[0] = plan.size();
+                    }
+
+                    @Override
+                    public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                        String glyph = o.success()
+                                ? cc.jumpkick.cli.tui.Glyphs.CHECK
+                                : cc.jumpkick.cli.tui.Glyphs.CROSS;
+                        CliOutput.out(glyph + " [" + done.incrementAndGet() + "/"
+                                + Math.max(total[0], 1) + "] " + o.coord());
+                    }
+                };
+                var wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                        cc.jumpkick.engine.EnginePaths.current(), request, listener);
                 if (!wr.success()) {
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "workspace build failed"));
                     return 1;

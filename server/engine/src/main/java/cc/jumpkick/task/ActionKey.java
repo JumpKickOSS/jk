@@ -44,11 +44,13 @@ public final class ActionKey {
         // Sources: path + content hash (FileHashMemo — at most one content read per path/thread).
         appendSources(sb, request.sources());
 
-        // Classpath: CAS paths already include the content hash in their layout.
+        // Classpath: CAS jar paths already include the content hash in their layout;
+        // DIRECTORY entries (a sibling lane's classes dir) do not — hash their tree, or a
+        // Groovy/Kotlin-only change leaves stale Java bytecode behind a key hit (JK-1224).
         List<Path> cp = new ArrayList<>(request.classpath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
-            sb.append("cp:").append(entry.toAbsolutePath().normalize()).append('\n');
+            appendCpToken(sb, "cp:", entry);
         }
 
         // Processor path: a processor change can regenerate everything, so it must
@@ -56,7 +58,7 @@ public final class ActionKey {
         List<Path> pp = new ArrayList<>(request.processorPath());
         pp.sort(Comparator.comparing(Path::toString));
         for (Path entry : pp) {
-            sb.append("pp:").append(entry.toAbsolutePath().normalize()).append('\n');
+            appendCpToken(sb, "pp:", entry);
         }
 
         return Hashing.sha256Hex(sb.toString());
@@ -100,7 +102,7 @@ public final class ActionKey {
         cp.addAll(request.workerClasspath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
-            sb.append("cp:").append(entry.toAbsolutePath().normalize()).append('\n');
+            appendCpToken(sb, "cp:", entry); // dirs tree-hashed (JK-1224)
         }
         return Hashing.sha256Hex(sb.toString());
     }
@@ -142,12 +144,12 @@ public final class ActionKey {
         cp.addAll(request.workerClasspath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
-            sb.append("cp:").append(entry.toAbsolutePath().normalize()).append('\n');
+            appendCpToken(sb, "cp:", entry); // dirs tree-hashed (JK-1224)
         }
         List<Path> pp = new ArrayList<>(request.processorPath());
         pp.sort(Comparator.comparing(Path::toString));
         for (Path entry : pp) {
-            sb.append("pp:").append(entry.toAbsolutePath().normalize()).append('\n');
+            appendCpToken(sb, "pp:", entry);
         }
         return Hashing.sha256Hex(sb.toString());
     }
@@ -195,6 +197,20 @@ public final class ActionKey {
     }
 
     /** Sorted source lines for action material — one content hash per path via {@link FileHashMemo}. */
+    /**
+     * One classpath/processorpath token. Jar entries are identified by path alone (CAS layout
+     * encodes content); directory entries additionally carry a tree hash — a directory path
+     * says nothing about its contents (JK-1224).
+     */
+    private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
+        Path p = entry.toAbsolutePath().normalize();
+        sb.append(prefix).append(p);
+        if (java.nio.file.Files.isDirectory(p)) {
+            sb.append('=').append(ClasspathFingerprint.entry(p));
+        }
+        sb.append('\n');
+    }
+
     private static void appendSources(StringBuilder sb, List<Path> sources) throws IOException {
         List<Path> sortedSources = new ArrayList<>(sources);
         sortedSources.sort(Comparator.comparing(Path::toString));

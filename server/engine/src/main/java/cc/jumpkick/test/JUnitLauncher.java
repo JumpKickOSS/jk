@@ -765,6 +765,8 @@ public TestSummary run(
                         dynamicIds.add(Jsonl.str(json, "id"));
                     }
                 }
+                case "warning" ->
+                    listener.onWarning(Jsonl.str(json, "code"), Jsonl.str(json, "message"));
                 case "started" -> onStarted(json);
                 case "finished" -> onFinished(json);
                 case "skipped" -> onSkipped(json);

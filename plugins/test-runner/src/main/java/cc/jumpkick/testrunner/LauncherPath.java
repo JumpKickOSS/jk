@@ -60,7 +60,7 @@ final class LauncherPath {
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
                 .selectors(DiscoverySelectors.selectClasspathRoots(java.util.Set.of(scanClasspath)));
         if (filter != null && !filter.isBlank()) {
-            b.filters(ClassNameFilter.includeClassNamePatterns(".*" + filter + ".*"));
+            b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyTagFilters(b, includeTags, excludeTags);
 
@@ -76,7 +76,7 @@ final class LauncherPath {
             throw e;
         }
         emitDiscovery(plan, adapter);
-        warnIfEmptyPlan(scanClasspath, plan);
+        warnIfEmptyPlan(scanClasspath, plan, adapter);
         launcher.execute(request, adapter);
         long planMs = Math.max(0, (System.nanoTime() - planStart) / 1_000_000);
         adapter.emitPlanFinished(planMs);
@@ -94,7 +94,7 @@ final class LauncherPath {
         LauncherDiscoveryRequestBuilder b = LauncherDiscoveryRequestBuilder.request()
                 .selectors(DiscoverySelectors.selectClasspathRoots(java.util.Set.of(scanClasspath)));
         if (filter != null && !filter.isBlank()) {
-            b.filters(ClassNameFilter.includeClassNamePatterns(".*" + filter + ".*"));
+            b.filters(ClassNameFilter.includeClassNamePatterns(TestRunner.classNamePattern(filter)));
         }
         applyTagFilters(b, includeTags, excludeTags);
         TestPlan plan;
@@ -105,7 +105,7 @@ final class LauncherPath {
             throw e;
         }
         emitDiscovery(plan, adapter);
-        warnIfEmptyPlan(scanClasspath, plan);
+        warnIfEmptyPlan(scanClasspath, plan, adapter);
     }
 
     /**
@@ -113,7 +113,7 @@ final class LauncherPath {
      * {@code FacadeClassLoader}) fails to load them — the plan is simply empty. Surface a
      * pointer so "No tests" is not a silent dead-end.
      */
-    private static void warnIfEmptyPlan(Path scanClasspath, TestPlan plan) {
+    private static void warnIfEmptyPlan(Path scanClasspath, TestPlan plan, Adapter adapter) {
         if (plan == null) return;
         boolean anyTest = false;
         for (TestIdentifier root : plan.getRoots()) {
@@ -125,14 +125,15 @@ final class LauncherPath {
         if (anyTest) return;
         long classFiles = countClassFiles(scanClasspath);
         if (classFiles <= 0) return;
-        System.err.println(
-                "jk-test-runner: discovery found 0 tests under "
-                        + scanClasspath
-                        + " ("
-                        + classFiles
+        // Protocol warning, not stderr: passthrough stderr is muted unless --verbose and the
+        // crash buffer only surfaces on non-zero exit — an empty plan exits 0, so the one
+        // diagnostic that explains "No tests" was invisible exactly when needed (JK-1227).
+        adapter.emitWarning(
+                "empty-plan",
+                "discovery found 0 tests under " + scanClasspath + " (" + classFiles
                         + " .class file(s) present). If you expected @QuarkusTest / framework tests,"
-                        + " check classloader bootstrap errors above (e.g. maven-resolver named-locks"
-                        + " version skew).");
+                        + " check classloader bootstrap errors (e.g. maven-resolver named-locks"
+                        + " version skew) — rerun with --verbose for the runner's own output.");
     }
 
     private static boolean hasTest(TestPlan plan, TestIdentifier node) {
@@ -253,6 +254,25 @@ final class LauncherPath {
             p.put("classes", classes);
             p.put("tests", tests);
             emit(EventType.DISCOVERY_TOTAL, p);
+        }
+
+        void emitWarning(String code, String message) {
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("code", code);
+            p.put("message", message);
+            emit(EventType.WARNING, p);
+        }
+
+        @Override
+        public void dynamicTestRegistered(TestIdentifier id) {
+            // Without this, every @ParameterizedTest/@TestFactory invocation counts as static
+            // and the progress numerator blows past the static-plan denominator (JK-1227).
+            Map<String, Object> p = new LinkedHashMap<>();
+            p.put("id", id.getUniqueId());
+            p.put("display", id.getDisplayName());
+            p.put("parent", id.getParentId().orElse(null));
+            p.put("type", typeName(id));
+            emit(EventType.DYNAMIC_REGISTERED, p);
         }
 
         void emitPlanFinished(long durationMs) {

@@ -195,8 +195,14 @@ public final class ExecPlans {
             throws IOException, InterruptedException {
         // Workspace root: pick the runnable module (declared [application] main, else unique scan).
         // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
+        // A root that is ITSELF runnable ([workspace] + [application] main + sources — "rare but
+        // legal" per WorkspaceLoader) runs its own main: it can never appear in loadModules, so
+        // the module scan would report "no launchable main" (JK-1231).
         if (project.isWorkspaceRoot()) {
-            return runWorkspace(dir, cache, project, dev);
+            String rootMain = project.mainClass();
+            if (rootMain == null || rootMain.isBlank() || !CompileSupport.hasSources(dir)) {
+                return runWorkspace(dir, cache, project, dev);
+            }
         }
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
         // the run story; a generic java exec would be nonsense.
