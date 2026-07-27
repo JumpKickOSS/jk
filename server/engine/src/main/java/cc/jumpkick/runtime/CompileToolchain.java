@@ -53,12 +53,20 @@ public final class CompileToolchain {
     }
 
     /**
-     * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}: an exact
-     * {@code project.groovy} pin, else {@code null} — which falls back to the bundled default.
-     * {@code jk.lock} carries no groovy stamp yet; the {@code lock} parameter is the wave-2 seam
-     * (lock &gt; project pin &gt; null once {@code jk lock} resolves it).
+     * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}:
+     * the locked {@code org.apache.groovy:groovy} runtime first — the compiler must match what
+     * actually ships (caret/tilde pins and BOM-managed grails floats resolve here, JK-1223) —
+     * else an exact {@code project.groovy} pin, else {@code null} (bundled default).
      */
     public static String groovyVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
+        if (lock != null) {
+            for (cc.jumpkick.lock.Lockfile.Artifact a : lock.artifacts()) {
+                String name = a.name();
+                if (name.equals("org.apache.groovy:groovy") || name.startsWith("org.apache.groovy:groovy:")) {
+                    return a.version();
+                }
+            }
+        }
         if (project != null && project.project().groovy() instanceof cc.jumpkick.model.VersionSelector.Exact exact) {
             return exact.version();
         }

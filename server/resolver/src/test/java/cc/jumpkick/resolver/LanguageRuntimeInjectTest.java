@@ -29,7 +29,7 @@ class LanguageRuntimeInjectTest {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        LockOrchestrator.injectLanguageRuntimes(p, dir, deps);
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
         assertThat(deps).containsKey("org.apache.groovy:groovy");
         assertThat(deps).doesNotContainKey("org.jetbrains.kotlin:kotlin-stdlib");
     }
@@ -41,8 +41,19 @@ class LanguageRuntimeInjectTest {
         Files.createDirectories(dir.resolve("src/main/groovy"));
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=21\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
-        LockOrchestrator.injectLanguageRuntimes(p, dir, deps);
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
         assertThat(deps).isEmpty();
+    }
+
+    @Test
+    void bom_managed_runtime_wins_over_the_scaffold_pin(@TempDir Path dir) throws IOException {
+        // JK-1223: grails-bom manages groovy 5.0.7; the scaffold's [project] groovy = "5.0.4"
+        // must not smuggle 5.0.4 past the platform via the exact-root strip rule.
+        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\ngroovy=\"5.0.4\"\n");
+        LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
+        LockOrchestrator.injectLanguageRuntimes(
+                p, dir, java.util.Map.of("org.apache.groovy:groovy", "5.0.7"), deps);
+        assertThat(deps.get("org.apache.groovy:groovy").version().raw()).contains("5.0.7");
     }
 
     @Test
@@ -51,7 +62,7 @@ class LanguageRuntimeInjectTest {
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         Dependency user = new Dependency("org.apache.groovy:groovy", cc.jumpkick.model.VersionSelector.parse("=5.0.7"));
         deps.put("org.apache.groovy:groovy", user);
-        LockOrchestrator.injectLanguageRuntimes(p, dir, deps);
+        LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
         assertThat(deps.get("org.apache.groovy:groovy")).isSameAs(user);
     }
 }

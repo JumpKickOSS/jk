@@ -191,20 +191,15 @@ public final class MavenRepo {
         }
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
-        // Stream the body straight into the CAS, hashing as it flows, so a
-        // multi-hundred-MB JAR never sits in the heap as a single byte[] —
-        // the difference between a cold-cache resolve fitting under the CLI's
-        // heap cap and OOMing on it.
-        Cas.Stored stored;
-        try (var in = transport
-                .fetchStream(uri, credential)
-                .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
-            stored = cas.putStream(in);
-        }
-        // Lock-time trust (JK-1065): cross-check published sidecar before pinning. Skip for
-        // metadata (mirror=false) — only POMs/artifacts establish the lock pin.
+        // Per-host cap around the NETWORK leg only (JK-1221): warm mirror hits short-circuit
+        // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
+        // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
+        String host = uri.getHost();
+        boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
+        Cas.Stored stored = limitHost
+                ? cc.jumpkick.http.HostRateLimiter.shared().run(host, () -> downloadAndVerify(coord, uri, relativePath, mirror))
+                : downloadAndVerify(coord, uri, relativePath, mirror);
         if (mirror) {
-            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
             // Primary store: materialise a human-readable, hard-linked copy under repos/<name>/.
             repoStore.materialize(relativePath, stored.path(), stored.sha256());
             if (mirrorToM2) {
@@ -222,6 +217,27 @@ public final class MavenRepo {
             }
         }
         return new Fetched(uri, stored.path(), stored.sha256(), stored.size());
+    }
+
+    /**
+     * The network leg: stream the body straight into the CAS (hashing as it flows, so a
+     * multi-hundred-MB JAR never sits in the heap as a single byte[]), then cross-check the
+     * published sidecar before pinning (JK-1065). Skips the check for metadata
+     * ({@code mirror=false}) — only POMs/artifacts establish the lock pin. Runs under the
+     * per-host permit so body + sidecar GETs count as one in-flight unit.
+     */
+    private Cas.Stored downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
+            throws IOException, InterruptedException {
+        Cas.Stored stored;
+        try (var in = transport
+                .fetchStream(uri, credential)
+                .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
+            stored = cas.putStream(in);
+        }
+        if (mirror) {
+            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
+        }
+        return stored;
     }
 
     /**

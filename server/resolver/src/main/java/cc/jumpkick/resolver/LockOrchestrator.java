@@ -290,20 +290,22 @@ public final class LockOrchestrator {
         if (project.dependencies().of(Scope.TEST).isEmpty()) {
             testDeduped.putIfAbsent(JUNIT_JUPITER.module(), JUNIT_JUPITER);
         }
-        // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
-        // Engine classpath injection alone is not enough for standalone `java -jar`.
-        injectLanguageRuntimes(project, projectDir, mainDeduped);
-
-        List<Dependency> fileDeps = new ArrayList<>();
-        List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
-        List<Dependency> testDeclared = splitFile(testDeduped, fileDeps);
-        List<Dependency> processorDeclared = splitFile(processorDeduped, fileDeps);
-
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
         // JK-1088: one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         collectBomConstraints(project, pomBuilder, bomConstraints, constraintProvenance);
+
+        // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
+        // Engine classpath injection alone is not enough for standalone `java -jar`.
+        // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
+        // owns its version — the inject must not smuggle the scaffold default past it (JK-1223).
+        injectLanguageRuntimes(project, projectDir, bomConstraints, mainDeduped);
+
+        List<Dependency> fileDeps = new ArrayList<>();
+        List<Dependency> mainDeclared = splitFile(mainDeduped, fileDeps);
+        List<Dependency> testDeclared = splitFile(testDeduped, fileDeps);
+        List<Dependency> processorDeclared = splitFile(processorDeduped, fileDeps);
 
         stripBomForExactRoots(mainDeclared, bomConstraints, constraintProvenance);
         stripBomForExactRoots(testDeclared, bomConstraints, constraintProvenance);
@@ -384,14 +386,17 @@ public final class LockOrchestrator {
         // via a queue drained on this thread so wedge/UI stays single-threaded; lock rows are
         // still assembled in declaration order.
         //
-        // JK-1202: do not wrap every toArtifact in HostRateLimiter on the Maven Central host.
-        // Warm re-locks serve immutable GAVs from the local mirror (no HTTP); rate-limiting
-        // those to 6 concurrent turns a ~1s CAS walk into multi-minute wall time. Network
-        // politeness remains inside the HTTP transport for actual downloads.
+        // JK-1202/JK-1221: no HostRateLimiter around toArtifact itself — warm re-locks serve
+        // immutable GAVs from the local mirror (no HTTP), and capping those to 6 concurrent
+        // turned a ~1s CAS walk into multi-minute wall time. The per-host cap lives inside
+        // MavenRepo.fetch around the network leg only, so cold-lock fan-out stays polite.
         List<Map.Entry<String, Resolution.ResolvedModule>> ordered = new ArrayList<>(modByKey.entrySet());
         int n = ordered.size();
         Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
+        // First failure wins: tasks still waiting on a permit/queue skip their download instead
+        // of hammering the host for a lock that is already dead (JK-1221).
+        java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
         for (int i = 0; i < n; i++) {
             final int idx = i;
             var e = ordered.get(i);
@@ -399,6 +404,10 @@ public final class LockOrchestrator {
             CompletableFuture.supplyAsync(
                             () -> {
                                 try {
+                                    if (failed.get()) {
+                                        throw new CompletionException(
+                                                new IOException("lock already failed — skipped"));
+                                    }
                                     return toArtifact(
                                             e.getValue(),
                                             tags,
@@ -415,6 +424,7 @@ public final class LockOrchestrator {
                             JkThreads.io())
                     .whenComplete((art, ex) -> {
                         if (ex != null) {
+                            failed.set(true);
                             doneQ.offer(MaterializeDone.fail(ex));
                         } else {
                             var mod = e.getValue();
@@ -786,6 +796,25 @@ public final class LockOrchestrator {
         String checksum = null;
         RepoGroup.RepoFetched hit =
                 kmpAlias ? null : repos.tryFetchArtifact(coord).orElse(null);
+        if (hit == null
+                && !kmpAlias
+                && (coord.type() == null || "jar".equals(coord.type()))
+                && (coord.classifier() == null || coord.classifier().isEmpty())) {
+            // Jar miss for a bare-GA dep whose POM packaging is aar (JK-1222): probe packaging
+            // only on miss — the JK-1202 warm path stays probe-free — and rewrite to .aar
+            // instead of silently writing a checksum-less row.
+            try {
+                if ("aar".equals(pomBuilder.build(coord).packaging())) {
+                    coord = new Coordinate(coord.group(), coord.artifact(), coord.version(), null, "aar");
+                    packageName = PackageId.of(coord.group(), coord.artifact(), "aar", "")
+                            .key();
+                    artifactFile = coord.artifact() + "-" + coord.version() + ".aar";
+                    hit = repos.tryFetchArtifact(coord).orElse(null);
+                }
+            } catch (Exception ignored) {
+                // no POM / unparseable — keep the jar coordinate
+            }
+        }
         if (hit != null) {
             source = hit.repo().name() + "+" + hit.repo().baseUrl();
             checksum = "sha256:" + hit.fetched().sha256();
@@ -862,7 +891,10 @@ public final class LockOrchestrator {
      * current jk default so PubGrub still picks a concrete release at lock time.
      */
     static void injectLanguageRuntimes(
-            JkBuild project, Path projectDir, LinkedHashMap<String, Dependency> mainDeduped) {
+            JkBuild project,
+            Path projectDir,
+            Map<String, String> bomConstraints,
+            LinkedHashMap<String, Dependency> mainDeduped) {
         JkBuild.Project p = project.project();
         // Same inference the engine uses to enable lanes (JK-1218): an unpinned project with
         // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
@@ -874,14 +906,31 @@ public final class LockOrchestrator {
         if (langs.groovy()) {
             mainDeduped.putIfAbsent(
                     "org.apache.groovy:groovy",
-                    new Dependency("org.apache.groovy:groovy", languageRuntimeSelector(p.groovy(), "5")));
+                    new Dependency(
+                            "org.apache.groovy:groovy",
+                            runtimeSelector(bomConstraints, "org.apache.groovy:groovy", p.groovy(), "5")));
         }
         if (langs.kotlin()) {
             mainDeduped.putIfAbsent(
                     "org.jetbrains.kotlin:kotlin-stdlib",
                     new Dependency(
-                            "org.jetbrains.kotlin:kotlin-stdlib", languageRuntimeSelector(p.kotlin(), "2")));
+                            "org.jetbrains.kotlin:kotlin-stdlib",
+                            runtimeSelector(bomConstraints, "org.jetbrains.kotlin:kotlin-stdlib", p.kotlin(), "2")));
         }
+    }
+
+    /**
+     * A platform that manages the runtime GA wins over the project pin (grails-bom's groovy is
+     * the version Grails certified; the scaffold default must not strip it via the exact-root
+     * rule, JK-1223). Otherwise: exact pin literal, else floating major.
+     */
+    private static VersionSelector runtimeSelector(
+            Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
+        String managed = bomConstraints.get(module);
+        if (managed != null && !managed.isBlank()) {
+            return VersionSelector.parse("=" + managed);
+        }
+        return languageRuntimeSelector(declared, fallbackMajor);
     }
 
     /** Exact pin when the project declared a version literal; else floating major of {@code fallbackMajor}. */
