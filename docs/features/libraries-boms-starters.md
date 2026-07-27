@@ -323,6 +323,8 @@ Examples: JK-1008 (import fidelity), platform/BOM work, catalog registry curatio
 | 2026-07 | Catalog is versionless name→GA at all layers; project `[libraries]` is the top layer (already implemented). |
 | 2026-07 | Starter support = BOM + vendor Maven starters + plugins/scaffold — **not** a jk-native versioned starter graph in the catalog. |
 | 2026-07 | Bundles are optional and secondary; do not call them starters. |
+| 2026-07 | Default platform policy **enforced**; opt-in **floor** (`[resolve] platform` / `jk update --platform=floor`) — JK-1206. |
+| 2026-07 | **`jk export bom`** freezes lockfile versions for a scope into a Maven BOM POM — JK-1207. |
 | 2026-07 | Host local catalog is the place for machine/org short names without a private registry. |
 
 ---

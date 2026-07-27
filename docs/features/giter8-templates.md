@@ -1,15 +1,18 @@
-# Giter8 templates for `jk new` / `jk init` (JK-1181)
+# Giter8 templates for `jk new` / `jk init` (JK-1181+)
 
 ## Product split (JK-1195)
 
 | Path | Use for |
 |------|---------|
-| Interactive wizard + flags (`--spring`, `--quarkus`, …) | **Simple** single-module (and plugin-scaffold) projects |
-| **Giter8** (`jk new --template …`) | **Complex** multi-module workspaces and community starters |
+| Interactive wizard + flags (`--spring`, `--quarkus`, `--grails`, …) | **Simple** single-module (and plugin-scaffold) projects |
+| **Giter8** (`jk new --template …`) | Local / catalog templates; later community multi-module starters |
 
-Giter8 does **not** replace the wizard for “hello app” cases. Over time, first-party framework
-flags may become thin wrappers that apply a pinned G8 template, but plugin-declared
-`[scaffold]` remains the built-in path for Spring/Grails/Quarkus until those templates exist.
+Giter8 does **not** replace the wizard for “hello app” cases. Plugin-declared `[scaffold]`
+remains the built-in path for Spring / Grails / Quarkus flags. The **`quarkus`** short name
+is an alternate G8 shape of the same single-module app (not a multi-module workspace).
+
+Complex multi-module dogfood lives in **jk-examples** (e.g. `java/quarkus-petshop`), not in
+first-party G8 yet.
 
 ## CLI surface
 
@@ -19,55 +22,32 @@ jk init --template <ref>        # same generator; init semantics for cwd
 jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 ```
 
-**`<ref>` resolution order**
+`--template` is mutually exclusive with `--spring` / `--grails` / `--quarkus` / `--plugin`.
 
-1. **Local path** — directory or `…/template.g8` containing `src/main/g8/` (or Giter8 root layout).
-2. **Short name** — catalog entry (`java-cli`, `kotlin-cli`, …) → fixed git URI under `jkbuild/*-g8`.
-3. **GitHub shorthand** — `owner/repo` or `owner/repo.g8` (Giter8 convention).
-4. **Full git/HTTPS URI** — including optional `#branch` / `@tag`.
+## `<ref>` resolution (shipped)
+
+| Order | Form | Status |
+|------:|------|--------|
+| 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
+| 2 | **Short name** — catalog entry (`java-cli`, `quarkus`, …) | **Shipped** locally (JK-1183/1188) |
+| 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | Deferred (JK-1203) |
+| 4 | **Full git/HTTPS URI** — optional `#branch` / `@tag` | Deferred (JK-1203) |
 
 Invalid refs fail before any files are written.
 
-## Props
+### Short-name resolution (local catalog)
 
-- Read `default.properties` from the template.
-- Map known keys: `name`, `organization`/`group`, `package`, `jdk`/`java_version` → JumpKick
-  conventions (`group`, `name`, `jdk`, `java`).
-- Interactive prompts only when stdin is a TTY and a prop is missing (Mill-like).
-- `--param` / env overrides win over defaults.
-
-## Hosting model (decision)
-
-| Constraint | Choice |
-|------------|--------|
-| Native Graal CLI must stay thin | **No** Giter8 library on the client classpath |
-| Templates need JVM apply | **Engine-hosted** generator (`generate` protocol, like plugin scaffold) |
-| Isolation | Apply in a **forked worker** (`jk-giter8` or reusable template worker), not the engine heap |
-
-Flow:
-
-1. Client resolves `<ref>` → local cache path (git clone/fetch into `~/.jk/cache/templates/…`).
-2. Client sends `generate` with `kind=giter8`, template root, props, dest dir.
-3. Worker runs Giter8 (or a compatible pure-Java subset: `default.properties` + `$name$` replace).
-4. Client receives file list or writes paths already produced under dest (same pattern as
-   `ScaffoldOps`).
-
-**MVP implementable subset (JK-1182):** local path + git HTTPS clone + string props only (no
-conditional `src/main/g8` includes unless already supported by the chosen Giter8 version).
-
-## Catalog (JK-1183 / JK-1188)
-
-Short names resolve **locally** (no git clone yet — remotes are JK-1203):
+When `<ref>` is a known short name (not a path):
 
 1. `$JK_TEMPLATES/<name>.g8`
 2. `~/.jk/templates/<name>.g8`
 3. Walk up from cwd for `templates/<name>.g8` (monorepo dogfood)
-4. Classpath bundle shipped in the CLI (`giter8/<name>/`)
+4. Classpath bundle shipped in the CLI (`giter8/<name>/…`)
 
 | Name | Intent |
 |------|--------|
 | `java-cli` | Simple Java 25 executable (Mill SIMPLE layout) |
-| `kotlin-cli` | Simple Kotlin executable (catalog entry; template may land with JK-1183) |
+| `kotlin-cli` | Catalog entry reserved; template may land with JK-1183 |
 | `quarkus` | Quarkus 3.x REST app (`[quarkus]` plugin, plain `Application` main, `@QuarkusTest`) |
 
 ```bash
@@ -76,17 +56,35 @@ jk new --template java-cli my-tool
 jk new --template /path/to/local.g8 other
 ```
 
-Complex multi-module examples stay in `jk-examples` (e.g. `java/quarkus-petshop`) and optional
-`workspace-*` G8 templates later.
+## Props
+
+- Read `default.properties` from the template root.
+- Map known keys: `name`, `organization`/`group`, `package`, `jdk`/`java_version`,
+  `quarkus_version` → JumpKick conventions (`group`, `name`, `jdk`, `java`, `[quarkus]`).
+- Interactive prompts only when stdin is a TTY and a prop is missing (Mill-like).
+- `--param` / env overrides win over defaults.
+
+## Implementation (shipped vs design)
+
+| Constraint | Shipped today | Longer-term design |
+|------------|---------------|--------------------|
+| Native Graal CLI stays thin | **Pure-Java** `$key$` apply on the client (`Giter8LocalApply`) — no full Giter8 library | Optional engine-hosted worker for full Giter8 |
+| Template apply | Local path + catalog short name + classpath bundle | Git clone into `~/.jk/cache/templates/` (JK-1203) |
+| Conditionals / includes | Not supported | If/when full Giter8 worker lands |
+
+Monorepo sources: `templates/<name>.g8/` (dogfood) and
+`clients/cli/src/main/resources/giter8/<name>/` (install bundle).
 
 ## Coexistence with plugin scaffolds
 
-- `jk new --spring` / `--grails` / `--quarkus` continue to use baked `[scaffold]` manifests.
-- `--template` is mutually exclusive with framework flags and `--plugin`.
-- Documentation points “simple app” → wizard/flags; “workspace from community” → `--template`.
+- `jk new --spring` / `--grails` / `--quarkus` use baked `[scaffold]` manifests on the plugin.
+- `jk new --template quarkus` produces a comparable single-module tree via G8.
+- Prefer wizard/flags for “simple app”; prefer `--template` when you already have a local `.g8`
+  or a catalog short name.
 
-## Non-goals (this design)
+## Non-goals (near term)
 
-- Full Giter8 feature matrix on day one (SBT plugin interop, nested includes).
+- Full Giter8 feature matrix (SBT plugin interop, nested includes).
 - Public template marketplace UI.
 - Replacing `jk new --plugin` authoring scaffold.
+- Git remote short names (tracked as JK-1203).

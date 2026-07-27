@@ -1,8 +1,8 @@
-# Packaging matrix (thin / fat / shrink / Boot)
+# Packaging matrix (thin / fat / shrink / Boot / Quarkus / Grails)
 
-**Ticket:** JK-1032 ([kanartist](https://github.com/jkbuild/kanartist) project `jk`)
+**Ticket:** JK-1032 ([kanartist](https://github.com/jkbuild/kanartist) project `jk`); Quarkus JK-1160/1202
 
-JumpKick has **four** intentional packaging paths. Pick one product story; do not enable R8 by
+JumpKick has **six** intentional packaging paths. Pick one product story; do not enable R8 by
 default.
 
 | Artifact | How | Command | R8? |
@@ -11,6 +11,8 @@ default.
 | **Assembly jar** | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` | no |
 | **Shrunk jar** | `[application] assembly = "shrink"` | `jk assembly` / `jk build` | yes (opt-in) |
 | **Spring Boot jar** | spring-boot plugin | `jk build` | plugin-owned |
+| **Quarkus fast-jar / uber-jar** | quarkus plugin | `jk build` | plugin-owned (augment) |
+| **Grails jar** (Boot layout) | grails plugin | `jk build` | plugin-owned |
 
 ## Thin jar (default)
 
@@ -107,8 +109,8 @@ Do not combine assembly with Boot packaging for the same product.
 
 ## Quarkus
 
-Use the `[quarkus]` first-party plugin (JK-1160/1202). Packaging is **augmented**, not
-`assembly` / thin jar:
+Use the `[quarkus]` first-party plugin (JK-1160/1202). Packaging is **augmented** (pure
+`QuarkusBootstrap` — no permanent `mvn` CLI), not `assembly` / thin jar:
 
 | `package` | Output | Notes |
 |-----------|--------|--------|
@@ -125,8 +127,19 @@ version = "3.28.5"
 `Quarkus.run` over `@QuarkusMain` so `@QuarkusTest` does not double-index under jk’s
 `target/classes/main` layout.
 
+**Workspace / path deps:** sibling module jars are installed into the augment model so they
+appear under `lib/main` (multi-module dogfood: `jk-examples` `java/quarkus-petshop`).
+
+**Scaffold / Giter8:** `jk new --quarkus` (plugin scaffold) or `jk new --template quarkus`
+(short-name catalog). Keep `quarkus-junit5` on `[test-dependencies]` only.
+
 Cold first-lock of the Quarkus platform still materializes a large jar set; subsequent
 locks are cache-hit heavy. See [docs/perf/resolve-io.md](../perf/resolve-io.md).
+
+## Grails
+
+Use the `[grails]` plugin — Boot-launcher executable jar (same family as spring-boot packaging),
+not `assembly`. See the user guide “Grails” section.
 
 ## Mental model
 
@@ -135,5 +148,6 @@ thin      → package-jar
 assembly  → package-assembly   (jk assembly / jk assemble)
 shrunk    → shrunk-jar packager (R8)
 boot      → spring-boot packager
+grails    → grails packager (Boot layout)
 quarkus   → quarkus-fast-jar (augment; fast-jar default / uber-jar opt-in)
 ```

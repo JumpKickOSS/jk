@@ -4,14 +4,14 @@ Public docs for [jk](../README.md) — a modern build tool for Java and Kotlin.
 
 | Doc | Audience |
 |---|---|
-| [**User guide**](guide.md) | Day-to-day use: projects, deps, lockfile, JDK, workspaces, migration |
+| [**User guide**](guide.md) | Day-to-day use: projects, deps, lockfile, platforms, packaging, plugins, JDK, workspaces |
 | [**Machine / agent output**](machine-output.md) | JSONL events, web SSE, verbose, MCP plan, agent recipe |
 | [**Architecture**](architecture.md) | How jk is built: client/engine split, modules, resolution, caching |
-| [**Plugins**](plugins.md) | Authoring first-party-style build plugins |
-| [**Feature PRDs**](features/README.md) | Design freezes for tickets (catalogs, BOMs, starters, …) |
+| [**Plugins**](plugins.md) | Authoring first-party-style build plugins (Spring Boot, Quarkus, Grails, …) |
+| [**Feature PRDs**](features/README.md) | Design freezes (catalogs, BOMs, packaging, Giter8, …) |
 | [**Releases**](releases.md) | Versioning, install layout, Ed25519 signing, tag CI (JK-1066) |
 | [**Hosting & CDN**](hosting.md) | Firebase Hosting + GCS releases, DNS for jumpkick.build |
-| [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`) for `cc.jumpkick` plugins |
+| [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`); exclusive routing for `cc`/`build.jumpkick` |
 
 Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
 

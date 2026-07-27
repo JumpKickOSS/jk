@@ -279,7 +279,8 @@ JumpKick:
 
 Mill ships first-party **Java, Kotlin, Scala**, Android, plus multi-language experiments (Python, JS, …), Scala.js/Native, Spark examples, Spring Boot / Micronaut / Ktor samples, ErrorProne / Checkstyle / PMD / Detekt / ktlint / Scalafmt / MiMa, jlink / jpackage, assembly merge rules, Docker contrib, etc.
 
-JumpKick is intentionally Java/Kotlin-focused with first-party plugins (Spring Boot, Android, protobuf, shrink, image, …). Gaps that matter for “modern JVM shop” adoption:
+JumpKick is intentionally JVM-focused with first-party plugins (Spring Boot, Quarkus, Grails,
+Android, protobuf, shrink, image, …). Gaps that matter for “modern JVM shop” adoption:
 
 | Area | Mill | JumpKick |
 |---|---|---|

@@ -349,17 +349,30 @@ not mistaken for “everything is current.” Prefer `jk sync --offline-prepare`
 
 ```bash
 jk new --quarkus my-api          # plugin [scaffold]
-jk new --template quarkus my-api # Giter8 short name (same shape)
+jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 ```
 
-- Pin with `[quarkus] version = "3.28.5"` (platform BOM). Starters are versionless under
-  `[dependencies]`.
-- Default package is **fast-jar** (`quarkus-run.jar` + `lib/`). Set
-  `package = "uber-jar"` for a single runner.
+- Pin with `[quarkus] version = "3.28.5"` (platform BOM). Starters / extensions are
+  versionless under `[dependencies]` (e.g. `quarkus-rest`, `quarkus-rest-jackson`).
+- Default package is **fast-jar** (`quarkus-run.jar` + `lib/` + `quarkus-app/`). Set
+  `package = "uber-jar"` for a single runner. Packaging uses pure bootstrap (no permanent
+  `mvn` CLI).
 - Use a plain `main` + `Quarkus.run` (as scaffolded). Avoid `@QuarkusMain` under jk’s
-  `target/classes/main` layout — QuarkusTest can report two mains with the same name.
+  `target/classes/main` layout — `@QuarkusTest` can report two mains with the same name.
 - Keep `quarkus-junit5` / RestAssured on **`[test-dependencies]`** only so MAIN does not pull
   Maven embedder.
+- **Multi-module:** workspace path deps are packaged into `lib/main` for the Quarkus app
+  module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
+  whose return types live only in sibling jars (Jandex). Synthetic `pom.xml` is for tooling
+  only — JumpKick owns resolve via `jk.lock`. Dogfood:
+  [jk-examples `java/quarkus-petshop`](https://github.com/jkbuild/jk-examples).
+- Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast. See
+  [perf/resolve-io.md](perf/resolve-io.md).
+
+More packaging detail: [features/packaging.md](features/packaging.md). Giter8 catalog:
+[features/giter8-templates.md](features/giter8-templates.md).
+
+### Platform BOMs (enforced vs floor)
 
 Platform BOMs (`[platform-dependencies]` / `[spring-boot] version` / `[quarkus] version`) are
 **enforced platforms** by default: GAs listed in the BOM map use the BOM pin on transitive
@@ -391,7 +404,7 @@ jk export bom --out dist/my-bom.pom --overwrite
 
 Import that POM like any other platform BOM (`[platform-dependencies]`).
 
-## Packaging (thin / assembly / shrink / Boot)
+## Packaging (thin / assembly / shrink / Boot / Quarkus / Grails)
 
 | Artifact | Config | Command |
 |---|---|---|
@@ -399,6 +412,7 @@ Import that POM like any other platform BOM (`[platform-dependencies]`).
 | Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
 | Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
 | Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
+| Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not `assembly`) |
 | Grails jar (Boot layout) | grails plugin | `jk build` (not `assembly`) |
 
 One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
@@ -445,12 +459,14 @@ jk add g:a:v                 # or catalog short name: jk add jackson
 jk remove <coord>
 jk outdated                  # check for newer deps (read-only; see lockfile section)
 jk update                    # re-resolve within ranges (rewrites jk.lock)
+jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see platforms)
+jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
-jk build                     # package (thin, assembly, shrink, or Boot per config)
+jk build                     # package (thin, assembly, shrink, Boot, Quarkus, …)
 jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
-jk run -- args…
+jk run -- args…              # at workspace root: runs the module with [application] main
 jk clean
 jk explain                   # forecast / cache status (why will this rebuild?)
 jk format
@@ -460,6 +476,7 @@ jk publish                   # optional --sign / --sigstore / --slsa / --sbom
 jk image                     # OCI (daemonless)
 jk native                    # GraalVM native-image
 jk verify                    # rebuild in a scratch dir and compare hashes
+jk new --template quarkus x  # Giter8 short name (or local path)
 ```
 
 ### Machine / agent output (JSONL)
@@ -886,16 +903,26 @@ jk auth login                  # GitHub / GitLab / Gitea / Bitbucket
 # repositories in jk.toml or ~/.jk/config.toml — credentials via env / keychain / settings.xml
 ```
 
-Maven Central and Google Maven are the default remotes (Central first, then Google) so
-AndroidX / R8 / apksig resolve without a per-project `[repositories]` table. Local lookup
-still prefers CAS, per-repo mirrors under the cache, and `~/.m2` before the network. Corporate
-mirrors, forge package registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"`
-over secrets in TOML.
+**Built-in remotes** (when you declare none): **JumpKick official repo → Maven Central → Google
+Maven**. Routing is exclusive by group:
+
+| Coordinates | Where they resolve |
+|-------------|--------------------|
+| `cc.jumpkick`, `cc.jumpkick.*`, `build.jumpkick`, `build.jumpkick.*` | **JumpKick only** (never Central) — dependency-confusion safe |
+| Everything else | **Central then Google** (JumpKick is not probed for third-party GAV 404s) |
+
+So AndroidX / R8 / apksig resolve without a per-project `[repositories]` table, and first-party
+workers still come from `https://jumpkick.build/repo/`. Local lookup prefers CAS, per-repo
+mirrors under the cache, and `~/.m2` before the network. Corporate mirrors, forge package
+registries, S3/MinIO, and GCS are supported. Prefer `auth = "env:TOKEN"` over secrets in TOML.
+
+Details: [maven-repo.md](maven-repo.md).
 
 ### Exclusive groups (dependency-confusion defense)
 
-When you declare an **internal** repository next to a public one, bind internal Maven namespaces
-so versions of those coordinates are **never** discovered or fetched from other remotes:
+Built-in JumpKick groups are already exclusive (table above). When you declare an **internal**
+repository next to a public one, bind *your* Maven namespaces the same way so those
+coordinates are **never** discovered or fetched from other remotes:
 
 ```toml
 [repositories.central]

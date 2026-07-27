@@ -166,7 +166,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 | `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build pipeline; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
-| `plugins/` | `java-compiler`, `kotlin-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
+| `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
 
 **Layering:** `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk`, not on engine internals.
 
@@ -185,6 +185,9 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
 - **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
   named-locks) still get family alignment into the map. **`jk export bom`** freezes a lock
   scope into a Maven BOM POM for consumers.
+- **Remotes:** built-in order JumpKick → Central → Google; exclusive specialist groups
+  `cc.jumpkick.*` / `build.jumpkick.*` never resolve from Central (see [maven-repo.md](maven-repo.md)).
+  Path/git remotes preserve exclusive bindings when prepended.
 - **Scopes:** **main**, **test**, and **processor** graphs are solved separately so processor
   constraints do not force main versions. Dual lock rows are allowed when versions diverge;
   classpaths select by scope.
@@ -236,9 +239,17 @@ schema byte) so old local entries are not silently reinterpreted.
 
 ## Plugins
 
-Build plugins own a `jk.toml` table (`[spring-boot]`, `[android]`, …) via a jar containing
-`jk-plugin.toml` plus optional code that runs **out of process**. The engine never classloads
-plugin code. See [plugins.md](plugins.md).
+Build plugins own a `jk.toml` table (`[spring-boot]`, `[quarkus]`, `[grails]`, `[android]`, …)
+via a jar containing `jk-plugin.toml` plus optional code that runs **out of process**. The
+engine never classloads plugin code. See [plugins.md](plugins.md).
+
+Notable first-party packaging plugins:
+
+| Table | Packaging | Notes |
+|-------|-----------|--------|
+| `[spring-boot]` | Boot jar (`BOOT-INF/…`) | Optional AOT step |
+| `[quarkus]` | fast-jar (default) / uber-jar | Pure bootstrap augment; workspace path deps in `lib/main` |
+| `[grails]` | Boot-layout jar | Grails 8 + Groovy lane + `grails-app/` roots |
 
 There is no third-party marketplace yet; first-party plugins ship with jk and version together.
 
