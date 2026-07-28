@@ -247,6 +247,10 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 # either way). Skipped only for a local dist install that carried no engine
 # jar — a -SNAPSHOT client won't self-fetch.
 if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
+  # Local dogfood reinstalls keep the same version string (e.g. 0.10.1) while replacing the
+  # engine jar. A still-running engine would keep serving the old jar until stop — so always
+  # stop first, then start the freshly materialized engine.
+  run_jk engine stop --force >/dev/null 2>&1 || true
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
 fi
