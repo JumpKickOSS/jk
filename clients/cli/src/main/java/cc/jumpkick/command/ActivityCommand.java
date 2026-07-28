@@ -2,23 +2,32 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Badge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
-import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.plugin.protocol.MiniJson;
+import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.plugin.protocol.Jsonl;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.jline.utils.AttributedStyle;
 
 /**
- * {@code jk activity} — Activity-page style feed of recent builds (same journal as the web UI and
- * {@code jk history}). Newest first; default 30 rows.
+ * {@code jk activity} — Activity-page style feed of recent builds. Reads the same on-disk journal
+ * the web UI uses ({@code ~/.jk/state/builds/journal/}), not the engine's flat history-entry
+ * projection, so fields like {@code buildNumber} always match the dashboard (even when a resident
+ * engine is mid-dogfood-skew).
  *
  * <pre>
  * ✓ #31 Success  group:name · build · 8 modules · 2.3s · 3h ago
@@ -53,37 +62,65 @@ public final class ActivityCommand implements CliCommand {
     @Override
     public int run(Invocation in) throws Exception {
         int limit = in.value("limit").map(ActivityCommand::parseLimit).orElse(DEFAULT_LIMIT);
-        List<String> lines = EngineClient.historyList(EnginePaths.current(), limit);
-        List<String> entries = lines.stream()
-                .filter(l -> EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(l)))
-                .toList();
-        if (entries.isEmpty()) {
+        List<String> records = loadJournalRecords(JkDirs.builds().resolve("journal"), limit);
+        if (records.isEmpty()) {
             CliOutput.out("No activity yet — run a build and it will appear here.");
             return 0;
         }
         long now = System.currentTimeMillis();
         boolean nerdfont = GlobalConfig.nerdfont();
         Theme t = Theme.active();
-        for (String e : entries) {
-            CliOutput.out(formatLine(e, now, nerdfont, t));
+        for (String json : records) {
+            CliOutput.out(formatRecord(json, now, nerdfont, t));
         }
         return 0;
     }
 
-    /** One Activity row — pure formatting (unit-tested). */
-    static String formatLine(String entry, long now, boolean nerdfont, Theme t) {
-        boolean running = Jsonl.bool(entry, "running", false);
-        boolean success = Jsonl.bool(entry, "success", false);
-        boolean cancelled = Jsonl.bool(entry, "cancelled", false);
-        long buildNumber = Jsonl.longValue(entry, "buildNumber", 0);
-        String kind = Jsonl.str(entry, "kind");
+    /**
+     * Newest-first {@code record.json} bodies under the journal dir (entry ids are
+     * time-sortable). Best-effort; skips unreadable entries.
+     */
+    static List<String> loadJournalRecords(Path journalDir, int limit) {
+        if (journalDir == null || !Files.isDirectory(journalDir)) return List.of();
+        List<Path> dirs = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(journalDir)) {
+            for (Path p : stream) {
+                if (Files.isDirectory(p) && !p.getFileName().toString().startsWith(".")) {
+                    dirs.add(p);
+                }
+            }
+        } catch (IOException e) {
+            return List.of();
+        }
+        // Id = directory name = yyyyMMdd'T'HHmmssSSS-xxxx — reverse lexicographic = newest first.
+        dirs.sort(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed());
+        List<String> out = new ArrayList<>();
+        for (Path dir : dirs) {
+            if (out.size() >= limit) break;
+            Path rec = dir.resolve("record.json");
+            if (!Files.isRegularFile(rec)) continue;
+            try {
+                out.add(Files.readString(rec, StandardCharsets.UTF_8));
+            } catch (IOException ignored) {
+                // skip
+            }
+        }
+        return out;
+    }
+
+    /** One Activity row from a journal {@code record.json} (or flat history-entry JSONL). */
+    static String formatRecord(String json, long now, boolean nerdfont, Theme t) {
+        boolean running = bool(json, "running");
+        boolean success = bool(json, "success");
+        boolean cancelled = bool(json, "cancelled");
+        long buildNumber = longField(json, "buildNumber");
+        String kind = str(json, "kind");
         if (kind == null || kind.isBlank()) kind = "build";
-        // Single-pipeline journal rows often have moduleCount 0 (steps live at top level).
-        int moduleCount = Jsonl.intValue(entry, "moduleCount", 0);
+        int moduleCount = moduleCount(json);
         if (moduleCount <= 0 && !running) moduleCount = 1;
-        long millis = Jsonl.longValue(entry, "millis", -1);
-        long finishedAt = Jsonl.longValue(entry, "finishedAt", 0);
-        long startedAt = Jsonl.longValue(entry, "startedAt", 0);
+        long millis = longField(json, "millis");
+        long finishedAt = longField(json, "finishedAt");
+        long startedAt = longField(json, "startedAt");
 
         String outcomeWord;
         String glyph;
@@ -97,7 +134,7 @@ public final class ActivityCommand implements CliCommand {
         } else if (cancelled) {
             outcomeWord = "Cancelled";
             glyph = "⊛";
-            chipBody = t.withBackground(t.brightWhite(), t.planBadgeColor()); // blue-ish neutral
+            chipBody = t.withBackground(t.brightWhite(), t.planBadgeColor());
             chipCaps = t.bright(t.planBadgeColor());
         } else if (success) {
             outcomeWord = "Success";
@@ -121,7 +158,7 @@ public final class ActivityCommand implements CliCommand {
             pill = Badge.pill(pillLabel, nerdfont, chipBody, chipCaps);
         }
 
-        String coordPart = formatCoord(Jsonl.str(entry, "coord"), Jsonl.str(entry, "dir"), t);
+        String coordPart = formatCoord(str(json, "coord"), str(json, "dir"), t);
         String modulesPart = moduleCount == 1 ? "1 module" : moduleCount + " modules";
         String durationPart = running
                 ? (startedAt > 0 ? HistoryCommand.duration(Math.max(0, now - startedAt)) : "…")
@@ -129,7 +166,7 @@ public final class ActivityCommand implements CliCommand {
         String agoPart = running
                 ? "now"
                 : HistoryCommand.ago(finishedAt > 0 ? finishedAt : startedAt, now);
-        if (agoPart == null || agoPart.isBlank()) agoPart = "";
+        if (agoPart == null) agoPart = "";
 
         String sep = t.isAnsi() ? Theme.colorize(" · ", t.darkGray()) : " · ";
         StringBuilder line = new StringBuilder();
@@ -139,13 +176,27 @@ public final class ActivityCommand implements CliCommand {
         line.append(sep).append(t.isAnsi() ? Theme.colorize(modulesPart, t.normalGray()) : modulesPart);
         line.append(sep).append(t.isAnsi() ? Theme.colorize(durationPart, t.normalGray()) : durationPart);
         if (!agoPart.isEmpty()) {
-            line.append(sep)
-                    .append(t.isAnsi() ? Theme.colorize(agoPart, t.dim()) : agoPart);
+            line.append(sep).append(t.isAnsi() ? Theme.colorize(agoPart, t.dim()) : agoPart);
         }
         return line.toString();
     }
 
-    /** {@code group:name} with coord colors; falls back to last path segment. */
+    /** Module count from nested {@code modules:[]} or flat {@code moduleCount}. */
+    @SuppressWarnings("unchecked")
+    static int moduleCount(String json) {
+        int flat = (int) longField(json, "moduleCount");
+        if (flat > 0) return flat;
+        try {
+            Object root = MiniJson.parse(json);
+            if (root instanceof Map<?, ?> m && m.get("modules") instanceof List<?> list) {
+                return list.size();
+            }
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return 0;
+    }
+
     static String formatCoord(String coord, String dir, Theme t) {
         String raw = HistoryCommand.label(coord, dir);
         if (!t.isAnsi()) return raw;
@@ -156,6 +207,37 @@ public final class ActivityCommand implements CliCommand {
         return Theme.colorize(raw.substring(0, i), t.coordGroup())
                 + Theme.colorize(":", t.darkGray())
                 + Theme.colorize(raw.substring(i + 1), t.coordName().bold());
+    }
+
+    private static String str(String json, String key) {
+        // Pretty journal JSON may have spaces after ':' — Jsonl.str is strict; MiniJson is reliable.
+        try {
+            Object root = MiniJson.parse(json);
+            if (root instanceof Map<?, ?> m && m.get(key) instanceof String s) return s;
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return Jsonl.str(json, key);
+    }
+
+    private static long longField(String json, String key) {
+        try {
+            Object root = MiniJson.parse(json);
+            if (root instanceof Map<?, ?> m && m.get(key) instanceof Number n) return n.longValue();
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return Jsonl.longValue(json, key, 0);
+    }
+
+    private static boolean bool(String json, String key) {
+        try {
+            Object root = MiniJson.parse(json);
+            if (root instanceof Map<?, ?> m && m.get(key) instanceof Boolean b) return b;
+        } catch (RuntimeException ignored) {
+            // fall through
+        }
+        return Jsonl.bool(json, key, false);
     }
 
     private static int parseLimit(String raw) {
