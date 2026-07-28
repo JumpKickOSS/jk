@@ -3945,29 +3945,42 @@ public final class EngineServer implements AutoCloseable {
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
                     (int) r.modules().stream().filter(m -> !m.success()).count();
-            send(
-                    writer,
-                    JsonOut.object()
-                            .put("type", EngineProtocol.HISTORY_ENTRY)
-                            .put("id", r.id())
-                            .put("buildNumber", r.buildNumber())
-                            .put("kind", r.kind())
-                            .put("dir", r.dir())
-                            .put("coord", r.coord())
-                            .put("startedAt", r.startedAt())
-                            .put("finishedAt", r.finishedAt())
-                            .put("millis", r.millis())
-                            .put("success", r.success())
-                            .put("cancelled", r.cancelled())
-                            .put("running", r.running())
-                            .put("exitCode", r.exitCode())
-                            .put("testsTotal", t != null ? t.total() : -1)
-                            .put("testsFailed", t != null ? t.failed() : -1)
-                            .put("moduleCount", r.modules().size())
-                            .put("failedModules", failedModules)
-                            .put("savedMillis", b != null ? b.savedMillis() : -1)
-                            .put("estimatedUncachedMillis", b != null ? b.estimatedUncachedMillis() : -1)
-                            .toString());
+            // Live progress for in-flight rows (Activity feed) — match journal id to the hold.
+            int progressPct = -1;
+            if (r.running()) {
+                for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
+                    if (r.id() != null && r.id().equals(h.journalId())) {
+                        Double p = lastProgressByRequest.get(h.requestId());
+                        if (p != null && !Double.isNaN(p)) progressPct = (int) Math.round(p);
+                        break;
+                    }
+                }
+            }
+            long elapsed = r.running() && r.startedAt() > 0
+                    ? Math.max(0, clockMillis.getAsLong() - r.startedAt())
+                    : r.millis();
+            var entry = JsonOut.object()
+                    .put("type", EngineProtocol.HISTORY_ENTRY)
+                    .put("id", r.id())
+                    .put("buildNumber", r.buildNumber())
+                    .put("kind", r.kind())
+                    .put("dir", r.dir())
+                    .put("coord", r.coord())
+                    .put("startedAt", r.startedAt())
+                    .put("finishedAt", r.finishedAt())
+                    .put("millis", elapsed)
+                    .put("success", r.success())
+                    .put("cancelled", r.cancelled())
+                    .put("running", r.running())
+                    .put("exitCode", r.exitCode())
+                    .put("testsTotal", t != null ? t.total() : -1)
+                    .put("testsFailed", t != null ? t.failed() : -1)
+                    .put("moduleCount", r.modules().size())
+                    .put("failedModules", failedModules)
+                    .put("savedMillis", b != null ? b.savedMillis() : -1)
+                    .put("estimatedUncachedMillis", b != null ? b.estimatedUncachedMillis() : -1);
+            if (progressPct >= 0) entry = entry.put("progress", progressPct);
+            send(writer, entry.toString());
         }
         send(
                 writer,
