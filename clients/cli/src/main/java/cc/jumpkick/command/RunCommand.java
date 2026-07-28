@@ -8,6 +8,7 @@ import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.run.PipelineResult;
@@ -21,6 +22,11 @@ import java.util.List;
  * Project run pipeline (not a {@code CliCommand}): build then exec. {@link ToolRunCommand}
  * delegates here via {@link #runProject}. Preference: <strong>native &gt; assembly jar &gt; plain
  * jar</strong>.
+ *
+ * <p>Flow: engine-hosted build phase-chain (compile / test when not skipped / package as needed),
+ * then a client-side detached {@code java …} (or native binary) with inherited stdio. The settled
+ * chrome is a play {@link CommandWedge}: {@code ▶ Run  Executing `java -cp … Main`} (or
+ * {@code java -jar …}).
  */
 public final class RunCommand {
 
@@ -38,11 +44,11 @@ public final class RunCommand {
 
         String coord = BuildCommand.buildTarget(projectDir.resolve("jk.toml"), projectDir);
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
-        // In chip modes (AUTO/QUIET) the pipeline settles with the ▶ Exec chip line showing
-        // the exec command directly — no second banner line. In VERBOSE/JSON no chip is
-        // printed, so printExecBanner runs after the pipeline as before.
+        // In chip modes (AUTO/QUIET) the build pipeline settles as the ▶ Run CommandWedge with
+        // "Executing `java …`" — no second banner line. In VERBOSE/JSON no chip is printed, so
+        // printExecBanner runs after the pipeline as before.
         ConsoleSpec spec = new ConsoleSpec(
-                "Exec",
+                "Run",
                 r -> {
                     try {
                         return execTail(projectDir, execPlan(projectDir));
@@ -55,7 +61,7 @@ public final class RunCommand {
                 true,
                 r -> {
                     // The build succeeded but there may be nothing runnable — settle as a failure
-                    // (red chip) with a sentence naming the actual problem, not "Failed to exec".
+                    // (red chip) with a sentence naming the actual problem, not "Failed to run".
                     if (!r.success()) return null;
                     try {
                         execPlan(projectDir);
@@ -284,34 +290,33 @@ public final class RunCommand {
     }
 
     /**
-     * The styled tail shown in the exec chip line or banner: {@code "[cyan]{jdk}[/]: [yellow]java
-     * …[/]"} for JVM, {@code "native binary: [yellow]target/app[/]"} for native. The plan carries
-     * the display command; the JDK leaf derives from the plan's javaHome.
+     * Tail of the settled Run CommandWedge: {@code Executing [yellow]`java -cp … Main`[/]} or
+     * {@code Executing [yellow]`java -jar path`[/]} (from {@link
+     * cc.jumpkick.engine.protocol.ExecPlan#display()}), or a native binary path in the same shape.
      */
     private static String execTail(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
         Theme t = Theme.active();
+        String command;
         if (plan.argv().size() == 1) {
             // Native binary — exec'd directly, no JVM.
             Path bin = Path.of(plan.argv().get(0));
-            return "native binary: " + Theme.colorize(PathDisplay.of(bin, projectDir), t.highlight());
+            command = PathDisplay.of(bin, projectDir);
+        } else if (!plan.display().isEmpty()) {
+            // Engine display is already abbreviated: "java -cp … Main" or "java -jar rel/path".
+            command = plan.display();
+        } else {
+            // Deploy / odd plans without a display string — join argv as a last resort.
+            command = String.join(" ", plan.argv());
         }
-        Path jdkHome = Path.of(plan.javaHome());
-        try {
-            jdkHome = jdkHome.toRealPath();
-        } catch (IOException ignored) {
-        }
-        String jdkLeaf = jdkHome.getFileName() != null ? jdkHome.getFileName().toString() : "java";
-        return Theme.colorize(jdkLeaf, t.cyan()) + ": " + Theme.colorize(plan.display(), t.shell());
+        return "Executing " + Theme.colorize("`" + command + "`", t.shell());
     }
 
     /**
-     * Prints the {@code ▶ Executing …} line to stderr (verbose/JSON modes, where no chip is
-     * rendered). Delegates styling to {@link #execTail}.
+     * Prints the play {@link CommandWedge} to stderr (verbose/JSON modes, where no pipeline chip is
+     * rendered). Same shape as the chip-mode settle: {@code ▶ Run  Executing `java …`}.
      */
     private static void printExecBanner(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
-        Theme t = Theme.active();
-        CliOutput.err(
-                Theme.colorize(cc.jumpkick.cli.tui.Glyphs.PLAY, t.brightGreen()) + " " + execTail(projectDir, plan));
+        CliOutput.err(CommandWedge.working("Run", execTail(projectDir, plan)));
         CliOutput.err();
         // Reset any lingering SGR state so the program's own output starts from
         // the terminal's default colors (only when we're emitting color at all).

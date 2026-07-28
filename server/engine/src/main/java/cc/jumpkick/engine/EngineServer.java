@@ -663,7 +663,7 @@ public final class EngineServer implements AutoCloseable {
                             } else {
                                 // Graceful drain: keep the listener open (so new commands get a clear
                                 // "shutting down" handshake and in-flight jobs finish); the last job to
-                                // complete triggers the clean exit (see maybeIdleBoundaryGc).
+                                // complete triggers the clean exit (see maybeIdleBoundary).
                                 draining = true;
                                 send(writer, EngineProtocol.bye(jobs, true));
                             }
@@ -923,6 +923,10 @@ public final class EngineServer implements AutoCloseable {
                     JobWorkers.clear(eventRequestId);
                     currentEventRequestId.remove();
                     if (pipeline) cacheGate.readLock().unlock();
+                    // Free exclusive fingerprint as soon as pipeline work ends — before the
+                    // connection thread finishes teardown — so a follow-up same-project build is
+                    // not rejected as already-running while journal/idle chores run.
+                    inFlightBuilds.release(eventRequestId);
                     done.countDown();
                 }
             });
@@ -1020,7 +1024,8 @@ public final class EngineServer implements AutoCloseable {
             // Belts: any leftover workers die now (grace 0 — request is ending).
             JobWorkers.shutdownForRequest(eventRequestId, 0L);
             JobWorkers.clear(eventRequestId);
-            if (pipeline) maybeIdleBoundaryGc();
+            // Idempotent: runner finally usually released already; covers admit-without-run paths.
+            inFlightBuilds.release(eventRequestId);
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
             // cancelToken.cancelled() also trips on the benign end-of-request EOF, so a successful
             // build can look cancelled. Correct it once here for both the dashboard event and the
@@ -1043,7 +1048,10 @@ public final class EngineServer implements AutoCloseable {
                             eventRequestId));
             clearProgress(eventRequestId);
             writeJournal(eventRequestId, cancelled, elapsedMillis, writer);
-            inFlightBuilds.release(eventRequestId);
+            // Idle boundary after finish side-effects so prune/GC see journal + event garbage too.
+            // Cache maintenance (pipeline=false) only GCs when nothing else is in flight.
+            if (pipeline) maybeIdleBoundary();
+            else maybeIdleGc();
         }
     }
 
@@ -1527,24 +1535,45 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * After the last in-flight pipeline finishes: full GC toward idle heap, then drain any queued
-     * opportunistic prune (safe: nothing is reading the cache).
+     * After the last in-flight pipeline finishes: drain queued cache prune and enforce journal/metrics
+     * retention (safe — nothing is reading the cache), then full GC toward idle heap only if still
+     * idle. GC is last so prune/journal/metrics temporary garbage is included; a re-check avoids
+     * pausing a concurrent job that started during the chores.
      */
-    private void maybeIdleBoundaryGc() {
-        if (activePipelines.decrementAndGet() == 0) {
-            System.gc();
-            drainPendingPrune();
-            pruneJournal();
-            pruneMetrics();
-            // The last in-flight job of a graceful drain just finished — close the listener so run()
-            // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
-            if (draining) {
-                synchronized (lifecycleLock) {
-                    shuttingDown = true;
-                    closeServerChannelQuietly();
-                }
+    private void maybeIdleBoundary() {
+        if (activePipelines.decrementAndGet() != 0) return;
+        drainPendingPrune();
+        pruneJournal();
+        pruneMetrics();
+        maybeIdleGc();
+        // The last in-flight job of a graceful drain just finished — close the listener so run()
+        // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
+        if (draining) {
+            synchronized (lifecycleLock) {
+                shuttingDown = true;
+                closeServerChannelQuietly();
             }
         }
+    }
+
+    /**
+     * Full GC only when no pipeline is in flight. Used at the idle boundary (after chores) and after
+     * non-pipeline cache maintenance, which deliberately does not join {@link #activePipelines}.
+     */
+    private void maybeIdleGc() {
+        if (activePipelines.get() == 0) {
+            System.gc();
+        }
+    }
+
+    /**
+     * Free the exclusive fingerprint as soon as project-mutating pipeline work finishes (idempotent).
+     * Connection teardown / journal / idle chores may still run; a follow-up same-project build must
+     * not see {@code already-running} during that tail.
+     */
+    private void releaseExclusiveSlot() {
+        long id = eventRequestId();
+        if (id > 0) inFlightBuilds.release(id);
     }
 
     /**
@@ -1718,6 +1747,8 @@ public final class EngineServer implements AutoCloseable {
             if (rid > 0) progressRoots.put(rid, entryDirStr);
             WorkspaceBuildListener listener = wireListener(writer, entryDirStr);
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
+            // Exclusive build work is done; free the fingerprint before finish events / bookkeeping.
+            releaseExclusiveSlot();
             accOutcome(rid, result.success(), result.exitCode());
             if (rid > 0) {
                 // finish() pins 100%/done — a failed build keeps its last true percent.
@@ -2188,6 +2219,8 @@ public final class EngineServer implements AutoCloseable {
             pipeline.addListener(wirePipelineListener(dir, writer, pipeline));
 
             cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
+            // pipelineFinish already sent; free exclusive slot before bookkeeping (see releaseExclusiveSlot).
+            releaseExclusiveSlot();
             accTests(
                     eventRequestId(),
                     pipeline.get(cc.jumpkick.runtime.BuildPipelines.TEST_RESULT).orElse(null));
@@ -2292,6 +2325,8 @@ public final class EngineServer implements AutoCloseable {
 
             long startNanos = System.nanoTime();
             cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
+            // pipelineFinish already sent; free exclusive slot before calibration / memo / prune queue.
+            releaseExclusiveSlot();
             accTests(
                     eventRequestId(),
                     pipeline.get(cc.jumpkick.runtime.BuildPipelines.TEST_RESULT).orElse(null));
@@ -4261,6 +4296,10 @@ public final class EngineServer implements AutoCloseable {
                 // Single-pipeline builds: timeline before terminal finish. Workspace modules skip
                 // (flush once in runBuild before workspace-finish).
                 if (flushTimelineOnPipelineFinish) flushTimelineToClient(eventRequestId, writer);
+                // Free exclusive fingerprint before the terminal line so a client that reconnects
+                // immediately is not rejected as already-running (single-pipeline only; workspace
+                // releases after BuildService.buildWorkspace returns).
+                if (flushTimelineOnPipelineFinish) inFlightBuilds.release(eventRequestId);
                 sendQuiet(writer, finishEncoder.apply(result));
                 publishPipelineFinish(eventRequestId, dir, result.success());
                 if (!result.success()) publishDiagnostics(eventRequestId, dir, result.errors());
@@ -4435,7 +4474,8 @@ public final class EngineServer implements AutoCloseable {
                 httpJobThreads.remove(eventRequestId);
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
-                maybeIdleBoundaryGc();
+                // Free exclusive fingerprint before journal/idle chores so a follow-up build can start.
+                inFlightBuilds.release(eventRequestId);
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
                 if (success) lastProgressByRequest.put(eventRequestId, 100.0);
                 publishEvent(
@@ -4455,7 +4495,8 @@ public final class EngineServer implements AutoCloseable {
                                 eventRequestId));
                 clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
-                inFlightBuilds.release(eventRequestId);
+                // After finish/journal so idle chores + GC include that allocation.
+                maybeIdleBoundary();
             }
         });
         httpJobThreads.put(eventRequestId, t);
@@ -4497,7 +4538,6 @@ public final class EngineServer implements AutoCloseable {
                 httpJobThreads.remove(eventRequestId);
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
-                maybeIdleBoundaryGc();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
                 if (success) lastProgressByRequest.put(eventRequestId, 100.0);
                 publishEvent(
@@ -4517,6 +4557,8 @@ public final class EngineServer implements AutoCloseable {
                                 eventRequestId));
                 clearProgress(eventRequestId);
                 writeJournal(eventRequestId, cancelled, elapsedMillis);
+                // After finish/journal so idle chores + GC include that allocation.
+                maybeIdleBoundary();
             }
         });
         httpJobThreads.put(eventRequestId, t);

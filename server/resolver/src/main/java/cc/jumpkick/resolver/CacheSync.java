@@ -2,7 +2,6 @@
 package cc.jumpkick.resolver;
 
 import cc.jumpkick.cache.Cas;
-import cc.jumpkick.http.HostRateLimiter;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.RepoSource;
@@ -21,7 +20,9 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Ensures every lockfile sha256 is present in the CAS (fetch+verify on miss). Parallel on {@link
- * JkThreads#io()} with per-host rate limits; checksum mismatches are reported, never accepted.
+ * JkThreads#io()}; per-host concurrency is capped inside {@link MavenRepo} (JK-1221) — do not wrap
+ * fetches again or nested acquires deadlock the shared limiter. Checksum mismatches are reported,
+ * never accepted.
  */
 public final class CacheSync {
 
@@ -131,12 +132,10 @@ public final class CacheSync {
             pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
         }
 
-        // Dispatch all fetches concurrently. HostRateLimiter caps per-host
-        // concurrency so Maven Central doesn't throttle us.
-        HostRateLimiter limiter = HostRateLimiter.shared();
+        // Dispatch all fetches concurrently. MavenRepo rate-limits the network leg (JK-1221).
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         for (PendingFetch p : pending) {
-            CompletableFuture<FetchResult> fut = CompletableFuture.supplyAsync(() -> fetch(p, limiter), JkThreads.io());
+            CompletableFuture<FetchResult> fut = CompletableFuture.supplyAsync(() -> fetch(p), JkThreads.io());
             // Fire the per-package callback on the fetcher's completion
             // thread so the progress bar updates as parallel fetches
             // finish, not in a single end-of-pass burst. thenAccept
@@ -192,12 +191,11 @@ public final class CacheSync {
             } // non-maven source
         }
 
-        HostRateLimiter limiter = HostRateLimiter.shared();
         int fetched = 0;
         List<java.util.concurrent.CompletableFuture<FetchResult>> futures = new ArrayList<>();
         for (PendingFetch p : pending) {
             futures.add(java.util.concurrent.CompletableFuture.supplyAsync(
-                    () -> fetchSources(p, limiter), cc.jumpkick.run.JkThreads.io()));
+                    () -> fetchSources(p), cc.jumpkick.run.JkThreads.io()));
         }
         for (int i = 0; i < futures.size(); i++) {
             FetchResult r;
@@ -217,12 +215,11 @@ public final class CacheSync {
         return fetched;
     }
 
-    private static FetchResult fetchSources(PendingFetch p, HostRateLimiter limiter) {
+    private static FetchResult fetchSources(PendingFetch p) {
         Coordinate sourcesCoord = new cc.jumpkick.model.Coordinate(
                 p.pkg.moduleGroup(), p.pkg.moduleArtifact(), p.pkg.version(), "sources", "jar");
         try {
-            URI host = p.repo.baseUrl();
-            MavenRepo.Fetched f = limiter.run(host, () -> p.repo.fetchArtifact(sourcesCoord));
+            MavenRepo.Fetched f = p.repo.fetchArtifact(sourcesCoord);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name() + " sources: checksum mismatch");
             }
@@ -252,11 +249,12 @@ public final class CacheSync {
         default void failed(Lockfile.Artifact pkg, String error) {}
     }
 
-    private static FetchResult fetch(PendingFetch p, HostRateLimiter limiter) {
+    private static FetchResult fetch(PendingFetch p) {
         Coordinate coord = toCoord(p.pkg);
         try {
-            URI host = p.repo.baseUrl();
-            MavenRepo.Fetched f = limiter.run(host, () -> p.repo.fetchArtifact(coord));
+            // Rate limit lives in MavenRepo.fetch (network leg only). Wrapping again deadlocks the
+            // non-reentrant HostRateLimiter once concurrent fetchers hold all permits.
+            MavenRepo.Fetched f = p.repo.fetchArtifact(coord);
             if (!f.sha256().equals(p.expectedHex)) {
                 return FetchResult.failure(p.pkg.name()
                         + " v"

@@ -13,7 +13,7 @@ import java.util.Map;
 public final class JkDiff {
 
     /** Sentinel stored when the previous env had no entry for a key. */
-    static final String UNSET_SENTINEL = "__jk_unset__";
+    static final String UNSET_SENTINEL = "\u0001__jk_unset__";
 
     private final Map<String, String> previous;
 

@@ -416,8 +416,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Settle with the play chip: {@code ▶ Exec ▶ Executing …} — for commands that hand off to a
-     * subprocess after the pipeline settles (e.g. {@code jk run}).
+     * Settle with the play chip: {@code ▶ Run  Executing `java …`} — for commands that hand off to a
+     * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName()} is the
+     * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      */
     public void finishPipelineExec(String tail, List<String> above) {
         settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
@@ -1003,7 +1004,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     // --- helpers ----------------------------------------------------------
 
     private static String key(String module, String stepKey) {
-        return module + ' ' + stepKey;
+        return module + '\0' + stepKey;
     }
 
     /** "compile-java" → "Compile java"; "runTests" → "RunTests" (best-effort). */
