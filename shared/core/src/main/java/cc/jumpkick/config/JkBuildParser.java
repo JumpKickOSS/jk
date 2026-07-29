@@ -117,6 +117,10 @@ public final class JkBuildParser {
             throw new JkBuildParseException(
                     "failed to parse jk.toml: " + result.errors().getFirst().getMessage());
         }
+        // Reject ${VAR} outside the whitelisted positions before anything else reads the file, so
+        // the message names the position rather than surfacing later as a bewildering "no such
+        // version" (JK-1271).
+        Interpolation.guard(result);
         JkBuild.Project project = parseProject(result);
         LibraryCatalog effective = catalog.withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);

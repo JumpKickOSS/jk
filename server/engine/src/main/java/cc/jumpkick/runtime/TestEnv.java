@@ -37,15 +37,26 @@ public final class TestEnv {
      * <p>A module that sets {@code JK_HOME} itself wins — this is a default, not an override.
      */
     public static Map<String, String> forModule(JkBuild project, Path moduleDir, BuildLayout layout) {
+        return forModule(project, moduleDir, layout, cc.jumpkick.config.BuildEnv.forModule(moduleDir));
+    }
+
+    /** As {@link #forModule(JkBuild, Path, BuildLayout)}, resolving {@code ${VAR}} through {@code env}. */
+    public static Map<String, String> forModule(
+            JkBuild project, Path moduleDir, BuildLayout layout, java.util.function.UnaryOperator<String> env) {
         Path target = layout.moduleTargetDir();
-        Map<String, String> env = new LinkedHashMap<>();
+        Map<String, String> out = new LinkedHashMap<>();
         // Sandbox first so a declared value replaces it.
-        env.put(JK_HOME, target.resolve("test-jk-home").toAbsolutePath().toString());
-        env.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
+        out.put(JK_HOME, target.resolve("test-jk-home").toAbsolutePath().toString());
+        out.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
         for (Map.Entry<String, String> e : project.build().testEnv().entrySet()) {
-            env.put(e.getKey(), expand(e.getValue(), moduleDir, target));
+            String withPaths = expand(e.getValue(), moduleDir, target);
+            // Then environment references — a whitelisted position (JK-1271), resolved through the
+            // request's environment plus .env, and strict about an unset variable.
+            out.put(
+                    e.getKey(),
+                    cc.jumpkick.config.Interpolation.expand(withPaths, "[test].env." + e.getKey(), env));
         }
-        return Map.copyOf(env);
+        return Map.copyOf(out);
     }
 
     /**
