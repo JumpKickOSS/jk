@@ -145,7 +145,25 @@ public final class JkBuildParser {
                     build.testWorkers(),
                     build.platformPolicy(),
                     build.unmappedPolicy(),
-                    build.extraResources());
+                    build.extraResources(),
+                    build.testEnv());
+        }
+        // [test] is its own top-level table (test settings are not build inputs), but it folds into
+        // the Build block, which already carries the other test-scoped setting, test-plugin-jars.
+        Map<String, String> testEnv = parseTestEnv(result);
+        if (!testEnv.isEmpty()) {
+            build = new JkBuild.Build(
+                    build.orderAfter(),
+                    build.testPluginJars(),
+                    build.lint(),
+                    build.kotlinPlugins(),
+                    build.kspOptions(),
+                    build.extraSrc(),
+                    build.testWorkers(),
+                    build.platformPolicy(),
+                    build.unmappedPolicy(),
+                    build.extraResources(),
+                    testEnv);
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
@@ -1419,8 +1437,8 @@ public final class JkBuildParser {
                 "native",
                 "image",
                 "build",
-                "format",
                 "test",
+                "format",
                 "resolve",
                 "variants",
                 "libraries",
@@ -1552,7 +1570,8 @@ public final class JkBuildParser {
                     null,
                     platformPolicy,
                     unmappedPolicy,
-                    List.of());
+                    List.of(),
+                    Map.of());
         }
 
         List<String> orderAfter = new ArrayList<>();
@@ -1642,7 +1661,8 @@ public final class JkBuildParser {
                 testWorkers,
                 platformPolicy,
                 unmappedPolicy,
-                parseExtraResources(build));
+                parseExtraResources(build),
+                Map.of());
     }
 
     /**
@@ -1660,6 +1680,40 @@ public final class JkBuildParser {
      * pattern to match nothing (by default that is an error, since a typo'd path that silently
      * contributes no files is indistinguishable from success until runtime).
      */
+    /**
+     * {@code [test] env} — environment variables for each forked test JVM (JK-1267).
+     *
+     * <pre>
+     * [test]
+     * env = { JK_HOME = "${target}/test-jk-home", JK_HTTP_ENABLED = "false" }
+     * </pre>
+     *
+     * Values are literal strings; {@code ${target}} and {@code ${module}} are substituted at launch
+     * (see {@code TestEnv}). Environment variables are deliberately <em>not</em> interpolated here
+     * yet — that is whitelisted separately (JK-1271).
+     */
+    private static Map<String, String> parseTestEnv(TomlTable root) {
+        TomlTable test = root.getTable("test");
+        if (test == null) return Map.of();
+        TomlTable env = test.getTable("env");
+        if (env == null) return Map.of();
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (String key : env.keySet()) {
+            Object value = env.get(List.of(key));
+            if (value == null) continue;
+            if (!(value instanceof String s)) {
+                if (value instanceof Boolean || value instanceof Long || value instanceof Double) {
+                    out.put(key, String.valueOf(value));
+                    continue;
+                }
+                throw new JkBuildParseException(
+                        "[test].env." + key + " must be a string (or a bare boolean/number)");
+            }
+            out.put(key, s);
+        }
+        return out;
+    }
+
     private static List<JkBuild.ExtraResource> parseExtraResources(TomlTable build) {
         List<JkBuild.ExtraResource> out = new ArrayList<>();
         if (build == null) return out;

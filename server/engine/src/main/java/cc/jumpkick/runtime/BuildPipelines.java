@@ -2214,10 +2214,16 @@ public final class BuildPipelines {
                             workerJarProps(in.dir(), projectUnderTest.build().testPluginJars());
                     // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
                     // so EngineTestExtension cannot kill the host engine running this test step.
-                    Map<String, String> testEnv = Map.of();
+                    // Sandboxed JK_HOME/JK_M2_LOCAL plus this module's [test] env — without it a forked
+                    // test JVM inherits the engine's environment and runs against the developer's real
+                    // ~/.jk (JK-1267). Nested-engine isolation layers on top: it is a stricter case of the
+                    // same need (jk-cli suites must not be able to stop the host engine running the step),
+                    // so it is applied last and wins on any key both set.
+                    Map<String, String> testEnv =
+                            new java.util.LinkedHashMap<>(TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
                     if (needsNestedEngineIsolation(projectUnderTest)) {
                         enrichCliTestProps(in.dir(), workerJars);
-                        testEnv = nestedEngineTestEnv(in.dir());
+                        testEnv.putAll(nestedEngineTestEnv(in.dir()));
                     }
 
                     // Incremental test skip: a content key over every input that affects
@@ -2237,7 +2243,7 @@ public final class BuildPipelines {
                             testResDirs,
                             in.lockFile(),
                             testRtCp,
-                            testStampExtras(workerJars, effectiveSel));
+                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build().testEnv()));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -4109,15 +4115,24 @@ public final class BuildPipelines {
         // [test] default-exclude-tags — exactly what run-tests stamps with (JK-1229/JK-1243).
         return testStampExtras(
                 workerJarProps(dir, project.build().testPluginJars()),
-                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir));
+                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
+                project.build().testEnv());
     }
 
     private static List<String> testStampExtras(
-            Map<String, String> workerJars, cc.jumpkick.config.TestSelection selection) {
+            Map<String, String> workerJars,
+            cc.jumpkick.config.TestSelection selection,
+            Map<String, String> testEnv) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome (JK-1134/1135).
         if (selection != null) extras.add("sel:" + selection.identityToken());
+        // [test] env changes what the suite sees, so it must retest (JK-1267). Declared values only:
+        // the sandbox defaults derive from the module's own target dir, so they add nothing but
+        // absolute paths that would differ per checkout and defeat the cache.
+        for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
+            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+        }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;

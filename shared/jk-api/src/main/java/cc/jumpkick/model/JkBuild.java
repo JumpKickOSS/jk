@@ -711,7 +711,13 @@ public record JkBuild(
              */
             UnmappedPolicy unmappedPolicy,
             /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
-            List<ExtraResource> extraResources) {
+            List<ExtraResource> extraResources,
+            /**
+             * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
+             * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
+             * {@code ${module}}; explicit tokens rather than guessing which values look like paths.
+             */
+            Map<String, String> testEnv) {
 
         public static final Build EMPTY = new Build(
                 List.of(),
@@ -723,7 +729,8 @@ public record JkBuild(
                 null,
                 PlatformPolicy.ENFORCED,
                 UnmappedPolicy.MEDIATE,
-                List.of());
+                List.of(),
+                Map.of());
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -735,6 +742,9 @@ public record JkBuild(
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
+            testEnv = testEnv == null
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -752,7 +762,8 @@ public record JkBuild(
                     testWorkers,
                     platformPolicy,
                     unmappedPolicy,
-                    extraResources);
+                    extraResources,
+                    testEnv);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -766,7 +777,8 @@ public record JkBuild(
                     testWorkers,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
                     unmappedPolicy,
-                    extraResources);
+                    extraResources,
+                    testEnv);
         }
 
         /**
