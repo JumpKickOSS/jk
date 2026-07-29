@@ -91,4 +91,47 @@ class ActionCacheRestoreTest {
         assertThat(ac.restoreArtifacts(record, baseDir)).isTrue();
         assertThat(Files.readString(artifact)).isEqualTo("contents");
     }
+
+    /**
+     * The two requirements on a multi-file restore pull in opposite directions and have to hold at
+     * once: stale extras beside the restored set must go (JK-1245, a quarkus fast-jar restored over
+     * a dirty {@code lib/}), yet the recorded outputs must keep their mtime (JK-1258, or every
+     * downstream FreshnessStamp is invalidated). Clearing the directory root satisfies the first and
+     * breaks the second, so this pins both.
+     */
+    @Test
+    void a_restore_drops_stale_extras_but_still_spares_the_files_it_owns(@TempDir Path tmp) throws Exception {
+        Path cacheRoot = tmp.resolve("cache");
+        Path baseDir = Files.createDirectories(tmp.resolve("out"));
+        Path owned = baseDir.resolve("lib/kept.jar");
+        Path ownedDeep = baseDir.resolve("lib/nested/deep.jar");
+        Files.createDirectories(ownedDeep.getParent());
+        Files.writeString(owned, "kept contents");
+        Files.writeString(ownedDeep, "deep contents");
+
+        ActionCache ac = new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionRecord record =
+                ac.storeArtifacts("package-jar", "key-1", Map.of(), baseDir, List.of(owned, ownedDeep));
+
+        // A dirty target/: leftovers from a previous, different packaging run.
+        Path stale = baseDir.resolve("lib/stale.jar");
+        Path staleNested = baseDir.resolve("lib/gone/stale-nested.jar");
+        Files.createDirectories(staleNested.getParent());
+        Files.writeString(stale, "stale");
+        Files.writeString(staleNested, "stale");
+
+        FileTime before = FileTime.fromMillis(1_000_000_000_000L);
+        Files.setLastModifiedTime(owned, before);
+        Files.setLastModifiedTime(ownedDeep, before);
+
+        assertThat(ac.restoreArtifacts(record, baseDir)).isTrue();
+
+        assertThat(stale).doesNotExist();
+        assertThat(staleNested).doesNotExist();
+        assertThat(staleNested.getParent()).doesNotExist(); // emptied directory pruned too
+        assertThat(Files.getLastModifiedTime(owned)).isEqualTo(before);
+        assertThat(Files.getLastModifiedTime(ownedDeep)).isEqualTo(before);
+        assertThat(Files.readString(owned)).isEqualTo("kept contents");
+        assertThat(Files.readString(ownedDeep)).isEqualTo("deep contents");
+    }
 }

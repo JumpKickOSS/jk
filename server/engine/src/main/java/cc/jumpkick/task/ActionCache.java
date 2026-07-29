@@ -190,10 +190,18 @@ public final class ActionCache {
             int slash = rel.indexOf('/');
             if (slash > 0) dirRoots.add(rel.substring(0, slash));
         }
-        for (String root : dirRoots) {
-            Path dir = baseDir.resolve(root);
-            if (Files.isDirectory(dir)) {
-                cc.jumpkick.util.PathUtil.deleteRecursively(dir);
+        // Prune rather than delete the root outright. The recorded outputs are exactly the files
+        // about to be restored, so deleting one guarantees the byte-identical check below misses and
+        // re-copies it with a fresh mtime — which is the precise churn JK-1258 removed, since
+        // FreshnessStamp compares classpath entries by mtime. Dropping only the files this record
+        // does NOT own clears stale extras just as well and leaves the unchanged ones alone.
+        if (!dirRoots.isEmpty()) {
+            java.util.Set<Path> owned = new java.util.HashSet<>();
+            for (String rel : record.outputs().keySet()) {
+                owned.add(baseDir.resolve(rel).normalize());
+            }
+            for (String root : dirRoots) {
+                pruneUnowned(baseDir.resolve(root), owned);
             }
         }
         meter(record.outputs(), false);
@@ -214,6 +222,32 @@ public final class ActionCache {
             ledger.touch(e.getValue());
         }
         return true;
+    }
+
+    /**
+     * Delete every file under {@code dir} that {@code owned} does not name, then any directory left
+     * empty — so a restore clears stale extras (JK-1245) without disturbing the outputs it is about
+     * to restore (JK-1258). Deepest-first, so a directory is only tested once its children are gone.
+     */
+    private static void pruneUnowned(Path dir, java.util.Set<Path> owned) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        List<Path> deepestFirst;
+        try (var walk = Files.walk(dir)) {
+            deepestFirst = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+        }
+        for (Path p : deepestFirst) {
+            if (Files.isDirectory(p)) {
+                if (!p.equals(dir) && isEmptyDir(p)) Files.deleteIfExists(p);
+            } else if (!owned.contains(p.normalize())) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        try (var entries = Files.list(dir)) {
+            return entries.findAny().isEmpty();
+        }
     }
 
     /**
