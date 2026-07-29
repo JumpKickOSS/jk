@@ -120,6 +120,11 @@ public final class AutoLock {
             case VersionSelector.Caret c -> satisfiesCaret(c.version(), locked);
             case VersionSelector.Tilde t -> satisfiesTilde(t.version(), locked);
             case VersionSelector.Range r -> satisfiesRange(r.raw(), locked);
+            // Same answer as `latest`, and for the same reason: an existing lock entry is accepted so
+            // an ordinary build neither reaches the network nor drifts. `snapshot` moves when the user
+            // re-locks, not on every build — otherwise the selector would make builds
+            // non-reproducible and offline builds impossible.
+            case VersionSelector.Snapshot sn -> true;
         };
     }
 

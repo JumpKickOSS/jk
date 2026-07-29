@@ -79,6 +79,8 @@ public final class NaiveResolver implements Resolver {
                         "naive resolver cannot resolve ranges yet (use PubGrub): " + r.raw());
             case VersionSelector.Latest l ->
                 throw new IllegalArgumentException("naive resolver cannot resolve 'latest' yet (use PubGrub)");
+            case VersionSelector.Snapshot s ->
+                throw new IllegalArgumentException("naive resolver cannot resolve 'snapshot' yet (use PubGrub)");
         };
     }
 

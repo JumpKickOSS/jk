@@ -560,6 +560,7 @@ public final class LockOrchestrator {
         };
         if (sharedSource != null && sharedPomBuilder != null) {
             sharedSource.setLockedVersionPrefs(prefs);
+            sharedSource.setSnapshotPackages(snapshotModules(roots));
             PubGrubResolver r = new PubGrubResolver(sharedSource, sharedPomBuilder, kmp).withOnDecision(liveGraph);
             if (diagnosticPalette != null) r.palette = diagnosticPalette;
             return r.resolve(roots);
@@ -878,8 +879,21 @@ public final class LockOrchestrator {
     /**
      * Extract a concrete version literal from a platform-dep's selector. Platform BOMs must be pinned
      * (Exact) or anchored (Caret/Tilde) to a specific version — they're an authoritative pin, not a
-     * search. Returns {@code null} for selectors with no resolvable literal (Range, Latest).
+     * search. Returns {@code null} for selectors with no resolvable literal (Range, Latest,
+     * Snapshot).
      */
+    /**
+     * The {@code group:artifact} keys among {@code roots} that were declared {@code snapshot} — the
+     * only selector that opts into pre-releases (JK-1287).
+     */
+    private static Set<String> snapshotModules(List<Dependency> roots) {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        for (Dependency d : roots) {
+            if (d.version() instanceof VersionSelector.Snapshot) out.add(d.module());
+        }
+        return out;
+    }
+
     private static String versionLiteral(VersionSelector v) {
         return switch (v) {
             case VersionSelector.Exact e -> e.version();
@@ -887,6 +901,7 @@ public final class LockOrchestrator {
             case VersionSelector.Tilde t -> t.version();
             case VersionSelector.Range ignored -> null;
             case VersionSelector.Latest ignored -> null;
+            case VersionSelector.Snapshot ignored -> null;
         };
     }
 

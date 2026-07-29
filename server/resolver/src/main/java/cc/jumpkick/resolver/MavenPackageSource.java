@@ -48,6 +48,12 @@ public final class MavenPackageSource implements PackageSource {
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
     private volatile Map<String, String> lockedVersionPrefs;
 
+    /**
+     * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
+     * pre-releases (JK-1287). Mutable for the same reason as {@link #lockedVersionPrefs}.
+     */
+    private volatile java.util.Set<String> snapshotPackages = java.util.Set.of();
+
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
     /**
@@ -144,12 +150,47 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
+     * Declare which packages were requested with {@code snapshot}, keyed by {@code group:artifact}.
+     *
+     * <p>Every other floating selector resolves to stable releases only, which is what the compact
+     * candidate window enforces. {@code snapshot} is the sanctioned way out, so those packages skip
+     * that narrowing and take the newest advertised version, pre-release or not.
+     */
+    public void setSnapshotPackages(java.util.Set<String> gaKeys) {
+        this.snapshotPackages = java.util.Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+        // The compact window differs for snapshot packages, so a list cached under the previous
+        // policy would be stale.
+        versionCache.clear();
+    }
+
+    /** True when {@code pkg} was requested with the {@code snapshot} selector. */
+    private boolean isSnapshotPackage(String pkg) {
+        if (snapshotPackages.isEmpty()) return false;
+        return snapshotPackages.contains(pkg) || snapshotPackages.contains(PackageId.parse(pkg).ga());
+    }
+
+    /**
      * Lock pin wins over BOM pin (same order as {@link #versions} soft-prefer). Used by the solver to
      * seed a lazy singleton universe without maven-metadata (JK-1088).
      */
     @Override
     public Optional<String> preferredVersion(String pkg) {
         String ga = PackageId.parse(pkg).ga();
+        if (isSnapshotPackage(pkg)) {
+            // `snapshot` means "the newest thing published", so it outranks a lock pin — a re-lock is
+            // precisely when it should move. Seeding a singleton universe here also keeps
+            // AllowedSet#choosePreferred's stable preference from quietly handing back an older
+            // release than the pre-release that was asked for.
+            try {
+                List<String> ordered = orderedVersions(pkg);
+                String newest = highestOf(ordered);
+                if (newest != null) return Optional.of(newest);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (IOException e) {
+                // Metadata unreachable: fall through to the ordinary prefs rather than fail here.
+            }
+        }
         String lock = firstNonBlank(lockedVersionPrefs.get(pkg), lockedVersionPrefs.get(ga));
         if (lock != null) return Optional.of(lock);
         String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
@@ -179,7 +220,10 @@ public final class MavenPackageSource implements PackageSource {
 
         // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
         // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
-        List<String> result = List.copyOf(compactVersionCandidates(orderedVersions(pkg)));
+        List<String> ordered = orderedVersions(pkg);
+        // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
+        List<String> result =
+                List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
         versionCache.put(pkg, result);
         return result;
     }
@@ -217,17 +261,92 @@ public final class MavenPackageSource implements PackageSource {
         return sorted;
     }
 
-    /** Cap candidate list while preserving soft-prefer front and highest releases. */
+    /** How many candidates the compact window keeps. */
+    private static final int COMPACT_CANDIDATES = 4;
+
+    /**
+     * Cap the candidate list while preserving the soft-prefer front and, critically, keeping
+     * something <em>stable</em> in the window.
+     *
+     * <p>The cap exists so PubGrub does not thrash on 80-version histories (JK-1202). Taking simply
+     * the highest four, though, starves {@link
+     * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred()} of any stable candidate whenever a
+     * project publishes four or more pre-releases above its latest release. jackson-annotations sits
+     * at 3.0-rc5..rc2 above a stable 2.22, so a caret on 2.22 resolved to <b>3.0-rc5</b> (JK-1287).
+     * The stable preference downstream was correct all along — it was simply never offered a stable.
+     *
+     * <p>So the highest <em>stable</em> versions fill the window first and pre-releases take only the
+     * slots left over (which is what keeps a project that has never cut a stable release resolvable).
+     * A constraint that genuinely needs a pre-release still resolves: every stable candidate fails it,
+     * the window is exhausted, and the solver widens to the unfiltered history via {@link
+     * #expandedVersions} — the JK-1216 path that exists for exactly this shape of miss. That keeps
+     * transitive POM edges pinned to milestone builds working, since those arrive as constraints
+     * rather than as manifest selectors.
+     */
     static List<String> compactVersionCandidates(List<String> sortedHighestFirst) {
-        if (sortedHighestFirst.size() <= 4) return sortedHighestFirst;
-        List<String> out = new ArrayList<>(4);
-        // Keep order: soft-prefer may already be at index 0.
+        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) {
+            // The full history is the universe, so the downstream stable preference can already see
+            // a stable candidate. Nothing to protect against here.
+            return sortedHighestFirst;
+        }
+
+        // A lock/BOM soft-prefer sits at index 0 without necessarily being the highest version, and
+        // it must survive the cap even when it is itself a pre-release: an explicit pin outranks this
+        // policy (JK-1072).
+        String front = sortedHighestFirst.get(0);
+        String naturalMax = highestOf(sortedHighestFirst);
+        boolean pinnedFront = !front.equals(naturalMax);
+
+        java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+        if (pinnedFront) {
+            picked.add(front);
+            // Keep the natural max too. AllowedSet infers "this front is a pin, take it
+            // unconditionally" by finding some higher version in the universe — drop that and a
+            // pre-release pin silently loses to a lower stable.
+            picked.add(naturalMax);
+        }
+        for (String v : sortedHighestFirst) {
+            if (picked.size() >= COMPACT_CANDIDATES) break;
+            if (Versions.isStable(v)) picked.add(v);
+        }
+        for (String v : sortedHighestFirst) {
+            if (picked.size() >= COMPACT_CANDIDATES) break;
+            picked.add(v);
+        }
+
+        // Restore highest-first order (choosePreferred walks the universe in index order), then put
+        // any pin back at the front where preferFirst/preferBom left it.
+        List<String> out = new ArrayList<>(picked);
+        out.sort((a, b) -> Versions.compare(b, a));
+        if (pinnedFront) {
+            out.remove(front);
+            out.add(0, front);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Cap to the highest candidates with no stability policy at all — the window for a {@code
+     * snapshot} package, which asked for the newest thing published whatever it is.
+     */
+    static List<String> compactHighest(List<String> sortedHighestFirst) {
+        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) return sortedHighestFirst;
+        List<String> out = new ArrayList<>(COMPACT_CANDIDATES);
         for (String v : sortedHighestFirst) {
             if (out.contains(v)) continue;
             out.add(v);
-            if (out.size() == 4) break;
+            if (out.size() == COMPACT_CANDIDATES) break;
         }
-        return out;
+        return List.copyOf(out);
+    }
+
+    /** The highest version under Maven ordering, or null for an empty list. */
+    private static String highestOf(List<String> versions) {
+        String max = null;
+        for (String v : versions) {
+            if (max == null || Versions.compare(v, max) > 0) max = v;
+        }
+        return max;
     }
 
     /**

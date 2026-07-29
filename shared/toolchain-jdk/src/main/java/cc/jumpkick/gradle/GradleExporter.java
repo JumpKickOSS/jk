@@ -297,6 +297,11 @@ public final class GradleExporter {
                 report.warning("`" + module + "` uses `latest`; emitted as Gradle `latest.release`.");
                 yield "latest.release";
             }
+            case VersionSelector.Snapshot s -> {
+                // Gradle's own name for the same intent: newest, pre-releases included.
+                report.warning("`" + module + "` uses `snapshot`; emitted as Gradle `latest.integration`.");
+                yield "latest.integration";
+            }
         };
     }
 

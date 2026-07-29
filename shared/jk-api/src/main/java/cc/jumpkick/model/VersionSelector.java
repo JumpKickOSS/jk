@@ -6,7 +6,7 @@ import java.util.Objects;
 /**
  * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code :} form);
  * {@link #parseFloating} as {@link Caret} ({@code @} form). Decorations: {@code ^}/{@code ~}/
- * {@code =}/range/{@code latest}.
+ * {@code =}/range/{@code latest}/{@code snapshot}.
  */
 public sealed interface VersionSelector {
 
@@ -22,6 +22,16 @@ public sealed interface VersionSelector {
     record Range(String raw) implements VersionSelector {}
 
     record Latest(String raw) implements VersionSelector {}
+
+    /**
+     * {@code snapshot} — the newest advertised version, pre-releases included.
+     *
+     * <p>The deliberate opt-in counterpart to every other floating selector, which resolve to stable
+     * releases only (JK-1287). Before this existed, reaching an RC was something that happened *to*
+     * you: a caret admitted the next major's pre-releases because {@code 3.0-rc5} sorts below
+     * {@code 3.0}. Now wanting a bleeding edge is something you say.
+     */
+    record Snapshot(String raw) implements VersionSelector {}
 
     static VersionSelector parse(String spec) {
         return parse(spec, /* bareIsCaret */ false);
@@ -40,6 +50,9 @@ public sealed interface VersionSelector {
         }
         if ("latest".equalsIgnoreCase(trimmed)) {
             return new Latest(spec);
+        }
+        if ("snapshot".equalsIgnoreCase(trimmed)) {
+            return new Snapshot(spec);
         }
         if (trimmed.startsWith("^")) {
             return new Caret(spec, trimmed.substring(1).trim());
