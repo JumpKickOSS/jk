@@ -1,6 +1,6 @@
 [project]
 group       = "cc.jumpkick"
-name        = "jk-plugin-api"
+name        = "jk-plugin-sdk"
 version     = "0.10.1"
 description = "jk Plugin SPI + HostEvent wire codec. Zero external dependencies (Gradle: no project deps)."
 jdk         = 25

@@ -11,7 +11,7 @@ main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-plugin-api     = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.1" }
+jk-plugin-sdk     = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
 spotless-lib      = { group = "com.diffplug.spotless", name = "spotless-lib", version = "4.6.2" }
 openrewrite-java  = { group = "org.openrewrite", name = "rewrite-java", version = "8.56.1" }
 openrewrite-java21 = { group = "org.openrewrite", name = "rewrite-java-21", version = "8.56.1" }

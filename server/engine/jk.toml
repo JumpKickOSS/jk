@@ -15,7 +15,7 @@ assembly = true
 jk-engine-api = { group = "cc.jumpkick", name = "jk-engine-api", version = "0.10.1" }
 jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.1" }
 jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.1" }
-jk-plugin-api = { group = "cc.jumpkick", name = "jk-plugin-api", version = "0.10.1" }
+jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
 jk-resolver   = { group = "cc.jumpkick", name = "jk-resolver",   version = "0.10.1" }
 jk-toolchain  = { group = "cc.jumpkick", name = "jk-toolchain",  version = "0.10.1" }
 # Dashboard static assets (classpath /web/*) — Gradle used runtimeOnly(project(":web")).
@@ -46,4 +46,18 @@ test-plugin-jars = [
   "android",
   "protobuf",
   "shrink",
+  # Gradle gives grails and groovy their own e2e test tasks, each setting -Djk.<x>.plugin.jar;
+  # omitting them here is why GrailsBuildE2eTest / GroovyBuildE2eTest could not find a worker jar
+  # under self-host. Those two suites run only under jk (Gradle tags them out of :engine:test), so
+  # nothing else catches the gap.
+  "grails",
+  "groovy-compiler",
+  "quarkus",
 ]
+
+# Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
+# these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
+# Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
+# stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
+[test]
+default-exclude-tags = ["integration", "slow", "bench"]

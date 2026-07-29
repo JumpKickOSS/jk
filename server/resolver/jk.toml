@@ -16,3 +16,10 @@ maven-artifact = { group = "org.apache.maven",  name     = "maven-artifact", ver
 assertj-core            = { group = "org.assertj",        name     = "assertj-core",            version = "3.27.7" }
 junit-jupiter           = { group = "org.junit.jupiter",  name     = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name     = "junit-platform-launcher", version = "6.1.0" }
+
+# Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
+# these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
+# Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
+# stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
+[test]
+default-exclude-tags = ["integration", "slow", "bench"]
