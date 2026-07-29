@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+jk = { version = "0.10.1", sha256 = "9870c46dd58be6fba8a78c2bb56e74d9752502f8aea80b26ee61939572033616" }
 
 [[artifact]]
 name     = "net.bytebuddy:byte-buddy:jar:"
@@ -113,7 +113,7 @@ name     = "org.junit.platform:junit-platform-launcher:jar:"
 version  = "6.1.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:858197212c1b2acc257c9eec9b450a31923c61c1bc61e66acf0057d57bbe577a"
-scopes   = ["test"]
+scopes   = ["provided", "test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
   "org.jspecify:jspecify:jar:@1.0.0",
