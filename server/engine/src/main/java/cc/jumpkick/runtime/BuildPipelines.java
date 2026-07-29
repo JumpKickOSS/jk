@@ -1829,9 +1829,17 @@ public final class BuildPipelines {
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
-                    if (!resDirs.isEmpty()) {
+                    // [build] extra-resources: individual files from outside the module, each with
+                    // its own destination and optional rename, so they cannot ride resDirs (JK-1262).
+                    List<ExtraResources.Copy> extra = ExtraResources.resolve(ctx.require(PROJECT), in.dir());
+                    if (!resDirs.isEmpty() || !extra.isEmpty()) {
                         ctx.label("copy resources");
                         for (Path dir : resDirs) copyResources(dir, classes);
+                        for (ExtraResources.Copy c : extra) {
+                            Path target = classes.resolve(c.destination());
+                            Files.createDirectories(target.getParent());
+                            Files.copy(c.source(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
                     } else {
                         ctx.label("no static resources");
                     }

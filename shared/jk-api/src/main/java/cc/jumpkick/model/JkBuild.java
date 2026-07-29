@@ -709,7 +709,9 @@ public record JkBuild(
              * {@code [resolve] unmapped}: how bare fills for GAs the platform does NOT manage are
              * constrained (JK-1241). Default {@link UnmappedPolicy#MEDIATE}.
              */
-            UnmappedPolicy unmappedPolicy) {
+            UnmappedPolicy unmappedPolicy,
+            /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
+            List<ExtraResource> extraResources) {
 
         public static final Build EMPTY = new Build(
                 List.of(),
@@ -720,7 +722,8 @@ public record JkBuild(
                 List.of(),
                 null,
                 PlatformPolicy.ENFORCED,
-                UnmappedPolicy.MEDIATE);
+                UnmappedPolicy.MEDIATE,
+                List.of());
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -731,6 +734,7 @@ public record JkBuild(
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
+            extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -747,7 +751,8 @@ public record JkBuild(
                     all,
                     testWorkers,
                     platformPolicy,
-                    unmappedPolicy);
+                    unmappedPolicy,
+                    extraResources);
         }
 
         public Build withPlatformPolicy(PlatformPolicy policy) {
@@ -760,7 +765,8 @@ public record JkBuild(
                     extraSrc,
                     testWorkers,
                     policy == null ? PlatformPolicy.ENFORCED : policy,
-                    unmappedPolicy);
+                    unmappedPolicy,
+                    extraResources);
         }
 
         /**
@@ -780,6 +786,29 @@ public record JkBuild(
             return List.copyOf(all);
         }
     }
+
+    /**
+     * One {@code [build] extra-resources} entry: files from outside the module's own resource root,
+     * copied onto the classpath at package time.
+     *
+     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code ../}
+     * and wildcards are allowed); {@code into} is the destination directory inside the output;
+     * {@code rename} optionally renames each match, with {@code &#123;1&#125;} substituting the
+     * pattern's wildcard captures. Matched files keep their path relative to the pattern's literal
+     * prefix, so a directory's shape survives the copy.
+     *
+     * <p>Exists because jk-core bakes each plugin's {@code jk-plugin.toml} in as the built-in plugin
+     * registry, and those blueprint files are the single source of truth — copying them into the
+     * module would create a second, drifting copy.
+     */
+    public record ExtraResource(String from, String into, String rename, List<String> exclude, boolean optional) {
+        public ExtraResource {
+            Objects.requireNonNull(from, "from");
+            into = into == null ? "" : into;
+            exclude = exclude == null ? List.of() : List.copyOf(exclude);
+        }
+    }
+
 
     /**
      * {@code [[kotlin-plugins]]} entry: {@code group:artifact[:version]} (omit version to match

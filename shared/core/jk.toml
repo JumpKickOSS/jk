@@ -17,3 +17,14 @@ maven-artifact = { group = "org.apache.maven", name = "maven-artifact", version 
 assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+
+# The built-in plugin registry. Each plugin's jk-plugin.toml is the blueprint file third parties
+# copy, so it stays the single source of truth and is baked in from there rather than duplicated
+# here — mirrors what build.gradle.kts's processResources block does.
+#
+# The glob auto-registers: dropping in plugins/<id>/jk-plugin.toml makes it built-in.
+[build]
+extra-resources = [
+  { from = "../../plugins/*/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest", rename = "{1}.jk-plugin.toml" },
+  { from = "../../plugins/*/scaffold/**", into = "cc/jumpkick/plugin/manifest", optional = true },
+]
