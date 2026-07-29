@@ -34,6 +34,13 @@ public final class Http {
     private final HttpClient client;
     private final Duration[] backoffs;
 
+    /**
+     * Central-rate-limit failover (JK-1277). Applied here, at the single transport choke point, so
+     * every caller benefits and no repository's configured URL — hence nothing in {@code jk.lock} —
+     * changes when it engages.
+     */
+    private final CentralMirror centralMirror;
+
     public Http() {
         this(
                 HttpClient.newBuilder()
@@ -46,8 +53,14 @@ public final class Http {
 
     /** Visible for tests — lets the caller shrink the backoff schedule. */
     Http(HttpClient client, Duration[] backoffs) {
+        this(client, backoffs, CentralMirror.standard(cc.jumpkick.util.JkDirs.cache()));
+    }
+
+    /** Visible for tests — injects the Central failover so its window can be driven deterministically. */
+    Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror) {
         this.client = client;
         this.backoffs = backoffs;
+        this.centralMirror = centralMirror;
     }
 
     public HttpResponse<byte[]> get(URI uri) throws IOException, InterruptedException {
@@ -60,6 +73,7 @@ public final class Http {
      */
     public HttpResponse<byte[]> get(URI uri, Map<String, String> headers) throws IOException, InterruptedException {
         checkOffline(uri);
+        uri = centralMirror.route(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(Duration.ofSeconds(60));
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
@@ -97,6 +111,7 @@ public final class Http {
     public HttpResponse<InputStream> getStream(URI uri, Map<String, String> headers)
             throws IOException, InterruptedException {
         checkOffline(uri);
+        uri = centralMirror.route(uri);
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri).GET().timeout(Duration.ofMinutes(15));
         for (Map.Entry<String, String> e : headers.entrySet()) {
             builder.header(e.getKey(), e.getValue());
@@ -198,6 +213,20 @@ public final class Http {
             try {
                 HttpResponse<T> response = client.send(request, handler);
                 int status = response.statusCode();
+                // Central's per-IP quota (JK-1277). Open the mirror window and reissue this very
+                // request against the mirror, so the resolve that tripped the limit still completes
+                // rather than failing and being re-run — a re-run would only spend more of a quota
+                // that is already exhausted.
+                if (status == 429 && centralMirror.matches(request.uri()) && !centralMirror.active()) {
+                    centralMirror.noteRateLimited();
+                    URI mirrored = centralMirror.route(request.uri());
+                    if (!mirrored.equals(request.uri())) {
+                        HttpRequest retry = HttpRequest.newBuilder(request, (n, v) -> true)
+                                .uri(mirrored)
+                                .build();
+                        return client.send(retry, handler);
+                    }
+                }
                 if (status < 500) {
                     return response;
                 }
