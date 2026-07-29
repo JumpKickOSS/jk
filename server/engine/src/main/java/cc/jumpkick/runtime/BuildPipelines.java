@@ -712,8 +712,32 @@ public final class BuildPipelines {
                     ctx.put(CLASSPATH, mainCp);
 
                     // Annotation processors live in their own scope (kept off the
-                    // compile classpath); javac discovers them via -processorpath.
-                    ctx.put(PROCESSOR_CP, new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR))));
+                    // compile classpath); javac discovers them via -processorpath and
+                    // KspProcessors.split() routes the KSP ones to the forked KSP2 round.
+                    // Workspace siblings must merge in exactly as they do for main/test
+                    // (JK-1253): a processor declared `{ workspace = true }` is never in the
+                    // lock, so a lock-only path silently yields no processors at all.
+                    WorkspaceClasspath.Result processorSiblings =
+                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
+                    // A declared processor that cannot be found generates nothing, and a build
+                    // that silently skips code generation is worse than one that fails
+                    // (JK-1254). Mirror the main-classpath missing-sibling guard above.
+                    if (!processorSiblings.missingSiblingJars().isEmpty()) {
+                        for (String missing : processorSiblings.missingSiblingJars())
+                            ctx.error("workspace", "processor sibling not built — " + missing);
+                        throw new RuntimeException("missing workspace siblings");
+                    }
+                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock);
+                    if (!unresolvedProcessors.isEmpty()) {
+                        for (String unresolved : unresolvedProcessors)
+                            ctx.error(
+                                    "processor",
+                                    "processor dependency '" + unresolved + "' is declared in"
+                                            + " [processor-dependencies] but is not in jk.lock —"
+                                            + " run `jk lock`");
+                        throw new RuntimeException("unresolved processor dependencies");
+                    }
+                    ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
 
                     WorkspaceClasspath.Result testSiblings =
                             WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
@@ -963,6 +987,44 @@ public final class BuildPipelines {
     }
 
     /** Generated-source dirs the KSP round writes (checked by the compile-step unions). */
+    /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
+    record KspDiagnostic(String severity, String message) {}
+
+    /**
+     * The processor-authored diagnostics in a successful KSP round's output (JK-1257).
+     *
+     * <p>KSP's CLI prefixes them {@code w:} / {@code i:} / {@code v:}, usually with a {@code [ksp]}
+     * tag. Everything else on that stream is host noise — the JVM's {@code sun.misc.Unsafe}
+     * deprecation banner from KSP's bundled IntelliJ containers, stack frames, blank lines — and
+     * reprinting it on every green build would train people to ignore the channel entirely.
+     *
+     * <p>Both prefixes are stripped: the reporter already renders the step and severity, so
+     * carrying them in the text too gives {@code Warning [ksp/ksp]: w: [ksp] …}.
+     */
+    static List<KspDiagnostic> kspDiagnostics(String output) {
+        List<KspDiagnostic> out = new ArrayList<>();
+        for (String line : output.split("\n", -1)) {
+            String trimmed = line.strip();
+            if (trimmed.length() < 2 || trimmed.charAt(1) != ':') continue;
+            String severity =
+                    switch (trimmed.charAt(0)) {
+                        case 'w' -> "warn";
+                        case 'i' -> "info";
+                        case 'v' -> "verbose";
+                        default -> null;
+                    };
+            if (severity == null) continue;
+            // KSP tags its own output; kotlinc-level warnings on the same stream are the Kotlin
+            // compile step's business, not ours.
+            String rest = trimmed.substring(2).strip();
+            if (!rest.startsWith("[ksp]")) continue;
+            String message = rest.substring("[ksp]".length()).strip();
+            if (message.isEmpty()) continue;
+            out.add(new KspDiagnostic(severity, message));
+        }
+        return out;
+    }
+
     static Path kspOutBase(BuildLayout layout) {
         return layout.moduleTargetDir().resolve("ksp");
     }
@@ -1164,6 +1226,14 @@ public final class BuildPipelines {
                     if (exit != 0) {
                         ctx.error("ksp", output.isBlank() ? ("KSP exited " + exit) : output);
                         throw new RuntimeException("KSP processing failed");
+                    }
+                    // A green round still has things to say. Processor `logger.warn`/`info` is how
+                    // an annotation-driven framework explains what it did and what to do
+                    // differently; dropping it on success meant guidance only ever appeared once
+                    // the build was already broken (JK-1257). Surfaced the same way javac
+                    // diagnostics are, so -q/-v behave consistently.
+                    for (KspDiagnostic diagnostic : kspDiagnostics(output)) {
+                        ctx.warn(diagnostic.severity(), diagnostic.message());
                     }
                     cc.jumpkick.task.FreshnessStamp.write(
                             outBase, KSP_STAMP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
@@ -3496,6 +3566,50 @@ public final class BuildPipelines {
         } catch (java.io.IOException | InterruptedException e) {
             throw new RuntimeException("cannot resolve the plugin-contributed compile classpath: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * The {@code -processorpath} / KSP processor classpath: the lock's PROCESSOR scope plus any
+     * workspace siblings declared in {@code [processor-dependencies]} and their own external
+     * closures (JK-1253).
+     *
+     * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
+     * {@code symbol-processing-api}, an emitter library, …) — hence the sibling-lockfile loop,
+     * mirroring {@link #mainCompileClasspath}. Sibling jars come from the declared closure rather
+     * than the built set so {@code jk explain} reproduces the same action key after a clean.
+     */
+    public static List<Path> processorClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR)));
+        for (Path jar : siblings.siblingClosureJars()) {
+            if (!cp.contains(jar)) cp.add(jar);
+        }
+        for (Path sibLock : siblings.siblingLockfiles()) {
+            try {
+                Lockfile sl = LockfileReader.read(sibLock);
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                    if (!cp.contains(p)) cp.add(p);
+                }
+            } catch (Exception ignored) {
+                /* best-effort: a sibling's lock may be absent */
+            }
+        }
+        return cp;
+    }
+
+    /**
+     * Declared {@code [processor-dependencies]} entries that resolve to nothing (JK-1254): not a
+     * workspace sibling and absent from the lock. Silently skipping code generation is the worst
+     * failure mode for an annotation-driven project, so callers turn this into a build error.
+     */
+    public static List<String> unresolvedProcessorDeps(JkBuild project, Lockfile lock) {
+        java.util.Set<String> locked = lockModules(lock);
+        List<String> missing = new ArrayList<>();
+        for (cc.jumpkick.model.Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
+            if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+            if (!locked.contains(dep.module())) missing.add(dep.module());
+        }
+        return missing;
     }
 
     public static List<Path> mainCompileClasspath(

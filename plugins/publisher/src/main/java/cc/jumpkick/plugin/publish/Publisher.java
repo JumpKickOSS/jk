@@ -99,7 +99,11 @@ public final class Publisher implements Plugin, PublishExtension {
         Path jar = ctx.mainArtifact().orElseThrow(() -> new IOException("publish goal needs a built main artifact"));
         URI repoUrl = URI.create(c.string("repoUrl"));
 
-        JkBuild project = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+        // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
+        // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
+        // artifact unconsumable (JK-1255).
+        JkBuild project = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(
+                projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();

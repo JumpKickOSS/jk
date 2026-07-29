@@ -207,7 +207,11 @@ public final class BuildPlanForecast {
                     cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
                             project, dir, BuildPipelines.lockModules(lock)),
                     List.of());
-            List<Path> processorCp = resolver.classpathFor(lock, Set.of(Scope.PROCESSOR));
+            // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
+            // included (JK-1253) — or the forecast hashes a different -processorpath than the
+            // build and every KSP module forecasts a phantom rebuild.
+            List<Path> processorCp = BuildPipelines.processorClasspath(
+                    lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
             boolean compileDirty = depDirty || force;
 
