@@ -218,13 +218,7 @@ public final class BuildPipelines {
          * already documents.
          */
         public java.util.function.UnaryOperator<String> env() {
-            java.util.function.UnaryOperator<String> real = name -> {
-                String fromClient = clientEnv.get(name);
-                return fromClient != null ? fromClient : System.getenv(name);
-            };
-            // .env at the workspace root then the module, layered UNDER the real environment
-            // (JK-1270): the file supplies defaults so a shell or CI variable still overrides it.
-            return cc.jumpkick.config.EnvLookup.forModule(dir, real).asFunction();
+            return cc.jumpkick.config.BuildEnv.forModule(dir);
         }
 
         /** This request with a variant selection + client-resolved env attached. */
@@ -312,12 +306,12 @@ public final class BuildPipelines {
         JkBuild parsedBuild = null;
         Map<String, String> variantSecrets = Map.of();
         try {
-            var jkBuild = JkBuildParser.parse(in.buildFile(), in.env());
+            var jkBuild = JkBuildParser.parse(in.buildFile());
             // Third-party plugin pre-flight: extract any locked-but-unmaterialized manifests
             // from the CAS and re-parse, so a declared plugin's table validates (and its
             // contributions apply) on the very first build after `jk sync`.
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
-                jkBuild = JkBuildParser.reparse(in.buildFile(), in.env());
+                jkBuild = JkBuildParser.reparse(in.buildFile());
             }
             // CLI packaging override (jk assembly --shrink / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
@@ -649,7 +643,7 @@ public final class BuildPipelines {
                     JkBuild project;
                     try {
                         project = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                                        JkBuildParser.parse(in.buildFile(), in.env()),
+                                        JkBuildParser.parse(in.buildFile()),
                                         in.dir(),
                                         cc.jumpkick.model.Variants.Selection.parse(in.variant()),
                                         in.clientEnv())
@@ -3166,7 +3160,7 @@ public final class BuildPipelines {
      */
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
         try {
-            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile(), in.env()), in.session());
+            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
                 b.addStep(assemblyStep(in.cache(), in.lockFile()));
             }

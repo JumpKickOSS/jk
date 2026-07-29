@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.repo;
 
+import cc.jumpkick.config.RepositoryToml;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.forge.ForgeAuth;
 import cc.jumpkick.forge.ForgeIdentity;
@@ -27,6 +28,12 @@ public final class RepoCredentialResolver {
         this(System::getenv, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
     }
 
+    /** The default resolver, but reading environment variables through {@code env} (JK-1272). */
+    public static RepoCredentialResolver withEnv(Function<String, String> env) {
+        return new RepoCredentialResolver(
+                env, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
+    }
+
     public RepoCredentialResolver(
             Function<String, String> env,
             MavenSettings settings,
@@ -41,13 +48,47 @@ public final class RepoCredentialResolver {
     }
 
     /**
+     * Expand {@code ${VAR}} in an inline credential.
+     *
+     * <p>Strict on purpose: an unset variable is an error rather than an empty string, so a typo
+     * fails loudly instead of silently authenticating anonymously against a private repository. The
+     * error now surfaces when the repository is <em>used</em> rather than when the manifest is
+     * parsed — which also means a manifest may reference a private mirror whose credentials this
+     * machine does not have, as long as nothing asks for it.
+     */
+    private RepoCredential expand(String repoId, RepoCredential credential) {
+        return switch (credential) {
+            case RepoCredential.Basic b ->
+                new RepoCredential.Basic(interp(repoId, b.username()), interp(repoId, b.password()));
+            case RepoCredential.Bearer t -> new RepoCredential.Bearer(interp(repoId, t.token()));
+            default -> credential; // anonymous / anything without embedded text
+        };
+    }
+
+    private String interp(String repoId, String raw) {
+        return RepositoryToml.interpolate(raw, var -> {
+            String value = env.apply(var);
+            if (value == null) {
+                throw new IllegalStateException("repository "
+                        + (repoId == null || repoId.isBlank() ? "credential" : repoId)
+                        + " references unset environment variable ${" + var + "}");
+            }
+            return value;
+        });
+    }
+
+    /**
      * Resolve credentials for the repository named {@code repoId} at {@code url}. {@code inline} is
      * the credential declared inline in {@code jk.toml} (empty when none / not yet parsed). Never
      * returns null; falls back to {@link RepoCredential#ANONYMOUS}.
      */
     public RepoCredential resolve(String repoId, URI url, Optional<RepoCredential> inline) {
-        // 1. inline jk.toml
-        Optional<RepoCredential> fromInline = inline.filter(c -> !c.isAnonymous());
+        // 1. inline jk.toml — expanding ${VAR} here rather than at parse time (JK-1272), because this
+        // is where the request's environment is in scope. Doing it during the parse made the parse
+        // environment-dependent, so a memoized result served the first caller's values to everyone,
+        // and inside the engine it read the daemon's environment instead of the caller's.
+        Optional<RepoCredential> fromInline =
+                inline.map(c -> expand(repoId, c)).filter(c -> !c.isAnonymous());
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared

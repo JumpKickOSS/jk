@@ -46,7 +46,48 @@ public final class RepoGroupBuilder {
 
     private RepoGroupBuilder() {}
 
+    /**
+     * Expand {@code ${VAR}} in object-store credentials, strictly: an unset variable is an error
+     * rather than a silent null that would fall through to the ambient AWS chain and fail far away
+     * from the cause.
+     */
+    private static ObjectStoreConfig expandObjectStore(
+            String repoName, ObjectStoreConfig cfg, java.util.function.UnaryOperator<String> env) {
+        if (cfg == null || cfg.isEmpty()) return ObjectStoreConfig.EMPTY;
+        return new ObjectStoreConfig(
+                interp(repoName, cfg.region(), env),
+                interp(repoName, cfg.endpoint(), env),
+                interp(repoName, cfg.accessKey(), env),
+                interp(repoName, cfg.secretKey(), env),
+                interp(repoName, cfg.sessionToken(), env));
+    }
+
+    private static String interp(String repoName, String raw, java.util.function.UnaryOperator<String> env) {
+        return cc.jumpkick.config.RepositoryToml.interpolate(raw, var -> {
+            String value = env.apply(var);
+            if (value == null) {
+                throw new IllegalStateException(
+                        "repositories." + repoName + " references unset environment variable ${" + var + "}");
+            }
+            return value;
+        });
+    }
+
     public static RepoGroup buildFor(JkBuild project, URI overrideUrl, Cas cas) {
+        return buildFor(project, overrideUrl, cas, System::getenv);
+    }
+
+    /**
+     * As {@link #buildFor(JkBuild, URI, Cas)} but resolving credentials against {@code env}
+     * (JK-1272).
+     *
+     * <p>Inline {@code ${VAR}} credentials are expanded here rather than during the parse, so this
+     * is where the request's environment has to arrive. Build-path callers pass
+     * {@code Inputs.env()}, which layers the project's {@code .env} under the caller's shell
+     * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
+     */
+    public static RepoGroup buildFor(
+            JkBuild project, URI overrideUrl, Cas cas, java.util.function.UnaryOperator<String> env) {
         Http http = new Http();
         List<MavenRepo> repos = new ArrayList<>();
         boolean mirrorToM2 = project.project().m2install();
@@ -70,14 +111,19 @@ public final class RepoGroupBuilder {
             // Resolve credentials per declared repo (env / store / settings.xml /
             // forge-token bridge). Public repos resolve to ANONYMOUS, so this is
             // transparent for Maven Central, Google Maven, and other open mirrors.
-            RepoCredentialResolver creds = new RepoCredentialResolver();
+            RepoCredentialResolver creds = RepoCredentialResolver.withEnv(env::apply);
             List<List<String>> exclusiveGroups = new ArrayList<>(effective.size());
             for (RepositorySpec spec : effective) {
                 RepoCredential cred = creds.resolve(spec.name(), spec.url(), spec.credential());
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
+                // Object-store keys carry raw ${VAR} out of the parse for the same reason
+                // credentials do (JK-1272) — they are secrets, so they must not be committed
+                // literally, and expansion belongs where the request's environment is in scope.
                 RepoTransport transport = RepoTransports.forUrl(
-                        spec.url(), http, spec.objectStore().orElse(ObjectStoreConfig.EMPTY));
+                        spec.url(),
+                        http,
+                        expandObjectStore(spec.name(), spec.objectStore().orElse(ObjectStoreConfig.EMPTY), env));
                 // Hand the client through, not just the transport: the transport-only constructor nulls it,
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
                 // build (JK-1290).

@@ -232,7 +232,8 @@ public final class AutoLock {
             JkBuild effective = applyWorkspaceContext(dir, build);
 
             Cas cas = JkStores.cas(cache);
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
+            cc.jumpkick.repo.RepoGroup repos =
+                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
                     .withProjectDir(dir)
                     .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir))

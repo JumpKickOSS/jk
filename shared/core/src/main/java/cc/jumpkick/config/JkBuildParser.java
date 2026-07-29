@@ -56,50 +56,14 @@ public final class JkBuildParser {
     /**
      * Process-lifetime memo of {@link #parse(Path)}, keyed by path + size + mtime (rewrites re-parse).
      */
-    private static final Map<CacheKey, CachedParse> PARSE_CACHE = new ConcurrentHashMap<>();
-
-    /**
-     * A memoized parse plus the environment it actually consulted (JK-1269).
-     *
-     * <p>{@code ${VAR}} expansion means the same bytes can parse to different results under
-     * different environments, so the (path, size, mtime) key alone is unsound: whichever caller
-     * parsed first would pin its interpolation for everyone else. Recording the variables a parse
-     * read — and only those — keeps a manifest that uses no interpolation fully cacheable while
-     * making one that does re-parse when its inputs change.
-     */
-    private record CachedParse(JkBuild build, Map<String, String> envSeen) {
-        boolean validUnder(java.util.function.UnaryOperator<String> env) {
-            for (Map.Entry<String, String> e : envSeen.entrySet()) {
-                String now = env.apply(e.getKey());
-                if (!Objects.equals(now == null ? ABSENT : now, e.getValue())) return false;
-            }
-            return true;
-        }
-    }
-
-    /** Sentinel for "this variable was unset", so unset→set invalidates as surely as a value change. */
-    private static final String ABSENT = "\u0000absent";
+    // A plain (path, size, mtime) memo: the parse is a pure function of the file's bytes again, so
+    // nothing environment-shaped belongs in this key (JK-1272).
+    private static final Map<CacheKey, JkBuild> PARSE_CACHE = new ConcurrentHashMap<>();
 
     private record CacheKey(Path path, long size, FileTime modified) {}
 
     public static JkBuild parse(Path file) throws IOException {
-        return parse(file, System::getenv);
-    }
-
-    /**
-     * Parse {@code file}, resolving {@code ${VAR}} references through {@code env} rather than the
-     * ambient process environment (JK-1269).
-     *
-     * <p>The build's authoritative parse happens inside the engine — a long-lived daemon started
-     * from some earlier shell — so reading {@code System.getenv} there meant {@code FOO=x jk build}
-     * had no effect on {@code [repositories]} interpolation, while variant selection (which is
-     * handed the caller's {@code clientEnv}) did see it. Callers on the build path pass the client's
-     * environment; the no-arg overload keeps the ambient behaviour for tooling that legitimately
-     * wants it.
-     */
-    public static JkBuild parse(Path file, java.util.function.UnaryOperator<String> env) throws IOException {
         Objects.requireNonNull(file, "file");
-        Objects.requireNonNull(env, "env");
         BasicFileAttributes attrs;
         try {
             attrs = Files.readAttributes(file, BasicFileAttributes.class);
@@ -107,23 +71,15 @@ public final class JkBuildParser {
             throw new JkBuildParseException("jk.toml not found: " + file);
         }
         CacheKey key = new CacheKey(file.toAbsolutePath().normalize(), attrs.size(), attrs.lastModifiedTime());
-        CachedParse cached = PARSE_CACHE.get(key);
-        if (cached != null && cached.validUnder(env)) {
-            return cached.build();
+        JkBuild cached = PARSE_CACHE.get(key);
+        if (cached != null) {
+            return cached;
         }
-        // Record which variables this parse consults so the entry can be revalidated cheaply.
-        Map<String, String> seen = new java.util.TreeMap<>();
-        java.util.function.UnaryOperator<String> recording = name -> {
-            String value = env.apply(name);
-            seen.put(name, value == null ? ABSENT : value);
-            return value;
-        };
         JkBuild parsed = parse(
                 Files.readString(file),
                 LibraryCatalog.layered(),
-                file.toAbsolutePath().getParent(),
-                recording);
-        PARSE_CACHE.put(key, new CachedParse(parsed, Map.copyOf(seen)));
+                file.toAbsolutePath().getParent());
+        PARSE_CACHE.put(key, parsed);
         return parsed;
     }
 
@@ -131,14 +87,9 @@ public final class JkBuildParser {
      * Drop memo for {@code file} and re-parse (e.g. after plugin-manifest materialization).
      */
     public static JkBuild reparse(Path file) throws IOException {
-        return reparse(file, System::getenv);
-    }
-
-    /** As {@link #reparse(Path)}, resolving {@code ${VAR}} through {@code env} (JK-1269). */
-    public static JkBuild reparse(Path file, java.util.function.UnaryOperator<String> env) throws IOException {
         Path key = file.toAbsolutePath().normalize();
         PARSE_CACHE.keySet().removeIf(k -> k.path().equals(key));
-        return parse(file, env);
+        return parse(file);
     }
 
     public static JkBuild parse(String toml) {
@@ -159,11 +110,6 @@ public final class JkBuildParser {
      * manifests from {@link PluginDescriptorStore}.
      */
     private static JkBuild parse(String toml, LibraryCatalog catalog, Path moduleDir) {
-        return parse(toml, catalog, moduleDir, System::getenv);
-    }
-
-    private static JkBuild parse(
-            String toml, LibraryCatalog catalog, Path moduleDir, java.util.function.UnaryOperator<String> env) {
         Objects.requireNonNull(toml, "toml");
         Objects.requireNonNull(catalog, "catalog");
         TomlParseResult result = Toml.parse(toml);
@@ -175,7 +121,7 @@ public final class JkBuildParser {
         LibraryCatalog effective = catalog.withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
-        List<RepositorySpec> repos = parseRepositories(result, env);
+        List<RepositorySpec> repos = parseRepositories(result);
         Profiles profiles = parseProfiles(result);
         Features features = parseFeatures(result);
         Map<String, String> manifest = parseManifest(result);
@@ -1123,8 +1069,23 @@ public final class JkBuildParser {
     // Repositories / profiles / features / workspace
     // ---------------------------------------------------------------------
 
-    private static List<RepositorySpec> parseRepositories(
-            TomlTable root, java.util.function.UnaryOperator<String> env) {
+    /**
+     * {@code [repositories]}. Credential and object-store fields keep their raw {@code ${VAR}} text:
+     * expansion happens in {@code RepoCredentialResolver}, at the point a credential is actually
+     * used (JK-1272).
+     *
+     * <p>Interpolating here made the parse environment-dependent, which is wrong in two ways. The
+     * parse is memoized on (path, size, mtime), so the first caller's environment pinned everyone
+     * else's interpolation; and the authoritative parse runs inside a long-lived engine, so it read
+     * the daemon's environment rather than the caller's. Expanding at the point of use puts the
+     * lookup where the request's environment is already in scope, and leaves the parse a pure
+     * function of the file — fully cacheable, with no environment in its key.
+     *
+     * <p>URLs are deliberately <b>not</b> interpolated: the lockfile records a repository's URL, so
+     * an environment-dependent URL would make a committed lock differ between machines from the same
+     * commit. Credentials never reach the lock.
+     */
+    private static List<RepositorySpec> parseRepositories(TomlTable root) {
         TomlTable repos = root.getTable("repositories");
         if (repos == null) return List.of();
         List<RepositorySpec> result = new ArrayList<>(repos.size());
@@ -1142,8 +1103,10 @@ public final class JkBuildParser {
                     throw new JkBuildParseException("repositories." + name + " requires a string `url` field");
                 }
                 url = u;
-                credential = RepositoryToml.credential(t, strictInterp(name, env));
-                objectStore = RepositoryToml.objectStore(t, strictInterp(name, env));
+                // Left unexpanded on purpose: ${VAR} in a credential or object-store value is expanded at
+                // the credential resolver, not here, so a parsed manifest never carries a secret.
+                credential = RepositoryToml.credential(t, java.util.function.UnaryOperator.identity());
+                objectStore = RepositoryToml.objectStore(t, java.util.function.UnaryOperator.identity());
                 try {
                     groups = RepositoryToml.groups(t, "repositories." + name);
                 } catch (IllegalArgumentException e) {
@@ -1168,23 +1131,6 @@ public final class JkBuildParser {
      * {@code session-token}. All support {@code ${ENV}} interpolation (so keys aren't committed
      * literally); any unset field falls back to the AWS environment / default chain.
      */
-    /**
-     * Project-layer {@code ${ENV}} interpolation for {@code [repositories.<name>]}: strict — an unset
-     * variable is a parse error so a typo fails loudly rather than silently authenticating
-     * anonymously. Field parsing lives in {@link RepositoryToml}.
-     */
-    private static java.util.function.UnaryOperator<String> strictInterp(
-            String repoName, java.util.function.UnaryOperator<String> env) {
-        return raw -> RepositoryToml.interpolate(raw, var -> {
-            String val = env.apply(var);
-            if (val == null) {
-                throw new JkBuildParseException(
-                        "repositories." + repoName + " references unset environment variable ${" + var + "}");
-            }
-            return val;
-        });
-    }
-
     private static Profiles parseProfiles(TomlTable root) {
         TomlTable profiles = root.getTable("profiles");
         if (profiles == null) return Profiles.empty();

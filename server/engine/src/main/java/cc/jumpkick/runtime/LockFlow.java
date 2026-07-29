@@ -89,7 +89,8 @@ public final class LockFlow {
         effective = Variants.unionDependencies(effective);
 
         Cas cas = JkStores.cas(cache);
-        RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
+        RepoGroup baseRepos =
+                RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
 
         // Git- and path-source deps: materialize each into a local file:// repo and rewrite
         // them to exact coordinate pins before the solver runs (git-source-deps.md).
