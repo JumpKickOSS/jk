@@ -474,11 +474,37 @@ public final class EffortWeights {
      * their wall-clock estimates are computed from the pipeline identically.
      */
     public static ModuleCost costOf(Path dir, Set<Path> prereqs, cc.jumpkick.run.Pipeline pipeline) {
-        int weight = pipeline.estimatedTotalWeight();
-        int testWeight = pipeline.steps().stream()
-                .filter(p -> p.name().equals("run-tests"))
-                .mapToInt(cc.jumpkick.run.Step::estimateWeight)
-                .sum();
+        return costOf(dir, prereqs, pipeline, Set.of());
+    }
+
+    /**
+     * As {@link #costOf(Path, Set, cc.jumpkick.run.Pipeline)}, but charging {@link #SKIP} for steps
+     * the forecast already determined are cached (JK-1260).
+     *
+     * <p>A pipeline's estimated weight is what the steps would cost if they all ran. Estimating a
+     * build from that alone ignores the plan sitting right next to it: a workspace whose every
+     * module was reported "Fully Cached" still advertised a full-build ETA — ~2s for a 1ms no-op on
+     * two modules, ~11s on five. A single-module project looked fine only because one module's full
+     * cost rounds to "&lt;1s".
+     */
+    public static ModuleCost costOf(
+            Path dir, Set<Path> prereqs, cc.jumpkick.run.Pipeline pipeline, Set<String> cachedSteps) {
+        int weight = 0;
+        int testWeight = 0;
+        for (cc.jumpkick.run.Step step : pipeline.steps()) {
+            int stepWeight;
+            if (cachedSteps.contains(step.name())) {
+                stepWeight = SKIP;
+            } else {
+                try {
+                    stepWeight = step.estimateWeight();
+                } catch (RuntimeException e) {
+                    stepWeight = 0; // mirrors estimatedTotalWeight: a failing estimate costs nothing
+                }
+            }
+            weight += stepWeight;
+            if (step.name().equals("run-tests")) testWeight += stepWeight;
+        }
         return new ModuleCost(dir, prereqs, weight, testWeight);
     }
 

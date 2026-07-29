@@ -301,7 +301,21 @@ public final class BuildService {
                 BuildPipelines.appendDeclaredTails(builder, inputs);
                 Pipeline pipeline = builder.build();
                 int weight = pipeline.estimatedTotalWeight();
-                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline));
+                // Charge nothing for the steps this module's own forecast says are cached, or a
+                // "Fully Cached" plan still advertises a full-build ETA (JK-1260). A module the
+                // forecast did not mark dirty does no work at all, so every step is free — not just
+                // the compile/package ones the forecaster models by name (resolve, ensure-jdk,
+                // copy-resources and friends are in the pipeline but never in its step list, and
+                // charging them full price left a cached workspace estimating ~1s for a 1ms build).
+                Set<String> cachedSteps = new HashSet<>();
+                if (m.dirty()) {
+                    for (BuildPlan.Step s : m.steps()) {
+                        if (s.cached()) cachedSteps.add(s.name());
+                    }
+                } else {
+                    for (cc.jumpkick.run.Step s : pipeline.steps()) cachedSteps.add(s.name());
+                }
+                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline, cachedSteps));
                 // Warm the shape memo for the next explain/build ETA path.
                 if (!distrust && entryDir != null) {
                     PreflightMemo.storeShape(entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
@@ -331,6 +345,14 @@ public final class BuildService {
                     serial,
                     parallelTests,
                     dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
+            // Nothing to rebuild: the run is a cache-verify pass, so the whole-build history anchor
+            // is the wrong reference — applying it reported this project's average FULL build (~3s)
+            // for a 2ms no-op, directly above a plan that said "Fully Cached" (JK-1260). Floored at
+            // 1ms so it renders as a real "<1s" rather than the "unknown" that 0 means. Checked
+            // before the prior below, because no prior is the right prior for zero work.
+            if (plan.modules().stream().noneMatch(BuildPlan.Module::dirty)) {
+                return Math.max(base, 1);
+            }
             // Shape-aware prior (JK-1156): explain --rebuild uses rebuild history when set.
             HistoryShape shape = new HistoryShape(
                     SessionContext.current().config().rebuildOr(false)
