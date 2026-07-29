@@ -218,10 +218,13 @@ public final class BuildPipelines {
          * already documents.
          */
         public java.util.function.UnaryOperator<String> env() {
-            return name -> {
+            java.util.function.UnaryOperator<String> real = name -> {
                 String fromClient = clientEnv.get(name);
                 return fromClient != null ? fromClient : System.getenv(name);
             };
+            // .env at the workspace root then the module, layered UNDER the real environment
+            // (JK-1270): the file supplies defaults so a shell or CI variable still overrides it.
+            return cc.jumpkick.config.EnvLookup.forModule(dir, real).asFunction();
         }
 
         /** This request with a variant selection + client-resolved env attached. */
@@ -646,7 +649,7 @@ public final class BuildPipelines {
                     JkBuild project;
                     try {
                         project = cc.jumpkick.plugin.manifest.VariantApply.apply(
-                                        JkBuildParser.parse(in.buildFile()),
+                                        JkBuildParser.parse(in.buildFile(), in.env()),
                                         in.dir(),
                                         cc.jumpkick.model.Variants.Selection.parse(in.variant()),
                                         in.clientEnv())
@@ -3163,7 +3166,7 @@ public final class BuildPipelines {
      */
     public static void appendDeclaredTails(Pipeline.Builder b, Inputs in) {
         try {
-            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
+            JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile(), in.env()), in.session());
             if (project.assembly()) {
                 b.addStep(assemblyStep(in.cache(), in.lockFile()));
             }
