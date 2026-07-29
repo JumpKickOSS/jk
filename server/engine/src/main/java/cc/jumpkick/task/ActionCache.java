@@ -201,13 +201,29 @@ public final class ActionCache {
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
             Files.createDirectories(target.getParent());
-            Files.deleteIfExists(target);
-            // COPY, never link: a packager may later rewrite the target in place, and a link
-            // would let that rewrite mutate the blob (see Cas.putFile).
-            Files.copy(cas.pathFor(e.getValue()), target);
+            // Leave a byte-identical target alone. Re-copying it is not merely wasted I/O: it
+            // bumps the file's mtime, and FreshnessStamp compares classpath entries by mtime — so
+            // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
+            // full KSP round (and Kotlin recompile) on every single build (JK-1258).
+            if (!identicalTo(target, e.getValue())) {
+                Files.deleteIfExists(target);
+                // COPY, never link: a packager may later rewrite the target in place, and a link
+                // would let that rewrite mutate the blob (see Cas.putFile).
+                Files.copy(cas.pathFor(e.getValue()), target);
+            }
             ledger.touch(e.getValue());
         }
         return true;
+    }
+
+    /**
+     * True when {@code target} already holds exactly the CAS blob {@code sha}. Size is checked
+     * first so the hash is only paid when it can actually match.
+     */
+    private boolean identicalTo(Path target, String sha) throws IOException {
+        if (!Files.isRegularFile(target)) return false;
+        if (Files.size(target) != Files.size(cas.pathFor(sha))) return false;
+        return sha.equals(Hashing.sha256Hex(target));
     }
 
     /**

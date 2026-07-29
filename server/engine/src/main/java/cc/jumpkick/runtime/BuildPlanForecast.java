@@ -245,9 +245,13 @@ public final class BuildPlanForecast {
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
             List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             if (!ktSrc.isEmpty()) {
+                // The stamp lives with the MERGED classes (BuildPipelines writes it to
+                // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
+                // Reading the wrong directory never found a stamp, so every Kotlin module
+                // forecast a full compile no matter how cached the build actually was (JK-1259).
                 boolean fresh = !depDirty
                         && !force
-                        && FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
+                        && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
                 steps.add(
                         fresh
                                 ? new BuildPlan.Step("compile-kotlin", BuildPlan.Status.CACHED, "", null)
