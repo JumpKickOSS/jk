@@ -20,8 +20,22 @@ public final class NerdFontDetect {
         return detect(System::getenv);
     }
 
-    /** Testable probe over an env lookup. */
+    /** Probe over an env lookup, consulting the real installed-font list. */
     public static Result detect(Function<String, String> env) {
+        return detect(env, NerdFontDetect::fontListLooksNerdy);
+    }
+
+    /**
+     * Fully injectable probe: {@code env} for the terminal hints, {@code fontProbe} for "is a Nerd
+     * Font installed".
+     *
+     * <p>The font probe has to be injectable for any of this to be testable. It shells out to {@code
+     * fc-list}, so its answer is a property of the developer's machine, not of the code — asserting
+     * that an unknown terminal defaults to <em>off</em> passed on CI (no fonts installed) and failed
+     * on any workstation with a Nerd Font, which is precisely backwards from what a test should key
+     * on.
+     */
+    public static Result detect(Function<String, String> env, java.util.function.BooleanSupplier fontProbe) {
         String forced = env.apply("JK_NERDFONT");
         if (forced != null && !forced.isBlank()) {
             boolean on = EnvValues.parseBool(forced).orElse(false);
@@ -61,7 +75,7 @@ public final class NerdFontDetect {
         }
 
         // Optional: fc-list hint (Linux) — only when PATH allows; ignore failures
-        if (fontListLooksNerdy()) {
+        if (fontProbe.getAsBoolean()) {
             return new Result(true, "fc-list matched a Nerd Font name");
         }
 
