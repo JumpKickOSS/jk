@@ -207,6 +207,23 @@ public final class BuildPipelines {
                     session.clientEnv());
         }
 
+        /**
+         * Environment lookup for this request: the caller's shell environment, falling back to the
+         * engine's own (JK-1269).
+         *
+         * <p>The build's authoritative parse runs inside a long-lived daemon, so reading
+         * {@code System.getenv} directly meant {@code FOO=x jk build} had no effect on
+         * {@code ${FOO}} in {@code [repositories]} — while variant selection, handed this same
+         * client env, did see it. Same precedence the plugin-config {@code env:} indirection
+         * already documents.
+         */
+        public java.util.function.UnaryOperator<String> env() {
+            return name -> {
+                String fromClient = clientEnv.get(name);
+                return fromClient != null ? fromClient : System.getenv(name);
+            };
+        }
+
         /** This request with a variant selection + client-resolved env attached. */
         public Inputs withVariant(String variant, Map<String, String> clientEnv) {
             return new Inputs(
@@ -292,12 +309,12 @@ public final class BuildPipelines {
         JkBuild parsedBuild = null;
         Map<String, String> variantSecrets = Map.of();
         try {
-            var jkBuild = JkBuildParser.parse(in.buildFile());
+            var jkBuild = JkBuildParser.parse(in.buildFile(), in.env());
             // Third-party plugin pre-flight: extract any locked-but-unmaterialized manifests
             // from the CAS and re-parse, so a declared plugin's table validates (and its
             // contributions apply) on the very first build after `jk sync`.
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
-                jkBuild = JkBuildParser.reparse(in.buildFile());
+                jkBuild = JkBuildParser.reparse(in.buildFile(), in.env());
             }
             // CLI packaging override (jk assembly --shrink / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
