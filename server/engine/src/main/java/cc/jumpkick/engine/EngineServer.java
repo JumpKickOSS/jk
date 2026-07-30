@@ -481,8 +481,25 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Displacement watchdog: when the endpoint stops naming this generation (a newer engine took
-     * over and its drain signal was lost), self-drain — belt and suspenders for §2 step 3.
+     * Lifecycle watchdog over the endpoint pointer, which is the only thing that decides whether a CLI
+     * can reach this engine. Three states, and they get deliberately different treatment:
+     *
+     * <ul>
+     *   <li><b>The pointer names someone else</b> — displaced. A newer engine took over and its drain
+     *       signal was lost. Surrender the Web UI port immediately so the successor can bind it, and
+     *       drain jobs. Attached dashboard streams get no vote here: the successor needs the port, and a
+     *       tab reconnects to it.
+     *   <li><b>The pointer is absent</b> — orphaned. Nothing names this engine, so no CLI will ever reach
+     *       it again, and no successor is waiting for its port either. That combination used to mean
+     *       serving forever: the displacement test required the pointer to EXIST, so a deleted one left an
+     *       unreachable engine running indefinitely (three were found alive for over an hour, JK-1293).
+     *       Exit once genuinely unused — no jobs and no attached streams. Keep the port while a browser
+     *       is attached, because here there is no successor to hand it to and dropping it would strand
+     *       the tab.
+     *   <li><b>The pointer names this engine</b> — primary. Never self-terminates. An HTTP-enabled engine
+     *       never idles out; the dashboard is written against that invariant and treats a lost stream as
+     *       an anomaly rather than routine.
+     * </ul>
      */
     private void startDisplacementWatchdog() {
         Thread t = new Thread(
@@ -508,6 +525,14 @@ public final class EngineServer implements AutoCloseable {
                                     }
                                 }
                                 stopHttpQuietly(); // hand the Web UI port to the successor right away
+                                return;
+                            }
+                            if (!Files.exists(ep) && orphanedAndUnused()) {
+                                log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
+                                synchronized (lifecycleLock) {
+                                    shuttingDown = true;
+                                    closeServerChannelQuietly();
+                                }
                                 return;
                             }
                         } catch (IOException ignored) {
@@ -4914,6 +4939,21 @@ public final class EngineServer implements AutoCloseable {
      * successor's bind-retry window — surfacing as "Web UI: failed to start (Address already in use)".
      * Idempotent: cleanup()'s later close() is then a no-op.
      */
+    /**
+     * True when an orphaned engine has nothing left to serve: no in-flight jobs and no attached SSE
+     * stream.
+     *
+     * <p>The stream check is what keeps this from breaking the case that matters — a developer who works
+     * through the Web UI, leaves the tab open overnight and comes back to it. A browser cannot spawn an
+     * engine the way the CLI can, so exiting under an attached tab would leave them with a dead SPA and no
+     * indication that the fix is to run a command.
+     */
+    private boolean orphanedAndUnused() {
+        if (activePipelines.get() != 0) return false;
+        HttpEngineServer h = httpServer;
+        return h == null || h.liveEventStreams() == 0;
+    }
+
     private void stopHttpQuietly() {
         HttpEngineServer h = httpServer;
         if (h != null) h.stopNow();
