@@ -41,7 +41,7 @@ public final class CacheGc {
     public static Report run(Path cacheRoot, Path storeRoot, boolean dryRun) throws IOException {
         Cas cas = new Cas(storeRoot);
         Path shaRoot = storeRoot.resolve("sha256");
-        Set<String> reachable = CacheRoots.collect(cas, cacheRoot.resolve("actions"), cacheRoot.resolve("tools"));
+        Set<String> reachable = CacheRoots.collect(cas, cacheRoot.resolve("actions"), JkStores.resolve(cacheRoot, "tools"));
 
         Path logFile = cacheRoot.resolve(AccessLedger.FILE_NAME);
         AccessLedger ledger = new AccessLedger(logFile);

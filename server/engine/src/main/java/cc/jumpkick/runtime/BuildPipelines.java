@@ -4011,7 +4011,7 @@ public final class BuildPipelines {
             } else {
                 // Not a built sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
-                Path located = wj.get().locateOrNull(new cc.jumpkick.cache.Cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = wj.get().locateOrNull(cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
             }
         }

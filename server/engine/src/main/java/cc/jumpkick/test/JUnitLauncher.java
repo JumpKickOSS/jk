@@ -661,7 +661,7 @@ public TestSummary run(
         // Location (override → CAS-by-SHA) is shared with every other worker via
         // PluginJar; adapt its IllegalStateException to this method's IOException.
         try {
-            return PluginJar.TEST_RUNNER.locate(new Cas(cacheRoot));
+            return PluginJar.TEST_RUNNER.locate(cc.jumpkick.cache.JkStores.cas(cacheRoot));
         } catch (IllegalStateException e) {
             throw new IOException("jk test: " + e.getMessage(), e);
         }

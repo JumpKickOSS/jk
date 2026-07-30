@@ -159,7 +159,7 @@ class StoreMigrationTest {
         // A guard on the list itself: adding build-derived state here would make JK_CACHE_DIR stop
         // isolating it, which is the whole point of the split.
         assertThat(StoreMigration.STORE_ENTRIES)
-                .containsExactly("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json")
+                .containsExactly("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json", "tools")
                 .doesNotContain("actions", "runs", "hash-memo", "kotlin-cp-snapshots", "timings.toml");
     }
 }

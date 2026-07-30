@@ -32,7 +32,7 @@ public final class StoreMigration {
      * them across filesystems would turn every link into a copy.
      */
     static final List<String> STORE_ENTRIES =
-            List.of("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json");
+            List.of("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json", "tools");
 
     /** Marker recording that the move already ran, so a warm start does no filesystem probing. */
     private static final String DONE_MARKER = ".migrated-from-cache";
