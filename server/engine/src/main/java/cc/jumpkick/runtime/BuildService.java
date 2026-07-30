@@ -16,6 +16,7 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineKey;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.StepStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -514,7 +515,6 @@ public final class BuildService {
         // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // JK-1100: when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
-        Map<Path, String> preflightFps = Map.of();
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = req.dirtyHint();
@@ -524,7 +524,6 @@ public final class BuildService {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             Preflight preflight = forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
             dirty = preflight.dirty();
-            preflightFps = preflight.fingerprints();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
         }
@@ -722,13 +721,19 @@ public final class BuildService {
             StepTimings.record(req.cache(), timingSamples, StepTimings.DEFAULT_ALPHA, System.currentTimeMillis());
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
-            // JK-1100: sources unchanged after a successful full forecast path ⇒ next cold process
-            // should see "all clean" without re-walking action keys. Dirty-hint paths (selection)
+            // JK-1100 / JK-1296: after a successful full forecast path, store an all-clean dirty
+            // memo so the next process skips the action-key walk. Dirty-hint paths (selection)
             // leave the memo alone — we didn't recompute the whole graph's dirtiness. Test-only
             // runs also leave it alone: they never package, so "clean" would be a lie for build.
-            // Fingerprints come from the preflight snapshot, never post-build (mid-build edits).
-            if (req.dirtyHint() == null && !req.testOnly() && !preflightFps.isEmpty()) {
-                PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), preflightFps);
+            // Re-snapshot fingerprints *now* (not the preflight snapshot): auto-lock / engine-pin
+            // rewrites during the run would otherwise poison the next preflight (memo miss →
+            // re-enter every module). Mid-build source edits during a monorepo build are not a
+            // supported workflow; the next intentional edit still busts the memo on the following run.
+            if (req.dirtyHint() == null && !req.testOnly()) {
+                Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, req.skipTests());
+                if (!fps.isEmpty()) {
+                    PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
+                }
             }
         }
         WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
@@ -1038,15 +1043,45 @@ public final class BuildService {
             PipelineResult r = plan.pipeline().run();
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(plan.pipeline());
-            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), r.success(), exit, ms);
+            // Failures always count as work; successes count only when a productive step ran
+            // (not pure cache hits / no-ops — JK-1296).
+            boolean didWork = !r.success() || moduleDidWork(r);
+            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), r.success(), exit, ms, didWork);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), false, 1, ms);
+            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), false, 1, ms, true);
             listener.onModuleFinish(o);
             return o;
         }
+    }
+
+    /**
+     * True when any productive step (compile / test / package / native / image / …) terminated
+     * {@link StepStatus#SUCCESS} rather than cache-hit {@link StepStatus#SKIPPED}. Setup steps
+     * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
+     * cached and must not make a pure check look like a rebuild (JK-1296).
+     */
+    public static boolean moduleDidWork(PipelineResult r) {
+        for (PipelineResult.StepReport s : r.steps()) {
+            if (s.status() != StepStatus.SUCCESS) continue;
+            if (isProductiveStep(s.name())) return true;
+        }
+        return false;
+    }
+
+    /** Steps whose real work (not a no-op/cache hit) means the module was "built", not just checked. */
+    public static boolean isProductiveStep(String name) {
+        if (name == null || name.isEmpty()) return false;
+        return name.startsWith("compile")
+                || name.equals(cc.jumpkick.run.StepNames.RUN_TESTS)
+                || name.startsWith("package")
+                || name.startsWith("native")
+                || name.startsWith("write-image")
+                || name.startsWith("image-")
+                || name.contains("ksp")
+                || name.startsWith("transform");
     }
 
     /** Test failures exit 4; every other pipeline failure exits 1. */

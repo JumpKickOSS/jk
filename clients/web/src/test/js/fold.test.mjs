@@ -88,6 +88,24 @@ test('cancelled wins over derived outcomes', () => {
   assert.equal(outcomeOf(cards[0]), 'cancelled');
 });
 
+test('didWork false marks module checked; summary says checked not built (JK-1296)', () => {
+  const cards = [];
+  foldEvent(cards, start(1, '/w'));
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/a', success: true, millis: 10, didWork: false },
+  });
+  foldEvent(cards, {
+    type: 'module-finish',
+    data: { requestId: 1, dir: '/w/b', success: true, millis: 12, didWork: false },
+  });
+  foldEvent(cards, finish(1, { success: true }));
+  assert.equal(cards[0].modules[0].state, 'checked');
+  assert.equal(cards[0].modules[1].state, 'checked');
+  assert.equal(outcomeOf(cards[0]), 'success');
+  assert.equal(moduleSummary(cards[0]), 'checked 2 modules, all up to date');
+});
+
 test('pipeline-finish creates a module row when module-start never fired (single-pipeline requests)', () => {
   const cards = [];
   foldEvent(cards, start(1, '/w'));

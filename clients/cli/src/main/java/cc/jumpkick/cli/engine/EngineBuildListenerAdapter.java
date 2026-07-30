@@ -820,12 +820,14 @@ final class EngineBuildListenerAdapter {
                     pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineFinish(result);
                 }
                 case EngineProtocol.MODULE_FINISH -> {
+                    // didWork defaults true for older engines that omit the field (fail-open "built").
                     ModuleOutcome outcome = new ModuleOutcome(
                             Jsonl.str(line, "coord"),
                             Path.of(dir),
                             Jsonl.bool(line, "success", false),
                             Jsonl.intValue(line, "exitCode", 1),
-                            Jsonl.longValue(line, "millis", 0));
+                            Jsonl.longValue(line, "millis", 0),
+                            Jsonl.bool(line, "didWork", true));
                     outcomes.add(outcome);
                     listener.onModuleFinish(outcome);
                 }
