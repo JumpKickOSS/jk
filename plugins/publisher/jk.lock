@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+jk = { version = "0.10.1", sha256 = "f60ee9e1a4e9e5591bed34c72876f22b36083ef88c178df0c58d3f7144fdaf00" }
 
 [[artifact]]
 name     = "com.google.android:annotations:jar:"
@@ -58,7 +58,7 @@ deps = [
   "com.google.guava:failureaccess:jar:@1.0.3",
   "com.google.guava:listenablefuture:jar:@9999.0-empty-to-avoid-conflict-with-guava",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -102,7 +102,7 @@ deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.6.0-jre",
   "com.google.j2objc:j2objc-annotations:jar:@3.1",
-  "io.grpc:grpc-context:jar:@1.82.2",
+  "io.grpc:grpc-context:jar:@1.83.0",
   "io.opencensus:opencensus-api:jar:@0.31.1",
   "io.opencensus:opencensus-contrib-http-util:jar:@0.31.1",
   "org.apache.httpcomponents:httpclient:jar:@4.5.14",
@@ -193,9 +193,9 @@ deps = [
   "com.google.protobuf:protobuf-java-util:jar:@4.35.1",
   "commons-codec:commons-codec:jar:@1.22.0",
   "io.github.erdtman:java-json-canonicalization:jar:@1.1",
-  "io.grpc:grpc-netty-shaded:jar:@1.82.2",
-  "io.grpc:grpc-protobuf:jar:@1.82.2",
-  "io.grpc:grpc-stub:jar:@1.82.2",
+  "io.grpc:grpc-netty-shaded:jar:@1.83.0",
+  "io.grpc:grpc-protobuf:jar:@1.83.0",
+  "io.grpc:grpc-stub:jar:@1.83.0",
   "org.bouncycastle:bcpkix-jdk18on:jar:@1.85",
   "org.bouncycastle:bcutil-jdk18on:jar:@1.85",
 ]
@@ -209,104 +209,104 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "io.grpc:grpc-api:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:038b8bb47dfd61ac580e4c270ffb03f153ee8d62491a7276ef51658ed6482d56"
+checksum = "sha256:c6c4df7de641a26f02993c176a27158584c3d4628e40b54ac7d750e7e6a1bceb"
 scopes   = ["main"]
 
 [[artifact]]
 name     = "io.grpc:grpc-context:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:88b6370ecedb73ef5f9dd0d30f7e1464a81c079ea0c957ed742109225b55ea04"
+checksum = "sha256:c781b317eba2867d14221ce63702997ccfa5f8ae65a72a911745a09fb1c32596"
 scopes   = ["main"]
 deps = [
-  "io.grpc:grpc-api:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-core:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:8b97d20e5da2aee834e4c9d76d46cdad41c660b47226a15d218c0ee754516c9c"
+checksum = "sha256:d69fee3874ba1af9cb55dc06bd678567b3d90dff2ba2d0fd65f5224085246f59"
 scopes   = ["main"]
 deps = [
   "com.google.android:annotations:jar:@4.1.1.4",
   "com.google.code.gson:gson:jar:@2.14.0",
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.6.0-jre",
-  "io.grpc:grpc-api:jar:@1.82.2",
-  "io.grpc:grpc-context:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
+  "io.grpc:grpc-context:jar:@1.83.0",
   "io.perfmark:perfmark-api:jar:@0.27.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-netty-shaded:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:45c06e20095f968560ec9c6ce747580de1d0919b540fa2ea134a4837799f73b2"
+checksum = "sha256:c84635f7ab38d7efc57dbd5274349f776f5ac88d69e2ec2405b20d420f77ae6c"
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.6.0-jre",
-  "io.grpc:grpc-api:jar:@1.82.2",
-  "io.grpc:grpc-core:jar:@1.82.2",
-  "io.grpc:grpc-util:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
+  "io.grpc:grpc-core:jar:@1.83.0",
+  "io.grpc:grpc-util:jar:@1.83.0",
   "io.perfmark:perfmark-api:jar:@0.27.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-protobuf-lite:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9a3aa427bdabe3c78ad544af730f21e140c4fb7b396bb639f7ad4307177e27a0"
+checksum = "sha256:af588bc8046963b6d56770a7804303a6815b0e6cf1efb3f4a2f4f951209e7a3b"
 scopes   = ["main"]
 deps = [
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.guava:guava:jar:@33.6.0-jre",
-  "io.grpc:grpc-api:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-protobuf:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:8082c4795596d31eb9f790ccf5922685709ac1aa165554d51614d357d76c2560"
+checksum = "sha256:a471cee26a10c46e9ce186854bfc7c300db0b8aef4e35a5a2ff30d93faf34f67"
 scopes   = ["main"]
 deps = [
   "com.google.api.grpc:proto-google-common-protos:jar:@2.73.0",
   "com.google.code.findbugs:jsr305:jar:@3.0.2",
   "com.google.guava:guava:jar:@33.6.0-jre",
   "com.google.protobuf:protobuf-java:jar:@4.35.1",
-  "io.grpc:grpc-api:jar:@1.82.2",
-  "io.grpc:grpc-protobuf-lite:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
+  "io.grpc:grpc-protobuf-lite:jar:@1.83.0",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-stub:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3a2de748cf8b10b7e507603b9a6513b7b85e03b0d4914f74e123b630ac3fd2b2"
+checksum = "sha256:b51b11f4cf48e413a676cb39345b1a9db88943fc64db081bf8e711e16e25680b"
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
   "com.google.guava:guava:jar:@33.6.0-jre",
-  "io.grpc:grpc-api:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
 [[artifact]]
 name     = "io.grpc:grpc-util:jar:"
-version  = "1.82.2"
+version  = "1.83.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ebc2436a1881cb86de90cd49eec217ca0178aff176706e02058940922fbc1a6d"
+checksum = "sha256:a69e1545047b350627b314dd74e989b7035e0db8e67fb7c519b57d664711a92d"
 scopes   = ["main"]
 deps = [
   "com.google.guava:guava:jar:@33.6.0-jre",
-  "io.grpc:grpc-api:jar:@1.82.2",
-  "io.grpc:grpc-core:jar:@1.82.2",
+  "io.grpc:grpc-api:jar:@1.83.0",
+  "io.grpc:grpc-core:jar:@1.83.0",
   "org.codehaus.mojo:animal-sniffer-annotations:jar:@1.27",
 ]
 
@@ -317,7 +317,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:f1474d47f4b6b001558ad27b952e35eda5cc7146788877fc52938c6eba24b382"
 scopes   = ["main"]
 deps = [
-  "io.grpc:grpc-context:jar:@1.82.2",
+  "io.grpc:grpc-context:jar:@1.83.0",
 ]
 
 [[artifact]]
@@ -458,9 +458,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"
-version  = "1.0.0"
+version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
 scopes   = ["main", "test"]
 
 [[artifact]]
@@ -471,7 +471,7 @@ checksum = "sha256:e60794b7d94e03c4bca1c0833cfca18762da5eaac0a61b16281cbbb708103
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -484,7 +484,7 @@ checksum = "sha256:57227ce289ed84ab205136997d2e5117f6cc695a16b7e235d59f70cdf33c3
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
@@ -497,7 +497,7 @@ checksum = "sha256:c1ed2164f6ba388518757b38f219dbe350ac098afcd126cbcbd6256fb9966
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
 ]
 
@@ -521,7 +521,7 @@ checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -532,7 +532,7 @@ checksum = "sha256:484e90828846ad6b88efe226b6fe014a75941b32b226e914d9a7758802f46
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -545,7 +545,7 @@ checksum = "sha256:858197212c1b2acc257c9eec9b450a31923c61c1bc61e66acf0057d57bbe5
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
 

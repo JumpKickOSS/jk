@@ -1,7 +1,7 @@
 version = 1
-generated-by = "jk 0.10.1+f85dcb496098"
+generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+jk = { version = "0.10.1", sha256 = "f60ee9e1a4e9e5591bed34c72876f22b36083ef88c178df0c58d3f7144fdaf00" }
 
 [[artifact]]
 name     = "com.googlecode.javaewah:JavaEWAH:jar:"
@@ -102,9 +102,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.eclipse.jgit:org.eclipse.jgit:jar:"
-version  = "7.7.0.202606012155-r"
+version  = "7.7.1.202607240634-r"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a27c478d5f78bc3d95461f153a60efdf1623927502c68a457ad9a995a35c5a7c"
+checksum = "sha256:591abcc84955a6ad3363ec904bda79cf14427706efb4e06ffeb7bc3601503980"
 scopes   = ["main"]
 deps = [
   "com.googlecode.javaewah:JavaEWAH:jar:@1.2.3",
@@ -114,19 +114,19 @@ deps = [
 
 [[artifact]]
 name     = "org.graalvm.sdk:nativeimage:jar:"
-version  = "25.1.3"
+version  = "25.2.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:dc0516fb3007c33ebf0b7c8b654c4a5a8230e974c4b5f98bc67cbbfac725c40a"
+checksum = "sha256:235376a14f41d503219e8e81cc3cade7dd45565917bb5c6936768519adc07fe1"
 scopes   = ["provided"]
 deps = [
-  "org.graalvm.sdk:word:jar:@25.1.3",
+  "org.graalvm.sdk:word:jar:@25.2.4",
 ]
 
 [[artifact]]
 name     = "org.graalvm.sdk:word:jar:"
-version  = "25.1.3"
+version  = "25.2.4"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:5b4aa7d7ef8d79cc22afaeab7396be832253140dd7758ff0a2ee0de853a6d57a"
+checksum = "sha256:fd64d18afd9813346acf3c2be3a19cc553edb3c480c3683fda80fe324687bd6a"
 scopes   = ["provided"]
 
 [[artifact]]
@@ -158,9 +158,9 @@ deps = [
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"
-version  = "1.0.0"
+version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
 scopes   = ["test"]
 
 [[artifact]]
@@ -171,7 +171,7 @@ checksum = "sha256:e60794b7d94e03c4bca1c0833cfca18762da5eaac0a61b16281cbbb708103
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -184,7 +184,7 @@ checksum = "sha256:57227ce289ed84ab205136997d2e5117f6cc695a16b7e235d59f70cdf33c3
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
@@ -197,7 +197,7 @@ checksum = "sha256:c1ed2164f6ba388518757b38f219dbe350ac098afcd126cbcbd6256fb9966
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
 ]
 
@@ -221,7 +221,7 @@ checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -232,7 +232,7 @@ checksum = "sha256:484e90828846ad6b88efe226b6fe014a75941b32b226e914d9a7758802f46
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -245,7 +245,7 @@ checksum = "sha256:858197212c1b2acc257c9eec9b450a31923c61c1bc61e66acf0057d57bbe5
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
 

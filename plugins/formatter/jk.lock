@@ -1,13 +1,13 @@
 version = 1
 generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "f85dcb496098b962516b2dd4fa1bf11d4f269d363733d490bcc099ab390e1e29" }
+jk = { version = "0.10.1", sha256 = "f60ee9e1a4e9e5591bed34c72876f22b36083ef88c178df0c58d3f7144fdaf00" }
 
 [[artifact]]
 name     = "com.diffplug.spotless:spotless-lib:jar:"
-version  = "4.8.0"
+version  = "4.9.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:fea24fd8250f7049dcf83e9c537dca70d4eeddf27f6562cc05b73945d5586a15"
+checksum = "sha256:909061cb503eed012c92190c1d90176bba27eb98d5a29006ead1681a5906f26f"
 scopes   = ["main"]
 
 [[artifact]]
@@ -77,7 +77,7 @@ checksum = "sha256:9d9d2cfd681fd9272ded3d27c9930db12f89f732345975aa113ebc223bbf1
 scopes   = ["main"]
 deps = [
   "com.google.errorprone:error_prone_annotations:jar:@2.50.0",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -103,9 +103,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "io.github.classgraph:classgraph:jar:"
-version  = "4.8.184"
+version  = "4.8.186"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:6e564e29cec95a392268a609f09071d56199383d906ac70e91753a7998d1a3e8"
+checksum = "sha256:fde2862e4efd279dfe17f8e2b26329fec336999b0b507b0de5c637bca451a923"
 scopes   = ["main"]
 
 [[artifact]]
@@ -115,7 +115,7 @@ source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:03919dc71e2417ec4b5c254c4ba924963c972e124190f73cdcb68ed51c6eede6"
 scopes   = ["main"]
 deps = [
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -128,7 +128,7 @@ deps = [
   "io.micrometer:micrometer-commons:jar:@1.17.0",
   "io.micrometer:micrometer-observation:jar:@1.17.0",
   "org.hdrhistogram:HdrHistogram:jar:@2.2.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -139,7 +139,7 @@ checksum = "sha256:2fc95a327578d3b2a81c3ff40e646a4a21e46b0153ccbbf91690142bf80d9
 scopes   = ["main"]
 deps = [
   "io.micrometer:micrometer-commons:jar:@1.17.0",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -152,7 +152,7 @@ deps = [
   "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:@2.22.1",
   "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:@2.22.1",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -255,9 +255,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.jspecify:jspecify:jar:"
-version  = "1.0.0"
+version  = "1.0.1"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:1fad6e6be7557781e4d33729d49ae1cdc8fdda6fe477bb0cc68ce351eafdfbab"
+checksum = "sha256:070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66"
 scopes   = ["main", "test"]
 
 [[artifact]]
@@ -268,7 +268,7 @@ checksum = "sha256:e60794b7d94e03c4bca1c0833cfca18762da5eaac0a61b16281cbbb708103
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -281,7 +281,7 @@ checksum = "sha256:57227ce289ed84ab205136997d2e5117f6cc695a16b7e235d59f70cdf33c3
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
@@ -294,7 +294,7 @@ checksum = "sha256:c1ed2164f6ba388518757b38f219dbe350ac098afcd126cbcbd6256fb9966
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.jupiter:junit-jupiter-api:jar:@6.1.2",
 ]
 
@@ -318,7 +318,7 @@ checksum = "sha256:204894c039d321743ee11e7d1dc8360170d7c64391fbea1211178a645c33a
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
 ]
 
 [[artifact]]
@@ -329,7 +329,7 @@ checksum = "sha256:484e90828846ad6b88efe226b6fe014a75941b32b226e914d9a7758802f46
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-commons:jar:@6.1.2",
   "org.opentest4j:opentest4j:jar:@1.3.0",
 ]
@@ -342,7 +342,7 @@ checksum = "sha256:858197212c1b2acc257c9eec9b450a31923c61c1bc61e66acf0057d57bbe5
 scopes   = ["test"]
 deps = [
   "org.apiguardian:apiguardian-api:jar:@1.1.2",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.junit.platform:junit-platform-engine:jar:@6.1.2",
 ]
 
@@ -376,9 +376,9 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-core:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a7ff59eebc8072353ec5c3aee3e2033bc69a844b3c9ce2e9be8d4adaec10cbf8"
+checksum = "sha256:51caadfa2add6b08382e01edbbce1583b793650f4f2a1d88b6d4713748fda8f5"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-core:jar:@2.22.1",
@@ -394,7 +394,7 @@ deps = [
   "net.java.dev.jna:jna-platform:jar:@5.19.1",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.jspecify:jspecify:jar:@1.0.0",
+  "org.jspecify:jspecify:jar:@1.0.1",
   "org.objenesis:objenesis:jar:@3.5",
   "org.openrewrite.tools:java-object-diff:jar:@1.0.1",
   "org.openrewrite.tools:jgit:jar:@1.4.2",
@@ -407,71 +407,71 @@ deps = [
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-21:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:9ac982b9f19b375459bed6ca514f6840fc896e505d4f351bb5295e411a204474"
+checksum = "sha256:245b58d952446dbfe38e1c098d77b7eea53f978015774331d424463d545bfdee"
 scopes   = ["main"]
 deps = [
-  "io.github.classgraph:classgraph:jar:@4.8.184",
+  "io.github.classgraph:classgraph:jar:@4.8.186",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
-  "org.openrewrite:rewrite-java-lombok:jar:@8.87.5",
-  "org.openrewrite:rewrite-java:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
+  "org.openrewrite:rewrite-java-lombok:jar:@8.88.0",
+  "org.openrewrite:rewrite-java:jar:@8.88.0",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java-lombok:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:b5b860092d7c1c56b055a009c45b79847f484085a738f75f8582c7e61f9186a5"
+checksum = "sha256:9e82a9d63cd89a2e7156eda0a012bb4539c60b39b8421d2bc0b4c29617c6ae0c"
 scopes   = ["main"]
 deps = [
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
   "org.projectlombok:lombok:jar:@1.18.46",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-java:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:a378253fe0c0865ab39d1743e468fe3d2557d7760e0a6897de294ca18ea90043"
+checksum = "sha256:0786ee09560baf85b9dbc2096e000507532eb712f5e6d7481f998f9ef8f7fa1c"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
-  "io.github.classgraph:classgraph:jar:@4.8.184",
+  "io.github.classgraph:classgraph:jar:@4.8.186",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
-  "org.openrewrite:rewrite-properties:jar:@8.87.5",
-  "org.openrewrite:rewrite-xml:jar:@8.87.5",
-  "org.openrewrite:rewrite-yaml:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
+  "org.openrewrite:rewrite-properties:jar:@8.88.0",
+  "org.openrewrite:rewrite-xml:jar:@8.88.0",
+  "org.openrewrite:rewrite-yaml:jar:@8.88.0",
   "org.ow2.asm:asm-util:jar:@9.10.1",
   "org.ow2.asm:asm:jar:@9.10.1",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-properties:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:887bc2c9802e8824e47103fcd9cef614161c9cbef1b0b66adfe996c999f3f656"
+checksum = "sha256:c8e8d00cf9a9961dc92ca5e46802d52bb9348315cc8fdb8333261cb8f6dc6a6d"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-xml:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:bddddf28eec2bf719f89bfe8b089eaf1b404ff8df072c9c5c8c064767abe9c91"
+checksum = "sha256:13e40676a827adcd5f637b284617068409645956555e6d52703c279f60aa1f17"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
@@ -480,21 +480,21 @@ deps = [
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.apache.commons:commons-text:jar:@1.15.0",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
 ]
 
 [[artifact]]
 name     = "org.openrewrite:rewrite-yaml:jar:"
-version  = "8.87.5"
+version  = "8.88.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:ee7b98ffc6360ee2407516de0a7a5dc6595e462a9d2f33e462afe6fe0298354e"
+checksum = "sha256:0a2cbef72b208cd10d27c3a233e909a97d800188b9c9d3863a1671eceec47374"
 scopes   = ["main"]
 deps = [
   "com.fasterxml.jackson.core:jackson-annotations:jar:@2.22",
   "io.micrometer:micrometer-core:jar:@1.17.0",
   "org.antlr:antlr4-runtime:jar:@4.13.2",
   "org.jetbrains:annotations:jar:@26.1.0",
-  "org.openrewrite:rewrite-core:jar:@8.87.5",
+  "org.openrewrite:rewrite-core:jar:@8.88.0",
   "org.yaml:snakeyaml:jar:@2.6",
 ]
 
