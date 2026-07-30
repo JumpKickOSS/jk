@@ -143,6 +143,30 @@ public final class Cas {
     public record Stored(Path path, String sha256, long size) {}
 
     /**
+     * Store {@code source} under {@code hex} by HARD LINK, falling back to a copy when the filesystem
+     * refuses (different device, or a filesystem without links).
+     *
+     * <p>Opt-in only, and never for anything jk writes: a link means the blob shares an inode with a
+     * file jk does not own, so an in-place rewrite by another tool would mutate content the CAS believes
+     * it has already hashed. The one sanctioned use is adopting an artifact out of {@code ~/.m2} after a
+     * remotely-fetched checksum has confirmed it (JK-1290), where the caller has explicitly chosen to
+     * trade that risk for the disk saving.
+     */
+    public Path linkFile(Path source, String hex) throws IOException {
+        Path target = pathFor(hex);
+        if (Files.exists(target)) {
+            return target;
+        }
+        Files.createDirectories(target.getParent());
+        try {
+            Files.createLink(target, source);
+            return target;
+        } catch (IOException | UnsupportedOperationException e) {
+            return putFile(source, hex);
+        }
+    }
+
+    /**
      * Store {@code source}'s bytes under {@code hex} by COPY (temp + atomic move). Never hard-links:
      * compilers rewrite class files in place and must not mutate CAS blobs. Idempotent if {@code
      * hex} is already present.

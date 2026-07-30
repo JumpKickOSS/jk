@@ -38,6 +38,24 @@ public final class Hashing {
         return HexFormat.of().formatHex(md.digest());
     }
 
+    /**
+     * Hex digest of a file under {@code algorithm}, streamed through a fixed buffer so a large artifact
+     * is never held in memory. The multi-algorithm sibling of {@link #sha256Hex(Path)} — needed because
+     * Maven publishes {@code .sha1} sidecars, so validating a candidate against what a repository
+     * advertises means hashing with SHA-1 rather than jk's own SHA-256.
+     */
+    public static String fileHex(String algorithm, Path file) throws IOException {
+        MessageDigest md = newDigest(algorithm);
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                md.update(buf, 0, n);
+            }
+        }
+        return HexFormat.of().formatHex(md.digest());
+    }
+
     /** A fresh SHA-256 {@link MessageDigest} for incremental hashing. */
     public static MessageDigest newSha256() {
         return newDigest("SHA-256");

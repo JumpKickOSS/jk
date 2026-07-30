@@ -1981,6 +1981,8 @@ public final class EngineClient {
                 "JK_STORE_DIR",
                 "JK_CACHE_DIR",
                 "JK_M2_LOCAL",
+                "JK_M2_LOOKUP",
+                "JK_M2_LINK",
                 "JK_CENTRAL_MIRROR")) {
             String v = System.getenv(key);
             if (v != null && !v.isBlank()) env.put(key, v);
