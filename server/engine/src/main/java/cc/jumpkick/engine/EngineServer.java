@@ -3249,7 +3249,11 @@ public final class EngineServer implements AutoCloseable {
             PipelineResult result = pipeline.run();
             long millis = (System.nanoTime() - startNanos) / 1_000_000;
             int exitCode = result.success() ? 0 : cc.jumpkick.runtime.NativePipelines.failureExitCode(pipeline, result);
-            sendQuiet(writer, EngineProtocol.moduleFinish(dirTag, coords.get(dir), result.success(), exitCode, millis));
+            boolean didWork = !result.success() || cc.jumpkick.runtime.BuildService.moduleDidWork(result);
+            sendQuiet(
+                    writer,
+                    EngineProtocol.moduleFinish(
+                            dirTag, coords.get(dir), result.success(), exitCode, millis, didWork));
             if (!result.success()) {
                 sendQuiet(writer, EngineProtocol.workspaceFinish(false, exitCode, java.util.List.of()));
                 return;
@@ -3533,8 +3537,11 @@ public final class EngineServer implements AutoCloseable {
                 String dir = o.dir().toString();
                 long lastDen = lastDenByDir.getOrDefault(dir, 0L);
                 trackModuleComplete(eventRequestId, dir, lastDen, writer);
-                sendQuiet(writer, EngineProtocol.moduleFinish(dir, o.coord(), o.success(), o.exitCode(), o.millis()));
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis());
+                sendQuiet(
+                        writer,
+                        EngineProtocol.moduleFinish(
+                                dir, o.coord(), o.success(), o.exitCode(), o.millis(), o.didWork()));
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
                 cc.jumpkick.run.Pipeline g = modulePipelines.remove(dir);
                 if (g != null) {
@@ -3642,7 +3649,8 @@ public final class EngineServer implements AutoCloseable {
                         requestId));
     }
 
-    private void publishModuleFinish(long requestId, String dir, String coord, boolean success, long millis) {
+    private void publishModuleFinish(
+            long requestId, String dir, String coord, boolean success, long millis, boolean didWork) {
         if (!eventsWanted()) return;
         publishEvent(
                 "module-finish",
@@ -3654,7 +3662,8 @@ public final class EngineServer implements AutoCloseable {
                                 .put("dir", dir)
                                 .put("coord", coord)
                                 .put("success", success)
-                                .put("millis", millis),
+                                .put("millis", millis)
+                                .put("didWork", didWork),
                         requestId));
     }
 
@@ -4824,7 +4833,7 @@ public final class EngineServer implements AutoCloseable {
             public void onModuleFinish(ModuleOutcome o) {
                 String dir = o.dir().toString();
                 trackModuleComplete(eventRequestId, dir, lastDenByDir.getOrDefault(dir, 0L), null);
-                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis());
+                publishModuleFinish(eventRequestId, dir, o.coord(), o.success(), o.millis(), o.didWork());
                 accModule(eventRequestId, o);
                 cc.jumpkick.run.Pipeline g = modulePipelines.remove(dir);
                 if (g != null) {

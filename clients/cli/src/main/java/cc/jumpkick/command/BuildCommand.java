@@ -452,7 +452,7 @@ public final class BuildCommand implements CliCommand {
         }
         cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                 cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), json);
-        String okTail = modulesTail(total[0], start);
+        String okTail = successTail(result.modules(), total[0], null, start);
         if (session != null) session.wedge(okTail);
         if (json) return 0;
         CliOutput.out(
@@ -635,9 +635,7 @@ public final class BuildCommand implements CliCommand {
         }
         // Empty execute plan (total==0) = engine found nothing dirty (JK-1106 single-RPC path).
         // Explicit empty dirtyHint is also up-to-date. Null dirtyDirs with work means force/rebuild.
-        String okTail = (total[0] == 0 || (dirtyDirs != null && dirtyDirs.isEmpty()))
-                ? upToDateTail("all modules", start)
-                : modulesTail(total[0], start);
+        String okTail = successTail(result.modules(), total[0], dirtyDirs, start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
         if (session != null) session.wedge(okTail);
         cc.jumpkick.cli.run.JsonlShape.emitJsonl(
@@ -823,7 +821,64 @@ public final class BuildCommand implements CliCommand {
         return Theme.colorize("Build successful", Theme.active().success());
     }
 
-    /** Success tail {@code Build successful for N modules took T} (work done) — N bold-white. */
+    /**
+     * Workspace success wedge (JK-1296):
+     *
+     * <ul>
+     *   <li>nothing entered → {@code all modules up to date}
+     *   <li>entered modules, none did productive work → {@code checked N modules, all up to date}
+     *   <li>some productive work → {@code built K modules} (optionally {@code, checked M})
+     * </ul>
+     *
+     * @param modules outcomes from this run (may be empty on the fully-cached shortcut)
+     * @param planned entered-module count from the execute plan (0 when fully cached)
+     * @param dirtyDirs preflight dirty set when known; empty means up-to-date shortcut
+     */
+    static String successTail(
+            List<cc.jumpkick.runtime.ModuleOutcome> modules,
+            int planned,
+            java.util.Set<java.nio.file.Path> dirtyDirs,
+            long start) {
+        if (planned == 0 || (dirtyDirs != null && dirtyDirs.isEmpty())) {
+            return upToDateTail("all modules", start);
+        }
+        int built = 0;
+        int checked = 0;
+        if (modules != null) {
+            for (var m : modules) {
+                if (!m.success()) continue;
+                if (m.didWork()) built++;
+                else checked++;
+            }
+        }
+        // Older engines omit didWork (defaults true) — fall back to planned count as "built".
+        if (built == 0 && checked == 0 && planned > 0) {
+            return modulesTail(planned, start);
+        }
+        if (built == 0) {
+            return buildOk()
+                    + ", checked "
+                    + Theme.colorize(String.valueOf(checked > 0 ? checked : planned), Theme.active().focused())
+                    + " module"
+                    + ((checked > 0 ? checked : planned) == 1 ? "" : "s")
+                    + ", all up to date "
+                    + elapsedSince(start);
+        }
+        if (checked == 0) {
+            return modulesTail(built, start);
+        }
+        return buildOk()
+                + ", built "
+                + Theme.colorize(String.valueOf(built), Theme.active().focused())
+                + " module"
+                + (built == 1 ? "" : "s")
+                + ", checked "
+                + Theme.colorize(String.valueOf(checked), Theme.active().focused())
+                + " "
+                + elapsedSince(start);
+    }
+
+    /** Success tail {@code Build successful for N modules took T} (productive work) — N bold-white. */
     private static String modulesTail(int total, long start) {
         return buildOk()
                 + " for "

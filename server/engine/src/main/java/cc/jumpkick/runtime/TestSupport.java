@@ -351,10 +351,12 @@ public final class TestSupport {
             }
             return false;
         }
-        ctx.label(
-                r.cacheHit()
-                        ? taskId + ": cache hit " + r.actionKey().substring(0, 8)
-                        : taskId + ": compiled " + sources.size() + " sources");
+        if (r.cacheHit()) {
+            ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
+            ctx.cached(); // SKIPPED — pure restore (JK-1296 didWork accounting)
+        } else {
+            ctx.label(taskId + ": compiled " + sources.size() + " sources");
+        }
         return true;
     }
 }

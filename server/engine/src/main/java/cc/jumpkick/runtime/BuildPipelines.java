@@ -2224,19 +2224,18 @@ public final class BuildPipelines {
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
                     JkBuild projectUnderTest = ctx.require(PROJECT);
-                    Map<String, String> workerJars =
-                            workerJarProps(in.dir(), projectUnderTest.build().testPluginJars());
-                    // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
-                    // so EngineTestExtension cannot kill the host engine running this test step.
-                    // Sandboxed JK_HOME/JK_M2_LOCAL plus this module's [test] env — without it a forked
-                    // test JVM inherits the engine's environment and runs against the developer's real
-                    // ~/.jk (JK-1267). Nested-engine isolation layers on top: it is a stricter case of the
-                    // same need (jk-cli suites must not be able to stop the host engine running the step),
-                    // so it is applied last and wins on any key both set.
+                    // Worker jars feed both the forked JVM and the TestStamp (JK-1296):
+                    // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
+                    // matches what the suite actually loads — same set forecast uses.
+                    Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
+                    // Nested-engine suites (jk-cli): isolate JK_STATE_DIR so EngineTestExtension
+                    // cannot kill the host engine running this test step. Sandboxed JK_HOME/JK_M2_LOCAL
+                    // plus this module's [test] env — without it a forked test JVM inherits the
+                    // engine's environment and runs against the developer's real ~/.jk (JK-1267).
+                    // Nested-engine isolation layers on top and wins on any key both set.
                     Map<String, String> testEnv =
                             new java.util.LinkedHashMap<>(TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
                     if (needsNestedEngineIsolation(projectUnderTest)) {
-                        enrichCliTestProps(in.dir(), workerJars);
                         testEnv.putAll(nestedEngineTestEnv(in.dir()));
                     }
 
@@ -4105,11 +4104,6 @@ public final class BuildPipelines {
     }
 
     /**
-     * The run-tests stamp's identity tokens for {@code project} at {@code dir} — the same set the
-     * build folds into its {@code TestStamp} key, exposed so {@code jk explain}'s forecast predicts
-     * test-skip without drifting.
-     */
-    /**
      * The selection the runner actually executes: the session's, with this module's
      * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
      * (jk build / BSP without data — JK-1229). `jk test` resolves defaults CLI-side and its
@@ -4124,16 +4118,64 @@ public final class BuildPipelines {
         return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
     }
 
+    /**
+     * Worker / engine jar props that feed both the forked test JVM and the {@link
+     * cc.jumpkick.task.TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
+     * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
+     * (JK-1296 — forecast and live run-tests must hash the same set).
+     */
+    public static Map<String, String> testStampWorkerJars(Path dir, JkBuild project) throws IOException {
+        Map<String, String> props = new LinkedHashMap<>(workerJarProps(dir, project.build().testPluginJars()));
+        if (needsNestedEngineIsolation(project)) {
+            enrichCliTestProps(dir, props);
+        }
+        return props;
+    }
+
+    /**
+     * The run-tests stamp's identity tokens for {@code project} at {@code dir} — the same set the
+     * build folds into its {@link cc.jumpkick.task.TestStamp} key, so {@code jk explain}'s forecast
+     * predicts test-skip without drifting (JK-1229/JK-1243/JK-1296).
+     */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
-        // Forecast callers mirror `jk build`: DEFAULT selection folded with the module's
-        // [test] default-exclude-tags — exactly what run-tests stamps with (JK-1229/JK-1243).
         return testStampExtras(
-                workerJarProps(dir, project.build().testPluginJars()),
+                testStampWorkerJars(dir, project),
                 effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
                 project.build().testEnv());
     }
 
-    private static List<String> testStampExtras(
+    /**
+     * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection —
+     * single factory for forecast and any offline checker. {@code testRuntimeCp} must match the
+     * build's runtime classpath for the stamp (lock deps + workspace sibling jars; plugin
+     * contributions optional for non-plugin modules).
+     */
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
+        List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
+        var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
+        List<String> suites =
+                resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        List<Path> stampSrcs = new ArrayList<>();
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(dir, compact, suites));
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(dir, compact, suites));
+        return cc.jumpkick.task.TestStamp.computeKey(
+                stampSrcs,
+                mainClasses,
+                cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, suites),
+                lockFile,
+                testRuntimeCp,
+                testStampExtras(dir, project));
+    }
+
+    static List<String> testStampExtras(
             Map<String, String> workerJars,
             cc.jumpkick.config.TestSelection selection,
             Map<String, String> testEnv) {

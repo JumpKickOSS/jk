@@ -2261,6 +2261,15 @@ public final class EngineProtocol {
     }
 
     public static String moduleFinish(String dir, String coord, boolean success, int exitCode, long millis) {
+        return moduleFinish(dir, coord, success, exitCode, millis, true);
+    }
+
+    /**
+     * @param didWork whether a productive step actually ran (false = pure cache check; JK-1296).
+     *     Additive field — older clients ignore it.
+     */
+    public static String moduleFinish(
+            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork) {
         return "{\"type\":\""
                 + MODULE_FINISH
                 + "\",\"dir\":"
@@ -2273,6 +2282,8 @@ public final class EngineProtocol {
                 + exitCode
                 + ",\"millis\":"
                 + millis
+                + ",\"didWork\":"
+                + didWork
                 + "}";
     }
 

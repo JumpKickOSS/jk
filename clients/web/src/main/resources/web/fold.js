@@ -154,7 +154,9 @@ export function foldEvent(cards, event) {
       const card = byId(cards, d.requestId);
       if (card) {
         const row = moduleRow(card, d.dir);
-        row.state = d.success ? 'success' : 'failed';
+        // didWork=false → pure cache check (JK-1296); treat as success but label checked.
+        row.didWork = d.didWork !== false;
+        row.state = d.success ? (row.didWork ? 'success' : 'checked') : 'failed';
         row.millis = d.millis ?? row.millis;
         if (d.coord) row.coord = d.coord;
       }
@@ -391,7 +393,13 @@ export function outcomeOf(card) {
   if (card.success === true) return 'success';
   if (card.success === false) return 'failed';
   if (card.modules.some((m) => m.state === 'failed')) return 'failed';
-  if (card.modules.length > 0 && card.modules.every((m) => m.state === 'success')) return 'success';
+  // success + checked are both green outcomes (JK-1296: pure cache re-entry is "checked")
+  if (
+    card.modules.length > 0
+    && card.modules.every((m) => m.state === 'success' || m.state === 'checked')
+  ) {
+    return 'success';
+  }
   return 'finished';
 }
 
@@ -436,13 +444,21 @@ function phaseState(steps) {
   return 'success'; // all terminal, at least one success
 }
 
-/** One line summarizing a card's module work, e.g. "3 modules · 1 failed" — '' when nothing to say. */
+/**
+ * One line summarizing a card's module work, e.g. "3 modules · 1 failed",
+ * "checked 2 modules, all up to date", "built 1 · checked 2" — '' when nothing to say.
+ */
 export function moduleSummary(card) {
   const n = card.modules.length;
   if (n === 0) return '';
   const failed = card.modules.filter((m) => m.state === 'failed').length;
-  const noun = n === 1 ? 'module' : 'modules';
-  return failed > 0 ? `${n} ${noun} · ${failed} failed` : `${n} ${noun}`;
+  const checked = card.modules.filter((m) => m.state === 'checked').length;
+  const built = card.modules.filter((m) => m.state === 'success').length;
+  const noun = (k) => (k === 1 ? 'module' : 'modules');
+  if (failed > 0) return `${n} ${noun(n)} · ${failed} failed`;
+  if (built === 0 && checked > 0) return `checked ${checked} ${noun(checked)}, all up to date`;
+  if (built > 0 && checked > 0) return `built ${built} · checked ${checked}`;
+  return `${n} ${noun(n)}`;
 }
 
 function byId(cards, requestId) {
