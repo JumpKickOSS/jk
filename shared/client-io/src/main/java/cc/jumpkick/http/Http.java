@@ -41,6 +41,9 @@ public final class Http {
      */
     private final CentralMirror centralMirror;
 
+    /** Per-host rate-limit memory (JK-1276); shared across the process and persisted. */
+    private final HostCooldown cooldown;
+
     public Http() {
         this(
                 HttpClient.newBuilder()
@@ -58,9 +61,15 @@ public final class Http {
 
     /** Visible for tests — injects the Central failover so its window can be driven deterministically. */
     Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror) {
+        this(client, backoffs, centralMirror, HostCooldown.standard());
+    }
+
+    /** Visible for tests — also injects the per-host cooldown store (JK-1276). */
+    Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror, HostCooldown cooldown) {
         this.client = client;
         this.backoffs = backoffs;
         this.centralMirror = centralMirror;
+        this.cooldown = cooldown;
     }
 
     public HttpResponse<byte[]> get(URI uri) throws IOException, InterruptedException {
@@ -210,9 +219,25 @@ public final class Http {
             if (attempt > 0) {
                 Thread.sleep(jittered(backoffs[attempt - 1]));
             }
+            // Do not ask a host that is already refusing (JK-1276). One 429 costs one request, not one
+            // per permit per attempt — six concurrent permits times five attempts would turn a single
+            // refusal into thirty more, which is how a quota window gets held open.
+            java.util.Optional<java.time.Instant> cooling = cooldown.until(request.uri().getHost());
+            if (cooling.isPresent()) {
+                throw new RateLimitedException(request.uri().getHost(), cooling.get());
+            }
             try {
                 HttpResponse<T> response = client.send(request, handler);
                 int status = response.statusCode();
+                if (status == 429) {
+                    // Record before rerouting: the limit is a fact about this host whether or not a
+                    // mirror can rescue this particular request.
+                    cooldown.noteRateLimited(
+                            request.uri().getHost(),
+                            HostCooldown.parseRetryAfter(
+                                    response.headers().firstValue("Retry-After").orElse(null),
+                                    java.time.Instant.now()));
+                }
                 // Central's per-IP quota (JK-1277). Open the mirror window and reissue this very
                 // request against the mirror, so the resolve that tripped the limit still completes
                 // rather than failing and being re-run — a re-run would only spend more of a quota
