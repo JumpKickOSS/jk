@@ -52,8 +52,13 @@ class BuildCommandSuccessTailTest {
         var modules = List.of(
                 new ModuleOutcome("a:b", Path.of("/a"), true, 0, 100, true),
                 new ModuleOutcome("a:c", Path.of("/c"), true, 0, 10, false));
-        String t = BuildCommand.successTail(modules, 2, null, System.nanoTime());
-        assertThat(t).contains("built");
-        assertThat(t).contains("checked");
+        String t = stripAnsi(BuildCommand.successTail(modules, 2, null, System.nanoTime()));
+        assertThat(t).contains("built 1 module");
+        assertThat(t).contains("checked 1 module");
+        assertThat(t).doesNotContain("all up to date");
+    }
+
+    private static String stripAnsi(String s) {
+        return s.replaceAll("\\u001B\\[[;\\d]*m", "");
     }
 }

@@ -874,6 +874,8 @@ public final class BuildCommand implements CliCommand {
                 + (built == 1 ? "" : "s")
                 + ", checked "
                 + Theme.colorize(String.valueOf(checked), Theme.active().focused())
+                + " module"
+                + (checked == 1 ? "" : "s")
                 + " "
                 + elapsedSince(start);
     }
