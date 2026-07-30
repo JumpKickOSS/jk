@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.tui.DrainView;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -38,13 +39,18 @@ public final class EngineStopCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag("Stop now, abandoning in-flight jobs (still assembles the AOT cache).", "--now"),
-                Opt.flag("Stop every engine under this ~/.jk, not just the one this directory uses.", "--all"));
+                Opt.flag("Stop every engine under this ~/.jk, not just the one this directory uses.", "--all"),
+                Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "--pid"));
     }
 
     @Override
     public int run(Invocation in) {
         if (in.isSet("all")) {
-            return stopAll(in.isSet("now"));
+            return report(EngineFleet.stopAll(in.isSet("now")));
+        }
+        Optional<String> pidArg = in.value("pid");
+        if (pidArg.isPresent()) {
+            return stopByPid(pidArg.get(), in.isSet("now"));
         }
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> before = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
@@ -54,20 +60,19 @@ public final class EngineStopCommand implements CliCommand {
         }
         long started = before.get().startedAtMillis();
 
-        // Force: stop now via the clean-exit path (SIGKILL fallback if unresponsive).
+        // Force: stop now, then CONFIRM it went. Reporting "stopped" without checking is how a wedged
+        // engine ends up being the user's problem to find and kill.
         if (in.isSet("now")) {
             if (!EngineClient.forceStop(cc.jumpkick.engine.EnginePaths.activeSocket(paths)))
                 EngineClient.hardKill(before.get().pid());
-            CliOutput.out(stoppedWedge(elapsed(started)));
-            return Exit.SUCCESS;
+            return confirmGone(before.get().pid(), started);
         }
 
         // Graceful drain. The engine enters draining and reports the in-flight job count.
         int jobs = EngineClient.drain(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
         if (jobs <= 0) {
-            // Idle (or already gone): the engine exits immediately.
-            CliOutput.out(stoppedWedge(elapsed(started)));
-            return Exit.SUCCESS;
+            // Idle (or already gone): the engine should exit immediately — verify, and escalate if not.
+            return confirmGone(before.get().pid(), started);
         }
         if (!PipelineConsole.isInteractiveTerminal()) {
             CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
@@ -78,51 +83,88 @@ public final class EngineStopCommand implements CliCommand {
     }
 
     /**
-     * Stop every engine under this {@code ~/.jk}.
+     * Wait for the engine process to actually disappear, escalating to a hard kill if it does not.
      *
-     * <p>Plain {@code stop} addresses one identity — the engine this directory's cache and store resolve
-     * to. Since the store became part of that identity (JK-1289) a machine can hold several at once, and
-     * a throwaway store leaves one behind; without this the only way to clear them was {@code pkill}
-     * (JK-1293).
-     *
-     * <p>Never blocks on a drain region here, however many are draining: one interactive wait per engine
-     * would be unusable, and the intent of {@code --all} is "clear them", not "watch each finish". Each is
-     * asked to drain (or stopped now with {@code --now}) and the count is reported.
+     * <p>An engine that was asked to stop and did not is the one outcome a user cannot be expected to
+     * handle themselves — on Windows it means finding the right JVM in Task Manager. So the wedge reports
+     * what happened rather than what was requested, and a survivor is a failure exit rather than a
+     * cheerful "stopped".
      */
-    private int stopAll(boolean now) {
-        List<EnginePaths.Paths> all = EnginePaths.identitiesIn(cc.jumpkick.util.JkDirs.state());
-        int stopped = 0;
-        int draining = 0;
-        for (EnginePaths.Paths p : all) {
-            java.nio.file.Path socket = cc.jumpkick.engine.EnginePaths.activeSocket(p);
-            Optional<EngineClient.Status> status = EngineClient.status(socket);
-            if (status.isEmpty()) continue; // stale pointer for an engine that already exited
-            if (now) {
-                if (!EngineClient.forceStop(socket)) EngineClient.hardKill(status.get().pid());
-                stopped++;
-                continue;
-            }
-            int jobs = EngineClient.drain(socket);
-            if (jobs > 0) {
-                draining++;
-            } else {
-                stopped++;
-            }
+    private int confirmGone(long pid, long started) {
+        if (EngineFleet.waitForExit(pid)) {
+            CliOutput.out(stoppedWedge(elapsed(started)));
+            return Exit.SUCCESS;
         }
-        if (stopped == 0 && draining == 0) {
+        EngineClient.hardKill(pid);
+        if (EngineFleet.waitForExit(pid)) {
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                    "Engine", "Engine stopped after a hard kill (it did not exit on request)."));
+            return Exit.SUCCESS;
+        }
+        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                "Engine", "Engine pid " + pid + " did NOT exit, even after a hard kill."));
+        return Exit.FAILURE;
+    }
+
+    /**
+     * Stop one engine by pid — the handle {@code jk engine status} prints.
+     *
+     * <p>Exists so that clearing a stray engine never means reaching for {@code kill}. On Windows that
+     * would mean identifying the right JVM in Task Manager, which is not a reasonable thing to ask.
+     */
+    private int stopByPid(String raw, boolean now) {
+        long pid;
+        try {
+            pid = Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "not a pid: " + raw));
+            return Exit.FAILURE;
+        }
+        Optional<EngineFleet.StopResult> result =
+                EngineFleet.stopByPid(pid, now);
+        if (result.isEmpty()) {
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "no running engine with pid " + pid));
+            return Exit.FAILURE;
+        }
+        return report(List.of(result.get()));
+    }
+
+    /**
+     * Report what actually happened to each engine, rather than assuming a request was obeyed.
+     *
+     * <p>A killed engine is called out because it means the clean path did not work, and a survivor is
+     * called out loudly because it is the one case a user may still have to act on — the whole point being
+     * that they should never have to guess.
+     */
+    private int report(List<EngineFleet.StopResult> results) {
+        if (results.isEmpty()) {
             CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "no engines running"));
             return Exit.SUCCESS;
         }
+        int stopped = 0;
+        int killed = 0;
+        int draining = 0;
+        List<Long> survived = new java.util.ArrayList<>();
+        for (EngineFleet.StopResult r : results) {
+            switch (r.outcome()) {
+                case STOPPED -> stopped++;
+                case KILLED -> killed++;
+                case DRAINING -> draining++;
+                case SURVIVED -> survived.add(r.member().pid());
+            }
+        }
         StringBuilder msg = new StringBuilder();
-        msg.append(stopped).append(stopped == 1 ? " engine stopped" : " engines stopped");
+        int gone = stopped + killed;
+        msg.append(gone).append(gone == 1 ? " engine stopped" : " engines stopped");
+        if (killed > 0) msg.append(" (").append(killed).append(" needed a hard kill)");
         if (draining > 0) {
-            msg.append(", ")
-                    .append(draining)
-                    .append(draining == 1 ? " draining" : " draining")
-                    .append(" (will exit once in-flight jobs finish)");
+            msg.append(", ").append(draining).append(" draining (will exit once in-flight jobs finish)");
+        }
+        if (!survived.isEmpty()) {
+            msg.append(", ").append(survived.size()).append(" did NOT exit: pid ").append(survived);
         }
         CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", msg.toString()));
-        return Exit.SUCCESS;
+        return survived.isEmpty() ? Exit.SUCCESS : Exit.FAILURE;
     }
 
     /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */

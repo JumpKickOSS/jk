@@ -49,11 +49,22 @@ public final class EngineStatusCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> status = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
         if (status.isEmpty()) {
+            // "not running" is only true of THIS directory's engine. Saying it flatly while others are
+            // alive is how eighteen engines once went unnoticed (JK-1293), so name them.
+            java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> others =
+                    cc.jumpkick.cli.engine.EngineFleet.list();
             if (global.outputIsJson()) {
-                CliOutput.out("{\"running\":false}");
+                CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
             } else {
                 CliOutput.out(PipelineWedge.chipLine(
-                        Glyphs.STOP, "Engine", GlobalConfig.nerdfont(), "Engine is not running"));
+                        Glyphs.STOP,
+                        "Engine",
+                        GlobalConfig.nerdfont(),
+                        others.isEmpty()
+                                ? "Engine is not running"
+                                : "No engine for this directory (" + others.size()
+                                        + (others.size() == 1 ? " other is" : " others are") + " running)"));
+                printFleet(others);
             }
             return Exit.FAILURE;
         }
@@ -74,6 +85,7 @@ public final class EngineStatusCommand implements CliCommand {
                     + ",\"httpUrl\":" + (s.httpUrl() != null ? Jsonl.quote(s.httpUrl()) : "null")
                     + ",\"httpError\":" + (s.httpError() != null ? Jsonl.quote(s.httpError()) : "null")
                     + ",\"mcpUrl\":" + (s.mcpUrl() != null ? Jsonl.quote(s.mcpUrl()) : "null")
+                    + ",\"engines\":" + enginesJson(cc.jumpkick.cli.engine.EngineFleet.list())
                     + "}");
             return Exit.SUCCESS;
         }
@@ -103,7 +115,59 @@ public final class EngineStatusCommand implements CliCommand {
             String mcp = Theme.colorize(s.mcpUrl(), Theme.active().path());
             detail("MCP", mcp + "  (POST JSON-RPC; Bearer token)");
         }
+        java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet =
+                cc.jumpkick.cli.engine.EngineFleet.list();
+        if (fleet.size() > 1) printFleet(fleet);
         return Exit.SUCCESS;
+    }
+
+    /**
+     * The whole fleet, one line each. Only printed when there is more than one engine, so the common
+     * single-engine case reads exactly as before.
+     *
+     * <p>Each line leads with the identity {@code id} because that is the handle a user can act on —
+     * alongside the pid, which is what {@code stop --pid} takes. Without this the only way to discover a
+     * second engine was {@code ps}.
+     */
+    private static void printFleet(java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
+        if (fleet.isEmpty()) return;
+        CliOutput.out("");
+        CliOutput.out(" Engines (" + fleet.size() + "):");
+        for (cc.jumpkick.cli.engine.EngineFleet.Member m : fleet) {
+            String marker = m.current() ? "*" : " ";
+            StringBuilder line = new StringBuilder(" " + marker + " " + m.id() + "  pid " + pidStyled(m.pid()));
+            if (m.responsive()) {
+                long up = Math.max(0, (System.currentTimeMillis() - m.status().startedAtMillis()) / 1000);
+                line.append("  up ").append(formatUptime(up)).append("  jobs ").append(m.status().activePipelines());
+            } else {
+                // Alive but not answering. Worth saying plainly: it still holds memory and its port, and it
+                // is the case a user is most likely to need to stop.
+                line.append("  unresponsive (alive, not answering)");
+            }
+            if (m.current()) line.append("   (this directory)");
+            CliOutput.out(line.toString());
+        }
+        CliOutput.out("");
+        CliOutput.out(" Stop one with `jk engine stop --pid <pid>`, or all with `jk engine stop --all`.");
+    }
+
+    private static String enginesJson(java.util.List<cc.jumpkick.cli.engine.EngineFleet.Member> fleet) {
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < fleet.size(); i++) {
+            cc.jumpkick.cli.engine.EngineFleet.Member m = fleet.get(i);
+            if (i > 0) b.append(",");
+            b.append("{\"id\":").append(Jsonl.quote(m.id()))
+                    .append(",\"pid\":").append(m.pid())
+                    .append(",\"current\":").append(m.current())
+                    .append(",\"responsive\":").append(m.responsive());
+            if (m.responsive()) {
+                b.append(",\"startedAt\":").append(m.status().startedAtMillis())
+                        .append(",\"activePipelines\":").append(m.status().activePipelines())
+                        .append(",\"version\":").append(Jsonl.quote(m.status().version()));
+            }
+            b.append("}");
+        }
+        return b.append("]").toString();
     }
 
     /** Widest {@code "label:"} ({@code "Version:"}); values line up one space past it. */

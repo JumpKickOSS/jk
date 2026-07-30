@@ -37,7 +37,14 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or
-  version-skew replacement. One engine per `JK_HOME` / state directory.
+  version-skew replacement. **No idle timeout**: the dashboard is written against that guarantee, and
+  a browser tab cannot respawn an engine the way the CLI can — see [http.md](http.md). The one
+  exception is an *orphaned* engine (no endpoint pointer names it, so nothing can reach it), which
+  exits once it has no in-flight jobs and no attached event stream.
+- **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
+  identity hash because two invocations can share a state dir while disagreeing about where downloads
+  belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
+  engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
 - **Versioning** — side-by-side installs under `~/.jk/versions/<v>/`; client and engine jar
   share a version; handshake detects skew and takes over.
 - **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
