@@ -78,7 +78,11 @@ public final class RepoGroupBuilder {
                 // transport; HTTP credentials still ride the MavenRepo credential.
                 RepoTransport transport = RepoTransports.forUrl(
                         spec.url(), http, spec.objectStore().orElse(ObjectStoreConfig.EMPTY));
-                repos.add(new MavenRepo(spec.name(), spec.url(), transport, cas, cred, mirrorToM2));
+                // Hand the client through, not just the transport: the transport-only constructor nulls it,
+                // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
+                // build (JK-1290).
+                repos.add(MavenRepo.overTransport(
+                        spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2));
                 exclusiveGroups.add(spec.groups());
             }
             maybeWarnMultiRepoWithoutBindings(effective);

@@ -89,6 +89,29 @@ public final class MavenRepo {
     }
 
     /**
+     * Caller-selected transport <em>and</em> the HTTP client, for an http(s) repo whose transport was
+     * built with per-repo object-store config.
+     *
+     * <p>This exists because the transport-only constructors pass {@code null} for the client, and the
+     * normal resolve path went through one of them — so for every ordinary build both HTTP-only features
+     * silently switched off: the {@code maven-metadata.xml} TTL/conditional-GET cache (which also holds
+     * the "reuse a stale copy rather than fail on 429" behaviour) and the {@code ~/.m2} probe. Only a
+     * test pinning an override URL took the client-carrying path, which is why the metadata cache looked
+     * healthy in tests while never running in practice.
+     */
+    /** Transport + HTTP client for an http(s) repo. See the note above on why this is separate. */
+    public static MavenRepo overTransport(
+            String name,
+            URI baseUrl,
+            RepoTransport transport,
+            Cas cas,
+            RepoCredential credential,
+            Http httpOrNull,
+            boolean mirrorToM2) {
+        return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, mirrorToM2);
+    }
+
+    /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code mirrorToM2}
      * is the resolving project's {@code project.m2install} value — {@code false} for resolvers not
@@ -122,6 +145,15 @@ public final class MavenRepo {
     private static boolean isHttp(URI uri) {
         String scheme = uri.getScheme();
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
+    }
+
+    /**
+     * True when this repo carries the HTTP client, i.e. the metadata TTL/conditional-GET cache and the
+     * {@code ~/.m2} probe are live. Both silently switch off without it (JK-1290), so it is worth being
+     * able to assert on.
+     */
+    public boolean hasMetadataCache() {
+        return metadataCache != null;
     }
 
     public String name() {
@@ -275,6 +307,11 @@ public final class MavenRepo {
                     ? cas.linkFile(candidate, sha256)
                     : cas.putFile(candidate, sha256);
             repoStore.materialize(relativePath, blob, sha256);
+            // Say so under -v. An invisible optimisation is one nobody can tell apart from "not
+            // running" — which is exactly how a null Http client hid this path for a whole release.
+            if (cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+                System.err.println("jk: adopted " + relativePath + " from ~/.m2 (sha1 confirmed by " + name + ")");
+            }
             return Optional.of(new Fetched(uri, blob, sha256, Files.size(blob)));
         } catch (IOException | RuntimeException e) {
             return Optional.empty(); // never let the optimisation fail a fetch
