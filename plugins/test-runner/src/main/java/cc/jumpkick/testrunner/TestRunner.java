@@ -201,12 +201,24 @@ public final class TestRunner implements Plugin {
 
     // --- shared --------------------------------------------------------------
 
+    /**
+     * One {@code --filter} contract for both the Launcher and engine-fallback paths (JK-1227):
+     * substring match for plain patterns, verbatim when the caller anchored it — pre-fix the
+     * launcher wrapped everything in {@code .*…​.*} (breaking anchored regexes) while the
+     * fallback passed raw (breaking substring expectations).
+     */
+    static String classNamePattern(String filter) {
+        String f = filter.trim();
+        if (f.startsWith("^") || f.endsWith("$")) return f;
+        return ".*" + f + ".*";
+    }
+
     private static EngineDiscoveryRequest baseRequest(Args args) {
         var selectors =
                 new ArrayList<DiscoverySelector>(DiscoverySelectors.selectClasspathRoots(Set.of(args.scanClasspath)));
         var filters = new ArrayList<DiscoveryFilter<?>>();
         if (args.filter != null && !args.filter.isEmpty()) {
-            filters.add(ClassNameFilter.includeClassNamePatterns(args.filter));
+            filters.add(ClassNameFilter.includeClassNamePatterns(classNamePattern(args.filter)));
         }
         return discoveryRequest(List.copyOf(selectors), List.copyOf(filters));
     }

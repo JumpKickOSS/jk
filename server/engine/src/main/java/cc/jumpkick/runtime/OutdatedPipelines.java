@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.engine.protocol.OutdatedReport;
@@ -61,7 +62,7 @@ public final class OutdatedPipelines {
 
         boolean workspace = scopes.size() > 1;
         Map<String, String> shortNames = reverseCatalog();
-        GitFetcher git = new GitFetcher(cache.resolve("git"));
+        GitFetcher git = new GitFetcher(JkStores.resolve(cache, "git"));
         Map<String, GitFetcher.RemoteRefs> gitRefsCache = new HashMap<>();
 
         List<OutdatedReport.Row> rows = new ArrayList<>();
@@ -70,7 +71,7 @@ public final class OutdatedPipelines {
             JkBuild build = scope.getValue();
             String moduleLabel = workspace ? LockPipelines.coordLabel(build, moduleDir) : "";
             Map<String, String> locked = lockedVersions(moduleDir.resolve("jk.lock"));
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
             Set<String> seen = new LinkedHashSet<>();
             for (Map.Entry<Scope, List<Dependency>> entry :

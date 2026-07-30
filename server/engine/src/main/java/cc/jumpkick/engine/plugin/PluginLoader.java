@@ -53,6 +53,10 @@ public final class PluginLoader {
     /**
      * As {@link #run(Path, String, List, String, List, Consumer, Consumer)}, adding {@code extraEnv}
      * to the child process environment (e.g. isolated {@code JK_STATE_DIR} for nested-engine tests).
+     *
+     * <p>The test runner also uses it to hand a suite a sandboxed {@code JK_HOME} (JK-1267): without
+     * that, a forked test JVM inherits the engine's environment and reads the developer's real
+     * {@code ~/.jk}.
      */
     public static int run(
             Path javaExe,

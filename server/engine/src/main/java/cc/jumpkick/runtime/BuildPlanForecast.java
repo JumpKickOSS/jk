@@ -19,7 +19,6 @@ import cc.jumpkick.task.ActionKey;
 import cc.jumpkick.task.ClasspathFingerprint;
 import cc.jumpkick.task.FreshnessStamp;
 import cc.jumpkick.task.JavaIncrementalCompile;
-import cc.jumpkick.task.TestStamp;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -207,7 +206,11 @@ public final class BuildPlanForecast {
                     cc.jumpkick.plugin.manifest.PluginContributions.javacArgs(
                             project, dir, BuildPipelines.lockModules(lock)),
                     List.of());
-            List<Path> processorCp = resolver.classpathFor(lock, Set.of(Scope.PROCESSOR));
+            // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
+            // included (JK-1253) — or the forecast hashes a different -processorpath than the
+            // build and every KSP module forecasts a phantom rebuild.
+            List<Path> processorCp = BuildPipelines.processorClasspath(
+                    lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
             boolean compileDirty = depDirty || force;
 
@@ -241,9 +244,13 @@ public final class BuildPlanForecast {
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
             List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             if (!ktSrc.isEmpty()) {
+                // The stamp lives with the MERGED classes (BuildPipelines writes it to
+                // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
+                // Reading the wrong directory never found a stamp, so every Kotlin module
+                // forecast a full compile no matter how cached the build actually was (JK-1259).
                 boolean fresh = !depDirty
                         && !force
-                        && FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
+                        && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
                 steps.add(
                         fresh
                                 ? new BuildPlan.Step("compile-kotlin", BuildPlan.Status.CACHED, "", null)
@@ -344,16 +351,13 @@ public final class BuildPlanForecast {
                 if (compileDirty || testDirty) {
                     steps.add(new BuildPlan.Step("run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Mirror the build's run-tests stamp EXACTLY: main classes are a
-                    // separate computeKey arg, NOT part of the runtime classpath.
+                    // Same factory as live run-tests (JK-1243/JK-1296): default selection sources +
+                    // worker/engine jar extras (nested-engine CLI included) so the key matches the
+                    // stored green marker.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
                     long ts = Perf.start();
-                    String stampKey = TestStamp.computeKey(
-                            allTestSrc,
-                            layout.classesDir(),
-                            lockFile,
-                            testRt,
-                            BuildPipelines.testStampExtras(dir, project));
+                    String stampKey = BuildPipelines.runTestsStampKey(
+                            dir, project, compact, layout.classesDir(), lockFile, testRt);
                     Perf.end("  test-stamp-key", ts);
                     boolean hit = stampKey != null && present(actionCache, stampKey);
                     steps.add(
@@ -416,6 +420,12 @@ public final class BuildPlanForecast {
                 if (resourcesOutOfSync(
                         cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
                     steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
+                } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
+                    // extra-resources come from OUTSIDE the module, so the resource-root walk above
+                    // cannot see them (JK-1262). Editing a plugin's jk-plugin.toml must still rebuild
+                    // whatever bakes it in.
+                    steps.add(new BuildPlan.Step(
+                            "copy-resources", BuildPlan.Status.RUN, "extra resources changed", null));
                 }
                 if (haveTests && !skipTests && !testDirty) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
@@ -437,6 +447,24 @@ public final class BuildPlanForecast {
     }
 
     /** True when any file under {@code resDir} is missing from or differs from its copy in {@code outDir}. */
+    /** True when any {@code [build] extra-resources} file differs from its copy under {@code outDir}. */
+    static boolean extraResourcesOutOfSync(cc.jumpkick.model.JkBuild project, Path dir, Path outDir) {
+        try {
+            for (ExtraResources.Copy c : ExtraResources.resolve(project, dir)) {
+                Path copy = outDir.resolve(c.destination());
+                if (!Files.isRegularFile(copy)) return true;
+                if (Files.size(copy) != Files.size(c.source())) return true;
+                if (Files.getLastModifiedTime(c.source()).compareTo(Files.getLastModifiedTime(copy)) > 0
+                        && Files.mismatch(c.source(), copy) >= 0) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (IOException | RuntimeException e) {
+            return true; // unreadable or unresolvable ⇒ treat as dirty
+        }
+    }
+
     static boolean resourcesOutOfSync(Path resDir, Path outDir) {
         if (!Files.isDirectory(resDir)) return false;
         try (var stream = Files.walk(resDir)) {

@@ -25,7 +25,7 @@ class JsonOutTest {
 
     @Test
     void strings_escape_control_chars() {
-        assertEquals("\"a\\nb\\tc\\u0001d\"", JsonOut.string("a\nb\tcd"));
+        assertEquals("\"a\\nb\\tc\\u0001d\"", JsonOut.string("a\nb\tc\u0001d"));
     }
 
     @Test

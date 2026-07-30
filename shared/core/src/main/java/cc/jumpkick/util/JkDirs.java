@@ -49,6 +49,16 @@ public final class JkDirs {
         return current().cacheDir();
     }
 
+    /** The fetched-artifact store; see {@link #storeDir()}. */
+    public static Path store() {
+        return current().storeDir();
+    }
+
+    /** Pre-split location of the fetched set; see {@link #legacyStoreDir()}. */
+    public static Path legacyStore() {
+        return current().legacyStoreDir();
+    }
+
     public static Path state() {
         return current().stateDir();
     }
@@ -99,6 +109,44 @@ public final class JkDirs {
     }
 
     public Path cacheDir() {
+        return resolve("JK_CACHE_DIR", "cache");
+    }
+
+    /**
+     * Everything jk fetched from somewhere else: the CAS ({@code sha256/}), the per-repo views
+     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, and the JDK catalog. Defaults
+     * to {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
+     *
+     * <h2>Why this is not under {@code cache/}</h2>
+     *
+     * Both are caches in the sense that both can be re-created, but they differ in what re-creating
+     * them costs and who it affects. Rebuilding {@code actions/} costs local CPU. Rebuilding {@code
+     * store/} means re-downloading from Maven Central — and Sonatype enforces a sticky per-IP quota,
+     * so it costs a 429 that outlives the build (JK-1277).
+     *
+     * <p>That distinction matters because {@code JK_CACHE_DIR} is how jk's own tests isolate
+     * themselves. Pointed at a fresh directory, every one of them re-fetched every artifact and every
+     * metadata document, which is what was tripping the rate limit. With the fetched set living here
+     * instead, an isolated run reuses the downloads and still gets a clean action cache.
+     *
+     * <p>Sharing the CAS across runs is safe by construction rather than by convention: a sha either
+     * matches the requested content or it does not, so one run cannot corrupt another's view of a
+     * blob. The mapping that genuinely needs isolating is the action cache — key to outputs — and that
+     * stays under {@link #cacheDir()}.
+     *
+     * <p>{@code JK_HOME} still relocates this along with everything else, which is the way to get a
+     * genuinely cold start.
+     */
+    public Path storeDir() {
+        return resolve("JK_STORE_DIR", "store");
+    }
+
+    /**
+     * The pre-split location of the fetched set: {@code ~/.jk/cache/}. Read-only fallback, so an
+     * install that predates {@link #storeDir()} keeps its downloads instead of silently re-fetching
+     * ~1.6 GB the first time it runs a new jk.
+     */
+    public Path legacyStoreDir() {
         return resolve("JK_CACHE_DIR", "cache");
     }
 

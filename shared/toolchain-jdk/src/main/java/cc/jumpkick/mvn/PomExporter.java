@@ -400,6 +400,13 @@ public final class PomExporter {
                         + " note that Maven 3+ has deprecated LATEST/RELEASE in <version>.");
                 yield "LATEST";
             }
+            case VersionSelector.Snapshot sn -> {
+                report.warning("dependency `"
+                        + module
+                        + "` uses `snapshot`; emitted as `LATEST` —"
+                        + " note that Maven 3+ has deprecated LATEST/RELEASE in <version>.");
+                yield "LATEST";
+            }
         };
     }
 }

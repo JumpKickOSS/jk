@@ -682,10 +682,19 @@ public final class HttpEngineServer implements AutoCloseable {
         try {
             requestId = jobs.triggerBuild(dir);
         } catch (IllegalStateException e) {
+            String msg = e.getMessage() == null ? "" : e.getMessage();
+            // JK-1249: same fingerprint already running — 409 with human message for the UI.
+            if (msg.contains("already running")) {
+                sendJson(
+                        exchange,
+                        409,
+                        JsonOut.object().put("error", msg).toString());
+                return;
+            }
             // Engine is draining (graceful shutdown in progress) — refuse new builds.
             exchange.getResponseHeaders().set("Retry-After", "1");
             sendJson(
-                    exchange, 503, JsonOut.object().put("error", e.getMessage()).toString());
+                    exchange, 503, JsonOut.object().put("error", msg).toString());
             return;
         } catch (IllegalArgumentException e) {
             sendJson(
@@ -894,6 +903,22 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /** Test seam: the web-UI SSE budget, so over-cap stream rejection is deterministically testable. */
+    /**
+     * How many long-lived SSE streams are attached right now (dashboard + MCP).
+     *
+     * <p>Derived from the admission budgets rather than a separate counter, so it cannot drift from what
+     * actually holds a slot: a stream keeps its permit for the life of the connection.
+     *
+     * <p>Used to decide whether an <em>orphaned</em> engine — one no endpoint pointer names, so no CLI can
+     * reach it — still has a browser attached. It deliberately has no say in the <em>displaced</em> case:
+     * a successor needs this port, and a dashboard tab reconnects to it (JK-1293).
+     */
+    public int liveEventStreams() {
+        int web = config.maxEventStreams() - webSse.availablePermits();
+        int mcp = config.mcp().maxEventStreams() - mcpSse.availablePermits();
+        return Math.max(0, web) + Math.max(0, mcp);
+    }
+
     Semaphore webSseAdmission() {
         return webSse;
     }

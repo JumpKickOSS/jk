@@ -136,4 +136,90 @@ class RepoCredentialResolverTest {
         assertThat(r.resolve("central", URI.create("https://repo.maven.apache.org/maven2/"), Optional.empty()))
                 .isEqualTo(RepoCredential.ANONYMOUS);
     }
+
+    // ---- ${VAR} expansion, moved here from the parse (JK-1272) -------------------
+
+    @Test
+    void inline_credentials_expand_env_references(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("REPO_USER", "alice", "REPO_PASS", "s3cret")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        var resolved = r.resolve(
+                "internal",
+                URI.create("https://repo.example/maven"),
+                Optional.of(new RepoCredential.Basic("${REPO_USER}", "${REPO_PASS}")));
+
+        assertThat(resolved).isInstanceOf(RepoCredential.Basic.class);
+        var basic = (RepoCredential.Basic) resolved;
+        assertThat(basic.username()).isEqualTo("alice");
+        assertThat(basic.password()).isEqualTo("s3cret");
+    }
+
+    @Test
+    void a_bearer_token_expands_too(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("TOK", "abc123")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        var resolved = r.resolve(
+                "internal", URI.create("https://repo.example/maven"), Optional.of(new RepoCredential.Bearer("${TOK}")));
+
+        assertThat(((RepoCredential.Bearer) resolved).token()).isEqualTo("abc123");
+    }
+
+    @Test
+    void expansion_composes_with_surrounding_text(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of("USER", "bob")),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        var resolved = r.resolve(
+                "internal",
+                URI.create("https://repo.example/maven"),
+                Optional.of(new RepoCredential.Basic("svc-${USER}-ci", "p")));
+
+        assertThat(((RepoCredential.Basic) resolved).username()).isEqualTo("svc-bob-ci");
+    }
+
+    @Test
+    void an_unset_variable_is_an_error_rather_than_anonymous_access(@TempDir Path dir) {
+        // Silent emptiness would authenticate anonymously against a private repository, which looks
+        // like a permissions problem much later. Strict — just at point of use now, not at parse.
+        var r = resolver(
+                env(Map.of()),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> r.resolve(
+                        "internal",
+                        URI.create("https://repo.example/maven"),
+                        Optional.of(new RepoCredential.Basic("${MISSING}", "p"))))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("MISSING")
+                .hasMessageContaining("internal");
+    }
+
+    @Test
+    void a_credential_without_references_is_untouched(@TempDir Path dir) {
+        var r = resolver(
+                env(Map.of()),
+                MavenSettings.empty(),
+                new RepoCredentialStore(dir),
+                forge(new TokenStore(dir.resolve("tokens"))));
+
+        var resolved = r.resolve(
+                "internal",
+                URI.create("https://repo.example/maven"),
+                Optional.of(new RepoCredential.Basic("plain", "pass")));
+
+        assertThat(((RepoCredential.Basic) resolved).username()).isEqualTo("plain");
+    }
 }

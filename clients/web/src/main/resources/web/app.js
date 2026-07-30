@@ -4,7 +4,7 @@
 // runtime compiler turns it into render functions at load (the CSP 'unsafe-eval' grant).
 
 import { bootstrapToken, get, getText, post, del, events } from './api.js';
-import { foldEvent, outcomeOf, moduleSummary, phaseChainOf, seedFromHistory, weightNumerator, weightDenominator } from './fold.js';
+import { foldEvent, outcomeOf, moduleSummary, phaseChainOf, seedFromHistory, weightNumerator, weightDenominator, ioLines, fmtBytes } from './fold.js';
 
 bootstrapToken();
 
@@ -24,6 +24,7 @@ const ICON_PATHS = {
   'chevron-left': 'M15 18l-6-6 6-6',
   'chevron-right': 'M9 18l6-6-6-6',
   'arrow-up': 'M12 19V5M5 12l7-7 7 7',
+  'arrow-down': 'M12 5v14M19 12l-7 7-7-7',
   check: 'M20 6L9 17l-5-5',
   x: 'M18 6L6 18M6 6l12 12',
   ban: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM5.6 5.6l12.8 12.8',
@@ -953,6 +954,14 @@ Vue.createApp({
       if (millis < 1000) return millis + ' ms';
       if (millis < 60_000) return (millis / 1000).toFixed(1) + ' s';
       return Math.floor(millis / 60_000) + 'm ' + Math.round((millis % 60_000) / 1000) + 's';
+    },
+    // The run's byte counters, one row per scope (remote = network, local = build cache). Both the
+    // rows and the size formatting are pure functions in fold.js so they're covered headlessly.
+    ioLines(card) {
+      return ioLines(card);
+    },
+    bytes(n) {
+      return fmtBytes(n);
     },
     shortDir(dir) {
       const parts = dir.split('/').filter(Boolean);

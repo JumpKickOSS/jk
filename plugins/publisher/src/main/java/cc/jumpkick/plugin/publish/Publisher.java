@@ -41,7 +41,8 @@ import java.util.UUID;
  *
  * <p>The spec is line-oriented ({@code PROJECT_DIR …}, {@code JAR …}, {@code REPO_URL …},
  * {@code SIGN_GPG …}, …); the reply is {@value #PREFIX}-prefixed JSONL terminating in
- * {@code {"t":"result","ok":true,"files":N}} (or {@code "ok":false,"error":…}). Exit 0 success,
+ * {@code {"t":"result","ok":true,"files":N,"bytes":N}} (or {@code "ok":false,"error":…}) — {@code
+ * bytes} is the uploaded payload total the engine folds into the run's I/O ledger. Exit 0 success,
  * 1 publish error, 2 bad arguments.
  */
 public final class Publisher implements Plugin, PublishExtension {
@@ -76,6 +77,7 @@ public final class Publisher implements Plugin, PublishExtension {
             PublishResult result = publish(new SpecPublishContext(spec, out));
             Map<String, Object> fields = new LinkedHashMap<>();
             fields.put("files", result.files());
+            if (result.bytes() > 0) fields.put("bytes", result.bytes());
             if (result.dryRun()) fields.put("dry_run", true);
             out.emit(PluginReply.result(fields));
             out.emit(PluginReply.done(0));
@@ -97,7 +99,11 @@ public final class Publisher implements Plugin, PublishExtension {
         Path jar = ctx.mainArtifact().orElseThrow(() -> new IOException("publish goal needs a built main artifact"));
         URI repoUrl = URI.create(c.string("repoUrl"));
 
-        JkBuild project = JkBuildParser.parse(projectDir.resolve("jk.toml"));
+        // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
+        // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
+        // artifact unconsumable (JK-1255).
+        JkBuild project = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(
+                projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
 
         // Assemble artifacts.
         List<MavenPublisher.Artifact> artifacts = new ArrayList<>();
@@ -204,7 +210,7 @@ public final class Publisher implements Plugin, PublishExtension {
             if (!result.allOk()) {
                 throw new IOException("partial upload failure");
             }
-            return PublishResult.uploaded(result.statusByPath().size());
+            return PublishResult.uploaded(result.statusByPath().size(), result.bytes());
         } finally {
             if (signing.sigstore() instanceof AutoCloseable closeable) {
                 try {

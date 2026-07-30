@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -120,6 +121,11 @@ public final class AutoLock {
             case VersionSelector.Caret c -> satisfiesCaret(c.version(), locked);
             case VersionSelector.Tilde t -> satisfiesTilde(t.version(), locked);
             case VersionSelector.Range r -> satisfiesRange(r.raw(), locked);
+            // Same answer as `latest`, and for the same reason: an existing lock entry is accepted so
+            // an ordinary build neither reaches the network nor drifts. `snapshot` moves when the user
+            // re-locks, not on every build — otherwise the selector would make builds
+            // non-reproducible and offline builds impossible.
+            case VersionSelector.Snapshot sn -> true;
         };
     }
 
@@ -225,11 +231,14 @@ public final class AutoLock {
             // Apply workspace context if this is a module (resolves workspace: deps)
             JkBuild effective = applyWorkspaceContext(dir, build);
 
-            Cas cas = new Cas(cache);
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
+            Cas cas = JkStores.cas(cache);
+            cc.jumpkick.repo.RepoGroup repos =
+                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
                     .withProjectDir(dir)
-                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir));
+                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir))
+                    .withPlatformPolicy(effective.build().platformPolicy())
+                    .withUnmappedPolicy(effective.build().unmappedPolicy());
 
             Lockfile updated = orchestrator.lockConservative(
                     effective, existing, jkVersion, features == null ? List.of() : features, withDefaults, observer);

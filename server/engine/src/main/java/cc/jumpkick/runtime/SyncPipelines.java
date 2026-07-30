@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -169,7 +170,7 @@ public final class SyncPipelines {
                     if (preScanDenominator == 0 && packages > 0) ctx.updateTicks(packages);
                     ctx.label("fetch deps");
 
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     Http http = new Http();
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     boolean mirrorToM2 = build != null && build.project().m2install();
@@ -216,7 +217,7 @@ public final class SyncPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("sync jk workers");
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     try {
                         var report = JkPluginSync.ensureInCas(cas, new JkPluginSync.Observer() {
                             @Override
@@ -265,7 +266,7 @@ public final class SyncPipelines {
                     if (pluginEntries.isEmpty()) return;
                     ctx.updateTicks(pluginEntries.size());
                     ctx.label("sync plugins");
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     JkBuild build = ctx.get(BUILD).orElse(null);
                     cc.jumpkick.repo.RepoGroup repos = build != null
                             ? RepoGroupBuilder.buildFor(build, repoUrl, cas)
@@ -315,7 +316,7 @@ public final class SyncPipelines {
                     if (withSrc == 0) return;
                     ctx.updateTicks((int) withSrc);
                     ctx.label("sync sources");
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
                         public void fetched(Lockfile.Artifact pkg) {
@@ -364,7 +365,7 @@ public final class SyncPipelines {
                     }
                     if (modules.isEmpty()) return;
 
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     Http http = new Http();
                     boolean refresh = SessionContext.current().config().forceOr(false);
 

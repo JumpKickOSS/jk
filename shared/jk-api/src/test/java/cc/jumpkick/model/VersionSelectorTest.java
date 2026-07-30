@@ -49,6 +49,23 @@ class VersionSelectorTest {
     }
 
     @Test
+    void snapshot_keyword() {
+        // The deliberate opt-in for pre-releases (JK-1287); every other floating selector is
+        // stable-only.
+        assertThat(VersionSelector.parse("snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
+        assertThat(VersionSelector.parse("SNAPSHOT")).isInstanceOf(VersionSelector.Snapshot.class);
+        assertThat(VersionSelector.parseFloating("snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
+        assertThat(VersionSelector.parse("snapshot").raw()).isEqualTo("snapshot");
+    }
+
+    @Test
+    void a_version_that_merely_contains_snapshot_is_not_the_keyword() {
+        // `1.0-SNAPSHOT` is a Maven version, not the selector.
+        assertThat(VersionSelector.parse("1.0-SNAPSHOT")).isInstanceOf(VersionSelector.Exact.class);
+        assertThat(VersionSelector.parseFloating("1.0-SNAPSHOT")).isInstanceOf(VersionSelector.Caret.class);
+    }
+
+    @Test
     void parseFloating_bare_version_is_caret() {
         VersionSelector s = VersionSelector.parseFloating("2.18.2");
         assertThat(s).isInstanceOf(VersionSelector.Caret.class);

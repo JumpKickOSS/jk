@@ -69,7 +69,7 @@ public final class PluginCommands {
             for (var tool : PluginBuild.fetchStepDependencies(
                             project,
                             dir,
-                            new cc.jumpkick.cache.Cas(cache),
+                            cc.jumpkick.cache.JkStores.cas(cache),
                             PluginBuild.sdkPins(dir.resolve("jk.lock")),
                             true)
                     .entrySet()) {

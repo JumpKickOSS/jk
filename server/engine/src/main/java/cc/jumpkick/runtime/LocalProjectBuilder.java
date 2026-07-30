@@ -73,6 +73,8 @@ public final class LocalProjectBuilder {
         Lockfile lock = new LockOrchestrator(repos)
                 .withProjectDir(projectDir)
                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(project, projectDir))
+                .withPlatformPolicy(project.build().platformPolicy())
+                .withUnmappedPolicy(project.build().unmappedPolicy())
                 .lock(project, jkVersion);
         List<Path> classpath =
                 new ArrayList<>(new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN));
@@ -82,7 +84,7 @@ public final class LocalProjectBuilder {
         Files.createDirectories(classes);
 
         boolean simple = CompileSupport.isSimpleLayout(project.project(), projectDir);
-        CompileSupport.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
+        cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project.project(), projectDir);
         Path javaRoot = simple ? projectDir.resolve("src") : projectDir.resolve("src/main/java");
 
         // 2a. Kotlin first — a mixed module's Kotlin reads Java *declarations*
@@ -170,6 +172,7 @@ public final class LocalProjectBuilder {
                 p.jdk(),
                 p.java(),
                 p.kotlin(),
+                p.groovy(),
                 p.sourcesMode(),
                 p.description(),
                 p.m2install(),

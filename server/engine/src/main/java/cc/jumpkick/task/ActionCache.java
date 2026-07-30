@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import java.io.File;
@@ -62,6 +63,9 @@ public final class ActionCache {
                     // outputDir but aren't action outputs — exclude them so we
                     // don't accidentally cache a stamp from a previous run.
                     if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
+                    // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
+                    // plugin-sdk copyTree convention) is never an action output (JK-1220).
+                    if (hasJkScratchSegment(outputDir.relativize(file))) continue;
                     // Hash once, then COPY into the CAS (never link — see Cas.putFile).
                     String hex = Hashing.sha256Hex(file);
                     cas.putFile(file, hex);
@@ -76,6 +80,14 @@ public final class ActionCache {
             return new ActionRecord(taskId, actionKey, inputs, Map.of(), Map.of());
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs);
+    }
+
+    /** True when any path segment starts with {@code .jk-} — plugin-private scratch, never cached. */
+    static boolean hasJkScratchSegment(Path rel) {
+        for (Path seg : rel) {
+            if (seg.toString().startsWith(".jk-")) return true;
+        }
+        return false;
     }
 
     /** True when {@code inputs} includes at least one source-file fingerprint (not only flags/cp). */
@@ -110,6 +122,7 @@ public final class ActionCache {
             throws IOException {
         Files.createDirectories(keysDir());
         Files.createDirectories(tasksDir());
+        meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
         // truncated keys/ or tasks/ file (JK-1069). Order preserved: key before task pointer.
@@ -142,6 +155,7 @@ public final class ActionCache {
         for (Map.Entry<String, byte[]> e : stamps.entrySet()) {
             Files.write(outputDir.resolve(e.getKey()), e.getValue());
         }
+        meter(record.outputs(), false); // cache hit: these bytes come back out of the cache
         AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> entry : record.outputs().entrySet()) {
             Path target = outputDir.resolve(entry.getKey());
@@ -167,17 +181,83 @@ public final class ActionCache {
         for (String sha : record.outputs().values()) {
             if (!Files.isRegularFile(cas.pathFor(sha))) return false;
         }
+        // Clear the DIRECTORY roots this record owns before copying (JK-1245): a multi-file
+        // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
+        // otherwise keeps stale extras beside the restored set — real packager runs clean
+        // up, restores must too. Top-level FILE outputs are handled per-file below.
+        java.util.Set<String> dirRoots = new java.util.TreeSet<>();
+        for (String rel : record.outputs().keySet()) {
+            int slash = rel.indexOf('/');
+            if (slash > 0) dirRoots.add(rel.substring(0, slash));
+        }
+        // Prune rather than delete the root outright. The recorded outputs are exactly the files
+        // about to be restored, so deleting one guarantees the byte-identical check below misses and
+        // re-copies it with a fresh mtime — which is the precise churn JK-1258 removed, since
+        // FreshnessStamp compares classpath entries by mtime. Dropping only the files this record
+        // does NOT own clears stale extras just as well and leaves the unchanged ones alone.
+        if (!dirRoots.isEmpty()) {
+            java.util.Set<Path> owned = new java.util.HashSet<>();
+            for (String rel : record.outputs().keySet()) {
+                owned.add(baseDir.resolve(rel).normalize());
+            }
+            for (String root : dirRoots) {
+                pruneUnowned(baseDir.resolve(root), owned);
+            }
+        }
+        meter(record.outputs(), false);
         AccessLedger ledger = AccessLedger.atDefaultPath();
         for (Map.Entry<String, String> e : record.outputs().entrySet()) {
             Path target = baseDir.resolve(e.getKey());
             Files.createDirectories(target.getParent());
-            Files.deleteIfExists(target);
-            // COPY, never link: a packager may later rewrite the target in place, and a link
-            // would let that rewrite mutate the blob (see Cas.putFile).
-            Files.copy(cas.pathFor(e.getValue()), target);
+            // Leave a byte-identical target alone. Re-copying it is not merely wasted I/O: it
+            // bumps the file's mtime, and FreshnessStamp compares classpath entries by mtime — so
+            // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
+            // full KSP round (and Kotlin recompile) on every single build (JK-1258).
+            if (!identicalTo(target, e.getValue())) {
+                Files.deleteIfExists(target);
+                // COPY, never link: a packager may later rewrite the target in place, and a link
+                // would let that rewrite mutate the blob (see Cas.putFile).
+                Files.copy(cas.pathFor(e.getValue()), target);
+            }
             ledger.touch(e.getValue());
         }
         return true;
+    }
+
+    /**
+     * Delete every file under {@code dir} that {@code owned} does not name, then any directory left
+     * empty — so a restore clears stale extras (JK-1245) without disturbing the outputs it is about
+     * to restore (JK-1258). Deepest-first, so a directory is only tested once its children are gone.
+     */
+    private static void pruneUnowned(Path dir, java.util.Set<Path> owned) throws IOException {
+        if (!Files.isDirectory(dir)) return;
+        List<Path> deepestFirst;
+        try (var walk = Files.walk(dir)) {
+            deepestFirst = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+        }
+        for (Path p : deepestFirst) {
+            if (Files.isDirectory(p)) {
+                if (!p.equals(dir) && isEmptyDir(p)) Files.deleteIfExists(p);
+            } else if (!owned.contains(p.normalize())) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        try (var entries = Files.list(dir)) {
+            return entries.findAny().isEmpty();
+        }
+    }
+
+    /**
+     * True when {@code target} already holds exactly the CAS blob {@code sha}. Size is checked
+     * first so the hash is only paid when it can actually match.
+     */
+    private boolean identicalTo(Path target, String sha) throws IOException {
+        if (!Files.isRegularFile(target)) return false;
+        if (Files.size(target) != Files.size(cas.pathFor(sha))) return false;
+        return sha.equals(Hashing.sha256Hex(target));
     }
 
     /**
@@ -198,6 +278,35 @@ public final class ActionCache {
             outputs.put(baseDir.relativize(a).toString().replace(File.separatorChar, '/'), hex);
         }
         return storeWithOutputs(taskId, actionKey, inputs, outputs);
+    }
+
+    /**
+     * Fold one action's output bytes into the run's ledger: {@code intoCache} for a store, else a
+     * restore. Sizes come off the CAS blobs at rest — a stat per output, nothing wrapped around the
+     * copy — and land as the run's {@code local} traffic on the dashboard.
+     */
+    private void meter(Map<String, String> outputs, boolean intoCache) {
+        if (outputs.isEmpty()) return;
+        long bytes = 0;
+        for (String sha : outputs.values()) {
+            // Not every record's values are blob hashes: a marker record (run-tests) parks small
+            // scalars here instead, so meter only what is actually a CAS object.
+            if (isSha256Hex(sha)) bytes += IoLedger.sizeOf(cas.pathFor(sha));
+        }
+        IoLedger io = SessionContext.current().io();
+        if (intoCache) io.localUp(bytes);
+        else io.localDown(bytes);
+    }
+
+    /** True for a 64-char lowercase-or-uppercase hex string — the shape {@link Cas} keys blobs by. */
+    private static boolean isSha256Hex(String s) {
+        if (s == null || s.length() != 64) return false;
+        for (int i = 0; i < 64; i++) {
+            char c = s.charAt(i);
+            boolean hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+            if (!hex) return false;
+        }
+        return true;
     }
 
     // --- record + serialization --------------------------------------------

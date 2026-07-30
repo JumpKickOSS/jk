@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.RepositorySpec;
 import cc.jumpkick.model.ToolCoordSpec;
@@ -58,7 +59,7 @@ public final class ToolPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve " + coordLabel);
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     URI url = repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url();
                     RepoGroup repos = RepoGroup.of(new MavenRepo("central", url, new Http(), cas));
                     try {

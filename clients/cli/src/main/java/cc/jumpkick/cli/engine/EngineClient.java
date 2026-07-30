@@ -680,7 +680,22 @@ public final class EngineClient {
             java.net.URI repoUrl,
             boolean offline,
             boolean force,
-            boolean verbose) {}
+            boolean verbose,
+            /** Optional {@code enforced}|{@code floor} platform override (JK-1206); null = project default. */
+            String platform) {
+        /** Back-compat without platform override. */
+        public UpdateRequest(
+                Path entryDir,
+                Path cache,
+                List<String> features,
+                boolean noDefaultFeatures,
+                java.net.URI repoUrl,
+                boolean offline,
+                boolean force,
+                boolean verbose) {
+            this(entryDir, cache, features, noDefaultFeatures, repoUrl, offline, force, verbose, null);
+        }
+    }
 
     /** Everything an engine-hosted {@code jk sync} needs — mirrors {@code SyncCommand}'s local fields. */
     public record SyncRequest(
@@ -1950,8 +1965,25 @@ public final class EngineClient {
     }
 
     /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
+    /**
+     * Hand the spawned engine the environment it cannot otherwise see.
+     *
+     * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
+     * is invisible to it. That is why {@code JK_STORE_DIR} did nothing before JK-1289: the engine
+     * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
+     * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
+     * engine and reaches it.
+     */
     private static void forwardResolveEnv(Map<String, String> env) {
-        for (String key : List.of("JK_RESOLVE_TIMEOUT_MS", "JK_RESOLVE_MAX_DECISIONS")) {
+        for (String key : List.of(
+                "JK_RESOLVE_TIMEOUT_MS",
+                "JK_RESOLVE_MAX_DECISIONS",
+                "JK_STORE_DIR",
+                "JK_CACHE_DIR",
+                "JK_M2_LOCAL",
+                "JK_M2_LOOKUP",
+                "JK_M2_LINK",
+                "JK_CENTRAL_MIRROR")) {
             String v = System.getenv(key);
             if (v != null && !v.isBlank()) env.put(key, v);
         }

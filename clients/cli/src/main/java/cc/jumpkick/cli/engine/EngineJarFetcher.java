@@ -40,7 +40,7 @@ final class EngineJarFetcher {
         return fetch(
                 releasesBase,
                 version,
-                new cc.jumpkick.cache.Cas(cc.jumpkick.util.JkDirs.cache()),
+                cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()),
                 cc.jumpkick.cache.VersionStore.current(),
                 cc.jumpkick.task.CachePruneScheduler.resolveJkExe()
                         .map(Path::of)

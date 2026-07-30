@@ -368,7 +368,7 @@ class NewCommandTest {
         assertThat(tempDir.resolve("jk.toml")).exists();
         // No JLine raw-mode escape sequences should appear on stdout in flag mode.
         var output = captured.toString(StandardCharsets.UTF_8);
-        assertThat(output).doesNotContain("[?1049h"); // alt-screen toggle
-        assertThat(output).doesNotContain("[6n"); // device status report (raw mode cursor query)
+        assertThat(output).doesNotContain("\u001b[?1049h"); // alt-screen toggle
+        assertThat(output).doesNotContain("\u001b[6n"); // device status report (raw mode cursor query)
     }
 }

@@ -412,6 +412,30 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .ago { color: var(--dim); font-size: 11.5px; }
 /* ETA countdown on a running card — dim mono, sits just before the elapsed timer. */
 .eta { color: var(--dim); font-size: 11.5px; font-family: var(--mono); }
+
+/* Per-run byte counters, stacked at the card's right edge under the elapsed/ago pair: one row per
+ * scope, `scope  N ↑ / N ↓`. Deliberately colourless (mono + muted) — colour on a card means state,
+ * and a byte count is not a state. Both numbers are right-aligned in a fixed column with tabular
+ * figures, so the two rows' digits (and their arrows) line up under each other. */
+.io {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  margin-top: 3px;
+}
+.io-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font: 11px/1.4 var(--mono);
+  color: var(--mu);
+  font-variant-numeric: tabular-nums;
+}
+.io-row .ico { width: 0.85em; height: 0.85em; color: var(--dim); }
+.io-scope { color: var(--dim); margin-right: 3px; }
+.io-sep { color: var(--dim); }
+.io-n { min-width: 4.6em; text-align: right; }
 .dir { color: var(--path); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* step chain — the design's DAG strip */
@@ -554,6 +578,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; align-self: center; }
 .dot.running { background: var(--run); }
 .dot.success { background: var(--ok); }
+/* Pure cache check (JK-1296) — same green family, slightly muted */
+.dot.checked { background: rgba(var(--ok-rgb), 0.55); }
 .dot.failed { background: var(--err); }
 .dot.cancelled, .dot.skipped { background: var(--warn); }
 

@@ -87,27 +87,53 @@ public final class QuarkusAugmentMain {
         modelResolver.relink(appCoords, classesDir);
 
         List<Dependency> direct = new ArrayList<>();
+        Set<String> directKeys = new LinkedHashSet<>();
         for (RuntimeCoord e : extensions) {
-            direct.add(new ArtifactDependency(e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
+            String key = e.group() + ":" + e.artifact();
+            if (directKeys.add(key)) {
+                direct.add(new ArtifactDependency(
+                        e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
+            }
+        }
+        // Workspace / path jars (jk path deps) have no Maven layout GAV — install them into the
+        // bootstrap local repo and declare as direct deps so they land in quarkus-app/lib/main.
+        int pathDeps = 0;
+        for (RuntimeCoord r : runtime) {
+            if (!isPathOrUnknown(r)) continue;
+            RuntimeCoord fixed = synthesizeCoords(r);
+            ArtifactCoords c = ArtifactCoords.jar(fixed.group(), fixed.artifact(), fixed.version());
+            modelResolver.install(c, r.jar());
+            String key = fixed.group() + ":" + fixed.artifact();
+            if (directKeys.add(key)) {
+                direct.add(new ArtifactDependency(
+                        fixed.group(), fixed.artifact(), "", "jar", fixed.version(), "compile", false));
+                pathDeps++;
+            }
         }
         if (direct.isEmpty()) {
             // Fall back to all non-unknown runtime coords as direct deps.
             for (RuntimeCoord r : runtime) {
                 if (r.group().startsWith("unknown")) continue;
-                direct.add(new ArtifactDependency(r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
+                String key = r.group() + ":" + r.artifact();
+                if (directKeys.add(key)) {
+                    direct.add(new ArtifactDependency(
+                            r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
+                }
             }
         }
         ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
 
-        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + ")…");
+        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size()
+                + " pathDeps=" + pathDeps + ")…");
         var model = modelResolver.resolveManagedModel(appCoords, direct, managing, Set.of(appCoords.getKey()));
         System.err.println("jk-quarkus-augment: model deps=" + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, jkCentral, m2, maven);
 
+        String packageType = normalizePackageType(System.getProperty("jk.quarkus.package.type", "fast-jar"));
         Properties bsp = new Properties();
-        bsp.setProperty("quarkus.package.jar.type", "fast-jar");
+        bsp.setProperty("quarkus.package.jar.type", packageType);
         bsp.setProperty("quarkus.analytics.disabled", "true");
 
         Path augmentOut = Files.createDirectories(scratch.resolve("out"));
@@ -125,10 +151,26 @@ public final class QuarkusAugmentMain {
                 .setRebuild(false)
                 .build();
 
-        System.err.println("jk-quarkus-augment: bootstrap + createProductionApplication…");
+        System.err.println("jk-quarkus-augment: bootstrap + createProductionApplication (package="
+                + packageType + ")…");
+        Path producedJar = null;
         try (CuratedApplication curated = bs.bootstrap()) {
             AugmentResult result = curated.createAugmentor().createProductionApplication();
-            System.err.println("jk-quarkus-augment: result jar=" + result.getJar());
+            if (result.getJar() != null) {
+                producedJar = result.getJar().getPath();
+            }
+            System.err.println("jk-quarkus-augment: result jar=" + producedJar);
+        }
+
+        if ("uber-jar".equals(packageType)) {
+            Path uber = findProducedUberJar(augmentOut, producedJar);
+            if (uber == null || !Files.isRegularFile(uber)) {
+                throw new IllegalStateException("uber-jar not produced under " + augmentOut);
+            }
+            Path dest = targetDir.resolve("quarkus-uber.jar");
+            Files.copy(uber, dest, StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("jk-quarkus-augment: " + dest);
+            return;
         }
 
         Path quarkusApp = augmentOut.resolve("quarkus-app");
@@ -154,6 +196,30 @@ public final class QuarkusAugmentMain {
         copyTree(layoutRoot, destApp);
         Files.copy(runJar, targetDir.resolve("quarkus-run.jar"), StandardCopyOption.REPLACE_EXISTING);
         System.out.println("jk-quarkus-augment: " + targetDir.resolve("quarkus-run.jar"));
+    }
+
+    private static String normalizePackageType(String raw) {
+        if (raw == null || raw.isBlank()) return "fast-jar";
+        String t = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("uber-jar".equals(t) || "uberjar".equals(t) || "uber".equals(t) || "fat-jar".equals(t)) {
+            return "uber-jar";
+        }
+        return "fast-jar";
+    }
+
+    private static Path findProducedUberJar(Path augmentOut, Path producedJar) throws IOException {
+        if (producedJar != null && Files.isRegularFile(producedJar)) {
+            return producedJar;
+        }
+        try (var walk = Files.walk(augmentOut, 5)) {
+            return walk.filter(Files::isRegularFile)
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.endsWith("-runner.jar") || n.endsWith("-runner");
+                    })
+                    .findFirst()
+                    .orElse(null);
+        }
     }
 
     private static void injectPlatform(
@@ -204,6 +270,39 @@ public final class QuarkusAugmentMain {
     }
 
     private record RuntimeCoord(String group, String artifact, String version, Path jar) {}
+
+    /** Path/workspace jars written as {@code unknown:unknown:0} by the packager, or non-Maven paths. */
+    private static boolean isPathOrUnknown(RuntimeCoord r) {
+        return r.group().startsWith("unknown")
+                || "0".equals(r.version())
+                        && r.jar() != null
+                        && !r.jar().toString().replace('\\', '/').contains("/repos/");
+    }
+
+    /**
+     * Derive installable GAV for a workspace jar: prefer {@code name-version.jar} filename, else a
+     * stable hash of the path.
+     */
+    private static RuntimeCoord synthesizeCoords(RuntimeCoord r) {
+        if (!r.group().startsWith("unknown") && !"0".equals(r.version())) {
+            return r;
+        }
+        String file = r.jar().getFileName().toString();
+        String base = file.endsWith(".jar") ? file.substring(0, file.length() - 4) : file;
+        // domain-0.1.0 → artifact=domain version=0.1.0
+        String artifact = base;
+        String version = "0.1.0";
+        int dash = base.lastIndexOf('-');
+        if (dash > 0 && dash < base.length() - 1) {
+            String maybeVer = base.substring(dash + 1);
+            if (maybeVer.matches("[0-9].*")) {
+                artifact = base.substring(0, dash);
+                version = maybeVer;
+            }
+        }
+        String group = "jk.workspace";
+        return new RuntimeCoord(group, artifact, version, r.jar());
+    }
 
     private static List<RuntimeCoord> parseRuntimeList(Path file) throws Exception {
         List<RuntimeCoord> out = new ArrayList<>();

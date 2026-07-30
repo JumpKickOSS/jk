@@ -67,6 +67,10 @@ tasks.withType<Test>().configureEach {
     // Fail hung methods instead of multi-hour freezes (override per-task if needed).
     systemProperty("junit.jupiter.execution.timeout.default", "120s")
     systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
+    // Per-host rate-limit cooldowns are keyed by host, and every in-process HTTP test serves from
+    // 127.0.0.1 — so without a throwaway store one test's simulated 429 cools down loopback for every
+    // other test, and the record lands in the developer's real ~/.jk (JK-1276, and the JK-1292 lesson).
+    systemProperty("jk.http.cooldown.dir", layout.buildDirectory.dir("test-http-cooldown").get().asFile.absolutePath)
 }
 
 tasks.named<Test>("test") {

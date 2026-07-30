@@ -440,7 +440,8 @@ class EngineServerTest {
             String pipelineFinish = null;
             String lockFinish = null;
             String buildError = null;
-            boolean sawLeafPackage = false;
+            boolean sawAnyPackage = false;
+            int lastPackageTotal = -1;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 c.sendLine(EngineProtocol.lockRequest(
                         project.toString(), cache.toString(), List.of(), false, false, repoUrl, false, false, false));
@@ -450,8 +451,12 @@ class EngineServerTest {
                     types.add(type);
                     switch (type) {
                         case EngineProtocol.LOCK_MODULE -> lockModule = line;
-                        case EngineProtocol.LOCK_PACKAGE ->
-                            sawLeafPackage |= "com.foo:leaf".equals(Jsonl.str(line, "name"));
+                        case EngineProtocol.LOCK_PACKAGE -> {
+                            // Coalesced stream (2f3522d): latest package + running total —
+                            // individual names are progress samples, not a per-package feed.
+                            sawAnyPackage = true;
+                            lastPackageTotal = Jsonl.intValue(line, "total", -1);
+                        }
                         case EngineProtocol.PIPELINE_FINISH -> pipelineFinish = line;
                         case EngineProtocol.LOCK_FINISH -> lockFinish = line;
                         // Terminal too (a pre-pipeline failure): break instead of waiting forever for a
@@ -474,7 +479,10 @@ class EngineServerTest {
             assertThat(Jsonl.str(lockModule, "dir")).isEqualTo(project.toString());
             assertThat(Jsonl.str(lockModule, "coord")).isEqualTo("com.example:app");
             assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
-            assertThat(sawLeafPackage).as("lock-package event for com.foo:leaf").isTrue();
+            assertThat(sawAnyPackage).as("at least one coalesced lock-package event").isTrue();
+            assertThat(lastPackageTotal)
+                    .as("running total covers every locked package")
+                    .isEqualTo(3); // leaf + 2 junit defaults
 
             assertThat(pipelineFinish).isNotNull();
             assertThat(Jsonl.bool(pipelineFinish, "success", false)).isTrue();

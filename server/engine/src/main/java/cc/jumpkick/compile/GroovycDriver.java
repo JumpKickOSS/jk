@@ -115,6 +115,7 @@ public final class GroovycDriver {
         }
         for (Path src : request.sources()) sw.source(src);
         for (Path cp : request.classpath()) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
+        for (Path pp : request.processorPath()) sw.cp(pp, PluginProtocol.ROLE_PROCESSOR);
         for (String arg : request.extraArgs()) sw.arg(arg);
         Path spec = Files.createTempFile("jk-groovyc-", ".spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);

@@ -3,11 +3,21 @@ package cc.jumpkick.run;
 
 import java.util.List;
 
-/** Aggregate test outcome: counts plus failures for exit codes and UI. */
-public record TestSummary(long total, long succeeded, long failed, long skipped, List<Failure> failures) {
+/**
+ * Aggregate test outcome: counts plus failures for exit codes and UI. {@code classes} is the
+ * distinct executed test-class count when the runner could derive it, else 0 (unknown) — it
+ * feeds the hierarchical class-rate ETA prior (JK-1226), never user-facing totals.
+ */
+public record TestSummary(
+        long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
 
     public TestSummary {
         failures = List.copyOf(failures);
+    }
+
+    /** Classes unknown (client-side reconstructions, crash synthetics). */
+    public TestSummary(long total, long succeeded, long failed, long skipped, List<Failure> failures) {
+        this(total, succeeded, failed, skipped, 0, failures);
     }
 
     public boolean allPassed() {

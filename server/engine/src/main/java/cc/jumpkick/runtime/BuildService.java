@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.Linking;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -15,6 +16,7 @@ import cc.jumpkick.run.Pipeline;
 import cc.jumpkick.run.PipelineKey;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.run.StepStatus;
 import cc.jumpkick.run.TestSummary;
 import cc.jumpkick.task.ActionCache;
 import java.io.IOException;
@@ -202,7 +204,7 @@ public final class BuildService {
             fps = Map.of();
         }
         try {
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
             Set<Path> dirty = new HashSet<>();
             for (BuildPlan.Module m : BuildPlanForecast.of(graph, cas, ac, cache, skipTests)) {
@@ -239,7 +241,7 @@ public final class BuildService {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
         List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
@@ -300,7 +302,21 @@ public final class BuildService {
                 BuildPipelines.appendDeclaredTails(builder, inputs);
                 Pipeline pipeline = builder.build();
                 int weight = pipeline.estimatedTotalWeight();
-                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline));
+                // Charge nothing for the steps this module's own forecast says are cached, or a
+                // "Fully Cached" plan still advertises a full-build ETA (JK-1260). A module the
+                // forecast did not mark dirty does no work at all, so every step is free — not just
+                // the compile/package ones the forecaster models by name (resolve, ensure-jdk,
+                // copy-resources and friends are in the pipeline but never in its step list, and
+                // charging them full price left a cached workspace estimating ~1s for a 1ms build).
+                Set<String> cachedSteps = new HashSet<>();
+                if (m.dirty()) {
+                    for (BuildPlan.Step s : m.steps()) {
+                        if (s.cached()) cachedSteps.add(s.name());
+                    }
+                } else {
+                    for (cc.jumpkick.run.Step s : pipeline.steps()) cachedSteps.add(s.name());
+                }
+                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline, cachedSteps));
                 // Warm the shape memo for the next explain/build ETA path.
                 if (!distrust && entryDir != null) {
                     PreflightMemo.storeShape(entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
@@ -330,6 +346,14 @@ public final class BuildService {
                     serial,
                     parallelTests,
                     dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
+            // Nothing to rebuild: the run is a cache-verify pass, so the whole-build history anchor
+            // is the wrong reference — applying it reported this project's average FULL build (~3s)
+            // for a 2ms no-op, directly above a plan that said "Fully Cached" (JK-1260). Floored at
+            // 1ms so it renders as a real "<1s" rather than the "unknown" that 0 means. Checked
+            // before the prior below, because no prior is the right prior for zero work.
+            if (plan.modules().stream().noneMatch(BuildPlan.Module::dirty)) {
+                return Math.max(base, 1);
+            }
             // Shape-aware prior (JK-1156): explain --rebuild uses rebuild history when set.
             HistoryShape shape = new HistoryShape(
                     SessionContext.current().config().rebuildOr(false)
@@ -491,7 +515,6 @@ public final class BuildService {
         // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // JK-1100: when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
-        Map<Path, String> preflightFps = Map.of();
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
             dirty = req.dirtyHint();
@@ -501,7 +524,6 @@ public final class BuildService {
             listener.onPreflight("checking", 0, 0, "Checking cache…");
             Preflight preflight = forecastWithFingerprints(graph, req.cache(), req.skipTests(), req.entryDir());
             dirty = preflight.dirty();
-            preflightFps = preflight.fingerprints();
             listener.onPreflight(
                     "checking", 1, 1, dirty.isEmpty() ? "All modules up to date" : dirty.size() + " module(s) dirty");
         }
@@ -678,7 +700,13 @@ public final class BuildService {
                             long elapsed = (System.nanoTime() - start) / 1_000_000;
                             listener.onEtaEstimate(elapsed
                                     + EffortWeights.scheduleMillis(
-                                            rem, concurrency, false, parallelTests, Math.round(liveMpw)));
+                                            rem,
+                                            concurrency,
+                                            false,
+                                            parallelTests,
+                                            // sub-0.5 rates round to 0 and multiply every bound
+                                            // away — the countdown snapped to elapsed (JK-1226)
+                                            Math.max(1, Math.round(liveMpw))));
                         }
                         return null;
                     },
@@ -693,13 +721,19 @@ public final class BuildService {
             StepTimings.record(req.cache(), timingSamples, StepTimings.DEFAULT_ALPHA, System.currentTimeMillis());
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
-            // JK-1100: sources unchanged after a successful full forecast path ⇒ next cold process
-            // should see "all clean" without re-walking action keys. Dirty-hint paths (selection)
+            // JK-1100 / JK-1296: after a successful full forecast path, store an all-clean dirty
+            // memo so the next process skips the action-key walk. Dirty-hint paths (selection)
             // leave the memo alone — we didn't recompute the whole graph's dirtiness. Test-only
             // runs also leave it alone: they never package, so "clean" would be a lie for build.
-            // Fingerprints come from the preflight snapshot, never post-build (mid-build edits).
-            if (req.dirtyHint() == null && !req.testOnly() && !preflightFps.isEmpty()) {
-                PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), preflightFps);
+            // Re-snapshot fingerprints *now* (not the preflight snapshot): auto-lock / engine-pin
+            // rewrites during the run would otherwise poison the next preflight (memo miss →
+            // re-enter every module). Mid-build source edits during a monorepo build are not a
+            // supported workflow; the next intentional edit still busts the memo on the following run.
+            if (req.dirtyHint() == null && !req.testOnly()) {
+                Map<Path, String> fps = PreflightMemo.snapshotFingerprints(graph, req.skipTests());
+                if (!fps.isEmpty()) {
+                    PreflightMemo.storeDirty(req.entryDir(), graph, req.skipTests(), Set.of(), fps);
+                }
             }
         }
         WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
@@ -913,9 +947,11 @@ public final class BuildService {
             String shaped = s.dirKey(entryDir);
             var exact = metrics.invocation(kind, shaped).map(BuildMetrics.Entry::ok);
             if (exact.isPresent() && exact.get().count() > 0) return exact.get();
-            // Same path, any dirty-count for this kind.
-            var bare = metrics.invocation(kind, entryDir.toString()).map(BuildMetrics.Entry::ok);
-            if (bare.isPresent() && bare.get().count() > 0) return bare.get();
+            // Same path, any dirty-count for this kind — the write side always shapes the
+            // key (path#dN), so merge across shapes instead of an exact bare lookup that
+            // reads a never-written key (JK-1226).
+            BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, entryDir.toString());
+            if (shapes.count() > 0) return shapes;
             // Fall back to plain "build" for the path (pre-1156 rows).
             if (!"build".equals(kind)) {
                 var legacy = metrics.invocation("build", entryDir.toString()).map(BuildMetrics.Entry::ok);
@@ -1007,15 +1043,45 @@ public final class BuildService {
             PipelineResult r = plan.pipeline().run();
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(plan.pipeline());
-            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), r.success(), exit, ms);
+            // Failures always count as work; successes count only when a productive step ran
+            // (not pure cache hits / no-ops — JK-1296).
+            boolean didWork = !r.success() || moduleDidWork(r);
+            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), r.success(), exit, ms, didWork);
             listener.onModuleFinish(o);
             return o;
         } catch (RuntimeException e) {
             long ms = (System.nanoTime() - t0) / 1_000_000;
-            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), false, 1, ms);
+            ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), false, 1, ms, true);
             listener.onModuleFinish(o);
             return o;
         }
+    }
+
+    /**
+     * True when any productive step (compile / test / package / native / image / …) terminated
+     * {@link StepStatus#SUCCESS} rather than cache-hit {@link StepStatus#SKIPPED}. Setup steps
+     * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
+     * cached and must not make a pure check look like a rebuild (JK-1296).
+     */
+    public static boolean moduleDidWork(PipelineResult r) {
+        for (PipelineResult.StepReport s : r.steps()) {
+            if (s.status() != StepStatus.SUCCESS) continue;
+            if (isProductiveStep(s.name())) return true;
+        }
+        return false;
+    }
+
+    /** Steps whose real work (not a no-op/cache hit) means the module was "built", not just checked. */
+    public static boolean isProductiveStep(String name) {
+        if (name == null || name.isEmpty()) return false;
+        return name.startsWith("compile")
+                || name.equals(cc.jumpkick.run.StepNames.RUN_TESTS)
+                || name.startsWith("package")
+                || name.startsWith("native")
+                || name.startsWith("write-image")
+                || name.startsWith("image-")
+                || name.contains("ksp")
+                || name.startsWith("transform");
     }
 
     /** Test failures exit 4; every other pipeline failure exits 1. */

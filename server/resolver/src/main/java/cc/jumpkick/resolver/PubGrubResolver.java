@@ -4,6 +4,7 @@ package cc.jumpkick.resolver;
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -71,10 +72,32 @@ public final class PubGrubResolver implements Resolver {
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
+        this(repos, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
+    }
+
+    /** As above with {@link PlatformPolicy} (JK-1206); unmapped fills default to MEDIATE. */
+    public PubGrubResolver(
+            RepoGroup repos,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy) {
+        this(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, null);
+    }
+
+    /** Full constructor with both platform policies (JK-1206/JK-1241). */
+    public PubGrubResolver(
+            RepoGroup repos,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy,
+            cc.jumpkick.model.UnmappedPolicy unmappedPolicy) {
         EffectivePomBuilder builder = new EffectivePomBuilder(repos);
         this.pomBuilder = builder;
         this.kmp = kmp;
-        this.source = new MavenPackageSource(repos, builder, bomConstraints, lockedVersionPrefs, kmp);
+        this.source = new MavenPackageSource(
+                repos, builder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, unmappedPolicy);
     }
 
     /** Test seam: lets unit tests inject an in-memory {@link PackageSource}. */
@@ -114,7 +137,18 @@ public final class PubGrubResolver implements Resolver {
         try {
             PubGrubSolver solver = new PubGrubSolver(source);
             if (onDecision != null) solver.withOnDecision(onDecision);
-            decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            try {
+                decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            } catch (UnsatisfiableException first) {
+                // Bounded retry with full histories (JK-1216/JK-1241): compact candidate lists
+                // can make a satisfiable graph LOOK unsat when conflict resolution never
+                // revisits the starved package. Source caches make the retry cheap; a real
+                // unsat fails again and its (better-informed) diagnostics win.
+                if (!solver.maybeIncomplete()) throw first;
+                PubGrubSolver wide = new PubGrubSolver(source).withWideUniverses();
+                if (onDecision != null) wide.withOnDecision(onDecision);
+                decisions = wide.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
+            }
         } catch (UnsatisfiableException e) {
             boolean ansi =
                     System.console() != null && !"dumb".equals(System.getenv("TERM")) && System.getenv("CI") == null;

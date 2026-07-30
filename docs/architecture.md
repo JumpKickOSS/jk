@@ -37,7 +37,14 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 - **Load-bearing** — if the engine cannot start, the command fails clearly (no silent
   in-process fallback for hosted work). That is how concurrent builds avoid RAM overcommit.
 - **Lifecycle** — lazy start on first need; stays resident until `jk engine stop` or
-  version-skew replacement. One engine per `JK_HOME` / state directory.
+  version-skew replacement. **No idle timeout**: the dashboard is written against that guarantee, and
+  a browser tab cannot respawn an engine the way the CLI can — see [http.md](http.md). The one
+  exception is an *orphaned* engine (no endpoint pointer names it, so nothing can reach it), which
+  exits once it has no in-flight jobs and no attached event stream.
+- **Identity** — one engine per (state directory, artifact store) pair. The store is part of the
+  identity hash because two invocations can share a state dir while disagreeing about where downloads
+  belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
+  engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
 - **Versioning** — side-by-side installs under `~/.jk/versions/<v>/`; client and engine jar
   share a version; handshake detects skew and takes over.
 - **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
@@ -166,7 +173,7 @@ Bootstrap build: **Java 25 + Gradle** (until self-hosting CI is complete). Runti
 | `shared/` | `jk-api`, `plugin-sdk`, `core`, `client-io`, `toolchain-jdk`, `wire` | Client-safe contracts, config/lock, CLI I/O, JDK tools, wire codec |
 | `server/` | `io`, `resolver`, `toolchain`, `engine` | Repo fetch, PubGrub, import/export tools, build pipeline; `EngineMain` + fat jar packaging (never links CLI) |
 | `clients/` | `cli`, `web` | Slim wire client (native/JVM), dashboard SPA |
-| `plugins/` | `java-compiler`, `kotlin-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
+| `plugins/` | `java-compiler`, `kotlin-compiler`, `groovy-compiler`, `test-runner`, `auditor`, `publisher`, `image-builder`, `formatter`, `compat-bridge`, `spring-boot`, `quarkus`, `grails`, `android`, `protobuf`, `shrink` | First-party workers / build plugins |
 
 **Layering:** `jk-api` → `core` → `{client-io, wire, …}` → server `{io, resolver, toolchain}` → `engine` → clients. Plugins depend on `plugin-sdk`, not on engine internals.
 
@@ -175,16 +182,19 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
 ## Dependency resolution
 
 - **Algorithm:** PubGrub (same family as Dart `pub` / `uv`).
-- **Conflict policy:** without a platform BOM, bare POM versions are highest-wins floors
-  (not Maven nearest-wins). **With** a `[platform-dependencies]` / plugin platform BOM,
-  bare EffectivePom-filled versions are **exact** (Maven depMgmt contract); GAs listed in
-  the BOM map use the BOM pin over a different bare string on the edge. Explicit Maven
-  ranges on an edge stay open ranges. Highest-wins lift past a filled pin is not the default
-  under a platform.
+- **Conflict policy:** bare POM versions are highest-wins floors (not Maven nearest-wins).
+  **With** a platform BOM and default policy **enforced**, BOM-map GAs use the BOM pin
+  exactly; opt-in **`[resolve] platform = "floor"`** / `jk update --platform=floor` treats
+  BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-wins mediation
+  by default; **`[resolve] unmapped = "strict"`** makes their fills exact (JK-1241). Explicit
+  Maven ranges stay open.
 - **Lockfile:** one root `jk.lock`; builds never re-resolve.
-- **BOMs:** enforced platform for managed GAs + exact bare fills while the platform map is
-  non-empty; incomplete BOM families (e.g. maven-resolver named-locks) may still get
-  explicit family alignment into the map.
+- **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
+  named-locks) still get family alignment into the map. **`jk export bom`** freezes a lock
+  scope into a Maven BOM POM for consumers.
+- **Remotes:** built-in order JumpKick → Central → Google; exclusive specialist groups
+  `cc.jumpkick.*` / `build.jumpkick.*` never resolve from Central (see [maven-repo.md](maven-repo.md)).
+  Path/git remotes preserve exclusive bindings when prepended.
 - **Scopes:** **main**, **test**, and **processor** graphs are solved separately so processor
   constraints do not force main versions. Dual lock rows are allowed when versions diverge;
   classpaths select by scope.
@@ -236,9 +246,17 @@ schema byte) so old local entries are not silently reinterpreted.
 
 ## Plugins
 
-Build plugins own a `jk.toml` table (`[spring-boot]`, `[android]`, …) via a jar containing
-`jk-plugin.toml` plus optional code that runs **out of process**. The engine never classloads
-plugin code. See [plugins.md](plugins.md).
+Build plugins own a `jk.toml` table (`[spring-boot]`, `[quarkus]`, `[grails]`, `[android]`, …)
+via a jar containing `jk-plugin.toml` plus optional code that runs **out of process**. The
+engine never classloads plugin code. See [plugins.md](plugins.md).
+
+Notable first-party packaging plugins:
+
+| Table | Packaging | Notes |
+|-------|-----------|--------|
+| `[spring-boot]` | Boot jar (`BOOT-INF/…`) | Optional AOT step |
+| `[quarkus]` | fast-jar (default) / uber-jar | Pure bootstrap augment; workspace path deps in `lib/main` |
+| `[grails]` | Boot-layout jar | Grails 8 + Groovy lane + `grails-app/` roots |
 
 There is no third-party marketplace yet; first-party plugins ship with jk and version together.
 

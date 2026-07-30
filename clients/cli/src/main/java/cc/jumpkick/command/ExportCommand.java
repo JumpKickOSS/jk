@@ -6,7 +6,7 @@ import cc.jumpkick.model.command.GroupCommand;
 import java.util.List;
 
 /**
- * {@code jk export} — translate a jk project to Gradle, Maven, or IntelliJ project files.
+ * {@code jk export} — translate a jk project to Gradle, Maven, IntelliJ, or a lock-scoped BOM.
  */
 public final class ExportCommand extends GroupCommand {
 
@@ -17,11 +17,15 @@ public final class ExportCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Export a jk project to Gradle, Maven, or IntelliJ IDEA";
+        return "Export a jk project to Gradle, Maven, IntelliJ IDEA, or a Maven BOM";
     }
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new ExportGradleCommand(), new ExportMavenCommand(), new ExportIdeaCommand());
+        return List.of(
+                new ExportGradleCommand(),
+                new ExportMavenCommand(),
+                new ExportBomCommand(),
+                new ExportIdeaCommand());
     }
 }

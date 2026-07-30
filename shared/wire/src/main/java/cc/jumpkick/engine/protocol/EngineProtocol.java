@@ -149,6 +149,12 @@ public final class EngineProtocol {
     public static final String ERR_AUTH = "auth";
     /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
     public static final String ERR_DEADLINE = "deadline";
+    /**
+     * A build/test with the same job fingerprint is already running (JK-1249). Message is human text
+     * like {@code Build #27 is already running}; optional {@code buildNumber}/{@code requestId}
+     * fields ride alongside when known.
+     */
+    public static final String ERR_ALREADY_RUNNING = "already-running";
 
     /**
      * Server → client keep-alive while a long job runs (ticket-1051). Resets client stream idle
@@ -957,6 +963,27 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean verbose) {
+        return updateRequest(
+                dir, cache, features, noDefaultFeatures, repoUrl, gitOnly, gitTarget, offline, force, verbose, null);
+    }
+
+    /**
+     * As {@link #updateRequest(String, String, List, boolean, String, boolean, String, boolean, boolean, boolean)}
+     * with optional {@code platform} ({@code enforced}|{@code floor}, JK-1206). Null/blank =
+     * project default.
+     */
+    public static String updateRequest(
+            String dir,
+            String cache,
+            List<String> features,
+            boolean noDefaultFeatures,
+            String repoUrl,
+            boolean gitOnly,
+            String gitTarget,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            String platform) {
         return "{\"type\":\""
                 + UPDATE_REQUEST
                 + "\",\"dir\":"
@@ -979,6 +1006,8 @@ public final class EngineProtocol {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"platform\":"
+                + Jsonl.quote(platform == null ? "" : platform)
                 + "}";
     }
 
@@ -2232,6 +2261,15 @@ public final class EngineProtocol {
     }
 
     public static String moduleFinish(String dir, String coord, boolean success, int exitCode, long millis) {
+        return moduleFinish(dir, coord, success, exitCode, millis, true);
+    }
+
+    /**
+     * @param didWork whether a productive step actually ran (false = pure cache check; JK-1296).
+     *     Additive field — older clients ignore it.
+     */
+    public static String moduleFinish(
+            String dir, String coord, boolean success, int exitCode, long millis, boolean didWork) {
         return "{\"type\":\""
                 + MODULE_FINISH
                 + "\",\"dir\":"
@@ -2244,6 +2282,8 @@ public final class EngineProtocol {
                 + exitCode
                 + ",\"millis\":"
                 + millis
+                + ",\"didWork\":"
+                + didWork
                 + "}";
     }
 
@@ -2262,6 +2302,24 @@ public final class EngineProtocol {
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
     public static String error(String code, String message) {
         return "{\"type\":\"" + ERROR + "\",\"code\":" + Jsonl.quote(code) + ",\"message\":" + Jsonl.quote(message)
+                + "}";
+    }
+
+    /**
+     * {@link #ERR_ALREADY_RUNNING}: same fingerprint already in flight. Includes {@code buildNumber}
+     * and holder {@code requestId} when known so clients can render {@code Build #N is already running}.
+     */
+    public static String alreadyRunning(long buildNumber, long holderRequestId, String message) {
+        return "{\"type\":\""
+                + ERROR
+                + "\",\"code\":"
+                + Jsonl.quote(ERR_ALREADY_RUNNING)
+                + ",\"message\":"
+                + Jsonl.quote(message)
+                + ",\"buildNumber\":"
+                + buildNumber
+                + ",\"requestId\":"
+                + holderRequestId
                 + "}";
     }
 

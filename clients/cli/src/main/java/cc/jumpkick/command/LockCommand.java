@@ -141,6 +141,10 @@ public final class LockCommand implements CliCommand {
         long start = System.nanoTime();
 
         AtomicInteger globalLocked = new AtomicInteger(0);
+        // Per-module package counts (cumulative wire samples, then the authoritative lockfile
+        // count). The engine restarts totalSeen per module, so the workspace total is the SUM
+        // of per-module counts — folding with max reported only the largest module (JK-1233).
+        Map<String, Integer> lockedByDir = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> errorLines = new ArrayList<>();
         Map<String, String> coordByDir = new java.util.HashMap<>();
 
@@ -162,9 +166,16 @@ public final class LockCommand implements CliCommand {
                 String coord = coordByDir.get(moduleDir);
                 // Show active dep in the step row (module › dep via renderActiveRow).
                 view.stepMessage(coord, "lock", Coords.module(name, version));
-                // Absolute count: prefer engine cumulative total (coalesced samples); else +1.
-                int n = totalSeen >= 0 ? totalSeen : globalLocked.incrementAndGet();
-                if (totalSeen >= 0) globalLocked.set(Math.max(globalLocked.get(), totalSeen));
+                // Absolute count: engine cumulative per-module samples summed across modules;
+                // else +1 per event.
+                int n;
+                if (totalSeen >= 0) {
+                    lockedByDir.merge(moduleDir, totalSeen, Math::max);
+                    n = lockedByDir.values().stream().mapToInt(Integer::intValue).sum();
+                    globalLocked.set(Math.max(globalLocked.get(), n));
+                } else {
+                    n = globalLocked.incrementAndGet();
+                }
                 Theme t = Theme.active();
                 String line = Theme.colorize(Glyphs.CHECK, t.success())
                         + " "
@@ -183,7 +194,11 @@ public final class LockCommand implements CliCommand {
                 view.stepDone(coordByDir.get(moduleDir), "lock", result.success());
                 // Authoritative package count from the written lockfile (not wire event cardinality).
                 if (counts != null && counts.packages() >= 0) {
-                    globalLocked.set(Math.max(globalLocked.get(), (int) counts.packages()));
+                    lockedByDir.put(moduleDir, (int) counts.packages());
+                    int sum = lockedByDir.values().stream()
+                            .mapToInt(Integer::intValue)
+                            .sum();
+                    globalLocked.set(Math.max(globalLocked.get(), sum));
                 }
                 if (!result.success()) {
                     for (PipelineResult.Diagnostic d : result.errors()) {

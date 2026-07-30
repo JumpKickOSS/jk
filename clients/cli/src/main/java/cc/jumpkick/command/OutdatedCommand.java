@@ -238,8 +238,7 @@ public final class OutdatedCommand implements CliCommand {
         int inner = innerWidth(w);
 
         List<String> out = new ArrayList<>();
-        out.add(border("╭", "─", "╮", inner));
-        out.add(titleLine(title, inner));
+        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", w));
         out.add(headerRow(headers, w));
         out.add(divider("├", "┼", "┤", w));
@@ -261,11 +260,6 @@ public final class OutdatedCommand implements CliCommand {
         return sum + (widths.length - 1);
     }
 
-    private static String border(String left, String mid, String right, int inner) {
-        if (!Theme.active().isAnsi()) return "+" + "-".repeat(inner) + "+";
-        return Theme.colorize(left + mid.repeat(inner) + right, Theme.active().darkGray());
-    }
-
     private static String divider(String left, String junction, String right, int[] widths) {
         boolean ansi = Theme.active().isAnsi();
         var sb = new StringBuilder(ansi ? left : "+");
@@ -274,35 +268,6 @@ public final class OutdatedCommand implements CliCommand {
             sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
         }
         return ansi ? Theme.colorize(sb.toString(), Theme.active().darkGray()) : sb.toString();
-    }
-
-    private static String titleLine(String title, int inner) {
-        if (!Theme.active().isAnsi()) {
-            int total = Math.max(0, inner - title.length());
-            int left = total / 2;
-            return "|" + " ".repeat(left) + title + " ".repeat(total - left) + "|";
-        }
-        int total = Math.max(0, inner - title.length());
-        int left = total / 2;
-        String banner = " ".repeat(left) + title + " ".repeat(total - left);
-        String rail = Theme.colorize("│", Theme.active().darkGray());
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        if (nerdfont) {
-            var chipColor = Theme.active().planBadgeColor();
-            int availForBanner = Math.max(0, inner - 2);
-            int pad = Math.max(0, availForBanner - title.length());
-            String innerBanner = " ".repeat(pad / 2) + title + " ".repeat(pad - pad / 2);
-            return rail
-                    + Theme.colorize(
-                            cc.jumpkick.cli.tui.Glyphs.PILL_LEFT_NERD,
-                            Theme.active().bright(chipColor))
-                    + Theme.colorize(innerBanner, Theme.active().pipelineChip())
-                    + Theme.colorize(
-                            cc.jumpkick.cli.tui.Glyphs.PILL_RIGHT_NERD,
-                            Theme.active().bright(chipColor))
-                    + rail;
-        }
-        return rail + Theme.colorize(banner, Theme.active().pipelineChip()) + rail;
     }
 
     private static String headerRow(List<String> headers, int[] widths) {

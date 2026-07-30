@@ -137,6 +137,49 @@ public final class BuildMetrics {
         return Optional.ofNullable(invocations.get(kind + SEP + dir));
     }
 
+    /**
+     * Merged OK stats for {@code kind} across every dirty-count shape of {@code dir}
+     * ({@code dir} itself plus {@code dir#dN} rows). JK-1156 shaped the write side, which made
+     * exact bare-path lookups read a key that is never written (JK-1226).
+     */
+    public Stats okAcrossShapes(String kind, String dir) {
+        long count = 0, total = 0, min = Long.MAX_VALUE, max = 0;
+        for (Entry e : invocations.values()) {
+            if (!kind.equals(e.kind()) || !sameBaseDir(dir, e.dir())) continue;
+            Stats ok = e.ok();
+            if (ok.count() == 0) continue;
+            count += ok.count();
+            total += ok.totalMillis();
+            min = Math.min(min, ok.minMillis());
+            max = Math.max(max, ok.maxMillis());
+        }
+        return count == 0 ? Stats.EMPTY : new Stats(count, total, min, max);
+    }
+
+    /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
+    static boolean sameBaseDir(String dir, String candidate) {
+        return dir.equals(candidate) || dir.equals(baseDir(candidate));
+    }
+
+    /** Strip a trailing {@code #dN} shape suffix (JK-1156) — {@code path#d3} → {@code path}. */
+    public static String baseDir(String dir) {
+        if (dir == null) return "";
+        int i = dir.lastIndexOf("#d");
+        if (i <= 0) return dir;
+        for (int j = i + 2; j < dir.length(); j++) {
+            if (!Character.isDigit(dir.charAt(j))) return dir;
+        }
+        return i + 2 == dir.length() ? dir : dir.substring(0, i);
+    }
+
+    /**
+     * Total finished runs recorded for {@code dir} (all kinds, including {@code #dN} shapes). Used by
+     * {@link BuildNumberAllocator} so start-time numbers continue past historical metrics.
+     */
+    public long projectRunCount(String dir) {
+        return projectRunCount(invocations, dir);
+    }
+
     /** The step aggregate for {@code (dir, step)}; {@code dir ""} = the global tier. */
     public Optional<Entry> step(String dir, String step) {
         return Optional.ofNullable(steps.get(dir + SEP + step));
@@ -160,12 +203,18 @@ public final class BuildMetrics {
      * and the global tier together; step samples with status {@code SKIPPED} (or any non-terminal
      * status) teach nothing and are ignored. Best-effort: any failure is swallowed.
      *
-     * @return this run's <strong>build number</strong> — the project's total run count (across all
-     *     kinds) after this fold, a durable monotonic per-project sequence the journal stamps onto
-     *     the record so the dashboard can show {@code #412}. {@code 0} when nothing was recorded (a
-     *     malformed outcome, or a swallowed failure) — callers treat 0 as "unnumbered".
+     * <p>When {@code assignedBuildNumber} is positive (allocated at request-start by
+     * {@link BuildNumberAllocator}), that value is returned for the journal — finish must not mint a
+     * second number (JK-1250). Otherwise falls back to the post-fold project run count (legacy).
+     *
+     * @return this run's <strong>build number</strong>, or {@code 0} when nothing was recorded.
      */
     public static long record(Path file, Outcome o, long nowMillis) {
+        return record(file, o, nowMillis, 0L);
+    }
+
+    /** As {@link #record(Path, Outcome, long)} with a start-time assigned build number. */
+    public static long record(Path file, Outcome o, long nowMillis, long assignedBuildNumber) {
         if (o == null || o.kind() == null || o.dir() == null || o.dir().isEmpty()) return 0;
         LOCK.lock();
         try {
@@ -185,10 +234,11 @@ public final class BuildMetrics {
 
             write(file, inv, ph);
             MEMO.remove(file); // next load() in this process sees the update
+            if (assignedBuildNumber > 0) return assignedBuildNumber;
             return projectRunCount(inv, o.dir());
         } catch (IOException | RuntimeException ignored) {
             // advisory state — never fail the build over it
-            return 0;
+            return assignedBuildNumber > 0 ? assignedBuildNumber : 0;
         } finally {
             LOCK.unlock();
         }
@@ -200,9 +250,12 @@ public final class BuildMetrics {
      * eviction spares them — which is what makes it a stable per-project sequence.
      */
     private static long projectRunCount(Map<String, Entry> inv, String dir) {
+        // Shaped keys (path#dN) all belong to ONE project: fold them together or the
+        // documented monotonic per-project sequence forks per dirty-count (JK-1226).
+        String base = baseDir(dir);
         long n = 0;
         for (Entry e : inv.values()) {
-            if (dir.equals(e.dir()))
+            if (sameBaseDir(base, e.dir()))
                 n += e.ok().count() + e.failed().count() + e.cancelled().count();
         }
         return n;

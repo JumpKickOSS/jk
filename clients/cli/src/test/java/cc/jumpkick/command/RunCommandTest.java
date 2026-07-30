@@ -59,6 +59,39 @@ class RunCommandTest {
     }
 
     @Test
+    void settles_with_run_command_wedge_executing_java(@TempDir Path tempDir) throws Exception {
+        // After the build phase-chain, the settled chrome is a play CommandWedge:
+        //   * Run: Executing `java -jar …`   (or `java -cp … Main`)
+        run(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "widget",
+                "--executable",
+                "--layout",
+                "traditional",
+                tempDir.toString());
+        Path src = tempDir.resolve("src/main/java/com/example/Main.java");
+        Files.createDirectories(src.getParent());
+        Files.writeString(src, """
+                package com.example;
+                public final class Main {
+                    public static void main(String[] args) {}
+                }
+                """);
+
+        String output = TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(0)));
+        assertThat(output)
+                .contains("Run")
+                .contains("Executing")
+                .contains("java")
+                .containsAnyOf("-jar", "-cp");
+        // Plain (no-ANSI) shape under the test harness: "* Run: Executing `java …`"
+        assertThat(output).containsPattern("(?m)[*▶].*Run.*Executing.*`java");
+    }
+
+    @Test
     void project_without_declared_main_runs_via_the_scan(@TempDir Path tempDir) throws Exception {
         // No [application] main: after the build jk scans the compiled output for the single
         // `public static void main` (spring-boot plan §3.8).

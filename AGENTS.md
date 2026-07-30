@@ -4,14 +4,14 @@ Guidance for anyone (human or agent) working in this repository.
 
 ## What this is
 
-**JumpKick** (CLI / shorthand: **`jk`**) is a modern, lockfile-first build tool for **Java and Kotlin**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
+**JumpKick** (CLI / shorthand: **`jk`**) is a modern, lockfile-first build tool for **Java, Kotlin, and Groovy**: a slim native CLI, a memory-capped resident JVM engine, PubGrub dependency resolution, a content-addressed action cache, and Maven Central–compatible coordinates. Think Cargo/uv ergonomics on the JVM without inventing a new package ecosystem.
 
-Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
+Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md), [docs/features/](docs/features/) (packaging, Giter8, BOMs). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
-- Correct resolution: PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present; readable conflict diagnostics.
+- Correct resolution: PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present (opt-in floor); readable conflict diagnostics.
 - Small mental model: declarative `jk.toml`, no build-script programming language.
 - Adoption path: run existing Maven/Gradle builds; import/export when ready.
 - Client/engine split: thin native client, heavy work in a capped engine process.

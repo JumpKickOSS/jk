@@ -39,10 +39,15 @@ public final class GroovyCompile {
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent()) {
+                // Restore into a CLEAN dir: the worker is a full compile, so anything already
+                // here is a previous source set — a deleted .groovy's class would resurrect
+                // through the assemble merge and poison later records (JK-1217).
+                wipe(request);
                 actionCache.restore(hit.get(), request.outputDir());
                 return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
             }
         }
+        wipe(request);
 
         // Stream the worker's output dir into the CAS as it's produced, then
         // snapshot the whole dir for the record.
@@ -68,5 +73,19 @@ public final class GroovyCompile {
         // can never recur) must not leave orphan records behind.
         if (useCache) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, gr.output());
+    }
+
+    /**
+     * Full-recompile lane: the output and stub dirs hold exactly one compile's results. Stale
+     * stubs are the worse half — javac resolves deleted Groovy types from {@code --source-path}
+     * stubs and ships stub-bodied phantom classes instead of erroring (JK-1217).
+     */
+    private static void wipe(GroovycRequest request) throws IOException {
+        cc.jumpkick.util.PathUtil.deleteRecursively(request.outputDir());
+        Files.createDirectories(request.outputDir());
+        if (request.stubsOut() != null) {
+            cc.jumpkick.util.PathUtil.deleteRecursively(request.stubsOut());
+            Files.createDirectories(request.stubsOut());
+        }
     }
 }

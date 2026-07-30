@@ -124,14 +124,16 @@ public final class KeyReader {
     }
 
     private static Key parseEscape(NonBlockingReader reader) throws IOException {
-        var peek = reader.read(ESC_PEEK_MS);
+        var peek = reader.peek(ESC_PEEK_MS);
         if (peek == NonBlockingReader.READ_EXPIRED || peek < 0) {
             return Key.Escape.INSTANCE;
         }
         if (peek != '[') {
-            // Not a CSI; report bare ESC and treat the peeked byte as unknown noise.
+            // Not a CSI; report bare ESC. The peeked byte stays in the stream — consuming
+            // it here ate the first real keystroke after a bare ESC (JK-1242).
             return Key.Escape.INSTANCE;
         }
+        reader.read(); // the '['
         var code = reader.read();
         var key =
                 switch (code) {
@@ -152,14 +154,18 @@ public final class KeyReader {
 
     private static void drainTrailing(NonBlockingReader reader) throws IOException {
         while (true) {
-            var p = reader.read(1L);
+            // Peek, never blind-read: the old read(1L) consumed whatever came next and
+            // DROPPED it when it wasn't sequence tail — a fast keystroke right after an
+            // arrow key vanished (JK-1242; the WizardTest flake was this race).
+            var p = reader.peek(1L);
             if (p == NonBlockingReader.READ_EXPIRED || p < 0) {
                 return;
             }
             if ((p >= '0' && p <= '9') || p == ';' || p == '~') {
+                reader.read();
                 continue;
             }
-            return;
+            return; // a real keystroke — leave it in the stream
         }
     }
 }

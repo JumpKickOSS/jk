@@ -19,6 +19,9 @@ public final class VersionSelectors {
             case VersionSelector.Tilde t -> tildeRange(t.version());
             case VersionSelector.Range r -> parseRange(r.raw());
             case VersionSelector.Latest l -> VersionSet.ALL;
+            // Same unbounded set as `latest`; the difference is that a snapshot package's candidate
+            // window is not narrowed to stable releases. See MavenPackageSource#setSnapshotPackages.
+            case VersionSelector.Snapshot s -> VersionSet.ALL;
         };
     }
 

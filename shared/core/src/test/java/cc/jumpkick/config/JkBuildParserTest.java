@@ -25,6 +25,39 @@ class JkBuildParserTest {
             """;
 
     @Test
+    void platform_policy_survives_kotlin_plugins_rebuild() {
+        // JK-1213: the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                kotlin = "2.1.0"
+
+                [resolve]
+                platform = "floor"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization"
+                """);
+        assertThat(parsed.build().kotlinPlugins()).hasSize(1);
+        assertThat(parsed.build().platformPolicy()).isEqualTo(cc.jumpkick.model.PlatformPolicy.FLOOR);
+    }
+
+    @Test
+    void resolve_unmapped_parses_and_survives_kotlin_plugins_rebuild() {
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
+                kotlin = "2.1.0"
+
+                [resolve]
+                unmapped = "strict"
+
+                [[kotlin-plugins]]
+                coordinate = "org.jetbrains.kotlin:kotlin-serialization"
+                """);
+        assertThat(parsed.build().unmappedPolicy()).isEqualTo(cc.jumpkick.model.UnmappedPolicy.STRICT);
+        // Default is mediate (JK-1241).
+        assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy())
+                .isEqualTo(cc.jumpkick.model.UnmappedPolicy.MEDIATE);
+    }
+
+    @Test
     void parses_minimal_project_block() {
         JkBuild parsed = JkBuildParser.parse(PROJECT);
         assertThat(parsed.project().group()).isEqualTo("com.example");
@@ -1006,41 +1039,48 @@ class JkBuildParserTest {
     }
 
     @Test
-    void object_store_access_key_interpolates_env() {
-        String path = System.getenv("PATH");
-        org.junit.jupiter.api.Assumptions.assumeTrue(path != null && !path.isBlank());
+    void object_store_keys_keep_their_raw_env_references() {
+        // Same contract as credentials (JK-1272): raw out of the parse, expanded by RepoGroupBuilder
+        // where the request's environment is in scope. Object-store keys are secrets, so they must
+        // not be committed literally — but the parse is not the place to resolve them.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.s3]
                 url = "s3://bucket/maven"
-                access-key = "${PATH}"
+                access-key = "${AWS_KEY}"
                 secret-key = "literal-secret"
                 """);
-        assertThat(parsed.repositories().get(0).objectStore())
-                .hasValueSatisfying(c -> assertThat(c.accessKey()).isEqualTo(path));
+        assertThat(parsed.repositories().get(0).objectStore()).hasValueSatisfying(c -> {
+            assertThat(c.accessKey()).isEqualTo("${AWS_KEY}");
+            assertThat(c.secretKey()).isEqualTo("literal-secret");
+        });
     }
 
     @Test
-    void interpolates_env_var_in_inline_credential() {
-        // PATH is reliably set in the test environment; use it as a stand-in secret.
-        String path = System.getenv("PATH");
-        org.junit.jupiter.api.Assumptions.assumeTrue(path != null && !path.isBlank());
+    void an_inline_credential_keeps_its_raw_env_reference() {
+        // The parse deliberately does NOT interpolate (JK-1272): it stays a pure function of the
+        // file's bytes, so the memo needs no environment in its key and the engine cannot
+        // accidentally resolve against the daemon's environment instead of the caller's.
+        // Expansion — and its strictness — is RepoCredentialResolver's job; see
+        // RepoCredentialResolverTest.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.r]
                 url = "https://nexus.example/repo/"
                 token = "${PATH}"
                 """);
-        assertThat(parsed.repositories().get(0).credential()).contains(new RepoCredential.Bearer(path));
+        assertThat(parsed.repositories().get(0).credential()).contains(new RepoCredential.Bearer("${PATH}"));
     }
 
     @Test
-    void unset_env_var_in_credential_is_an_error() {
-        assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
+    void an_unset_env_var_no_longer_fails_the_parse() {
+        // It fails when the repository is USED, not when a manifest merely mentions it — so a
+        // manifest may reference a private mirror this machine has no credentials for.
+        JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [repositories.r]
                 url = "https://nexus.example/repo/"
                 token = "${JK_DEFINITELY_UNSET_VAR_XYZ}"
-                """))
-                .isInstanceOf(JkBuildParseException.class)
-                .hasMessageContaining("JK_DEFINITELY_UNSET_VAR_XYZ");
+                """);
+        assertThat(parsed.repositories().get(0).credential())
+                .contains(new RepoCredential.Bearer("${JK_DEFINITELY_UNSET_VAR_XYZ}"));
     }
 
     @Test

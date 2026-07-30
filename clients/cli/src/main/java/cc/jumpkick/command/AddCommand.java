@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
@@ -339,7 +340,7 @@ public final class AddCommand implements CliCommand {
         Files.createDirectories(cache);
         // Streamed hash + hard-link — the jar never has to fit in the CLI's small heap.
         String sha256 = Hashing.sha256Hex(filePath);
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         cas.putFile(filePath, sha256);
 
         // Edit jk.toml (engine-side).

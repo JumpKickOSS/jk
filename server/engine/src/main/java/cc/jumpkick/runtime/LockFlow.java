@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -87,8 +88,9 @@ public final class LockFlow {
         // inside WorkspaceMerge (idempotent either way).
         effective = Variants.unionDependencies(effective);
 
-        Cas cas = new Cas(cache);
-        RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
+        Cas cas = JkStores.cas(cache);
+        RepoGroup baseRepos =
+                RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
 
         // Git- and path-source deps: materialize each into a local file:// repo and rewrite
         // them to exact coordinate pins before the solver runs (git-source-deps.md).
@@ -105,7 +107,9 @@ public final class LockFlow {
         }
         LockOrchestrator orchestrator = new LockOrchestrator(pathPrep.repos())
                 .withProjectDir(dir)
-                .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(effective, dir));
+                .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(effective, dir))
+                .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
 
         Lockfile lock;
         try {

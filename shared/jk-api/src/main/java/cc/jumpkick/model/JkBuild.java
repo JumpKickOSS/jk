@@ -476,21 +476,6 @@ public record JkBuild(
             boolean m2install,
             Layout layout) {
 
-        /** Back-compat constructor: no groovy pin. */
-        public Project(
-                String group,
-                String name,
-                String version,
-                String jdk,
-                int java,
-                VersionSelector kotlin,
-                SourcesMode sourcesMode,
-                String description,
-                boolean m2install,
-                Layout layout) {
-            this(group, name, version, jdk, java, kotlin, null, sourcesMode, description, m2install, layout);
-        }
-
         public Project {
             Objects.requireNonNull(group, "group");
             Objects.requireNonNull(name, "name");
@@ -714,9 +699,38 @@ public record JkBuild(
             List<String> kspOptions,
             List<String> extraSrc,
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
-            Integer testWorkers) {
+            Integer testWorkers,
+            /**
+             * {@code [resolve] platform}: how BOM managed pins constrain the graph (JK-1206). Default
+             * {@link PlatformPolicy#ENFORCED}.
+             */
+            PlatformPolicy platformPolicy,
+            /**
+             * {@code [resolve] unmapped}: how bare fills for GAs the platform does NOT manage are
+             * constrained (JK-1241). Default {@link UnmappedPolicy#MEDIATE}.
+             */
+            UnmappedPolicy unmappedPolicy,
+            /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
+            List<ExtraResource> extraResources,
+            /**
+             * {@code [test] env} — added to every forked test JVM's environment. Test-scoped like
+             * {@code testPluginJars}, hence its home here. Values may use {@code ${target}} and
+             * {@code ${module}}; explicit tokens rather than guessing which values look like paths.
+             */
+            Map<String, String> testEnv) {
 
-        public static final Build EMPTY = new Build(List.of(), List.of(), true, List.of(), List.of(), List.of(), null);
+        public static final Build EMPTY = new Build(
+                List.of(),
+                List.of(),
+                true,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                PlatformPolicy.ENFORCED,
+                UnmappedPolicy.MEDIATE,
+                List.of(),
+                Map.of());
 
         public Build {
             orderAfter = orderAfter == null ? List.of() : List.copyOf(orderAfter);
@@ -725,6 +739,12 @@ public record JkBuild(
             kspOptions = kspOptions == null ? List.of() : List.copyOf(kspOptions);
             extraSrc = extraSrc == null ? List.of() : List.copyOf(new java.util.LinkedHashSet<>(extraSrc));
             if (testWorkers != null && testWorkers < 0) testWorkers = 0;
+            platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+            unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
+            extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
+            testEnv = testEnv == null
+                    ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -732,7 +752,33 @@ public record JkBuild(
             if (dirs.isEmpty()) return this;
             var all = new java.util.ArrayList<>(extraSrc);
             all.addAll(dirs);
-            return new Build(orderAfter, testPluginJars, lint, kotlinPlugins, kspOptions, all, testWorkers);
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    all,
+                    testWorkers,
+                    platformPolicy,
+                    unmappedPolicy,
+                    extraResources,
+                    testEnv);
+        }
+
+        public Build withPlatformPolicy(PlatformPolicy policy) {
+            return new Build(
+                    orderAfter,
+                    testPluginJars,
+                    lint,
+                    kotlinPlugins,
+                    kspOptions,
+                    extraSrc,
+                    testWorkers,
+                    policy == null ? PlatformPolicy.ENFORCED : policy,
+                    unmappedPolicy,
+                    extraResources,
+                    testEnv);
         }
 
         /**
@@ -752,6 +798,29 @@ public record JkBuild(
             return List.copyOf(all);
         }
     }
+
+    /**
+     * One {@code [build] extra-resources} entry: files from outside the module's own resource root,
+     * copied onto the classpath at package time.
+     *
+     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code ../}
+     * and wildcards are allowed); {@code into} is the destination directory inside the output;
+     * {@code rename} optionally renames each match, with {@code &#123;1&#125;} substituting the
+     * pattern's wildcard captures. Matched files keep their path relative to the pattern's literal
+     * prefix, so a directory's shape survives the copy.
+     *
+     * <p>Exists because jk-core bakes each plugin's {@code jk-plugin.toml} in as the built-in plugin
+     * registry, and those blueprint files are the single source of truth — copying them into the
+     * module would create a second, drifting copy.
+     */
+    public record ExtraResource(String from, String into, String rename, List<String> exclude, boolean optional) {
+        public ExtraResource {
+            Objects.requireNonNull(from, "from");
+            into = into == null ? "" : into;
+            exclude = exclude == null ? List.of() : List.copyOf(exclude);
+        }
+    }
+
 
     /**
      * {@code [[kotlin-plugins]]} entry: {@code group:artifact[:version]} (omit version to match

@@ -41,7 +41,7 @@ class CacheGcTest {
         long old = System.currentTimeMillis() - 100 * DAY;
         Files.writeString(cache.resolve(".access.log"), hex + "\t" + old + "\t1\n");
 
-        CacheGc.Report report = CacheGc.run(cache, false);
+        CacheGc.Report report = CacheGc.run(cache, cache, false);
 
         assertThat(report.purgedBlobs()).isEqualTo(1);
         assertThat(report.repoLinksRemoved()).isEqualTo(1);
@@ -63,7 +63,7 @@ class CacheGcTest {
         long old = System.currentTimeMillis() - 365 * DAY;
         Files.writeString(cache.resolve(".access.log"), hex + "\t" + old + "\t1\n");
 
-        CacheGc.Report report = CacheGc.run(cache, false);
+        CacheGc.Report report = CacheGc.run(cache, cache, false);
 
         assertThat(report.purgedBlobs()).isZero();
         assertThat(new Cas(cache).contains(hex)).isTrue();
@@ -77,7 +77,7 @@ class CacheGcTest {
         long recent = System.currentTimeMillis() - 3 * DAY;
         Files.writeString(cache.resolve(".access.log"), hex + "\t" + recent + "\t1\n");
 
-        CacheGc.Report report = CacheGc.run(cache, false);
+        CacheGc.Report report = CacheGc.run(cache, cache, false);
 
         assertThat(report.purgedBlobs()).isZero();
         assertThat(new Cas(cache).contains(hex)).isTrue();
@@ -92,7 +92,7 @@ class CacheGcTest {
         Files.writeString(
                 cache.resolve(".access.log"), hex + "\t" + (now - 1000) + "\t1\n" + hex + "\t" + now + "\t1\n");
 
-        CacheGc.run(cache, false);
+        CacheGc.run(cache, cache, false);
 
         String[] lines = Files.readString(cache.resolve(".access.log")).strip().split("\n");
         assertThat(lines).hasSize(1);
@@ -108,7 +108,7 @@ class CacheGcTest {
         long old = System.currentTimeMillis() - 100 * DAY;
         Files.writeString(cache.resolve(".access.log"), hex + "\t" + old + "\t1\n");
 
-        CacheGc.Report report = CacheGc.run(cache, true);
+        CacheGc.Report report = CacheGc.run(cache, cache, true);
 
         assertThat(report.purgedBlobs()).isEqualTo(1);
         assertThat(new Cas(cache).contains(hex)).isTrue(); // not actually deleted

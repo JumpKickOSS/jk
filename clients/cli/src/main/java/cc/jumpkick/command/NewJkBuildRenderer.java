@@ -18,6 +18,14 @@ public final class NewJkBuildRenderer {
     /** Default Groovy compiler version selector when language=groovy. */
     private static final String DEFAULT_GROOVY_VERSION = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
 
+    /**
+     * Groovy for {@code --grails} scaffolds (JK-1223): Grails 8.0.0-M4's own members require a
+     * groovy NEWER than grails-bom manages (core declares 5.0.7, the bom pins 5.0.6), so the
+     * scaffold pins the working version explicitly — the exact pin overrides the platform.
+     * Bump together with the grails plugin's default boot line.
+     */
+    private static final String GRAILS_GROOVY_VERSION = "5.0.7";
+
     private NewJkBuildRenderer() {}
 
     public static String render(NewInputs inputs) {
@@ -32,7 +40,9 @@ public final class NewJkBuildRenderer {
             case KOTLIN ->
                 sb.append("kotlin   = \"").append(DEFAULT_KOTLIN_VERSION).append("\"\n");
             case GROOVY ->
-                sb.append("groovy   = \"").append(DEFAULT_GROOVY_VERSION).append("\"\n");
+                sb.append("groovy   = \"")
+                        .append(inputs.grails() ? GRAILS_GROOVY_VERSION : DEFAULT_GROOVY_VERSION)
+                        .append("\"\n");
         }
         if (inputs.layout() != null && !inputs.layout().isBlank() && !"auto".equalsIgnoreCase(inputs.layout())) {
             sb.append("layout   = \"").append(inputs.layout().toLowerCase()).append("\"\n");

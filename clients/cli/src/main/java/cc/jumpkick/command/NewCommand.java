@@ -272,8 +272,8 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path>} (JK-1182 MVP). Remote/git short names still return a
-     * clear error until the engine-hosted Giter8 worker lands.
+     * {@code jk new --template <local-path|short-name>} (JK-1182 + catalog short names JK-1183/1188).
+     * Git/HTTPS remotes remain JK-1203.
      */
     private int runTemplatePipeline(Path cwd) {
         if (spring || grails || quarkus || plugin) {
@@ -283,14 +283,36 @@ public final class NewCommand implements CliCommand {
         }
         Path template = Path.of(templateRef);
         if (!template.isAbsolute()) template = cwd.resolve(template).normalize();
-        if (!Files.isDirectory(template)) {
-            // Git / short-name resolution is JK-1182 follow-up (engine worker + cache).
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "New",
-                    "template not found as a local directory: "
-                            + template
-                            + " (git/HTTPS short names not implemented yet — see docs/features/giter8-templates.md)"));
-            return Exit.USAGE;
+        Path extractScratch = null;
+        // Only a template-SHAPED local dir wins over the catalog: a stray cwd subdirectory
+        // sharing a short name (./quarkus) must not have its arbitrary contents copied as a
+        // project (JK-1234).
+        boolean localTemplate = Files.isDirectory(template)
+                && (Files.isRegularFile(template.resolve("default.properties"))
+                        || Files.isDirectory(template.resolve("src/main/g8")));
+        if (!localTemplate) {
+            try {
+                extractScratch = Files.createTempDirectory("jk-g8-");
+                var shortResolved = Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch);
+                if (shortResolved.isPresent()) {
+                    template = shortResolved.get();
+                } else {
+                    String known = String.join(", ", Giter8Catalog.descriptions().keySet());
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "New",
+                            "template not found as a local directory: "
+                                    + template
+                                    + (Giter8Catalog.isShortName(templateRef)
+                                            ? " (short name not in local catalog; known: "
+                                                    + known
+                                                    + "; git/HTTPS remotes: JK-1203 — see docs/features/giter8-templates.md)"
+                                            : " (git/HTTPS remotes not implemented yet — see docs/features/giter8-templates.md)")));
+                    return Exit.USAGE;
+                }
+            } catch (IOException e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
+                return Exit.SOFTWARE;
+            }
         }
         Map<String, String> params = new java.util.LinkedHashMap<>();
         for (String p : templateParams) {
@@ -303,9 +325,16 @@ public final class NewCommand implements CliCommand {
             params.put(p.substring(0, eq), p.substring(eq + 1));
         }
         var presetName = wizardPresetName(directory, cwd);
+        // Fallback order: explicit --name, --param name, wizard preset, the template's own
+        // default.properties name, then the short name minus ".g8" — never the raw catalog
+        // filename, which produced projects literally named "quarkus.g8" (JK-1234).
+        String templateDefault = Giter8LocalApply.defaultName(template).orElse(null);
+        String fileBase = template.getFileName().toString();
+        if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
         String resolvedName = (name != null && !name.isBlank())
                 ? name
-                : params.getOrDefault("name", presetName.orElse(template.getFileName().toString()));
+                : params.getOrDefault(
+                        "name", presetName.orElse(templateDefault != null ? templateDefault : fileBase));
         params.putIfAbsent("name", resolvedName);
         if (group != null && !group.isBlank()) {
             params.putIfAbsent("organization", group);
@@ -313,9 +342,6 @@ public final class NewCommand implements CliCommand {
             params.putIfAbsent("package", group);
         }
         Path target = resolveTarget(directory, cwd, resolvedName);
-        if (Files.exists(target.resolve("jk.toml")) || Files.exists(target.resolve("default.properties"))) {
-            // soft: still allow empty-ish dirs
-        }
         if (Files.exists(target) && Files.isDirectory(target)) {
             try (var s = Files.list(target)) {
                 if (s.findAny().isPresent() && Files.exists(target.resolve("jk.toml"))) {
@@ -338,6 +364,14 @@ public final class NewCommand implements CliCommand {
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", e.getMessage()));
             return Exit.SOFTWARE;
+        } finally {
+            if (extractScratch != null) {
+                try {
+                    cc.jumpkick.util.PathUtil.deleteRecursively(extractScratch);
+                } catch (RuntimeException ignored) {
+                    // temp dir — the OS reaps it eventually
+                }
+            }
         }
     }
 
@@ -998,7 +1032,8 @@ public final class NewCommand implements CliCommand {
         // Modules inherit the parent's group, JDK, and language as defaults; a
         // standalone project guesses the group and defaults to the latest LTS.
         String effectiveGroup = module ? parent.group() : groupGuess;
-        String langDefault = (module && parent.kotlin()) ? "kotlin" : "java";
+        String langDefault =
+                module && parent.kotlin() ? "kotlin" : module && parent.groovy() ? "groovy" : "java";
 
         // The wizard opens with the "native" toggle off, so the initial radio
         // list is whatever filter() produces for the non-native case — which
@@ -1139,6 +1174,7 @@ public final class NewCommand implements CliCommand {
                 .step(WizardStep.RadioStep.horizontal("lang", "Project language:")
                         .choice("java", "Java")
                         .choice("kotlin", "Kotlin")
+                        .choice("groovy", "Groovy")
                         .defaultChoice(langDefault)
                         .build())
                 .step(javaVersion)

@@ -14,7 +14,6 @@ import cc.jumpkick.plugin.build.Phase;
 import cc.jumpkick.plugin.build.StepExec;
 import cc.jumpkick.plugin.protocol.ProtocolWriter;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -26,13 +25,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.jar.Attributes;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
-import java.util.jar.Manifest;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * Quarkus build plugin (JK-1159/1160/1202): {@code quarkus-augment} step + {@code quarkus-fast-jar}
@@ -40,7 +33,7 @@ import java.util.zip.ZipFile;
  *
  * <p>Augmentation forks {@link QuarkusAugmentMain} on a BOM-aligned bootstrap tool classpath
  * (one step-dep {@code quarkus-bootstrap}: core + maven-resolver under {@code quarkus-bootstrap-bom}).
- * The packager prefers {@code quarkus-run.jar}; if augmentation fails it falls back to an MVP fat-jar.
+ * The packager consumes the augment output ({@code quarkus-run.jar} fast-jar layout or uber runner); augment failure fails the build (JK-1209).
  */
 public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension {
 
@@ -112,9 +105,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         exec.label("quarkus augment (" + baseName + ")");
 
         String quarkusVersion = exec.config().string("version");
+        String packageType = normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         StepExec.ToolRun.Result run = exec.java()
                 .classpath(cp)
                 .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
+                .arg("-Djk.quarkus.package.type=" + packageType)
                 .mainClass(QuarkusAugmentMain.class.getName())
                 .arg(exec.moduleDir().toString())
                 .arg(classes.toString())
@@ -128,16 +123,23 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .cwd(exec.moduleDir())
                 .run();
         if (run.exit() != 0) {
-            // Keep packaging usable while deployment/config model is still being hardened (JK-1160).
-            // The packager falls back to the MVP fat-jar when quarkus-run.jar is absent.
-            exec.label("quarkus-augment failed — packager will use fat-jar fallback");
-            System.err.println("jk-quarkus: pure bootstrap failed (exit " + run.exit() + "); fat-jar fallback:\n"
-                    + tail(run.output()));
-            Files.writeString(
-                    outRoot.resolve(".jk-augment-failed"),
-                    tail(run.output()),
-                    StandardCharsets.UTF_8);
+            // Fail loudly: a cached "success" with no quarkus-app would silently ship a
+            // non-production artifact on every later build (JK-1209).
+            throw new IOException(
+                    "quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
         }
+    }
+
+    /** {@code fast-jar} (default) or {@code uber-jar}; unknown values fail early. */
+    static String normalizePackageType(String raw) throws IOException {
+        if (raw == null || raw.isBlank()) return "fast-jar";
+        String t = raw.trim().toLowerCase(Locale.ROOT);
+        if ("fast-jar".equals(t) || "fastjar".equals(t) || "fast".equals(t)) return "fast-jar";
+        if ("uber-jar".equals(t) || "uberjar".equals(t) || "uber".equals(t) || "fat-jar".equals(t)) {
+            return "uber-jar";
+        }
+        throw new IOException(
+                "[quarkus] package must be \"fast-jar\" or \"uber-jar\" (got \"" + raw + "\")");
     }
 
     private static List<Path> jarsIn(Path dir) throws IOException {
@@ -148,48 +150,49 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         return jars;
     }
 
-    private static void produceFastJar(PackageIo io) throws Exception {
+    static void produceFastJar(PackageIo io) throws Exception {
         Path outJar = io.artifactPath();
         Files.createDirectories(outJar.getParent());
 
-        // Prefer real augmentor output: quarkus-app layout (runner + lib/ + app/).
-        Path augmentRoot = io.stepOutput(AUGMENT_STEP).orElse(null);
-        if (augmentRoot != null) {
-            Path runJar = findQuarkusRunJar(augmentRoot);
-            if (runJar != null) {
-                Path layoutRoot = runJar.getParent(); // directory containing quarkus-run.jar + lib/
-                io.label("package " + outJar.getFileName() + " (quarkus-run.jar)");
-                // Fast-jar Class-Path is relative (lib/boot/…): place lib/app next to the main jar.
-                Path outDir = outJar.getParent();
-                for (String child : List.of("lib", "app", "quarkus")) {
-                    Path src = layoutRoot.resolve(child);
-                    if (Files.isDirectory(src)) {
-                        Path dest = outDir.resolve(child);
-                        if (Files.exists(dest)) {
-                            deleteTree(dest);
-                        }
-                        copyTree(src, dest);
-                    }
+        Path augmentRoot = io.stepOutput(AUGMENT_STEP)
+                .orElseThrow(() -> new IOException("quarkus-augment produced no output — rebuild with --rebuild"));
+        // Uber-jar: single self-contained runner (no sibling lib/).
+        Path uber = findUberJar(augmentRoot);
+        if (uber != null) {
+            io.label("package " + outJar.getFileName() + " (quarkus uber-jar)");
+            Files.copy(uber, outJar, StandardCopyOption.REPLACE_EXISTING);
+            return;
+        }
+        // Fast-jar: quarkus-run.jar + relative Class-Path into lib/.
+        Path runJar = findQuarkusRunJar(augmentRoot);
+        if (runJar == null) {
+            throw new IOException("no quarkus-run.jar or *-runner.jar under " + augmentRoot
+                    + " — augment output is incomplete; rebuild with --rebuild");
+        }
+        Path layoutRoot = runJar.getParent(); // directory containing quarkus-run.jar + lib/
+        io.label("package " + outJar.getFileName() + " (quarkus-run.jar)");
+        Path outDir = outJar.getParent();
+        for (String child : List.of("lib", "app", "quarkus")) {
+            Path src = layoutRoot.resolve(child);
+            if (Files.isDirectory(src)) {
+                Path dest = outDir.resolve(child);
+                if (Files.exists(dest)) {
+                    deleteTree(dest);
                 }
-                Files.copy(runJar, outJar, StandardCopyOption.REPLACE_EXISTING);
-                // Also materialize the canonical quarkus-app/ tree for docs / docker layering.
-                Path appDir = outDir.resolve("quarkus-app");
-                if (Files.exists(appDir)) {
-                    deleteTree(appDir);
-                }
-                copyTree(layoutRoot, appDir);
-                return;
+                copyTree(src, dest);
+                io.produced(dest);
             }
         }
-
-        // Fallback: MVP fat-jar (dev / when augment skipped). Not sufficient for REST production.
-        String main = io.project().mainClass();
-        if (main == null || main.isBlank()) {
-            throw new IOException(
-                    "quarkus packaging needs [application] main (e.g. Application with Quarkus.run)");
+        Files.copy(runJar, outJar, StandardCopyOption.REPLACE_EXISTING);
+        // Canonical quarkus-app/ tree for docs / docker layering.
+        Path appDir = outDir.resolve("quarkus-app");
+        if (Files.exists(appDir)) {
+            deleteTree(appDir);
         }
-        io.label("package " + outJar.getFileName() + " (quarkus MVP fat-jar fallback)");
-        fatJarFallback(io, outJar, main);
+        copyTree(layoutRoot, appDir);
+        // The run jar's Class-Path needs these siblings — declare them so a packaging
+        // cache hit after `jk clean` restores a runnable layout, not a lone jar (JK-1210).
+        io.produced(appDir);
     }
 
     private static Path findQuarkusRunJar(Path root) throws IOException {
@@ -212,53 +215,27 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
     }
 
-    private static void fatJarFallback(PackageIo io, Path outJar, String main) throws Exception {
-        Manifest man = new Manifest();
-        Attributes attrs = man.getMainAttributes();
-        attrs.put(Attributes.Name.MANIFEST_VERSION, "1.0");
-        attrs.put(Attributes.Name.MAIN_CLASS, main);
-        attrs.putValue("Created-By", "jk-quarkus");
-        attrs.putValue("Implementation-Title", io.project().name());
-        attrs.putValue("Implementation-Version", io.project().version());
-
-        java.util.Set<String> seen = new java.util.HashSet<>();
-        try (OutputStream fos = Files.newOutputStream(outJar);
-                JarOutputStream jos = new JarOutputStream(fos, man)) {
-            Path classes = io.classesDir();
-            if (Files.isDirectory(classes)) {
-                addTree(jos, classes, seen);
-            }
-            for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
-                Path jar = entry.jar();
-                if (jar == null || !Files.isRegularFile(jar)) continue;
-                mergeJar(jos, jar, seen);
-            }
+    /** Uber-jar runner written by augment ({@code quarkus-uber.jar} staging or {@code *-runner.jar}). */
+    private static Path findUberJar(Path root) throws IOException {
+        if (!Files.isDirectory(root)) return null;
+        Path staged = root.resolve("quarkus-uber.jar");
+        if (Files.isRegularFile(staged)) return staged;
+        try (Stream<Path> walk = Files.walk(root, 5)) {
+            return walk.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith("-runner.jar"))
+                    .findFirst()
+                    .orElse(null);
         }
     }
 
-    private static List<Path> jarsOn(Path root) throws IOException {
-        if (Files.isRegularFile(root) && root.getFileName().toString().endsWith(".jar")) {
-            return List.of(root);
-        }
-        if (!Files.isDirectory(root)) return List.of();
-        List<Path> out = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(root)) {
-            stream.filter(p -> p.getFileName().toString().endsWith(".jar"))
-                    .sorted()
-                    .forEach(out::add);
-        }
-        return out;
-    }
 
-    private static List<Path> dedupeJars(List<Path> jars) {
-        java.util.LinkedHashMap<String, Path> byName = new java.util.LinkedHashMap<>();
-        for (Path j : jars) {
-            byName.putIfAbsent(j.getFileName().toString(), j);
-        }
-        return new ArrayList<>(byName.values());
-    }
 
-    /** Parse {@code …/group/path/artifact/version/artifact-version.jar} → g:a:v. */
+
+    /**
+     * Parse Maven-layout path {@code …/repos/…/group/path/artifact/version/artifact-version.jar}
+     * → {@code g:a:v}. Workspace jars (no {@code /repos/}) return {@code null} so the caller can
+     * fall back to {@code unknown:unknown:0}; the augment step re-synthesizes installable coords.
+     */
     static String gavFromPath(Path jar) {
         try {
             Path verDir = jar.getParent();
@@ -332,46 +309,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         });
     }
 
-    private static void addTree(JarOutputStream jos, Path root, java.util.Set<String> seen) throws IOException {
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                String name = root.relativize(file).toString().replace('\\', '/');
-                if (!seen.add(name)) return FileVisitResult.CONTINUE;
-                jos.putNextEntry(new JarEntry(name));
-                Files.copy(file, jos);
-                jos.closeEntry();
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
 
-    private static void mergeJar(JarOutputStream jos, Path jar, java.util.Set<String> seen) throws IOException {
-        try (ZipFile zf = new ZipFile(jar.toFile())) {
-            var en = zf.entries();
-            while (en.hasMoreElements()) {
-                ZipEntry e = en.nextElement();
-                if (e.isDirectory()) continue;
-                String name = e.getName();
-                if (name.startsWith("META-INF/MANIFEST.MF")) continue;
-                if (name.startsWith("META-INF/INDEX.LIST")) continue;
-                String upper = name.toUpperCase(Locale.ROOT);
-                if (name.startsWith("META-INF/")
-                        && (upper.endsWith(".SF")
-                                || upper.endsWith(".RSA")
-                                || upper.endsWith(".DSA")
-                                || upper.endsWith(".EC"))) {
-                    continue;
-                }
-                if (!seen.add(name)) continue;
-                jos.putNextEntry(new JarEntry(name));
-                try (var in = zf.getInputStream(e)) {
-                    in.transferTo(jos);
-                }
-                jos.closeEntry();
-            }
-        }
-    }
 
     private static String tail(String output) {
         if (output == null || output.isBlank()) return "";

@@ -7,7 +7,7 @@
 [![GraalVM](https://img.shields.io/badge/native--image-GraalVM%2025-yellow.svg)](https://www.graalvm.org/)
 [![Status](https://img.shields.io/badge/status-alpha-red.svg)](docs/architecture.md)
 
-**JumpKick** (CLI: **`jk`**) is Cargo for Java and Kotlin. One native binary. One TOML file.
+**JumpKick** (CLI: **`jk`**) is Cargo for the JVM — Java, Kotlin, and Groovy. One native binary. One TOML file.
 A real lockfile. Conflicts you can read. Builds that skip work they can prove is already done.
 
 > The fastest way to run your existing Maven or Gradle build — and a better tool
@@ -64,19 +64,22 @@ Coming from **Gradle**: think “declarative TOML + real lockfile, without the c
 
 ### Dependencies & lockfile
 - PubGrub solver with **English conflict diagnostics**
-- **Highest-version-wins** for bare edges when no platform BOM; **enforced platform** when one is present
+- **Highest-version-wins** for bare edges when no platform BOM; **enforced platform** when one is present (opt-in **floor** via `[resolve] platform = "floor"`)
 - Canonical **`jk.lock`** (commit it); `jk build` never re-resolves
-- Caret / tilde / exact / range selectors; platform BOMs as enforced dependencyManagement
+- Caret / tilde / exact / range selectors; platform BOMs as dependencyManagement pins
+- **`jk export bom`** — freeze a lock scope as a publishable Maven BOM POM
 - Separate **main / test / processor** resolution so annotation processors don't force main versions
 - Git and path dependencies, SHA-pinned in the lock
+- Built-in remotes: JumpKick (exclusive for `cc`/`build.jumpkick`) · Central · Google
 - `jk tree` · `jk why` · offline-friendly after `jk sync`
 
 ### Build & monorepos
-- Java + Kotlin (K2, KSP), workspaces with **one root lockfile**
+- Java + Kotlin (K2, KSP) + Groovy, workspaces with **one root lockfile**
 - Content-addressed store + **action cache** (restore, don't recompute)
 - `jk explain` — forecast what will run before it does
 - Variants, profiles, features (product / how / optional deps — deliberately separate)
-- First-party: Spring Boot, Android, protobuf, R8 shrink, tests, format, native-image, OCI images
+- First-party: Spring Boot, **Quarkus**, **Grails**, Android, protobuf, R8 shrink, tests, format, native-image, OCI images
+- `jk new --template` Giter8 short names (`java-cli`, `quarkus`) + local `.g8` paths
 
 ### Toolchain & tools
 - **JDK install / pin / discover** (Temurin, GraalVM, and neighbors: IntelliJ, SDKMAN, mise, …)
@@ -125,8 +128,9 @@ entirely offline. That is not a nice-to-have; it is how modern package managers 
 
 Maven's **nearest-wins** silently picks different versions depending on tree shape.
 Gradle often dumps a huge tree when things conflict. JumpKick uses **PubGrub** (same family
-as Dart's `pub` and `uv`): highest-version-wins, and failures explain *why* in prose — which
-constraint blocked which package — so you can fix the declaration instead of guessing.
+as Dart's `pub` and `uv`): highest-version-wins when no platform BOM is present; **enforced
+platform** pins under a BOM (Maven depMgmt contract); and failures explain *why* in prose —
+which constraint blocked which package — so you can fix the declaration instead of guessing.
 
 ```bash
 jk why com.google.guava:guava

@@ -184,6 +184,8 @@ Private plugins **error** if they claim a table or id already owned by a built-i
 
 ## Further reading
 
-- Blueprint plugin: `plugins/spring-boot/`
+- Blueprint plugins: `plugins/spring-boot/`, `plugins/quarkus/`, `plugins/grails/`
 - SPI sources: `shared/plugin-sdk/`
+- Packaging matrix: [features/packaging.md](features/packaging.md)
+- User guide (Quarkus / Grails / platforms): [guide.md](guide.md)
 - Architecture context: [architecture.md](architecture.md)

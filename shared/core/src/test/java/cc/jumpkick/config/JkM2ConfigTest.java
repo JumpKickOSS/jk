@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.config;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/** JK-1290: {@code [m2]} policy. Copy is the default; linking is opt-in. */
+class JkM2ConfigTest {
+
+    private static Path toml(Path dir, String body) throws Exception {
+        Path f = dir.resolve("config.toml");
+        Files.writeString(f, body);
+        return f;
+    }
+
+    @Test
+    void the_default_is_lookup_on_and_copy(@TempDir Path tmp) {
+        // Copy rather than link, because a link leaves the CAS blob sharing an inode with a file jk does
+        // not own — a third party rewriting it in place would mutate content the CAS believes it hashed.
+        assertThat(JkM2Config.DEFAULTS.enabled()).isTrue();
+        assertThat(JkM2Config.DEFAULTS.link()).isFalse();
+        assertThat(JkM2Config.fromToml(tmp.resolve("absent.toml"))).isEqualTo(JkM2Config.DEFAULTS);
+    }
+
+    @Test
+    void linking_is_opt_in_via_config(@TempDir Path tmp) throws Exception {
+        Path f = toml(tmp, "[m2]\nlink = true\n");
+
+        assertThat(JkM2Config.fromToml(f).link()).isTrue();
+        assertThat(JkM2Config.fromToml(f).enabled()).isTrue();
+    }
+
+    @Test
+    void the_lookup_can_be_switched_off(@TempDir Path tmp) throws Exception {
+        assertThat(JkM2Config.fromToml(toml(tmp, "[m2]\nenabled = false\n")).enabled())
+                .isFalse();
+    }
+
+    @Test
+    void env_overrides_the_file(@TempDir Path tmp) throws Exception {
+        Path f = toml(tmp, "[m2]\nenabled = true\nlink = false\n");
+
+        JkM2Config c = JkM2Config.resolve(f, Map.of("JK_M2_LOOKUP", "false", "JK_M2_LINK", "true")::get);
+
+        assertThat(c.enabled()).isFalse();
+        assertThat(c.link()).isTrue();
+    }
+
+    @Test
+    void a_malformed_value_falls_back_rather_than_failing_a_build(@TempDir Path tmp) throws Exception {
+        Path f = toml(tmp, "[m2]\nenabled = \"yes please\"\nlink = 7\n");
+
+        assertThat(JkM2Config.fromToml(f)).isEqualTo(JkM2Config.DEFAULTS);
+    }
+
+    @Test
+    void an_unrelated_table_is_ignored(@TempDir Path tmp) throws Exception {
+        Path f = toml(tmp, "[global]\nnerdfont = true\n\n[cache]\nauto-prune = false\n");
+
+        assertThat(JkM2Config.fromToml(f)).isEqualTo(JkM2Config.DEFAULTS);
+    }
+}

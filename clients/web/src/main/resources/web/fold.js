@@ -23,11 +23,25 @@ export function foldEvent(cards, event) {
   const d = event.data || {};
   switch (event.type) {
     case 'request-start': {
+      // Reconcile with a durable in-flight history row (refresh / other tab) when buildNumber matches.
+      const existing = cards.find(
+        (c) =>
+          c.state === 'running' &&
+          c.dir === (d.dir || '') &&
+          d.buildNumber &&
+          c.buildNumber === d.buildNumber,
+      );
+      if (existing) {
+        existing.id = d.requestId; // prefer live request id for subsequent SSE
+        if (d.coord) existing.coord = d.coord;
+        break;
+      }
       cards.unshift({
         id: d.requestId,
         kind: d.kind || 'request',
         dir: d.dir || '',
         coord: d.coord || null,
+        buildNumber: d.buildNumber || null,
         state: 'running',
         startedAt: event.at ?? null,
         finishedAt: null,
@@ -140,7 +154,9 @@ export function foldEvent(cards, event) {
       const card = byId(cards, d.requestId);
       if (card) {
         const row = moduleRow(card, d.dir);
-        row.state = d.success ? 'success' : 'failed';
+        // didWork=false → pure cache check (JK-1296); treat as success but label checked.
+        row.didWork = d.didWork !== false;
+        row.state = d.success ? (row.didWork ? 'success' : 'checked') : 'failed';
         row.millis = d.millis ?? row.millis;
         if (d.coord) row.coord = d.coord;
       }
@@ -156,6 +172,7 @@ export function foldEvent(cards, event) {
         card.success = typeof d.success === 'boolean' ? d.success : null;
         card.output = []; // the console tail is an in-flight affordance; finished cards are compact
         card.etaMillis = null; // the countdown is an in-flight affordance; a finished card is 100%
+        card.io = ioOf(d); // byte counters, absent when the run moved nothing
       }
       break;
     }
@@ -204,11 +221,18 @@ export function seedFromHistory(cards, records) {
         (typeof c.id === 'number' &&
           c.dir === rec.dir &&
           c.finishedAt != null &&
-          Math.abs(c.finishedAt - rec.finishedAt) < 2000),
+          Math.abs(c.finishedAt - rec.finishedAt) < 2000) ||
+        // JK-1251: match a live SSE card to a durable in-flight journal row
+        (c.state === 'running' &&
+          rec.running &&
+          c.dir === rec.dir &&
+          rec.buildNumber &&
+          c.buildNumber === rec.buildNumber),
     );
     if (live) {
       live.historyId = rec.id; // reconcile: the live card is this run — make it deletable
       if (rec.buildNumber) live.buildNumber = rec.buildNumber; // and pick up its assigned #number
+      if (rec.running) live.state = 'running';
       continue;
     }
     if (cards.some((c) => c.id === 'h:' + rec.id)) continue; // already seeded
@@ -219,8 +243,9 @@ export function seedFromHistory(cards, records) {
   return cards;
 }
 
-/** One persisted record → a finished card matching {@link foldEvent}'s shape. */
+/** One persisted record → a card matching {@link foldEvent}'s shape (finished or still running). */
 function historyCard(rec) {
+  const running = !!rec.running;
   return {
     id: 'h:' + rec.id,
     historyId: rec.id,
@@ -228,15 +253,83 @@ function historyCard(rec) {
     kind: rec.kind || 'build',
     dir: rec.dir || '',
     coord: rec.coord || null,
-    state: 'finished',
+    state: running ? 'running' : 'finished',
     startedAt: rec.startedAt ?? null,
-    finishedAt: rec.finishedAt ?? null,
-    millis: rec.millis ?? null,
+    finishedAt: running ? null : rec.finishedAt ?? null,
+    millis: running ? null : rec.millis ?? null,
     cancelled: !!rec.cancelled,
-    success: typeof rec.success === 'boolean' ? rec.success : null,
+    success: running ? null : typeof rec.success === 'boolean' ? rec.success : null,
     modules: historyModules(rec),
     output: [],
+    mods: {},
+    planWeight: 0,
+    progressPercent: null,
+    progressNum: 0,
+    progressDen: 0,
+    etaMillis: null,
+    etaAt: null,
+    io: rec.io ? normalizeIo(rec.io) : null,
   };
+}
+
+/**
+ * Byte counters off a `request-finish` event. The engine keeps the SSE payload flat (one scalar per
+ * key, like the wire protocol), so the four counters arrive as `*Bytes` fields; `record.json` nests
+ * them under `io` instead (see {@link normalizeIo}). Null when the run moved nothing — the engine
+ * omits the fields rather than sending zeros.
+ */
+function ioOf(d) {
+  const io = normalizeIo({
+    remoteUp: d.remoteUpBytes,
+    remoteDown: d.remoteDownBytes,
+    localUp: d.localUpBytes,
+    localDown: d.localDownBytes,
+  });
+  return io.remoteUp || io.remoteDown || io.localUp || io.localDown ? io : null;
+}
+
+/** The four counters as numbers, defaulting anything missing/non-numeric to 0. */
+function normalizeIo(io) {
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0);
+  return { remoteUp: n(io.remoteUp), remoteDown: n(io.remoteDown), localUp: n(io.localUp), localDown: n(io.localDown) };
+}
+
+/**
+ * The card's I/O rows, newest-relevant first: `remote` (network) then `local` (build cache), each
+ * `{scope, label, up, down}` — `scope` is the stable key the UI branches on, `label` the text it
+ * renders. A scope with no traffic in either direction is dropped rather than rendered as zeros, so a
+ * fully-cached offline build shows one line and a run that moved nothing shows none.
+ */
+export function ioLines(card) {
+  const io = card && card.io;
+  if (!io) return [];
+  const lines = [];
+  if (io.remoteUp || io.remoteDown) {
+    lines.push({ scope: 'remote', label: 'remote data', up: io.remoteUp, down: io.remoteDown });
+  }
+  if (io.localUp || io.localDown) {
+    lines.push({ scope: 'local', label: 'local data', up: io.localUp, down: io.localDown });
+  }
+  return lines;
+}
+
+/**
+ * Human byte size, 1024-based, picking the unit that keeps the number small: `512 B`, `100 KiB`,
+ * `12.4 MiB`, `1.5 GiB` — never `1533 MiB`. One decimal below 100, whole numbers above it, and a
+ * trailing `.0` is dropped.
+ */
+export function fmtBytes(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  if (bytes < 1024) return Math.round(bytes) + ' B';
+  const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+  let v = bytes;
+  let u = -1;
+  do {
+    v /= 1024;
+    u++;
+  } while (v >= 1024 && u < units.length - 1);
+  const n = v >= 100 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, '');
+  return n + ' ' + units[u];
 }
 
 /** A persisted diagnostic → the client's flat failure-output shape (errors only; warnings dropped). */
@@ -300,7 +393,13 @@ export function outcomeOf(card) {
   if (card.success === true) return 'success';
   if (card.success === false) return 'failed';
   if (card.modules.some((m) => m.state === 'failed')) return 'failed';
-  if (card.modules.length > 0 && card.modules.every((m) => m.state === 'success')) return 'success';
+  // success + checked are both green outcomes (JK-1296: pure cache re-entry is "checked")
+  if (
+    card.modules.length > 0
+    && card.modules.every((m) => m.state === 'success' || m.state === 'checked')
+  ) {
+    return 'success';
+  }
   return 'finished';
 }
 
@@ -345,13 +444,21 @@ function phaseState(steps) {
   return 'success'; // all terminal, at least one success
 }
 
-/** One line summarizing a card's module work, e.g. "3 modules · 1 failed" — '' when nothing to say. */
+/**
+ * One line summarizing a card's module work, e.g. "3 modules · 1 failed",
+ * "checked 2 modules, all up to date", "built 1 · checked 2" — '' when nothing to say.
+ */
 export function moduleSummary(card) {
   const n = card.modules.length;
   if (n === 0) return '';
   const failed = card.modules.filter((m) => m.state === 'failed').length;
-  const noun = n === 1 ? 'module' : 'modules';
-  return failed > 0 ? `${n} ${noun} · ${failed} failed` : `${n} ${noun}`;
+  const checked = card.modules.filter((m) => m.state === 'checked').length;
+  const built = card.modules.filter((m) => m.state === 'success').length;
+  const noun = (k) => (k === 1 ? 'module' : 'modules');
+  if (failed > 0) return `${n} ${noun(n)} · ${failed} failed`;
+  if (built === 0 && checked > 0) return `checked ${checked} ${noun(checked)}, all up to date`;
+  if (built > 0 && checked > 0) return `built ${built} · checked ${checked}`;
+  return `${n} ${noun(n)}`;
 }
 
 function byId(cards, requestId) {

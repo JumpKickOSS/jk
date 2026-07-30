@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -60,7 +61,7 @@ public final class IdeOps {
 
     private static IdeWireModel build(Path startDir, Path cache, Path jdksDir, boolean fetchMissing)
             throws IOException {
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
 
         Path buildFile = startDir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {

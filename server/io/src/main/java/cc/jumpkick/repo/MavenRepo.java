@@ -32,6 +32,16 @@ public final class MavenRepo {
     /** TTL + conditional-GET cache for maven-metadata.xml; null for non-HTTP transports. */
     private final MavenMetadataCache metadataCache;
 
+    /**
+     * The HTTP client, retained for the small sidecar GETs that are not artifact fetches — currently the
+     * {@code .sha1} that confirms an {@code ~/.m2} candidate (JK-1290). Null for non-HTTP transports.
+     */
+    private final cc.jumpkick.http.Http http;
+
+    /** Central failover + the standing download preference (JK-1277 / JK-1290). */
+    private final cc.jumpkick.http.CentralMirror centralMirror =
+            cc.jumpkick.http.CentralMirror.standard(cc.jumpkick.util.JkDirs.store());
+
     /** Artifacts pinned this run without an upstream checksum sidecar (JK-1065). */
     private final java.util.concurrent.atomic.AtomicInteger missingUpstreamChecksums =
             new java.util.concurrent.atomic.AtomicInteger();
@@ -83,6 +93,29 @@ public final class MavenRepo {
     }
 
     /**
+     * Caller-selected transport <em>and</em> the HTTP client, for an http(s) repo whose transport was
+     * built with per-repo object-store config.
+     *
+     * <p>This exists because the transport-only constructors pass {@code null} for the client, and the
+     * normal resolve path went through one of them — so for every ordinary build both HTTP-only features
+     * silently switched off: the {@code maven-metadata.xml} TTL/conditional-GET cache (which also holds
+     * the "reuse a stale copy rather than fail on 429" behaviour) and the {@code ~/.m2} probe. Only a
+     * test pinning an override URL took the client-carrying path, which is why the metadata cache looked
+     * healthy in tests while never running in practice.
+     */
+    /** Transport + HTTP client for an http(s) repo. See the note above on why this is separate. */
+    public static MavenRepo overTransport(
+            String name,
+            URI baseUrl,
+            RepoTransport transport,
+            Cas cas,
+            RepoCredential credential,
+            Http httpOrNull,
+            boolean mirrorToM2) {
+        return new MavenRepo(name, baseUrl, transport, cas, credential, httpOrNull, mirrorToM2);
+    }
+
+    /**
      * Field-setting constructor. {@code httpOrNull} is the HTTP client when the repo is http(s)
      * (enabling the metadata cache), or {@code null} for a non-HTTP transport. {@code mirrorToM2}
      * is the resolving project's {@code project.m2install} value — {@code false} for resolvers not
@@ -104,6 +137,7 @@ public final class MavenRepo {
         this.repoStore = RepoArtifactStore.forRepoName(cas.root(), name);
         this.credential = Objects.requireNonNull(credential, "credential");
         this.mirrorToM2 = mirrorToM2;
+        this.http = httpOrNull;
         // The metadata cache speaks HTTP directly (conditional GET), so it only
         // applies to http(s) repos — a file:// (or other) baseUrl can be paired
         // with an Http client but must keep enumerating via the transport.
@@ -117,6 +151,15 @@ public final class MavenRepo {
         return scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"));
     }
 
+    /**
+     * True when this repo carries the HTTP client, i.e. the metadata TTL/conditional-GET cache and the
+     * {@code ~/.m2} probe are live. Both silently switch off without it (JK-1290), so it is worth being
+     * able to assert on.
+     */
+    public boolean hasMetadataCache() {
+        return metadataCache != null;
+    }
+
     public String name() {
         return name;
     }
@@ -126,11 +169,11 @@ public final class MavenRepo {
     }
 
     public Fetched fetchPom(Coordinate coord) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.pomPath(coord), true);
+        return fetch(coord, MavenLayout.pomPath(coord), true, Leg.RESOLVE);
     }
 
     public Fetched fetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.artifactPath(coord), true);
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT);
     }
 
     /**
@@ -153,7 +196,7 @@ public final class MavenRepo {
     public Fetched fetchMetadata(Coordinate coord) throws IOException, InterruptedException {
         // maven-metadata.xml has no version key and is stale offline, so it's
         // never mirrored; offline version enumeration uses availableVersions().
-        return fetch(coord, MavenLayout.metadataPath(coord), false);
+        return fetch(coord, MavenLayout.metadataPath(coord), false, Leg.RESOLVE);
     }
 
     /**
@@ -177,7 +220,21 @@ public final class MavenRepo {
         }
     }
 
-    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror)
+    /**
+     * Which leg of the work a fetch belongs to, because the two want opposite repositories (JK-1290).
+     *
+     * <p>{@link #RESOLVE} — metadata and POMs — decides <em>which versions exist</em>, so it asks Central
+     * and only falls back to the mirror once refused; a lagging mirror would otherwise resolve to stale
+     * versions. {@link #ARTIFACT} is pinned bytes: the sha256 is already known, so provenance is
+     * irrelevant, and preferring the mirror spends its large concurrency budget instead of Sonatype's
+     * per-IP quota.
+     */
+    private enum Leg {
+        RESOLVE,
+        ARTIFACT
+    }
+
+    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -191,20 +248,31 @@ public final class MavenRepo {
         }
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
-        // Stream the body straight into the CAS, hashing as it flows, so a
-        // multi-hundred-MB JAR never sits in the heap as a single byte[] —
-        // the difference between a cold-cache resolve fitting under the CLI's
-        // heap cap and OOMing on it.
-        Cas.Stored stored;
-        try (var in = transport
-                .fetchStream(uri, credential)
-                .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
-            stored = cas.putStream(in);
+        // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
+        URI primary = leg == Leg.ARTIFACT ? centralMirror.routeForDownload(uri) : uri;
+        // Before paying for the artifact, see whether the machine's Maven repository already has it
+        // (JK-1290). Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
+        // candidate for bytes the remote vouches for.
+        if (mirror && !force) {
+            Optional<Fetched> fromM2 = tryM2(coord, relativePath, uri);
+            if (fromM2.isPresent()) return fromM2.get();
         }
-        // Lock-time trust (JK-1065): cross-check published sidecar before pinning. Skip for
-        // metadata (mirror=false) — only POMs/artifacts establish the lock pin.
+        // Per-host cap around the NETWORK leg only (JK-1221): warm mirror hits short-circuit
+        // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
+        // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
+        Cas.Stored stored;
+        try {
+            stored = rateLimited(primary, () -> downloadAndVerify(coord, primary, relativePath, mirror));
+        } catch (IOException e) {
+            // The mirror can lag or simply not carry something Central has. Falling back keeps a
+            // preference from becoming a dependency.
+            if (primary.equals(uri)) throw e;
+            stored = rateLimited(uri, () -> downloadAndVerify(coord, uri, relativePath, mirror));
+        }
+        // Metered off the blob at rest, not the stream: this is the run's only artifact download leg
+        // (warm mirror hits returned above), so every jar/pom/metadata byte off the network lands here.
+        cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
         if (mirror) {
-            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
             // Primary store: materialise a human-readable, hard-linked copy under repos/<name>/.
             repoStore.materialize(relativePath, stored.path(), stored.sha256());
             if (mirrorToM2) {
@@ -222,6 +290,97 @@ public final class MavenRepo {
             }
         }
         return new Fetched(uri, stored.path(), stored.sha256(), stored.size());
+    }
+
+    /**
+     * The network leg: stream the body straight into the CAS (hashing as it flows, so a
+     * multi-hundred-MB JAR never sits in the heap as a single byte[]), then cross-check the
+     * published sidecar before pinning (JK-1065). Skips the check for metadata
+     * ({@code mirror=false}) — only POMs/artifacts establish the lock pin. Runs under the
+     * per-host permit so body + sidecar GETs count as one in-flight unit.
+     */
+    /**
+     * Adopt {@code relativePath} out of the Maven local repository when its bytes match the checksum this
+     * repository publishes for it.
+     *
+     * <p>The hash is fetched remotely rather than read from {@code jk.lock} on purpose: it makes the
+     * check work during resolve, when no lock entry exists yet, and it keeps the authority with the
+     * repository instead of with a directory any {@code mvn install} can write to. A {@code .sha1} is
+     * ~40 bytes against a jar that can be tens of megabytes, so the saving is bandwidth — it does not
+     * reduce request count, and so does not by itself relieve a per-IP quota (JK-1277).
+     *
+     * <p>Empty on any doubt whatsoever: lookup disabled, no local file, no HTTP client, sidecar missing
+     * or unparseable, or bytes that do not match. Every one of those falls through to the ordinary
+     * download, so the worst case is one wasted small GET.
+     */
+    private Optional<Fetched> tryM2(Coordinate coord, String relativePath, URI uri) {
+        if (!cc.jumpkick.config.JkM2Config.resolve().enabled()) return Optional.empty();
+        if (http == null || !isHttp(baseUrl)) return Optional.empty();
+        try {
+            Path candidate = cc.jumpkick.repo.M2Dirs.localRepository().resolve(relativePath);
+            if (!Files.isRegularFile(candidate)) return Optional.empty();
+
+            Optional<String> advertised = fetchSha1(uri);
+            if (advertised.isEmpty()) return Optional.empty();
+            String actual = cc.jumpkick.util.Hashing.fileHex("SHA-1", candidate);
+            if (!actual.equalsIgnoreCase(advertised.get())) return Optional.empty();
+
+            // Confirmed. Ingest under jk's own SHA-256 so the CAS and the lock agree.
+            String sha256 = cc.jumpkick.util.Hashing.sha256Hex(candidate);
+            Path blob = cc.jumpkick.config.JkM2Config.resolve().link()
+                    ? cas.linkFile(candidate, sha256)
+                    : cas.putFile(candidate, sha256);
+            repoStore.materialize(relativePath, blob, sha256);
+            // Say so under -v. An invisible optimisation is one nobody can tell apart from "not
+            // running" — which is exactly how a null Http client hid this path for a whole release.
+            if (cc.jumpkick.config.SessionContext.current().config().verboseOr(false)) {
+                System.err.println("jk: adopted " + relativePath + " from ~/.m2 (sha1 confirmed by " + name + ")");
+            }
+            return Optional.of(new Fetched(uri, blob, sha256, Files.size(blob)));
+        } catch (IOException | RuntimeException e) {
+            return Optional.empty(); // never let the optimisation fail a fetch
+        }
+    }
+
+    /** The {@code .sha1} this repository publishes beside {@code uri}; empty when absent or malformed. */
+    private Optional<String> fetchSha1(URI uri) {
+        try {
+            var resp = http.get(URI.create(uri + ".sha1"));
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) return Optional.empty();
+            String body = new String(resp.body(), java.nio.charset.StandardCharsets.UTF_8).strip();
+            if (body.isEmpty()) return Optional.empty();
+            String first = body.split("\\s+")[0];
+            // 40 hex chars, or it is not a SHA-1 (some repos serve an HTML error page with HTTP 200).
+            if (first.length() != 40 || !first.chars().allMatch(c -> Character.digit(c, 16) >= 0)) {
+                return Optional.empty();
+            }
+            return Optional.of(first);
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            return Optional.empty();
+        }
+    }
+
+    /** Per-host concurrency cap around the network leg only (JK-1221); file:// is not capped. */
+    private static Cas.Stored rateLimited(URI uri, cc.jumpkick.http.HostRateLimiter.ThrowingSupplier<Cas.Stored, IOException> work)
+            throws IOException, InterruptedException {
+        String host = uri.getHost();
+        boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
+        return limitHost ? cc.jumpkick.http.HostRateLimiter.shared().run(host, work) : work.get();
+    }
+
+    private Cas.Stored downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
+            throws IOException, InterruptedException {
+        Cas.Stored stored;
+        try (var in = transport
+                .fetchStream(uri, credential)
+                .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
+            stored = cas.putStream(in);
+        }
+        if (mirror) {
+            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
+        }
+        return stored;
     }
 
     /**

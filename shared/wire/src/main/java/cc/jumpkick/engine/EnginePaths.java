@@ -13,6 +13,12 @@ import java.nio.file.Path;
  * <p>Keying off the state dir (rather than a fixed machine-wide name) means a different {@code
  * JK_HOME}/{@code JK_STATE_DIR} naturally gets its own engine, and every invocation that resolves the
  * same state dir naturally shares one — see {@code docs/architecture.md}.
+ *
+ * <p>The artifact store ({@code JK_STORE_DIR}) is part of the identity for the same reason. Without it,
+ * an invocation asking for a different store silently reused an engine already bound to another one and
+ * the setting did nothing — measured before JK-1289 closed this: {@code /proc/<engine>/environ} carried
+ * no {@code JK_STORE_DIR} at all. The state dir alone is not enough, because two invocations can share
+ * a state dir while disagreeing about where downloads belong.
  */
 public final class EnginePaths {
 
@@ -32,14 +38,78 @@ public final class EnginePaths {
     public record Paths(
             String key, Path dir, Path socket, Path lock, Path pid, Path log, Path token, Path http, Path httpToken) {}
 
-    /** Resolve against the live {@link JkDirs} (honors {@code JK_HOME}/{@code JK_STATE_DIR}). */
+    /**
+     * Resolve against the live {@link JkDirs} (honors {@code JK_HOME}/{@code JK_STATE_DIR}/{@code
+     * JK_STORE_DIR}).
+     */
     public static Paths current() {
-        return resolve(JkDirs.state());
+        return resolve(JkDirs.state(), JkDirs.store());
     }
 
-    /** Resolve against an explicit state directory — the seam tests use. */
+    /**
+     * Resolve against an explicit state directory, pairing it with the ambient store — the seam tests
+     * use.
+     */
     public static Paths resolve(Path stateDir) {
-        String key = keyFor(stateDir);
+        return resolve(stateDir, JkDirs.store());
+    }
+
+    /** Resolve against an explicit state directory and store root. */
+    public static Paths resolve(Path stateDir, Path storeDir) {
+        String key = keyFor(stateDir, storeDir);
+        Path dir = stateDir.resolve("engine");
+        return new Paths(
+                key,
+                dir,
+                dir.resolve(key + ".sock"),
+                dir.resolve(key + ".lock"),
+                dir.resolve(key + ".pid"),
+                dir.resolve(key + ".log"),
+                dir.resolve(key + ".token"),
+                dir.resolve(key + ".http"),
+                dir.resolve(key + ".http-token"));
+    }
+
+    /**
+     * Every engine identity with an endpoint pointer under {@code stateDir}, newest file first.
+     *
+     * <p>Needed because the identity key is a hash: once the store became part of it (JK-1289), a machine
+     * can hold several resident engines and {@link #current()} names only the one this invocation would
+     * talk to. Without a way to enumerate them, clearing the rest meant {@code pkill} (JK-1293).
+     *
+     * <p>Discovered from {@code <key>.endpoint} files rather than from any registry, so it stays true even
+     * for an engine started by a jk that predates this method.
+     */
+    public static java.util.List<Paths> identitiesIn(Path stateDir) {
+        Path dir = stateDir.resolve("engine");
+        if (!java.nio.file.Files.isDirectory(dir)) return java.util.List.of();
+        java.util.List<Paths> out = new java.util.ArrayList<>();
+        try (var listing = java.nio.file.Files.list(dir)) {
+            java.util.List<Path> pointers = listing.filter(f -> f.getFileName().toString().endsWith(".endpoint"))
+                    .sorted(java.util.Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
+                            .reversed())
+                    .toList();
+            for (Path pointer : pointers) {
+                String file = pointer.getFileName().toString();
+                String key = file.substring(0, file.length() - ".endpoint".length());
+                out.add(forKey(key, stateDir));
+            }
+        } catch (java.io.IOException e) {
+            return java.util.List.copyOf(out);
+        }
+        return java.util.List.copyOf(out);
+    }
+
+    private static long lastModifiedOrZero(Path p) {
+        try {
+            return java.nio.file.Files.getLastModifiedTime(p).toMillis();
+        } catch (java.io.IOException e) {
+            return 0L;
+        }
+    }
+
+    /** The paths for an already-known key — the inverse of hashing, for enumeration. */
+    private static Paths forKey(String key, Path stateDir) {
         Path dir = stateDir.resolve("engine");
         return new Paths(
                 key,
@@ -130,7 +200,13 @@ public final class EnginePaths {
 
     /** A short, stable hash of the resolved absolute state-dir path. */
     static String keyFor(Path stateDir) {
-        String hex = Hashing.sha256Hex(stateDir.toAbsolutePath().normalize().toString());
+        return keyFor(stateDir, JkDirs.store());
+    }
+
+    static String keyFor(Path stateDir, Path storeDir) {
+        String hex = Hashing.sha256Hex(stateDir.toAbsolutePath().normalize().toString()
+                + "\u0000"
+                + storeDir.toAbsolutePath().normalize());
         return hex.substring(0, KEY_LENGTH);
     }
 }

@@ -62,6 +62,7 @@ public final class ToolInstaller {
                 }
             }
             Files.write(archive, body);
+            cc.jumpkick.config.SessionContext.current().io().remoteDown(archive);
 
             Path stagingDir = Files.createTempDirectory("jk-tool-stage-");
             try {

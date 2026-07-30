@@ -106,6 +106,7 @@ class SelfHostingTomlTest {
                         "plugins/formatter",
                         "plugins/spring-boot",
                         "plugins/grails",
+                        "plugins/quarkus",
                         "plugins/android",
                         "plugins/protobuf",
                         "plugins/shrink");
@@ -169,7 +170,7 @@ class SelfHostingTomlTest {
                             .map(d -> d.module())
                             .toList())
                     .as(module)
-                    .contains("cc.jumpkick:jk-plugin-api");
+                    .contains("cc.jumpkick:jk-plugin-sdk");
         }
         // test-runner keeps the JDK-17 floor for the user's forked test JVM.
         JkBuild runner = JkBuildParser.parse(REPO.resolve("plugins/test-runner/jk.toml"));

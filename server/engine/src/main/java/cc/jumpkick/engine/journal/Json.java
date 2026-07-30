@@ -77,6 +77,7 @@ final class Json {
 
         o.put("trigger", r.trigger());
         o.put("commit", r.commit());
+        o.put("running", r.running());
 
         if (r.benefit() == null) {
             o.put("benefit", null);
@@ -87,6 +88,17 @@ final class Json {
             b.put("coveredSkips", r.benefit().coveredSkips());
             b.put("totalSkips", r.benefit().totalSkips());
             o.put("benefit", b);
+        }
+
+        if (r.io() == null) {
+            o.put("io", null);
+        } else {
+            Map<String, Object> io = new LinkedHashMap<>();
+            io.put("remoteUp", r.io().remoteUp());
+            io.put("remoteDown", r.io().remoteDown());
+            io.put("localUp", r.io().localUp());
+            io.put("localDown", r.io().localDown());
+            o.put("io", io);
         }
 
         return MiniJson.writePretty(o);
@@ -143,6 +155,12 @@ final class Json {
                     lng(b, "coveredSkips"), lng(b, "totalSkips"));
         }
 
+        BuildRecord.Io io = null;
+        if (o.get("io") instanceof Map<?, ?> im) {
+            Map<String, Object> i = (Map<String, Object>) im;
+            io = new BuildRecord.Io(lng(i, "remoteUp"), lng(i, "remoteDown"), lng(i, "localUp"), lng(i, "localDown"));
+        }
+
         List<BuildRecord.Diag> diagnostics = new ArrayList<>();
         for (Object e : arr(o, "diagnostics")) {
             Map<String, Object> dm = (Map<String, Object>) e;
@@ -176,7 +194,9 @@ final class Json {
                 diagnostics,
                 str(o, "trigger"),
                 str(o, "commit"),
-                benefit);
+                benefit,
+                bool(o, "running"),
+                io);
     }
 
     private static String str(Map<String, Object> o, String key) {

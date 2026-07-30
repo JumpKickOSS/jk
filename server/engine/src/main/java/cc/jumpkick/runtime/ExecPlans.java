@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -195,8 +196,14 @@ public final class ExecPlans {
             throws IOException, InterruptedException {
         // Workspace root: pick the runnable module (declared [application] main, else unique scan).
         // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
+        // A root that is ITSELF runnable ([workspace] + [application] main + sources — "rare but
+        // legal" per WorkspaceLoader) runs its own main: it can never appear in loadModules, so
+        // the module scan would report "no launchable main" (JK-1231).
         if (project.isWorkspaceRoot()) {
-            return runWorkspace(dir, cache, project, dev);
+            String rootMain = project.mainClass();
+            if (rootMain == null || rootMain.isBlank() || !CompileSupport.hasSources(dir)) {
+                return runWorkspace(dir, cache, project, dev);
+            }
         }
         // A device-mode artifact (an APK) is not host-runnable — the plugin's deploy command is
         // the run story; a generic java exec would be nonsense.
@@ -315,7 +322,7 @@ public final class ExecPlans {
         Path lockFile = dir.resolve("jk.lock");
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
-            classpath.addAll(new ClasspathResolver(new Cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
+            classpath.addAll(new ClasspathResolver(JkStores.cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
             if (dev) {
                 hotReload = lock.artifacts().stream().anyMatch(a -> {
                     String n = a.name();
@@ -578,7 +585,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(new Cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (!Files.exists(entry.jar())) continue;
                 Path dest = libDir.resolve(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
@@ -642,7 +649,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(new Cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (!Files.exists(entry.jar())) continue;
                 libNames.add(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
@@ -709,7 +716,7 @@ public final class ExecPlans {
                     .flatMap(c -> c.stringOpt("version"))
                     .orElse(null);
             if (bootVersion == null) return null;
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             return RepoGroupBuilder.buildFor(project, null, cas)
                     .tryFetchArtifact(cc.jumpkick.model.Coordinate.of(
                             "org.springframework.boot", "spring-boot-devtools", bootVersion))

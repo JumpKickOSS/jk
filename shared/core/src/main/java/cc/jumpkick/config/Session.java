@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.config;
 
+import cc.jumpkick.task.IoLedger;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @param parallelTests when false, module tests serialize through the engine's test gate
  * @param cancel never null after construction; {@code null} input becomes {@link CancelToken#NONE}
  * @param testSelection suite/tag selection for {@code jk test} (JK-1134+)
+ * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
         JkConfig config,
@@ -34,7 +36,9 @@ public record Session(
         /** CLI packaging override: empty, {@code fat}, or {@code shrink} ({@code jk assembly --shrink}). */
         String assemblyOverride,
         /** Test suite / tag selection ({@code jk test --suite}/tags); default = unit suite only. */
-        TestSelection testSelection) {
+        TestSelection testSelection,
+        /** Per-run byte accounting — one ledger per invocation, shared by every copy. */
+        IoLedger io) {
 
     public Session {
         Objects.requireNonNull(config, "config");
@@ -46,6 +50,7 @@ public record Session(
         clientEnv = (clientEnv == null || clientEnv.isEmpty()) ? java.util.Map.of() : java.util.Map.copyOf(clientEnv);
         assemblyOverride = (assemblyOverride == null || assemblyOverride.isBlank()) ? "" : assemblyOverride.trim();
         testSelection = testSelection == null ? TestSelection.DEFAULT : testSelection;
+        io = (io == null) ? new IoLedger() : io;
     }
 
     private Session copy(
@@ -61,7 +66,8 @@ public record Session(
             String variant,
             java.util.Map<String, String> clientEnv,
             String assemblyOverride,
-            TestSelection testSelection) {
+            TestSelection testSelection,
+            IoLedger io) {
         return new Session(
                 config,
                 workingDir,
@@ -75,7 +81,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /** A copy carrying the given variant selection + client-resolved env. */
@@ -93,7 +100,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /**
@@ -142,6 +150,8 @@ public record Session(
     /**
      * A default session: empty config, current working directory, default cache/JDK roots, no tuning,
      * and a fresh {@link CancelToken#live() live} cancellation token so a front-end can cancel it.
+     * Its {@link IoLedger} is the run's ambient one when a request is open on this thread (the engine
+     * opens one per request), else a fresh detached ledger.
      */
     public static Session defaults() {
         return new Session(
@@ -157,7 +167,8 @@ public record Session(
                 "",
                 null,
                 "",
-                TestSelection.DEFAULT);
+                TestSelection.DEFAULT,
+                IoLedger.currentOrNew());
     }
 
     public Session withConfig(JkConfig newConfig) {
@@ -174,7 +185,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     public Session withWorkingDir(Path dir) {
@@ -191,7 +203,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     public Session withCacheDir(Path dir) {
@@ -208,7 +221,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     public Session withJdksDir(Path dir) {
@@ -225,7 +239,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     public Session withJvm(PluginTuning tuning) {
@@ -242,7 +257,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /** The top-tier JDK / GraalVM selection ({@code --jdk} / {@code --graal}); blanks normalize to null. */
@@ -260,7 +276,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     public Session withParallelTests(boolean enabled) {
@@ -277,7 +294,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /**
@@ -298,7 +316,8 @@ public record Session(
                 variant,
                 clientEnv,
                 mode,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /** A copy carrying the given cancellation token ({@code null} → {@link CancelToken#NONE}). */
@@ -316,7 +335,8 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                testSelection);
+                testSelection,
+                io);
     }
 
     /** Suite / tag selection for this invocation ({@code jk test}). */
@@ -334,7 +354,30 @@ public record Session(
                 variant,
                 clientEnv,
                 assemblyOverride,
-                selection == null ? TestSelection.DEFAULT : selection);
+                selection == null ? TestSelection.DEFAULT : selection,
+                io);
+    }
+
+    /**
+     * A copy metering into {@code ledger} ({@code null} → a fresh one). Rarely needed: a session
+     * built inside a request already adopts the run's ledger via {@link #defaults()}.
+     */
+    public Session withIo(IoLedger ledger) {
+        return copy(
+                config,
+                workingDir,
+                cacheDir,
+                jdksDir,
+                jvm,
+                jdkSpec,
+                graalSpec,
+                parallelTests,
+                cancel,
+                variant,
+                clientEnv,
+                assemblyOverride,
+                testSelection,
+                ledger == null ? new IoLedger() : ledger);
     }
 
     private static String blankToNull(String s) {

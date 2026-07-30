@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -15,6 +16,7 @@ import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.GitSource;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.model.WorkspaceMerge;
@@ -106,7 +108,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("Resolving");
                     JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     if (SessionContext.current().offline() && Files.exists(lockFile)) {
                         try {
                             Lockfile existing = LockfileReader.read(lockFile);
@@ -144,7 +146,9 @@ public final class LockPipelines {
                     LockOrchestrator orchestrator = new LockOrchestrator(repos)
                             .withProjectDir(dir)
                             .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
-                                    pathPrep.project(), dir));
+                                    pathPrep.project(), dir))
+                            .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                            .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
                     // Wrap the caller's observer so it also drives ctx.label/progress
                     // (the bar under a console listener; wire progress events when hosted).
                     ResolveObserver wrappedObserver = new ResolveObserver() {
@@ -222,7 +226,7 @@ public final class LockPipelines {
                     var decls = effective.plugins();
                     if (decls.isEmpty()) return;
                     ctx.label("lock plugins");
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
                     var entries = new ArrayList<Lockfile.PluginEntry>();
                     for (var pd : decls) {
@@ -339,7 +343,23 @@ public final class LockPipelines {
     /** {@code jk update}: same as {@link #lockPipeline} but always resolves fresh. */
     public static Pipeline updatePipeline(
             Path dir, JkBuild effective, Path cache, URI repoUrl, List<String> features, boolean withDefaultFeatures) {
+        return updatePipeline(dir, effective, cache, repoUrl, features, withDefaultFeatures, null);
+    }
+
+    /**
+     * As {@link #updatePipeline(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
+     * platform-policy override ({@code enforced}|{@code floor}, JK-1206).
+     */
+    public static Pipeline updatePipeline(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            String platformOverride) {
         Path lockFile = dir.resolve("jk.lock");
+        PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
                 .ticks(1)
@@ -358,7 +378,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("re-resolve dependencies");
                     JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
                     try {
                         // Git deps: re-materialize at current tip (accept movement).
@@ -371,6 +391,8 @@ public final class LockPipelines {
                                 .withProjectDir(dir)
                                 .withJvmEnvironment(cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(
                                         pathPrep.project(), dir))
+                                .withPlatformPolicy(policy)
+                                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
                         ctx.put(LOCKFILE, lock);
@@ -482,7 +504,7 @@ public final class LockPipelines {
         Path lockFile = dir.resolve("jk.lock");
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
         Path javaHome = JavaHomes.resolveJavaHome(dir);
         GitSourceResolution.Prepared prep =
@@ -493,6 +515,8 @@ public final class LockPipelines {
                 .withProjectDir(dir)
                 .withJvmEnvironment(
                         cc.jumpkick.plugin.manifest.PluginContributions.jvmEnvironment(pathPrep.project(), dir))
+                .withPlatformPolicy(pathPrep.project().build().platformPolicy())
+                .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
         newLock = GitSourceResolution.stamp(newLock, prep.gitInfoByKey());
 
@@ -525,6 +549,19 @@ public final class LockPipelines {
                 oldLock != null ? oldLock.plugins() : newLock.plugins());
         LockfileWriter.write(finalLock, lockFile);
         return refreshed;
+    }
+
+    /**
+     * CLI {@code --platform} override wins; else {@code [resolve] platform} from the project
+     * (default enforced).
+     */
+    static PlatformPolicy effectivePlatformPolicy(JkBuild project, String override) {
+        if (override != null && !override.isBlank()) {
+            return PlatformPolicy.parse(override.trim());
+        }
+        return project != null && project.build() != null
+                ? project.build().platformPolicy()
+                : PlatformPolicy.ENFORCED;
     }
 
     private static String gitKey(GitSource s) {

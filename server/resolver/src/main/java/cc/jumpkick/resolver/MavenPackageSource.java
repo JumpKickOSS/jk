@@ -3,6 +3,7 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.model.Coordinate;
 import cc.jumpkick.model.PackageId;
+import cc.jumpkick.model.PlatformPolicy;
 import cc.jumpkick.repo.EffectivePom;
 import cc.jumpkick.repo.EffectivePomBuilder;
 import cc.jumpkick.repo.MavenRepo;
@@ -25,10 +26,10 @@ import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()} when no preferred pin is known. A non-empty platform BOM map
- * makes bare POM edges exact (enforced platform contract); without a BOM, bare edges stay
- * highest-wins floors. BOM/lock prefs also seed lazy singleton universes via {@link
- * #preferredVersion}. POM exclusions strip modules when expanding a package.
+ * metadata on {@link JkThreads#io()} when no preferred pin is known. Platform policy (default
+ * {@link PlatformPolicy#ENFORCED}) controls BOM-map pins; without a BOM map, bare edges stay
+ * highest-wins floors. BOM/lock prefs seed lazy singleton universes via {@link #preferredVersion}.
+ * POM exclusions strip modules when expanding a package.
  */
 public final class MavenPackageSource implements PackageSource {
 
@@ -40,12 +41,21 @@ public final class MavenPackageSource implements PackageSource {
     private final RepoGroup repos;
     private final EffectivePomBuilder pomBuilder;
     private final Map<String, String> bomConstraints;
+    private final PlatformPolicy platformPolicy;
+    private final cc.jumpkick.model.UnmappedPolicy unmappedPolicy;
     private final KmpRedirects kmp;
 
     /** Locked versions from a prior lock file — preferred but NOT hard-pinned. Mutable so one shared source can update prefs across main/test/processor solves. */
     private volatile Map<String, String> lockedVersionPrefs;
 
+    /**
+     * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
+     * pre-releases (JK-1287). Mutable for the same reason as {@link #lockedVersionPrefs}.
+     */
+    private volatile java.util.Set<String> snapshotPackages = java.util.Set.of();
+
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
+    private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
     /**
      * Raw POM edge cache keyed by {@code pkg@version} only (JK-1202). Exclusion filtering is applied
      * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
@@ -97,16 +107,66 @@ public final class MavenPackageSource implements PackageSource {
             Map<String, String> bomConstraints,
             Map<String, String> lockedVersionPrefs,
             KmpRedirects kmp) {
+        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
+    }
+
+    /** As above with {@link PlatformPolicy} (JK-1206); unmapped fills default to MEDIATE. */
+    public MavenPackageSource(
+            RepoGroup repos,
+            EffectivePomBuilder pomBuilder,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy) {
+        this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, null);
+    }
+
+    /** Full constructor with both platform policies (JK-1206/JK-1241). */
+    public MavenPackageSource(
+            RepoGroup repos,
+            EffectivePomBuilder pomBuilder,
+            Map<String, String> bomConstraints,
+            Map<String, String> lockedVersionPrefs,
+            KmpRedirects kmp,
+            PlatformPolicy platformPolicy,
+            cc.jumpkick.model.UnmappedPolicy unmappedPolicy) {
         this.repos = Objects.requireNonNull(repos, "repos");
         this.pomBuilder = Objects.requireNonNull(pomBuilder, "pomBuilder");
         this.bomConstraints = Map.copyOf(Objects.requireNonNull(bomConstraints, "bomConstraints"));
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(lockedVersionPrefs, "lockedVersionPrefs"));
         this.kmp = Objects.requireNonNull(kmp, "kmp");
+        this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
+        this.unmappedPolicy =
+                unmappedPolicy == null ? cc.jumpkick.model.UnmappedPolicy.MEDIATE : unmappedPolicy;
+    }
+
+    public PlatformPolicy platformPolicy() {
+        return platformPolicy;
     }
 
     /** Refresh soft-prefer lock pins for a subsequent scope solve (does not clear version/deps caches). */
     public void setLockedVersionPrefs(Map<String, String> prefs) {
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(prefs, "prefs"));
+    }
+
+    /**
+     * Declare which packages were requested with {@code snapshot}, keyed by {@code group:artifact}.
+     *
+     * <p>Every other floating selector resolves to stable releases only, which is what the compact
+     * candidate window enforces. {@code snapshot} is the sanctioned way out, so those packages skip
+     * that narrowing and take the newest advertised version, pre-release or not.
+     */
+    public void setSnapshotPackages(java.util.Set<String> gaKeys) {
+        this.snapshotPackages = java.util.Set.copyOf(Objects.requireNonNull(gaKeys, "gaKeys"));
+        // The compact window differs for snapshot packages, so a list cached under the previous
+        // policy would be stale.
+        versionCache.clear();
+    }
+
+    /** True when {@code pkg} was requested with the {@code snapshot} selector. */
+    private boolean isSnapshotPackage(String pkg) {
+        if (snapshotPackages.isEmpty()) return false;
+        return snapshotPackages.contains(pkg) || snapshotPackages.contains(PackageId.parse(pkg).ga());
     }
 
     /**
@@ -116,6 +176,21 @@ public final class MavenPackageSource implements PackageSource {
     @Override
     public Optional<String> preferredVersion(String pkg) {
         String ga = PackageId.parse(pkg).ga();
+        if (isSnapshotPackage(pkg)) {
+            // `snapshot` means "the newest thing published", so it outranks a lock pin — a re-lock is
+            // precisely when it should move. Seeding a singleton universe here also keeps
+            // AllowedSet#choosePreferred's stable preference from quietly handing back an older
+            // release than the pre-release that was asked for.
+            try {
+                List<String> ordered = orderedVersions(pkg);
+                String newest = highestOf(ordered);
+                if (newest != null) return Optional.of(newest);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (IOException e) {
+                // Metadata unreachable: fall through to the ordinary prefs rather than fail here.
+            }
+        }
         String lock = firstNonBlank(lockedVersionPrefs.get(pkg), lockedVersionPrefs.get(ga));
         if (lock != null) return Optional.of(lock);
         String bom = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(pkg));
@@ -129,42 +204,149 @@ public final class MavenPackageSource implements PackageSource {
         return null;
     }
 
+    /**
+     * FLOOR lower bound: the higher of the platform pin and the edge's own declared version —
+     * a floor must never clamp an edge below what its POM requires (JK-1212).
+     */
+    private static String floorOf(String bomPin, String edgeVersion) {
+        if (edgeVersion == null || edgeVersion.isEmpty()) return bomPin;
+        return Versions.compare(edgeVersion, bomPin) > 0 ? edgeVersion : bomPin;
+    }
+
     @Override
     public List<String> versions(String pkg) throws IOException, InterruptedException {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
+        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
+        List<String> ordered = orderedVersions(pkg);
+        // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
+        List<String> result =
+                List.copyOf(isSnapshotPackage(pkg) ? compactHighest(ordered) : compactVersionCandidates(ordered));
+        versionCache.put(pkg, result);
+        return result;
+    }
+
+    /**
+     * Un-capped candidate list for the solver's widen-on-failure path (JK-1216): when every
+     * compact candidate is ruled out (a Maven range below the top releases, backtracking past
+     * the pin), the solver re-expands from the full advertised history instead of hard-failing
+     * a satisfiable graph. The solver applies its own cap.
+     */
+    @Override
+    public List<String> expandedVersions(String pkg) throws IOException, InterruptedException {
+        List<String> cached = expandedVersionCache.get(pkg);
+        if (cached != null) return cached;
+        List<String> result = List.copyOf(orderedVersions(pkg));
+        expandedVersionCache.put(pkg, result);
+        return result;
+    }
+
+    /** Advertised versions, highest-first, BOM/lock soft-prefers front-loaded. */
+    private List<String> orderedVersions(String pkg) throws IOException, InterruptedException {
         List<String> available = repos.availableVersions(withVersion(pkg, "any"));
         List<String> sorted = new ArrayList<>(available);
         sorted.sort((a, b) -> Versions.compare(b, a));
 
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
+        // Later calls win the front — mirror preferredVersion's precedence exactly
+        // (lock pkg > lock ga > bom ga > bom pkg) or classifier duals pick divergent
+        // versions between the lazy-seed and expanded paths (JK-1239).
         String ga = PackageId.parse(pkg).ga();
-        preferBom(sorted, bomConstraints.get(ga));
         preferBom(sorted, bomConstraints.get(pkg));
-        preferFirst(sorted, lockedVersionPrefs.get(pkg));
+        preferBom(sorted, bomConstraints.get(ga));
         preferFirst(sorted, lockedVersionPrefs.get(ga));
-
-        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
-        // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
-        sorted = compactVersionCandidates(sorted);
-
-        List<String> result = List.copyOf(sorted);
-        versionCache.put(pkg, result);
-        return result;
+        preferFirst(sorted, lockedVersionPrefs.get(pkg));
+        return sorted;
     }
 
-    /** Cap candidate list while preserving soft-prefer front and highest releases. */
+    /** How many candidates the compact window keeps. */
+    private static final int COMPACT_CANDIDATES = 4;
+
+    /**
+     * Cap the candidate list while preserving the soft-prefer front and, critically, keeping
+     * something <em>stable</em> in the window.
+     *
+     * <p>The cap exists so PubGrub does not thrash on 80-version histories (JK-1202). Taking simply
+     * the highest four, though, starves {@link
+     * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred()} of any stable candidate whenever a
+     * project publishes four or more pre-releases above its latest release. jackson-annotations sits
+     * at 3.0-rc5..rc2 above a stable 2.22, so a caret on 2.22 resolved to <b>3.0-rc5</b> (JK-1287).
+     * The stable preference downstream was correct all along — it was simply never offered a stable.
+     *
+     * <p>So the highest <em>stable</em> versions fill the window first and pre-releases take only the
+     * slots left over (which is what keeps a project that has never cut a stable release resolvable).
+     * A constraint that genuinely needs a pre-release still resolves: every stable candidate fails it,
+     * the window is exhausted, and the solver widens to the unfiltered history via {@link
+     * #expandedVersions} — the JK-1216 path that exists for exactly this shape of miss. That keeps
+     * transitive POM edges pinned to milestone builds working, since those arrive as constraints
+     * rather than as manifest selectors.
+     */
     static List<String> compactVersionCandidates(List<String> sortedHighestFirst) {
-        if (sortedHighestFirst.size() <= 4) return sortedHighestFirst;
-        List<String> out = new ArrayList<>(4);
-        // Keep order: soft-prefer may already be at index 0.
+        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) {
+            // The full history is the universe, so the downstream stable preference can already see
+            // a stable candidate. Nothing to protect against here.
+            return sortedHighestFirst;
+        }
+
+        // A lock/BOM soft-prefer sits at index 0 without necessarily being the highest version, and
+        // it must survive the cap even when it is itself a pre-release: an explicit pin outranks this
+        // policy (JK-1072).
+        String front = sortedHighestFirst.get(0);
+        String naturalMax = highestOf(sortedHighestFirst);
+        boolean pinnedFront = !front.equals(naturalMax);
+
+        java.util.LinkedHashSet<String> picked = new java.util.LinkedHashSet<>();
+        if (pinnedFront) {
+            picked.add(front);
+            // Keep the natural max too. AllowedSet infers "this front is a pin, take it
+            // unconditionally" by finding some higher version in the universe — drop that and a
+            // pre-release pin silently loses to a lower stable.
+            picked.add(naturalMax);
+        }
+        for (String v : sortedHighestFirst) {
+            if (picked.size() >= COMPACT_CANDIDATES) break;
+            if (Versions.isStable(v)) picked.add(v);
+        }
+        for (String v : sortedHighestFirst) {
+            if (picked.size() >= COMPACT_CANDIDATES) break;
+            picked.add(v);
+        }
+
+        // Restore highest-first order (choosePreferred walks the universe in index order), then put
+        // any pin back at the front where preferFirst/preferBom left it.
+        List<String> out = new ArrayList<>(picked);
+        out.sort((a, b) -> Versions.compare(b, a));
+        if (pinnedFront) {
+            out.remove(front);
+            out.add(0, front);
+        }
+        return List.copyOf(out);
+    }
+
+    /**
+     * Cap to the highest candidates with no stability policy at all — the window for a {@code
+     * snapshot} package, which asked for the newest thing published whatever it is.
+     */
+    static List<String> compactHighest(List<String> sortedHighestFirst) {
+        if (sortedHighestFirst.size() <= COMPACT_CANDIDATES) return sortedHighestFirst;
+        List<String> out = new ArrayList<>(COMPACT_CANDIDATES);
         for (String v : sortedHighestFirst) {
             if (out.contains(v)) continue;
             out.add(v);
-            if (out.size() == 4) break;
+            if (out.size() == COMPACT_CANDIDATES) break;
         }
-        return out;
+        return List.copyOf(out);
+    }
+
+    /** The highest version under Maven ordering, or null for an empty list. */
+    private static String highestOf(List<String> versions) {
+        String max = null;
+        for (String v : versions) {
+            if (max == null || Versions.compare(v, max) > 0) max = v;
+        }
+        return max;
     }
 
     /**
@@ -304,11 +486,6 @@ public final class MavenPackageSource implements PackageSource {
         return out;
     }
 
-    private static String exclusionCacheKey(Set<String> excl) {
-        if (excl == null || excl.isEmpty()) return "";
-        return String.join(",", excl.stream().sorted().toList());
-    }
-
     /**
      * PubGrub constraint for one POM edge.
      *
@@ -321,10 +498,13 @@ public final class MavenPackageSource implements PackageSource {
      * <ul>
      *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
      *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
-     *   <li><b>Platform BOM present</b>: bare → {@code exact} (the EffectivePom-filled string).
-     *       GAs listed in the platform map use the BOM pin ({@code exact}), which overrides a
-     *       different bare string on the edge (enforced platform). Explicit Maven ranges on the
-     *       edge still pass through as ranges.
+     *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): BOM-map GAs
+     *       use {@code exact(bomPin)}; unmapped bare fills follow {@link
+     *       cc.jumpkick.model.UnmappedPolicy} — highest-wins by default, {@code exact} under
+     *       {@code strict} (JK-1241).
+     *   <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
+     *       atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
+     *       version — JK-1212); unmapped bare fills follow {@link cc.jumpkick.model.UnmappedPolicy}.
      * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
@@ -338,19 +518,29 @@ public final class MavenPackageSource implements PackageSource {
         // that often have no classifier POM → Unavailable thrash (JK-1202).
         if (!id.classifier().isEmpty()) {
             String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
+            if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
+                return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
+            }
             return VersionSet.exact(bomPin != null ? bomPin : trimmed);
         }
 
-        // Platform map entry: enforced pin (not soft-prefer; not overridden by lock prefs).
+        // Platform map entry.
         String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
         if (bomPin != null) {
+            if (platformPolicy == PlatformPolicy.FLOOR) {
+                // Opt-in soft platform: pin is a floor; preferBom still front-loads the pin.
+                return VersionSet.atLeast(floorOf(bomPin, trimmed), true);
+            }
             return VersionSet.exact(bomPin);
         }
-        if (!bomConstraints.isEmpty()) {
-            // Platform active: EffectivePom-filled bare version is exact — do not highest-wins-lift.
+        if (!bomConstraints.isEmpty() && unmappedPolicy == cc.jumpkick.model.UnmappedPolicy.STRICT) {
+            // [resolve] unmapped = "strict": exact fills for unmanaged GAs — every diamond on
+            // them is a hard error (maximum reproducibility). Default is MEDIATE (JK-1241):
+            // fall through to highest-wins, Maven/Gradle parity; the named-locks hazard class
+            // is covered by family-align MAPPING those GAs into the BOM constraints.
             return VersionSet.exact(trimmed);
         }
-        // No platform: historical highest-wins bare versions. Lock prefs only reorder candidates.
+        // No platform, or unmapped-mediate: highest-wins bare versions. Lock prefs only reorder candidates.
         return VersionSelectors.constraintFromPomVersion(trimmed);
     }
 

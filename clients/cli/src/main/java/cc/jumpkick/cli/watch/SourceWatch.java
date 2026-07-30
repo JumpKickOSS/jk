@@ -135,7 +135,10 @@ public final class SourceWatch implements AutoCloseable {
                 }
                 if (relPath.contains("/resources/")) {
                     resources = true;
-                } else if (name.endsWith(".java") || name.endsWith(".kt") || name.endsWith(".kts")) {
+                } else if (name.endsWith(".java")
+                        || name.endsWith(".kt")
+                        || name.endsWith(".kts")
+                        || name.endsWith(".groovy")) {
                     sources = true;
                 } else if (!Files.isDirectory(changed) && isInteresting(name)) {
                     resources = true;

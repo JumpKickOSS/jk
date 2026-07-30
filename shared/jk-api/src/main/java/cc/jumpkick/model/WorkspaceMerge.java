@@ -105,6 +105,69 @@ public final class WorkspaceMerge {
         return out.build();
     }
 
+    /**
+     * {@code module} with every {@code workspace:<name>} placeholder rewritten to the sibling's real
+     * {@code group:artifact} at an exact version — sibling deps <em>kept</em>, not stripped.
+     *
+     * <p>This is the counterpart to {@link #applyToModule}, which exists for lock orchestration and
+     * therefore drops sibling edges (they are not resolvable Maven coordinates) after folding their
+     * externals into MAIN. That is right for locking and wrong for anything describing the module to
+     * the outside world: a published POM must still declare the sibling, just by its real
+     * coordinate. Emitting the raw placeholder produced {@code <groupId>workspace</groupId>} /
+     * {@code <version>LATEST</version>} POMs (JK-1255); dropping the edge instead would silently
+     * lose a real dependency, which is worse.
+     *
+     * <p>Unresolvable placeholders are left untouched rather than throwing — the caller is usually
+     * rendering, and a partial answer beats an exception at that point.
+     */
+    public static JkBuild resolveSiblingCoordinates(JkBuild root, JkBuild module, Collection<JkBuild> allModules) {
+        Map<String, JkBuild> siblingByArtifact = new LinkedHashMap<>();
+        for (JkBuild m : allModules) siblingByArtifact.put(m.project().name(), m);
+        siblingByArtifact.put(root.project().name(), root);
+        Map<String, Workspace.WorkspaceDependency> wsDeps =
+                root.workspace() != null ? root.workspace().dependencies() : Map.of();
+
+        Map<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
+        boolean rewroteAny = false;
+        for (Scope scope : Scope.values()) {
+            List<Dependency> deps = module.dependencies().of(scope);
+            if (deps.isEmpty()) continue;
+            List<Dependency> out = new ArrayList<>(deps.size());
+            for (Dependency d : deps) {
+                Dependency resolved = d;
+                if (d.isWorkspace()) {
+                    try {
+                        resolved = resolve(d, siblingByArtifact, wsDeps);
+                        rewroteAny = true;
+                    } catch (IllegalStateException e) {
+                        resolved = d; // leave the placeholder; the build surfaces the real error
+                    }
+                }
+                out.add(resolved);
+            }
+            byScope.put(scope, out);
+        }
+        if (!rewroteAny) return module;
+
+        JkBuild.Builder out = JkBuild.builder(module.project())
+                .dependencies(new JkBuild.Dependencies(byScope))
+                .repositories(module.repositories())
+                .profiles(module.profiles())
+                .features(module.features())
+                .workspace(module.workspace())
+                .manifest(module.manifest())
+                .plugins(module.plugins())
+                .application(module.application().orElse(null))
+                .nativeConfig(module.nativeConfig().orElse(null))
+                .build(module.build())
+                .format(module.format())
+                .variants(module.variants());
+        for (PluginConfig config : module.pluginConfigs().values()) {
+            out.pluginConfig(config);
+        }
+        return out.build();
+    }
+
     public static JkBuild merge(JkBuild root, Collection<JkBuild> modules) {
         if (modules.isEmpty()) return Variants.unionDependencies(root);
 

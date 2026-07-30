@@ -233,8 +233,7 @@ public final class CacheCommand extends GroupCommand {
             int inner = (w[0] + 2) + (w[1] + 2) + (w[2] + 2) + 2;
 
             List<String> out = new ArrayList<>();
-            out.add(border("╭", "╮", inner));
-            out.add(titleRow("Cache Directory Information", inner));
+            out.add(cc.jumpkick.cli.tui.BoxTable.titleBar("Cache Directory Information", inner + 2));
             out.add(divider("├", "┬", "┤", w));
             out.add(headerRow(w));
             out.add(divider("├", "┼", "┤", w));
@@ -262,29 +261,6 @@ public final class CacheCommand extends GroupCommand {
                 sb.append(i == w.length - 1 ? right : junction);
             }
             return Theme.colorize(sb.toString(), Theme.active().darkGray());
-        }
-
-        /**
-         * Full-width title band — white text on plan-blue background, with Nerd Font
-         * rounded pill caps (U+E0B6 / U+E0B4) in plan-blue foreground between the │ rails.
-         * The │ rails are retained; the caps sit inside them, consuming one column each.
-         */
-        private static String titleRow(String title, int inner) {
-            Theme t = Theme.active();
-            boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-            String rail = Theme.colorize("│", t.darkGray());
-            String leftCap = nerdfont
-                    ? Theme.colorize(cc.jumpkick.cli.tui.Glyphs.PILL_LEFT_NERD, t.bright(t.planBadgeColor()))
-                    : "";
-            String rightCap = nerdfont
-                    ? Theme.colorize(cc.jumpkick.cli.tui.Glyphs.PILL_RIGHT_NERD, t.bright(t.planBadgeColor()))
-                    : "";
-            // Band fills inner minus the two cap columns (or full inner when no Nerd Font).
-            int bandWidth = inner - (nerdfont ? 2 : 0);
-            int pad = Math.max(0, bandWidth - title.length());
-            int left = pad / 2, right = pad - left;
-            String band = Theme.colorize(" ".repeat(left) + title + " ".repeat(right), t.planBadge());
-            return rail + leftCap + band + rightCap + rail;
         }
 
         /** Column headers, left-justified, in white. */

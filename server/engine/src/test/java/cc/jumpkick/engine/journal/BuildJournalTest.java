@@ -39,7 +39,25 @@ class BuildJournalTest {
                 List.of(),
                 "cli",
                 null,
+                null,
+                false,
                 null);
+    }
+
+    @Test
+    void begin_then_complete_keeps_id_and_clears_running() {
+        BuildJournal j = new BuildJournal(dir);
+        BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", 1_700_000_000_000L, "9.9", "cli");
+        String id = j.begin(run);
+        assertThat(id).isNotNull();
+        assertThat(j.get(id)).isPresent();
+        assertThat(j.get(id).orElseThrow().running()).isTrue();
+        assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
+        BuildRecord done = record(1_700_000_000_100L, true, "g:a").withBuildNumber(27);
+        assertThat(j.complete(id, done, BuildJournal.Snapshot.NONE)).isTrue();
+        assertThat(j.get(id).orElseThrow().running()).isFalse();
+        assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
+        assertThat(j.get(id).orElseThrow().success()).isTrue();
     }
 
     @Test

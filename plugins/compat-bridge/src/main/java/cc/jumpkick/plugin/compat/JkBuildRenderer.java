@@ -237,6 +237,7 @@ public final class JkBuildRenderer {
             case VersionSelector.Tilde t -> "~" + t.version();
             case VersionSelector.Range r -> r.raw();
             case VersionSelector.Latest l -> "latest";
+            case VersionSelector.Snapshot sn -> "snapshot";
         };
     }
 

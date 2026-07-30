@@ -69,10 +69,9 @@ public final class StepTimingsRecorder implements PipelineListener {
         TestSummary sum = testSummary == null ? null : testSummary.get();
         if (sum != null && sum.total() > 0) {
             methods = (int) Math.min(Integer.MAX_VALUE, sum.total());
-            // Distinct class names from failure records are incomplete; use success-path heuristic:
-            // when failures list class names on any entry, prefer that set size only if larger than 0
-            // and we have no better signal. Primary signal is method total.
-            classes = distinctClassCount(sum);
+            // The runner counts distinct executed classes (JK-1226); failure-derived names were
+            // empty on green runs, so the class-rate sample never recorded.
+            classes = sum.classes() > 0 ? (int) Math.min(Integer.MAX_VALUE, sum.classes()) : distinctClassCount(sum);
         }
         double perMethod = EffortWeights.observedPerUnit("run-tests", ms, methods);
         if (perMethod > 0) {

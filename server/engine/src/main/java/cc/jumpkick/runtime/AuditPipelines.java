@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.lock.LockfileReader;
@@ -45,7 +46,7 @@ public final class AuditPipelines {
             URI osvBatchUrl,
             URI osvVulnsUrl,
             FindingObserver observer) {
-        Path workerJar = PluginJar.AUDITOR.locate(new Cas(cache));
+        Path workerJar = PluginJar.AUDITOR.locate(JkStores.cas(cache));
 
         Step readLock = Step.builder(StepNames.READ_LOCK)
                 .ticks(1)

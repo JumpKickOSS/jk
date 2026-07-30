@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
@@ -107,6 +108,10 @@ public final class BuildPipelines {
     @SuppressWarnings("rawtypes")
     public static final PipelineKey<List> TEST_SOURCES = PipelineKey.of("test-sources", List.class);
 
+    /** Suite resource dirs copied into classes/test — a TestStamp input (JK-1208). */
+    @SuppressWarnings("rawtypes")
+    public static final PipelineKey<List> TEST_RESOURCE_DIRS = PipelineKey.of("test-resource-dirs", List.class);
+
     public static final PipelineKey<String> BUILD_OUTCOME = PipelineKey.of("build-outcome", String.class);
     public static final PipelineKey<String> KOTLIN_OUTCOME = PipelineKey.of("kotlin-outcome", String.class);
     public static final PipelineKey<String> GROOVY_OUTCOME = PipelineKey.of("groovy-outcome", String.class);
@@ -202,6 +207,20 @@ public final class BuildPipelines {
                     session.clientEnv());
         }
 
+        /**
+         * Environment lookup for this request: the caller's shell environment, falling back to the
+         * engine's own (JK-1269).
+         *
+         * <p>The build's authoritative parse runs inside a long-lived daemon, so reading
+         * {@code System.getenv} directly meant {@code FOO=x jk build} had no effect on
+         * {@code ${FOO}} in {@code [repositories]} — while variant selection, handed this same
+         * client env, did see it. Same precedence the plugin-config {@code env:} indirection
+         * already documents.
+         */
+        public java.util.function.UnaryOperator<String> env() {
+            return cc.jumpkick.config.BuildEnv.forModule(dir);
+        }
+
         /** This request with a variant selection + client-resolved env attached. */
         public Inputs withVariant(String variant, Map<String, String> clientEnv) {
             return new Inputs(
@@ -272,7 +291,7 @@ public final class BuildPipelines {
 
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
     public static Pipeline.Builder coreBuilder(Inputs in, boolean forceRebuild) {
-        Cas cas = new Cas(in.cache());
+        Cas cas = JkStores.cas(in.cache());
         ActionCache actionCache = new ActionCache(cas, in.cache().resolve("actions"));
 
         // Compose only the language steps the project uses, so a single-language
@@ -307,7 +326,7 @@ public final class BuildPipelines {
             variantSecrets = applied.secrets();
             parsedBuild = jkBuild;
             var project = jkBuild.project();
-            CompileSupport.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
+            cc.jumpkick.layout.Languages langs = CompileSupport.resolveLanguages(project, in.dir());
             useJava = langs.java();
             useKotlin = langs.kotlin();
             useGroovy = langs.groovy();
@@ -359,11 +378,11 @@ public final class BuildPipelines {
         final PluginBuild.Declarations pluginDeclsF = pluginDecls;
         final Map<String, String> variantSecretsF = variantSecrets;
 
-        // Plugin-contributed generated sources can be Java even in a Kotlin-only module
-        // (protoc's --kotlin_out DSL wraps its own --java_out classes) — same mixed-pipeline
-        // routing the KSP/Hilt case above takes, decided here because the declarations only
-        // exist after the describe round.
-        if (useKotlin && !useJava && pluginDecls != null) {
+        // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
+        // module (protoc's --kotlin_out DSL wraps its own --java_out classes) — same
+        // mixed-pipeline routing the KSP/Hilt case above takes, decided here because the
+        // declarations only exist after the describe round (JK-1240).
+        if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
             for (PluginBuild.StepDecl step : pluginDecls.steps()) {
                 if (!step.contributesSources().isEmpty()) {
                     useJava = true;
@@ -708,8 +727,32 @@ public final class BuildPipelines {
                     ctx.put(CLASSPATH, mainCp);
 
                     // Annotation processors live in their own scope (kept off the
-                    // compile classpath); javac discovers them via -processorpath.
-                    ctx.put(PROCESSOR_CP, new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR))));
+                    // compile classpath); javac discovers them via -processorpath and
+                    // KspProcessors.split() routes the KSP ones to the forked KSP2 round.
+                    // Workspace siblings must merge in exactly as they do for main/test
+                    // (JK-1253): a processor declared `{ workspace = true }` is never in the
+                    // lock, so a lock-only path silently yields no processors at all.
+                    WorkspaceClasspath.Result processorSiblings =
+                            WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
+                    // A declared processor that cannot be found generates nothing, and a build
+                    // that silently skips code generation is worse than one that fails
+                    // (JK-1254). Mirror the main-classpath missing-sibling guard above.
+                    if (!processorSiblings.missingSiblingJars().isEmpty()) {
+                        for (String missing : processorSiblings.missingSiblingJars())
+                            ctx.error("workspace", "processor sibling not built — " + missing);
+                        throw new RuntimeException("missing workspace siblings");
+                    }
+                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock);
+                    if (!unresolvedProcessors.isEmpty()) {
+                        for (String unresolved : unresolvedProcessors)
+                            ctx.error(
+                                    "processor",
+                                    "processor dependency '" + unresolved + "' is declared in"
+                                            + " [processor-dependencies] but is not in jk.lock —"
+                                            + " run `jk lock`");
+                        throw new RuntimeException("unresolved processor dependencies");
+                    }
+                    ctx.put(PROCESSOR_CP, processorClasspath(lock, resolver, processorSiblings));
 
                     WorkspaceClasspath.Result testSiblings =
                             WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.EXPORT, Scope.MAIN, Scope.TEST));
@@ -959,6 +1002,44 @@ public final class BuildPipelines {
     }
 
     /** Generated-source dirs the KSP round writes (checked by the compile-step unions). */
+    /** One processor-authored KSP diagnostic: the reporting severity plus the bare message. */
+    record KspDiagnostic(String severity, String message) {}
+
+    /**
+     * The processor-authored diagnostics in a successful KSP round's output (JK-1257).
+     *
+     * <p>KSP's CLI prefixes them {@code w:} / {@code i:} / {@code v:}, usually with a {@code [ksp]}
+     * tag. Everything else on that stream is host noise — the JVM's {@code sun.misc.Unsafe}
+     * deprecation banner from KSP's bundled IntelliJ containers, stack frames, blank lines — and
+     * reprinting it on every green build would train people to ignore the channel entirely.
+     *
+     * <p>Both prefixes are stripped: the reporter already renders the step and severity, so
+     * carrying them in the text too gives {@code Warning [ksp/ksp]: w: [ksp] …}.
+     */
+    static List<KspDiagnostic> kspDiagnostics(String output) {
+        List<KspDiagnostic> out = new ArrayList<>();
+        for (String line : output.split("\n", -1)) {
+            String trimmed = line.strip();
+            if (trimmed.length() < 2 || trimmed.charAt(1) != ':') continue;
+            String severity =
+                    switch (trimmed.charAt(0)) {
+                        case 'w' -> "warn";
+                        case 'i' -> "info";
+                        case 'v' -> "verbose";
+                        default -> null;
+                    };
+            if (severity == null) continue;
+            // KSP tags its own output; kotlinc-level warnings on the same stream are the Kotlin
+            // compile step's business, not ours.
+            String rest = trimmed.substring(2).strip();
+            if (!rest.startsWith("[ksp]")) continue;
+            String message = rest.substring("[ksp]".length()).strip();
+            if (message.isEmpty()) continue;
+            out.add(new KspDiagnostic(severity, message));
+        }
+        return out;
+    }
+
     static Path kspOutBase(BuildLayout layout) {
         return layout.moduleTargetDir().resolve("ksp");
     }
@@ -1160,6 +1241,14 @@ public final class BuildPipelines {
                     if (exit != 0) {
                         ctx.error("ksp", output.isBlank() ? ("KSP exited " + exit) : output);
                         throw new RuntimeException("KSP processing failed");
+                    }
+                    // A green round still has things to say. Processor `logger.warn`/`info` is how
+                    // an annotation-driven framework explains what it did and what to do
+                    // differently; dropping it on success meant guidance only ever appeared once
+                    // the build was already broken (JK-1257). Surfaced the same way javac
+                    // diagnostics are, so -q/-v behave consistently.
+                    for (KspDiagnostic diagnostic : kspDiagnostics(output)) {
+                        ctx.warn(diagnostic.severity(), diagnostic.message());
                     }
                     cc.jumpkick.task.FreshnessStamp.write(
                             outBase, KSP_STAMP, "ksp", "", stampInputs, stampCp, ctx.require(RELEASE));
@@ -1755,9 +1844,17 @@ public final class BuildPipelines {
                         Path dir = in.dir().resolve(root.relative());
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
-                    if (!resDirs.isEmpty()) {
+                    // [build] extra-resources: individual files from outside the module, each with
+                    // its own destination and optional rename, so they cannot ride resDirs (JK-1262).
+                    List<ExtraResources.Copy> extra = ExtraResources.resolve(ctx.require(PROJECT), in.dir());
+                    if (!resDirs.isEmpty() || !extra.isEmpty()) {
                         ctx.label("copy resources");
                         for (Path dir : resDirs) copyResources(dir, classes);
+                        for (ExtraResources.Copy c : extra) {
+                            Path target = classes.resolve(c.destination());
+                            Files.createDirectories(target.getParent());
+                            Files.copy(c.source(), target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                        }
                     } else {
                         ctx.label("no static resources");
                     }
@@ -1881,6 +1978,16 @@ public final class BuildPipelines {
                             cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
                     var resolved = sel.resolve(discovered);
                     if (!resolved.ok()) {
+                        // Workspace run: a named suite need not exist in EVERY module — the
+                        // IDE-generated `jk test --suite integration` config must run where the
+                        // suite exists and skip the rest, not fail the workspace (JK-1230).
+                        // Single-module runs keep the hard error (typo protection).
+                        if (in.projectModules().size() > 1) {
+                            ctx.label("suite not present — skipped");
+                            ctx.put(NO_TEST_SOURCES, true);
+                            ctx.progress(1);
+                            return;
+                        }
                         throw new IllegalArgumentException(resolved.missingMessage());
                     }
                     List<String> suiteNames = resolved.suites();
@@ -1915,6 +2022,27 @@ public final class BuildPipelines {
                         baseCp.add(groovyCompileJar(ctx, cas));
                     }
                     Path testClasses = ctx.require(TEST_CLASSES);
+                    // All suites share classes/test and run-tests scans it: when the SELECTION
+                    // changes, wipe the shared output and the per-language merge sources, or the
+                    // previous selection's classes and copied resources keep running/shadowing
+                    // under the new one indefinitely (JK-1228). `.jk-suites` records the
+                    // selection that produced the tree (excluded from action stores/fingerprints
+                    // by the .jk- rule).
+                    String selectionKey = String.join(",", suiteNames);
+                    Path suiteMarker = testClasses.resolve(".jk-suites");
+                    String prevSelection = Files.isRegularFile(suiteMarker)
+                            ? Files.readString(suiteMarker).trim()
+                            : null;
+                    if (prevSelection != null && !prevSelection.equals(selectionKey)) {
+                        cc.jumpkick.util.PathUtil.deleteRecursively(testClasses);
+                        for (Path langOut : List.of(
+                                ctx.require(LAYOUT).kotlinTestClassesDir(),
+                                ctx.require(LAYOUT).groovyTestClassesDir())) {
+                            if (Files.isDirectory(langOut)) {
+                                cc.jumpkick.util.PathUtil.deleteRecursively(langOut);
+                            }
+                        }
+                    }
                     boolean mixedTest = !javaTest.isEmpty() && !ktTest.isEmpty();
                     boolean mixedTestGv = !javaTest.isEmpty() && !gvTest.isEmpty();
 
@@ -2038,11 +2166,17 @@ public final class BuildPipelines {
                     // self-host.
                     // JK-1149: copy resources for every suite in this run's selection
                     // (default test/resources/ + e.g. integration/resources/).
-                    for (Path resTest :
-                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames)) {
+                    List<Path> suiteResDirs =
+                            cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
+                    for (Path resTest : suiteResDirs) {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);
                     }
+                    // Fixtures affect test outcomes but classes/test is not on the runtime cp —
+                    // run-tests folds these dirs into its TestStamp key (JK-1208).
+                    ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
+                    Files.createDirectories(testClasses);
+                    Files.writeString(suiteMarker, selectionKey);
                     ctx.progress(1);
                 })
                 .build();
@@ -2090,26 +2224,39 @@ public final class BuildPipelines {
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
                     JkBuild projectUnderTest = ctx.require(PROJECT);
-                    Map<String, String> workerJars =
-                            workerJarProps(in.dir(), projectUnderTest.build().testPluginJars());
-                    // Nested-engine suites (jk-cli): materialize engine jar + isolate JK_STATE_DIR
-                    // so EngineTestExtension cannot kill the host engine running this test step.
-                    Map<String, String> testEnv = Map.of();
+                    // Worker jars feed both the forked JVM and the TestStamp (JK-1296):
+                    // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
+                    // matches what the suite actually loads — same set forecast uses.
+                    Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
+                    // Nested-engine suites (jk-cli): isolate JK_STATE_DIR so EngineTestExtension
+                    // cannot kill the host engine running this test step. Sandboxed JK_HOME/JK_M2_LOCAL
+                    // plus this module's [test] env — without it a forked test JVM inherits the
+                    // engine's environment and runs against the developer's real ~/.jk (JK-1267).
+                    // Nested-engine isolation layers on top and wins on any key both set.
+                    Map<String, String> testEnv =
+                            new java.util.LinkedHashMap<>(TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
                     if (needsNestedEngineIsolation(projectUnderTest)) {
-                        enrichCliTestProps(in.dir(), workerJars);
-                        testEnv = nestedEngineTestEnv(in.dir());
+                        testEnv.putAll(nestedEngineTestEnv(in.dir()));
                     }
 
                     // Incremental test skip: a content key over every input that affects
                     // the outcome — own main output, test sources, the *content* of the
                     // runtime classpath (sibling modules included), the lock, and the
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
+                    @SuppressWarnings("unchecked")
+                    List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
+                    // [test] default-exclude-tags reaches jk build / BSP too (JK-1229): the CLI
+                    // resolves defaults only for `jk test`; when the session selection carries
+                    // no tags at all, apply this module's own config defaults here. The
+                    // effective selection feeds BOTH the stamp and the runner.
+                    var effectiveSel = effectiveSelection(in.session().testSelection(), in.dir());
                     String stampKey = cc.jumpkick.task.TestStamp.computeKey(
                             testSrcs,
                             ctx.require(MAIN_CLASSES),
+                            testResDirs,
                             in.lockFile(),
                             testRtCp,
-                            testStampExtras(workerJars, in.session().testSelection()));
+                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build().testEnv()));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -2160,16 +2307,19 @@ public final class BuildPipelines {
                     List<Path> runtimeCp = new ArrayList<>();
                     runtimeCp.add(ctx.require(MAIN_CLASSES));
                     runtimeCp.addAll(testRtCp);
-                    // Kotlin output (main or test) needs the stdlib at runtime.
-                    if (kotlinModule
-                            || !CompileSupport.collectKotlinTestSources(in.dir(), compact)
-                                    .isEmpty()) {
+                    // Language runtimes keyed on the SELECTED suites' sources (TEST_SOURCES is
+                    // selection-scoped) — the old default-suite-only collectors missed a
+                    // Kotlin/Groovy-only named suite and the forked JVM lacked the runtime
+                    // (JK-1229).
+                    boolean ktTestSources = testSrcs.stream()
+                            .anyMatch(p -> p.toString().endsWith(".kt")
+                                    || p.toString().endsWith(".kts"));
+                    boolean gvTestSources =
+                            testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
+                    if (kotlinModule || ktTestSources) {
                         runtimeCp.add(kotlinStdlib(ctx, cas));
                     }
-                    // Groovy output (main or test) needs the version-matched runtime closure.
-                    if (cx.groovyModule()
-                            || !CompileSupport.collectGroovyTestSources(in.dir(), compact)
-                                    .isEmpty()) {
+                    if (cx.groovyModule() || gvTestSources) {
                         for (Path jar : groovyRuntime(ctx, cas)) {
                             if (!runtimeCp.contains(jar)) runtimeCp.add(jar);
                         }
@@ -2189,10 +2339,9 @@ public final class BuildPipelines {
                     boolean gated = !in.session().parallelTests();
                     if (gated) TEST_GATE.acquireUninterruptibly();
                     try {
-                        var sel = in.session().testSelection();
                         result = new JUnitLauncher()
                                 .withModuleLabel(moduleLabel)
-                                .withTagFilters(sel.includeTags(), sel.excludeTags())
+                                .withTagFilters(effectiveSel.includeTags(), effectiveSel.excludeTags())
                                 .run(
                                         ctx.require(JAVA_HOME),
                                         ctx.require(TEST_CLASSES),
@@ -2725,8 +2874,9 @@ public final class BuildPipelines {
         if (staleDot > 0 && !staleName.endsWith(".jar")) {
             Files.deleteIfExists(jarPath.resolveSibling(staleName.substring(0, staleDot) + ".jar"));
         }
+        List<String> workerLines;
         try {
-            PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
+            workerLines = PluginBuild.runWorker(active, in.cache(), specFile, ctx::label);
         } catch (IOException e) {
             ctx.error("package", e.getMessage());
             throw e;
@@ -2748,6 +2898,27 @@ public final class BuildPipelines {
         if (dot > 0 && !artifactName.endsWith(".jar")) {
             Path conventional = jarPath.resolveSibling(artifactName.substring(0, dot) + ".jar");
             if (Files.isRegularFile(conventional)) produced.add(conventional);
+        }
+        // Packager-declared extras (PackageIo.produced — quarkus fast-jar lib/ siblings): a
+        // multi-file layout must cache whole or a hit after `jk clean` restores a broken
+        // artifact (JK-1210). Directories expand recursively; escapes of the artifact dir
+        // are a packager bug.
+        Path outBase = jarPath.getParent().toAbsolutePath().normalize();
+        for (String line : workerLines) {
+            if (!"produced".equals(cc.jumpkick.plugin.protocol.Jsonl.str(line, "t"))) continue;
+            Path p = Path.of(String.valueOf(cc.jumpkick.plugin.protocol.Jsonl.str(line, "path")))
+                    .toAbsolutePath()
+                    .normalize();
+            if (!p.startsWith(outBase)) {
+                throw new IOException("packager declared produced path outside the artifact dir: " + p);
+            }
+            if (Files.isRegularFile(p)) {
+                produced.add(p);
+            } else if (Files.isDirectory(p)) {
+                try (java.util.stream.Stream<Path> walk = Files.walk(p)) {
+                    walk.filter(Files::isRegularFile).forEach(produced::add);
+                }
+            }
         }
         storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), produced);
         ctx.put(JAR_PATH, jarPath);
@@ -3034,7 +3205,7 @@ public final class BuildPipelines {
                     Path assemblyJar = layout.assemblyJar();
                     List<Path> depJars = new ArrayList<>();
                     if (Files.exists(lockFile)) {
-                        ClasspathResolver resolver = new ClasspathResolver(new Cas(cache));
+                        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
                         depJars.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
                         // Workspace siblings are filtered out of the lockfile by
                         // WorkspaceMerge, but a fat jar must bundle them (and their
@@ -3078,7 +3249,7 @@ public final class BuildPipelines {
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
-                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), new Cas(cache));
+                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), JkStores.cas(cache));
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
                         assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }
@@ -3251,7 +3422,7 @@ public final class BuildPipelines {
                     } else {
                         classpath.add(mainJar);
                     }
-                    ClasspathResolver cpResolver = new ClasspathResolver(new Cas(cache));
+                    ClasspathResolver cpResolver = new ClasspathResolver(JkStores.cas(cache));
                     if (Files.exists(lockFile)) {
                         Lockfile lock = LockfileReader.read(lockFile);
                         classpath.addAll(cpResolver.classpathFor(lock, ClasspathResolver.RUNTIME));
@@ -3290,7 +3461,7 @@ public final class BuildPipelines {
                                 runtimeArtifacts.add(a);
                             }
                         }
-                        cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, new Cas(cache));
+                        cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
                         metadataDirs = ReachabilityMetadata.configDirs(
                                 cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
                     }
@@ -3423,6 +3594,50 @@ public final class BuildPipelines {
         } catch (java.io.IOException | InterruptedException e) {
             throw new RuntimeException("cannot resolve the plugin-contributed compile classpath: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * The {@code -processorpath} / KSP processor classpath: the lock's PROCESSOR scope plus any
+     * workspace siblings declared in {@code [processor-dependencies]} and their own external
+     * closures (JK-1253).
+     *
+     * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
+     * {@code symbol-processing-api}, an emitter library, …) — hence the sibling-lockfile loop,
+     * mirroring {@link #mainCompileClasspath}. Sibling jars come from the declared closure rather
+     * than the built set so {@code jk explain} reproduces the same action key after a clean.
+     */
+    public static List<Path> processorClasspath(
+            Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
+        List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, Set.of(Scope.PROCESSOR)));
+        for (Path jar : siblings.siblingClosureJars()) {
+            if (!cp.contains(jar)) cp.add(jar);
+        }
+        for (Path sibLock : siblings.siblingLockfiles()) {
+            try {
+                Lockfile sl = LockfileReader.read(sibLock);
+                for (Path p : resolver.classpathFor(sl, ClasspathResolver.COMPILE_MAIN)) {
+                    if (!cp.contains(p)) cp.add(p);
+                }
+            } catch (Exception ignored) {
+                /* best-effort: a sibling's lock may be absent */
+            }
+        }
+        return cp;
+    }
+
+    /**
+     * Declared {@code [processor-dependencies]} entries that resolve to nothing (JK-1254): not a
+     * workspace sibling and absent from the lock. Silently skipping code generation is the worst
+     * failure mode for an annotation-driven project, so callers turn this into a build error.
+     */
+    public static List<String> unresolvedProcessorDeps(JkBuild project, Lockfile lock) {
+        java.util.Set<String> locked = lockModules(lock);
+        List<String> missing = new ArrayList<>();
+        for (cc.jumpkick.model.Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
+            if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+            if (!locked.contains(dep.module())) missing.add(dep.module());
+        }
+        return missing;
     }
 
     public static List<Path> mainCompileClasspath(
@@ -3626,10 +3841,17 @@ public final class BuildPipelines {
                 ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
             if (!gvArgs.contains(arg)) gvArgs.add(arg);
         }
+        // Joint mode sweeps .java sources through a real javac pass — annotation processors
+        // must run there or generated members fail resolution (JK-1232).
+        @SuppressWarnings("unchecked")
+        List<Path> processorCp = javaSourceRoots == null
+                ? List.of()
+                : (List<Path>) ctx.get(PROCESSOR_CP).orElse(java.util.List.of());
         GroovycRequest req = GroovycRequest.builder()
                 .sources(sources)
                 .javaSourceRoots(javaSourceRoots == null ? List.of() : javaSourceRoots)
                 .classpath(compileCp)
+                .processorPath(processorCp)
                 .outputDir(outputDir)
                 .stubsOut(stubsOut)
                 .jvmTarget(ctx.require(RELEASE))
@@ -3777,7 +3999,7 @@ public final class BuildPipelines {
      */
     private static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
-        ActionCache ac = new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
@@ -3787,7 +4009,7 @@ public final class BuildPipelines {
             Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
             throws IOException {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return;
-        new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"))
+        new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
     }
 
@@ -3808,7 +4030,7 @@ public final class BuildPipelines {
             } else {
                 // Not a built sibling — self-host by reusing the running jk's plugin
                 // jar (located via its sha resource + CAS, or a -D override).
-                Path located = wj.get().locateOrNull(new cc.jumpkick.cache.Cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = wj.get().locateOrNull(cc.jumpkick.cache.JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(wj.get().jarProperty(), located.toString());
             }
         }
@@ -3847,7 +4069,7 @@ public final class BuildPipelines {
             if (jar != null && Files.isRegularFile(jar)) {
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                Path located = w.locateOrNull(new Cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = w.locateOrNull(JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }
@@ -3882,22 +4104,91 @@ public final class BuildPipelines {
     }
 
     /**
+     * The selection the runner actually executes: the session's, with this module's
+     * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
+     * (jk build / BSP without data — JK-1229). `jk test` resolves defaults CLI-side and its
+     * selection already carries them.
+     */
+    static cc.jumpkick.config.TestSelection effectiveSelection(
+            cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+        if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
+        List<String> defaults =
+                cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
+        if (defaults.isEmpty()) return sel;
+        return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
+    }
+
+    /**
+     * Worker / engine jar props that feed both the forked test JVM and the {@link
+     * cc.jumpkick.task.TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
+     * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
+     * (JK-1296 — forecast and live run-tests must hash the same set).
+     */
+    public static Map<String, String> testStampWorkerJars(Path dir, JkBuild project) throws IOException {
+        Map<String, String> props = new LinkedHashMap<>(workerJarProps(dir, project.build().testPluginJars()));
+        if (needsNestedEngineIsolation(project)) {
+            enrichCliTestProps(dir, props);
+        }
+        return props;
+    }
+
+    /**
      * The run-tests stamp's identity tokens for {@code project} at {@code dir} — the same set the
-     * build folds into its {@code TestStamp} key, exposed so {@code jk explain}'s forecast predicts
-     * test-skip without drifting.
+     * build folds into its {@link cc.jumpkick.task.TestStamp} key, so {@code jk explain}'s forecast
+     * predicts test-skip without drifting (JK-1229/JK-1243/JK-1296).
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
         return testStampExtras(
-                workerJarProps(dir, project.build().testPluginJars()),
-                cc.jumpkick.config.TestSelection.DEFAULT);
+                testStampWorkerJars(dir, project),
+                effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
+                project.build().testEnv());
     }
 
-    private static List<String> testStampExtras(
-            Map<String, String> workerJars, cc.jumpkick.config.TestSelection selection) {
+    /**
+     * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection —
+     * single factory for forecast and any offline checker. {@code testRuntimeCp} must match the
+     * build's runtime classpath for the stamp (lock deps + workspace sibling jars; plugin
+     * contributions optional for non-plugin modules).
+     */
+    public static String runTestsStampKey(
+            Path dir,
+            JkBuild project,
+            boolean compact,
+            Path mainClasses,
+            Path lockFile,
+            List<Path> testRuntimeCp)
+            throws IOException {
+        List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
+        var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
+        List<String> suites =
+                resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        List<Path> stampSrcs = new ArrayList<>();
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(dir, compact, suites));
+        stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectGroovySources(dir, compact, suites));
+        return cc.jumpkick.task.TestStamp.computeKey(
+                stampSrcs,
+                mainClasses,
+                cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(dir, compact, suites),
+                lockFile,
+                testRuntimeCp,
+                testStampExtras(dir, project));
+    }
+
+    static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            cc.jumpkick.config.TestSelection selection,
+            Map<String, String> testEnv) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome (JK-1134/1135).
         if (selection != null) extras.add("sel:" + selection.identityToken());
+        // [test] env changes what the suite sees, so it must retest (JK-1267). Declared values only:
+        // the sandbox defaults derive from the module's own target dir, so they add nothing but
+        // absolute paths that would differ per checkout and defeat the cache.
+        for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
+            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+        }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {
             String fp;

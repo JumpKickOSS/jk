@@ -169,7 +169,7 @@ public final class JdkListCommand implements CliCommand {
             return 0;
         }
 
-        String title = all ? "All Java Development Kits" : "Installed Java Development Kits";
+        String title = all ? "All OpenJDKs" : "Installed OpenJDKs";
         for (String line : renderTable(rows, title)) {
             CliOutput.out(line);
         }
@@ -331,8 +331,8 @@ public final class JdkListCommand implements CliCommand {
         int inner = innerWidth(widths);
 
         List<String> out = new ArrayList<>();
-        out.add(border("╭", "─", "╮", inner)); // ╭───╮
-        out.add(titleLine(title, inner)); // │ <gradient> │
+        // Title: blue menu CommandWedge + ─ fill + ╮ (no separate ╭──╮ top border).
+        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", widths)); // ├─┬─┤
         out.add(headerRow(widths)); // │ Version │ ...
         out.add(divider("├", "┼", "┤", widths)); // ├─┼─┤
@@ -386,11 +386,6 @@ public final class JdkListCommand implements CliCommand {
     // box-drawing chars (─ ┬ ┴ ├ ┤) into ASCII (- +) when no terminal is
     // supplied, which mangles this table.
 
-    private static String border(String left, String mid, String right, int inner) {
-        if (!Theme.active().isAnsi()) return "+" + "-".repeat(inner) + "+";
-        return Theme.colorize(left + mid.repeat(inner) + right, Theme.active().darkGray());
-    }
-
     private static String divider(String left, String junction, String right, int[] widths) {
         boolean ansi = Theme.active().isAnsi();
         var sb = new StringBuilder(ansi ? left : "+");
@@ -399,46 +394,6 @@ public final class JdkListCommand implements CliCommand {
             sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
         }
         return ansi ? Theme.colorize(sb.toString(), Theme.active().darkGray()) : sb.toString();
-    }
-
-    private static String titleLine(String title, int inner) {
-        if (!Theme.active().isAnsi()) {
-            // No-ANSI: plain | centered title | — no color, no pills
-            int total = Math.max(0, inner - title.length());
-            int left = total / 2, right = total - left;
-            return "|" + " ".repeat(left) + title + " ".repeat(right) + "|";
-        }
-        // Full-width banner: the centered title runs white on the build-pipeline blue
-        // wedge (Theme.pipelineChip), so the whole span between the box rails — padding
-        // included — carries the blue background. The rails stay dark gray.
-        int total = Math.max(0, inner - title.length());
-        int left = total / 2;
-        int right = total - left;
-        String banner = " ".repeat(left) + title + " ".repeat(right);
-        // The │ rails always stay. With a Nerd Font: pill-cap glyphs sit immediately
-        // inside each rail (replacing the 1-char padding), so the chip background
-        // tapers into the terminal background with rounded edges — same as PipelineWedge.
-        // The caps take 1 char each, so the banner gets inner-2 chars when nerdfont is on.
-        // planBadgeColor() is HEADER_BLUE — the same color used as pipelineChip()'s background.
-        // pipelineChipColor() is PIPELINE_GREEN (success chip), which is wrong here.
-        Rgb chipColor = Theme.active().planBadgeColor();
-        boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
-        String rail = Theme.colorize("│", Theme.active().darkGray());
-        if (nerdfont) {
-            int availForBanner = Math.max(0, inner - 2);
-            int pad = Math.max(0, availForBanner - title.length());
-            String innerBanner = " ".repeat(pad / 2) + title + " ".repeat(pad - pad / 2);
-            return rail
-                    + Theme.colorize(
-                            cc.jumpkick.cli.tui.Glyphs.PILL_LEFT_NERD,
-                            Theme.active().bright(chipColor))
-                    + Theme.colorize(innerBanner, Theme.active().pipelineChip())
-                    + Theme.colorize(
-                            cc.jumpkick.cli.tui.Glyphs.PILL_RIGHT_NERD,
-                            Theme.active().bright(chipColor))
-                    + rail;
-        }
-        return rail + Theme.colorize(banner, Theme.active().pipelineChip()) + rail;
     }
 
     private static String headerRow(int[] widths) {

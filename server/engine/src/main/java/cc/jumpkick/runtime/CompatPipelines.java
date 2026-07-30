@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.plugin.protocol.Jsonl;
@@ -56,7 +57,7 @@ public final class CompatPipelines {
             Path report,
             Path cache,
             NoteObserver observer) {
-        Path workerJar = PluginJar.COMPAT_BRIDGE.locate(new Cas(cache));
+        Path workerJar = PluginJar.COMPAT_BRIDGE.locate(JkStores.cas(cache));
 
         SpecWriter specWriter = new SpecWriter()
                 .op(PluginProtocol.OP_COMMAND, "import", "jk-compat-bridge")
@@ -114,7 +115,7 @@ public final class CompatPipelines {
      */
     public static Provision provision(Path cache, Path projectDir, Path toolsRoot, boolean noDiscover, boolean isGradle)
             throws IOException, InterruptedException {
-        Path workerJar = PluginJar.COMPAT_BRIDGE.locate(new Cas(cache));
+        Path workerJar = PluginJar.COMPAT_BRIDGE.locate(JkStores.cas(cache));
         Path spec = Files.createTempFile("jk-compat-", ".spec");
         try {
             Files.write(
