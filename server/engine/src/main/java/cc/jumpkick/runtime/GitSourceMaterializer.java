@@ -42,8 +42,8 @@ public final class GitSourceMaterializer {
     /** Production wiring: caches under {@code $JK_CACHE_DIR}, forge-auth git credentials. */
     GitSourceMaterializer(Cas cas, RepoGroup buildRepos, Path javaHome, String jkVersion) {
         this(
-                JkDirs.cache().resolve("git"),
-                JkDirs.cache().resolve("git-artifacts"),
+                JkDirs.store().resolve("git"),
+                JkDirs.store().resolve("git-artifacts"),
                 cas,
                 buildRepos,
                 javaHome,

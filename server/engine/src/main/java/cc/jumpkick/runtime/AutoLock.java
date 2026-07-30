@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -230,7 +231,7 @@ public final class AutoLock {
             // Apply workspace context if this is a module (resolves workspace: deps)
             JkBuild effective = applyWorkspaceContext(dir, build);
 
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
                     .withProjectDir(dir)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.git.GitFetcher;
 import cc.jumpkick.layout.BuildLayout;
@@ -125,7 +126,7 @@ public final class InstallPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("git fetch " + url + " @ " + ref);
-                    GitFetcher fetcher = new GitFetcher(cacheDir.resolve("git"));
+                    GitFetcher fetcher = new GitFetcher(JkStores.resolve(cacheDir, "git"));
                     GitFetcher.Fetched fetched;
                     try {
                         fetched = fetchTagOrBranch(fetcher, url, canonicalUrl, ref, refresh);

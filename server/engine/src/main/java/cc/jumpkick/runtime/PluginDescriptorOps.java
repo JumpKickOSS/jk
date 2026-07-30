@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
@@ -46,7 +47,7 @@ public final class PluginDescriptorOps {
             return false;
         }
         boolean wrote = false;
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         for (Lockfile.PluginEntry entry : lockfile.plugins()) {
             String sha = entry.sha256Hex();
             Path target = PluginDescriptorStore.fileFor(moduleDir, sha);
@@ -84,7 +85,7 @@ public final class PluginDescriptorOps {
     /** The locked + synced jar for {@code decl}, or empty (remediation: {@code jk sync}). */
     public static Optional<Path> jarFor(Path moduleDir, PluginDeclaration decl, Path cache) {
         return PluginDescriptorStore.lockEntry(moduleDir, decl)
-                .map(e -> new Cas(cache).pathFor(e.sha256Hex()))
+                .map(e -> JkStores.cas(cache).pathFor(e.sha256Hex()))
                 .filter(Files::isRegularFile);
     }
 

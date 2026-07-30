@@ -70,6 +70,50 @@ class StoreMigrationTest {
         StoreMigration.migrate(store, legacy);
 
         assertThat(Files.readString(store.resolve("sha256/ab/cd/blob"))).isEqualTo("current");
+        // The duplicate source is dropped rather than left in place: a lingering source counts as a
+        // leftover, which would withhold the completion marker and make every later run retry a move
+        // that can never succeed. Safe to drop — for the CAS the path is the content hash.
+        assertThat(legacy.resolve("sha256/ab/cd/blob")).doesNotExist();
+        assertThat(store.resolve(".migrated-from-cache")).exists();
+    }
+
+    @Test
+    void an_already_created_destination_is_merged_into_not_skipped(@TempDir Path tmp) throws Exception {
+        // The case that broke a real install: the client process touches the store before the engine
+        // can migrate, so store/sha256/ already exists holding a couple of fresh blobs while the bulk
+        // of the CAS is still under cache/. Skipping the move there splits the CAS across two roots and
+        // every lookup for the older half misses — builds fail outright rather than re-downloading.
+        Path legacy = tmp.resolve("cache");
+        Path store = tmp.resolve("store");
+        seed(legacy, "sha256/aa/bb/old-blob", "old bytes");
+        seed(legacy, "sha256/cc/dd/other-blob", "other bytes");
+        seed(store, "sha256/ee/ff/fresh-blob", "fresh bytes");
+
+        StoreMigration.migrate(store, legacy);
+
+        assertThat(store.resolve("sha256/aa/bb/old-blob")).exists();
+        assertThat(store.resolve("sha256/cc/dd/other-blob")).exists();
+        assertThat(store.resolve("sha256/ee/ff/fresh-blob")).exists();
+        assertThat(legacy.resolve("sha256")).doesNotExist();
+    }
+
+    @Test
+    void a_partial_move_does_not_claim_completion(@TempDir Path tmp) throws Exception {
+        // Marking done while something is still behind would strand it: the next run skips straight
+        // past. So a leftover means no marker, and the next run tries again.
+        Path legacy = tmp.resolve("cache");
+        Path store = tmp.resolve("store");
+        seed(legacy, "sha256/aa/bb/blob", "bytes");
+        // A file already sitting where a directory needs to go: this entry cannot move.
+        seed(store, "metadata", "not a directory");
+        seed(legacy, "metadata/deadbeef", "<metadata/>");
+
+        StoreMigration.migrate(store, legacy);
+
+        assertThat(legacy.resolve("metadata/deadbeef")).exists(); // left behind
+        assertThat(store.resolve(".migrated-from-cache")).doesNotExist();
+        // The entry that could move still did, so a retry has less to do rather than starting over.
+        assertThat(store.resolve("sha256/aa/bb/blob")).exists();
     }
 
     @Test

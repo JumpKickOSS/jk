@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.ImageConfigParser;
 import cc.jumpkick.config.SessionContext;
@@ -189,7 +190,7 @@ public final class ImagePipelines {
                     // side-effect (the remote's state is unknown), so it's never skipped.
                     // The tarball is a pure function of the main jar, the dependency jars,
                     // the main class, the image config, and the image-builder plugin version.
-                    ActionCache ac = new ActionCache(new Cas(cache), cache.resolve("actions"));
+                    ActionCache ac = new ActionCache(JkStores.cas(cache), cache.resolve("actions"));
                     boolean useCache = tarballPath != null
                             && !SessionContext.current().config().rebuildOr(false);
                     String imgTask = null, imgKey = null;
@@ -320,7 +321,7 @@ public final class ImagePipelines {
             Path classesDir,
             Path tarballPath) {
         try {
-            Path workerJar = PluginJar.IMAGE_BUILDER.locate(new Cas(cache));
+            Path workerJar = PluginJar.IMAGE_BUILDER.locate(JkStores.cas(cache));
             boolean daemonMode = tarballPath == null
                     && (config.registry() == null || config.registry().isBlank());
             SpecWriter sw = new SpecWriter()
@@ -543,7 +544,7 @@ public final class ImagePipelines {
         Path lockPath = projectDir.resolve("jk.lock");
         if (!Files.exists(lockPath)) return;
         Lockfile lock = LockfileReader.read(lockPath);
-        ClasspathResolver resolver = new ClasspathResolver(new Cas(cache));
+        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
         for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
             if (!Files.exists(entry.jar())) continue;
             (entry.artifact().version().contains("SNAPSHOT") ? snapshots : releases).add(entry.jar());
@@ -555,7 +556,7 @@ public final class ImagePipelines {
         if (!Files.exists(lockPath)) return List.of();
         Lockfile lock = LockfileReader.read(lockPath);
         List<Path> result = new ArrayList<>();
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
             String hex = pkg.checksum().startsWith("sha256:")

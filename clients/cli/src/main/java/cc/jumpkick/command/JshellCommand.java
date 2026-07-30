@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
@@ -127,7 +128,7 @@ public final class JshellCommand implements CliCommand {
         }
 
         Lockfile lock = LockfileReader.read(proj.lockFile());
-        Cas cas = new Cas(cacheDir.resolve("cas"));
+        Cas cas = JkStores.cas(cacheDir.resolve("cas"));
         List<Path> depCp = new ClasspathResolver(cas).classpathFor(lock, ClasspathResolver.COMPILE_MAIN);
 
         List<String> cp = new ArrayList<>();

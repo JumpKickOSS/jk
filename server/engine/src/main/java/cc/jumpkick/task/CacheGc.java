@@ -2,6 +2,7 @@
 package cc.jumpkick.task;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,9 +25,22 @@ public final class CacheGc {
 
     public record Report(int purgedBlobs, long freedBytes, int repoLinksRemoved) {}
 
+    /** Collect against the store this cache root is paired with (JK-1289). */
     public static Report run(Path cacheRoot, boolean dryRun) throws IOException {
-        Cas cas = new Cas(cacheRoot);
-        Path shaRoot = cacheRoot.resolve("sha256");
+        return run(cacheRoot, JkStores.storeRootFor(cacheRoot), dryRun);
+    }
+
+    /**
+     * Collect blobs in {@code storeRoot} that nothing in {@code cacheRoot} still references.
+     *
+     * <p>Both roots are explicit because GC is maintenance over one specific pair, not over whatever the
+     * ambient environment currently points at. Resolving the store internally left this method reading
+     * reachability from the given cache while deleting from the global store — which, for a caller that
+     * supplied its own directory, meant collecting somebody else's blobs.
+     */
+    public static Report run(Path cacheRoot, Path storeRoot, boolean dryRun) throws IOException {
+        Cas cas = new Cas(storeRoot);
+        Path shaRoot = storeRoot.resolve("sha256");
         Set<String> reachable = CacheRoots.collect(cas, cacheRoot.resolve("actions"), cacheRoot.resolve("tools"));
 
         Path logFile = cacheRoot.resolve(AccessLedger.FILE_NAME);
@@ -62,7 +76,7 @@ public final class CacheGc {
             }
         }
 
-        int repoLinks = cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(cacheRoot, purged, dryRun);
+        int repoLinks = cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(storeRoot, purged, dryRun);
 
         // Compact the access log: sum each sha's counts, dedupe to the latest
         // entry, and drop entries for anything we just purged.

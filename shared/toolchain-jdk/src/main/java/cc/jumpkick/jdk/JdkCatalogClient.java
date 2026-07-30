@@ -71,7 +71,7 @@ public final class JdkCatalogClient {
 
     /** Default cache location: {@code $JK_CACHE_DIR/jdks.json}. */
     public static Path defaultCachePath() {
-        return JkDirs.cache().resolve("jdks.json");
+        return JkDirs.store().resolve("jdks.json");
     }
 
     /**

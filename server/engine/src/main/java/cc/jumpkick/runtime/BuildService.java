@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.Linking;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
@@ -202,7 +203,7 @@ public final class BuildService {
             fps = Map.of();
         }
         try {
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
             Set<Path> dirty = new HashSet<>();
             for (BuildPlan.Module m : BuildPlanForecast.of(graph, cas, ac, cache, skipTests)) {
@@ -239,7 +240,7 @@ public final class BuildService {
         if (graph.hasErrors()) {
             return new ExplainPlan(List.of(), Map.of(), 1, List.copyOf(graph.errors()));
         }
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
         List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());

@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.layout.BuildLayout;
@@ -493,7 +494,7 @@ public final class PluginBuild {
             throws IOException {
         List<Path> classpath = new ArrayList<>();
         if (Files.exists(lockFile)) {
-            var resolver = new cc.jumpkick.compile.ClasspathResolver(new Cas(cache));
+            var resolver = new cc.jumpkick.compile.ClasspathResolver(JkStores.cas(cache));
             classpath.addAll(resolver.classpathFor(
                     cc.jumpkick.lock.LockfileReader.read(lockFile), cc.jumpkick.compile.ClasspathResolver.RUNTIME));
         }
@@ -508,7 +509,7 @@ public final class PluginBuild {
             for (Path sibLock : siblings.siblingLockfiles()) {
                 try {
                     var sib = cc.jumpkick.lock.LockfileReader.read(sibLock);
-                    for (Path pth : new cc.jumpkick.compile.ClasspathResolver(new Cas(cache))
+                    for (Path pth : new cc.jumpkick.compile.ClasspathResolver(JkStores.cas(cache))
                             .classpathFor(sib, cc.jumpkick.compile.ClasspathResolver.RUNTIME)) {
                         if (!classpath.contains(pth)) classpath.add(pth);
                     }
@@ -534,7 +535,7 @@ public final class PluginBuild {
     public static List<ProdEntry> productionEntries(Path projectDir, Path cache, Path lockFile, JkBuild project)
             throws IOException {
         List<ProdEntry> out = new ArrayList<>();
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         if (Files.exists(lockFile)) {
             var resolver = new cc.jumpkick.compile.ClasspathResolver(cas);
             for (var entry : resolver.entriesFor(
@@ -703,7 +704,7 @@ public final class PluginBuild {
                     .orElseThrow(() -> new IllegalStateException(
                             "plugin " + active.manifest().id() + " names unregistered worker "
                                     + active.manifest().code().worker()));
-            return workerJar.locate(new Cas(cache));
+            return workerJar.locate(JkStores.cas(cache));
         }
         cc.jumpkick.model.PluginDeclaration declaration = active.declaration();
         if (declaration == null) {

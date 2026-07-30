@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -321,7 +322,7 @@ public final class ExecPlans {
         Path lockFile = dir.resolve("jk.lock");
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
-            classpath.addAll(new ClasspathResolver(new Cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
+            classpath.addAll(new ClasspathResolver(JkStores.cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
             if (dev) {
                 hotReload = lock.artifacts().stream().anyMatch(a -> {
                     String n = a.name();
@@ -584,7 +585,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(new Cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (!Files.exists(entry.jar())) continue;
                 Path dest = libDir.resolve(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
@@ -648,7 +649,7 @@ public final class ExecPlans {
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
-                    new ClasspathResolver(new Cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
+                    new ClasspathResolver(JkStores.cas(cache)).entriesFor(lock, ClasspathResolver.RUNTIME)) {
                 if (!Files.exists(entry.jar())) continue;
                 libNames.add(entry.artifact().moduleArtifact() + "-"
                         + entry.artifact().version() + ".jar");
@@ -715,7 +716,7 @@ public final class ExecPlans {
                     .flatMap(c -> c.stringOpt("version"))
                     .orElse(null);
             if (bootVersion == null) return null;
-            Cas cas = new Cas(cache);
+            Cas cas = JkStores.cas(cache);
             return RepoGroupBuilder.buildFor(project, null, cas)
                     .tryFetchArtifact(cc.jumpkick.model.Coordinate.of(
                             "org.springframework.boot", "spring-boot-devtools", bootVersion))

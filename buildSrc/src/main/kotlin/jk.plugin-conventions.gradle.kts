@@ -48,11 +48,11 @@ tasks.jar {
 }
 
 // Side-load the freshly-built worker jar into the developer's local Maven repo at
-// ~/.jk/cache/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
+// ~/.jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
 // so PluginJar.locate() finds the worker without requiring -Djk.<x>.plugin.jar.
 // Also writes a .sha256 sidecar so RepoArtifactStore.locate() sees it as complete.
 tasks.register("installLocal") {
-    description = "Side-load the freshly-built $workerArtifact jar into ~/.jk/cache/repos/local/ (m2 layout)"
+    description = "Side-load the freshly-built $workerArtifact jar into ~/.jk/store/repos/local/ (m2 layout)"
     group = "jk"
     dependsOn(tasks.jar)
     val jarProvider = tasks.named<Jar>("jar").flatMap { it.archiveFile }
@@ -63,10 +63,15 @@ tasks.register("installLocal") {
         val jar = jarProvider.get().asFile
         val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
         val hex = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        val cacheRoot: File = System.getenv("JK_CACHE_DIR")?.let { File(it) }
-                ?: System.getenv("JK_HOME")?.let { File(it).resolve("cache") }
-                ?: File(System.getProperty("user.home"), ".jk/cache")
-        val repoDir = cacheRoot.resolve("repos/local/cc/jumpkick/$artifact/$ver")
+        // repos/ lives under store/, not cache/ (JK-1289). Writing to the old location is worse than
+        // useless: the engine resolves from store/repos/, so a freshly built worker lands where nothing
+        // reads it and an older copy of the same version silently wins. That cost a confusing hunt —
+        // the symptom was a stale test-runner rejecting an argument its own source clearly accepts.
+        // Mirrors JkDirs: JK_STORE_DIR, else JK_HOME/store, else ~/.jk/store.
+        val storeRoot: File = System.getenv("JK_STORE_DIR")?.let { File(it) }
+                ?: System.getenv("JK_HOME")?.let { File(it).resolve("store") }
+                ?: File(System.getProperty("user.home"), ".jk/store")
+        val repoDir = storeRoot.resolve("repos/local/cc/jumpkick/$artifact/$ver")
         repoDir.mkdirs()
         val target = repoDir.resolve("$artifact-$ver.jar")
         val sidecar = repoDir.resolve("$artifact-$ver.jar.sha256")

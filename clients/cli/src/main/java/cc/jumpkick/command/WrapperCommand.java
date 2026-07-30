@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.VersionStore;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
@@ -83,7 +84,7 @@ public final class WrapperCommand implements CliCommand {
                 return 0;
             }
             m = SelfCommand.UpdateSub.fetchAndMaterialize(
-                    http, SelfCommand.UpdateSub.releasesBase(), target, store, new Cas(JkDirs.cache()));
+                    http, SelfCommand.UpdateSub.releasesBase(), target, store, JkStores.cas(JkDirs.cache()));
         }
         Path client = m.clientBin().orElse(null);
         if (client == null) {

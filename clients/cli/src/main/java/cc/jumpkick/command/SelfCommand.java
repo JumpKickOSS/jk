@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.VersionStore;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.model.command.CliCommand;
@@ -135,7 +136,7 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             VersionStore.Materialized m = VersionStore.current()
-                    .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, new Cas(JkDirs.cache()), engineJar, client);
+                    .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
             CliOutput.out("materialized " + m.root());
             // Best-effort install-time terminal probe (JK-1080); never fail materialize.
             try {
@@ -191,7 +192,7 @@ public final class SelfCommand extends GroupCommand {
                 return Exit.SOFTWARE;
             }
             VersionStore store = VersionStore.current();
-            Cas cas = new Cas(JkDirs.cache());
+            Cas cas = JkStores.cas(JkDirs.cache());
             String running = cc.jumpkick.cli.Jk.VERSION;
             if (target.equals(running) && store.resolve(target).isPresent()) {
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", target + " is already current"));

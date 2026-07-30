@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.RepositorySpec;
@@ -176,7 +177,7 @@ public enum PluginJar {
 
     /** Locate using the default jk CAS ({@code $JK_CACHE_DIR}). */
     public Path locate() {
-        return locate(new Cas(JkDirs.cache()));
+        return locate(JkStores.cas(JkDirs.cache()));
     }
 
     /** As {@link #locate(Cas)} but {@code null} (not throwing) when the plugin can't be located. */

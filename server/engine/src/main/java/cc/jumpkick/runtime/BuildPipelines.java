@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
@@ -276,7 +277,7 @@ public final class BuildPipelines {
 
     /** As {@link #coreBuilder(Inputs)} with upstream-dirty {@code forceRebuild} for weight prediction. */
     public static Pipeline.Builder coreBuilder(Inputs in, boolean forceRebuild) {
-        Cas cas = new Cas(in.cache());
+        Cas cas = JkStores.cas(in.cache());
         ActionCache actionCache = new ActionCache(cas, in.cache().resolve("actions"));
 
         // Compose only the language steps the project uses, so a single-language
@@ -3185,7 +3186,7 @@ public final class BuildPipelines {
                     Path assemblyJar = layout.assemblyJar();
                     List<Path> depJars = new ArrayList<>();
                     if (Files.exists(lockFile)) {
-                        ClasspathResolver resolver = new ClasspathResolver(new Cas(cache));
+                        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
                         depJars.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
                         // Workspace siblings are filtered out of the lockfile by
                         // WorkspaceMerge, but a fat jar must bundle them (and their
@@ -3229,7 +3230,7 @@ public final class BuildPipelines {
                     byte[] assemblySbom = null;
                     Map<String, String> assemblyAttrs = new LinkedHashMap<>(project.manifest());
                     if (Files.exists(lockFile)) {
-                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), new Cas(cache));
+                        assemblySbom = applicationSbom(project, LockfileReader.read(lockFile), JkStores.cas(cache));
                         assemblyAttrs.put("Sbom-Format", "CycloneDX");
                         assemblyAttrs.put("Sbom-Location", SBOM_JAR_ENTRY);
                     }
@@ -3402,7 +3403,7 @@ public final class BuildPipelines {
                     } else {
                         classpath.add(mainJar);
                     }
-                    ClasspathResolver cpResolver = new ClasspathResolver(new Cas(cache));
+                    ClasspathResolver cpResolver = new ClasspathResolver(JkStores.cas(cache));
                     if (Files.exists(lockFile)) {
                         Lockfile lock = LockfileReader.read(lockFile);
                         classpath.addAll(cpResolver.classpathFor(lock, ClasspathResolver.RUNTIME));
@@ -3441,7 +3442,7 @@ public final class BuildPipelines {
                                 runtimeArtifacts.add(a);
                             }
                         }
-                        cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, new Cas(cache));
+                        cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
                         metadataDirs = ReachabilityMetadata.configDirs(
                                 cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
                     }
@@ -3979,7 +3980,7 @@ public final class BuildPipelines {
      */
     private static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
-        ActionCache ac = new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"));
+        ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
@@ -3989,7 +3990,7 @@ public final class BuildPipelines {
             Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
             throws IOException {
         if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return;
-        new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"))
+        new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
     }
 
@@ -4049,7 +4050,7 @@ public final class BuildPipelines {
             if (jar != null && Files.isRegularFile(jar)) {
                 props.put(w.jarProperty(), jar.toAbsolutePath().toString());
             } else {
-                Path located = w.locateOrNull(new Cas(cc.jumpkick.util.JkDirs.cache()));
+                Path located = w.locateOrNull(JkStores.cas(cc.jumpkick.util.JkDirs.cache()));
                 if (located != null) props.put(w.jarProperty(), located.toString());
             }
         }

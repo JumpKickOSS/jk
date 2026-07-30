@@ -59,25 +59,24 @@ public final class StoreMigration {
             if (store.equals(legacy) || !Files.isDirectory(legacy)) return 0;
 
             int moved = 0;
+            boolean leftovers = false;
             for (String entry : STORE_ENTRIES) {
                 Path from = legacy.resolve(entry);
                 Path to = store.resolve(entry);
-                if (!Files.exists(from) || Files.exists(to)) continue;
+                if (!Files.exists(from)) continue;
                 try {
                     Files.createDirectories(store);
-                    try {
-                        Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
-                    } catch (AtomicMoveNotSupportedException e) {
-                        // Different filesystems: a plain move falls back to copy+delete, which is slow
-                        // but still beats re-downloading.
-                        Files.move(from, to);
-                    }
+                    moveMerging(from, to);
                     moved++;
                 } catch (IOException e) {
-                    // Leave it where it is; resolveForRead will still find it.
+                    leftovers = true; // resolveForRead still finds it where it is
                 }
+                if (Files.exists(from)) leftovers = true;
             }
-            if (moved > 0 || Files.isDirectory(store)) {
+            // Only claim completion when nothing was left behind. Writing the marker after a partial
+            // move would strand whatever failed: the next run would skip straight past it, and the CAS
+            // in particular would then be split across two roots with blob lookups missing.
+            if (!leftovers) {
                 Files.createDirectories(store);
                 Files.writeString(
                         store.resolve(DONE_MARKER),
@@ -87,6 +86,52 @@ public final class StoreMigration {
             return moved;
         } catch (IOException | RuntimeException e) {
             return 0;
+        }
+    }
+
+    /**
+     * Move {@code from} onto {@code to}, merging rather than failing when the destination already
+     * exists.
+     *
+     * <p>The plain rename is the fast path and handles ~1.6 GB in milliseconds. But the destination is
+     * routinely already there: the client process touches the store before the engine gets a chance to
+     * migrate, so {@code store/sha256/} exists with a handful of fresh blobs in it while the bulk of the
+     * CAS is still under {@code cache/}. Refusing to move in that case splits the CAS across two roots,
+     * and every blob lookup for the older half then misses — which fails builds outright rather than
+     * merely costing a re-download.
+     *
+     * <p>So when the destination exists, recurse a level and move the children that are not there yet.
+     * For the CAS that means whole {@code ab/} shards move as single renames, keeping it cheap.
+     */
+    private static void moveMerging(Path from, Path to) throws IOException {
+        if (!Files.exists(to)) {
+            try {
+                Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
+                return;
+            } catch (AtomicMoveNotSupportedException e) {
+                // Different filesystems: a plain move degrades to copy+delete. Slow, still beats
+                // re-downloading.
+                Files.move(from, to);
+                return;
+            }
+        }
+        if (!Files.isDirectory(from) || !Files.isDirectory(to)) {
+            // The destination wins — never overwrite. But the source has to go, or it counts as a
+            // leftover forever: the marker would never be written and every run would re-attempt a move
+            // that cannot succeed. Discarding it is safe because both sides are re-fetchable caches, and
+            // for the CAS they are identical by construction — the path *is* the content hash.
+            if (Files.isRegularFile(from) && Files.isRegularFile(to)) {
+                Files.deleteIfExists(from);
+            }
+            return;
+        }
+        try (var children = Files.list(from)) {
+            for (Path child : children.toList()) {
+                moveMerging(child, to.resolve(child.getFileName().toString()));
+            }
+        }
+        try (var remaining = Files.list(from)) {
+            if (remaining.findAny().isEmpty()) Files.deleteIfExists(from);
         }
     }
 

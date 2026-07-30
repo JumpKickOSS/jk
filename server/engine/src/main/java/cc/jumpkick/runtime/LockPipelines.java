@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceLoader;
@@ -107,7 +108,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("Resolving");
                     JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     if (SessionContext.current().offline() && Files.exists(lockFile)) {
                         try {
                             Lockfile existing = LockfileReader.read(lockFile);
@@ -225,7 +226,7 @@ public final class LockPipelines {
                     var decls = effective.plugins();
                     if (decls.isEmpty()) return;
                     ctx.label("lock plugins");
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     RepoGroup repos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
                     var entries = new ArrayList<Lockfile.PluginEntry>();
                     for (var pd : decls) {
@@ -377,7 +378,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("re-resolve dependencies");
                     JkBuild eff = ctx.require(EFFECTIVE);
-                    Cas cas = new Cas(cache);
+                    Cas cas = JkStores.cas(cache);
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
                     try {
                         // Git deps: re-materialize at current tip (accept movement).
@@ -503,7 +504,7 @@ public final class LockPipelines {
         Path lockFile = dir.resolve("jk.lock");
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
-        Cas cas = new Cas(cache);
+        Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
         Path javaHome = JavaHomes.resolveJavaHome(dir);
         GitSourceResolution.Prepared prep =

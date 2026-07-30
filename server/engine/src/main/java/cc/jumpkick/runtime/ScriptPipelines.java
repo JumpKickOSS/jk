@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.JavacRunner;
@@ -121,7 +122,7 @@ public final class ScriptPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = new Cas(cacheDir);
+                    Cas cas = JkStores.cas(cacheDir);
                     Http http = new Http();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
@@ -238,7 +239,7 @@ public final class ScriptPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = new Cas(cacheDir);
+                    Cas cas = JkStores.cas(cacheDir);
                     Http http = new Http();
                     RepoGroup repos = buildRepos(header, repoUrl, http, cas);
                     try {
@@ -262,7 +263,7 @@ public final class ScriptPipelines {
                             header.kotlinVersion() != null
                                     ? "resolve kotlin compiler " + header.kotlinVersion()
                                     : "resolve kotlin compiler");
-                    Cas cas = new Cas(cacheDir);
+                    Cas cas = JkStores.cas(cacheDir);
                     RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
                     try {
                         KotlinPluginSetup.Prepared prep = KotlinPluginSetup.prepare(repos, cas, header.kotlinVersion());
@@ -378,7 +379,7 @@ public final class ScriptPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("resolve script dependencies");
-                    Cas cas = new Cas(cacheDir);
+                    Cas cas = JkStores.cas(cacheDir);
                     RepoGroup repos = buildRepos(header, repoUrl, new Http(), cas);
                     try {
                         ctx.put(CLASSPATH, resolveClasspath(header.deps(), repos));
@@ -475,7 +476,7 @@ public final class ScriptPipelines {
                     }
                     ctx.label("fetch " + declaredDeps.size() + " embedded deps");
                     Files.createDirectories(cacheDir);
-                    Cas cas = new Cas(cacheDir);
+                    Cas cas = JkStores.cas(cacheDir);
                     Http http = new Http();
                     RepoGroup repos = new RepoGroup(List.of(new MavenRepo(
                             "central", repoUrl != null ? repoUrl : RepositorySpec.MAVEN_CENTRAL.url(), http, cas)));

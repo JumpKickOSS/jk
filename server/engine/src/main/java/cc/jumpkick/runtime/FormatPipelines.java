@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
@@ -114,7 +115,7 @@ public final class FormatPipelines {
                         return;
                     }
                     ctx.label("resolve formatter jars");
-                    var resolver = ToolResolver.mavenCentral(new Http(), new Cas(cache));
+                    var resolver = ToolResolver.mavenCentral(new Http(), JkStores.cas(cache));
                     try {
                         ctx.put(
                                 javaJarsKey,
@@ -163,7 +164,7 @@ public final class FormatPipelines {
                     @SuppressWarnings("unchecked")
                     List<Path> kotlinJars = (List<Path>) ctx.require(kotlinJarsKey);
 
-                    Path workerJar = PluginJar.FORMATTER.locate(new Cas(cache));
+                    Path workerJar = PluginJar.FORMATTER.locate(JkStores.cas(cache));
                     Path spec = writeSpec(
                             check,
                             javaStyle,
