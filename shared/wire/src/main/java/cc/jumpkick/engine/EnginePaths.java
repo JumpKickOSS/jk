@@ -70,6 +70,59 @@ public final class EnginePaths {
                 dir.resolve(key + ".http-token"));
     }
 
+    /**
+     * Every engine identity with an endpoint pointer under {@code stateDir}, newest file first.
+     *
+     * <p>Needed because the identity key is a hash: once the store became part of it (JK-1289), a machine
+     * can hold several resident engines and {@link #current()} names only the one this invocation would
+     * talk to. Without a way to enumerate them, clearing the rest meant {@code pkill} (JK-1293).
+     *
+     * <p>Discovered from {@code <key>.endpoint} files rather than from any registry, so it stays true even
+     * for an engine started by a jk that predates this method.
+     */
+    public static java.util.List<Paths> identitiesIn(Path stateDir) {
+        Path dir = stateDir.resolve("engine");
+        if (!java.nio.file.Files.isDirectory(dir)) return java.util.List.of();
+        java.util.List<Paths> out = new java.util.ArrayList<>();
+        try (var listing = java.nio.file.Files.list(dir)) {
+            java.util.List<Path> pointers = listing.filter(f -> f.getFileName().toString().endsWith(".endpoint"))
+                    .sorted(java.util.Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
+                            .reversed())
+                    .toList();
+            for (Path pointer : pointers) {
+                String file = pointer.getFileName().toString();
+                String key = file.substring(0, file.length() - ".endpoint".length());
+                out.add(forKey(key, stateDir));
+            }
+        } catch (java.io.IOException e) {
+            return java.util.List.copyOf(out);
+        }
+        return java.util.List.copyOf(out);
+    }
+
+    private static long lastModifiedOrZero(Path p) {
+        try {
+            return java.nio.file.Files.getLastModifiedTime(p).toMillis();
+        } catch (java.io.IOException e) {
+            return 0L;
+        }
+    }
+
+    /** The paths for an already-known key — the inverse of hashing, for enumeration. */
+    private static Paths forKey(String key, Path stateDir) {
+        Path dir = stateDir.resolve("engine");
+        return new Paths(
+                key,
+                dir,
+                dir.resolve(key + ".sock"),
+                dir.resolve(key + ".lock"),
+                dir.resolve(key + ".pid"),
+                dir.resolve(key + ".log"),
+                dir.resolve(key + ".token"),
+                dir.resolve(key + ".http"),
+                dir.resolve(key + ".http-token"));
+    }
+
     // ---- generations + the endpoint pointer ------------------------------------------------
 
     /**

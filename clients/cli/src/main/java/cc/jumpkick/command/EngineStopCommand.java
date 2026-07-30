@@ -36,11 +36,16 @@ public final class EngineStopCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Stop now, abandoning in-flight jobs (still assembles the AOT cache).", "--now"));
+        return List.of(
+                Opt.flag("Stop now, abandoning in-flight jobs (still assembles the AOT cache).", "--now"),
+                Opt.flag("Stop every engine under this ~/.jk, not just the one this directory uses.", "--all"));
     }
 
     @Override
     public int run(Invocation in) {
+        if (in.isSet("all")) {
+            return stopAll(in.isSet("now"));
+        }
         EnginePaths.Paths paths = EnginePaths.current();
         Optional<EngineClient.Status> before = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
         if (before.isEmpty()) {
@@ -70,6 +75,54 @@ public final class EngineStopCommand implements CliCommand {
             return Exit.SUCCESS;
         }
         return drainOnTty(paths, jobs, started);
+    }
+
+    /**
+     * Stop every engine under this {@code ~/.jk}.
+     *
+     * <p>Plain {@code stop} addresses one identity — the engine this directory's cache and store resolve
+     * to. Since the store became part of that identity (JK-1289) a machine can hold several at once, and
+     * a throwaway store leaves one behind; without this the only way to clear them was {@code pkill}
+     * (JK-1293).
+     *
+     * <p>Never blocks on a drain region here, however many are draining: one interactive wait per engine
+     * would be unusable, and the intent of {@code --all} is "clear them", not "watch each finish". Each is
+     * asked to drain (or stopped now with {@code --now}) and the count is reported.
+     */
+    private int stopAll(boolean now) {
+        List<EnginePaths.Paths> all = EnginePaths.identitiesIn(cc.jumpkick.util.JkDirs.state());
+        int stopped = 0;
+        int draining = 0;
+        for (EnginePaths.Paths p : all) {
+            java.nio.file.Path socket = cc.jumpkick.engine.EnginePaths.activeSocket(p);
+            Optional<EngineClient.Status> status = EngineClient.status(socket);
+            if (status.isEmpty()) continue; // stale pointer for an engine that already exited
+            if (now) {
+                if (!EngineClient.forceStop(socket)) EngineClient.hardKill(status.get().pid());
+                stopped++;
+                continue;
+            }
+            int jobs = EngineClient.drain(socket);
+            if (jobs > 0) {
+                draining++;
+            } else {
+                stopped++;
+            }
+        }
+        if (stopped == 0 && draining == 0) {
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "no engines running"));
+            return Exit.SUCCESS;
+        }
+        StringBuilder msg = new StringBuilder();
+        msg.append(stopped).append(stopped == 1 ? " engine stopped" : " engines stopped");
+        if (draining > 0) {
+            msg.append(", ")
+                    .append(draining)
+                    .append(draining == 1 ? " draining" : " draining")
+                    .append(" (will exit once in-flight jobs finish)");
+        }
+        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", msg.toString()));
+        return Exit.SUCCESS;
     }
 
     /** Block on a TTY with the live drain region until the engine exits or Ctrl-X forces it. */
