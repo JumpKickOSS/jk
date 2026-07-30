@@ -79,6 +79,48 @@ class AggregateModuleListenerTest {
         assertThat(all).contains("├─").contains("╰─");
     }
 
+    @Test
+    void skipped_step_does_not_paint_phase_failed() {
+        // Cache-hit steps terminate SKIPPED; the live tree must not show ✘ Failed (JK-1297).
+        var buf = new ByteArrayOutputStream();
+        CommandManager view =
+                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        var agg = new AggregateContext(view);
+
+        var a = new AggregateModuleListener(agg, "cc.jumpkick:jk-engine", List.of(step("run-tests", "Testing")));
+        a.pipelineStart(new PipelineView("build", 0, 10, 1, 0, false));
+        a.stepStart("run-tests", Phase.TEST, 10);
+        a.stepFinish("run-tests", Phase.TEST, StepStatus.SKIPPED, Duration.ZERO);
+
+        // Successful SKIPPED → phase drops from the live chain (same as SUCCESS).
+        String all = String.join(
+                "\n",
+                view.renderPipelineLines(120, 0).stream().map(AggregateModuleListenerTest::strip).toList());
+        assertThat(all).doesNotContain("Failed");
+        assertThat(all).doesNotContain("✘");
+        assertThat(all).doesNotContain("Test"); // success → removed from chain
+    }
+
+    @Test
+    void real_fail_still_paints_phase_failed() {
+        var buf = new ByteArrayOutputStream();
+        CommandManager view =
+                CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
+        var agg = new AggregateContext(view);
+
+        var a = new AggregateModuleListener(agg, "g:api", List.of(step("compile-java", "Compile")));
+        a.pipelineStart(new PipelineView("build", 0, 10, 1, 0, false));
+        a.stepStart("compile-java", Phase.COMPILE, 10);
+        a.error("compile-java", "javac", "cannot find symbol");
+        a.stepFinish("compile-java", Phase.COMPILE, StepStatus.FAIL, Duration.ZERO);
+
+        String all = String.join(
+                "\n",
+                view.renderPipelineLines(120, 0).stream().map(AggregateModuleListenerTest::strip).toList());
+        assertThat(all).contains("Compile");
+        assertThat(all).containsAnyOf("Failed", "cannot find symbol");
+    }
+
     private static Step step(String name, String label) {
         return Step.builder(name).label(label).ticks(1).execute(ctx -> {}).build();
     }

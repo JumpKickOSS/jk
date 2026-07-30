@@ -156,7 +156,11 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
+        // SKIPPED = cache hit / up-to-date — still a green terminal (matches Pipeline.isOk).
+        // Treating it as failure painted the live tree red with "Failed" while the build
+        // succeeded (JK-1297).
+        boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
+        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
     }
 
     @Override

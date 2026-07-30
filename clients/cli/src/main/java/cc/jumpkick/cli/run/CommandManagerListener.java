@@ -129,7 +129,9 @@ public final class CommandManagerListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
+        // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS (JK-1297).
+        boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
+        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
     }
 
     @Override
