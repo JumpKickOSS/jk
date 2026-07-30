@@ -203,9 +203,11 @@ public final class ExplainCommand implements CliCommand {
                                 + Theme.colorize(
                                         cc.jumpkick.cli.tui.Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()))
                         : Theme.colorize(" ≡ Build Plan ", t.planBadge()));
-        String estimate = etaMillis == 0
-                ? "Build time " + Theme.colorize("unknown", t.warning())
-                : "Build time estimate " + Theme.colorize("~" + fmtDuration(etaMillis), t.warning());
+        // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
+        // a pure cache verify is sub-second (JK-1298). Only show "unknown" when there is real
+        // work but no learned timings yet.
+        boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(BuildPlan.Module::dirty);
+        String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
         CliOutput.out();
         CliOutput.out(header + " " + estimate);
         // Root node: ● bullet, then the entry project's group:artifact in bold.
@@ -308,9 +310,23 @@ public final class ExplainCommand implements CliCommand {
         return 0;
     }
 
+    /**
+     * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
+     * (fully cached / sub-second), or {@code Build time unknown} when dirty work has no timings.
+     */
+    static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
+        if (fullyCached || (etaMillis > 0 && etaMillis < 1000)) {
+            return "Build time estimate " + Theme.colorize("<1s", t.warning());
+        }
+        if (etaMillis <= 0) {
+            return "Build time " + Theme.colorize("unknown", t.warning());
+        }
+        return "Build time estimate " + Theme.colorize("~" + fmtDuration(etaMillis), t.warning());
+    }
+
     /** "1m 20s" / "8s" / "<1s" — coarse predicted-duration formatting for the plan summary. */
     private static String fmtDuration(long millis) {
-        if (millis <= 0) return "0s";
+        if (millis <= 0) return "<1s";
         long s = millis / 1000; // floor: don't over-state
         if (s == 0) return "<1s"; // a sub-second cache-verify pass
         return s >= 60 ? (s / 60) + "m " + (s % 60) + "s" : s + "s";
