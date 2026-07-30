@@ -118,6 +118,35 @@ public final class EngineMain {
     }
 
     /**
+     * A daemon thread that halts the JVM if the trainer outlives {@code limitMs}.
+     *
+     * <p>{@link Runtime#halt} rather than {@link System#exit} on purpose: exit runs shutdown hooks, and if
+     * the reason the trainer is stuck is a hook or a lock, asking politely is exactly what will not work.
+     * A recording that has not assembled by now is worthless anyway, so there is nothing to lose by
+     * skipping the orderly path.
+     *
+     * <p>Daemon, so it never keeps an otherwise-finished trainer alive — the watchdog must not become the
+     * thing that leaks.
+     */
+    private static void startTrainerWatchdog(long limitMs) {
+        Thread watchdog = new Thread(
+                () -> {
+                    try {
+                        Thread.sleep(limitMs);
+                    } catch (InterruptedException e) {
+                        return; // trainer finished first
+                    }
+                    System.err.println("jk engine (aot-training): exceeded " + (limitMs / 1000)
+                            + "s — halting; a normal recording takes about "
+                            + (AOT_TRAINING_UPTIME_MS / 1000) + "s");
+                    Runtime.getRuntime().halt(2);
+                },
+                "jk-aot-training-watchdog");
+        watchdog.setDaemon(true);
+        watchdog.start();
+    }
+
+    /**
      * How long the trainer serves before stopping itself. A sub-second run yields an empty
      * recording the assembler rejects; three seconds captures the whole startup path (which is
      * what the cache accelerates) without meaningfully extending the doubled-RSS window.
@@ -129,7 +158,24 @@ public final class EngineMain {
      * dir (it can never win, lose, or see the real engine's election), idle briefly, then stop
      * cleanly so the JVM assembles the {@code .aot} at exit.
      */
+    /**
+     * Hard ceiling on a trainer's life, enforced by a watchdog rather than by the happy path.
+     *
+     * <p>The happy path is already bounded — {@link #AOT_TRAINING_UPTIME_MS} of serving, then close, then
+     * a 30s join — so under 40s is the design. This exists because that reasoning holds only while every
+     * step in it stays bounded, and a trainer is invisible: it has no endpoint pointer, no pid file, and
+     * no identity, so {@code jk engine} commands cannot see or stop one. A trainer that did hang would sit
+     * there holding a JVM until the machine rebooted, and the first sign of it would be someone reading
+     * {@code ps} output.
+     *
+     * <p>Two minutes is deliberately far above the ~40s design and far below "noticeable": generous enough
+     * that a genuinely slow machine never trips it, tight enough that a stuck trainer is gone before it
+     * matters.
+     */
+    private static final long AOT_TRAINING_HARD_LIMIT_MS = java.time.Duration.ofMinutes(2).toMillis();
+
     static int runAotTraining() {
+        startTrainerWatchdog(AOT_TRAINING_HARD_LIMIT_MS);
         java.nio.file.Path tmp = null;
         try {
             tmp = java.nio.file.Files.createTempDirectory("jk-aot-train-");
