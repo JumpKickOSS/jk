@@ -38,6 +38,10 @@ public final class MavenRepo {
      */
     private final cc.jumpkick.http.Http http;
 
+    /** Central failover + the standing download preference (JK-1277 / JK-1290). */
+    private final cc.jumpkick.http.CentralMirror centralMirror =
+            cc.jumpkick.http.CentralMirror.standard(cc.jumpkick.util.JkDirs.store());
+
     /** Artifacts pinned this run without an upstream checksum sidecar (JK-1065). */
     private final java.util.concurrent.atomic.AtomicInteger missingUpstreamChecksums =
             new java.util.concurrent.atomic.AtomicInteger();
@@ -165,11 +169,11 @@ public final class MavenRepo {
     }
 
     public Fetched fetchPom(Coordinate coord) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.pomPath(coord), true);
+        return fetch(coord, MavenLayout.pomPath(coord), true, Leg.RESOLVE);
     }
 
     public Fetched fetchArtifact(Coordinate coord) throws IOException, InterruptedException {
-        return fetch(coord, MavenLayout.artifactPath(coord), true);
+        return fetch(coord, MavenLayout.artifactPath(coord), true, Leg.ARTIFACT);
     }
 
     /**
@@ -192,7 +196,7 @@ public final class MavenRepo {
     public Fetched fetchMetadata(Coordinate coord) throws IOException, InterruptedException {
         // maven-metadata.xml has no version key and is stale offline, so it's
         // never mirrored; offline version enumeration uses availableVersions().
-        return fetch(coord, MavenLayout.metadataPath(coord), false);
+        return fetch(coord, MavenLayout.metadataPath(coord), false, Leg.RESOLVE);
     }
 
     /**
@@ -216,7 +220,21 @@ public final class MavenRepo {
         }
     }
 
-    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror)
+    /**
+     * Which leg of the work a fetch belongs to, because the two want opposite repositories (JK-1290).
+     *
+     * <p>{@link #RESOLVE} — metadata and POMs — decides <em>which versions exist</em>, so it asks Central
+     * and only falls back to the mirror once refused; a lagging mirror would otherwise resolve to stale
+     * versions. {@link #ARTIFACT} is pinned bytes: the sha256 is already known, so provenance is
+     * irrelevant, and preferring the mirror spends its large concurrency budget instead of Sonatype's
+     * per-IP quota.
+     */
+    private enum Leg {
+        RESOLVE,
+        ARTIFACT
+    }
+
+    private Fetched fetch(Coordinate coord, String relativePath, boolean mirror, Leg leg)
             throws IOException, InterruptedException {
         if (cc.jumpkick.config.SessionContext.current().config().offlineOr(false)) {
             return fetchOffline(coord, relativePath);
@@ -230,6 +248,8 @@ public final class MavenRepo {
         }
         warnPlaintextHttpOnce();
         URI uri = baseUrl.resolve(relativePath);
+        // Pinned bytes prefer the mirror; enumeration stays on Central (see Leg).
+        URI primary = leg == Leg.ARTIFACT ? centralMirror.routeForDownload(uri) : uri;
         // Before paying for the artifact, see whether the machine's Maven repository already has it
         // (JK-1290). Confirmed against a checksum fetched from THIS repository, so ~/.m2 is only ever a
         // candidate for bytes the remote vouches for.
@@ -240,11 +260,15 @@ public final class MavenRepo {
         // Per-host cap around the NETWORK leg only (JK-1221): warm mirror hits short-circuit
         // above, so re-locks stay uncapped, but a cold lock's fan-out (hundreds of concurrent
         // virtual-thread downloads + sidecar GETs) is bounded to what the host tolerates.
-        String host = uri.getHost();
-        boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
-        Cas.Stored stored = limitHost
-                ? cc.jumpkick.http.HostRateLimiter.shared().run(host, () -> downloadAndVerify(coord, uri, relativePath, mirror))
-                : downloadAndVerify(coord, uri, relativePath, mirror);
+        Cas.Stored stored;
+        try {
+            stored = rateLimited(primary, () -> downloadAndVerify(coord, primary, relativePath, mirror));
+        } catch (IOException e) {
+            // The mirror can lag or simply not carry something Central has. Falling back keeps a
+            // preference from becoming a dependency.
+            if (primary.equals(uri)) throw e;
+            stored = rateLimited(uri, () -> downloadAndVerify(coord, uri, relativePath, mirror));
+        }
         // Metered off the blob at rest, not the stream: this is the run's only artifact download leg
         // (warm mirror hits returned above), so every jar/pom/metadata byte off the network lands here.
         cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
@@ -335,6 +359,14 @@ public final class MavenRepo {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
             return Optional.empty();
         }
+    }
+
+    /** Per-host concurrency cap around the network leg only (JK-1221); file:// is not capped. */
+    private static Cas.Stored rateLimited(URI uri, cc.jumpkick.http.HostRateLimiter.ThrowingSupplier<Cas.Stored, IOException> work)
+            throws IOException, InterruptedException {
+        String host = uri.getHost();
+        boolean limitHost = host != null && !host.isBlank() && !"file".equalsIgnoreCase(uri.getScheme());
+        return limitHost ? cc.jumpkick.http.HostRateLimiter.shared().run(host, work) : work.get();
     }
 
     private Cas.Stored downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)

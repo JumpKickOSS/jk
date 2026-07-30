@@ -156,6 +156,23 @@ public final class CentralMirror {
     }
 
     /**
+     * The mirror URI for a Central-bound <em>artifact byte</em> fetch, regardless of the 429 window.
+     *
+     * <p>{@link #route} is the rate-limit reaction: only reroute once Central has refused. This is the
+     * standing preference for the download leg, and it is safe for a different reason — a locked artifact
+     * is pinned by sha256, so the bytes are verified on arrival and where they came from does not matter.
+     * Version <em>enumeration</em> is the opposite case: the mirror can lag, so metadata and POMs keep
+     * asking Central and only fall back on a 429 (JK-1290).
+     *
+     * <p>Also spends the mirror's much larger concurrency budget instead of Sonatype's per-IP quota, which
+     * is the point of {@link HostRateLimiter#MIRROR_PERMITS}.
+     */
+    public URI routeForDownload(URI uri) {
+        if (!enabled || !matches(uri)) return uri;
+        return toMirror(uri);
+    }
+
+    /**
      * The mirror URI for a Central URI, preserving the path below {@code /maven2}.
      *
      * <p>Central's path is already {@code /maven2/<coords>} and the mirror uses the same layout, so
