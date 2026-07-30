@@ -539,7 +539,10 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public void onEtaEstimate(long millis) {
-                    view.setEtaEstimate(millis); // engine computes the schedule-aware estimate; we render it
+                    // Seed only (early + post-prepare). Engine no longer re-projects mid-execute;
+                    // CommandManager locks after the first module finishes so the clock stays pure
+                    // wall-clock for the whole command.
+                    view.setEtaEstimate(millis);
                 }
 
                 @Override
@@ -1008,3 +1011,4 @@ public final class BuildCommand implements CliCommand {
                 + Theme.colorize(elapsedSince(start), Theme.active().darkGray());
     }
 }
+

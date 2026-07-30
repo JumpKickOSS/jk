@@ -76,4 +76,27 @@ class BuildServiceEtaTest {
         assertThat(BuildService.applyHistoryPrior(60_000, ok(2, 3000, 2800, 3200), false))
                 .isEqualTo(60_000);
     }
+
+    @Test
+    void cancelled_invocation_stats_do_not_seed_eta_priors(@org.junit.jupiter.api.io.TempDir Path dir)
+            throws Exception {
+        // Full success then a short cancelled (Ctrl-C) wall — okAcrossShapes / applyHistoryPrior
+        // must keep the full-build average, not blend the truncated cancel.
+        Path metrics = dir.resolve("metrics.json");
+        BuildMetrics.record(
+                metrics,
+                new BuildMetrics.Outcome("build", "/proj#d1", "g:n", true, false, 12_000, java.util.List.of()),
+                1_000L);
+        BuildMetrics.record(
+                metrics,
+                new BuildMetrics.Outcome("build", "/proj#d1", "g:n", false, true, 350, java.util.List.of()),
+                2_000L);
+        BuildMetrics m = BuildMetrics.load(metrics);
+        BuildMetrics.Stats okOnly = m.okAcrossShapes("build", "/proj");
+        assertThat(okOnly.count()).isEqualTo(1);
+        assertThat(okOnly.avgMillis()).isEqualTo(12_000);
+        // History prior for a cold schedule (base=0) uses the ok average, not the cancel wall.
+        assertThat(BuildService.applyHistoryPrior(0, okOnly)).isEqualTo(12_000);
+        assertThat(BuildService.applyHistoryPrior(15_000, okOnly)).isEqualTo(15_000);
+    }
 }

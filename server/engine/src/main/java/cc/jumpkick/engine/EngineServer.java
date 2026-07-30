@@ -1135,6 +1135,10 @@ public final class EngineServer implements AutoCloseable {
     /**
      * User / EOF cancel (JK-1096): set cooperative flag and shut down workers with a short
      * grace→force window on a helper thread so the connection reader is not blocked. Idempotent.
+     *
+     * <p>Also stamps the accumulator as user-cancelled <em>immediately</em>. Without that, a force-
+     * killed runner that never emits {@link PipelineResult#userCancelled()} was journaled as a plain
+     * success/failure with the truncated wall-clock — and truncated successes poisoned ETA history.
      */
     private void beginUserCancel(
             long eventRequestId,
@@ -1142,6 +1146,7 @@ public final class EngineServer implements AutoCloseable {
             java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
             long cancelGraceMs) {
         cancelToken.cancel();
+        markUserCancelled(eventRequestId);
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
             interruptRunner(runnerRef.get());
@@ -1157,6 +1162,12 @@ public final class EngineServer implements AutoCloseable {
         });
     }
 
+    /** Stamp the request's accumulator so journal/metrics never treat a cancelled wall as success. */
+    private void markUserCancelled(long requestId) {
+        BuildAccumulator a = accumulators.get(requestId);
+        if (a != null) a.markUserCancelled();
+    }
+
     private static void interruptRunner(Thread runnerThread) {
         if (runnerThread == null) return;
         try {
@@ -1168,7 +1179,8 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Wall-deadline kill (JK-1067 / JK-1096): cooperative cancel + worker grace→force + interrupt
-     * runner. Idempotent; safe from the watchdog and the connection thread.
+     * runner. Idempotent; safe from the watchdog and the connection thread. Stamps the accumulator so
+     * deadline-truncated wall-clock never trains ETA (same as user cancel).
      */
     private void enforceDeadline(
             long eventRequestId,
@@ -1177,6 +1189,7 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer,
             long deadlineMs) {
         cancelToken.cancel();
+        markUserCancelled(eventRequestId);
         // Soft then force within cancel grace (not the 30s join grace).
         int killed = JobWorkers.shutdownForRequest(eventRequestId, JobWorkers.cancelGraceMs());
         interruptRunner(runnerThread);
@@ -1191,15 +1204,22 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Whether the build was genuinely cancelled. {@code cancelToken.cancelled()} is unreliable — it
-     * also trips on the benign end-of-request EOF (the client closing the socket the instant it reads
-     * the terminal message), which would mislabel a plain success or a real test failure as
-     * "cancelled". For a build we trust the runner's own {@link PipelineResult#userCancelled()} (captured
-     * in the accumulator); only non-build requests (no accumulator) fall back to the raw token.
+     * Whether the build was genuinely cancelled.
+     *
+     * <p>{@code cancelToken.cancelled()} alone is unreliable — it also trips on the benign
+     * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
+     * request with an accumulator we trust an explicit stamp ({@link BuildAccumulator#markUserCancelled}
+     * from BUILD_CANCEL / mid-job EOF / deadline, or {@link PipelineResult#userCancelled()}). A clean
+     * success never reports cancelled even if the token later flips (see {@link BuildAccumulator#toRecord}).
+     * No accumulator → raw token.
      */
     private boolean effectiveCancelled(long requestId, boolean rawCancelled) {
         BuildAccumulator a = accumulators.get(requestId);
-        return a != null ? a.wasCancelled() : rawCancelled;
+        if (a == null) return rawCancelled;
+        if (a.wasCancelled()) return true;
+        // Token cancelled mid-job but stamp missed (legacy path): still cancel unless the runner
+        // already reported success (EOF-after-finish race).
+        return rawCancelled && !a.succeeded();
     }
 
     /** The request's location for journal/dashboard rows: {@code dir}, else the nearest thing. */
@@ -3802,9 +3822,12 @@ public final class EngineServer implements AutoCloseable {
         try {
             long finishedAt = clockMillis.getAsLong();
             String commit = gitCommit(a.dir()); // best-effort short SHA of the project's HEAD
+            // Prefer an explicit cancel stamp (BUILD_CANCEL / deadline / HTTP cancel) even if the
+            // caller's cancelled flag lagged — truncated wall must never train ok history for ETA.
+            boolean cancelledEffective = cancelled || a.wasCancelled();
             // Estimate the cache's wall-clock benefit from baselines as of BEFORE this run's fold.
             CacheBenefit.Result benefit = computeBenefit(a, millis);
-            BuildRecord record = a.toRecord(finishedAt, cancelled, millis, version, commit, benefit);
+            BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
             // Prefer start-time number (JK-1250); metrics fold trains stats without minting a second #.
             // JK-1178: rebuild/force must train build:rebuild priors even when SessionContext is
             // already cleared (async runner finishes outside the request session).
@@ -4603,6 +4626,7 @@ public final class EngineServer implements AutoCloseable {
         Session.CancelToken token = httpCancelTokens.get(requestId);
         if (token == null) return false;
         token.cancel();
+        markUserCancelled(requestId);
         JobWorkers.shutdownForRequest(requestId, JobWorkers.cancelGraceMs());
         Thread runner = httpJobThreads.get(requestId);
         if (runner != null) {
@@ -5150,9 +5174,19 @@ public final class EngineServer implements AutoCloseable {
             return Boolean.TRUE.equals(success);
         }
 
-        /** Genuine cancellation, from the runner's own signal (not the racy end-of-request EOF). */
+        /**
+         * Genuine user/deadline cancellation — set by {@link #markUserCancelled()} when BUILD_CANCEL /
+         * mid-job EOF / deadline fires, or by a finished pipeline with
+         * {@link PipelineResult#userCancelled()}. Not the racy end-of-request EOF after a clean success
+         * (that is filtered in {@link #toRecord}).
+         */
         boolean wasCancelled() {
             return userCancelled;
+        }
+
+        /** Stamp cancel immediately so a force-killed runner still journals as cancelled, not success. */
+        void markUserCancelled() {
+            userCancelled = true;
         }
 
         void addModule(ModuleOutcome o) {

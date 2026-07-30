@@ -203,6 +203,12 @@ public final class Pipeline {
             reports.add(new PipelineResult.StepReport(p.name(), StepStatus.CANCELLED, Duration.ZERO, p.requires()));
         }
 
+        // Session cancel (Ctrl-C / BUILD_CANCEL) may never call requestCancel — fold it in so the
+        // result's userCancelled flag reaches the journal/metrics path.
+        if (SessionCancel.cancelled()) {
+            userRequestedCancel.set(true);
+            cancelled.set(true);
+        }
         boolean success = !cancelled.get()
                 && steps.stream().map(p -> statuses.get(p.name())).allMatch(Pipeline::isOk);
 
@@ -355,7 +361,11 @@ public final class Pipeline {
             // pile on a duplicate "exception" diagnostic — the step
             // told us exactly what went wrong. We only synthesise a
             // generic diagnostic when nothing else was reported.
-            boolean cancel = cancelled.get();
+            // Pipeline flag (sibling fail / requestCancel) OR session-level Ctrl-C (SessionCancel).
+            // Session cancel alone must still terminal-CANCELLED and set userCancelled on the result,
+            // otherwise force-killed builds journal as failed/success and poison ETA history.
+            boolean cancel = cancelled.get() || SessionCancel.cancelled();
+            if (SessionCancel.cancelled()) userRequestedCancel.set(true);
             boolean stepAlreadyReported =
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {

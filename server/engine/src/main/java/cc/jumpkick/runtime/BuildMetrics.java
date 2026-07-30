@@ -267,8 +267,10 @@ public final class BuildMetrics {
         Entry e = inv.getOrDefault(
                 k, new Entry(kind, dir, coord, null, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
         Stats ok = e.ok(), failed = e.failed(), cancelled = e.cancelled();
-        if (o.success()) ok = ok.plus(o.millis());
-        else if (o.cancelled()) cancelled = cancelled.plus(o.millis());
+        // Cancelled wins over success: a truncated Ctrl-C wall must never train the ok bucket that
+        // ETA priors read (even if a racy outcome reported success). Failed stays separate.
+        if (o.cancelled()) cancelled = cancelled.plus(o.millis());
+        else if (o.success()) ok = ok.plus(o.millis());
         else failed = failed.plus(o.millis());
         // A freshly-learned coord upgrades a row that predates one (label only, never a key).
         String label = coord != null ? coord : e.coord();

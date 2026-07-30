@@ -7,8 +7,10 @@ Status: **normative** for TUI / wire progress (JK-1150). Implementations: JK-115
 1. **One aggregate** for the whole request (single module, selection subset, or monorepo).
 2. **Real-work denominator** — weight what will actually run; cache/skip → token ticks.
 3. **Hierarchical learning** — method → class → step → phase → module → invocation.
-4. **Countdown first** — remaining time/work when any prior is trustworthy; count-up only if
-   truly cold or wall-clock overrun (`+Ns`).
+4. **Countdown first** — when a seed ETA is trustworthy, the TUI header counts down pure
+   wall-clock from that total (`seed − elapsed`); count-up only if truly cold (`+Ns` from
+   command start) or wall-clock overrun past the seed (`+Ns` excess). The clock never resets
+   on phase/module boundaries.
 5. **details.jsonl** carries fine timings; the header bar/clock stay run-wide.
 
 ## Engine owns aggregate math
@@ -36,12 +38,22 @@ At least one tick per phase that appears in the live tree.
 
 ## ETA seeding order
 
+**One routine for explain and build.** `BuildService.estimateEtaMillis` (`jk explain`) and the
+build countdown seed both assemble dirty-module costs the same way (shape-memo `weight`+`testWeight`
+pair when warm, else pipeline walk) then call `seedEta` (schedule + history prior). The initial
+countdown figure must match the explain estimate even when that figure is imperfect.
+
 1. Schedule over dirty-module costs (warm dirs at `MS_PER_WEIGHT`, cold at host calibration or
-   static `MS_PER_WEIGHT` so base is rarely zero).
+   static `MS_PER_WEIGHT` so base is rarely zero). **Weight and testWeight from one source** — never
+   mix shape total weight with a separately estimated test slice.
 2. History prior: project shaped key (`build` or `build:rebuild`, optional `#dN` dirty count) →
    bare project dir → host `dir=""` for that kind → host bare `build`.
 3. Clamp absurd over-estimates to 2× historical max when count ≥ 3 (one-sided; never clamp up).
-4. Live re-project: elapsed + remaining schedule using measured ms/weight.
+4. **TUI clock freezes the seed** — early (shape/history) and post-prepare seeds may refine the
+   total before execute; once modules run, the header does **not** re-project. Measured
+   throughput still updates `StepTimings` / host `Calibration` on success for the *next* run.
+   Emitting `elapsed + remaining schedule` mid-build made the countdown jump at module
+   boundaries and reset cold count-up near zero.
 
 `--rebuild` / `--force` may distrust shape-memo weights but still seeds ETA early from
 **rebuild-shaped** history and a coarse dirty-module floor so the TUI can countdown (JK-1179).
@@ -53,6 +65,12 @@ At least one tick per phase that appears in the live tree.
 | `StepTimings` (`timings.toml`) | Per-step rates from real SUCCESS work | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates) |
 | `BuildMetrics` (`metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
 | Calibration | Host ms/weight + component probes | Full multi-probe on fresh install / `jk engine calibrate`; refined on successful runs |
+
+**Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
+the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
+pipeline result). That truncated wall-clock goes into the `cancelled` bucket only — never `ok` —
+so history priors and explain/build countdown seeds stay calibrated from full successes. Session
+cancel also flips `PipelineResult.userCancelled` when the pipeline can finish cooperatively.
 
 Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
 flag stored on the accumulator — not ambient session at journal write). Newer successes supersede

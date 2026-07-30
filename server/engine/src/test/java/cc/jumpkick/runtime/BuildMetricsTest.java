@@ -100,6 +100,22 @@ class BuildMetricsTest {
     }
 
     @Test
+    void cancelled_wins_over_success_so_truncated_ctrl_c_wall_never_trains_eta(@TempDir Path dir) {
+        // A force-killed runner can racy-report success=true with a short wall. Cancelled must win
+        // so applyHistoryPrior / okHistory never blend that truncated sample into the ok average.
+        Path f = file(dir);
+        record(f, build("/p", true, 10_000), NOW);
+        record(f, new BuildMetrics.Outcome("build", "/p", "g:n", true, true, 400, List.of()), NOW + 1);
+        var e = BuildMetrics.load(f).invocation("build", "/p").orElseThrow();
+        assertThat(e.ok().count()).isEqualTo(1);
+        assertThat(e.ok().avgMillis()).isEqualTo(10_000);
+        assertThat(e.cancelled().count()).isEqualTo(1);
+        assertThat(e.cancelled().totalMillis()).isEqualTo(400);
+        // Estimators only read ok — cancelled wall must not pull the average down.
+        assertThat(e.ok().minMillis()).isEqualTo(10_000);
+    }
+
+    @Test
     void kinds_are_tracked_independently(@TempDir Path dir) {
         Path f = file(dir);
         record(f, build("/p", true, 1000), NOW);

@@ -250,14 +250,28 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the {@code [hh:mm:ss]} countdown with the total predicted build time (the same figure
-     * {@code jk explain} reports). The countdown then ticks down purely by wall-clock — one second
-     * off per real second — flooring at zero and holding there until the build settles. {@code 0}
-     * hides the countdown.
+     * Seed the header clock with the total predicted build wall-clock (the same figure {@code jk
+     * explain} reports). The clock is <em>run-wide</em> and pure wall-clock from {@link
+     * #pipeline(PrintStream, String, boolean) construction}:
+     *
+     * <ul>
+     *   <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
+     *       at overrun flip to {@code +Ns} count-up of the excess.
+     *   <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command.
+     * </ul>
+     *
+     * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
+     * execute has completed any module, further updates are ignored so mid-build re-projections
+     * cannot jump the countdown or reset count-up at module boundaries.
      */
     public void setEtaEstimate(long totalMillis) {
         synchronized (lock) {
-            this.etaEstimateMs = Math.max(0, totalMillis);
+            long next = Math.max(0, totalMillis);
+            // Never clear a positive seed with 0 (unknown) mid-run.
+            if (next == 0 && etaEstimateMs > 0) return;
+            // After any module finishes, lock the seed for pure wall-clock display.
+            if (etaEstimateMs > 0 && modulesComplete > 0) return;
+            this.etaEstimateMs = next;
         }
     }
 
@@ -864,13 +878,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(barStr);
             }
         }
-        // After the bar's percent: a bright-black middle dot, then the build clock in
-        // yellow. With a useful ETA (learned timings) the clock counts down from the
-        // estimate (remaining = max(0, estimate − elapsed), holding at 0s on overrun);
-        // with no useful timings the ETA is left at 0 and the clock counts the elapsed
-        // time up from 0s.
-        // Clock: count down from estimate to 0s, then flip to count-up with a + prefix.
-        // No estimate → count up from +0s immediately.
+        // After the bar's percent: a bright-black middle dot, then the run-wide build clock
+        // in yellow. Seeded estimate → pure wall-clock countdown then +Ns overrun; no seed
+        // → +Ns count-up from construction. Never resets on phase/module boundaries.
         String clockStr;
         if (etaEstimateMs > 0) {
             long remaining = etaEstimateMs - elapsedMillis;

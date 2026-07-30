@@ -179,6 +179,44 @@ class CommandManagerTest {
     }
 
     @Test
+    void eta_seed_may_refine_before_any_module_finishes() {
+        // Early shape seed then post-prepare reseed — both before execute — may update the total.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(60_000);
+        cm.setEtaEstimate(38_000); // post-prepare refine while modulesComplete == 0
+        // 4s elapsed → 34s remaining from the refined seed.
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0))).contains("34s");
+    }
+
+    @Test
+    void eta_seed_locks_after_a_module_completes_so_reprojections_cannot_jump_the_clock() {
+        // Live re-projections used to overwrite the total mid-build (elapsed + remaining schedule),
+        // so the countdown jumped at module boundaries and count-up reset near zero.
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        cm.setEtaEstimate(38_000);
+        cm.setModuleProgress(1, 2); // first module finished → lock
+        cm.setEtaEstimate(20_000); // would-be re-projection: ignore
+        // 10s elapsed of a locked 38s seed → 28s remain (not 10s from the rejected re-projection).
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 10_000).get(0))).contains("28s");
+        // Overrun still pure wall-clock from the locked seed: 40s elapsed → +2s, not re-projected.
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 40_000).get(0))).contains("+2s");
+    }
+
+    @Test
+    void cold_count_up_is_run_wide_and_never_cleared_by_a_zero_eta() {
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        // No seed → +elapsed for the whole command.
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0))).contains("+12s");
+        // A zero ETA must not reset or clear a later positive seed's continuity either.
+        cm.setEtaEstimate(30_000);
+        cm.setEtaEstimate(0); // ignore clear
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 12_000).get(0))).contains("18s");
+    }
+
+    @Test
     void header_shows_module_remaining_work_counter() {
         // JK-1157: modulesComplete/modulesTotal next to the wall clock.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
