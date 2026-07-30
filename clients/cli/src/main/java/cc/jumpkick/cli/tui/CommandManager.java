@@ -717,8 +717,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
                 // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) — JK-1128.
-                String errIndent = last ? "    " : " │  ";
-                lines.add(Theme.colorize(errIndent + entry.briefError, Theme.active().error()));
+                // Only the message is red; the rail/indent stays dim like the branch glyphs.
+                lines.add(renderBriefErrorLine(last, entry.briefError));
                 budget--;
             }
             if (shown >= MAX_ROWS) break;
@@ -781,6 +781,17 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean failed = n.state == PhaseState.FAILED;
         String label = n.label == null || n.label.isEmpty() ? phaseLabel(n.key) : n.label;
         return new TreeEntry(renderWorkRow("", label, failed), failed ? n.briefError : "");
+    }
+
+    /**
+     * Brief under a failed tree row: dim rail/indent, red message only (not the whole line).
+     *
+     * @param last whether this is the last tree entry (closing branch → space indent)
+     */
+    static String renderBriefErrorLine(boolean last, String brief) {
+        String errIndent = last ? "    " : " │  ";
+        Theme t = Theme.active();
+        return Theme.colorize(errIndent, t.darkGray()) + Theme.colorize(brief == null ? "" : brief, t.error());
     }
 
     /**

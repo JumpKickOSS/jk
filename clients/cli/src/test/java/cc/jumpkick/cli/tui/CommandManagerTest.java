@@ -319,6 +319,20 @@ class CommandManagerTest {
     }
 
     @Test
+    void brief_error_line_colors_message_not_rail() {
+        // Rail/indent is dim; only the message is error-red (not the whole " │  Failed" string).
+        Theme t = Theme.active();
+        String mid = CommandManager.renderBriefErrorLine(false, "Failed");
+        String last = CommandManager.renderBriefErrorLine(true, "boom");
+        assertThat(mid)
+                .isEqualTo(Theme.colorize(" │  ", t.darkGray()) + Theme.colorize("Failed", t.error()));
+        assertThat(last)
+                .isEqualTo(Theme.colorize("    ", t.darkGray()) + Theme.colorize("boom", t.error()));
+        // Whole-line coloring would put the rail inside one error-styled span — must not.
+        assertThat(mid).isNotEqualTo(Theme.colorize(" │  Failed", t.error()));
+    }
+
+    @Test
     void brief_error_under_last_tree_entry_uses_space_indent_not_rail() {
         // JK-1128: ╰─ then spaces, not │ under a closing branch.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
