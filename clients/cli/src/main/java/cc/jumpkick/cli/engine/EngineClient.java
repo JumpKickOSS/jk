@@ -1965,8 +1965,23 @@ public final class EngineClient {
     }
 
     /** Copy PubGrub budget env vars from this process into the engine spawn environment. */
+    /**
+     * Hand the spawned engine the environment it cannot otherwise see.
+     *
+     * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
+     * is invisible to it. That is why {@code JK_STORE_DIR} did nothing before JK-1289: the engine
+     * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
+     * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
+     * engine and reaches it.
+     */
     private static void forwardResolveEnv(Map<String, String> env) {
-        for (String key : List.of("JK_RESOLVE_TIMEOUT_MS", "JK_RESOLVE_MAX_DECISIONS")) {
+        for (String key : List.of(
+                "JK_RESOLVE_TIMEOUT_MS",
+                "JK_RESOLVE_MAX_DECISIONS",
+                "JK_STORE_DIR",
+                "JK_CACHE_DIR",
+                "JK_M2_LOCAL",
+                "JK_CENTRAL_MIRROR")) {
             String v = System.getenv(key);
             if (v != null && !v.isBlank()) env.put(key, v);
         }

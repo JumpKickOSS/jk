@@ -13,6 +13,12 @@ import java.nio.file.Path;
  * <p>Keying off the state dir (rather than a fixed machine-wide name) means a different {@code
  * JK_HOME}/{@code JK_STATE_DIR} naturally gets its own engine, and every invocation that resolves the
  * same state dir naturally shares one — see {@code docs/architecture.md}.
+ *
+ * <p>The artifact store ({@code JK_STORE_DIR}) is part of the identity for the same reason. Without it,
+ * an invocation asking for a different store silently reused an engine already bound to another one and
+ * the setting did nothing — measured before JK-1289 closed this: {@code /proc/<engine>/environ} carried
+ * no {@code JK_STORE_DIR} at all. The state dir alone is not enough, because two invocations can share
+ * a state dir while disagreeing about where downloads belong.
  */
 public final class EnginePaths {
 
@@ -32,14 +38,25 @@ public final class EnginePaths {
     public record Paths(
             String key, Path dir, Path socket, Path lock, Path pid, Path log, Path token, Path http, Path httpToken) {}
 
-    /** Resolve against the live {@link JkDirs} (honors {@code JK_HOME}/{@code JK_STATE_DIR}). */
+    /**
+     * Resolve against the live {@link JkDirs} (honors {@code JK_HOME}/{@code JK_STATE_DIR}/{@code
+     * JK_STORE_DIR}).
+     */
     public static Paths current() {
-        return resolve(JkDirs.state());
+        return resolve(JkDirs.state(), JkDirs.store());
     }
 
-    /** Resolve against an explicit state directory — the seam tests use. */
+    /**
+     * Resolve against an explicit state directory, pairing it with the ambient store — the seam tests
+     * use.
+     */
     public static Paths resolve(Path stateDir) {
-        String key = keyFor(stateDir);
+        return resolve(stateDir, JkDirs.store());
+    }
+
+    /** Resolve against an explicit state directory and store root. */
+    public static Paths resolve(Path stateDir, Path storeDir) {
+        String key = keyFor(stateDir, storeDir);
         Path dir = stateDir.resolve("engine");
         return new Paths(
                 key,
@@ -130,7 +147,13 @@ public final class EnginePaths {
 
     /** A short, stable hash of the resolved absolute state-dir path. */
     static String keyFor(Path stateDir) {
-        String hex = Hashing.sha256Hex(stateDir.toAbsolutePath().normalize().toString());
+        return keyFor(stateDir, JkDirs.store());
+    }
+
+    static String keyFor(Path stateDir, Path storeDir) {
+        String hex = Hashing.sha256Hex(stateDir.toAbsolutePath().normalize().toString()
+                + "\u0000"
+                + storeDir.toAbsolutePath().normalize());
         return hex.substring(0, KEY_LENGTH);
     }
 }
