@@ -1618,6 +1618,9 @@ public final class EngineServer implements AutoCloseable {
 
     private void publishOutput(long requestId, String dir, String step, String line) {
         if (!eventsWanted()) return;
+        // Redact here, not per caller: the HTTP/MCP job listener feeds raw step output and the
+        // SSE stream is readable token-free on loopback (JK-1305). Idempotent for callers that
+        // already masked.
         publishEvent(
                 "output",
                 withProgress(
@@ -1627,7 +1630,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("requestId", requestId)
                                 .put("dir", dir)
                                 .put("step", step)
-                                .put("line", line),
+                                .put("line", redactEnv(dir, line)),
                         requestId));
     }
 
@@ -4918,8 +4921,9 @@ public final class EngineServer implements AutoCloseable {
             }
             return result.success();
         } catch (Exception e) {
-            // Log may keep the raw message for operators; the SSE path is redacted.
-            log.accept("jk engine: http-triggered job of " + entryDir + " failed: " + e.getMessage());
+            // The engine log is served by GET /api/log — redact like every other exiting channel.
+            log.accept("jk engine: http-triggered job of " + entryDir + " failed: "
+                    + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
             return false;
         }
@@ -4957,7 +4961,8 @@ public final class EngineServer implements AutoCloseable {
             }
             return result.success();
         } catch (Exception e) {
-            log.accept("jk engine: http-triggered lock of " + entryDir + " failed: " + e.getMessage());
+            log.accept("jk engine: http-triggered lock of " + entryDir + " failed: "
+                    + redactEnv(entryDir.toString(), String.valueOf(e.getMessage())));
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
             return false;
         }

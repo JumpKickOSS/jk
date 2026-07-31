@@ -759,11 +759,19 @@ Vue.createApp({
       try {
         this.status = await get('/api/status');
         if (this.connection === 'unauthorized') this.connection = 'live';
-        if (this.view === 'status') {
-          this.engineLog = await getText('/api/log?lines=100');
-        }
       } catch (e) {
         if (e.status === 401) this.connection = 'unauthorized';
+      }
+      // Separate try: the log tail is a sensitive read (token-required even on loopback,
+      // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
+      if (this.view === 'status') {
+        try {
+          this.engineLog = await getText('/api/log?lines=100');
+        } catch (e) {
+          if (e.status === 401) {
+            this.engineLog = '(engine log requires the tokened dashboard URL — reopen via `jk web`)';
+          }
+        }
       }
       // Separate try: a metrics hiccup must not blank the status vitals.
       try {
