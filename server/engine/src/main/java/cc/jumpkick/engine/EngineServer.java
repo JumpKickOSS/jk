@@ -1295,16 +1295,23 @@ public final class EngineServer implements AutoCloseable {
         LiveJob job = liveJobs.get(jid);
         if (job != null) {
             beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs());
-            // Immediate terminal on the streaming connection — the building CLI is blocked reading
-            // this writer; without this it often only sees EOF after the runner is abandoned.
-            pushCancelledTerminal(job);
-            if (job.connectionThread() != null) {
-                try {
-                    job.connectionThread().interrupt();
-                } catch (RuntimeException ignored) {
-                    // best-effort wake
+            // Terminal + reader wake happen off-thread: the job's stream writer can be wedged in a
+            // socket write (client not draining), and `jk cancel` / POST /api/cancel must ack
+            // without waiting behind that monitor (JK-1313). Order inside the task still matters:
+            // terminal first, then the interrupt that may close the channel.
+            Thread.ofVirtual().name("jk-cancel-settle-" + jid).start(() -> {
+                // Immediate terminal on the streaming connection — the building CLI is blocked
+                // reading this writer; without this it often only sees EOF after the runner is
+                // abandoned.
+                pushCancelledTerminal(job);
+                if (job.connectionThread() != null) {
+                    try {
+                        job.connectionThread().interrupt();
+                    } catch (RuntimeException ignored) {
+                        // best-effort wake
+                    }
                 }
-            }
+            });
             return true;
         }
         // HTTP path may still hold tokens briefly if registration order differs.
