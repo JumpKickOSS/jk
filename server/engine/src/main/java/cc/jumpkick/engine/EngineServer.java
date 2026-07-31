@@ -960,7 +960,11 @@ public final class EngineServer implements AutoCloseable {
         } catch (IOException ignored) {
             // client gone before job body — still run cancel registration below
         }
-        // Capture this connection thread so remote cancel can wake it off client-readLine.
+        // Capture this connection thread so remote cancel can wake it off client-readLine. The
+        // wake is Thread.interrupt, which on a thread blocked in an InterruptibleChannel read also
+        // CLOSES the channel — so only interrupt while actually parked on the read (JK-1311);
+        // an interrupt landing after the loop exits would poison teardown I/O instead.
+        java.util.concurrent.atomic.AtomicBoolean parkedOnRead = new java.util.concurrent.atomic.AtomicBoolean(false);
         Thread connectionThread = Thread.currentThread();
         registerLiveJob(
                 eventRequestId, cancelToken, runnerRef, writer, connectionThread, eventDir, eventKind, workspaceStream);
@@ -986,10 +990,13 @@ public final class EngineServer implements AutoCloseable {
                     inFlightBuilds.release(eventRequestId);
                     unregisterLiveJob(eventRequestId);
                     done.countDown();
-                    // Unblock the connection thread if it is parked on client readLine waiting for
-                    // BUILD_CANCEL / EOF — remote cancel finishes the runner without the client
-                    // writing anything (JK-1252).
-                    connectionThread.interrupt();
+                    // Unblock the connection thread only if it is parked on client readLine
+                    // waiting for BUILD_CANCEL / EOF — remote cancel finishes the runner without
+                    // the client writing anything (JK-1252). A blanket interrupt here landed after
+                    // the read loop too, leaving the flag set through teardown so the journal
+                    // completion died on ClosedByInterruptException — a phantom "running" job in
+                    // jk jobs until engine restart (JK-1311).
+                    if (parkedOnRead.get()) connectionThread.interrupt();
                 }
             });
             runnerRef.set(started);
@@ -1035,7 +1042,9 @@ public final class EngineServer implements AutoCloseable {
                 // safety-net terminal.
                 while (done.getCount() > 0) {
                     try {
+                        parkedOnRead.set(true);
                         String line = reader.readLine();
+                        parkedOnRead.set(false);
                         if (line == null) {
                             // EOF / client gone mid-job — same bounded cancel path.
                             beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
@@ -1046,6 +1055,7 @@ public final class EngineServer implements AutoCloseable {
                             beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
                         }
                     } catch (IOException e) {
+                        parkedOnRead.set(false);
                         // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
                         if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
                             break; // runner done / cancel wake — join below
@@ -1054,6 +1064,7 @@ public final class EngineServer implements AutoCloseable {
                         break;
                     }
                 }
+                parkedOnRead.set(false);
             } catch (RuntimeException ignored) {
                 if (done.getCount() > 0) {
                     beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
@@ -1100,6 +1111,11 @@ public final class EngineServer implements AutoCloseable {
                 Thread.currentThread().interrupt();
             }
         } finally {
+            // A late runner/cancel interrupt may have landed after the joins: clear it before any
+            // teardown I/O, or journal completion dies on ClosedByInterruptException and jk jobs
+            // shows this build as running forever (JK-1311). This thread ends after teardown, so
+            // there is nothing to restore the flag for.
+            Thread.interrupted();
             if (heartbeatThread != null) heartbeatThread.interrupt();
             // Belts: any leftover workers die now (grace 0 — request is ending).
             JobWorkers.shutdownForRequest(eventRequestId, 0L);
