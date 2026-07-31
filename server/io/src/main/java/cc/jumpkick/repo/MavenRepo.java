@@ -378,17 +378,18 @@ public final class MavenRepo {
                 .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
             stored = cas.putStream(in);
         }
-        // Successful remote fetch only — trains the host fetch-duration prior for CAS-miss ETA.
         long ms = (System.nanoTime() - t0) / 1_000_000L;
+        if (mirror) {
+            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
+        }
+        // Successful VERIFIED fetch only — a download that fails its upstream checksum must not
+        // train the host fetch-duration prior (JK-1300).
         if (ms > 0) {
             try {
                 cc.jumpkick.cache.FetchTimings.record(ms);
             } catch (RuntimeException ignored) {
                 // advisory
             }
-        }
-        if (mirror) {
-            verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());
         }
         return stored;
     }

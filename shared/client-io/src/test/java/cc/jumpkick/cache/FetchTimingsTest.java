@@ -28,6 +28,20 @@ class FetchTimingsTest {
     }
 
     @Test
+    void record_persists_and_serves_from_the_memo() {
+        FetchTimings.record(123);
+        FetchTimings.record(456);
+        // The trimmed mean sees both samples (order-independent; other tests may add more).
+        assertThat(FetchTimings.trimmedMeanMs()).isGreaterThan(0);
+        assertThat(java.nio.file.Files.isRegularFile(FetchTimings.defaultFile())).isTrue();
+        // Non-positive samples never train.
+        long before = FetchTimings.trimmedMeanMs();
+        FetchTimings.record(0);
+        FetchTimings.record(-5);
+        assertThat(FetchTimings.trimmedMeanMs()).isEqualTo(before);
+    }
+
+    @Test
     void weight_units_fall_back_when_cold() {
         assertThat(FetchTimings.weightUnits(8, 150)).isIn(8, FetchTimings.weightUnits(8, 150));
         // With no samples, cold path returns fallback.

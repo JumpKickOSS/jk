@@ -37,12 +37,18 @@ public final class FetchTimings {
     /**
      * Record one successful remote fetch duration (ms). Non-positive samples are ignored. Best-effort
      * — never throws into the fetch path.
+     *
+     * <p>Reads through the in-process memo (one disk read per process, not one per artifact —
+     * JK-1300); the write is last-writer-wins across concurrent engines, which is acceptable for an
+     * advisory prior (a lost sample only delays convergence of the trimmed mean).
      */
     public static void record(long durationMs) {
         if (durationMs <= 0) return;
         LOCK.lock();
         try {
-            List<Long> samples = new ArrayList<>(loadUnlocked());
+            List<Long> current = memo;
+            if (current == null) current = loadUnlocked();
+            List<Long> samples = new ArrayList<>(current);
             samples.add(durationMs);
             while (samples.size() > MAX_SAMPLES) samples.remove(0);
             writeUnlocked(samples);
@@ -80,8 +86,8 @@ public final class FetchTimings {
     }
 
     /**
-     * Progress-bar weight units for one CAS-miss fetch: {@code ceil(trimmedMean / msPerWeight)}, or
-     * {@code fallback} when cold.
+     * Progress-bar weight units for one CAS-miss fetch: {@code round(trimmedMean / msPerWeight)}
+     * (min 1), or {@code fallback} when cold.
      */
     public static int weightUnits(int fallback, int msPerWeight) {
         long ms = trimmedMeanMs();
