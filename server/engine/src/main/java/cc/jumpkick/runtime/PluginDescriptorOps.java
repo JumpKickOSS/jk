@@ -38,7 +38,7 @@ public final class PluginDescriptorOps {
      * anything new was written, so callers can re-parse.
      */
     public static boolean ensureMaterialized(Path moduleDir, Path cache) {
-        Path lock = moduleDir.resolve("jk.lock");
+        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return false;
         Lockfile lockfile;
         try {

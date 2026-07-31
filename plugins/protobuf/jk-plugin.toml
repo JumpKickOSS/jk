@@ -15,7 +15,7 @@ worker          = "jk-protobuf"
 protocol-prefix = "##JKPB:"
 
 [schema]
-version = { type = "string", required = true, example = "4.33.1", hint = "the protoc release to run (pins com.google.protobuf:protoc in jk.lock)" }
+version = { type = "string", required = true, example = "4.33.1", hint = "the protoc release to run (pins com.google.protobuf:protoc in jk-lock.toml)" }
 src     = { type = "string", default = "proto" }   # proto source dir, module-relative
 lite    = { type = "bool", default = false }       # lite-runtime codegen (Android/datastore posture)
 kotlin  = { type = "bool", default = false }       # also emit Kotlin DSL codegen (--kotlin_out; pairs with protobuf-kotlin[-lite])

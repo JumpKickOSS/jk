@@ -16,7 +16,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * Parses {@code jk.lock} into a {@link Lockfile}. Strict: unknown top-level keys, missing required
+ * Parses {@code jk-lock.toml} into a {@link Lockfile}. Strict: unknown top-level keys, missing required
  * keys, and unsupported schema versions are rejected.
  */
 public final class LockfileReader {
@@ -53,16 +53,16 @@ public final class LockfileReader {
 
     private static Lockfile fromResult(TomlParseResult result, String origin) {
         if (result.hasErrors()) {
-            throw new IllegalArgumentException("jk.lock parse error in " + origin + ": "
+            throw new IllegalArgumentException("jk-lock.toml parse error in " + origin + ": "
                     + result.errors().getFirst().getMessage());
         }
         Long lockVersionLong = result.getLong("version");
         if (lockVersionLong == null) {
-            throw new IllegalArgumentException("jk.lock is missing required key `version`");
+            throw new IllegalArgumentException("jk-lock.toml is missing required key `version`");
         }
         int lockVersion = lockVersionLong.intValue();
         if (lockVersion < Lockfile.MIN_SUPPORTED_VERSION || lockVersion > Lockfile.CURRENT_VERSION) {
-            throw new IllegalArgumentException("jk.lock schema version "
+            throw new IllegalArgumentException("jk-lock.toml schema version "
                     + lockVersion
                     + " is not supported (this jk reads v"
                     + Lockfile.MIN_SUPPORTED_VERSION
@@ -159,7 +159,7 @@ public final class LockfileReader {
     private static String requireString(TomlParseResult result, String key) {
         String value = result.getString(key);
         if (value == null) {
-            throw new IllegalArgumentException("jk.lock is missing required key `" + key + "`");
+            throw new IllegalArgumentException("jk-lock.toml is missing required key `" + key + "`");
         }
         return value;
     }

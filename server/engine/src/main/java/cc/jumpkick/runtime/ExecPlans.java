@@ -60,7 +60,7 @@ public final class ExecPlans {
                 if (root.isPresent()) workspaceRootDir = root.get().toString();
             }
 
-            Path lockFile = dir.resolve("jk.lock");
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
             boolean hasLock = Files.exists(lockFile);
             String lockJdk = "";
             if (hasLock) {
@@ -319,7 +319,7 @@ public final class ExecPlans {
 
         boolean devtoolsInjected = false;
         boolean hotReload = false;
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             classpath.addAll(new ClasspathResolver(JkStores.cas(cache)).classpathFor(lock, ClasspathResolver.RUN));
@@ -406,34 +406,15 @@ public final class ExecPlans {
             return ExecPlan.error(kind, "workspace has no modules — nothing to run", "missing");
         }
 
-        // 1) Declared [application] main wins.
-        List<Map.Entry<Path, JkBuild>> declared = new ArrayList<>();
+        // 1) Declared [application] main wins — first in workspace module declaration order
+        // (so bare `jk run` at the root is deterministic when several apps exist).
         for (var e : modules.entrySet()) {
             String m = e.getValue().mainClass();
-            if (m != null && !m.isBlank()) declared.add(e);
-        }
-        if (declared.size() == 1) {
-            Path modDir = declared.get(0).getKey();
-            JkBuild mod = declared.get(0).getValue();
-            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
-        }
-        if (declared.size() > 1) {
-            List<String> names = new ArrayList<>();
-            for (var e : declared) {
-                Path rel;
-                try {
-                    rel = root.relativize(e.getKey());
-                } catch (IllegalArgumentException ex) {
-                    rel = e.getKey();
-                }
-                names.add(rel + " → " + e.getValue().mainClass());
+            if (m != null && !m.isBlank()) {
+                Path modDir = e.getKey();
+                JkBuild mod = e.getValue();
+                return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
             }
-            return ExecPlan.error(
-                    kind,
-                    "multiple modules declare [application] main ("
-                            + String.join("; ", names)
-                            + ") — run from a module directory or leave only one declared",
-                    "ambiguous");
         }
 
         // 2) Best-effort scan: classes dir first, then main jar.
@@ -470,17 +451,13 @@ public final class ExecPlans {
                             + "on the app module (or run from that module directory)",
                     "missing");
         }
-        if (mainToModule.size() > 1) {
-            List<String> names = new ArrayList<>();
-            for (var e : mainToModule.entrySet()) {
-                names.add(e.getKey() + " (" + root.relativize(e.getValue()) + ")");
+        // Prefer declaration order among scanned mains.
+        for (var e : modules.entrySet()) {
+            if (mainToModule.containsValue(e.getKey())) {
+                Path modDir = e.getKey();
+                JkBuild mod = e.getValue();
+                return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
             }
-            return ExecPlan.error(
-                    kind,
-                    "multiple main classes found in workspace ("
-                            + String.join(", ", names)
-                            + ") — set `[application] main` on one module or run from a module directory",
-                    "ambiguous");
         }
         Path modDir = mainToModule.values().iterator().next();
         JkBuild mod = modules.get(modDir);
@@ -645,7 +622,7 @@ public final class ExecPlans {
 
         List<String> libNames = new ArrayList<>();
         List<String> libPaths = new ArrayList<>();
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (Files.exists(lockFile)) {
             Lockfile lock = LockfileReader.read(lockFile);
             for (ClasspathResolver.Entry entry :
@@ -731,11 +708,11 @@ public final class ExecPlans {
     }
 
     private static Path resolveLockFile(Path projectDir) throws IOException {
-        Path lockFile = projectDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockFile)) {
             var rootOpt = WorkspaceLocator.findRoot(projectDir);
             if (rootOpt.isPresent()) {
-                Path candidate = rootOpt.get().resolve("jk.lock");
+                Path candidate = cc.jumpkick.lock.LockPaths.lockFile(rootOpt.get());
                 if (Files.exists(candidate)) return candidate;
             }
         }

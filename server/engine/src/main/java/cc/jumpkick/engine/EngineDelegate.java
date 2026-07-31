@@ -29,7 +29,7 @@ public final class EngineDelegate {
      */
     public static String pinnedVersionDiffering(Path entryDir, String running) {
         try {
-            Path lock = entryDir.resolve("jk.lock");
+            Path lock = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
             if (!Files.isRegularFile(lock)) return null;
             Lockfile lf = LockfileReader.read(lock);
             if (lf.jk() == null || lf.jk().version() == null) return null;

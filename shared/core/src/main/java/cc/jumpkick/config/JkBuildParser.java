@@ -923,7 +923,7 @@ public final class JkBuildParser {
         boolean verifySigned = obj.getBoolean("verify-signed", () -> false);
         if (obj.contains("fetch")) {
             throw new JkBuildParseException(displayPath + ".fetch is no longer supported — every git dependency is"
-                    + " resolved once and pinned in jk.lock; a branch ref's tip only moves on an explicit `jk"
+                    + " resolved once and pinned in jk-lock.toml; a branch ref's tip only moves on an explicit `jk"
                     + " update --git` or `jk fetch`. Remove the `fetch` key.");
         }
 

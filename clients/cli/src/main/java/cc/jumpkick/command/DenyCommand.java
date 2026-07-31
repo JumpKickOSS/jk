@@ -43,7 +43,7 @@ public final class DenyCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path projectDir = global.workingDir();
         Path jkBuild = projectDir.resolve("jk.toml");
-        Path lockPath = projectDir.resolve("jk.lock");
+        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(jkBuild)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", jkBuild + " not found."));
             return Exit.NO_INPUT;
@@ -51,7 +51,7 @@ public final class DenyCommand implements CliCommand {
         if (!Files.exists(lockPath)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Deny",
-                    "no jk.lock in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir) + " (run `jk lock` first)."));
+                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir) + " (run `jk lock` first)."));
             return Exit.CONFIG;
         }
         Path cache = JkDirs.cache();

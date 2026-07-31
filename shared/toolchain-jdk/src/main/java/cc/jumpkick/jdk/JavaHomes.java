@@ -39,7 +39,7 @@ public final class JavaHomes {
 
     private static cc.jumpkick.lock.Lockfile readLockSoft(Path projectDir) {
         try {
-            Path lock = projectDir.resolve("jk.lock");
+            Path lock = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
             return Files.isRegularFile(lock) ? cc.jumpkick.lock.LockfileReader.read(lock) : null;
         } catch (Exception e) {
             return null;

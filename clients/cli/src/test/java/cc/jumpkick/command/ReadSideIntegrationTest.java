@@ -124,7 +124,7 @@ class ReadSideIntegrationTest {
 
     @Test
     void tree_without_lockfile_errors(@TempDir Path tempDir) throws IOException {
-        // Write a jk.toml by hand so no jk.lock is created.
+        // Write a jk.toml by hand so no jk-lock.toml is created.
         Files.writeString(
                 tempDir.resolve("jk.toml"), "[project]\ngroup = \"com.example\"\nname = \"a\"\nversion = \"0.1.0\"\n");
         int exit = run("tree", "-C", tempDir.toString());
@@ -141,7 +141,7 @@ class ReadSideIntegrationTest {
         run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
         // Erase the empty lockfile that `jk init` stamps so we can verify
         // sync creates a fresh one (with the dep we just added).
-        Path lockFile = tempDir.resolve("jk.lock");
+        Path lockFile = tempDir.resolve("jk-lock.toml");
         Files.deleteIfExists(lockFile);
 
         String out = captureStdout(() -> run(
@@ -154,7 +154,7 @@ class ReadSideIntegrationTest {
                 base.toString()));
 
         assertThat(lockFile).exists();
-        // sync auto-locks when jk.lock is missing, then reports its summary.
+        // sync auto-locks when jk-lock.toml is missing, then reports its summary.
         assertThat(out.replaceAll("\\u001B\\[[;0-9]*m", "")).contains("Sync");
         // The package we added should show up in the freshly written lock.
         assertThat(Files.readString(lockFile)).contains("com.foo:leaf");

@@ -833,7 +833,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code GET /api/history/artifact?id=…&name=…} — a snapshot file (test-results markdown, the
-     * {@code jk.lock} snapshot, or the diagnostics text) served as plain text. {@code name} is
+     * {@code jk-lock.toml} snapshot, or the diagnostics text) served as plain text. {@code name} is
      * whitelisted by the journal, so a hostile value cannot escape the entry directory.
      */
     private void handleHistoryArtifact(HttpExchange exchange) throws IOException {

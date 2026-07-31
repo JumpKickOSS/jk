@@ -37,7 +37,7 @@ The engine process is still keyed by `JK_HOME` / state; only the CAS path is iso
 ### CI: what to cache between jobs
 
 jk’s correctness does **not** depend on local caches — a cold machine with a valid
-`jk.lock` always rebuilds. Caching only speeds up **CAS downloads**, **action hits**, and
+`jk-lock.toml` always rebuilds. Caching only speeds up **CAS downloads**, **action hits**, and
 (once present) local preflight memos. **Never commit** cache dirs to git.
 
 | Path | What it holds | Safe to restore in CI? |
@@ -46,7 +46,7 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 | `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
 | `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
-| `jk.lock` | Resolved coords | **Commit** this (not a cache) |
+| `jk-lock.toml` | Resolved coords | **Commit** this (not a cache) |
 
 **Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
 
@@ -58,7 +58,7 @@ Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates th
     path: |
       ~/.jk/cache
       **/target/.jk
-    key: jk-${{ runner.os }}-${{ hashFiles('**/jk.lock') }}
+    key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}
     restore-keys: |
       jk-${{ runner.os }}-
 ```
@@ -120,11 +120,11 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 
 ## Lockfile
 
-`jk.lock` is **canonical**. Commit it.
+`jk-lock.toml` is **canonical**. Commit it.
 
 | Command | Role |
 |---|---|
-| `jk lock` | Resolve and write `jk.lock` |
+| `jk lock` | Resolve and write `jk-lock.toml` |
 | `jk sync` | Materialize cache / offline prep (`--offline-prepare`) |
 | `jk outdated` | Read-only: which direct deps have newer versions than the lock |
 | `jk update` | Re-resolve within declared constraints (rewrites the lock) |
@@ -306,12 +306,12 @@ jk outdated --exclude-up-to-date # only rows that can move
 jk outdated --output json        # machine-readable array of rows
 jk why com.foo:bar               # why a pin is there
 jk tree                          # full graph
-jk update                        # re-resolve on purpose, then commit jk.lock
+jk update                        # re-resolve on purpose, then commit jk-lock.toml
 ```
 
 | Column | Meaning |
 |---|---|
-| **Current** | Version pinned in `jk.lock` (empty if unlocked) |
+| **Current** | Version pinned in `jk-lock.toml` (empty if unlocked) |
 | **Compatible** | Newest version that still satisfies the declared range |
 | **Latest** | Newest stable version in the repo (may be outside the range) |
 | **Tip** | With `--show-tip`: prerelease / git frontier ahead of Latest |
@@ -364,7 +364,7 @@ jk new --template quarkus my-api # Giter8 short name (same single-module shape)
 - **Multi-module:** workspace path deps are packaged into `lib/main` for the Quarkus app
   module. Prefer a small `@ApplicationScoped` holder in the app module over CDI producers
   whose return types live only in sibling jars (Jandex). Synthetic `pom.xml` is for tooling
-  only — JumpKick owns resolve via `jk.lock`. Dogfood:
+  only — JumpKick owns resolve via `jk-lock.toml`. Dogfood:
   [jk-examples `java/quarkus-petshop`](https://github.com/jkbuild/jk-examples).
 - Cold first lock of the Quarkus platform is large; warm CAS re-locks are fast. See
   [perf/resolve-io.md](perf/resolve-io.md).
@@ -461,7 +461,7 @@ with `--parameters`, and `jk build` produces a Boot-launcher executable jar.
 jk add g:a:v                 # or catalog short name: jk add jackson
 jk remove <coord>
 jk outdated                  # check for newer deps (read-only; see lockfile section)
-jk update                    # re-resolve within ranges (rewrites jk.lock)
+jk update                    # re-resolve within ranges (rewrites jk-lock.toml)
 jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see platforms)
 jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
@@ -857,7 +857,8 @@ jackson-databind.workspace = true   # shared external
 widget-core.workspace = true        # sibling module (matches [project].name)
 ```
 
-- **One `jk.lock` at the workspace root**
+- **One `jk-lock.toml` at the workspace root** (never per-module; members redirect to the root lock)
+- Module build output lands under **`target/<module-rel>/`** at the workspace root (not `module/target/`)
 - `jk new path/to/mod` and `jk add ./path` register modules for you
 
 ## Git and path dependencies
@@ -975,7 +976,7 @@ Details: [architecture.md](architecture.md#the-engine).
 | Path | Role |
 |---|---|
 | `jk.toml` | Project / workspace manifest |
-| `jk.lock` | Locked graph (commit this) |
+| `jk-lock.toml` | Locked graph (commit this) |
 | `.jdk-version` | Optional pin (`temurin-21`) |
 | `target/` | Build outputs (gitignored) |
 | `.jk/` | Generated project state (gitignored) |

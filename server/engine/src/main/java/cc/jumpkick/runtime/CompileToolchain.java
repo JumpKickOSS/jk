@@ -38,7 +38,7 @@ public final class CompileToolchain {
     private static final Consumer<String> NO_NOTICE = s -> {};
 
     /**
-     * Pick the Kotlin compiler version to provision: the version pinned in {@code jk.lock} (resolved
+     * Pick the Kotlin compiler version to provision: the version pinned in {@code jk-lock.toml} (resolved
      * by {@code jk lock}) if present, else an exact {@code project.kotlin} pin, else {@code null} —
      * which falls back to the bundled default distribution.
      */

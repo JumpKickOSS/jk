@@ -160,7 +160,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         if (c.bool("sbom", false)) {
-            Path lockPath = projectDir.resolve("jk.lock");
+            Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
             Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
             byte[] cdx = Sbom.cyclonedx(project, lock);
             byte[] spdxBytes = Sbom.spdx(project, lock);

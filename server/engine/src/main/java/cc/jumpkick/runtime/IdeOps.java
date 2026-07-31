@@ -292,9 +292,9 @@ public final class IdeOps {
         return sdkRefFor(wsRoot, root, registry, pointer, sdkEntries, seen);
     }
 
-    /** The resolved JDK identifier stamped in a module's {@code jk.lock}, or null. */
+    /** The resolved JDK identifier stamped in a module's {@code jk-lock.toml}, or null. */
     private static String readLockJdk(Path moduleDir) {
-        Path lf = moduleDir.resolve("jk.lock");
+        Path lf = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.exists(lf)) return null;
         try {
             return LockfileReader.read(lf).jdk();
@@ -321,7 +321,7 @@ public final class IdeOps {
             Map<String, String[]> allLibs,
             boolean fetchMissing)
             throws IOException {
-        Path lockFile = moduleDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return;
         Lockfile lock = LockfileReader.read(lockFile);
 
@@ -408,7 +408,7 @@ public final class IdeOps {
     private static List<String[]> moduleLibEntries(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> allModules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = moduleDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, allModules);
@@ -435,7 +435,7 @@ public final class IdeOps {
     private static List<String> processorLibFiles(
             Path moduleDir, JkBuild module, Map<Path, JkBuild> modules, Map<String, String[]> allLibs)
             throws IOException {
-        Path lockFile = moduleDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.exists(lockFile)) return List.of();
         Lockfile lock = LockfileReader.read(lockFile);
         Set<String> siblingCoords = siblingCoordinates(module, modules);

@@ -123,12 +123,12 @@ class AndroidWorkspaceTest {
                         null,
                         List.of(),
                         List.of()),
-                module.resolve("jk.lock"));
+                module.resolve("jk-lock.toml"));
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
                 module,
                 cache,
                 module.resolve("jk.toml"),
-                module.resolve("jk.lock"),
+                module.resolve("jk-lock.toml"),
                 module,
                 1,
                 0,

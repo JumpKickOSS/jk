@@ -138,7 +138,7 @@ sleep 1
 "$JK_BIN" engine start >/dev/null 2>&1 || true
 sleep 1
 set +e
-if [[ ! -f jk.lock ]]; then
+if [[ ! -f jk-lock.toml ]]; then
   "$JK_BIN" lock 2>&1 | tail -5
 fi
 "$JK_BIN" build --skip-tests 2>&1 | tail -12

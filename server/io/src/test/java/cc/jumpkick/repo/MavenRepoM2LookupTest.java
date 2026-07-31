@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * <p>The point of every test here is the integrity rule. {@code ~/.m2} is writable by anything on the
  * machine and Maven enforces no integrity, so a local hit is only ever a <em>candidate</em>; the
  * authority is a checksum fetched from the repository the artifact would have come from. Fetching it
- * remotely rather than reading {@code jk.lock} is what makes the check usable during resolve, when no
+ * remotely rather than reading {@code jk-lock.toml} is what makes the check usable during resolve, when no
  * lock entry exists yet.
  */
 class MavenRepoM2LookupTest {

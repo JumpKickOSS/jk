@@ -7,7 +7,7 @@ import java.util.List;
  * The structured outcome of one build run, frozen at request-finish and persisted as {@code
  * record.json} inside a {@link BuildJournal} entry. This is the source of truth for the dashboard's
  * backfilled activity feed and the {@code jk history} CLI; the heavier per-run artifacts
- * (test-results markdown, a {@code jk.lock} snapshot, flattened diagnostics) sit beside it in the
+ * (test-results markdown, a {@code jk-lock.toml} snapshot, flattened diagnostics) sit beside it in the
  * same entry directory.
  *
  * <p>Deliberately a plain value object with no engine dependencies so it round-trips cleanly through

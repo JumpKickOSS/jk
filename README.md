@@ -48,7 +48,7 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 |---|---|
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs, GPG/Sigstore, `~/.m2`-friendly cache |
-| **Reproducible builds by default** | `jk.lock` is law; CI doesn't re-resolve unless you say so |
+| **Reproducible builds by default** | `jk-lock.toml` is law; CI doesn't re-resolve unless you say so |
 | **Correct resolution** | PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present |
 | **Speed without a bloated daemon** | Content-addressed action cache; slim engine hard-capped at ~256 MiB |
 | **Adoption without a rewrite** | `jk mvn` / `jk gradle` run your *real* build; `import` / `export` when ready |
@@ -65,7 +65,7 @@ Coming from **Gradle**: think “declarative TOML + real lockfile, without the c
 ### Dependencies & lockfile
 - PubGrub solver with **English conflict diagnostics**
 - **Highest-version-wins** for bare edges when no platform BOM; **enforced platform** when one is present (opt-in **floor** via `[resolve] platform = "floor"`)
-- Canonical **`jk.lock`** (commit it); `jk build` never re-resolves
+- Canonical **`jk-lock.toml`** (commit it); `jk build` never re-resolves
 - Caret / tilde / exact / range selectors; platform BOMs as dependencyManagement pins
 - **`jk export bom`** — freeze a lock scope as a publishable Maven BOM POM
 - Separate **main / test / processor** resolution so annotation processors don't force main versions
@@ -111,10 +111,10 @@ Declaring `jackson-databind:2.18.2` in Maven or Gradle does **not** freeze your 
 Transitives can publish overnight; the next CI run can pick different jars without you
 changing a line. Maven has no lockfile. Gradle verification is optional homework.
 
-JumpKick writes every resolved version **and checksum** to `jk.lock` and treats it as law:
+JumpKick writes every resolved version **and checksum** to `jk-lock.toml` and treats it as law:
 
 ```bash
-jk lock          # resolve → write jk.lock (commit this)
+jk lock          # resolve → write jk-lock.toml (commit this)
 jk build         # uses the lock; does not re-resolve
 jk outdated      # read-only: which deps have newer versions than the lock
 jk update        # re-resolve on purpose, within your declared ranges

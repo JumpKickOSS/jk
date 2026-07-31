@@ -36,7 +36,7 @@ class TomlScanTest {
 
     @Test
     void top_level_key_stops_at_first_match_and_survives_array_tables(@TempDir Path tmp) throws Exception {
-        Path lock = tmp.resolve("jk.lock");
+        Path lock = tmp.resolve("jk-lock.toml");
         Files.writeString(lock, """
                 version = 1
                 jdk = "temurin-25.0.1"

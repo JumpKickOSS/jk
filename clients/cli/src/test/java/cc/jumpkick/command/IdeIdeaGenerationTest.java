@@ -256,7 +256,7 @@ class IdeIdeaGenerationTest {
 
         // A lock with a single processor-scoped dependency.
         String hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        Files.writeString(ws.resolve("jk.lock"), """
+        Files.writeString(ws.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"

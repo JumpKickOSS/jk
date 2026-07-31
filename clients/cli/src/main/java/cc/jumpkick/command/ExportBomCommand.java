@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code jk export bom} — freeze {@code jk.lock} versions for a scope into a Maven BOM POM
+ * {@code jk export bom} — freeze {@code jk-lock.toml} versions for a scope into a Maven BOM POM
  * (JK-1207).
  */
 public final class ExportBomCommand implements CliCommand {
@@ -25,7 +25,7 @@ public final class ExportBomCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Export a Maven BOM (dependencyManagement) from jk.lock";
+        return "Export a Maven BOM (dependencyManagement) from jk-lock.toml";
     }
 
     @Override

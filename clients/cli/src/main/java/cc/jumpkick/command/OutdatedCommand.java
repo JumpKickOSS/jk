@@ -22,7 +22,7 @@ import java.util.List;
 import org.jline.utils.AttributedStyle;
 
 /**
- * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk.lock}
+ * {@code jk outdated} — read-only report of declared deps with newer versions than {@code jk-lock.toml}
  * pins (Current / Compatible / Latest; optional Tip). Engine-hosted; writes nothing. At a workspace
  * root, cascades over every module.
  *

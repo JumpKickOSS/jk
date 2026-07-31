@@ -20,8 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
  * so Node treats it as the ES module it is.
  *
  * <p>Paths are resolved against the module root (not {@code user.dir}): workspace builds run tests
- * with the engine CWD at the workspace root, so bare {@code src/...} relatives would miss
- * {@code clients/web/...}.
+ * with the engine CWD at {@code ~/.jk/state/engine}, so bare {@code src/...} relatives miss
+ * {@code clients/web/...}. Classpath output may live under {@code <workspace>/target/clients/web/}
+ * (Mill-style) rather than {@code clients/web/target/}.
  */
 class WebClientFoldTest {
 
@@ -53,8 +54,8 @@ class WebClientFoldTest {
 
     /**
      * Module root containing {@code src/main/resources/web/fold.js}. Prefers cwd when already in
-     * the module; otherwise {@code clients/web} under a workspace root; else walks parents / class
-     * resource location.
+     * the module; otherwise {@code clients/web} under a workspace root; else maps classpath output
+     * under {@code target/<module-rel>/} back to the source module, then walks ancestors.
      */
     static Path moduleRoot() throws IOException {
         Path cwd = Path.of("").toAbsolutePath().normalize();
@@ -62,11 +63,14 @@ class WebClientFoldTest {
         Path nested = cwd.resolve("clients/web");
         if (isWebModuleRoot(nested)) return nested.normalize();
 
-        // Classpath resource (target/classes/web/fold.js) → walk up for jk.toml + sources.
+        // Classpath resource: standalone layout (…/clients/web/target/classes/…/fold.js) or
+        // workspace layout (…/target/clients/web/classes/…/fold.js).
         URL res = WebClientFoldTest.class.getResource("/web/fold.js");
         if (res != null && "file".equals(res.getProtocol())) {
             try {
                 Path resourceFile = Path.of(res.toURI()).toAbsolutePath().normalize();
+                Path fromOutput = moduleRootFromOutputPath(resourceFile);
+                if (fromOutput != null) return fromOutput;
                 for (Path d = resourceFile.getParent(); d != null; d = d.getParent()) {
                     if (isWebModuleRoot(d)) return d;
                 }
@@ -81,6 +85,39 @@ class WebClientFoldTest {
             if (isWebModuleRoot(d)) return d;
         }
         throw new IOException("cannot locate jk-web module root from cwd=" + cwd);
+    }
+
+    /**
+     * Map a path under a build output tree back to the source module root.
+     *
+     * <ul>
+     *   <li>{@code <ws>/target/<module-rel>/…} → {@code <ws>/<module-rel>} (workspace layout)
+     *   <li>{@code <module>/target/…} → {@code <module>} (standalone layout)
+     * </ul>
+     */
+    static Path moduleRootFromOutputPath(Path somewhereUnderOutput) {
+        Path abs = somewhereUnderOutput.toAbsolutePath().normalize();
+        for (Path d = abs; d != null; d = d.getParent()) {
+            if (d.getFileName() == null || !"target".equals(d.getFileName().toString())) continue;
+            Path parentOfTarget = d.getParent();
+            if (parentOfTarget == null) continue;
+
+            // Standalone: <module>/target/…
+            if (isWebModuleRoot(parentOfTarget)) return parentOfTarget.normalize();
+
+            // Workspace: <ws>/target/<module-rel>/… — try successive path prefixes under <ws>.
+            try {
+                Path rel = d.relativize(abs);
+                int n = rel.getNameCount();
+                for (int i = 1; i <= n; i++) {
+                    Path candidate = parentOfTarget.resolve(rel.subpath(0, i));
+                    if (isWebModuleRoot(candidate)) return candidate.normalize();
+                }
+            } catch (IllegalArgumentException ignored) {
+                // different roots — keep walking
+            }
+        }
+        return null;
     }
 
     private static boolean isWebModuleRoot(Path dir) {

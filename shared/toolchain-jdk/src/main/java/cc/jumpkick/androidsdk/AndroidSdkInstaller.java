@@ -52,7 +52,7 @@ public final class AndroidSdkInstaller {
 
     /**
      * As {@link #ensure(String)}, verifying the installed/downloaded revision against a
-     * {@code jk.lock} pin when one exists. The feed only ever offers each channel's current
+     * {@code jk-lock.toml} pin when one exists. The feed only ever offers each channel's current
      * revision, so a drifted component cannot be re-materialized at the pinned revision — jk
      * reports the drift (stderr) instead of silently building against different tool bytes;
      * {@code jk lock} refreshes the pin.
@@ -83,7 +83,7 @@ public final class AndroidSdkInstaller {
 
         if (pinnedRevision != null && !pinnedRevision.equals(component.revision())) {
             System.err.println("jk: Android SDK component " + componentPath + " is pinned to revision "
-                    + pinnedRevision + " in jk.lock but Google's feed now offers " + component.revision()
+                    + pinnedRevision + " in jk-lock.toml but Google's feed now offers " + component.revision()
                     + " — installing the offered revision; run `jk lock` to refresh the pin");
         }
 
@@ -101,7 +101,7 @@ public final class AndroidSdkInstaller {
         String installed = sdk.installedRevision(componentPath);
         if (installed != null && !installed.equals(pinnedRevision)) {
             System.err.println("jk: Android SDK component " + componentPath + " is installed at revision "
-                    + installed + " but jk.lock pins " + pinnedRevision
+                    + installed + " but jk-lock.toml pins " + pinnedRevision
                     + " — building with the installed one; run `jk lock` to refresh the pin");
         }
     }

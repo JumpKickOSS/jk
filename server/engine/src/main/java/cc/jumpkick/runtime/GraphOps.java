@@ -29,7 +29,7 @@ public final class GraphOps {
     public static String treeRender(Path dir, int maxDepth, boolean flatten, boolean stack, List<String> scopeNames)
             throws IOException {
         JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-        Lockfile lock = LockfileReader.read(dir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(cc.jumpkick.lock.LockPaths.lockFile(dir));
         List<Scope> scopes = scopeNames.isEmpty()
                 ? null
                 : scopeNames.stream().map(Scope::fromCanonical).toList();
@@ -40,7 +40,7 @@ public final class GraphOps {
     public static WhyReport why(Path dir, String query) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Lockfile lock = LockfileReader.read(dir.resolve("jk.lock"));
+            Lockfile lock = LockfileReader.read(cc.jumpkick.lock.LockPaths.lockFile(dir));
             List<Lockfile.Artifact> matches = lock.artifacts().stream()
                     .filter(p -> matchesQuery(p.name(), query))
                     .toList();
@@ -53,7 +53,7 @@ public final class GraphOps {
                 // Display GA form to users (not g:a:jar:).
                 names.add(ga(target.packageKey()));
                 versions.add(target.version());
-                for (Provenance.Path path : Provenance.pathsTo(project, lock, target.packageKey())) {
+                for (Provenance.Path path : Provenance.pathsTo(project, lock, target.packageKey(), dir)) {
                     owners.add(Integer.toString(i));
                     paths.add(path.steps().stream()
                             .map(s -> ga(s.module()) + "@" + s.version())

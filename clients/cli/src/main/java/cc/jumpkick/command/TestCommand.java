@@ -124,7 +124,7 @@ public final class TestCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
-        // No jk.lock guard: the pipeline's parse-build step resolves the lock on
+        // No jk-lock.toml guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();

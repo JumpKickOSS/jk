@@ -59,7 +59,7 @@ junit-jupiter = "5.11.0"
 EOF
   else
     # Minimal lock so offline builds work without resolve.
-    cat >"$dir/jk.lock" <<'EOF'
+    cat >"$dir/jk-lock.toml" <<'EOF'
 version = 1
 generated-by = "generate-synthetic-monorepo"
 resolution-algorithm = "pubgrub-v1"

@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * In-memory {@code jk.lock} (schema {@code version = 1}). Optional fields ({@code jdk},
+ * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code jdk},
  * {@code kotlin}, plugins, SDK, toolchain) may be null/empty for older lockfiles.
  */
 public record Lockfile(

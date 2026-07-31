@@ -128,7 +128,7 @@ class DependencyTreeTest {
 
     @Test
     void branch_git_dep_renders_as_a_locked_coordinate(@org.junit.jupiter.api.io.TempDir Path tmp) {
-        // A branch-ref git dep is materialized and pinned in jk.lock like any other
+        // A branch-ref git dep is materialized and pinned in jk-lock.toml like any other
         // git dep — it renders exactly like a locked Maven coordinate, no special tag.
         var deps = new ArrayList<Dependency>();
         deps.add(Dependency.git(
@@ -206,7 +206,7 @@ class DependencyTreeTest {
                 name = "a"
                 version = "9.9.9"
                 """);
-        Files.writeString(a.resolve("jk.lock"), EMPTY_LOCK);
+        Files.writeString(a.resolve("jk-lock.toml"), EMPTY_LOCK);
         Path b = Files.createDirectories(root.resolve("b"));
         Files.writeString(b.resolve("jk.toml"), """
                 [project]
@@ -217,7 +217,7 @@ class DependencyTreeTest {
                 [dependencies]
                 a = { workspace = true }
                 """);
-        Files.writeString(b.resolve("jk.lock"), EMPTY_LOCK);
+        Files.writeString(b.resolve("jk-lock.toml"), EMPTY_LOCK);
 
         JkBuild rootProject = cc.jumpkick.config.JkBuildParser.parse(root.resolve("jk.toml"));
         String rendered =

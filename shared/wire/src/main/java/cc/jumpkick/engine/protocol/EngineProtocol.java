@@ -265,13 +265,13 @@ public final class EngineProtocol {
     /** Server → client, terminal: the explain burst is complete. */
     public static final String EXPLAIN_DONE = "explain-done";
 
-    /** Client → server: write {@code jk.lock} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
+    /** Client → server: write {@code jk-lock.toml} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
     public static final String LOCK_REQUEST = "lock-request";
 
-    /** Client → server: re-resolve {@code jk.lock} ({@code jk update}); same events as lock. */
+    /** Client → server: re-resolve {@code jk-lock.toml} ({@code jk update}); same events as lock. */
     public static final String UPDATE_REQUEST = "update-request";
 
-    /** Client → server: align CAS + toolchain with {@code jk.lock} ({@code jk sync}). */
+    /** Client → server: align CAS + toolchain with {@code jk-lock.toml} ({@code jk sync}). */
     public static final String SYNC_REQUEST = "sync-request";
 
     /** Server → client, repeated: opens one module's event scope in a lock/update cascade. */
@@ -910,7 +910,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Resolve + write {@code jk.lock} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
+     * Resolve + write {@code jk-lock.toml} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
      * null}. {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side
      * (the same fields {@link #buildRequest} carries).
      */
@@ -948,7 +948,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Re-resolve fresh and overwrite {@code jk.lock} (see {@link #UPDATE_REQUEST}). {@code gitTarget}
+     * Re-resolve fresh and overwrite {@code jk-lock.toml} (see {@link #UPDATE_REQUEST}). {@code gitTarget}
      * is the {@code --git <name>} argument ({@code null} = every git dep) and is only read when
      * {@code gitOnly} is set.
      */
@@ -1012,7 +1012,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Sync the CAS + toolchain with {@code jk.lock} (see {@link #SYNC_REQUEST}). {@code jdksDir}/
+     * Sync the CAS + toolchain with {@code jk-lock.toml} (see {@link #SYNC_REQUEST}). {@code jdksDir}/
      * {@code repoUrl} may be {@code null}. {@code refresh} rides separately from {@code force} for
      * the same reason {@code rerun} does on {@link #buildRequest}: it re-downloads locked artifacts
      * without implying the rest of {@code force}'s cache bypasses.

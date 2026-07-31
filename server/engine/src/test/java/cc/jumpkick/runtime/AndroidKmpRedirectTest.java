@@ -109,7 +109,7 @@ class AndroidKmpRedirectTest {
         PipelineResult result = lock.run();
         assertThat(result.errors()).isEmpty();
         assertThat(result.success()).isTrue();
-        return LockfileReader.read(project.resolve("jk.lock"));
+        return LockfileReader.read(project.resolve("jk-lock.toml"));
     }
 
     private static Lockfile.Artifact artifact(Lockfile lockfile, String name) {

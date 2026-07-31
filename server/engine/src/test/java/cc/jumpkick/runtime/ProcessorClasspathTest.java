@@ -42,13 +42,14 @@ class ProcessorClasspathTest {
         List<Path> cp = BuildPipelines.processorClasspath(
                 Lockfile.empty("test"), new ClasspathResolver(new Cas(tmp.resolve("cas"))), siblings);
 
-        assertThat(cp).contains(root.resolve("proc/target/lib/proc-1.0.0.jar"));
+        // Workspace layout: <ws>/target/<module-rel>/lib/… (not module/target/).
+        assertThat(cp).contains(root.resolve("target/proc/lib/proc-1.0.0.jar"));
     }
 
     @Test
     void an_unbuilt_sibling_processor_is_reported_missing(@TempDir Path tmp) throws Exception {
         Path root = workspace(tmp);
-        Files.delete(root.resolve("proc/target/lib/proc-1.0.0.jar"));
+        Files.delete(root.resolve("target/proc/lib/proc-1.0.0.jar"));
         Path consumer = root.resolve("consumer");
 
         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(
@@ -113,7 +114,7 @@ class ProcessorClasspathTest {
                 name    = "proc"
                 version = "1.0.0"
                 """);
-        Path procJar = proc.resolve("target/lib/proc-1.0.0.jar");
+        Path procJar = root.resolve("target/proc/lib/proc-1.0.0.jar");
         Files.createDirectories(procJar.getParent());
         Files.writeString(procJar, "not-really-a-jar");
 

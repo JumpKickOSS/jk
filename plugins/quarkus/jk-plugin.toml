@@ -95,7 +95,7 @@ template      = "scaffold/application.properties.tmpl"
 keep-existing = true
 
 # Quarkus @QuarkusTest / BootstrapAppModelFactory need Maven project roots.
-# JK still owns resolve via jk.lock; this POM is coordinates for tooling only.
+# JK still owns resolve via jk-lock.toml; this POM is coordinates for tooling only.
 [[scaffold.file]]
 path          = "pom.xml"
 template      = "scaffold/pom.xml.tmpl"

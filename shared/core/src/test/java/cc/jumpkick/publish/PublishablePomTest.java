@@ -34,7 +34,7 @@ class PublishablePomTest {
 
     @Test
     void branch_git_dependency_is_skipped_for_publish() {
-        // Even though a branch-tracked git dep is locked in jk.lock, it's still not a stable
+        // Even though a branch-tracked git dep is locked in jk-lock.toml, it's still not a stable
         // reference for external consumers of the published artifact.
         GitSource source = GitSource.of(
                 "https://github.com/acme/lib", "https://github.com/acme/lib", new GitRefSpec.Branch("main"));

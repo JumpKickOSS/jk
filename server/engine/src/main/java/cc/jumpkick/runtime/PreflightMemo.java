@@ -341,7 +341,7 @@ public final class PreflightMemo {
     }
 
     /**
-     * Structure key: entry {@code jk.toml}/{@code jk.lock} (workspace membership) + ordered unit
+     * Structure key: entry {@code jk.toml}/{@code jk-lock.toml} (workspace membership) + ordered unit
      * dirs with each module's toml/lock digests. Entry root is always included so dropping a module
      * from {@code [workspace].modules} invalidates even when the unit folder still exists. Edges are
      * not hashed (derived from manifests when tomls are unchanged).
@@ -356,12 +356,12 @@ public final class PreflightMemo {
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feedFile(md, root.resolve("jk.toml"));
-            feedFile(md, root.resolve("jk.lock"));
+            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(root));
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
                 feed(md, relKey(root, d));
                 feedFile(md, d.resolve("jk.toml"));
-                feedFile(md, d.resolve("jk.lock"));
+                feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(d));
             }
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
@@ -402,7 +402,7 @@ public final class PreflightMemo {
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, BuildIdentity.cacheKeyVersion());
             feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, moduleDir.resolve("jk.lock"));
+            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
             return "err-" + System.nanoTime();
@@ -579,7 +579,7 @@ public final class PreflightMemo {
             feed(md, "skip=" + (skipTests ? "1" : "0"));
             feed(md, "mode=" + fingerprintMode());
             feedFile(md, moduleDir.resolve("jk.toml"));
-            feedFile(md, moduleDir.resolve("jk.lock"));
+            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
             boolean mtimeMode = useMtimeMode();
             List<Path> roots = cc.jumpkick.layout.ModuleLayout.fingerprintDirs(moduleDir, skipTests);
             for (Path r : roots) {

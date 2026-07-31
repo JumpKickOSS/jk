@@ -19,11 +19,12 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 ## Anti-goals
 
 - Do not turn `jk.toml` into a scripting language or a Gradle-style configuration graph.
-- Do not re-resolve in `jk build` when a valid `jk.lock` exists.
+- Do not re-resolve in `jk build` when a valid `jk-lock.toml` exists.
+- Do not write per-module lockfiles — one `jk-lock.toml` at the workspace root (or standalone project root).
 - Do not grow unbounded product docs — keep the public set small ([docs/README.md](docs/README.md)).
 - Do not expand infinite ecosystem long tail (full KMP multiplatform, AGP parity, plugin marketplace, RBE) without an explicit ticket that says so.
 - Do not leave long historical essays in code comments; keep Javadocs tight — let the code speak.
-- **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk.lock`, wire
+- **Do not bump schema/protocol versions before 1.0** — stay on version **1** for `jk-lock.toml`, wire
   `proto`, JSONL/`details.jsonl` `schema`, REST/SSE, MCP, etc. Additive fields only; no version
   churn noise without public users. See [docs/architecture.md](docs/architecture.md#schema-freeze-until-10).
 
@@ -35,7 +36,8 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 | Build of jk itself | Gradle (multi-module Kotlin DSL) |
 | Native CLI | GraalVM native-image (`clients/cli`) |
 | Engine | JVM fat jar (`server/engine` + `server/*`) — never native |
-| Config / lock | TOML (`jk.toml`), canonical `jk.lock` |
+| Config / lock | TOML (`jk.toml`), canonical `jk-lock.toml` (workspace root only) |
+| Module outputs | `{workspace}/target/{module-rel}/` (standalone: `{project}/target/`) |
 | Resolve | PubGrub (`server/resolver`) |
 | Cache | Content-addressed store + action cache |
 | Wire | JSONL client↔engine protocol (`shared/wire`) |

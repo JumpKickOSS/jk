@@ -13,7 +13,7 @@ public final class CompilePipelines {
     /** Compile-only pipeline for {@code dir} (auto-locks like {@code jk build}). */
     public static Pipeline compilePipeline(Path dir, Path cache, String profileName, boolean verbose) {
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
                 dir,
                 cache,

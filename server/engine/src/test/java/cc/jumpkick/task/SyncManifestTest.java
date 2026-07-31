@@ -16,7 +16,7 @@ class SyncManifestTest {
 
     @Test
     void write_then_read_roundtrips(@TempDir Path tempDir) throws IOException {
-        Path lockFile = tempDir.resolve("jk.lock");
+        Path lockFile = tempDir.resolve("jk-lock.toml");
         Files.writeString(lockFile, "stub");
         Lockfile lock = new Lockfile(
                 1,
@@ -55,7 +55,7 @@ class SyncManifestTest {
 
     @Test
     void packages_without_checksum_are_skipped(@TempDir Path tempDir) throws IOException {
-        Path lockFile = tempDir.resolve("jk.lock");
+        Path lockFile = tempDir.resolve("jk-lock.toml");
         Files.writeString(lockFile, "stub");
         Lockfile lock = new Lockfile(
                 1,
@@ -89,8 +89,8 @@ class SyncManifestTest {
 
     @Test
     void fingerprint_changes_when_project_path_moves(@TempDir Path tempDir) throws IOException {
-        Path a = tempDir.resolve("a/jk.lock");
-        Path b = tempDir.resolve("b/jk.lock");
+        Path a = tempDir.resolve("a/jk-lock.toml");
+        Path b = tempDir.resolve("b/jk-lock.toml");
         Files.createDirectories(a.getParent());
         Files.createDirectories(b.getParent());
         Files.writeString(a, "stub");

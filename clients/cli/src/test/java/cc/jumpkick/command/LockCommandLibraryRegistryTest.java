@@ -149,7 +149,7 @@ class LockCommandLibraryRegistryTest {
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
 
         run("new", tempDir.toString());
-        assertThat(lock(tempDir, libraryCache)).isEqualTo(0); // warm the jk.lock
+        assertThat(lock(tempDir, libraryCache)).isEqualTo(0); // warm the jk-lock.toml
         assertThat(registryHits.get()).isEqualTo(1);
 
         mavenServer.stop(0);

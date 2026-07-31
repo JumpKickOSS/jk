@@ -335,8 +335,8 @@ class NewScaffolderTest {
         NewScaffolder.write(library(tempDir, NewInputs.Language.JAVA, false, 25));
 
         assertThat(tempDir.resolve("jk.toml")).exists();
-        // No jk.lock at scaffold — generated on first build/run.
-        assertThat(tempDir.resolve("jk.lock")).doesNotExist();
+        // No jk-lock.toml at scaffold — generated on first build/run.
+        assertThat(tempDir.resolve("jk-lock.toml")).doesNotExist();
         // Traditional layout (library() uses null = traditional): both roots exist,
         // even though no sample source file was written.
         assertThat(tempDir.resolve("src/main/java")).isDirectory();
@@ -349,7 +349,7 @@ class NewScaffolderTest {
 
         assertThat(tempDir.resolve("src")).isDirectory();
         assertThat(tempDir.resolve("test/src")).isDirectory();
-        assertThat(tempDir.resolve("jk.lock")).doesNotExist();
+        assertThat(tempDir.resolve("jk-lock.toml")).doesNotExist();
     }
 
     @Test

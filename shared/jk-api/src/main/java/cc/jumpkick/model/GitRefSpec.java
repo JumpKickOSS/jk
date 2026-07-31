@@ -4,7 +4,7 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Git ref to resolve: {@link Tag}, {@link Branch}, or {@link Rev}. All pin in {@code jk.lock};
+ * Git ref to resolve: {@link Tag}, {@link Branch}, or {@link Rev}. All pin in {@code jk-lock.toml};
  * only {@code jk update --git}/{@code jk fetch} re-resolves (branch tip moves; tag/rev should not).
  * Shallow clone is governed by {@link GitSource#shallow()}, not this type alone.
  */

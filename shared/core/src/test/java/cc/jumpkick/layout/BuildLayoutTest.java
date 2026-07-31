@@ -91,16 +91,16 @@ class BuildLayoutTest {
     }
 
     @Test
-    void workspace_root_can_differ_from_module_root(@TempDir Path workspace) {
+    void workspace_member_outputs_under_workspace_target_module(@TempDir Path workspace) {
         Path module = workspace.resolve("core");
         JkBuild proj = project("jk-core", "0.7.0");
         BuildLayout layout = BuildLayout.of(workspace, module, proj);
 
-        // Intermediates stay with the module (under module/target/).
-        assertThat(layout.classesDir()).isEqualTo(module.resolve("target/classes/main"));
-        // No main → library; artifacts under module/target/lib/.
-        assertThat(layout.mainJar()).isEqualTo(module.resolve("target/lib/jk-core-0.7.0.jar"));
-        assertThat(layout.nativeBinary()).isEqualTo(module.resolve("target/lib/jk-core"));
+        // Mill-style: <workspace>/target/<module-rel>/
+        assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
+        // No main → library; artifacts under target/core/lib/.
+        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/jk-core-0.7.0.jar"));
+        assertThat(layout.nativeBinary()).isEqualTo(workspace.resolve("target/core/lib/jk-core"));
     }
 
     @Test
@@ -128,10 +128,9 @@ class BuildLayoutTest {
 
         assertThat(layout.workspaceRoot()).isEqualTo(workspace.toAbsolutePath().normalize());
         assertThat(layout.moduleRoot()).isEqualTo(module);
-        // Each module owns its own target/ — no main → library, jar in target/lib/.
-        assertThat(layout.mainJar()).isEqualTo(module.resolve("target/lib/core-1.0.0.jar"));
-        // Intermediates stay module-local (module/target/).
-        assertThat(layout.classesDir()).isEqualTo(module.resolve("target/classes/main"));
+        // Workspace member → outputs under workspace/target/core/
+        assertThat(layout.mainJar()).isEqualTo(workspace.resolve("target/core/lib/core-1.0.0.jar"));
+        assertThat(layout.classesDir()).isEqualTo(workspace.resolve("target/core/classes/main"));
     }
 
     @Test

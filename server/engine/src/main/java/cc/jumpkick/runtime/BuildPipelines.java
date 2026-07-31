@@ -748,7 +748,7 @@ public final class BuildPipelines {
                             ctx.error(
                                     "processor",
                                     "processor dependency '" + unresolved + "' is declared in"
-                                            + " [processor-dependencies] but is not in jk.lock —"
+                                            + " [processor-dependencies] but is not in jk-lock.toml —"
                                             + " run `jk lock`");
                         throw new RuntimeException("unresolved processor dependencies");
                     }

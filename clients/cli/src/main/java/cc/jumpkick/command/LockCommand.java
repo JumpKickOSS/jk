@@ -35,9 +35,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * {@code jk lock} — resolve declared dependencies and write {@code jk.lock}. Features use Cargo
- * semantics ({@code --features}/{@code --no-default-features}); workspace roots cascade to each
- * module. Engine-hosted; this command renders progress.
+ * {@code jk lock} — resolve declared dependencies and write {@code jk-lock.toml}. Features use Cargo
+ * semantics ({@code --features}/{@code --no-default-features}). Workspace roots (and members) write
+ * a single root lock for the whole monorepo. Engine-hosted; this command renders progress.
  */
 public final class LockCommand implements CliCommand {
 
@@ -55,7 +55,7 @@ public final class LockCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Resolve versions for dependencies and write jk.lock";
+        return "Resolve versions for dependencies and write jk-lock.toml";
     }
 
     @Override
@@ -220,7 +220,7 @@ public final class LockCommand implements CliCommand {
             view.finishPipelineFailure(lockFailTail(), errorLines);
             return outcome.exitCode();
         }
-        view.finishPipelineSuccess(lockSuccessTail(globalLocked.get(), start));
+        view.finishPipelineSuccess(lockSuccessTail(globalLocked.get(), start, dir));
         return 0;
     }
 
@@ -263,13 +263,24 @@ public final class LockCommand implements CliCommand {
         return "dependencies";
     }
 
-    /** Success chip tail: {@code Lock successful. Resolved N dependencies took T}. */
-    static String lockSuccessTail(int pkgs, long startNanos) {
-        return Theme.colorize("Lock successful", Theme.active().success())
+    /**
+     * Success chip tail: {@code Lock successful. Resolved N dependencies took T}, or {@code Workspace
+     * lock successful.…} when the project is a workspace root or member.
+     */
+    static String lockSuccessTail(int pkgs, long startNanos, Path projectDir) {
+        boolean workspace = cc.jumpkick.lock.LockPaths.isWorkspaceLock(projectDir);
+        String title = workspace ? "Workspace lock successful" : "Lock successful";
+        return Theme.colorize(title, Theme.active().success())
                 + ". Resolved "
                 + Theme.colorize(String.valueOf(pkgs), Theme.active().focused())
                 + " dependenc" + (pkgs == 1 ? "y" : "ies") + " "
                 + ConsoleSpec.took(Duration.ofMillis((System.nanoTime() - startNanos) / 1_000_000));
+    }
+
+    /** @deprecated tests may call the 2-arg form */
+    @Deprecated
+    static String lockSuccessTail(int pkgs, long startNanos) {
+        return lockSuccessTail(pkgs, startNanos, Path.of("."));
     }
 
     /**

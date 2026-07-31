@@ -232,7 +232,7 @@ public final class EffortWeights {
             boolean useGroovy,
             boolean forceRebuild) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
-        // If jk.toml is newer than jk.lock AND the lock no longer satisfies all declared
+        // If jk.toml is newer than jk-lock.toml AND the lock no longer satisfies all declared
         // deps, treat the module as dirty so parse-lock runs and updates the lock.
         boolean lockStale = !rerun && AutoLock.needsRelocking(in.dir(), in.lockFile());
         if (lockStale) rerun = true;
@@ -370,7 +370,8 @@ public final class EffortWeights {
     public static int jdkWeight(Path dir, Path jdksDir) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Lockfile lock = Files.exists(dir.resolve("jk.lock")) ? LockfileReader.read(dir.resolve("jk.lock")) : null;
+            Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             cc.jumpkick.jdk.JdkRegistry registry =
                     jdksDir != null ? new cc.jumpkick.jdk.JdkRegistry(jdksDir) : new cc.jumpkick.jdk.JdkRegistry();
             var req = new cc.jumpkick.jdk.JdkResolution.Request(

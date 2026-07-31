@@ -149,7 +149,7 @@ Builders and round-trip tests live in `shared/wire` / `EngineProtocolTest`.
 | Surface | Field / constant | Pre-1.0 policy |
 |---------|------------------|----------------|
 | `jk.toml` | grammar / tables | Additive only; no version bump |
-| `jk.lock` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
+| `jk-lock.toml` | `version` / `Lockfile.CURRENT_VERSION` | Stay on **1**; additive rows/fields only |
 | Client↔engine wire | `EngineProtocol.PROTOCOL` | Stay on **1** |
 | CLI JSONL / run logs | `JsonlShape.SCHEMA` / `"schema"` | Stay on **1** |
 | Session transcripts | `details.jsonl` `"schema"` | Stay on **1** |
@@ -188,7 +188,7 @@ Ship layout (`./gradlew dist`): slim native `jk` + `lib/jk-engine-<version>.jar`
   BOM-map pins as lower bounds only. GAs the BOM does not manage keep highest-wins mediation
   by default; **`[resolve] unmapped = "strict"`** makes their fills exact (JK-1241). Explicit
   Maven ranges stay open.
-- **Lockfile:** one root `jk.lock`; builds never re-resolve.
+- **Lockfile:** one root `jk-lock.toml`; builds never re-resolve.
 - **BOMs:** enforced platform by default; incomplete BOM families (e.g. maven-resolver
   named-locks) still get family alignment into the map. **`jk export bom`** freezes a lock
   scope into a Maven BOM POM for consumers.

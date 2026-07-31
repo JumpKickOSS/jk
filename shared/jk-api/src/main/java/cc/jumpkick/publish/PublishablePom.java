@@ -146,7 +146,7 @@ public final class PublishablePom {
         for (Scope s : order) {
             String mavenScope = PomXml.mavenScope(s);
             for (Dependency d : jkBuild.dependencies().of(s)) {
-                // A branch-tracked git dep, even though it's locked in jk.lock, is still not a
+                // A branch-tracked git dep, even though it's locked in jk-lock.toml, is still not a
                 // stable reference for external consumers of the published artifact. `jk
                 // publish` rejects it up front; skip here as a safety net so a stray caller
                 // never emits a broken <version>=branch=...</version>.

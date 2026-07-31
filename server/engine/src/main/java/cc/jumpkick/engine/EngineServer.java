@@ -1843,7 +1843,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Answer {@link EngineProtocol#OUTDATED_REQUEST}: the read-only {@code jk outdated} report.
-     * Synchronous, inline — parse + version enumeration only, never writes jk.lock. The session's
+     * Synchronous, inline — parse + version enumeration only, never writes jk-lock.toml. The session's
      * offline/force flags ride the request so version enumeration honors them (metadata TTL bypass,
      * stale-but-usable when offline). Errors ride the ack's {@code error} field.
      */
@@ -2081,7 +2081,7 @@ public final class EngineServer implements AutoCloseable {
                 List<String> dirty = new java.util.ArrayList<>();
                 for (Path d : BuildService.forecastDirtyDirs(graph, cache, skipTests, entryDir))
                     dirty.add(d.toString());
-                boolean lockStale = BuildService.workspaceLockStale(entryDir, entryBuild, entryDir.resolve("jk.lock"));
+                boolean lockStale = BuildService.workspaceLockStale(entryDir, entryBuild, cc.jumpkick.lock.LockPaths.lockFile(entryDir));
                 sendQuiet(writer, EngineProtocol.forecastAck(dirty, lockStale, graph.isEmpty(), List.of()));
                 return null;
             });
@@ -2196,7 +2196,7 @@ public final class EngineServer implements AutoCloseable {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = entryDir.resolve("jk.lock");
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 
             // Size the bar/ETA to the SELECTED suites (JK-1238), simple/traditional roots incl.
@@ -2297,7 +2297,7 @@ public final class EngineServer implements AutoCloseable {
             Path cache = Path.of(cacheStr);
             Path jdksDir = jdksDirStr != null ? Path.of(jdksDirStr) : null;
             Path buildFile = entryDir.resolve("jk.toml");
-            Path lockFile = entryDir.resolve("jk.lock");
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
             int workerCount = Math.max(0, workers);
 
             int estimatedTestCount = skipTests
@@ -2579,7 +2579,7 @@ public final class EngineServer implements AutoCloseable {
                     .withJvm(EngineProtocol.jvmTuning(requestLine));
             String dir = EngineProtocol.SINGLE_PIPELINE_DIR;
             cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.AuditPipelines.auditPipeline(
-                    entryDir.resolve("jk.lock"),
+                    cc.jumpkick.lock.LockPaths.lockFile(entryDir),
                     cache,
                     severity,
                     batch != null ? java.net.URI.create(batch) : null,
@@ -3283,12 +3283,11 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * The lock/update cascade both {@link #runLock} and {@link #runUpdate} stream: parse the entry
-     * manifest, apply workspace context, then run one {@link cc.jumpkick.runtime.LockPipelines} pipeline per
-     * scope (entry project first, then each workspace module in declaration order), stopping at the
-     * first failure. Exit codes are computed here — the engine saw the step statuses — and sent on
-     * the {@link EngineProtocol#LOCK_FINISH} terminal; pre-pipeline failures (manifest parse, module
-     * load) travel as its plain-text {@code errors}.
+     * The lock/update path both {@link #runLock} and {@link #runUpdate} stream: parse the entry
+     * manifest, resolve workspace ownership, then run <strong>one</strong> {@link
+     * cc.jumpkick.runtime.LockPipelines} pipeline that writes the single workspace (or standalone)
+     * {@code jk-lock.toml}. Members never get their own lockfile — locking from a member updates
+     * the workspace root lock with the full merged graph.
      */
     private void lockCascade(
             Path entryDir,
@@ -3328,40 +3327,47 @@ public final class EngineServer implements AutoCloseable {
                             -1));
             return;
         }
-        JkBuild effectiveRoot = cc.jumpkick.runtime.LockPipelines.applyWorkspaceContextIfModule(entryDir, root);
 
-        var scopes = new java.util.LinkedHashMap<Path, JkBuild>();
-        var coords = new java.util.LinkedHashMap<Path, String>();
-        scopes.put(entryDir, effectiveRoot);
-        coords.put(entryDir, cc.jumpkick.runtime.LockPipelines.coordLabel(effectiveRoot, entryDir));
-        if (effectiveRoot.isWorkspaceRoot()) {
-            java.util.Map<Path, JkBuild> modules;
-            try {
-                modules = cc.jumpkick.config.WorkspaceLoader.loadModules(entryDir, effectiveRoot);
-            } catch (RuntimeException e) {
-                sendQuiet(
-                        writer,
-                        EngineProtocol.lockFinish(
-                                false,
-                                cc.jumpkick.model.command.Exit.CONFIG,
-                                java.util.List.of(String.valueOf(e.getMessage())),
-                                -1));
-                return;
+        // One lock scope: workspace root (merged) or standalone project. Members redirect to root.
+        Path lockDir = entryDir;
+        JkBuild effective;
+        String coord;
+        try {
+            if (root.isWorkspaceRoot()) {
+                var modules = cc.jumpkick.config.WorkspaceLoader.loadModules(entryDir, root);
+                effective = cc.jumpkick.model.WorkspaceMerge.merge(root, modules.values());
+                lockDir = entryDir;
+                coord = cc.jumpkick.runtime.LockPipelines.coordLabel(root, entryDir);
+            } else {
+                var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(entryDir);
+                if (rootOpt.isPresent()) {
+                    Path wsRoot = rootOpt.get();
+                    JkBuild rootManifest = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+                    var modules = cc.jumpkick.config.WorkspaceLoader.loadModules(wsRoot, rootManifest);
+                    effective = cc.jumpkick.model.WorkspaceMerge.merge(rootManifest, modules.values());
+                    lockDir = wsRoot;
+                    coord = cc.jumpkick.runtime.LockPipelines.coordLabel(rootManifest, wsRoot);
+                } else {
+                    effective = cc.jumpkick.runtime.LockPipelines.applyWorkspaceContextIfModule(entryDir, root);
+                    lockDir = entryDir;
+                    coord = cc.jumpkick.runtime.LockPipelines.coordLabel(effective, entryDir);
+                }
             }
-            for (var entry : modules.entrySet()) {
-                scopes.put(
-                        entry.getKey(),
-                        cc.jumpkick.model.WorkspaceMerge.applyToModule(
-                                effectiveRoot, entry.getValue(), modules.values()));
-                coords.put(
-                        entry.getKey(), cc.jumpkick.runtime.LockPipelines.coordLabel(entry.getValue(), entry.getKey()));
-            }
+        } catch (RuntimeException e) {
+            sendQuiet(
+                    writer,
+                    EngineProtocol.lockFinish(
+                            false,
+                            cc.jumpkick.model.command.Exit.CONFIG,
+                            java.util.List.of(String.valueOf(e.getMessage())),
+                            -1));
+            return;
         }
 
-        for (var scope : scopes.entrySet()) {
-            Path dir = scope.getKey();
+        {
+            Path dir = lockDir;
             String dirTag = dir.toString();
-            sendQuiet(writer, EngineProtocol.lockModule(dirTag, coords.get(dir)));
+            sendQuiet(writer, EngineProtocol.lockModule(dirTag, coord));
 
             CoalescingLockPackages lockPkgs = new CoalescingLockPackages((d, name, ver, total) -> sendQuiet(
                     writer, EngineProtocol.lockPackage(d, name, ver, total)));
@@ -3378,9 +3384,9 @@ public final class EngineServer implements AutoCloseable {
             };
             cc.jumpkick.run.Pipeline pipeline = update
                     ? cc.jumpkick.runtime.LockPipelines.updatePipeline(
-                            dir, scope.getValue(), cache, repoUrl, features, withDefaults, platformOverride)
+                            dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
                     : cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                            dir, scope.getValue(), cache, repoUrl, features, withDefaults, sources, observer, null);
+                            dir, effective, cache, repoUrl, features, withDefaults, sources, observer, null);
             for (Step p : pipeline.steps()) {
                 sendQuiet(
                         writer,
@@ -3842,11 +3848,11 @@ public final class EngineServer implements AutoCloseable {
             });
             if (!historyConfig.enabled()) return;
             Path dir = Path.of(a.dir());
-            // Snapshot paths mirror BuildLayout.markdownTestResults() and the project's jk.lock; each
+            // Snapshot paths mirror BuildLayout.markdownTestResults() and the project's jk-lock.toml; each
             // is copied only if it exists at finish, so a skip-tests or lock-less build just omits it.
             BuildJournal.Snapshot snapshot = new BuildJournal.Snapshot(
                     dir.resolve("target").resolve("reports").resolve("test-results.md"),
-                    dir.resolve("jk.lock"),
+                    cc.jumpkick.lock.LockPaths.lockFile(dir),
                     a.diagnosticsText());
             String jid = a.journalId();
             if (jid != null && !jid.isBlank()) {

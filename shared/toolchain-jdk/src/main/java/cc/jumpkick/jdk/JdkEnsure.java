@@ -86,7 +86,7 @@ public final class JdkEnsure {
         int latestLts = JdkLts.OFFLINE_LATEST_LTS;
 
         // Walk the one canonical resolution order (--jdk / JK_JDK / .jdk-version /
-        // jk.lock / project.jdk / project.java-floor / current / default / env / PATH).
+        // jk-lock.toml / project.jdk / project.java-floor / current / default / env / PATH).
         JdkResolution.Request req = new JdkResolution.Request(
                 projectDir,
                 cc.jumpkick.config.SessionContext.current().jdkSpec(),

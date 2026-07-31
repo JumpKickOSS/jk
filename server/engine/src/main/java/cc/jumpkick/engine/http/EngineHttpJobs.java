@@ -23,7 +23,7 @@ public interface EngineHttpJobs extends BuildTrigger {
      */
     long triggerTest(String dir);
 
-    /** Resolve and write {@code jk.lock} for {@code dir}. */
+    /** Resolve and write {@code jk-lock.toml} for {@code dir}. */
     long triggerLock(String dir);
 
     /**

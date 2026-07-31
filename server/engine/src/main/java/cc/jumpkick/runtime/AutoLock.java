@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Auto-lock: when {@code jk.toml} is newer than {@code jk.lock}, transparently re-locks with a
+ * Auto-lock: when {@code jk.toml} is newer than {@code jk-lock.toml}, transparently re-locks with a
  * conservative strategy before any command reads the lockfile.
  *
  * <h3>Conservative vs explicit lock</h3>
@@ -52,7 +52,7 @@ public final class AutoLock {
     private AutoLock() {}
 
     /**
-     * Returns {@code true} when {@code jk.toml} has a newer modification time than {@code jk.lock}.
+     * Returns {@code true} when {@code jk.toml} has a newer modification time than {@code jk-lock.toml}.
      * Both files must exist; any I/O error returns {@code false} (fail-open: assume up-to-date).
      */
     public static boolean isStale(Path dir, Path lockFile) {
@@ -202,8 +202,8 @@ public final class AutoLock {
      * optionally surface a warning).
      *
      * @param dir project root (contains {@code jk.toml})
-     * @param existing current contents of {@code jk.lock}
-     * @param lockFile path to {@code jk.lock} (will be overwritten)
+     * @param existing current contents of {@code jk-lock.toml}
+     * @param lockFile path to {@code jk-lock.toml} (will be overwritten)
      * @param cache jk CAS directory
      * @param repoUrl optional single-URL override (tests / CI)
      * @param jkVersion version string stamped in the lockfile header
@@ -273,7 +273,7 @@ public final class AutoLock {
             // is a server — route the warning through the caller's sink (the view layer
             // owns the terminal streams) instead of touching System.err.
             if (warn != null) {
-                warn.accept("‼ jk: auto-lock warning — could not update jk.lock: " + e.getMessage());
+                warn.accept("‼ jk: auto-lock warning — could not update jk-lock.toml: " + e.getMessage());
                 warn.accept("    Run `jk lock` to resolve manually.");
             }
             return null;

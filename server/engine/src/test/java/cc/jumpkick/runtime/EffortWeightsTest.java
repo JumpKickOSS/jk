@@ -124,7 +124,7 @@ class EffortWeightsTest {
                 dir,
                 dir.resolve("cache"),
                 dir.resolve("jk.toml"),
-                dir.resolve("jk.lock"),
+                dir.resolve("jk-lock.toml"),
                 dir,
                 1,
                 0,

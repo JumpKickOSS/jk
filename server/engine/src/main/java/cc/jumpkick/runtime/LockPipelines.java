@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 /**
- * Resolve → write {@code jk.lock} for {@code jk lock}/{@code jk update}. Progress via pipeline
+ * Resolve → write {@code jk-lock.toml} for {@code jk lock}/{@code jk update}. Progress via pipeline
  * listeners and {@link ResolveObserver}; diagnostics are plain (client themes). Engine passes
  * {@code coordLabel=null} and streams structured package events.
  */
@@ -83,7 +83,7 @@ public final class LockPipelines {
             boolean sources,
             ResolveObserver observer,
             BiFunction<String, String, String> coordLabel) {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
@@ -358,7 +358,7 @@ public final class LockPipelines {
             List<String> features,
             boolean withDefaultFeatures,
             String platformOverride) {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
@@ -434,7 +434,7 @@ public final class LockPipelines {
      * {@code jk update --git [<name>]}: re-resolve git dependencies only, in {@code root}'s project
      * and (for a workspace root) each declared module — one dependency by its declared name, or
      * every git dependency when {@code targetLibrary} is {@code null}. Every scope with no matching
-     * git dependency is left untouched entirely (its {@code jk.lock} isn't even read).
+     * git dependency is left untouched entirely (its {@code jk-lock.toml} isn't even read).
      */
     public static GitUpdateOutcome updateGitOnly(
             Path dir,
@@ -501,7 +501,7 @@ public final class LockPipelines {
             boolean withDefaultFeatures,
             List<Dependency> targeted)
             throws Exception {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
         Cas cas = JkStores.cas(cache);
@@ -703,7 +703,7 @@ public final class LockPipelines {
                 if (!locked.contains(dep.module())) {
                     throw new IllegalStateException("offline: "
                             + dep.module()
-                            + " is declared in jk.toml but not in jk.lock; run `jk lock` online first");
+                            + " is declared in jk.toml but not in jk-lock.toml; run `jk lock` online first");
                 }
             }
         }

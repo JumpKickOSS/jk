@@ -18,7 +18,7 @@ import org.tomlj.TomlTable;
  * <b>The environment may influence where jk talks to, and what a spawned process sees — never what
  * gets compiled or how.</b>
  *
- * <p>That is not conservatism for its own sake. {@code jk.toml} plus {@code jk.lock} have to fully
+ * <p>That is not conservatism for its own sake. {@code jk.toml} plus {@code jk-lock.toml} have to fully
  * describe the artifact, and the action cache turns a leak into something worse than plain
  * non-determinism: an environment-sourced value inside a cache key means CI and a laptop never share
  * cache, and one that reaches a compiler flag <em>without</em> reaching the key produces silently

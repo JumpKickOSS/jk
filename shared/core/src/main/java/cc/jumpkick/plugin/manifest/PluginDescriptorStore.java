@@ -35,7 +35,7 @@ public final class PluginDescriptorStore {
 
     /** The lock's pinned entry for {@code decl}, or empty when unlocked/no lock. */
     public static Optional<Lockfile.PluginEntry> lockEntry(Path moduleDir, PluginDeclaration decl) {
-        Path lock = moduleDir.resolve("jk.lock");
+        Path lock = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         if (!Files.isRegularFile(lock)) return Optional.empty();
         try {
             for (Lockfile.PluginEntry e : LockfileReader.read(lock).plugins()) {

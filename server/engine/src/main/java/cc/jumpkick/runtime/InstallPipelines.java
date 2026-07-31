@@ -49,7 +49,7 @@ public final class InstallPipelines {
         // SUPPORTED: user runs `jk native` explicitly; install deploys the jar.
         boolean isNative = proj.isApplication() && proj.nativeMode() == JkBuild.NativeMode.ALWAYS;
 
-        Path lockFile = projectDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(

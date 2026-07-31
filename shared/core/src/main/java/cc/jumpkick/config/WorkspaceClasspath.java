@@ -135,7 +135,7 @@ public final class WorkspaceClasspath {
             // declared in jk-core is needed by jk-io via the transitive chain).
             Path sibDir = siblingDirByModule.get(module);
             if (sibDir != null) {
-                Path lockFile = sibDir.resolve("jk.lock");
+                Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(sibDir);
                 if (Files.exists(lockFile)) siblingLockfiles.add(lockFile);
             }
         }

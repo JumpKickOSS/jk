@@ -137,7 +137,7 @@ public final class BuildPlanForecast {
             Set<Path> projectModules,
             boolean testOnly) {
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
@@ -179,7 +179,7 @@ public final class BuildPlanForecast {
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<BuildPlan.Step> steps = new ArrayList<>();
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             steps.add(
                     new BuildPlan.Step("compile-main", BuildPlan.Status.RUN, "not locked yet (run `jk build`)", null));

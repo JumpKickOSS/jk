@@ -17,7 +17,7 @@ import java.util.Map;
  *   <li>optional sample source tree (Java or Kotlin)
  * </ul>
  *
- * <p>No {@code jk.lock} — that's generated on the first build/run.
+ * <p>No {@code jk-lock.toml} — that's generated on the first build/run.
  *
  * <p>The curated dependency map is the single source of truth for which "short id" maps to which
  * Maven coordinate + version + scope; both the renderer and the wizard's MultiSelect step pull from
@@ -59,7 +59,7 @@ public final class NewScaffolder {
      * .gitignore} is owned by the workspace root and so is skipped here (Cargo/uv: modules never
      * carry their own gitignore).
      *
-     * <p>No {@code jk.lock} is written — it's generated on the first build or run, so a
+     * <p>No {@code jk-lock.toml} is written — it's generated on the first build or run, so a
      * freshly-scaffolded project carries only its manifest + sources.
      *
      * <p>A plugin scaffold ({@code --spring}) fetches its payloads BEFORE anything touches disk:

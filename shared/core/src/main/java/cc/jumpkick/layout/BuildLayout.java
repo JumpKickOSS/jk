@@ -8,10 +8,18 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * Pure path layout under {@code <moduleRoot>/target/}. Kotlinc and javac use separate dirs
- * ({@code kotlin/} vs {@code classes/}) so Kotlin's incremental prune cannot drop javac output;
- * classes are merged into {@code classes/} after compile. Apps put artifacts at {@code target/};
- * libraries under {@code target/lib/}.
+ * Pure path layout for module build outputs.
+ *
+ * <ul>
+ *   <li><strong>Standalone</strong> (or workspace root as the only unit): {@code <module>/target/}.
+ *   <li><strong>Workspace member</strong>: {@code <workspace>/target/<module-rel>/} (Mill-style
+ *       central out tree), where {@code module-rel} is the path relative to the workspace root
+ *       (e.g. {@code plugins/auditor}).
+ * </ul>
+ *
+ * <p>Kotlinc and javac use separate dirs ({@code kotlin/} vs {@code classes/}) so Kotlin's
+ * incremental prune cannot drop javac output; classes are merged into {@code classes/} after
+ * compile. Apps put artifacts at the module target root; libraries under {@code lib/}.
  */
 public final class BuildLayout {
 
@@ -85,19 +93,27 @@ public final class BuildLayout {
         return hasMain;
     }
 
-    // ---- Per-module output (under moduleRoot/target/) ----------------------
-
-    /** {@code <moduleRoot>/target/} — root of this module's output tree. */
-    public Path moduleTargetDir() {
-        return moduleRoot.resolve("target");
-    }
+    // ---- Per-module output -------------------------------------------------
 
     /**
-     * {@code target/} — root of all per-module build intermediates.
-     *
-     * <p>Previously {@code target/build/}; all outputs now sit directly under {@code target/}
-     * alongside the final artifacts.
+     * Root of this module's output tree: {@code <module>/target/} when standalone (or the unit is
+     * the workspace root itself); {@code <workspace>/target/<rel>/} for a workspace member.
      */
+    public Path moduleTargetDir() {
+        Path mod = moduleRoot.toAbsolutePath().normalize();
+        Path ws = workspaceRoot.toAbsolutePath().normalize();
+        if (mod.equals(ws)) {
+            return mod.resolve("target");
+        }
+        Path rel = ws.relativize(mod);
+        if (rel.getNameCount() == 0 || rel.startsWith("..")) {
+            // Outside the workspace tree — fall back to module-local target/.
+            return mod.resolve("target");
+        }
+        return ws.resolve("target").resolve(rel);
+    }
+
+    /** Root of all per-module build intermediates (same as {@link #moduleTargetDir()}). */
     public Path buildDir() {
         return moduleTargetDir();
     }
@@ -231,13 +247,13 @@ public final class BuildLayout {
     // ---- Final artifacts -------------------------------------------------------
 
     /**
-     * {@code <moduleRoot>/target/} — root of all build output for this module.
+     * Root of all build output for this module (alias of {@link #moduleTargetDir()}).
      *
-     * <p>Each project owns its own {@code target/} directory. The workspace root only gets a {@code
-     * target/} if it has its own source code to build.
+     * <p>In a workspace, all members write under {@code <workspace>/target/<module-rel>/} so the
+     * monorepo has a single out tree (like Mill's {@code out/}).
      */
     public Path targetDir() {
-        return moduleRoot.resolve("target");
+        return moduleTargetDir();
     }
 
     /**

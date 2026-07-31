@@ -233,14 +233,14 @@ public final class DependencyTree {
     /**
      * Composite-aware render: walks the full graph including {@code path} (and <em>branch</em> git)
      * dependencies, not just lockfile Maven coords. {@code projectDir} anchors {@code path} deps;
-     * each path target's own tree (its {@code jk.toml} + {@code jk.lock}) is recursed into. Branch
+     * each path target's own tree (its {@code jk.toml} + {@code jk-lock.toml}) is recursed into. Branch
      * git deps are annotated but not recursed (resolving them needs a clone). Immutable (tag/rev) git
      * deps are materialized into the lock and render normally.
      *
      * <p>When {@code project} is a <em>workspace root</em>, the scope sections ({@code main}/{@code
      * test}/…) are the top-level nodes. Under each scope sit the workspace modules that declare at
      * least one dependency in that scope, and each such module node expands into its own deps for
-     * that scope (read from the module's {@code jk.toml} + {@code jk.lock}). Workspace-sibling deps
+     * that scope (read from the module's {@code jk.toml} + {@code jk-lock.toml}). Workspace-sibling deps
      * (a module's {@code <name>.workspace = true} entries, which point at another module) are shown
      * as a collapsed {@code [workspace]} reference rather than re-expanded.
      */
@@ -672,7 +672,7 @@ public final class DependencyTree {
             Lockfile lock = null;
             try {
                 Path toml = dir == null ? null : dir.resolve("jk.toml");
-                Path lf = dir == null ? null : dir.resolve("jk.lock");
+                Path lf = dir == null ? null : cc.jumpkick.lock.LockPaths.lockFile(dir);
                 if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parse(toml);
                 if (lf != null && Files.isRegularFile(lf)) lock = LockfileReader.read(lf);
             } catch (Exception ignored) {
@@ -1119,6 +1119,24 @@ public final class DependencyTree {
                 .sorted()
                 .distinct()
                 .collect(ArrayList::new, List::add, List::addAll);
+    }
+
+    /**
+     * Declared dependency modules for provenance walks. For a single project this is the same as
+     * {@link #collectRoots(JkBuild)}. For a workspace root, also unions every workspace module's
+     * declared deps (read from each module's {@code jk.toml}) so {@code jk why} can walk from the
+     * real roots — the root {@code jk.toml} typically has none.
+     */
+    static List<String> collectRoots(JkBuild project, Path projectDir) {
+        if (project == null) return List.of();
+        if (!project.isWorkspaceRoot() || projectDir == null) {
+            return collectRoots(project);
+        }
+        java.util.LinkedHashSet<String> roots = new java.util.LinkedHashSet<>(collectRoots(project));
+        for (LoadedModule m : loadModules(project.workspace().modules(), projectDir)) {
+            roots.addAll(collectRoots(m.build()));
+        }
+        return new ArrayList<>(roots);
     }
 
     /** Strip the {@code @version} suffix from a lockfile dep ref. */

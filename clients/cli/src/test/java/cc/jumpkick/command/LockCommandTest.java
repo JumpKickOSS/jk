@@ -102,7 +102,7 @@ class LockCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // Inspect the lockfile.
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).hasSize(2);
         assertThat(DefaultTestDepsFixture.projectCoords(lock))
                 .containsExactly("com.foo:leaf", "com.foo:root"); // writer sorts by name
@@ -146,7 +146,7 @@ class LockCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         // No project deps — but jk defaults the test framework to JUnit.
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).isEmpty();
         assertThat(lock.artifacts())
@@ -200,7 +200,7 @@ class LockCommandTest {
                 version = "0.1.0"
                 """);
 
-        // Invoke from INSIDE the module directory — locks only that module.
+        // Invoke from INSIDE the module directory — still writes the workspace root lock.
         int exit = run(
                 "lock",
                 "-C",
@@ -211,20 +211,19 @@ class LockCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        // Each module has its own lock file alongside its jk.toml.
-        Lockfile lock = LockfileReader.read(app.resolve("jk.lock"));
+        // Single workspace lock at the root (never a module-local lock).
+        assertThat(Files.exists(tempDir.resolve("jk-lock.toml"))).isTrue();
+        assertThat(Files.exists(app.resolve("jk-lock.toml"))).isFalse();
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
 
         // External coords are resolved; the workspace sibling is not locked.
         assertThat(DefaultTestDepsFixture.projectCoords(lock))
                 .containsExactlyInAnyOrder("com.foo:root", "com.foo:leaf");
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).doesNotContain("com.acme:libb");
-
-        // Workspace root's own jk.lock was NOT created by this invocation.
-        assertThat(Files.exists(tempDir.resolve("jk.lock"))).isFalse();
     }
 
     @Test
-    void lock_from_workspace_root_cascades_to_modules(@TempDir Path tempDir) throws Exception {
+    void lock_from_workspace_root_writes_single_root_lock(@TempDir Path tempDir) throws Exception {
         registerMetadata("com.foo", "leaf", "1.0");
         registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
         registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
@@ -266,7 +265,7 @@ class LockCommandTest {
                 version = "0.1.0"
                 """);
 
-        // Invoke from the workspace root — cascades to all modules.
+        // Invoke from the workspace root — one lock for the whole monorepo.
         int exit = run(
                 "lock",
                 "-C",
@@ -277,17 +276,14 @@ class LockCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        // Root gets its own lock (empty — no deps declared at root).
-        assertThat(Files.exists(tempDir.resolve("jk.lock"))).isTrue();
+        assertThat(Files.exists(tempDir.resolve("jk-lock.toml"))).isTrue();
+        assertThat(Files.exists(app.resolve("jk-lock.toml"))).isFalse();
+        assertThat(Files.exists(libb.resolve("jk-lock.toml"))).isFalse();
 
-        // app gets its own lock with external deps; sibling not included.
-        Lockfile appLock = LockfileReader.read(app.resolve("jk.lock"));
-        assertThat(DefaultTestDepsFixture.projectCoords(appLock))
+        Lockfile rootLock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
+        assertThat(DefaultTestDepsFixture.projectCoords(rootLock))
                 .containsExactlyInAnyOrder("com.foo:root", "com.foo:leaf");
-        assertThat(DefaultTestDepsFixture.projectCoords(appLock)).doesNotContain("com.acme:libb");
-
-        // libb gets its own lock (empty — no deps declared).
-        assertThat(Files.exists(libb.resolve("jk.lock"))).isTrue();
+        assertThat(DefaultTestDepsFixture.projectCoords(rootLock)).doesNotContain("com.acme:libb");
     }
 
     @Test
@@ -312,7 +308,7 @@ class LockCommandTest {
         int exit = run("lock", "--offline", "-C", tempDir.toString(), "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo:leaf", "com.foo:root");
     }
 
@@ -322,7 +318,7 @@ class LockCommandTest {
         writeProjectWithRootDep(tempDir);
         LockfileWriter.write(
                 new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of()),
-                tempDir.resolve("jk.lock"));
+                tempDir.resolve("jk-lock.toml"));
 
         int exit = run(
                 "lock",
@@ -349,7 +345,7 @@ class LockCommandTest {
                 null);
         LockfileWriter.write(
                 new Lockfile(Lockfile.CURRENT_VERSION, "jk test", Lockfile.RESOLUTION_ALGORITHM, List.of(root)),
-                tempDir.resolve("jk.lock"));
+                tempDir.resolve("jk-lock.toml"));
 
         int exit = run(
                 "lock",
@@ -380,7 +376,7 @@ class LockCommandTest {
         int exit = run("lock", "--offline", "-C", fresh.toString(), "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile lock = LockfileReader.read(fresh.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(fresh.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock))
                 .containsExactlyInAnyOrder("com.foo:root", "com.foo:leaf");
     }
@@ -417,7 +413,7 @@ class LockCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // ^2.3.0 → >=2.3.0, <3.0.0; highest *stable* match is 2.3.21 (not 2.4.0-RC2).
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(lock.kotlin()).isEqualTo("2.3.21");
     }
 
@@ -444,7 +440,7 @@ class LockCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(lock.kotlin()).isEqualTo("2.1.0");
     }
 
@@ -460,7 +456,7 @@ class LockCommandTest {
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(LockfileReader.read(tempDir.resolve("jk.lock")).kotlin()).isNull();
+        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).kotlin()).isNull();
     }
 
     // --- helpers -----------------------------------------------------------

@@ -192,7 +192,7 @@ public final class McpHandler {
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk.lock for dir (async). Progress: GET /mcp?requestId=N.",
+                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?requestId=N.",
                 objectSchema(
                         Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
         tools.add(tool(

@@ -55,13 +55,13 @@ public final class BuildService {
     }
 
     /**
-     * Ensure the workspace lock reflects its manifests before a build: if the root {@code jk.lock} is
+     * Ensure the workspace lock reflects its manifests before a build: if the root {@code jk-lock.toml} is
      * absent, older than the root {@code jk.toml}, or older than any declared member manifest, re-run
      * the {@link LockFlow lock pipeline}. Soft failures (I/O, network) don't block the build — the
      * per-module path surfaces genuine problems when it resolves classpaths.
      */
     public static LockGuard ensureWorkspaceLockFresh(Path root, JkBuild rootBuild, Path cache) {
-        Path rootLock = root.resolve("jk.lock");
+        Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root);
         if (!workspaceLockStale(root, rootBuild, rootLock)) return LockGuard.OK;
         try {
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), true, null);

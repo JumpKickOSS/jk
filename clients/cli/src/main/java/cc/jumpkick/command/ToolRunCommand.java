@@ -98,6 +98,73 @@ public final class ToolRunCommand implements CliCommand {
     List<String> aliasJavaOptions = List.of();
 
     /**
+     * If {@code name} matches a workspace module (full relative path or trailing segment), return
+     * that module directory; otherwise {@code null}. Non-workspace dirs and names that look like
+     * files/coords/URLs are ignored.
+     */
+    private static Path resolveWorkspaceModule(Path cwd, String name) {
+        if (name == null || name.isBlank() || ".".equals(name) || name.contains(":") || name.contains("@")) {
+            return null;
+        }
+        // Obvious non-module targets.
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".java")
+                || lower.endsWith(".kt")
+                || lower.endsWith(".kts")
+                || lower.endsWith(".jar")
+                || lower.startsWith("http://")
+                || lower.startsWith("https://")
+                || lower.startsWith("git+")) {
+            return null;
+        }
+        try {
+            Path start = cwd.toAbsolutePath().normalize();
+            Path wsRoot = null;
+            if (Files.isRegularFile(start.resolve("jk.toml"))) {
+                var b = cc.jumpkick.config.JkBuildParser.parse(start.resolve("jk.toml"));
+                if (b.isWorkspaceRoot()) wsRoot = start;
+            }
+            if (wsRoot == null) {
+                wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(start).orElse(null);
+            }
+            if (wsRoot == null) {
+                // Cwd is not in a workspace — still allow path-as-module if it has jk.toml
+                Path direct = start.resolve(name).normalize();
+                if (Files.isRegularFile(direct.resolve("jk.toml"))) return direct;
+                return null;
+            }
+            var rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            if (!rootBuild.isWorkspaceRoot()) return null;
+            String want = name.replace('\\', '/');
+            while (want.startsWith("./")) want = want.substring(2);
+            if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
+            for (String mod : rootBuild.workspace().modules()) {
+                String m = mod.replace('\\', '/');
+                if (m.equals(want) || m.endsWith("/" + want)) {
+                    Path dir = wsRoot.resolve(mod).normalize();
+                    if (Files.isRegularFile(dir.resolve("jk.toml"))) return dir;
+                }
+                // last path segment match: `jk run cli` → clients/cli
+                int slash = m.lastIndexOf('/');
+                String leaf = slash >= 0 ? m.substring(slash + 1) : m;
+                if (leaf.equals(want)) {
+                    Path dir = wsRoot.resolve(mod).normalize();
+                    if (Files.isRegularFile(dir.resolve("jk.toml"))) return dir;
+                }
+            }
+            // Explicit path under workspace even if not listed? treat as standalone if has jk.toml
+            Path direct = wsRoot.resolve(want).normalize();
+            if (Files.isRegularFile(direct.resolve("jk.toml")) && !direct.equals(wsRoot)) {
+                // Only if it's a registered module — else standalone policy (user: not in modules)
+                return null;
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    /**
      * Directory target: jk project builds (tests skipped) and execs; JBang-style {@code main.java};
      * or a single script file in the folder.
      */
@@ -260,6 +327,14 @@ public final class ToolRunCommand implements CliCommand {
         // --release / --variant parameterize project targets (current dir or a directory target):
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
+
+        // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
+        // (or any cwd) resolves against workspace.modules before other target classifiers.
+        Path moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        if (moduleHit != null) {
+            return runDirectory(moduleHit, toolArgs);
+        }
+
         // A local file target (by extension) is compiled/run by ScriptRunner; the
         // extension is the signal even when the file is missing, so the user gets
         // a proper "not found" error from the matching mode handler. Routing goes

@@ -40,10 +40,10 @@ public final class WhyCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         Path dir = new GlobalOptions().workingDir();
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Why", "project must have jk.toml and jk.lock (run `jk lock` first)"));
+                    "Why", "project must have jk.toml and jk-lock.toml (run `jk lock` first)"));
             return Exit.CONFIG;
         }
 
@@ -56,7 +56,7 @@ public final class WhyCommand implements CliCommand {
             return Exit.CONFIG;
         }
         if (report.matchNames().isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", query + " is not in jk.lock"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Why", query + " is not in jk-lock.toml"));
             return 1;
         }
 
@@ -71,7 +71,7 @@ public final class WhyCommand implements CliCommand {
                 CliOutput.out("  " + renderPath(report.paths().get(j)));
             }
             if (!any) {
-                CliOutput.out("  (unreachable from declared dependencies — likely a stale lockfile entry)");
+                CliOutput.out("  (not reachable from any declared dependency — orphan lockfile entry?)");
             }
             if (report.matchNames().size() > 1) CliOutput.out();
         }

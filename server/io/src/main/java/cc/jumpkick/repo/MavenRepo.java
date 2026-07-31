@@ -303,7 +303,7 @@ public final class MavenRepo {
      * Adopt {@code relativePath} out of the Maven local repository when its bytes match the checksum this
      * repository publishes for it.
      *
-     * <p>The hash is fetched remotely rather than read from {@code jk.lock} on purpose: it makes the
+     * <p>The hash is fetched remotely rather than read from {@code jk-lock.toml} on purpose: it makes the
      * check work during resolve, when no lock entry exists yet, and it keeps the authority with the
      * repository instead of with a directory any {@code mvn install} can write to. A {@code .sha1} is
      * ~40 bytes against a jar that can be tens of megabytes, so the saving is bandwidth — it does not

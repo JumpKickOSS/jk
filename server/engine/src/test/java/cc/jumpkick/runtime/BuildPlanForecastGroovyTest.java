@@ -45,7 +45,8 @@ class BuildPlanForecastGroovyTest {
         Path src = Files.createDirectories(mod.resolve("src"));
         Path foo = src.resolve("Foo.groovy");
         Files.writeString(foo, "class Foo {}");
-        Files.writeString(mod.resolve("jk.lock"), """
+        // Workspace lock lives at the root only (not under the module).
+        Files.writeString(tmp.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"

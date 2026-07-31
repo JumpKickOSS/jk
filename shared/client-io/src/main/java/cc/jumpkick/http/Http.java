@@ -36,7 +36,7 @@ public final class Http {
 
     /**
      * Central-rate-limit failover (JK-1277). Applied here, at the single transport choke point, so
-     * every caller benefits and no repository's configured URL — hence nothing in {@code jk.lock} —
+     * every caller benefits and no repository's configured URL — hence nothing in {@code jk-lock.toml} —
      * changes when it engages.
      */
     private final CentralMirror centralMirror;

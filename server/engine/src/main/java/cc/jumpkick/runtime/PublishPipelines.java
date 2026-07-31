@@ -80,7 +80,7 @@ public final class PublishPipelines {
                                         + "per publish policy).");
                         throw new RuntimeException("snapshot refused");
                     }
-                    // A branch-tracked git dep is locked in jk.lock, but its pin moves on the next
+                    // A branch-tracked git dep is locked in jk-lock.toml, but its pin moves on the next
                     // `jk update --git`/`jk fetch` — not a stable reference for external consumers
                     // of the published artifact. Refuse until it's pinned to a tag/rev instead.
                     Dependency branchGit = firstBranchGitDep(project);

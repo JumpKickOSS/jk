@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * Release authenticity: Ed25519 signature over {@code SHA256SUMS}, then hash check, before
  * materialization. Built-in key may rotate via {@code NEXT_RELEASE_KEY}; hosts can override
- * {@code [release] trusted-keys}. After pin in {@code jk.lock}, fetches verify against the pin.
+ * {@code [release] trusted-keys}. After pin in {@code jk-lock.toml}, fetches verify against the pin.
  */
 public final class ReleaseVerifier {
 

@@ -388,7 +388,7 @@ class EngineServerTest {
      * over the socket, a tiny fixture project, and a mock Maven repo standing in for every remote
      * (the request's {@code repoUrl} override). Asserts the full wire conversation — {@code
      * lock-module} → plan burst → {@code lock-package} stream → count-carrying {@code pipeline-finish}
-     * → {@code lock-finish} — and that the engine actually wrote {@code jk.lock}.
+     * → {@code lock-finish} — and that the engine actually wrote {@code jk-lock.toml}.
      */
     @Test
     void lock_request_resolves_and_writes_the_lockfile_over_the_socket() throws Exception {
@@ -493,8 +493,8 @@ class EngineServerTest {
             assertThat(Jsonl.intValue(lockFinish, "exitCode", -1)).isEqualTo(0);
 
             // The engine (not the client) wrote the lockfile.
-            assertThat(Files.isRegularFile(project.resolve("jk.lock"))).isTrue();
-            var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk.lock"));
+            assertThat(Files.isRegularFile(project.resolve("jk-lock.toml"))).isTrue();
+            var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk-lock.toml"));
             assertThat(lock.artifacts().stream().anyMatch(a -> a.matchesModule("com.foo:leaf")))
                     .as("lock contains com.foo:leaf")
                     .isTrue();
@@ -538,7 +538,7 @@ class EngineServerTest {
             String base = "http://127.0.0.1:" + osv.getAddress().getPort();
 
             Path project = shortTempDir();
-            Files.writeString(project.resolve("jk.lock"), """
+            Files.writeString(project.resolve("jk-lock.toml"), """
                     version = 1
                     generated-by = "jk test"
                     resolution-algorithm = "pubgrub-v1"
@@ -610,7 +610,7 @@ class EngineServerTest {
      * Engine-hosted {@code jk compile} round-trip (Wave 3 of the slim-client migration — the
      * in-process {@code BuildPipelines} stragglers): a real server over the socket runs the shared
      * pipeline in compile-only mode against a tiny dependency-free fixture (a fresh empty {@code
-     * jk.lock}, so no network resolve). Asserts the single-pipeline wire conversation — plan burst →
+     * jk-lock.toml}, so no network resolve). Asserts the single-pipeline wire conversation — plan burst →
      * pipeline events → terminal {@code pipeline-finish} — and that the engine actually compiled the class.
      */
     /**
@@ -639,7 +639,7 @@ class EngineServerTest {
                     }
                 }
                 """);
-        Files.writeString(project.resolve("jk.lock"), """
+        Files.writeString(project.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
@@ -705,7 +705,7 @@ class EngineServerTest {
                 """);
         // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the pipeline's
         // parse-build then uses it verbatim instead of resolving over the network.
-        Files.writeString(project.resolve("jk.lock"), """
+        Files.writeString(project.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"

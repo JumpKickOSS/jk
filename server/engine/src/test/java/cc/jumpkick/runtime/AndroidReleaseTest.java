@@ -62,12 +62,12 @@ class AndroidReleaseTest {
                         null,
                         List.of(),
                         List.of()),
-                app.resolve("jk.lock"));
+                app.resolve("jk-lock.toml"));
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
                         app,
                         cache,
                         app.resolve("jk.toml"),
-                        app.resolve("jk.lock"),
+                        app.resolve("jk-lock.toml"),
                         app,
                         1,
                         0,

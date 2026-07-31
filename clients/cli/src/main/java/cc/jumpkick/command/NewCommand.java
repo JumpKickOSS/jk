@@ -635,7 +635,7 @@ public final class NewCommand implements CliCommand {
 
     /**
      * Scaffold the project, then — if it lands inside an existing workspace — skip the per-module
-     * {@code jk.lock} and register the new module in the root {@code [workspace].modules} (Cargo/uv:
+     * {@code jk-lock.toml} and register the new module in the root {@code [workspace].modules} (Cargo/uv:
      * {@code cargo new} / {@code uv init} edit the workspace manifest). Records the registration for
      * the success message.
      */
@@ -1119,7 +1119,7 @@ public final class NewCommand implements CliCommand {
         // (major >= the target), in the full preference order (installed plus
         // auto-installable latest-LTS rows). This is the *build* JDK only —
         // native projects do NOT pick a GraalVM here. The native-image GraalVM
-        // is resolved automatically (latest Oracle GraalVM) into jk.lock when
+        // is resolved automatically (latest Oracle GraalVM) into jk-lock.toml when
         // project.native is set, so the toolchain choice stays decoupled from
         // the Java language version. Rebuilt per render so changing the language
         // version refreshes the list; empty results fall back so the user can

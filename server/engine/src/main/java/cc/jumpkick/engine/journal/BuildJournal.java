@@ -29,7 +29,7 @@ public final class BuildJournal {
     /** Snapshot files a caller may fetch by name; also the traversal whitelist for {@link #artifact}. */
     public static final String TEST_RESULTS_MD = "test-results.md";
 
-    public static final String LOCKFILE = "jk.lock";
+    public static final String LOCKFILE = "jk-lock.toml";
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 

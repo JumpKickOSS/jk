@@ -5,7 +5,7 @@ import java.util.Objects;
 
 /**
  * A git-sourced dependency. {@code canonicalUrl} is normalized; {@code originalUrl} is what the
- * user wrote. Group/name/version come from the clone at materialization; refs pin in {@code jk.lock}
+ * user wrote. Group/name/version come from the clone at materialization; refs pin in {@code jk-lock.toml}
  * (branch tips move only via {@code jk update --git}/{@code jk fetch}). {@code shallow} is true for
  * explicit tag tables; URL-embedded refs always full-clone.
  */

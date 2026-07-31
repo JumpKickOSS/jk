@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 /**
  * JK-1271: where {@code ${VAR}} is honoured, and that everywhere else it is a loud error.
  *
- * <p>The whitelist is the reproducibility fence. {@code jk.toml} plus {@code jk.lock} must fully
+ * <p>The whitelist is the reproducibility fence. {@code jk.toml} plus {@code jk-lock.toml} must fully
  * describe the artifact, and the action cache makes a leak worse than plain non-determinism: an
  * environment-sourced value inside a cache key means CI and a laptop never share cache, and one that
  * reaches a compiler flag <em>without</em> reaching the key produces silently stale artifacts.

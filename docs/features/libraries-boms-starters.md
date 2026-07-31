@@ -30,7 +30,7 @@ support” means for 1.0-quality adoption.
 3. **Layered short names** — project → host-local → admin-global → bundled, all **name → GA only**.
 4. **Import alignment** — Gradle version catalogs feed coords/versions; short names normalize
    through the existing catalog stack when possible.
-5. **Lockfile-first** — versions and reproducibility live in deps / platform pins / `jk.lock`,
+5. **Lockfile-first** — versions and reproducibility live in deps / platform pins / `jk-lock.toml`,
    never in the global name index.
 
 ## 3. Anti-goals

@@ -22,7 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk update} — re-resolve dependencies and overwrite {@code jk.lock} (unlike {@code lock},
+ * {@code jk update} — re-resolve dependencies and overwrite {@code jk-lock.toml} (unlike {@code lock},
  * always fresh). Workspace roots cascade; {@code --git [name]} re-resolves only git deps (pinned
  * refs move only here). Engine-hosted.
  */
@@ -126,7 +126,7 @@ public final class UpdateCommand implements CliCommand {
             public void onModuleFinish(String moduleDir, PipelineResult result, EngineClient.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
-                            Path.of(moduleDir).resolve("jk.lock"), (int) counts.packages(), global.workingDir());
+                            cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)), (int) counts.packages(), global.workingDir());
                 }
             }
         };
@@ -166,7 +166,7 @@ public final class UpdateCommand implements CliCommand {
 
     // ---- shared rendering helpers --------------------------------------------
 
-    /** {@code ✓ Updated: path/to/jk.lock › N packages} — shared by the hosted and in-process paths. */
+    /** {@code ✓ Updated: path/to/jk-lock.toml › N packages} — shared by the hosted and in-process paths. */
     static void printUpdatedLine(Path lockFile, int packages, Path workingDir) {
         var th = Theme.active();
         CliOutput.out(Theme.colorize(Glyphs.CHECK, th.success())

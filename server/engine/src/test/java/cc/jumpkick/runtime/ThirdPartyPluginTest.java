@@ -130,7 +130,7 @@ class ThirdPartyPluginTest {
                         null,
                         List.of(),
                         List.of(entry)),
-                project.resolve("jk.lock"));
+                project.resolve("jk-lock.toml"));
         assertThat(PluginDescriptorOps.ensureMaterialized(project, cache)).isTrue();
 
         // 3. Re-parse: the table validates against the extracted schema; the contribution applies.

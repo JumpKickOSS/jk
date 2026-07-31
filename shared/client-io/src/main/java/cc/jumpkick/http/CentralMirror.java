@@ -21,7 +21,7 @@ import java.time.Instant;
  *
  * Per-request failover would let one resolve read some coordinates from Central and others from the
  * mirror. If the mirror lags even slightly, that mixes two views of "which versions exist" inside a
- * single resolve, and the resulting {@code jk.lock} would depend on the order requests happened to
+ * single resolve, and the resulting {@code jk-lock.toml} would depend on the order requests happened to
  * fail. Switching <em>everything</em> Central-bound for a fixed window keeps one resolve on one
  * source, which is the property that matters.
  *

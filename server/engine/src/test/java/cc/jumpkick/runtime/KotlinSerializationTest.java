@@ -89,7 +89,7 @@ class KotlinSerializationTest {
                 project,
                 cache,
                 project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
+                project.resolve("jk-lock.toml"),
                 project,
                 1,
                 0,
