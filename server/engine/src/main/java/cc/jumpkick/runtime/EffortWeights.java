@@ -151,14 +151,27 @@ public final class EffortWeights {
      * enough — ETA composes dirty steps from measured pieces, not whole-build priors.
      */
     public static long stepOkAvgMillis(BuildMetrics metrics, String dir, String step) {
+        long own = stepOkAvgMillisOwn(metrics, dir, step);
+        return own > 0 ? own : stepOkAvgMillisHost(metrics, step);
+    }
+
+    /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
+    static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
         if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         String key = metricsStepName(step);
         if (key.isEmpty()) return 0;
-        String d = dir == null ? "" : dir;
-        var own = metrics.step(d, key);
+        var own = metrics.step(dir == null ? "" : dir, key);
         if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
             return own.get().ok().avgMillis();
         }
+        return 0;
+    }
+
+    /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
+    static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        String key = metricsStepName(step);
+        if (key.isEmpty()) return 0;
         var host = metrics.step("", key);
         if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
             return host.get().ok().avgMillis();
@@ -224,9 +237,22 @@ public final class EffortWeights {
             int staticWeight,
             java.util.Collection<String> projectDirs) {
         String key = metricsStepName(step);
-        // Prefer measured whole-step walls (even a single success) over residual×count.
-        long absMs = stepOkAvgMillis(metrics, dir, key);
-        if (absMs > 0) return flatWeight(absMs);
+        // Prefer this module's own measured whole-step wall (even a single success).
+        long ownMs = stepOkAvgMillisOwn(metrics, dir, key);
+        if (ownMs > 0) return flatWeight(ownMs);
+        // Cold module with a known planned method count: the count-scaled host prior beats the
+        // host suite-wall average, which prices a 2000-method suite like the host's ~average
+        // suite (JK-1299). The host wall stays the fallback when no count is known.
+        if ("run-tests".equals(key) && count > 0) {
+            var msPer = timings.hostAvgTestMethodMs();
+            if (msPer.isPresent()) {
+                return Math.max(
+                        1,
+                        (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
+            }
+        }
+        long hostMs = stepOkAvgMillisHost(metrics, key);
+        if (hostMs > 0) return flatWeight(hostMs);
 
         double rate;
         var own = timings.perUnit(dir, key);
@@ -239,17 +265,6 @@ public final class EffortWeights {
             } else {
                 var host = timings.medianPerUnit(key);
                 if (host.isEmpty()) {
-                    // Cold residual rates: for run-tests, use host absolute ms/method (from successful
-                    // suites) so brand-new modules still get a data-driven guess.
-                    if ("run-tests".equals(key) && count > 0) {
-                        var msPer = timings.hostAvgTestMethodMs();
-                        if (msPer.isPresent()) {
-                            return Math.max(
-                                    1,
-                                    (int) Math.round(
-                                            floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
-                        }
-                    }
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
                     // surviving metrics history before conceding to the Step-1 static (which already
                     // embeds Calibration priors when produced by coldStaticWeight).
@@ -307,18 +322,25 @@ public final class EffortWeights {
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
-            // Prefer measured whole-step walls; residual/static only when cold.
-            long absMs = stepOkAvgMillis(metrics, mod, step);
+            // Prefer this module's own measured whole-step wall; count-scaled/host/static tiers
+            // (via learned) only when the module is cold here (JK-1299).
+            long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
             int w;
-            if (absMs > 0) {
-                w = flatWeight(absMs);
+            if (ownMs > 0) {
+                w = flatWeight(ownMs);
             } else {
-                int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 1));
+                // run-tests defaults to 0 (unknown count) so the ms/method prior never fires on a
+                // fake count of 1; other steps keep the old floor of one unit (JK-1299).
+                int defaultCount = "run-tests".equals(step) ? 0 : 1;
+                int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
                 int staticW = coldStaticWeight(step, count, wWorkers);
                 if (staticW <= 0) continue; // unknown tiny step with no history
-                w = timings != null
-                        ? learned(timings, metrics, mod, step, count, staticW, projectDirs)
-                        : staticW;
+                if (timings != null) {
+                    w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
+                } else {
+                    long hostMs = stepOkAvgMillisHost(metrics, step);
+                    w = hostMs > 0 ? flatWeight(hostMs) : staticW;
+                }
             }
             weight += w;
             if ("run-tests".equals(step)) testWeight += w;

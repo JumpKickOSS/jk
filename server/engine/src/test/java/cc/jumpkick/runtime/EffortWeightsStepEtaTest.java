@@ -71,6 +71,44 @@ class EffortWeightsStepEtaTest {
     }
 
     @Test
+    void cold_module_run_tests_prefers_the_count_scaled_host_prior(@TempDir Path dir) throws Exception {
+        Path metricsFile = dir.resolve("metrics.json");
+        // Host suite-wall history from another (small) module: ~3s.
+        BuildMetrics.record(
+                metricsFile,
+                outcome("build", "/ws/other", true, 3_000, List.of(sample("/ws/other", "run-tests", 3_000))),
+                1_000L);
+        BuildMetrics metrics = BuildMetrics.load(metricsFile);
+        // Host ms/method prior: 5 ms per successful test method.
+        Path cache = dir.resolve("cache");
+        StepTimings.record(
+                cache,
+                List.of(new StepTimings.Sample(StepTimings.HOST_METHOD_MS_DIR, "test-method-ms", 5.0)),
+                StepTimings.DEFAULT_ALPHA,
+                1_000L);
+        StepTimings timings = StepTimings.load(cache);
+
+        // A brand-new 2000-method module scales with its count (~10s), not the host's ~3s
+        // average suite (JK-1299).
+        var cost = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/new"),
+                Set.of(),
+                List.of("run-tests"),
+                metrics,
+                timings,
+                List.of(),
+                Map.of("run-tests", 2_000));
+        long ms = (long) cost.weight() * EffortWeights.MS_PER_WEIGHT;
+        assertThat(ms).isBetween(9_500L, 13_000L);
+
+        // No count known → the host suite average is still the fallback.
+        var noCount = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/new"), Set.of(), List.of("run-tests"), metrics, timings, List.of(), Map.of());
+        long noCountMs = (long) noCount.weight() * EffortWeights.MS_PER_WEIGHT;
+        assertThat(noCountMs).isBetween(2_500L, 3_600L);
+    }
+
+    @Test
     void list_schedule_respects_concurrency_and_full_prereq_completion() {
         // Three independent 30-unit modules + one dependent on all three.
         Path a = Path.of("/a"), b = Path.of("/b"), c = Path.of("/c"), d = Path.of("/d");
