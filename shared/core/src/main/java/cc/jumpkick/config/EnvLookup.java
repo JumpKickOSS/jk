@@ -124,19 +124,6 @@ public final class EnvLookup {
         return fromFiles.keySet();
     }
 
-    /**
-     * Effective values that came from a {@code .env} file (JK-1274). Empty / null values are
-     * skipped. Use {@link SecretRedactor#from(EnvLookup)} for redaction and cache-key hashing.
-     */
-    public java.util.Set<String> secretValues() {
-        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
-        for (String name : fromFiles.keySet()) {
-            if (!isFromFile(name)) continue;
-            String v = fromFiles.get(name);
-            if (v != null && !v.isEmpty()) out.add(v);
-        }
-        return java.util.Set.copyOf(out);
-    }
 
     private static Optional<Path> workspaceRoot(Path moduleDir) {
         try {

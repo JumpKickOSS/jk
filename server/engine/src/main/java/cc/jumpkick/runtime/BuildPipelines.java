@@ -4292,16 +4292,10 @@ public final class BuildPipelines {
                 testStampExtras(dir, project));
     }
 
-    static List<String> testStampExtras(
-            Map<String, String> workerJars,
-            cc.jumpkick.config.TestSelection selection,
-            Map<String, String> testEnv) {
-        return testStampExtras(workerJars, selection, testEnv, cc.jumpkick.config.SecretRedactor.none(), null);
-    }
-
     /**
      * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}
-     * (JK-1267 / JK-1274).
+     * (JK-1267 / JK-1274). There is deliberately no lookup-free overload: it would silently skip
+     * both expansion and hashing and produce a key that disagrees with this one (JK-1319).
      */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
@@ -4341,20 +4335,33 @@ public final class BuildPipelines {
         for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
             String raw = e.getValue() == null ? "" : e.getValue();
             String expanded = raw;
+            boolean envResolved = false;
             if (lookup != null && raw.indexOf('$') >= 0) {
                 // Expand ${VAR} for cache identity, but leave ${target}/${module} as tokens so
                 // the key stays portable across checkouts (same instinct as the sandbox defaults).
+                boolean[] resolved = {false};
                 try {
                     expanded = cc.jumpkick.config.Interpolation.expand(raw, "[test].env." + e.getKey(), var -> {
                         if ("target".equals(var) || "module".equals(var)) return "${" + var + "}";
-                        return lookup.get(var);
+                        String v = lookup.get(var);
+                        if (v != null) resolved[0] = true;
+                        return v;
                     });
                 } catch (cc.jumpkick.config.JkBuildParseException ex) {
                     // Unset var — keep the raw text so a broken reference still changes the key.
                     expanded = raw;
                 }
+                envResolved = resolved[0];
             }
-            extras.add("test-env:" + e.getKey() + "=" + secrets.forCacheKey(expanded));
+            String keyed = secrets.forCacheKey(expanded);
+            if (envResolved && keyed.equals(expanded)) {
+                // Non-secret env reference (${HOME}, a CI id): the VALUE still keys the stamp —
+                // a changed environment retests (JK-1267) — but the literal must not land in a
+                // (potentially shared) key: no absolute paths or ids on disk (JK-1319).
+                keyed = cc.jumpkick.config.SecretRedactor.KEY_PREFIX
+                        + cc.jumpkick.util.Hashing.sha256Hex(expanded);
+            }
+            extras.add("test-env:" + e.getKey() + "=" + keyed);
         }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {

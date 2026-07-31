@@ -91,7 +91,6 @@ class SecretRedactorTest {
         Files.createDirectories(module);
         Files.writeString(module.resolve(".env"), "A=aaaaaa-token\nB=bbbbbb-token\n");
         EnvLookup env = EnvLookup.forModule(module, name -> "B".equals(name) ? "from-shell" : null);
-        assertThat(env.secretValues()).containsExactly("aaaaaa-token");
         assertThat(SecretRedactor.from(env).containsSecret("aaaaaa-token")).isTrue();
         assertThat(SecretRedactor.from(env).containsSecret("bbbbbb-token")).isFalse();
     }

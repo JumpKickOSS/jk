@@ -97,6 +97,22 @@ class TestEnvTest {
     }
 
     @Test
+    void real_env_references_are_hashed_too_never_literal(@TempDir Path tmp) throws Exception {
+        // JK-1319: a non-secret env reference (${HOME}, a CI id) still keys the stamp by VALUE —
+        // a changed environment retests — but the literal (an absolute path) must not land in a
+        // potentially shared key.
+        JkBuild project = project(tmp, "[test]\nenv = { HOME_DIR = \"${HOME}\" }\n");
+        String home = System.getenv("HOME");
+        org.junit.jupiter.api.Assumptions.assumeTrue(home != null && !home.isBlank());
+
+        List<String> extras = BuildPipelines.testStampExtras(tmp, project);
+
+        assertThat(extras).noneMatch(s -> s.contains(home));
+        assertThat(extras)
+                .anyMatch(s -> s.startsWith("test-env:HOME_DIR=" + cc.jumpkick.config.SecretRedactor.KEY_PREFIX));
+    }
+
+    @Test
     void env_sourced_secret_is_hashed_into_the_test_stamp_not_written_verbatim(@TempDir Path tmp)
             throws Exception {
         // JK-1274: a .env value that participates in the stamp key must be hashed, never literal.
