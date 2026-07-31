@@ -46,7 +46,8 @@ class MavenResolverFamilyAlignTest {
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-transport-http"))
                 .isEqualTo("1.9.24");
         // Existing pins are not overwritten
-        assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-api")).isEqualTo("1.9.24");
+        assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-api"))
+                .isEqualTo("1.9.24");
         assertThat(provenance.get("org.apache.maven.resolver:maven-resolver-named-locks"))
                 .contains("maven-resolver family");
     }
@@ -69,13 +70,13 @@ class MavenResolverFamilyAlignTest {
 
         assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-named-locks"))
                 .isEqualTo("1.9.22");
-        assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-api")).isEqualTo("1.9.22");
+        assertThat(constraints.get("org.apache.maven.resolver:maven-resolver-api"))
+                .isEqualTo("1.9.22");
     }
 
     @Test
     void no_op_when_bom_has_no_resolver_signal() {
-        EffectivePom bom = new EffectivePom(
-                "org.example", "plain-bom", "1.0", "pom", Map.of(), List.of(), List.of());
+        EffectivePom bom = new EffectivePom("org.example", "plain-bom", "1.0", "pom", Map.of(), List.of(), List.of());
         Map<String, String> constraints = new LinkedHashMap<>();
         Map<String, String> provenance = new LinkedHashMap<>();
         LockOrchestrator.alignMavenResolverFamily(constraints, provenance, bom, "org.example:plain-bom:1.0");

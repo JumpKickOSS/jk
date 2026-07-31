@@ -54,7 +54,7 @@ public final class ExplainCommand implements CliCommand {
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
         // means feeding the same inputs to the shared estimate (and, with --run, to build).
-        // Module concurrency: global -j/--jobs (JK-1082).
+        // Module concurrency: global -j/--jobs.
         opts.add(Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
         opts.add(Opt.value(
                 "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
@@ -115,7 +115,7 @@ public final class ExplainCommand implements CliCommand {
         boolean serial = jobs == 1;
         int workers = in.value("workers").map(Integer::parseInt).orElse(1);
         boolean skipTests = in.isSet("skip-tests");
-        // Global --rebuild / --force: forecast full work + rebuild ETA priors (JK-1177).
+        // Global --rebuild / --force: forecast full work + rebuild ETA priors.
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
@@ -159,7 +159,6 @@ public final class ExplainCommand implements CliCommand {
         // Engine-hosted like `jk build`/`jk test`, except in the fast unit-test suite (no real jk
         // schedule-aware build-time estimate is computed engine-side alongside the plan
         // (BuildService.estimateEtaMillis) and rides back as an `eta` event; 0 = unknown.
-        //
         // When host calibration is still cold, show a live "Calibrating host…" wedge for the
         // engine round-trip, then replace it with the normal build-plan tree below.
         ExplainPlan plan;
@@ -235,7 +234,7 @@ public final class ExplainCommand implements CliCommand {
                                         cc.jumpkick.cli.tui.Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()))
                         : Theme.colorize(" ≡ Build Plan ", t.planBadge()));
         // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
-        // a pure cache verify is sub-second (JK-1298). Only show "unknown" when there is real
+        // a pure cache verify is sub-second. Only show "unknown" when there is real
         // work but no learned timings yet.
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(BuildPlan.Module::dirty);
         String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
@@ -560,8 +559,8 @@ public final class ExplainCommand implements CliCommand {
         if (!ModuleDotGraph.isSupportedFormat(fmt)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Explain",
-                    "unsupported --graph format '" + format + "' (supported: " + String.join(" | ", ModuleDotGraph.FORMATS)
-                            + ")"));
+                    "unsupported --graph format '" + format + "' (supported: "
+                            + String.join(" | ", ModuleDotGraph.FORMATS) + ")"));
             return Exit.CONFIG;
         }
         JkBuild entry = JkBuildParser.parse(buildFile);

@@ -48,7 +48,7 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
     /**
      * When this set is a single concrete version (closed point range {@code [v,v]}), that version;
      * otherwise empty. Used by the solver to seed a singleton {@link VersionUniverse} without
-     * fetching maven-metadata (JK-1088).
+     * fetching maven-metadata.
      */
     default Optional<String> asExactSingleton() {
         return Optional.empty();
@@ -521,7 +521,7 @@ public sealed interface VersionSet permits VersionSet.Empty, VersionSet.All, Ver
 
         @Override
         public VersionSet complement() {
-            // ¬(A ∪ B ∪ …) = ¬A ∩ ¬B ∩ …  — each complement is Range or Union of Ranges;
+            // ¬(A ∪ B ∪ …) = ¬A ∩ ¬B ∩ … — each complement is Range or Union of Ranges;
             // successive intersect re-canonicalizes.
             VersionSet result = ALL;
             for (Range part : parts) {

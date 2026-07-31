@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.model.JkVersion;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,9 +21,7 @@ class CalibrationTest {
         // Full model weight from HardwareProbe; wall = fork+javac+fork (test-worker proxy).
         double mpw = Calibration.deriveMsPerWeight(180, 180);
         assertThat(mpw).isGreaterThan(0);
-        assertThat(mpw)
-                .isCloseTo(
-                        HardwareProbe.deriveMsPerWeight(180, 180, 0, 0, 0, 0), within(1e-6));
+        assertThat(mpw).isCloseTo(HardwareProbe.deriveMsPerWeight(180, 180, 0, 0, 0, 0), within(1e-6));
     }
 
     @Test
@@ -32,9 +31,9 @@ class CalibrationTest {
 
     @Test
     void max_warm_is_pessimistic() {
-        assertThat(HardwareProbe.maxWarm(java.util.List.of(10L, 20L, 15L, 40L))).isEqualTo(40L);
+        assertThat(HardwareProbe.maxWarm(List.of(10L, 20L, 15L, 40L))).isEqualTo(40L);
         // first sample dropped as cold-cache warmup
-        assertThat(HardwareProbe.maxWarm(java.util.List.of(100L, 12L, 11L))).isEqualTo(12L);
+        assertThat(HardwareProbe.maxWarm(List.of(100L, 12L, 11L))).isEqualTo(12L);
     }
 
     @Test
@@ -95,13 +94,13 @@ class CalibrationTest {
         HostLearnedRates learned = new HostLearnedRates()
                 .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0)
                 .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 48, 0);
-        Calibration written = Calibration.testInstance(
-                100.0, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
+        Calibration written = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
         Path f = dir.resolve("calibration.toml");
         Calibration.writeTo(f, written);
         Calibration read = Calibration.readFrom(f, NOW);
         assertThat(read.present()).isTrue();
-        assertThat(read.learned().sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS)).isEqualTo(2);
+        assertThat(read.learned().sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
+                .isEqualTo(2);
         assertThat(read.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
                 .hasValueCloseTo(45.0, within(1e-6));
         assertThat(read.probeTestMethodMs()).isEqualTo(15);
@@ -112,8 +111,8 @@ class CalibrationTest {
     @Test
     void cold_run_tests_wall_uses_baseline_times_host_scale_not_empty_probe() {
         // Probe residual method=20 must NOT become absolute cold cost (that under-shoots real suites).
-        Calibration cal = Calibration.testInstance(
-                100.0, true, JkVersion.VERSION, NOW, new HostLearnedRates(), 100, 20, 10);
+        Calibration cal =
+                Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW, new HostLearnedRates(), 100, 20, 10);
         long method = cal.testMethodMs();
         long startup = cal.testSuiteStartupMs();
         // Product baseline × scale × cold bias — well above empty-probe residual.
@@ -145,8 +144,7 @@ class CalibrationTest {
         assertThat(cal.cpuScale()).isEqualTo(Calibration.HOST_SCALE_MIN);
         long method = cal.testMethodMs();
         // At least baseline × min scale × bias, not empty-probe 5ms.
-        long floor = Math.round(
-                Calibration.BASELINE_METHOD_MS * Calibration.HOST_SCALE_MIN * Calibration.COLD_BIAS);
+        long floor = Math.round(Calibration.BASELINE_METHOD_MS * Calibration.HOST_SCALE_MIN * Calibration.COLD_BIAS);
         assertThat(method).isEqualTo(floor);
     }
 

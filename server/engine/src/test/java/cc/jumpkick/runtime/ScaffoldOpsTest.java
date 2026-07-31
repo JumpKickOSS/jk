@@ -30,7 +30,8 @@ class ScaffoldOpsTest {
                 .anyMatch(p -> p.endsWith("grails-app/domain/com/example/Note.groovy"))
                 .anyMatch(p -> p.endsWith("grails-app/controllers/com/example/NoteController.groovy"))
                 .anyMatch(p -> p.endsWith("grails-app/conf/application.yml"));
-        String toml = files.contents().get(files.paths().indexOf(tmp.resolve("jk.toml").toString()));
+        String toml = files.contents()
+                .get(files.paths().indexOf(tmp.resolve("jk.toml").toString()));
         assertThat(toml).contains("[grails]").contains("version = \"8.0.0-M4\"").contains("grails-web-boot");
         int note = -1;
         for (int i = 0; i < files.paths().size(); i++) {

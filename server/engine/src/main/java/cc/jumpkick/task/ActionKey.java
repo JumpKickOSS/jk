@@ -19,12 +19,12 @@ import java.util.Map;
  * <p>The action key for a javac invocation is a stable hash of:
  *
  * <ul>
- *   <li>the task identifier (e.g. {@code "compile-main"})
- *   <li>jk version
- *   <li>{@code --release} and any extra javac options
- *   <li>each source file's SHA-256 (so editing a file invalidates the key)
- *   <li>each classpath entry's path — CAS paths already incorporate the content hash, so the file
- *       name itself is enough to capture the dependency.
+ * <li>the task identifier (e.g. {@code "compile-main"})
+ * <li>jk version
+ * <li>{@code --release} and any extra javac options
+ * <li>each source file's SHA-256 (so editing a file invalidates the key)
+ * <li>each classpath entry's path — CAS paths already incorporate the content hash, so the file
+ * name itself is enough to capture the dependency.
  * </ul>
  */
 public final class ActionKey {
@@ -46,7 +46,7 @@ public final class ActionKey {
 
         // Classpath: CAS jar paths already include the content hash in their layout;
         // DIRECTORY entries (a sibling lane's classes dir) do not — hash their tree, or a
-        // Groovy/Kotlin-only change leaves stale Java bytecode behind a key hit (JK-1224).
+        // Groovy/Kotlin-only change leaves stale Java bytecode behind a key hit.
         List<Path> cp = new ArrayList<>(request.classpath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
@@ -84,7 +84,7 @@ public final class ActionKey {
         args.sort(Comparator.naturalOrder());
         sb.append(String.join(",", args)).append('\n');
 
-        // Compiler plugins reshape the output (all-open/no-arg synthesize members) —
+        // Compiler plugins reshape the output (all-open/no-arg synthesize members)
         // key on id + jar CONTENT + options so a plugin change re-compiles.
         for (var plugin : request.plugins()) {
             sb.append("plugin:")
@@ -102,7 +102,7 @@ public final class ActionKey {
         cp.addAll(request.workerClasspath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
-            appendCpToken(sb, "cp:", entry); // dirs tree-hashed (JK-1224)
+            appendCpToken(sb, "cp:", entry); // dirs tree-hashed
         }
         return Hashing.sha256Hex(sb.toString());
     }
@@ -126,7 +126,7 @@ public final class ActionKey {
 
         appendSources(sb, request.sources());
 
-        // Java source roots feed joint resolution — hash every .java under them so an
+        // Java source roots feed joint resolution — hash every.java under them so an
         // edit to a swept file invalidates the key just like an explicit source would.
         List<Path> rootJava = new ArrayList<>();
         for (Path root : request.javaSourceRoots()) {
@@ -144,7 +144,7 @@ public final class ActionKey {
         cp.addAll(request.workerClasspath());
         cp.sort(Comparator.comparing(Path::toString));
         for (Path entry : cp) {
-            appendCpToken(sb, "cp:", entry); // dirs tree-hashed (JK-1224)
+            appendCpToken(sb, "cp:", entry); // dirs tree-hashed
         }
         List<Path> pp = new ArrayList<>(request.processorPath());
         pp.sort(Comparator.comparing(Path::toString));
@@ -200,7 +200,7 @@ public final class ActionKey {
     /**
      * One classpath/processorpath token. Jar entries are identified by path alone (CAS layout
      * encodes content); directory entries additionally carry a tree hash — a directory path
-     * says nothing about its contents (JK-1224).
+     * says nothing about its contents.
      */
     private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
         Path p = entry.toAbsolutePath().normalize();

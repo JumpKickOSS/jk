@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1258: restoring an artifact that is already byte-identical on disk must not rewrite it.
+ * restoring an artifact that is already byte-identical on disk must not rewrite it.
  *
  * <p>{@code restoreArtifacts} used to unconditionally delete-and-copy on every cache <em>hit</em>,
  * giving an unchanged jar a fresh mtime each build. Because {@link FreshnessStamp} compares
@@ -94,8 +94,8 @@ class ActionCacheRestoreTest {
 
     /**
      * The two requirements on a multi-file restore pull in opposite directions and have to hold at
-     * once: stale extras beside the restored set must go (JK-1245, a quarkus fast-jar restored over
-     * a dirty {@code lib/}), yet the recorded outputs must keep their mtime (JK-1258, or every
+     * once: stale extras beside the restored set must go, a quarkus fast-jar restored over
+     * a dirty {@code lib/}), yet the recorded outputs must keep their mtime, or every
      * downstream FreshnessStamp is invalidated). Clearing the directory root satisfies the first and
      * breaks the second, so this pins both.
      */
@@ -110,8 +110,7 @@ class ActionCacheRestoreTest {
         Files.writeString(ownedDeep, "deep contents");
 
         ActionCache ac = new ActionCache(new Cas(cacheRoot), cacheRoot.resolve("actions"));
-        ActionRecord record =
-                ac.storeArtifacts("package-jar", "key-1", Map.of(), baseDir, List.of(owned, ownedDeep));
+        ActionRecord record = ac.storeArtifacts("package-jar", "key-1", Map.of(), baseDir, List.of(owned, ownedDeep));
 
         // A dirty target/: leftovers from a previous, different packaging run.
         Path stale = baseDir.resolve("lib/stale.jar");

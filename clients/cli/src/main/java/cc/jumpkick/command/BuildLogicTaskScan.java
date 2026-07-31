@@ -17,8 +17,8 @@ import java.util.stream.Stream;
 import org.tomlj.TomlTable;
 
 /**
- * Offline discovery of project build-logic task names for {@code jk tasks} (JK-1057). Scans
- * {@code .jk-build/} (or {@code [build].logic}) sources without compiling — SPI {@code .task("name",
+ * Offline discovery of project build-logic task names for {@code jk tasks}. Scans
+ * {@code.jk-build/} (or {@code [build].logic}) sources without compiling — SPI {@code.task("name",
  * …)} strings and legacy {@code *Build} class names.
  */
 final class BuildLogicTaskScan {

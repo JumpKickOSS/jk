@@ -97,7 +97,7 @@ public final class BuildJournal {
     }
 
     /**
-     * Open an in-flight journal entry at request-start (JK-1251). Returns the assigned id, or
+     * Open an in-flight journal entry at request-start. Returns the assigned id, or
      * {@code null} on failure.
      */
     public String begin(BuildRecord running) {

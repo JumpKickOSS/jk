@@ -16,14 +16,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Chrome Trace Event writer for one engine request (single module or workspace). The engine owns
  * this so every client (CLI, web, IDE) gets the same per-run timeline without re-implementing
- * capture (JK-1023; write moved off the CLI).
+ * capture; write moved off the CLI).
  *
  * <p>Default path: {@code <project>/target/jk-chrome-profile.json} (canonical build output dir).
  * Disable with request {@code noTimeline=true} or env {@code JK_CHROME_PROFILE=off}. Override path
  * with {@code JK_CHROME_PROFILE=<file>}.
  *
  * <p>Spans use the pipeline's measured {@link java.time.Duration} (same numbers as {@link
- * BuildMetrics}), placed with {@link System#nanoTime()} at step finish so concurrent modules
+ * BuildMetrics}), placed with {@link System#nanoTime} at step finish so concurrent modules
  * align on one clock.
  */
 public final class ChromeTimeline {

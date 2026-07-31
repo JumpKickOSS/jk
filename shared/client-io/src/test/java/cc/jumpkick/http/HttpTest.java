@@ -26,7 +26,6 @@ import org.junit.jupiter.api.Test;
 
 class HttpTest {
 
-
     private HttpServer server;
     private URI base;
 

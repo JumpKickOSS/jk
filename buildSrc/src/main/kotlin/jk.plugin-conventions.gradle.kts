@@ -5,7 +5,6 @@
 // into the CAS, is launchable as `java -jar` via the shared PluginMain entry
 // point, and ships an `installLocal` task that side-loads the freshly-built
 // jar into ~/.jk/cache by its SHA-256.
-//
 // What stays in each worker's build.gradle.kts: its `description`, its
 // `dependencies`, and the one thing that genuinely differs — what gets bundled
 // into the jar (a fat worker bundles its whole runtime closure; a thin worker
@@ -49,8 +48,8 @@ tasks.jar {
 
 // Side-load the freshly-built worker jar into the developer's local Maven repo at
 // ~/.jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
-// so PluginJar.locate() finds the worker without requiring -Djk.<x>.plugin.jar.
-// Also writes a .sha256 sidecar so RepoArtifactStore.locate() sees it as complete.
+// so PluginJar.locate finds the worker without requiring -Djk.<x>.plugin.jar.
+// Also writes a.sha256 sidecar so RepoArtifactStore.locate sees it as complete.
 tasks.register("installLocal") {
     description = "Side-load the freshly-built $workerArtifact jar into ~/.jk/store/repos/local/ (m2 layout)"
     group = "jk"
@@ -63,9 +62,9 @@ tasks.register("installLocal") {
         val jar = jarProvider.get().asFile
         val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
         val hex = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        // repos/ lives under store/, not cache/ (JK-1289). Writing to the old location is worse than
+        // repos/ lives under store/, not cache/. Writing to the old location is worse than
         // useless: the engine resolves from store/repos/, so a freshly built worker lands where nothing
-        // reads it and an older copy of the same version silently wins. That cost a confusing hunt —
+        // reads it and an older copy of the same version silently wins. That cost a confusing hunt
         // the symptom was a stale test-runner rejecting an argument its own source clearly accepts.
         // Mirrors JkDirs: JK_STORE_DIR, else JK_HOME/store, else ~/.jk/store.
         val storeRoot: File = System.getenv("JK_STORE_DIR")?.let { File(it) }

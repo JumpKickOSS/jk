@@ -12,12 +12,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * selection, and cooperative cancellation. Per-request so concurrent builds in one JVM do not
  * clobber each other; threaded through the engine rather than process-global state.
  *
- * @param jdksDir JDK install root, or {@code null} for {@link JkDirs#jdks()}
+ * @param jdksDir JDK install root, or {@code null} for {@link JkDirs#jdks}
  * @param jdkSpec top-tier JDK selection ({@code --jdk}), or {@code null}
  * @param graalSpec top-tier GraalVM selection ({@code --graal}), or {@code null}
  * @param parallelTests when false, module tests serialize through the engine's test gate
  * @param cancel never null after construction; {@code null} input becomes {@link CancelToken#NONE}
- * @param testSelection suite/tag selection for {@code jk test} (JK-1134+)
+ * @param testSelection suite/tag selection for {@code jk test}+)
  * @param io per-run byte accounting (network + local cache); shared by every copy of this session
  */
 public record Session(
@@ -105,8 +105,8 @@ public record Session(
     }
 
     /**
-     * Cooperative cancellation for one session. Front-end calls {@link #cancel()}; engine polls
-     * {@link #cancelled()}. Thread-safe.
+     * Cooperative cancellation for one session. Front-end calls {@link #cancel}; engine polls
+     * {@link #cancelled}. Thread-safe.
      */
     public interface CancelToken {
 
@@ -149,7 +149,7 @@ public record Session(
 
     /**
      * A default session: empty config, current working directory, default cache/JDK roots, no tuning,
-     * and a fresh {@link CancelToken#live() live} cancellation token so a front-end can cancel it.
+     * and a fresh {@link CancelToken#live live} cancellation token so a front-end can cancel it.
      * Its {@link IoLedger} is the run's ambient one when a request is open on this thread (the engine
      * opens one per request), else a fresh detached ledger.
      */
@@ -360,7 +360,7 @@ public record Session(
 
     /**
      * A copy metering into {@code ledger} ({@code null} → a fresh one). Rarely needed: a session
-     * built inside a request already adopts the run's ledger via {@link #defaults()}.
+     * built inside a request already adopts the run's ledger via {@link #defaults}.
      */
     public Session withIo(IoLedger ledger) {
         return copy(

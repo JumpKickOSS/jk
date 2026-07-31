@@ -17,7 +17,7 @@ import java.util.function.Supplier;
  * shared sink; caller folds via {@link StepTimings#record} at build end. Also emits absolute-ms
  * {@link HostLearnedRates.HostSample}s for continuous host {@link Calibration}.
  *
- * <p>JK-1155: for {@code run-tests}, prefer the actual {@link TestSummary} method count (and class
+ * <p>for {@code run-tests}, prefer the actual {@link TestSummary} method count (and class
  * count when available via display names) over planned ticks so the next plan's learned rate
  * matches real suite size.
  */
@@ -97,7 +97,7 @@ public final class StepTimingsRecorder implements PipelineListener {
         TestSummary sum = testSummary == null ? null : testSummary.get();
         if (sum != null && sum.total() > 0) {
             methods = (int) Math.min(Integer.MAX_VALUE, sum.total());
-            // The runner counts distinct executed classes (JK-1226); failure-derived names were
+            // The runner counts distinct executed classes; failure-derived names were
             // empty on green runs, so the class-rate sample never recorded.
             classes = sum.classes() > 0 ? (int) Math.min(Integer.MAX_VALUE, sum.classes()) : distinctClassCount(sum);
         }
@@ -138,18 +138,19 @@ public final class StepTimingsRecorder implements PipelineListener {
     private void emitHostCompileOrPackage(String step, long wallMs, int count) {
         if (hostSink == null || wallMs <= 0) return;
         switch (step) {
-            case "compile-java" -> perSource(
-                    HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-kotlin" -> perSource(
-                    HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-groovy" -> perSource(
-                    HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "compile-test" -> perSource(
-                    HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
-            case "package-jar" -> hostSink.add(
-                    new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_JAR_MS, wallMs, MAX_PACKAGE_MS));
-            case "package-assembly" -> hostSink.add(
-                    new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
+            case "compile-java" ->
+                perSource(HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
+            case "compile-kotlin" ->
+                perSource(HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
+            case "compile-groovy" ->
+                perSource(HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
+            case "compile-test" ->
+                perSource(HostLearnedRates.COMPILE_TEST_PER_SOURCE_MS, wallMs, count, MAX_COMPILE_PER_SOURCE_MS);
+            case "package-jar" ->
+                hostSink.add(new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_JAR_MS, wallMs, MAX_PACKAGE_MS));
+            case "package-assembly" ->
+                hostSink.add(
+                        new HostLearnedRates.HostSample(HostLearnedRates.PACKAGE_ASSEMBLY_MS, wallMs, MAX_PACKAGE_MS));
             default -> {}
         }
     }

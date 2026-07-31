@@ -137,7 +137,7 @@ class RepoCredentialResolverTest {
                 .isEqualTo(RepoCredential.ANONYMOUS);
     }
 
-    // ---- ${VAR} expansion, moved here from the parse (JK-1272) -------------------
+    // ---- ${VAR} expansion, moved here from the parse------------------
 
     @Test
     void inline_credentials_expand_env_references(@TempDir Path dir) {

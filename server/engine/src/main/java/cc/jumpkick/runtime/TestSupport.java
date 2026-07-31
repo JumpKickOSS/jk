@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 
 /**
  * Test-step building blocks shared by the build pipeline and the {@code test} command. Coupled only
- * to {@link StepContext} (the view-agnostic progress callback), so it lives in {@code :runtime}
+ * to {@link StepContext} (the view-agnostic progress callback), so it lives in {@code:runtime}
  * and embedders can drive it without the CLI/TUI.
  */
 public final class TestSupport {
@@ -31,7 +31,7 @@ public final class TestSupport {
             Pattern.compile("@(?:Test|ParameterizedTest|TestFactory|TestTemplate|RepeatedTest)\\b");
 
     /**
-     * Best-effort count of JUnit test methods under {@code testSrcDir} — scans {@code .java}/{@code
+     * Best-effort count of JUnit test methods under {@code testSrcDir} — scans {@code.java}/{@code
      * .kt} sources for {@code @Test}-family annotations. Feeds the build's {@code estimatedTestCount}
      * (progress-bar weighting); a zero estimate falls back to a flat bar. Never throws.
      */
@@ -58,7 +58,7 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods across every discovered suite (JK-1198) — not default-suite only.
+     * Count test methods across every discovered suitenot default-suite only.
      * Dedupes when java/kotlin roots share a directory (SIMPLE layout).
      */
     public static int estimateAllSuiteTestCount(Path moduleDir, boolean compact) {
@@ -74,7 +74,7 @@ public final class TestSupport {
     }
 
     /**
-     * Count test methods for the suites a SELECTION will actually run (JK-1238) — sizing the
+     * Count test methods for the suites a SELECTION will actually runsizing the
      * bar/ETA with every discovered suite made plain `jk test` under-fill and snap to 100 when
      * an integration suite existed. Unresolvable selections fall back to all discovered suites.
      */
@@ -99,7 +99,7 @@ public final class TestSupport {
 
     /**
      * Best-effort count of test <em>classes</em> (source files with ≥1 test annotation) under
-     * discovered suites — hierarchical effort tier between method and step (JK-1152).
+     * discovered suites — hierarchical effort tier between method and step.
      */
     public static int estimateAllSuiteTestClassCount(Path moduleDir, boolean compact) {
         int total = 0;
@@ -162,7 +162,7 @@ public final class TestSupport {
         out.add(failures.size() + " test" + (failures.size() == 1 ? "" : "s") + " failed:");
         for (TestSummary.Failure f : failures) {
             out.add("");
-            // JK-1094: module :: display [wN] so parallel monorepo flakes are locatable.
+            // module:: display [wN] so parallel monorepo flakes are locatable.
             out.add("  FAILED  " + f.headline());
             if (f.className() != null
                     && !f.className().isBlank()
@@ -201,7 +201,7 @@ public final class TestSupport {
 
     /**
      * As {@link #bridgeListener(StepContext, int, boolean)} with a module coord for labels / failure
-     * diagnostics (JK-1094).
+     * diagnostics.
      */
     public static TestProgressListener bridgeListener(
             StepContext ctx, int workerCount, boolean verbose, String moduleLabel) {
@@ -213,7 +213,8 @@ public final class TestSupport {
                 // tree (finish-only labels lag one event behind). Prefer Class > method when the
                 // unique id carries a class segment and display is the bare method name.
                 // Skip engine/suite roots (no [class:…] segment) so we don't flash "JUnit Jupiter".
-                if (!isTest && cc.jumpkick.test.JUnitLauncher.classFromUniqueId(id).isEmpty()) {
+                if (!isTest
+                        && cc.jumpkick.test.JUnitLauncher.classFromUniqueId(id).isEmpty()) {
                     return;
                 }
                 String detail = liveTestDetail(id, display, isTest);
@@ -259,7 +260,7 @@ public final class TestSupport {
             @Override
             public void onUserOutput(int workerId, String line) {
                 // Muted by default; --verbose surfaces it. We hand the line to the
-                // view via the step context — only :cli owns the actual streams.
+                // view via the step context — only:cli owns the actual streams.
                 if (!verbose) return;
                 String prefix = workerCount > 1 ? "[w" + workerId + "] " : "";
                 if (!module.isEmpty()) prefix = "[" + module + "] " + prefix;
@@ -304,9 +305,9 @@ public final class TestSupport {
         }
         if (simple.isEmpty()) return d;
         if (d.isEmpty() || d.equals(simple)) return simple;
-        // Already "FooTest.bar()" / "FooTest.bar(Path)".
+        // Already "FooTest.bar" / "FooTest.bar(Path)".
         if (d.startsWith(simple + ".") || d.startsWith(simple + "(")) return d;
-        // Method-only display ("bar()" / "bar(Path)") → Class.method(...).
+        // Method-only display ("bar" / "bar(Path)") → Class.method(...).
         return simple + "." + d;
     }
 
@@ -317,7 +318,7 @@ public final class TestSupport {
     static String normalizeTestDisplay(String display) {
         if (display == null) return "";
         String d = display.trim();
-        // JUnit Platform often uses "FooTest > bar()" as a composite display.
+        // JUnit Platform often uses "FooTest > bar" as a composite display.
         int sep = d.indexOf(" > ");
         if (sep > 0) {
             d = d.substring(0, sep).trim() + "." + d.substring(sep + 3).trim();
@@ -414,7 +415,7 @@ public final class TestSupport {
         }
         if (r.cacheHit()) {
             ctx.label(taskId + ": cache hit " + r.actionKey().substring(0, 8));
-            ctx.cached(); // SKIPPED — pure restore (JK-1296 didWork accounting)
+            ctx.cached(); // SKIPPED — pure restore didWork accounting)
         } else {
             ctx.label(taskId + ": compiled " + sources.size() + " sources");
         }

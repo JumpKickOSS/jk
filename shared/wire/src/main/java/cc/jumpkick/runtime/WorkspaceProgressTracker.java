@@ -5,11 +5,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Engine-owned workspace aggregate progress (JK-1120). Preflight reservation + calibrated module
+ * Engine-owned workspace aggregate progress. Preflight reservation + calibrated module
  * weight slices + concurrent in-flight sum + monotonic peak.
  *
  * <p><b>Smart engine / dumb clients:</b> all aggregate tuning lives here (or in call sites that only
- * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values —
+ * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values
  * never re-derive workspace % from per-module pipeline ticks.
  */
 public final class WorkspaceProgressTracker {
@@ -84,7 +84,7 @@ public final class WorkspaceProgressTracker {
      * Pin execute weight after plan. {@code executeWeight} is Σ module pipeline weights (ticks).
      * {@code modulesTotal} is the planned module count (0 if unknown).
      *
-     * <p>JK-1153/1154: when modules are planned but execute weight is still 0 (every step token
+     * <p>/1154: when modules are planned but execute weight is still 0 (every step token
      * not yet applied, or a bug), floor the total at {@code modulesTotal} so calibrate never
      * leaves an empty execute band that falls into per-module uncalibrated math (which looks
      * like a count reset when modules swap).
@@ -224,7 +224,7 @@ public final class WorkspaceProgressTracker {
     }
 
     private String phaseName() {
-        // "done" is finish()'s alone — everything after calibrate is "execute".
+        // "done" is finish's alone — everything after calibrate is "execute".
         return executeCalibrated ? "execute" : "preflight";
     }
 
@@ -238,9 +238,9 @@ public final class WorkspaceProgressTracker {
             case "plan" -> {
                 if (total <= 0) yield 0.45;
                 double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                // Cap below 1.0: before calibrate() the denominator is the preflight band
+                // Cap below 1.0: before calibrate the denominator is the preflight band
                 // alone, and a plan-complete 100/100 snapshot pins every peak-holding
-                // consumer at 100% for the whole execute phase (JK-1219).
+                // consumer at 100% for the whole execute phase.
                 yield 0.40 + 0.55 * within;
             }
             default -> 0.10;

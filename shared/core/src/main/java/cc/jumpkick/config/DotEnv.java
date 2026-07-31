@@ -9,25 +9,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * {@code .env} files (JK-1262 family, JK-1270) — so a project needs no {@code direnv},
+ * {@code.env} files family,so a project needs no {@code direnv},
  * {@code dotenv-cli}, or wrapper script to set its own variables.
  *
  * <h2>Dialect</h2>
  *
- * There is no {@code .env} specification and implementations disagree, so jk's is stated rather
+ * There is no {@code.env} specification and implementations disagree, so jk's is stated rather
  * than inferred:
  *
  * <ul>
- *   <li>{@code KEY=value}, one per line; surrounding whitespace on both sides is trimmed
- *   <li>{@code #} begins a comment; blank lines are ignored
- *   <li>single or double quotes may wrap a value, and are removed
- *   <li>escapes ({@code \\n}, {@code \\t}, {@code \\"}, {@code \\\\}) are honoured <b>only</b> inside
- *       double quotes — single quotes are literal, as in the shell
- *   <li>a leading {@code export } is tolerated and ignored, so a file can double as something you
- *       {@code source}
- *   <li><b>no variable expansion inside the file.</b> {@code BAR=${FOO}/x} stores that text
- *       verbatim. The file stays dumb; expansion happens in {@code jk.toml}, at whitelisted
- *       positions only, where it can be reasoned about
+ * <li>{@code KEY=value}, one per line; surrounding whitespace on both sides is trimmed
+ * <li>{@code #} begins a comment; blank lines are ignored
+ * <li>single or double quotes may wrap a value, and are removed
+ * <li>escapes ({@code \\n}, {@code \\t}, {@code \\"}, {@code \\\\}) are honoured <b>only</b> inside
+ * double quotes — single quotes are literal, as in the shell
+ * <li>a leading {@code export } is tolerated and ignored, so a file can double as something you
+ * {@code source}
+ * <li><b>no variable expansion inside the file.</b> {@code BAR=${FOO}/x} stores that text
+ * verbatim. The file stays dumb; expansion happens in {@code jk.toml}, at whitelisted
+ * positions only, where it can be reasoned about
  * </ul>
  *
  * <h2>What this deliberately does not do</h2>
@@ -46,7 +46,7 @@ public final class DotEnv {
             if (!Files.isRegularFile(file)) return Map.of();
             return parse(Files.readAllLines(file));
         } catch (IOException e) {
-            // An unreadable .env must not fail a build: it is supplementary configuration, and the
+            // An unreadable.env must not fail a build: it is supplementary configuration, and the
             // variables it would have set surface as "unset" where they are actually used.
             return Map.of();
         }
@@ -58,7 +58,8 @@ public final class DotEnv {
         for (String raw : lines) {
             String line = raw.strip();
             if (line.isEmpty() || line.startsWith("#")) continue;
-            if (line.startsWith("export ")) line = line.substring("export ".length()).strip();
+            if (line.startsWith("export "))
+                line = line.substring("export ".length()).strip();
             int eq = line.indexOf('=');
             if (eq <= 0) continue; // no key, or no '=' at all — not an assignment
             String key = line.substring(0, eq).strip();

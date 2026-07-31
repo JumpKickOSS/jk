@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1310: workspace member outputs live under {@code <workspace>/target/<rel>/} (Mill-style
+ * workspace member outputs live under {@code <workspace>/target/<rel>/} (Mill-style
  * layout), so {@code jk clean --keep-artifacts} must sweep intermediates there — the pre-layout
  * per-module {@code <member>/target/} sweep removed nothing.
  */

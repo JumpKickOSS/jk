@@ -85,7 +85,8 @@ public final class TreeCommand implements CliCommand {
         Path lockFile = proj.lockFile();
         if (!proj.isLocked()) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Tree", "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
+                    "Tree",
+                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
             return Exit.CONFIG;
         }
 

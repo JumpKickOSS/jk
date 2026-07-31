@@ -6,16 +6,16 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Exclusive Maven {@code groupId} → repository bindings (JK-1064). When any repo claims a group
+ * Exclusive Maven {@code groupId} → repository bindings. When any repo claims a group
  * pattern, version discovery and fetch for matching coordinates use <em>only</em> the claiming
  * repos — other remotes are invisible (dependency-confusion defense).
  *
  * <p>Pattern syntax (data-only, no regex):
  *
  * <ul>
- *   <li>{@code com.acme} — exact group match
- *   <li>{@code com.acme.*} — {@code com.acme} and any subpackage ({@code com.acme.foo}, …)
- *   <li>{@code *} — all groups (unusual; still exclusive to that repo for everything)
+ * <li>{@code com.acme} — exact group match
+ * <li>{@code com.acme.*} — {@code com.acme} and any subpackage ({@code com.acme.foo}, …)
+ * <li>{@code *} — all groups (unusual; still exclusive to that repo for everything)
  * </ul>
  */
 public final class ExclusiveGroups {

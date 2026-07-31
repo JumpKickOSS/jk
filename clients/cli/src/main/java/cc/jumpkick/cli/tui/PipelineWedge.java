@@ -117,12 +117,12 @@ public final class PipelineWedge {
     }
 
     /**
-     * Settled cancel (JK-1252). Same red chip as a failure. The chip already names the pipeline,
-     * so the body does not repeat it (JK-1321):
+     * Settled cancel. Same red chip as a failure. The chip already names the pipeline,
+     * so the body does not repeat it
      *
      * <ul>
-     *   <li>Ctrl-C ({@code byUser}): {@code ✘ Build  job was cancelled by user took 1.6s}
-     *   <li>Remote ({@code jk cancel} / web): {@code ✘ Build  job was cancelled took 1.6s}
+     * <li>Ctrl-C ({@code byUser}): {@code ✘ Build job was cancelled by user took 1.6s}
+     * <li>Remote ({@code jk cancel} / web): {@code ✘ Build job was cancelled took 1.6s}
      * </ul>
      *
      * {@code cancelled} is warning yellow; {@code tookTail} is caller-styled (e.g.
@@ -136,14 +136,8 @@ public final class PipelineWedge {
         if (!t.isAnsi()) {
             return "! " + name + " job was cancelled" + (byUser ? " by user" : "") + took;
         }
-        String body = "job was "
-                + Theme.colorize("cancelled", t.warning())
-                + (byUser ? " by user" : "")
-                + took;
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip())
-                + cap(t.pipelineFailColor(), nerdfont)
-                + " "
-                + body;
+        String body = "job was " + Theme.colorize("cancelled", t.warning()) + (byUser ? " by user" : "") + took;
+        return chip(Glyphs.CROSS, name, t.pipelineFailureChip()) + cap(t.pipelineFailColor(), nerdfont) + " " + body;
     }
 
     /** Remote cancel — no "by user". */

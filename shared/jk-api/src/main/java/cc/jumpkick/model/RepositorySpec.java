@@ -9,7 +9,7 @@ import java.util.Optional;
 
 /**
  * Declared repository: name, URL, optional inline credential, object-store config, and optional
- * exclusive Maven group bindings (JK-1064 dependency-confusion defense).
+ * exclusive Maven group bindings dependency-confusion defense).
  */
 public record RepositorySpec(
         String name,

@@ -11,10 +11,10 @@ import java.util.Objects;
  * Pure path layout for module build outputs.
  *
  * <ul>
- *   <li><strong>Standalone</strong> (or workspace root as the only unit): {@code <module>/target/}.
- *   <li><strong>Workspace member</strong>: {@code <workspace>/target/<module-rel>/} (Mill-style
- *       central out tree), where {@code module-rel} is the path relative to the workspace root
- *       (e.g. {@code plugins/auditor}).
+ * <li><strong>Standalone</strong> (or workspace root as the only unit): {@code <module>/target/}.
+ * <li><strong>Workspace member</strong>: {@code <workspace>/target/<module-rel>/} (Mill-style
+ * central out tree), where {@code module-rel} is the path relative to the workspace root
+ * (e.g. {@code plugins/auditor}).
  * </ul>
  *
  * <p>Kotlinc and javac use separate dirs ({@code kotlin/} vs {@code classes/}) so Kotlin's
@@ -104,8 +104,8 @@ public final class BuildLayout {
     }
 
     /**
-     * As {@link #moduleTargetDir()} from the two roots alone — the layout decision needs no parsed
-     * project, so callers on parse-free fast paths (preflight memo, JK-1306) share one rule.
+     * As {@link #moduleTargetDir} from the two roots alone — the layout decision needs no parsed
+     * project, so callers on parse-free fast paths (preflight memo, share one rule.
      */
     public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
         Path mod = moduleRoot.toAbsolutePath().normalize();
@@ -131,7 +131,7 @@ public final class BuildLayout {
      *
      * <p>Both javac output and (after assembly) kotlinc output land here. This is the directory the
      * JAR packager reads from, so it contains all compiled classes regardless of which compiler
-     * produced them. The Kotlin incremental compiler writes to {@link #kotlinClassesDir()} first,
+     * produced them. The Kotlin incremental compiler writes to {@link #kotlinClassesDir} first,
      * then jk merges the result here.
      */
     public Path classesDir() {
@@ -145,9 +145,9 @@ public final class BuildLayout {
 
     /**
      * {@code target/jdt/classes/main/} — main class output for an external IDE language server
-     * (Eclipse JDT-LS, used by VS Code's redhat.java). Kept separate from {@link #classesDir()} so an
+     * (Eclipse JDT-LS, used by VS Code's redhat.java). Kept separate from {@link #classesDir} so an
      * IDE's continuous autobuild never collides with jk's incremental compiler, which deletes and
-     * re-hashes every {@code .class} under its own output dir.
+     * re-hashes every {@code.class} under its own output dir.
      */
     public Path jdtClassesDir() {
         return buildDir().resolve("jdt").resolve("classes").resolve("main");
@@ -161,9 +161,9 @@ public final class BuildLayout {
     /**
      * {@code target/kotlin/main/} — kotlinc incremental workspace for main sources.
      *
-     * <p>The Kotlin BTA incremental compiler owns this directory and prunes any {@code .class} file
+     * <p>The Kotlin BTA incremental compiler owns this directory and prunes any {@code.class} file
      * it did not produce. It must never share a dir with javac's output. After kotlinc finishes, jk
-     * merges the output into {@link #classesDir()}.
+     * merges the output into {@link #classesDir}.
      */
     public Path kotlinClassesDir() {
         return buildDir().resolve("kotlin").resolve("main");
@@ -176,7 +176,7 @@ public final class BuildLayout {
 
     /**
      * {@code target/groovy/main/} — groovyc output for main sources. Same merge-into-{@code
-     * classes/} rationale as {@link #kotlinClassesDir()}: the worker's action-cache snapshots its
+     * classes/} rationale as {@link #kotlinClassesDir}: the worker's action-cache snapshots its
      * whole output dir, so it must never share a dir with javac's output.
      */
     public Path groovyClassesDir() {
@@ -255,7 +255,7 @@ public final class BuildLayout {
     // ---- Final artifacts -------------------------------------------------------
 
     /**
-     * Root of all build output for this module (alias of {@link #moduleTargetDir()}).
+     * Root of all build output for this module (alias of {@link #moduleTargetDir}).
      *
      * <p>In a workspace, all members write under {@code <workspace>/target/<module-rel>/} so the
      * monorepo has a single out tree (like Mill's {@code out/}).
@@ -268,14 +268,14 @@ public final class BuildLayout {
      * Destination directory for deliverable artifacts (jars, binaries, OCI images).
      *
      * <ul>
-     *   <li>{@code target/} when the project declares {@code project.main} — it is an application
-     *       and its packaged output is a directly-runnable artifact.
-     *   <li>{@code target/lib/} when no {@code project.main} is declared — it is a library whose
-     *       packaged output is consumed by other projects, not run directly.
+     * <li>{@code target/} when the project declares {@code project.main} — it is an application
+     * and its packaged output is a directly-runnable artifact.
+     * <li>{@code target/lib/} when no {@code project.main} is declared — it is a library whose
+     * packaged output is consumed by other projects, not run directly.
      * </ul>
      *
-     * <p>This rule also applies to native shared-library outputs ({@code .so}, {@code .dylib},
-     * {@code .dll}) produced by GraalVM {@code native-image --shared}.
+     * <p>This rule also applies to native shared-library outputs ({@code.so}, {@code.dylib},
+     * {@code.dll}) produced by GraalVM {@code native-image --shared}.
      */
     public Path artifactDir() {
         return hasMain ? targetDir() : targetDir().resolve("lib");
@@ -309,7 +309,7 @@ public final class BuildLayout {
     /**
      * {@code <artifactDir>/lib<artifact>} — base path for a GraalVM-compiled native shared library
      * ({@code native-image --shared}). This is the {@code -o} basename only; native-image appends
-     * the platform extension ({@code .so}/{@code .dylib}/{@code .dll}) and emits C headers alongside.
+     * the platform extension ({@code.so}/{@code.dylib}/{@code.dll}) and emits C headers alongside.
      */
     public Path nativeLibrary() {
         return artifactDir().resolve("lib" + artifact);

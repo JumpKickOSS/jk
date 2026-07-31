@@ -128,8 +128,8 @@ class PubGrubSolverTest {
     /** Wraps {@code inner}; counts {@link PackageSource#versions} and optionally injects prefs. */
     @Test
     void widens_capped_universe_when_constraint_needs_an_older_release() throws Exception {
-        // JK-1216: versions() is compacted to the top releases (MavenPackageSource caps at 4);
-        // a range below them must trigger expandedVersions(), not NoVersions.
+        // versions is compacted to the top releases (MavenPackageSource caps at 4);
+        // a range below them must trigger expandedVersions, not NoVersions.
         InMemoryPackageSource full = InMemoryPackageSource.builder()
                 .version("leaf", "1.0")
                 .version("leaf", "2.0")

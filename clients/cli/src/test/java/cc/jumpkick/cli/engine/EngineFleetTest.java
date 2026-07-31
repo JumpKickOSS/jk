@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1293: stopping an engine must be reliable without the user reaching for {@code kill}.
+ * stopping an engine must be reliable without the user reaching for {@code kill}.
  *
  * <p>These cover the termination contract rather than the socket protocol: the point of the fleet helper
  * is that it reports what actually happened to a process instead of assuming a request was obeyed. On

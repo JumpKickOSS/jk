@@ -13,7 +13,7 @@ dependencies {
     // readers, the thin client I/O slice (http, forge auth, credential files, CAS read/link), the
     // client-resident JDK/toolchain flow, and the engine wire contract. NO :engine, :io, :resolver,
     // or :toolchain — the compiler enforces that everything heavy reaches the engine over the wire
-    // (EngineClient). ticket-1020: no in-process engine seam on the production classpath.
+    // (EngineClient). No in-process engine seam on the production classpath.
     implementation(project(":jk-api"))
     implementation(project(":core"))
     implementation(project(":client-io"))
@@ -28,7 +28,7 @@ dependencies {
     // src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/.
     implementation(libs.jline.terminal.ffm)
 
-    // ProcessProperties.getArgumentVectorProgramName() for argv[0] `jkx` dispatch
+    // ProcessProperties.getArgumentVectorProgramName for argv[0] `jkx` dispatch
     // (Argv0). compileOnly: inside the image the builder provides the implementation;
     // on a JVM every use is gated behind the imagecode property so the class never loads.
     compileOnly(libs.graalvm.nativeimage)
@@ -89,7 +89,7 @@ dependencies {
     androidWorkerJar(project(":android"))
 }
 
-// Unique short UDS state dir for this test task run (ticket-1021). UDS sun_path is ~108 bytes;
+// Unique short UDS state dir for this test task run. UDS sun_path is ~108 bytes;
 // deep worktree paths under build/ overflow, so pin under /tmp with a per-run id.
 val cliTestStateDir =
         layout.buildDirectory
@@ -102,11 +102,9 @@ val cliTestStateDirShort =
         file(
                 "/tmp/jk-cli-${System.currentTimeMillis().toString(36)}-${(System.identityHashCode(project) and 0xffff).toString(16)}")
 
-// ---------------------------------------------------------------------------
 // Unit vs integration (suite performance):
-//   :cli:test            — pure unit (TUI/args/jsonl); NO engine spawn tax
-//   :cli:integrationTest — Jk.execute + wire engine (serial, worker jars)
-// ---------------------------------------------------------------------------
+// :cli:test — pure unit (TUI/args/jsonl); NO engine spawn tax
+// :cli:integrationTest — Jk.execute + wire engine (serial, worker jars)
 tasks.named<Test>("test") {
     // Engine spawn (PosixDetach setsid) + MemoryProbe FFM not needed for pure unit, but
     // keep native-access harmless for any accidental FFM use in TUI.
@@ -129,7 +127,7 @@ tasks.named<Test>("test") {
 
 tasks.named<Test>("integrationTest") {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
-    // Single fork: one resident engine / JK_STATE_DIR per suite (ticket-1021).
+    // Single fork: one resident engine / JK_STATE_DIR per suite.
     maxParallelForks = 1
     dependsOn(
             ":engine:shadowJar",
@@ -143,7 +141,7 @@ tasks.named<Test>("integrationTest") {
     systemProperty(
             "jk.test.cache.dir",
             layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
-    // Real engine over the wire (ticket-1020) — never jk.test.noEngine.
+    // Real engine over the wire — never jk.test.noEngine.
     // EngineTestExtension autodetection: materialize jar + stop engine after each class (1042/1052).
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
     systemProperty(
@@ -185,49 +183,48 @@ graalvmNative {
         // but the 0.10.4 / GraalVM 25 combination defaults to shared library
         // on this host. Force the executable mode explicitly.
         sharedLibrary.set(false)
-        // Slim classpath only (Stage 5 / ticket-1020) — never link :engine.
+        // Slim classpath only (Stage 5 / — never link:engine.
         classpath(tasks.named("jar"), configurations.runtimeClasspath)
 
         // Size-first build args. The jk binary's primary UX budget is its download +
         // on-disk size and shell-integration startup latency; per-verb CPU work is
         // shrinking as the CLI delegates the heavy lifting (hashing, compiling,
         // packaging) to the resident engine and its forked workers.
-        //
-        // -Os       Optimize for size. (History: was -O3 + -march=x86-64-v3, tuned when
-        //           the CLI process itself did the CAS/ClasspathFingerprint SHA-256
-        //           work — the SIMD -march bought ≈1.5x on no-op builds then. Since the
-        //           Stage 5 split that hashing lives in the jk-engine jar, which
-        //           re-tunes for speed independently — see :engine shadowJar.)
+        // -Os Optimize for size. (History: was -O3 + -march=x86-64-v3, tuned when
+        // the CLI process itself did the CAS/ClasspathFingerprint SHA-256
+        // work — the SIMD -march bought ≈1.5x on no-op builds then. Since the
+        // Stage 5 split that hashing lives in the jk-engine jar, which
+        // re-tunes for speed independently — see:engine shadowJar.)
         // --gc=serial
-        //           Generational serial GC. Small/fast for short verbs and a ≤256 MiB
-        //           engine heap alike, and — unlike epsilon — it actually reclaims, so
-        //           verbs that stream data don't accumulate every transient byte until
-        //           the process dies.
+        // Generational serial GC. Small/fast for short verbs and a ≤256 MiB
+        // engine heap alike, and — unlike epsilon — it actually reclaims, so
+        // verbs that stream data don't accumulate every transient byte until
+        // the process dies.
         // -R:MaxHeapSize=134217728
-        //           Hard 128 MiB max heap for the CLI process. jk's own work is tiny;
-        //           the cap turns any runaway allocation into a fast, loud OOM instead
-        //           of dragging the machine into swap. Heavy work runs in the engine
-        //           (spawned with its own -Xms/-Xmx, which override this baked default)
-        //           and in forked worker JVMs tuned via JvmOptions.
+        // Hard 128 MiB max heap for the CLI process. jk's own work is tiny;
+        // the cap turns any runaway allocation into a fast, loud OOM instead
+        // of dragging the machine into swap. Heavy work runs in the engine
+        // (spawned with its own -Xms/-Xmx, which override this baked default)
+        // and in forked worker JVMs tuned via JvmOptions.
         // -R:MinHeapSize=25165824
-        //           24 MiB initial heap — sized to what a trivial verb actually uses
-        //           (`jk --help` measured ~19 MiB RSS), so the smallest commands fit in
-        //           the floor without a growth step, while anything bigger still grows
-        //           lazily toward the 128 MiB cap.
+        // 24 MiB initial heap — sized to what a trivial verb actually uses
+        // (`jk --help` measured ~19 MiB RSS), so the smallest commands fit in
+        // the floor without a growth step, while anything bigger still grows
+        // lazily toward the 128 MiB cap.
         buildArgs.add("-Os")
         buildArgs.add("--gc=serial")
         buildArgs.add("-R:MaxHeapSize=134217728")
         buildArgs.add("-R:MinHeapSize=25165824")
-        // JLine 4 FFM's signal handler uses Arena.ofShared(), gated behind this
+        // JLine 4 FFM's signal handler uses Arena.ofShared, gated behind this
         // flag in GraalVM 25. Without it the wizard crashes on Signal.INT setup.
         buildArgs.add("-H:+SharedArenaSupport")
         // Silence the FFM "restricted method" runtime warning. Without this,
         // every wizard invocation prints a 4-line WARNING block before the UI.
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
         // (No engine code in this image: the engine role — and its setsid(2)
-        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
+        // downcall — lives in the JVM-hosted engine, shipped as jars by:engine.)
         // Push heavy deps to lazy init. Build-time <clinit> is faster at
-        // runtime but blows up .svm_heap with cached objects we may never
+        // runtime but blows up.svm_heap with cached objects we may never
         // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,
         // grpc, cyclonedx, spdx, jgit, com.google) live in forked workers, not
         // on the binary's classpath, so jline is the only contributor left:
@@ -235,10 +232,10 @@ graalvmNative {
         buildArgs.add("--initialize-at-run-time=org.jline")
         // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
         // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
-        // FreeBSD .so/.dylib for every arch) as image resources.  jk uses the FFM
+        // FreeBSD.so/.dylib for every arch) as image resources. jk uses the FFM
         // terminal provider exclusively; the JNI/JNA fallback (JLineNativeLoader,
         // CLibrary, Kernel32, etc.) is reachable via jline-terminal's AbstractPty
-        // but never exercised at runtime.  Exclude those cross-platform binaries
+        // but never exercised at runtime. Exclude those cross-platform binaries
         // with -H:ExcludeResources so they are not baked into the image heap.
         buildArgs.add("-H:ExcludeResources=org/jline/nativ/.*")
     }

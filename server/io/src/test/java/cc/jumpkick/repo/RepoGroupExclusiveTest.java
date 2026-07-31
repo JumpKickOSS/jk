@@ -13,7 +13,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1064 — exclusive groups hide versions/fetches from non-claiming repos. */
+/**exclusive groups hide versions/fetches from non-claiming repos. */
 class RepoGroupExclusiveTest {
 
     @Test
@@ -44,7 +44,7 @@ class RepoGroupExclusiveTest {
 
     @Test
     void unbound_group_skips_exclusive_specialists(@TempDir Path tmp) throws Exception {
-        // Exclusive-bound repos only serve their claimed groups (JK-1202): internal claims
+        // Exclusive-bound repos only serve their claimed groupsinternal claims
         // com.acme, so junit is not looked up there even though a phantom version exists.
         Path aDir = tmp.resolve("a");
         Path bDir = tmp.resolve("b");
@@ -83,7 +83,7 @@ class RepoGroupExclusiveTest {
         assertThat(merged.eligibleRepos(Coordinate.of("org.junit.jupiter", "junit-jupiter", "0")))
                 .extracting(MavenRepo::name)
                 .containsExactly("path", "central");
-        // JK-1214: the workspace-local path repo answers first even for claimed groups —
+        // the workspace-local path repo answers first even for claimed groups
         // a locally-built artifact outranks the exclusive remote binding.
         assertThat(merged.eligibleRepos(Coordinate.of("cc.jumpkick", "jk-test-runner", "0")))
                 .extracting(MavenRepo::name)
@@ -97,7 +97,7 @@ class RepoGroupExclusiveTest {
 
     @Test
     void prepended_path_repo_serves_a_claimed_group(@TempDir Path tmp) throws Exception {
-        // JK-1214: user binds com.acme exclusively to their internal repo AND adds a path dep
+        // user binds com.acme exclusively to their internal repo AND adds a path dep
         // in that namespace. The path repo must serve it — pre-fix the exclusive claim shadowed
         // the prepended repo and the remote copy silently won (or the fetch 404'd).
         Path internalDir = tmp.resolve("internal-repo");
@@ -117,7 +117,7 @@ class RepoGroupExclusiveTest {
 
     @Test
     void earlier_repo_beats_a_later_repos_warm_mirror(@TempDir Path tmp) throws Exception {
-        // JK-1215: group-level local-first let any warm mirror shadow an earlier cold repo,
+        // group-level local-first let any warm mirror shadow an earlier cold repo,
         // inverting repo-order precedence. Local-first is per-repo, in order.
         Path aDir = tmp.resolve("a-repo");
         Path bDir = tmp.resolve("b-repo");

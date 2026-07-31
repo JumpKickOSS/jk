@@ -5,9 +5,9 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 
 /**
- * Decides which root the CAS lives under, given the cache root a caller was handed (JK-1289).
+ * Decides which root the CAS lives under, given the cache root a caller was handed.
  *
- * <p>Downloaded artifacts belong in {@link JkDirs#storeDir()} so that pointing {@code JK_CACHE_DIR} at a
+ * <p>Downloaded artifacts belong in {@link JkDirs#storeDir} so that pointing {@code JK_CACHE_DIR} at a
  * fresh directory — which is how jk's own tests isolate themselves — stops discarding them and
  * re-fetching from a rate-limited Maven Central. The action cache's key-to-outputs mapping still keys
  * off the cache root, so isolation of build *results* is unchanged; only the blobs are shared, and
@@ -21,10 +21,10 @@ import java.nio.file.Path;
  * redirected to the store, and an explicitly-supplied one is left exactly where it is:
  *
  * <ul>
- *   <li>the ambient cache — including a {@code JK_CACHE_DIR} override, which is the case this exists
- *       for — resolves to the shared store
- *   <li>any other path, i.e. one a caller chose rather than inherited, stays put and keeps today's
- *       isolation
+ * <li>the ambient cache — including a {@code JK_CACHE_DIR} override, which is the case this exists
+ * for — resolves to the shared store
+ * <li>any other path, i.e. one a caller chose rather than inherited, stays put and keeps today's
+ * isolation
  * </ul>
  *
  * {@code JK_HOME} moves the cache and the store together, so it remains the way to get a genuinely cold
@@ -70,5 +70,4 @@ public final class JkStores {
     static Path storeRootFor(Path cacheRoot, Path ambientCache, Path store) {
         return store;
     }
-
 }

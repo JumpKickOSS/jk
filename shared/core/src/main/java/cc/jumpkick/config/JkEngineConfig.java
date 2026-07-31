@@ -10,7 +10,7 @@ import java.util.function.Function;
  * Machine-scoped {@code [engine]} policy ({@code max-heap-mb}, {@code jobs}); not
  * project-overridable. Read once at engine start — not hot-reloaded.
  *
- * <p>{@code jobs} is Mill-shaped concurrent-work budget (JK-1082): {@code null} = default (cores),
+ * <p>{@code jobs} is Mill-shaped concurrent-work budget{@code null} = default (cores),
  * {@code 0} = all cores, {@code 1} = serial, {@code N} = cap. Resolved via {@link Jobs}.
  */
 public record JkEngineConfig(int maxHeapMb, Integer jobs) {

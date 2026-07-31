@@ -456,7 +456,8 @@ class LockCommandTest {
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
-        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).kotlin()).isNull();
+        assertThat(LockfileReader.read(tempDir.resolve("jk-lock.toml")).kotlin())
+                .isNull();
     }
 
     // --- helpers -----------------------------------------------------------

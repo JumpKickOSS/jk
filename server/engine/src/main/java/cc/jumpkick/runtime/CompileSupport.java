@@ -14,13 +14,13 @@ import java.util.stream.Stream;
 /**
  * Pure source-set helpers shared by the build pipeline and the git-source builder. Extracted out of
  * the CLI's {@code CompileCommand} so embedders can drive compilation inputs without depending on
- * {@code :cli}.
+ * {@code:cli}.
  */
 public final class CompileSupport {
 
     private CompileSupport() {}
 
-    /** One shared language answer for engine lanes and the resolver inject (JK-1218). */
+    /** One shared language answer for engine lanes and the resolver inject. */
     public static cc.jumpkick.layout.Languages resolveLanguages(JkBuild.Project project, Path projectDir) {
         return cc.jumpkick.layout.Languages.resolve(project, projectDir);
     }
@@ -60,11 +60,11 @@ public final class CompileSupport {
     }
 
     /**
-     * All main {@code .kt} files for a project.
+     * All main {@code.kt} files for a project.
      *
      * <ul>
-     *   <li>Standard layout: {@code src/main/kotlin/} and {@code src/main/java/}
-     *   <li>Compact layout: {@code src/} (all {@code .kt} files)
+     * <li>Standard layout: {@code src/main/kotlin/} and {@code src/main/java/}
+     * <li>Compact layout: {@code src/} (all {@code.kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinSources(Path projectDir, boolean compact) throws IOException {
@@ -78,11 +78,11 @@ public final class CompileSupport {
     }
 
     /**
-     * All test {@code .kt} files for a project.
+     * All test {@code.kt} files for a project.
      *
      * <ul>
-     *   <li>Standard layout: {@code src/test/kotlin/} and {@code src/test/java/}
-     *   <li>Compact (Mill-like) layout: {@code test/src/} (all {@code .kt} files)
+     * <li>Standard layout: {@code src/test/kotlin/} and {@code src/test/java/}
+     * <li>Compact (Mill-like) layout: {@code test/src/} (all {@code.kt} files)
      * </ul>
      */
     public static List<Path> collectKotlinTestSources(Path projectDir, boolean compact) throws IOException {
@@ -96,7 +96,7 @@ public final class CompileSupport {
     }
 
     /**
-     * All main {@code .groovy} files for a project — roots from {@link
+     * All main {@code.groovy} files for a project — roots from {@link
      * cc.jumpkick.layout.ModuleLayout#mainGroovyRoots} (SIMPLE shares {@code src/} by extension).
      */
     public static List<Path> collectGroovySources(Path projectDir, boolean compact) throws IOException {

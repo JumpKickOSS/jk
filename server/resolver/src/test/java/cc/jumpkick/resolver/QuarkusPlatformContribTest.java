@@ -20,9 +20,7 @@ class QuarkusPlatformContribTest {
                 .as("built-in manifests must include quarkus")
                 .contains("quarkus");
 
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 name = "q"
                 group = "g"

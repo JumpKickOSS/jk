@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1270: the {@code .env} dialect, pinned. There is no {@code .env} specification and
+ * the {@code.env} dialect, pinned. There is no {@code.env} specification and
  * implementations disagree on quoting, escapes, {@code export}, and inner expansion — so jk's
  * choices are asserted rather than left to be discovered.
  */
@@ -74,8 +74,7 @@ class DotEnvTest {
 
     @Test
     void malformed_lines_are_skipped_rather_than_failing_the_build() {
-        assertThat(parse("no-equals-here", "=novalue", "9BAD=x", "GOOD=yes"))
-                .containsExactly(Map.entry("GOOD", "yes"));
+        assertThat(parse("no-equals-here", "=novalue", "9BAD=x", "GOOD=yes")).containsExactly(Map.entry("GOOD", "yes"));
     }
 
     @Test

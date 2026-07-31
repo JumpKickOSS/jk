@@ -54,7 +54,7 @@ class ActionCacheTest {
         cache.store("quarkus-augment", "key-jk", Map.of("src/App.java", "abc"), outputs);
 
         var record = cache.lookup("key-jk").orElseThrow();
-        // JK-1220: plugin-private `.jk-*` scratch never enters the action record or the CAS walk.
+        // plugin-private `.jk-*` scratch never enters the action record or the CAS walk.
         assertThat(record.outputs()).containsOnlyKeys("quarkus-run.jar");
     }
 
@@ -160,7 +160,7 @@ class ActionCacheTest {
 
     @Test
     void restore_never_shares_inode_with_cas_blob(@TempDir Path tempDir) throws IOException {
-        // Invariant: restored class trees must not hard-link CAS blobs (ticket-1004).
+        // Invariant: restored class trees must not hard-link CAS blobs.
         Cas cas = new Cas(tempDir.resolve("cas"));
         ActionCache cache = new ActionCache(cas, tempDir.resolve("actions"));
 

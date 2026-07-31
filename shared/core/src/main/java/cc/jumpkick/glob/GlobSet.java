@@ -245,7 +245,8 @@ public final class GlobSet {
      */
     static List<String> captures(String pattern, Path relativePath) {
         String[] pat = pattern.split("/");
-        String[] act = relativePath.toString().replace(java.io.File.separatorChar, '/').split("/");
+        String[] act =
+                relativePath.toString().replace(java.io.File.separatorChar, '/').split("/");
         List<String> caps = new ArrayList<>();
         int ai = 0;
         for (String p : pat) {

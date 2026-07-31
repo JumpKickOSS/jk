@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * End-to-end tests for Groovy support in jk new / build / test (JK-1165 wave 3). Mirrors
+ * End-to-end tests for Groovy support in jk new / build / test wave 3). Mirrors
  * {@link KotlinCompilationTest}: the scaffolded sample sources are built for real (the Groovy
  * closure resolves from Maven Central via {@link SharedTestCache}), the freshness-stamp tests keep
  * an isolated per-test cache.
@@ -24,7 +24,7 @@ class GroovyCompilationTest {
     @Test
     void build_packages_scaffolded_groovy_classes_into_jar(@TempDir Path tempDir) throws IOException {
         run("new", "--group", "com.example", "--name", "widget", "--lang", "groovy", tempDir.toString());
-        // Simple layout: package-less Calc.groovy at ./src, CalcTest.groovy at ./test/src.
+        // Simple layout: package-less Calc.groovy at./src, CalcTest.groovy at./test/src.
         assertThat(tempDir.resolve("src/Calc.groovy")).exists();
 
         int exit = run("build", "-C", tempDir.toString(), "--cache-dir", SharedTestCache.arg());
@@ -51,7 +51,7 @@ class GroovyCompilationTest {
         long firstMtime = Files.getLastModifiedTime(gvClass).toMillis();
 
         // A no-change rebuild must hit the freshness stamp and NOT re-invoke
-        // groovyc — the output .class is left exactly as the first build wrote it.
+        // groovyc — the output.class is left exactly as the first build wrote it.
         assertThat(run("build", "-C", tempDir.toString(), "--cache-dir", cache.toString()))
                 .isEqualTo(0);
         assertThat(Files.getLastModifiedTime(gvClass).toMillis()).isEqualTo(firstMtime);
@@ -102,7 +102,16 @@ class GroovyCompilationTest {
 
     @Test
     void mixed_groovy_and_java_resolve_both_directions(@TempDir Path tempDir) throws IOException {
-        run("new", "--group", "com.example", "--name", "mixed", "--lang", "groovy", "--layout", "traditional",
+        run(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "mixed",
+                "--lang",
+                "groovy",
+                "--layout",
+                "traditional",
                 tempDir.toString());
         // Opt into Java too — a mixed module declares both java and groovy.
         Path toml = tempDir.resolve("jk.toml");
@@ -150,15 +159,21 @@ class GroovyCompilationTest {
     void spring_boot_groovy_module_packages_a_boot_jar(@TempDir Path tempDir) throws IOException {
         // Hand-wired Boot fixture: scaffold for the JDK pin, then declare the [spring-boot]
         // table + a versionless starter (the plugin auto-imports the Boot BOM) and replace the
-        // sample sources with a Groovy @RestController application. Packaging assertion only —
+        // sample sources with a Groovy @RestController application. Packaging assertion only
         // the app is never booted.
-        run("new", "--group", "com.example", "--name", "bootapp", "--lang", "groovy", "--layout", "traditional",
+        run(
+                "new",
+                "--group",
+                "com.example",
+                "--name",
+                "bootapp",
+                "--lang",
+                "groovy",
+                "--layout",
+                "traditional",
                 tempDir.toString());
         Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                Files.readString(toml)
-                        + """
+        Files.writeString(toml, Files.readString(toml) + """
 
                         [application]
                         main = "com.example.Application"
@@ -204,8 +219,7 @@ class GroovyCompilationTest {
         assertThat(jar).exists();
         try (JarFile jf = new JarFile(jar.toFile())) {
             var attrs = jf.getManifest().getMainAttributes();
-            assertThat(attrs.getValue("Main-Class"))
-                    .isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
+            assertThat(attrs.getValue("Main-Class")).isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
             assertThat(attrs.getValue("Start-Class")).isEqualTo("com.example.Application");
             assertThat(jf.getEntry("BOOT-INF/classes/com/example/Application.class"))
                     .isNotNull();

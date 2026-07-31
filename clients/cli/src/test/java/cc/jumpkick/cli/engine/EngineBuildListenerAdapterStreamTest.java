@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Single-pipeline stream decoding: the {@link EngineClient.ActiveJobs} note must not outlive the
- * stream (a stale jid adds a 2s cancel RPC to every later Ctrl-C in a watch loop — JK-1314), and
- * a cancel terminal injected before {@code plan-done} must settle, not NPE (JK-1312).
+ * stream (a stale jid adds a 2s cancel RPC to every later Ctrl-C in a watch loop —, and
+ * a cancel terminal injected before {@code plan-done} must settle, not NPE.
  */
 class EngineBuildListenerAdapterStreamTest {
 

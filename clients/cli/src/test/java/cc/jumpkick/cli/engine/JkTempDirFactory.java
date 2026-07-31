@@ -8,8 +8,8 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirFactory;
 
 /**
- * Prefer short {@code /tmp} paths for UDS-friendly state (ticket-1021). Cleanup is owned by {@link
- * JkTempDirDeletionStrategy} (ticket-1055).
+ * Prefer short {@code /tmp} paths for UDS-friendly state. Cleanup is owned by {@link
+ * JkTempDirDeletionStrategy}.
  */
 public final class JkTempDirFactory implements TempDirFactory {
 

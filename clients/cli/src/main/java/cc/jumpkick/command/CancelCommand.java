@@ -19,11 +19,11 @@ import java.util.Optional;
 
 /**
  * {@code jk cancel} / {@code jk kill} / {@code jk cancel &lt;jid&gt;} — cancel a live engine job
- * (JK-1252).
+ *
  *
  * <ul>
- *   <li>No args: cancel every running job for the current project directory.
- *   <li>{@code &lt;jid&gt;}: cancel that job by id (from {@code jk jobs} / {@code job-start}).
+ * <li>No args: cancel every running job for the current project directory.
+ * <li>{@code &lt;jid&gt;}: cancel that job by id (from {@code jk jobs} / {@code job-start}).
  * </ul>
  */
 public final class CancelCommand implements CliCommand {
@@ -58,7 +58,7 @@ public final class CancelCommand implements CliCommand {
     public int run(Invocation in) throws Exception {
         // From the invocation (so -C/--directory works, like every other command), then resolved
         // to the workspace root: jobs register their ENTRY dir, so cancelling from a member dir
-        // must match the workspace build that covers it (JK-1315).
+        // must match the workspace build that covers it.
         Path dir = cancelScope(GlobalOptions.from(in).workingDir());
         Optional<String> jidArg = in.positionals().isEmpty()
                 ? Optional.empty()

@@ -11,7 +11,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Thin MCP (Model Context Protocol) JSON-RPC surface for agents (JK-1095). Hosted on the engine
+ * Thin MCP (Model Context Protocol) JSON-RPC surface for agents. Hosted on the engine
  * HTTP server next to the web dashboard — not a second build engine.
  *
  * <p>Transport: {@code POST /mcp} with a JSON-RPC 2.0 body (single object or batch array). Responses
@@ -197,7 +197,7 @@ public final class McpHandler {
                         Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
         tools.add(tool(
                 "jk_cancel",
-                "Cancel an in-flight job by jid (or requestId alias). Grace then force workers (JK-1096 / JK-1252).",
+                "Cancel an in-flight job by jid (or requestId alias). Grace then force workers.",
                 objectSchema(Map.of(
                         "jid",
                         Map.of(
@@ -206,11 +206,7 @@ public final class McpHandler {
                                 "description",
                                 "Job id from jk_build / jk_test / jk_lock / job-start (preferred)"),
                         "requestId",
-                        Map.of(
-                                "type",
-                                "integer",
-                                "description",
-                                "Alias for jid (kept for one release cycle)")))));
+                        Map.of("type", "integer", "description", "Alias for jid (kept for one release cycle)")))));
         tools.add(tool(
                 "jk_project",
                 "Parse project metadata from dir/jk.toml (coord, description).",

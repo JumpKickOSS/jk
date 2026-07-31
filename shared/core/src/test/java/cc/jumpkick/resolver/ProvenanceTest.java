@@ -33,7 +33,7 @@ class ProvenanceTest {
     @Test
     void diamond_from_same_root_yields_one_shortest_path() {
         // root -> a -> leaf
-        //      -> b -> leaf
+        // -> b -> leaf
         // Same declared root: report one shortest route (not both diamond arms).
         JkBuild project = projectWithMainDeps("com.foo:root");
         Lockfile lock = lockOf(
@@ -52,7 +52,7 @@ class ProvenanceTest {
     @Test
     void a_root_behind_another_declared_root_still_gets_a_path() {
         // Declared root A depends on declared root B which depends on the target: the reverse BFS
-        // must not stop at B — one shortest path per DISTINCT root (JK-1318).
+        // must not stop at B — one shortest path per DISTINCT root.
         JkBuild project = projectWithMainDeps("com.foo:a", "com.foo:b");
         Lockfile lock = lockOf(
                 pkg("com.foo:a", "1.0", List.of("com.foo:b@1.0")),
@@ -89,7 +89,7 @@ class ProvenanceTest {
     void fan_in_through_shared_mid_does_not_multiply_paths() {
         // Two declared roots both go through rewrite-core-style fan-in before the leaf.
         // rootA -> mid -> a -> leaf
-        // rootA -> mid -> b -> leaf  (should not create 2 paths for rootA)
+        // rootA -> mid -> b -> leaf (should not create 2 paths for rootA)
         // rootB -> mid -> leaf
         JkBuild project = projectWithMainDeps("com.foo:rootA", "com.foo:rootB");
         Lockfile lock = lockOf(
@@ -144,9 +144,7 @@ class ProvenanceTest {
         // Root jk.toml has no deps — only workspace modules do (the real monorepo case).
         Path modDir = dir.resolve("mod-a");
         Files.createDirectories(modDir);
-        Files.writeString(
-                modDir.resolve("jk.toml"),
-                """
+        Files.writeString(modDir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "mod-a"
@@ -180,9 +178,8 @@ class ProvenanceTest {
     void lock_top_path_when_no_declared_roots() {
         // Empty project deps: still reverse-walk to the lockfile top (not a blank stale message).
         JkBuild project = projectWithMainDeps();
-        Lockfile lock = lockOf(
-                pkg("com.foo:root", "1.0", List.of("com.foo:leaf@1.0")),
-                pkg("com.foo:leaf", "1.0", List.of()));
+        Lockfile lock =
+                lockOf(pkg("com.foo:root", "1.0", List.of("com.foo:leaf@1.0")), pkg("com.foo:leaf", "1.0", List.of()));
 
         List<Provenance.Path> paths = Provenance.pathsTo(project, lock, "com.foo:leaf");
         assertThat(paths).singleElement().satisfies(p -> assertThat(p.render())
@@ -192,9 +189,7 @@ class ProvenanceTest {
     @Test
     void true_orphan_returns_empty() {
         JkBuild project = projectWithMainDeps("com.foo:root");
-        Lockfile lock = lockOf(
-                pkg("com.foo:root", "1.0", List.of()),
-                pkg("com.foo:orphan", "1.0", List.of()));
+        Lockfile lock = lockOf(pkg("com.foo:root", "1.0", List.of()), pkg("com.foo:orphan", "1.0", List.of()));
 
         List<Provenance.Path> paths = Provenance.pathsTo(project, lock, "com.foo:orphan");
         assertThat(paths).isEmpty();

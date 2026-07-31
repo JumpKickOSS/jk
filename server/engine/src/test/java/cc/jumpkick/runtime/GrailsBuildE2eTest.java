@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.objectweb.asm.ClassReader;
 
 /**
- * JK-1166 acceptance: the [grails] plugin drives a scaffold-shaped Grails 8 app through the real
+ * acceptance: the [grails] plugin drives a scaffold-shaped Grails 8 app through the real
  * pipeline — grails-app sources compile over the groovy lane (manifest source-roots), grails-app/
  * conf lands in resources, and the grails-jar packager produces a Boot-launcher jar.
  *
@@ -39,7 +39,7 @@ class GrailsBuildE2eTest {
                 group   = "com.example"
                 version = "1.0.0"
                 jdk     = 21
-                groovy  = "5.0.7" # grails scaffold pin (GRAILS_GROOVY_VERSION) — overrides the M4 bom (JK-1223)
+                groovy  = "5.0.7" # grails scaffold pin (GRAILS_GROOVY_VERSION) — overrides the M4 bom
                 layout  = "simple"
 
                 [application]
@@ -162,8 +162,7 @@ class GrailsBuildE2eTest {
         }
         try (JarFile jf = new JarFile(jar.toFile())) {
             var attrs = jf.getManifest().getMainAttributes();
-            assertThat(attrs.getValue("Main-Class"))
-                    .isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
+            assertThat(attrs.getValue("Main-Class")).isEqualTo("org.springframework.boot.loader.launch.JarLauncher");
             assertThat(attrs.getValue("Start-Class")).isEqualTo("com.example.Application");
             assertThat(attrs.getValue("Grails-Version")).isEqualTo("8.0.0-M4");
             assertThat(jf.getEntry("BOOT-INF/classes/com/example/Note.class")).isNotNull();

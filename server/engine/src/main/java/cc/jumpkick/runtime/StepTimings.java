@@ -128,7 +128,7 @@ public final class StepTimings {
     /**
      * EWMA-fold samples into the ledger and persist (best-effort; advisory only).
      *
-     * <p>JK-1178: near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
+     * <p>near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
      * learned rates toward zero. Alpha defaults to {@link #DEFAULT_ALPHA}.
      */
     public static void record(Path cache, List<Sample> samples, double alpha, long nowMillis) {
@@ -145,7 +145,7 @@ public final class StepTimings {
         }
         try {
             write(cache.resolve("timings.toml"), m);
-            MEMO.remove(cache); // next load() in this process sees the update
+            MEMO.remove(cache); // next load in this process sees the update
         } catch (IOException | RuntimeException ignored) {
             // advisory cache — never fail the build over it
         }

@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@link AutoLock#maybeReLock} inside a workspace: a stale relock triggered from one member must
  * resolve the whole workspace union into the root {@code jk-lock.toml} — never truncate it to the
- * triggering module's closure (JK-1304). Offline: deps resolve from a hand-written {@code file://}
+ * triggering module's closure. Offline: deps resolve from a hand-written {@code file://}
  * Maven repo.
  */
 @Tag("integration")
@@ -34,9 +34,7 @@ class AutoLockWorkspaceTest {
         Path vDir = dir.resolve(version);
         Files.createDirectories(vDir);
         Files.write(vDir.resolve(artifact + "-" + version + ".jar"), EMPTY_ZIP);
-        Files.writeString(
-                vDir.resolve(artifact + "-" + version + ".pom"),
-                """
+        Files.writeString(vDir.resolve(artifact + "-" + version + ".pom"), """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
@@ -45,11 +43,8 @@ class AutoLockWorkspaceTest {
                   <version>%s</version>
                   <packaging>jar</packaging>
                 </project>
-                """
-                        .formatted(group, artifact, version));
-        Files.writeString(
-                dir.resolve("maven-metadata.xml"),
-                """
+                """.formatted(group, artifact, version));
+        Files.writeString(dir.resolve("maven-metadata.xml"), """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <metadata>
                   <groupId>%s</groupId>
@@ -59,8 +54,7 @@ class AutoLockWorkspaceTest {
                     <versions><version>%s</version></versions>
                   </versioning>
                 </metadata>
-                """
-                        .formatted(group, artifact, version, version));
+                """.formatted(group, artifact, version, version));
     }
 
     @Test
@@ -135,7 +129,7 @@ class AutoLockWorkspaceTest {
         List<String> names =
                 updated.artifacts().stream().map(Lockfile.Artifact::name).toList();
         // The union: app's own dep AND the sibling-only dep — a member-scoped closure would
-        // have truncated util away (the JK-1304 regression).
+        // have truncated util away (the regression).
         assertThat(names).anyMatch(n -> n.contains("extra"));
         assertThat(names).anyMatch(n -> n.contains("util"));
     }

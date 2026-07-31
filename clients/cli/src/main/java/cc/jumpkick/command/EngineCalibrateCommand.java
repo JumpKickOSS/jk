@@ -18,20 +18,20 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code jk engine calibrate} — measure this machine's build-relevant costs (JK-1180).
+ * {@code jk engine calibrate} — measure this machine's build-relevant costs.
  *
  * <ol>
- *   <li>If the engine is not running (or {@code --force} + stop), time a cold engine spawn.
- *   <li>Ask the engine to run the multi-probe suite (JVM fork, javac, disk, hash CPU, synthetic
- *       test-worker, JUnit Platform + resolve when online) and store timings under {@code
- *       ~/.jk/state/builds/calibration.toml}.
+ * <li>If the engine is not running (or {@code --force} + stop), time a cold engine spawn.
+ * <li>Ask the engine to run the multi-probe suite (JVM fork, javac, disk, hash CPU, synthetic
+ * test-worker, JUnit Platform + resolve when online) and store timings under {@code
+ * ~/.jk/state/builds/calibration.toml}.
  * </ol>
  *
  * <p>Network is <strong>on by default</strong> (fetch Jupiter jars if missing + Maven Central
  * micro-GET). Opt out with global {@code --offline}. Idempotent unless global {@code --force}.
  *
  * <p>TTY chrome: one live {@code ▶ Calibrate …} line that settles in place to
- * {@code ✓ Calibrate  Host calibration saved} (probe details print below).
+ * {@code ✓ Calibrate Host calibration saved} (probe details print below).
  */
 public final class EngineCalibrateCommand implements CliCommand {
 
@@ -59,8 +59,8 @@ public final class EngineCalibrateCommand implements CliCommand {
         EnginePaths.Paths paths = EnginePaths.current();
         long coldMs = 0;
         // One live chip line on a TTY (▶ … → ✓ …); pipes/json get a single settled line only.
-        boolean animate = PipelineConsole.isInteractiveTerminal()
-                && PipelineConsole.modeFor(global) == PipelineConsole.Mode.AUTO;
+        boolean animate =
+                PipelineConsole.isInteractiveTerminal() && PipelineConsole.modeFor(global) == PipelineConsole.Mode.AUTO;
         try (CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Calibrate", animate)) {
             boolean alreadyUp = EngineClient.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
                     .map(h -> Jk.VERSION.equals(h.version()))

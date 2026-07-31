@@ -20,7 +20,7 @@ import org.tomlj.Toml;
 import org.tomlj.TomlParseResult;
 
 /**
- * Machine-scoped cold ETA priors (JK-1180 + continuous host learning).
+ * Machine-scoped cold ETA priors + continuous host learning).
  *
  * <p><b>Bootstrap:</b> {@link #ensure} runs a multi-phase {@link HardwareProbe} when no usable
  * {@code ~/.jk/state/builds/calibration.toml} exists (or on {@code --force}). Network probes
@@ -342,8 +342,7 @@ public final class Calibration {
     public long packageAssemblyMs() {
         OptionalDouble learned = this.learned.meanMs(HostLearnedRates.PACKAGE_ASSEMBLY_MS);
         if (learned.isPresent()) return Math.max(1, Math.round(learned.getAsDouble()));
-        return scaleBaseline(
-                EffortWeights.ASSEMBLY_RUN * (long) EffortWeights.MS_PER_WEIGHT, ioScale());
+        return scaleBaseline(EffortWeights.ASSEMBLY_RUN * (long) EffortWeights.MS_PER_WEIGHT, ioScale());
     }
 
     /**
@@ -370,7 +369,7 @@ public final class Calibration {
                 yield testSuiteStartupMs() + Math.max(0, (body + w - 1) / w);
             }
             case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
-                    compilePerSourceMs(s) * Math.max(1, n);
+                compilePerSourceMs(s) * Math.max(1, n);
             case "package-jar" -> packageJarMs();
             case "package-assembly" -> packageAssemblyMs();
             default -> 0L;
@@ -731,9 +730,8 @@ public final class Calibration {
             Calibration cur = load();
             HostLearnedRates next = cur.learned.withSamples(samples);
             if (next == cur.learned) return;
-            Calibration updated = cur.present()
-                    ? cur.withLearned(next)
-                    : minimalWithLearned(next, System.currentTimeMillis());
+            Calibration updated =
+                    cur.present() ? cur.withLearned(next) : minimalWithLearned(next, System.currentTimeMillis());
             // Bump updated so the file is not treated as stale solely from age of last probe.
             updated = updated.touch(System.currentTimeMillis());
             persist(updated);
@@ -871,21 +869,14 @@ public final class Calibration {
             Optional<Path> javaHome = resolveJavaHome(jdksDir);
             if (javaHome.isEmpty()) return null;
             Path home = javaHome.get();
-            HardwareProbe.Result r =
-                    HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork, JkDirs.cache()));
+            HardwareProbe.Result r = HardwareProbe.run(home, HardwareProbe.Options.of(allowNetwork, JkDirs.cache()));
             if (r == null || !(r.msPerWeight() > 0)) return null;
             String jdkId = JdkRegistry.identifierFor(home);
-            int platformMethods = r.junitPlatformMethods() > 0
-                    ? r.junitPlatformMethods()
-                    : (r.junitPlatformUsed() ? 1 : 0);
+            int platformMethods =
+                    r.junitPlatformMethods() > 0 ? r.junitPlatformMethods() : (r.junitPlatformUsed() ? 1 : 0);
             long suite = deriveSuiteStartup(
-                    r.junitPlatformUsed(),
-                    r.junitPlatformMs(),
-                    platformMethods,
-                    r.junitForkMs(),
-                    r.jvmForkMs());
-            long method = deriveMethodMs(
-                    r.junitRunMs(), r.junitPlatformUsed(), r.junitPlatformMs(), platformMethods);
+                    r.junitPlatformUsed(), r.junitPlatformMs(), platformMethods, r.junitForkMs(), r.jvmForkMs());
+            long method = deriveMethodMs(r.junitRunMs(), r.junitPlatformUsed(), r.junitPlatformMs(), platformMethods);
             long compilePer = r.javacMs() > 0
                     ? Math.max(1, Math.round(r.javacMs() / (double) Math.max(1, HardwareProbe.JAVAC_SOURCES)))
                     : 0;
@@ -919,11 +910,7 @@ public final class Calibration {
     }
 
     static long deriveSuiteStartup(
-            boolean junitPlatformUsed,
-            long junitPlatformMs,
-            int platformMethods,
-            long junitForkMs,
-            long jvmForkMs) {
+            boolean junitPlatformUsed, long junitPlatformMs, int platformMethods, long junitForkMs, long jvmForkMs) {
         if (junitPlatformUsed && junitPlatformMs > 0) {
             int n = Math.max(1, platformMethods);
             // Attribute most of a multi-method Platform wall to startup; residual → method slope.
@@ -936,13 +923,11 @@ public final class Calibration {
         return 0;
     }
 
-    static long deriveSuiteStartup(
-            boolean junitPlatformUsed, long junitPlatformMs, long junitForkMs, long jvmForkMs) {
+    static long deriveSuiteStartup(boolean junitPlatformUsed, long junitPlatformMs, long junitForkMs, long jvmForkMs) {
         return deriveSuiteStartup(junitPlatformUsed, junitPlatformMs, 1, junitForkMs, jvmForkMs);
     }
 
-    static long deriveMethodMs(
-            long junitRunMs, boolean junitPlatformUsed, long junitPlatformMs, int platformMethods) {
+    static long deriveMethodMs(long junitRunMs, boolean junitPlatformUsed, long junitPlatformMs, int platformMethods) {
         if (junitPlatformUsed && junitPlatformMs > 0 && platformMethods > 0) {
             long startup = deriveSuiteStartup(true, junitPlatformMs, platformMethods, 0, 0);
             long residual = Math.max(0, junitPlatformMs - startup);
@@ -970,13 +955,7 @@ public final class Calibration {
         try {
             JdkRegistry registry = jdksDir != null ? new JdkRegistry(jdksDir) : new JdkRegistry();
             var req = new JdkResolution.Request(
-                    null,
-                    SessionContext.current().jdkSpec(),
-                    System.getenv("JK_JDK"),
-                    null,
-                    null,
-                    0,
-                    System::getenv);
+                    null, SessionContext.current().jdkSpec(), System.getenv("JK_JDK"), null, null, 0, System::getenv);
             var r = JdkResolution.resolve(req, registry, GlobalDefaultJdk.current(), JdkLts.OFFLINE_LATEST_LTS);
             return r.jdk().map(cc.jumpkick.jdk.InstalledJdk::home);
         } catch (Exception e) {
@@ -990,7 +969,8 @@ public final class Calibration {
 
     private static double safeLoadAverage() {
         try {
-            return java.lang.management.ManagementFactory.getOperatingSystemMXBean().getSystemLoadAverage();
+            return java.lang.management.ManagementFactory.getOperatingSystemMXBean()
+                    .getSystemLoadAverage();
         } catch (Exception e) {
             return -1;
         }
@@ -1076,7 +1056,29 @@ public final class Calibration {
 
     private static Calibration absent() {
         return new Calibration(
-                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, null, null, 0, false, false, false, 0, 0, 0, 0, new HostLearnedRates());
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -1,
+                0,
+                null,
+                null,
+                0,
+                false,
+                false,
+                false,
+                0,
+                0,
+                0,
+                0,
+                new HostLearnedRates());
     }
 
     private static void persist(Calibration c) {
@@ -1091,11 +1093,10 @@ public final class Calibration {
     }
 
     private String render() {
-        String base =
-                """
-                # jk host calibration (JK-1180). Bootstrap probe + continuous learned priors.
-                # Network probes run by default; pass global --offline to skip.
-                # Safe to delete (re-runs on next explain/build / jk engine calibrate).
+        String base = """
+                # JumpKick host calibration for build-time estimates.
+                # Produced by `jk engine calibrate` or automatically on explain/build.
+                # Safe to delete; it will be recreated as needed. Use global --offline to skip network probes.
                 schema               = %d
                 ms-per-weight        = %s
                 jvm-fork-ms          = %d
@@ -1118,30 +1119,29 @@ public final class Calibration {
                 junit-platform-used  = %s
                 resolve-used         = %s
                 updated              = %d
-                """
-                        .formatted(
-                                schema <= 0 ? SCHEMA : schema,
-                                round3(msPerWeight),
-                                jvmForkMs,
-                                javacMs,
-                                diskIoMs,
-                                hashCpuMs,
-                                junitForkMs,
-                                junitRunMs,
-                                junitPlatformMs,
-                                resolveMs,
-                                engineColdStartMs,
-                                probeTestSuiteStartupMs,
-                                probeTestMethodMs,
-                                probeCompilePerSourceMs,
-                                round3(loadAtCalibration),
-                                cores,
-                                quote(jdk == null ? "" : jdk),
-                                quote(jkVersion == null ? "" : jkVersion),
-                                measured,
-                                junitPlatformUsed,
-                                resolveUsed,
-                                updated);
+                """.formatted(
+                        schema <= 0 ? SCHEMA : schema,
+                        round3(msPerWeight),
+                        jvmForkMs,
+                        javacMs,
+                        diskIoMs,
+                        hashCpuMs,
+                        junitForkMs,
+                        junitRunMs,
+                        junitPlatformMs,
+                        resolveMs,
+                        engineColdStartMs,
+                        probeTestSuiteStartupMs,
+                        probeTestMethodMs,
+                        probeCompilePerSourceMs,
+                        round3(loadAtCalibration),
+                        cores,
+                        quote(jdk == null ? "" : jdk),
+                        quote(jkVersion == null ? "" : jkVersion),
+                        measured,
+                        junitPlatformUsed,
+                        resolveUsed,
+                        updated);
         return base + learned.renderToml();
     }
 
@@ -1180,9 +1180,10 @@ public final class Calibration {
                     "  probe residual      startup=%d ms  empty-method=%d ms  (diagnostic only)%n",
                     probeTestSuiteStartupMs, probeTestMethodMs));
         }
-        learned.meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS).ifPresent(m -> sb.append(String.format(
-                "  learned test/method %.1f ms (n=%d)%n",
-                m, learned.sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))));
+        learned.meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS)
+                .ifPresent(m -> sb.append(String.format(
+                        "  learned test/method %.1f ms (n=%d)%n",
+                        m, learned.sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))));
         if (engineColdStartMs > 0) sb.append(String.format("  engine cold start   %d ms%n", engineColdStartMs));
         sb.append(String.format("  cores=%d  measured=%s  schema=%d%n", cores, measured, schema));
         return sb.toString().stripTrailing();
@@ -1201,15 +1202,14 @@ public final class Calibration {
     }
 
     /**
-     * Install a calibration for the current process (tests). Pass {@link #absentForTest()} to force
-     * the uncalibrated static-floor path in {@link EffortWeights} without reading {@code
-     * ~/.jk/state/builds/calibration.toml}. Always pair with {@link #clearMemo()} in {@code finally}.
+     * Install a calibration for the current process (tests). Pass {@link #absentForTest()} for empty
+     * priors. Pair with {@link #clearMemo()} in {@code finally}.
      */
     static void installForTest(Calibration cal) {
         MEMO.set(cal == null ? absent() : cal);
     }
 
-    /** Empty calibration (no probe, no learned rates) for hermetic cold-path unit tests. */
+    /** Empty calibration (no probe, no learned rates) for unit tests. */
     static Calibration absentForTest() {
         return absent();
     }

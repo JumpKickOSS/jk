@@ -34,16 +34,16 @@ import java.util.Objects;
  * <p><b>Integration sequence</b> (see also {@code docs/architecture.md}):
  *
  * <ol>
- *   <li>{@link #open(Path)} — project root containing {@code jk.toml}
- *   <li>{@link #connect()} — ensure a live, version-matched engine (no-op under test in-process)
- *   <li>{@link #projectInfo()} — group/name/modules without parsing TOML in the IDE process
- *   <li>{@link #sync(ProgressListener)} — dependency materialization with progress callbacks
- *   <li>{@link #ideModel()} — classpath / source roots for generators or in-IDE classpaths
- *   <li>{@link #build(BuildListener)} — optional full build with per-module/step events
+ * <li>{@link #open(Path)} — project root containing {@code jk.toml}
+ * <li>{@link #connect} — ensure a live, version-matched engine (no-op under test in-process)
+ * <li>{@link #projectInfo} — group/name/modules without parsing TOML in the IDE process
+ * <li>{@link #sync(ProgressListener)} — dependency materialization with progress callbacks
+ * <li>{@link #ideModel} — classpath / source roots for generators or in-IDE classpaths
+ * <li>{@link #build(BuildListener)} — optional full build with per-module/step events
  * </ol>
  *
  * <p>File generation ({@code jk ide}) remains a separate offline/export path; this class does not
- * write {@code .iml} / {@code .vscode} files. The engine stays out-of-process.
+ * write {@code.iml} / {@code.vscode} files. The engine stays out-of-process.
  */
 public class IdeEngineClient {
 
@@ -51,7 +51,7 @@ public class IdeEngineClient {
     private final Path cacheDir;
     private final Path jdksDir;
 
-    /** Package-visible for BSP/IDE tests that stub engine calls (JK-1063). */
+    /** Package-visible for BSP/IDE tests that stub engine calls. */
     IdeEngineClient(Path projectDir, Path cacheDir, Path jdksDir) {
         this.projectDir = projectDir.toAbsolutePath().normalize();
         this.cacheDir = cacheDir.toAbsolutePath().normalize();
@@ -207,7 +207,7 @@ public class IdeEngineClient {
     }
 
     /**
-     * Build a single module directory (ticket-1041). When {@code moduleDir} is null, same as
+     * Build a single module directory. When {@code moduleDir} is null, same as
      * {@link #build(BuildListener)}. Workspace roots still cascade when {@code moduleDir} is null.
      */
     public BuildOutcome buildModule(Path moduleDir, BuildListener listener) throws IOException {
@@ -229,7 +229,7 @@ public class IdeEngineClient {
     }
 
     /**
-     * Run the test pipeline for a module (JK-1048 / JK-1063 BSP {@code buildTarget/test}). When
+     * Run the test pipeline for a module BSP {@code buildTarget/test}). When
      * {@code moduleDir} is null on a workspace root, cascades every module (mirrors {@link
      * #build(BuildListener)}). When null on a single project, tests that project. Uses the same
      * engine path as {@code jk test}.
@@ -239,11 +239,10 @@ public class IdeEngineClient {
     }
 
     /**
-     * Run tests with optional suite/tag selection (JK-1143 BSP {@code data} / CLI TestSelection).
+     * Run tests with optional suite/tag selection BSP {@code data} / CLI TestSelection).
      * {@code selection} null → session default (usually suite {@code test} only).
      */
-    public BuildOutcome testModule(
-            Path moduleDir, BuildListener listener, cc.jumpkick.config.TestSelection selection)
+    public BuildOutcome testModule(Path moduleDir, BuildListener listener, cc.jumpkick.config.TestSelection selection)
             throws IOException {
         BuildListener progress = listener == null ? BuildListener.NOOP : listener;
         if (moduleDir == null) {
@@ -259,7 +258,7 @@ public class IdeEngineClient {
         return testOneModule(mod, progress, selection);
     }
 
-    /** Sequential per-module {@code jk test} for a workspace root (JK-1063). */
+    /** Sequential per-module {@code jk test} for a workspace root. */
     private BuildOutcome testWorkspace(BuildListener progress, cc.jumpkick.config.TestSelection selection)
             throws IOException {
         IdeWireModel model = ideModel();
@@ -284,8 +283,8 @@ public class IdeEngineClient {
         return new BuildOutcome(failed == 0, modules, failed, List.copyOf(errors));
     }
 
-    private BuildOutcome testOneModule(
-            Path mod, BuildListener progress, cc.jumpkick.config.TestSelection selection) throws IOException {
+    private BuildOutcome testOneModule(Path mod, BuildListener progress, cc.jumpkick.config.TestSelection selection)
+            throws IOException {
         String coord = mod.getFileName() != null ? mod.getFileName().toString() : mod.toString();
         progress.onModuleStart(coord, mod);
         List<String> errors = new ArrayList<>();

@@ -10,8 +10,8 @@ description = "jk core foundations: TOML config parser, lockfile, layout, librar
 
 dependencies {
     api(project(":jk-api"))
-    // MiniJson + Jsonl live in :plugin-sdk (JK-1133); core depends on plugin-sdk for the tree codec.
-    // plugin-api itself depends only on :model, so the direction is legal.
+    // MiniJson + Jsonl live in:plugin-sdk; core depends on plugin-sdk for the tree codec.
+    // plugin-api itself depends only on:model, so the direction is legal.
     api(project(":plugin-sdk"))
     api(libs.tomlj)
     // ComparableVersion is the Maven-canonical version comparator (e.g.
@@ -20,7 +20,7 @@ dependencies {
     implementation(libs.maven.artifact)
 }
 
-// Built-in plugin manifests also live under src/main/resources (self-host / ticket-1007 — jk
+// Built-in plugin manifests also live under src/main/resources (self-host /— jk
 // has no Gradle processResources step). Keep baking from plugins/* so Gradle overwrites the
 // resource tree with the plugin module's current blueprint (no silent drift).
 tasks.processResources {

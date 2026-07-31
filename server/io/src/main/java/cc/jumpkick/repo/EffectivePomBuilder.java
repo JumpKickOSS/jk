@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 /**
  * Builds {@link EffectivePom}s: parent-chain merge, BOM import inlining, version backfill. Depth
  * capped at {@value #MAX_DEPTH}. Cache is concurrent so lock-time parallel materialize and parallel
- * BOM-import expansion (JK-1090) can share one builder safely.
+ * BOM-import expansion can share one builder safely.
  */
 public final class EffectivePomBuilder {
 
@@ -100,7 +100,7 @@ public final class EffectivePomBuilder {
         props.put("project.packaging", child.packaging());
 
         // 3. Managed deps — parent first, then child in declaration order (later wins via dedupe).
-        // BOM imports: prefetch/expand unique BOM POMs in parallel (JK-1090), then splice results
+        // BOM imports: prefetch/expand unique BOM POMs in parallel, then splice results
         // back in original order so override semantics stay Maven-correct.
         List<Pom.Dep> mergedManaged = new ArrayList<>();
         if (parent != null) mergedManaged.addAll(parent.managedDependencies());
@@ -133,11 +133,11 @@ public final class EffectivePomBuilder {
         mergedDeps = dedupeByModule(mergedDeps);
 
         // 5. Apply dependencyManagement defaults. Maven fills in not just the
-        //    version but the scope / type / classifier / exclusions a dep leaves
-        //    unspecified — e.g. google-java-format declares guava-testlib with no
-        //    version OR scope, inheriting <scope>test</scope> from its parent's
-        //    management; backfilling only the version would leak it (and the
-        //    guava-android it drags in) onto the compile classpath.
+        // version but the scope / type / classifier / exclusions a dep leaves
+        // unspecified — e.g. google-java-format declares guava-testlib with no
+        // version OR scope, inheriting <scope>test</scope> from its parent's
+        // management; backfilling only the version would leak it (and the
+        // guava-android it drags in) onto the compile classpath.
         Map<String, Pom.Dep> managedByModule = new HashMap<>();
         for (Pom.Dep m : mergedManaged) managedByModule.put(depKey(m), m);
         List<Pom.Dep> finalDeps = new ArrayList<>(mergedDeps.size());
@@ -150,11 +150,10 @@ public final class EffectivePomBuilder {
         }
         finalDeps = substituteAll(finalDeps, props);
 
-        // JK-1202: retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
+        // retain dependencyManagement only on packaging=pom (parents/BOMs). Jar/war
         // artifacts already had management applied into finalDeps; keeping a full flattened
         // managed list (~2k entries for quarkus-bom parents) on every GAV dominated engine heap.
-        List<Pom.Dep> retainedManaged =
-                "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
+        List<Pom.Dep> retainedManaged = "pom".equalsIgnoreCase(child.packaging()) ? mergedManaged : List.of();
 
         return new EffectivePom(
                 groupId, child.artifactId(), version, child.packaging(), props, finalDeps, retainedManaged);
@@ -164,7 +163,7 @@ public final class EffectivePomBuilder {
 
     /**
      * Expand unique {@code import}-scoped BOM POMs keyed by GAV. One unique BOM stays on the caller
-     * thread; several run on {@link JkThreads#io()} with independent cycle sets (JK-1090).
+     * thread; several run on {@link JkThreads#io} with independent cycle sets.
      */
     private Map<String, EffectivePom> buildBomImportsParallel(
             List<Coordinate> bomCoords, Set<String> visiting, int depth) throws IOException, InterruptedException {
@@ -219,7 +218,7 @@ public final class EffectivePomBuilder {
 
     /**
      * Keeps the last occurrence per dependency key, preserving insertion order otherwise. Maven's
-     * dependency identity is {@code groupId:artifactId:type:classifier}, NOT just the module —
+     * dependency identity is {@code groupId:artifactId:type:classifier}, NOT just the module
      * logback-parent manages {@code logback-core} twice (the jar and a {@code test-jar}), and
      * logback-classic depends on both; collapsing on module alone let the test-jar row overwrite
      * the real one, silently dropping {@code logback-core} from every Boot classpath.

@@ -24,14 +24,15 @@ class EffortWeightsStepEtaTest {
         // engine: compile 2s + tests 40s; cli: tests 10s
         BuildMetrics.record(
                 metricsFile,
-                outcome("build", eng, true, 42_000, List.of(
-                        sample(eng, "compile-java", 2_000),
-                        sample(eng, "run-tests", 40_000))),
+                outcome(
+                        "build",
+                        eng,
+                        true,
+                        42_000,
+                        List.of(sample(eng, "compile-java", 2_000), sample(eng, "run-tests", 40_000))),
                 1_000L);
         BuildMetrics.record(
-                metricsFile,
-                outcome("build", cli, true, 10_000, List.of(sample(cli, "run-tests", 10_000))),
-                2_000L);
+                metricsFile, outcome("build", cli, true, 10_000, List.of(sample(cli, "run-tests", 10_000))), 2_000L);
         BuildMetrics metrics = BuildMetrics.load(metricsFile);
 
         var engCost = EffortWeights.costFromRunningSteps(
@@ -43,13 +44,7 @@ class EffortWeightsStepEtaTest {
                 List.of(),
                 Map.of());
         var cliCost = EffortWeights.costFromRunningSteps(
-                Path.of(cli),
-                Set.of(Path.of(eng)),
-                List.of("run-tests"),
-                metrics,
-                null,
-                List.of(),
-                Map.of());
+                Path.of(cli), Set.of(Path.of(eng)), List.of("run-tests"), metrics, null, List.of(), Map.of());
 
         // flatWeight(ms) * MS_PER_WEIGHT ≈ ms
         long engMs = (long) engCost.weight() * EffortWeights.MS_PER_WEIGHT;
@@ -60,13 +55,13 @@ class EffortWeightsStepEtaTest {
         assertThat(cliCost.testWeight()).isEqualTo(cliCost.weight());
 
         // Serial tests: test floor ≈ sum of test steps (~50s).
-        long serialTests = EffortWeights.scheduleMillis(
-                List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
+        long serialTests =
+                EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, false, EffortWeights.MS_PER_WEIGHT);
         assertThat(serialTests).isBetween(48_000L, 55_000L);
         // Parallel tests + list schedule: cli waits for full eng finish (scheduler done-set), so
         // wall ≈ eng(42s) + cli(10s) when serialised by the dep edge — not eng alone.
-        long parallelTests = EffortWeights.scheduleMillis(
-                List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
+        long parallelTests =
+                EffortWeights.scheduleMillis(List.of(engCost, cliCost), 8, false, true, EffortWeights.MS_PER_WEIGHT);
         assertThat(parallelTests).isBetween(50_000L, 56_000L);
     }
 
@@ -89,7 +84,7 @@ class EffortWeightsStepEtaTest {
         StepTimings timings = StepTimings.load(cache);
 
         // A brand-new 2000-method module scales with its count (~10s), not the host's ~3s
-        // average suite (JK-1299).
+        // average suite.
         var cost = EffortWeights.costFromRunningSteps(
                 Path.of("/ws/new"),
                 Set.of(),
@@ -150,8 +145,7 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void cold_run_tests_weight_is_ballpark_not_empty_probe() {
-        // Hermetic: force uncalibrated static floors so ~/.jk host calibration cannot shrink the
-        // figure (this test is about product baselines × cold bias, not the developer's machine).
+        // Use empty calibration so host ~/.jk priors do not affect product baseline math.
         Calibration.installForTest(Calibration.absentForTest());
         try {
             int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);
@@ -170,7 +164,7 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void cold_reprice_without_counts_underprices_tests_that_counts_fix() {
-        // Regression: build countdown used costFromRunningSteps(..., Map.of()) while explain passed
+        // Regression: build countdown used costFromRunningSteps(..., Map.of) while explain passed
         // testCount → cold monorepo ETA collapsed to suite-startup × modules (~12s) vs minutes.
         BuildMetrics metrics = BuildMetrics.load(Path.of("/nonexistent-" + System.nanoTime()));
         var withCounts = EffortWeights.costFromRunningSteps(

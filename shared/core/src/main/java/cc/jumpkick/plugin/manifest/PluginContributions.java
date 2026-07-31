@@ -83,7 +83,12 @@ public final class PluginContributions {
             if (config == null) continue;
             for (PluginDescriptor.SourceRoot root : manifest.contributions().sourceRoots()) {
                 if (!holds(
-                        root.when(), config, build.project(), build.nativeConfig().isPresent(), null, manifest.id())) {
+                        root.when(),
+                        config,
+                        build.project(),
+                        build.nativeConfig().isPresent(),
+                        null,
+                        manifest.id())) {
                     continue;
                 }
                 out.add(new SourceRoot(root.dir(), root.resource()));
@@ -192,7 +197,8 @@ public final class PluginContributions {
             this(artifact, coordinateSpec, false, null, null, null, java.util.List.of());
         }
 
-        public StepDep(String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
+        public StepDep(
+                String artifact, String coordinateSpec, boolean transitive, String sdkComponent, String sdkPath) {
             this(artifact, coordinateSpec, transitive, sdkComponent, sdkPath, null, java.util.List.of());
         }
     }
@@ -214,7 +220,8 @@ public final class PluginContributions {
                 }
                 if (sd.sdkComponent() != null) {
                     String component = Interpolation.resolve(sd.sdkComponent(), config, build.project(), null);
-                    out.add(new StepDep(sd.artifact(), null, false, component, sd.sdkPath(), null, java.util.List.of()));
+                    out.add(new StepDep(
+                            sd.artifact(), null, false, component, sd.sdkPath(), null, java.util.List.of()));
                     continue;
                 }
                 String coordinate = Interpolation.resolve(sd.coordinate(), config, build.project(), null);

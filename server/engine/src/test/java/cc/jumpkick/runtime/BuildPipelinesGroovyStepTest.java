@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Groovy lane composition (JK-1165): {@code jdk}+{@code groovy} ⇒ Groovy only; {@code jdk}+{@code
+ * Groovy lane composition{@code jdk}+{@code groovy} ⇒ Groovy only; {@code jdk}+{@code
  * java}+{@code groovy} ⇒ both, compile-groovy first (joint mode), then javac, then the assembler.
  * Groovy+Kotlin in one module is rejected at pipeline construction.
  */
@@ -30,8 +30,7 @@ class BuildPipelinesGroovyStepTest {
 
     @Test
     void jdk_plus_java_plus_groovy_enables_both(@TempDir Path dir) throws Exception {
-        writeManifest(
-                dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\ngroovy=\"5.0.4\"\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"b\"\nversion=\"0.1.0\"\njdk=25\njava=25\ngroovy=\"5.0.4\"\n");
         Pipeline pipeline = pipeline(dir);
         assertThat(pipeline.steps().stream().map(Step::name))
                 .contains(

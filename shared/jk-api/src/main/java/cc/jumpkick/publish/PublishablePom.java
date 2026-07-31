@@ -167,7 +167,7 @@ public final class PublishablePom {
             case VersionSelector.Range r -> r.raw();
             case VersionSelector.Latest l -> "LATEST";
             // Maven's own word for "newest, snapshots included". jk's `latest` is really Maven's
-            // RELEASE now that it excludes pre-releases (JK-1287), but that mapping is left alone
+            // RELEASE now that it excludes pre-releases, but that mapping is left alone
             // here rather than silently changing bytes in already-published POMs.
             case VersionSelector.Snapshot s -> "LATEST";
         };

@@ -30,9 +30,9 @@ public final class Provenance {
 
     /**
      * @return list of paths from declared roots to {@code targetModule}. Empty if the target isn't in
-     *     the lockfile or is unreachable. For workspace roots prefer
-     *     {@link #pathsTo(JkBuild, Lockfile, String, java.nio.file.Path)} so module tomls are
-     *     included as roots.
+     * the lockfile or is unreachable. For workspace roots prefer
+     * {@link #pathsTo(JkBuild, Lockfile, String, java.nio.file.Path)} so module tomls are
+     * included as roots.
      */
     public static List<Path> pathsTo(JkBuild project, Lockfile lock, String targetModule) {
         return pathsTo(project, lock, targetModule, null);
@@ -47,7 +47,7 @@ public final class Provenance {
      * nests a {@code Path} record for reverse-graph steps.
      *
      * @return shortest path per root from declared roots (or lock tops) to {@code targetModule}.
-     *     Empty if the target isn't in the lockfile or is unreachable.
+     * Empty if the target isn't in the lockfile or is unreachable.
      */
     public static List<Path> pathsTo(
             JkBuild project, Lockfile lock, String targetModule, java.nio.file.Path projectDir) {
@@ -120,7 +120,7 @@ public final class Provenance {
                 byRoot.putIfAbsent(rootKey, reconstruct(current, target, cameFrom, byModule));
                 // Keep walking past a declared root: when declared root A depends on declared
                 // root B which depends on the target, A's path must still be reported — one
-                // shortest path per DISTINCT root, as the class contract says (JK-1318). The
+                // shortest path per DISTINCT root, as the class contract says. The
                 // visited set keeps diamonds from exploding.
             }
 

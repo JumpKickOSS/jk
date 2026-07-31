@@ -30,13 +30,13 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * ticket-1040 — Mill-style selective prepare / resolve / run over git-affected + module selectors.
+ * — Mill-style selective prepare / resolve / run over git-affected + module selectors.
  *
  * <pre>
- *   jk selective resolve --since=origin/main
- *   jk selective prepare --since=origin/main
- *   jk selective run build
- *   jk selective run test
+ * jk selective resolve --since=origin/main
+ * jk selective prepare --since=origin/main
+ * jk selective run build
+ * jk selective run test
  * </pre>
  */
 public final class SelectiveCommand implements CliCommand {
@@ -216,7 +216,7 @@ public final class SelectiveCommand implements CliCommand {
             return Exit.USAGE;
         }
 
-        // Content-hash skip (JK-1045): when plan has contentHashes, only re-run modules whose
+        // Content-hash skipwhen plan has contentHashes, only re-run modules whose
         // fingerprints changed (unless --force / --rebuild).
         GlobalOptions g = GlobalOptions.from(in);
         if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
@@ -290,7 +290,7 @@ public final class SelectiveCommand implements CliCommand {
      * (file path + sha256). Absolute paths are not stored — only content — so agents can share
      * plans when trees match. Generated / target trees are ignored.
      *
-     * <p><b>Transitive blind spot (JK-1070):</b> fingerprints do not yet include dependency
+     * <p><b>Transitive blind spot</b> fingerprints do not yet include dependency
      * siblings. An unchanged module can be skipped even when an upstream it depends on changed.
      * Prefer full rebuilds when in doubt; see guide selective section.
      *

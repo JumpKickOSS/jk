@@ -5,7 +5,7 @@ import java.io.IOException;
 
 /**
  * The engine (or its socket) ended a live job after a user cancel without a clean terminal line
- * (JK-1252). Callers settle the TUI as "Build job was cancelled" rather than a crash.
+ * . Callers settle the TUI as "Build job was cancelled" rather than a crash.
  */
 public final class JobCancelledException extends IOException {
 

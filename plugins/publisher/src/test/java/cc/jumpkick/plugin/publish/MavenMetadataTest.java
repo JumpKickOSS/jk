@@ -7,7 +7,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1256: {@code jk publish} must emit an artifact-level {@code maven-metadata.xml}, or a
+ * {@code jk publish} must emit an artifact-level {@code maven-metadata.xml}, or a
  * published artifact cannot be resolved from a plain {@code file://} / static-HTTP / object-store
  * repo — those have no server side to synthesize it.
  */

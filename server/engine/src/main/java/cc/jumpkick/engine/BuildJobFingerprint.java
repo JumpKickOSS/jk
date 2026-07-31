@@ -8,12 +8,11 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
-import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * Stable exclusivity key for concurrent build-like jobs (JK-1248 / JK-1249).
+ * Stable exclusivity key for concurrent build-like jobs.
  *
  * <p>Two admissions with the same fingerprint must not run at once on one engine. Different
  * worktrees (different real paths), kinds, or request flags that change work yield different
@@ -22,10 +21,10 @@ import java.util.TreeSet;
  * <p><strong>Inputs</strong> (order-independent hash of a canonical form):
  *
  * <ul>
- *   <li>canonical project directory (real path when resolvable)
- *   <li>kind ({@code build}, {@code test}, …)
- *   <li>flags that change the job: rebuild/force, offline, modules selection, variant,
- *       skipTests/testOnly, assembly override
+ * <li>canonical project directory (real path when resolvable)
+ * <li>kind ({@code build}, {@code test}, …)
+ * <li>flags that change the job: rebuild/force, offline, modules selection, variant,
+ * skipTests/testOnly, assembly override
  * </ul>
  */
 public final class BuildJobFingerprint {

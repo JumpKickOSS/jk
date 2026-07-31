@@ -16,19 +16,17 @@ class ActivityCommandTest {
                     + "\"success\":true,\"cancelled\":false,\"running\":false,"
                     + "\"moduleCount\":8,\"failedModules\":0}";
 
-    private static final String FAIL =
-            "{\"type\":\"history-entry\",\"id\":\"x\",\"buildNumber\":12,"
-                    + "\"kind\":\"test\",\"dir\":\"/p\",\"coord\":\"g:n\","
-                    + "\"startedAt\":1,\"finishedAt\":2,\"millis\":500,"
-                    + "\"success\":false,\"cancelled\":false,\"running\":false,"
-                    + "\"moduleCount\":1,\"failedModules\":1}";
+    private static final String FAIL = "{\"type\":\"history-entry\",\"id\":\"x\",\"buildNumber\":12,"
+            + "\"kind\":\"test\",\"dir\":\"/p\",\"coord\":\"g:n\","
+            + "\"startedAt\":1,\"finishedAt\":2,\"millis\":500,"
+            + "\"success\":false,\"cancelled\":false,\"running\":false,"
+            + "\"moduleCount\":1,\"failedModules\":1}";
 
-    private static final String RUNNING =
-            "{\"type\":\"history-entry\",\"id\":\"r\",\"buildNumber\":2,"
-                    + "\"kind\":\"build\",\"dir\":\"/tmp/x\",\"coord\":\"com.contyngent:jk-smoke-reinstall\","
-                    + "\"startedAt\":1000,\"finishedAt\":0,\"millis\":0,"
-                    + "\"success\":false,\"cancelled\":false,\"running\":true,"
-                    + "\"moduleCount\":1,\"progress\":55}";
+    private static final String RUNNING = "{\"type\":\"history-entry\",\"id\":\"r\",\"buildNumber\":2,"
+            + "\"kind\":\"build\",\"dir\":\"/tmp/x\",\"coord\":\"com.contyngent:jk-smoke-reinstall\","
+            + "\"startedAt\":1000,\"finishedAt\":0,\"millis\":0,"
+            + "\"success\":false,\"cancelled\":false,\"running\":true,"
+            + "\"moduleCount\":1,\"progress\":55}";
 
     @Test
     void formats_success_line_with_build_number_and_coord() {
@@ -105,7 +103,8 @@ class ActivityCommandTest {
 
     @Test
     void build_numbers_are_zero_padded_to_listing_width() {
-        assertThat(ActivityCommand.buildNumberWidth(List.of(ENTRY, FAIL, RUNNING))).isEqualTo(2);
+        assertThat(ActivityCommand.buildNumberWidth(List.of(ENTRY, FAIL, RUNNING)))
+                .isEqualTo(2);
         String plain = strip(ActivityCommand.formatLine(RUNNING, 1000 + 4200L, Theme.active(), 2));
         assertThat(plain).contains("#02");
         assertThat(plain).doesNotContain("#2 ");

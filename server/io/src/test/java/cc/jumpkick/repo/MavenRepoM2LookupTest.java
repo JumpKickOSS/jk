@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1290: a {@code stat} of {@code ~/.m2} before paying for an artifact.
+ * a {@code stat} of {@code ~/.m2} before paying for an artifact.
  *
  * <p>The point of every test here is the integrity rule. {@code ~/.m2} is writable by anything on the
  * machine and Maven enforces no integrity, so a local hit is only ever a <em>candidate</em>; the
@@ -103,7 +103,8 @@ class MavenRepoM2LookupTest {
 
         // Same CAS blob and same repos/<name>/ view a normal fetch would have produced, so nothing
         // downstream can tell the difference.
-        assertThat(new Cas(store).contains(cc.jumpkick.util.Hashing.sha256Hex(REAL))).isTrue();
+        assertThat(new Cas(store).contains(cc.jumpkick.util.Hashing.sha256Hex(REAL)))
+                .isTrue();
         assertThat(store.resolve("repos/test").resolve(REL)).exists();
     }
 
@@ -167,7 +168,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void a_missing_sidecar_means_no_authority_so_the_local_file_is_unused(@TempDir Path tmp) throws Exception {
-        // No .sha1 to confirm against — even though the local bytes happen to be correct, there is
+        // No.sha1 to confirm against — even though the local bytes happen to be correct, there is
         // nothing vouching for them, so they are not used.
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL, 200, REAL);
@@ -193,7 +194,7 @@ class MavenRepoM2LookupTest {
 
     @Test
     void a_checksum_with_a_trailing_filename_still_parses(@TempDir Path tmp) throws Exception {
-        // `sha1sum` style: "<hex>  <filename>". Common enough that rejecting it would silently disable
+        // `sha1sum` style: "<hex> <filename>". Common enough that rejecting it would silently disable
         // the optimisation against those repositories.
         seedM2(tmp.resolve("m2"), REAL);
         serve("/" + REL + ".sha1", 200, (sha1Of(REAL) + "  widget-1.0.jar\n").getBytes(StandardCharsets.UTF_8));

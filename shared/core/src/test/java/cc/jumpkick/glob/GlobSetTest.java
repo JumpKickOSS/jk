@@ -40,8 +40,7 @@ class GlobSetTest {
         Path ws = workspace(tmp);
         Path module = ws.resolve("shared/core");
 
-        List<GlobSet.Match> matches =
-                GlobSet.resolve(module, ws, "../../plugins/*/jk-plugin.toml", List.of(), false);
+        List<GlobSet.Match> matches = GlobSet.resolve(module, ws, "../../plugins/*/jk-plugin.toml", List.of(), false);
 
         assertThat(matches).hasSize(3);
         assertThat(matches.stream().map(m -> m.file().getFileName().toString()))
@@ -72,8 +71,7 @@ class GlobSetTest {
         List<GlobSet.Match> matches =
                 GlobSet.resolve(module, ws, "../../plugins/spring-boot/scaffold/**", List.of(), false);
 
-        assertThat(matches.stream().map(GlobSet.Match::relative))
-                .containsExactly("app.g8", "nested/more.g8");
+        assertThat(matches.stream().map(GlobSet.Match::relative)).containsExactly("app.g8", "nested/more.g8");
     }
 
     @Test
@@ -116,8 +114,7 @@ class GlobSetTest {
 
         List<GlobSet.Match> matches = GlobSet.resolve(module, ws, "../../plugins/**/*.gen.toml", List.of(), false);
 
-        assertThat(matches.stream().map(m -> m.file().getFileName().toString()))
-                .containsExactly("keep.gen.toml");
+        assertThat(matches.stream().map(m -> m.file().getFileName().toString())).containsExactly("keep.gen.toml");
     }
 
     @Test

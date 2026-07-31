@@ -18,7 +18,7 @@ public final class HostRateLimiter {
     /**
      * Google's GCS-hosted Central mirror tolerates far more concurrency than Sonatype does — it is object
      * storage, not a metered service with a per-IP quota. Capping it at Central's 6 would leave most of the
-     * benefit of routing there unused (JK-1290).
+     * benefit of routing there unused.
      */
     public static final int MIRROR_PERMITS = 20;
 

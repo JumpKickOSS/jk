@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -123,7 +124,7 @@ class IoLedgerTest {
                     .start();
         }
         start.countDown();
-        assertThat(done.await(20, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(done.await(20, TimeUnit.SECONDS)).isTrue();
 
         assertThat(io.totals().localUp()).isEqualTo(3L * threads * perThread);
         assertThat(io.totals().remoteDown()).isEqualTo((long) threads * perThread);

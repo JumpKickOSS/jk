@@ -136,7 +136,13 @@ public final class LockFlow {
                     pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
         } catch (IOException e) {
             return new Result(
-                    6, e.getMessage() + variantUnionHint(lockDir, parsed), null, effective, moduleCount, workspaceLock, lockDir);
+                    6,
+                    e.getMessage() + variantUnionHint(lockDir, parsed),
+                    null,
+                    effective,
+                    moduleCount,
+                    workspaceLock,
+                    lockDir);
         }
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
         LockfileWriter.write(lock, lockFile);
@@ -163,8 +169,8 @@ public final class LockFlow {
             // hint construction must never mask the real resolve error
         }
         if (lines.isEmpty()) return "";
-        StringBuilder b = new StringBuilder(
-                "\nnote: jk-lock.toml resolves the UNION of every variant value's dependencies,"
+        StringBuilder b =
+                new StringBuilder("\nnote: jk-lock.toml resolves the UNION of every variant value's dependencies,"
                         + "\nso this conflict may be between values that never build together — align their"
                         + "\nversions across values (docs/variants.md → Locking). Overlays in play:");
         for (String line : lines) b.append("\n  ").append(line);

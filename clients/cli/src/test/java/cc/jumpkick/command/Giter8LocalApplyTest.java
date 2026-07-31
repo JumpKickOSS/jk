@@ -16,16 +16,12 @@ class Giter8LocalApplyTest {
         Path template = tmp.resolve("t.g8");
         Path g8 = template.resolve("src/main/g8");
         Files.createDirectories(g8.resolve("src/$package$"));
-        Files.writeString(
-                template.resolve("default.properties"),
-                """
+        Files.writeString(template.resolve("default.properties"), """
                 name=demo
                 package=com.demo
                 organization=com.demo
                 """);
-        Files.writeString(
-                g8.resolve("jk.toml"),
-                """
+        Files.writeString(g8.resolve("jk.toml"), """
                 name = "$name$"
                 group = "$organization$"
                 """);

@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.StepStatus;
-import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;

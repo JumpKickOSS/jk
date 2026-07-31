@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Bootstrap a usable `jk` from the Gradle-built primary tree, then print the dogfood path.
 # Usage (from jk-jk worktree or primary clone):
-#   ./scripts/bootstrap-from-gradle.sh
-#   ./scripts/bootstrap-from-gradle.sh /path/to/oss/jk
+# ./scripts/bootstrap-from-gradle.sh
+# ./scripts/bootstrap-from-gradle.sh /path/to/oss/jk
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

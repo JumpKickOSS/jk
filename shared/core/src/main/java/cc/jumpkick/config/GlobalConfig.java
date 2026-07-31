@@ -26,7 +26,7 @@ public final class GlobalConfig {
     /**
      * Whether Nerd Font glyphs may be used. Precedence: env {@code JK_NERDFONT} → {@code
      * ~/.jk/config.toml} {@code [global].nerdfont} → default {@code false} (safer than PUA tofu;
-     * set via {@code jk self setup-terminal} / install — JK-1080). Forced false when color is
+     * set via {@code jk self setup-terminal} / install —. Forced false when color is
      * disabled.
      */
     public static boolean nerdfont() {
@@ -34,7 +34,7 @@ public final class GlobalConfig {
     }
 
     /**
-     * True when color output is currently enabled — same logic as {@code Theme.colorEnabled()} in
+     * True when color output is currently enabled — same logic as {@code Theme.colorEnabled} in
      * the CLI layer, duplicated here so {@code kernel/core} can apply it without a circular dep.
      */
     static boolean colorActivelyEnabled() {
@@ -161,9 +161,7 @@ public final class GlobalConfig {
         CONFIG_CACHE.clear();
     }
 
-    // -------------------------------------------------------------------------
     // Repositories
-    // -------------------------------------------------------------------------
 
     /**
      * Repositories declared in the {@code [repositories]} table of {@code ~/.jk/config.toml}.

@@ -29,7 +29,7 @@ public final class Jk {
             Map.entry("upgrade", List.of("update")), // npm/yarn/apt vocabulary
             Map.entry("sh", List.of("shell")),
             Map.entry("bash", List.of("shell")),
-            Map.entry("nativeCompile", List.of("native")), // Gradle :nativeCompile task
+            Map.entry("nativeCompile", List.of("native")), // Gradle:nativeCompile task
             Map.entry("verify-target", List.of("verify")), // Maven's `verify` step output naming
             Map.entry("why-rebuilt", List.of("explain"))); // early-roadmap name for the cache-diff report
 
@@ -38,7 +38,7 @@ public final class Jk {
         // `jk tool run …` in every case — including --help — so the alias has
         // one mental model.
         args = rewriteForProgramName(args, Argv0.programName());
-        // ticket-1020: the slim client never hosts the engine. Spawning uses
+        // : the slim client never hosts the engine. Spawning uses
         // jk-engine.jar / JK_ENGINE_EXE only — no --engine-server monolyth path.
         if (args.length > 0 && "--engine-server".equals(args[0])) {
             System.err.println("jk: this binary does not include the engine (wire-only client)."
@@ -198,7 +198,7 @@ public final class Jk {
                 case "--rebuild" -> rebuild = java.util.Optional.of(true);
                 case "--no-progress" -> noProgress = java.util.Optional.of(true);
                 // --no-ansi: strip ALL ANSI (color + bold/italic) and disable animations.
-                // Sets noAnsi=true (→ isAnsi()=false → colorize() returns plain text) and
+                // Sets noAnsi=true (→ isAnsi=false → colorize returns plain text) and
                 // noProgress=true (→ QUIET mode, no cursor-movement redraws).
                 // Distinct from --color never which strips color but preserves text attributes.
                 case "--no-ansi" -> {

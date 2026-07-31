@@ -35,7 +35,7 @@ time_ms() {
 
 # Peak RSS of engine process during a command (macOS: rss in KB via ps)
 sample_engine_rss_kb() {
-  # jk-engine or java -jar jk-engine
+ # jk-engine or java -jar jk-engine
   local pids
   pids=$(pgrep -f 'jk-engine' 2>/dev/null || true)
   if [[ -z "$pids" ]]; then
@@ -66,7 +66,7 @@ run_median() {
   local med rss_med
   med=$(printf '%s\n' "${times[@]}" | median)
   rss_med=$(printf '%s\n' "${rss_samples[@]}" | median)
-  # rss is KB on macOS/Linux ps
+ # rss is KB on macOS/Linux ps
   local rss_mb
   rss_mb=$(python3 -c "print(round(${rss_med}/1024, 1))")
   printf '| %s | %s | ~%s MiB |\n' "$label" "${med}ms" "$rss_mb"

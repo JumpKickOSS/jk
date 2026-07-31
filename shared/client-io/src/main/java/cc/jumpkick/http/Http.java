@@ -35,13 +35,13 @@ public final class Http {
     private final Duration[] backoffs;
 
     /**
-     * Central-rate-limit failover (JK-1277). Applied here, at the single transport choke point, so
-     * every caller benefits and no repository's configured URL — hence nothing in {@code jk-lock.toml} —
+     * Central-rate-limit failover. Applied here, at the single transport choke point, so
+     * every caller benefits and no repository's configured URL — hence nothing in {@code jk-lock.toml}
      * changes when it engages.
      */
     private final CentralMirror centralMirror;
 
-    /** Per-host rate-limit memory (JK-1276); shared across the process and persisted. */
+    /** Per-host rate-limit memory; shared across the process and persisted. */
     private final HostCooldown cooldown;
 
     public Http() {
@@ -64,7 +64,7 @@ public final class Http {
         this(client, backoffs, centralMirror, HostCooldown.standard());
     }
 
-    /** Visible for tests — also injects the per-host cooldown store (JK-1276). */
+    /** Visible for tests — also injects the per-host cooldown store. */
     Http(HttpClient client, Duration[] backoffs, CentralMirror centralMirror, HostCooldown cooldown) {
         this.client = client;
         this.backoffs = backoffs;
@@ -90,7 +90,7 @@ public final class Http {
         // Opt into transport-level gzip unless the caller already set
         // their own Accept-Encoding (e.g. testing without compression).
         // The response body is transparently decompressed by
-        // `gzipAwareByteArray()` when the server replies with
+        // `gzipAwareByteArray` when the server replies with
         // Content-Encoding: gzip.
         if (!hasHeaderIgnoreCase(headers, "Accept-Encoding")) {
             builder.header("Accept-Encoding", "gzip");
@@ -106,7 +106,7 @@ public final class Http {
      * propagate to the caller (no resume).
      *
      * <p>The per-request timeout is generous (15 min) because JDK archives commonly run 100–250 MB
-     * and the standard {@code .get()} 60s ceiling would cut them off on slow links.
+     * and the standard {@code.get} 60s ceiling would cut them off on slow links.
      */
     public HttpResponse<InputStream> getStream(URI uri) throws IOException, InterruptedException {
         return getStream(uri, Map.of());
@@ -219,10 +219,11 @@ public final class Http {
             if (attempt > 0) {
                 Thread.sleep(jittered(backoffs[attempt - 1]));
             }
-            // Do not ask a host that is already refusing (JK-1276). One 429 costs one request, not one
+            // Do not ask a host that is already refusing. One 429 costs one request, not one
             // per permit per attempt — six concurrent permits times five attempts would turn a single
             // refusal into thirty more, which is how a quota window gets held open.
-            java.util.Optional<java.time.Instant> cooling = cooldown.until(request.uri().getHost());
+            java.util.Optional<java.time.Instant> cooling =
+                    cooldown.until(request.uri().getHost());
             if (cooling.isPresent()) {
                 throw new RateLimitedException(request.uri().getHost(), cooling.get());
             }
@@ -238,7 +239,7 @@ public final class Http {
                                     response.headers().firstValue("Retry-After").orElse(null),
                                     java.time.Instant.now()));
                 }
-                // Central's per-IP quota (JK-1277). Open the mirror window and reissue this very
+                // Central's per-IP quota. Open the mirror window and reissue this very
                 // request against the mirror, so the resolve that tripped the limit still completes
                 // rather than failing and being re-run — a re-run would only spend more of a quota
                 // that is already exhausted.
@@ -277,7 +278,7 @@ public final class Http {
     }
 
     /**
-     * Body handler that returns the response as a {@code byte[]} and transparently inflates the
+     * Body handler that returns the response as a {@code byte} and transparently inflates the
      * payload when the server set {@code Content-Encoding: gzip}. Java's {@link HttpClient} never
      * decompresses on its own (unlike curl), so without this every gzip-aware caller would have to
      * wrap manually.
@@ -302,7 +303,7 @@ public final class Http {
     }
 
     /**
-     * Streaming counterpart of {@link #gzipAwareByteArray()}. Wraps the incoming {@link InputStream}
+     * Streaming counterpart of {@link #gzipAwareByteArray}. Wraps the incoming {@link InputStream}
      * in a {@link GZIPInputStream} when the response is gzip-encoded; the caller's {@code
      * try-with-resources} closes the gzip stream, which in turn releases the underlying connection.
      */

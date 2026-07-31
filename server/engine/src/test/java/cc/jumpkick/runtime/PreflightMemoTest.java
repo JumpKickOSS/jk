@@ -17,7 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1100/1108/1109/1112/1113: local dirty-set, graph rebuild, pipeline shape memos. */
+/** Local dirty-set, graph rebuild, and pipeline shape memos. */
 class PreflightMemoTest {
 
     @AfterEach
@@ -294,7 +294,7 @@ class PreflightMemoTest {
 
     @Test
     void shape_memo_skip_tests_variants_coexist(@TempDir Path tmp) throws Exception {
-        // JK-1124: fingerprint embeds skipTests — both rows must persist.
+        // fingerprint embeds skipTests — both rows must persist.
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
         PreflightMemo.storeShape(
@@ -313,7 +313,7 @@ class PreflightMemoTest {
 
     @Test
     void shape_memo_concurrent_upserts_retain_all_modules(@TempDir Path tmp) throws Exception {
-        // JK-1124: parallel prepare must not drop peer rows.
+        // parallel prepare must not drop peer rows.
         writeProject(tmp);
         Path a = tmp.resolve("a");
         Path b = tmp.resolve("b");
@@ -359,7 +359,7 @@ class PreflightMemoTest {
 
     @Test
     void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
-        // JK-1114: ETA path builds ModuleCost without assembling a pipeline.
+        // ETA path builds ModuleCost without assembling a pipeline.
         var cost = EffortWeights.costOf(tmp, Set.of(), 100, 15);
         assertThat(cost.weight()).isEqualTo(100);
         assertThat(cost.testWeight()).isEqualTo(15);
@@ -368,7 +368,7 @@ class PreflightMemoTest {
 
     @Test
     void provisionalModulePlan_carries_shape_weight_and_step_names(@TempDir Path tmp) throws Exception {
-        // JK-1115: early onPlan uses wire-only pipelines (no-op steps) + memo weight.
+        // early onPlan uses wire-only pipelines (no-op steps) + memo weight.
         writeProject(tmp);
         var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
         BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
@@ -498,7 +498,7 @@ class PreflightMemoTest {
         for (String m : new String[] {"a", "b"}) {
             Path md = dir.resolve(m);
             // The real layout: member outputs live under <workspace>/target/<rel>/, and
-            // <member>/target is never created (JK-1306) — the fixture must match production.
+            // <member>/target is never created — the fixture must match production.
             Files.createDirectories(dir.resolve("target").resolve(m));
             Files.createDirectories(md.resolve("src/main/java"));
             Files.writeString(md.resolve("jk.toml"), """

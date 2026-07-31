@@ -404,8 +404,8 @@ public record JkBuild(
     }
 
     /**
-     * Source layout: {@code simple} (Mill-like {@code ./src}, {@code ./test/src},
-     * {@code ./resources}, {@code ./test/resources}), {@code traditional} (Maven), or {@code auto}
+     * Source layout: {@code simple} (Mill-like {@code./src}, {@code./test/src},
+     * {@code./resources}, {@code./test/resources}), {@code traditional} (Maven), or {@code auto}
      * (infer; default when absent).
      */
     public enum Layout {
@@ -637,9 +637,9 @@ public record JkBuild(
      * How {@code [application].assembly} packages the app.
      *
      * <ul>
-     *   <li>{@link #OFF} — thin main jar only
-     *   <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assembly})
-     *   <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
+     * <li>{@link #OFF} — thin main jar only
+     * <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assembly})
+     * <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
      * </ul>
      */
     public enum AssemblyMode {
@@ -657,7 +657,7 @@ public record JkBuild(
      * {@code [application]} block. Presence alone marks an application; absent means library.
      *
      * @param assembly packaging mode ({@link AssemblyMode#FAT} / {@link AssemblyMode#SHRINK} /
-     *     {@link AssemblyMode#OFF})
+     * {@link AssemblyMode#OFF})
      */
     public record Application(String main, AssemblyMode assembly) {
 
@@ -701,13 +701,13 @@ public record JkBuild(
             /** {@code [build] test-workers}: {@code null} = inherit CLI/auto; {@code 0} = auto; {@code 1} = serial. */
             Integer testWorkers,
             /**
-             * {@code [resolve] platform}: how BOM managed pins constrain the graph (JK-1206). Default
+             * {@code [resolve] platform}: how BOM managed pins constrain the graph. Default
              * {@link PlatformPolicy#ENFORCED}.
              */
             PlatformPolicy platformPolicy,
             /**
              * {@code [resolve] unmapped}: how bare fills for GAs the platform does NOT manage are
-             * constrained (JK-1241). Default {@link UnmappedPolicy#MEDIATE}.
+             * constrained. Default {@link UnmappedPolicy#MEDIATE}.
              */
             UnmappedPolicy unmappedPolicy,
             /** {@code [build] extra-resources}: files from outside the module, copied onto its classpath. */
@@ -742,9 +742,7 @@ public record JkBuild(
             platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
             unmappedPolicy = unmappedPolicy == null ? UnmappedPolicy.MEDIATE : unmappedPolicy;
             extraResources = extraResources == null ? List.of() : List.copyOf(extraResources);
-            testEnv = testEnv == null
-                    ? Map.of()
-                    : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
+            testEnv = testEnv == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(testEnv));
         }
 
         /** Append {@code dirs} to {@code extra-src} (variant fold point). */
@@ -803,7 +801,7 @@ public record JkBuild(
      * One {@code [build] extra-resources} entry: files from outside the module's own resource root,
      * copied onto the classpath at package time.
      *
-     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code ../}
+     * <p>{@code from} is a module-relative {@link cc.jumpkick.glob.GlobSet} pattern (so {@code../}
      * and wildcards are allowed); {@code into} is the destination directory inside the output;
      * {@code rename} optionally renames each match, with {@code &#123;1&#125;} substituting the
      * pattern's wildcard captures. Matched files keep their path relative to the pattern's literal
@@ -820,7 +818,6 @@ public record JkBuild(
             exclude = exclude == null ? List.of() : List.copyOf(exclude);
         }
     }
-
 
     /**
      * {@code [[kotlin-plugins]]} entry: {@code group:artifact[:version]} (omit version to match

@@ -31,7 +31,7 @@ class SelfHostingTomlTest {
 
     @BeforeAll
     static void requireSelfHostingWorkspace() {
-        // ticket-1007 restored the workspace root; fail hard if it disappears.
+        // restored the workspace root; fail hard if it disappears.
         Assumptions.assumeTrue(
                 REPO != null && Files.isRegularFile(REPO.resolve("jk.toml")),
                 "workspace root jk.toml missing — self-hosting manifests are required");
@@ -45,7 +45,7 @@ class SelfHostingTomlTest {
     }
 
     private static Path findRepoRoot() {
-        // The .class file path tells us where we are on disk regardless of
+        // The.class file path tells us where we are on disk regardless of
         // cwd. From there, walk up looking for jk.toml with [workspace].
         try {
             Path classPath = Path.of(SelfHostingTomlTest.class
@@ -79,7 +79,7 @@ class SelfHostingTomlTest {
         assertThat(root.project().group()).isEqualTo("cc.jumpkick");
         assertThat(root.project().name()).isEqualTo("jk");
         assertThat(root.isWorkspaceRoot()).isTrue();
-        // plugin-sdk is listed before jk-api: model depends on the SPI leaf (Gradle :jk-api → :plugin-sdk).
+        // plugin-sdk is listed before jk-api: model depends on the SPI leaf (Gradle:jk-api →:plugin-sdk).
         // Phase 2 adds thin workers (test-runner, java-compiler) as workspace modules.
         assertThat(root.workspace().modules())
                 .containsExactly(
@@ -200,7 +200,7 @@ class SelfHostingTomlTest {
         // to apply WorkspaceMerge.
         List<String> mainModules =
                 cli.dependencies().of(Scope.MAIN).stream().map(d -> d.module()).toList();
-        // The slim client (Stage 5 / ticket-1020): the wire contract, never the engine itself.
+        // The slim client (Stage 5): the wire contract, never the engine itself.
         assertThat(mainModules).contains("cc.jumpkick:jk-core", "cc.jumpkick:jk-engine-api");
         assertThat(mainModules)
                 .doesNotContain(

@@ -15,7 +15,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Minimal local Giter8-style apply (JK-1182 MVP): {@code default.properties} + {@code $key$} path and
+ * Minimal local Giter8-style apply MVP): {@code default.properties} + {@code $key$} path and
  * content substitution under {@code src/main/g8} (or the template root when that tree is absent).
  *
  * <p>Not full Giter8 (no conditionals, includes, or git fetch). Remote templates and the engine
@@ -54,7 +54,7 @@ public final class Giter8LocalApply {
             }
         }
         if (overrides != null) props.putAll(overrides);
-        // Giter8 convention: $name_normalized$ is the lowercase-hyphenated name (JK-1234 —
+        // Giter8 convention: $name_normalized$ is the lowercase-hyphenated name
         // this used to assign name to itself, leaving the token unreplaced).
         if (props.containsKey("name")) {
             props.putIfAbsent("name_normalized", normalize(props.get("name")));
@@ -116,7 +116,9 @@ public final class Giter8LocalApply {
 
     /** Giter8 name normalization: lowercase, runs of non-alphanumerics collapse to '-'. */
     static String normalize(String name) {
-        return name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
+        return name.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
     }
 
     /** The template's own {@code default.properties} {@code name}, when present. */
@@ -137,5 +139,4 @@ public final class Giter8LocalApply {
         }
         return java.util.Optional.empty();
     }
-
 }

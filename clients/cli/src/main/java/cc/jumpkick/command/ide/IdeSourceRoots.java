@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * IDE/BSP view of {@link ModuleLayout} (JK-1139 / JK-1198 Mill-like SIMPLE). Thin adapter so
+ * IDE/BSP view of {@link ModuleLayout} Mill-like SIMPLE). Thin adapter so
  * generators keep a stable type without depending on engine packages.
  */
 public final class IdeSourceRoots {

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Host-wide remote artifact fetch durations for ETA (CAS misses). Successful network fetches only —
+ * Host-wide remote artifact fetch durations for ETA (CAS misses). Successful network fetches only
  * cancelled / failed downloads never train. Outliers are dropped by trimming the top and bottom 10%
  * of samples before averaging.
  *
@@ -38,8 +38,8 @@ public final class FetchTimings {
      * Record one successful remote fetch duration (ms). Non-positive samples are ignored. Best-effort
      * — never throws into the fetch path.
      *
-     * <p>Reads through the in-process memo (one disk read per process, not one per artifact —
-     * JK-1300); the write is last-writer-wins across concurrent engines, which is acceptable for an
+     * <p>Reads through the in-process memo (one disk read per process, not one per artifact
+     * ; the write is last-writer-wins across concurrent engines, which is acceptable for an
      * advisory prior (a lost sample only delays convergence of the trimmed mean).
      */
     public static void record(long durationMs) {

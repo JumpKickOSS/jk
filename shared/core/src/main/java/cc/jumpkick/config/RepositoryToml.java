@@ -76,7 +76,7 @@ public final class RepositoryToml {
     }
 
     /**
-     * Exclusive Maven group bindings ({@code groups = ["com.acme", "com.acme.*"]}) for JK-1064.
+     * Exclusive Maven group bindings ({@code groups = ["com.acme", "com.acme.*"]}) for.
      * Empty when absent. Strict callers pass a path prefix for error messages; invalid types throw
      * {@link IllegalArgumentException}.
      */

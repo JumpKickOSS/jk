@@ -188,13 +188,12 @@ public final class VariantApply {
     }
 
     /**
-     * {@code env:NAME} indirection via {@link BuildEnv} (request env + {@code .env}, JK-1270/1272).
+     * {@code env:NAME} indirection via {@link BuildEnv} (request env + {@code.env},/1272).
      * An unresolvable reference fails loudly — a signing config must never silently sign with an
-     * empty credential. Values that came from {@code .env} land on the secrets side channel when
-     * the schema marks them secret, and are redacted/hashed by JK-1274.
+     * empty credential. Values that came from {@code.env} land on the secrets side channel when
+     * the schema marks them secret, and are redacted/hashed by.
      */
-    private static String resolveEnv(
-            String raw, Map<String, String> clientEnv, Path moduleDir, String where) {
+    private static String resolveEnv(String raw, Map<String, String> clientEnv, Path moduleDir, String where) {
         if (!raw.startsWith("env:")) return raw;
         String name = raw.substring("env:".length()).trim();
         // Prefer the client-shipped map (caller's shell) then BuildEnv (.env + session + process).

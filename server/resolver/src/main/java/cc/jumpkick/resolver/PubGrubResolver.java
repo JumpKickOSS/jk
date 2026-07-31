@@ -37,7 +37,7 @@ public final class PubGrubResolver implements Resolver {
     private KmpRedirects kmp = KmpRedirects.NONE;
     /** Optional palette injected by the CLI so diagnostic colors match the live theme. */
     cc.jumpkick.resolver.pubgrub.Diagnostics.Palette palette; // package-private for LockOrchestrator
-    /** Optional live graph progress (package key, version) during PubGrub decisions (JK-1091). */
+    /** Optional live graph progress (package key, version) during PubGrub decisions. */
     private BiConsumer<String, String> onDecision;
 
     public PubGrubResolver(MavenRepo repo) {
@@ -50,8 +50,8 @@ public final class PubGrubResolver implements Resolver {
 
     /**
      * @param bomConstraints {@code group:artifact → recommended version} from the user's platform
-     *     BOMs (soft prefer — full candidate list, pin first; Gradle {@code platform()} parity).
-     *     Empty map = no BOM preferences.
+     * BOMs (soft prefer — full candidate list, pin first; Gradle {@code platform} parity).
+     * Empty map = no BOM preferences.
      */
     public PubGrubResolver(RepoGroup repos, Map<String, String> bomConstraints) {
         this(repos, bomConstraints, Map.of());
@@ -75,7 +75,7 @@ public final class PubGrubResolver implements Resolver {
         this(repos, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
     }
 
-    /** As above with {@link PlatformPolicy} (JK-1206); unmapped fills default to MEDIATE. */
+    /** As above with {@link PlatformPolicy}; unmapped fills default to MEDIATE. */
     public PubGrubResolver(
             RepoGroup repos,
             Map<String, String> bomConstraints,
@@ -85,7 +85,7 @@ public final class PubGrubResolver implements Resolver {
         this(repos, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, null);
     }
 
-    /** Full constructor with both platform policies (JK-1206/JK-1241). */
+    /** Full constructor with both platform policies. */
     public PubGrubResolver(
             RepoGroup repos,
             Map<String, String> bomConstraints,
@@ -105,14 +105,14 @@ public final class PubGrubResolver implements Resolver {
         this(source, pomBuilder, KmpRedirects.NONE);
     }
 
-    /** Shared-source constructor (JK-1088): reuse POM/version caches across scope groups. */
+    /** Shared-source constructorreuse POM/version caches across scope groups. */
     public PubGrubResolver(PackageSource source, EffectivePomBuilder pomBuilder, KmpRedirects kmp) {
         this.source = Objects.requireNonNull(source, "source");
         this.pomBuilder = pomBuilder;
         this.kmp = kmp == null ? KmpRedirects.NONE : kmp;
     }
 
-    /** JK-1091: fire during each PubGrub decision so lock progress can advance mid-scope. */
+    /**fire during each PubGrub decision so lock progress can advance mid-scope. */
     public PubGrubResolver withOnDecision(BiConsumer<String, String> onDecision) {
         this.onDecision = onDecision;
         return this;
@@ -140,7 +140,7 @@ public final class PubGrubResolver implements Resolver {
             try {
                 decisions = solver.solve(ROOT_PKG, ROOT_VERSION, rootTerms);
             } catch (UnsatisfiableException first) {
-                // Bounded retry with full histories (JK-1216/JK-1241): compact candidate lists
+                // Bounded retry with full historiescompact candidate lists
                 // can make a satisfiable graph LOOK unsat when conflict resolution never
                 // revisits the starved package. Source caches make the retry cheap; a real
                 // unsat fails again and its (better-informed) diagnostics win.
@@ -167,7 +167,7 @@ public final class PubGrubResolver implements Resolver {
         decisions.remove(ROOT_PKG);
 
         // KMP global variant exclusion (A5f finding 20): a platform artifact's own POM can name
-        // a non-selected SIBLING concretely (datastore-core-okio-jvm → datastore-core-jvm) —
+        // a non-selected SIBLING concretely (datastore-core-okio-jvm → datastore-core-jvm)
         // variant-aware in GMM space, a double-define at dex in POM space. When the selected
         // sibling made it into the resolution, the non-selected one leaves it; its dep edges
         // (built below) drop with it, and the selected artifact supplies the classes.

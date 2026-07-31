@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -46,7 +47,7 @@ class QuarkusPluginTest {
         assertThat(outJar).hasContent("RUN");
         assertThat(outJar.getParent().resolve("lib/main/dep.jar")).exists();
         assertThat(outJar.getParent().resolve("quarkus-app/quarkus-run.jar")).exists();
-        // JK-1210: the multi-file layout must be declared so the packaging cache stores it whole.
+        // the multi-file layout must be declared so the packaging cache stores it whole.
         assertThat(io.produced)
                 .contains(
                         outJar.getParent().resolve("lib"),
@@ -106,12 +107,12 @@ class QuarkusPluginTest {
 
         @Override
         public PluginConfig config() {
-            return new PluginConfig("quarkus", java.util.Map.of());
+            return new PluginConfig("quarkus", Map.of());
         }
 
         @Override
         public ProjectFacts project() {
-            return new ProjectFacts("g", "hello", "1.0", 21, null, false, false, java.util.Map.of());
+            return new ProjectFacts("g", "hello", "1.0", 21, null, false, false, Map.of());
         }
 
         @Override

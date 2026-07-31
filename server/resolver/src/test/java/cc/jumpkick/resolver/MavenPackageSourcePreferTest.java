@@ -29,7 +29,7 @@ class MavenPackageSourcePreferTest {
         List<String> empty = new ArrayList<>();
         MavenPackageSource.preferBom(empty, "1.0");
         assertThat(empty).containsExactly("1.0");
-        // Non-empty metadata: do not invent a missing pin (JK-1202).
+        // Non-empty metadata: do not invent a missing pin.
         List<String> v = new ArrayList<>(List.of("2.0", "1.5"));
         MavenPackageSource.preferBom(v, "1.0");
         assertThat(v).containsExactly("2.0", "1.5");

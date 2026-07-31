@@ -82,7 +82,8 @@ class TestStampTest {
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
+        String base =
+                TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
 
         Files.writeString(testSrc, "class FooTest { void t() {} }");
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
@@ -115,7 +116,7 @@ class TestStampTest {
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
                 .isEqualTo(base);
 
-        // A fixture-only edit must retest (JK-1208: false green).
+        // A fixture-only edit must retestfalse green).
         Files.writeString(fixture, "{\"v\":2}");
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
                 .as("resource-only edit busts the key")
@@ -130,7 +131,12 @@ class TestStampTest {
 
         // Missing resource dir behaves like empty (no I/O failure, key stable).
         assertThat(TestStamp.computeKey(
-                        List.of(testSrc), mainClasses, List.of(dir.resolve("integration/resources")), lock, List.of(), List.of()))
+                        List.of(testSrc),
+                        mainClasses,
+                        List.of(dir.resolve("integration/resources")),
+                        lock,
+                        List.of(),
+                        List.of()))
                 .isNotNull();
     }
 }

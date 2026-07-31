@@ -35,12 +35,12 @@ import java.util.function.Consumer;
  * <h3>Conservative vs explicit lock</h3>
  *
  * <ul>
- *   <li><b>Auto (conservative)</b> — locked versions are used as soft preferences fed into
- *       PubGrub's candidate ordering. The solver selects the locked version first; only versions
- *       that conflict with a new or changed constraint are bumped. Deps removed from {@code
- *       jk.toml} are dropped from the lock. New deps are resolved normally.
- *   <li><b>Explicit {@code jk lock}</b> — full fresh resolution, no version preferences; always
- *       picks the latest compatible versions.
+ * <li><b>Auto (conservative)</b> — locked versions are used as soft preferences fed into
+ * PubGrub's candidate ordering. The solver selects the locked version first; only versions
+ * that conflict with a new or changed constraint are bumped. Deps removed from {@code
+ * jk.toml} are dropped from the lock. New deps are resolved normally.
+ * <li><b>Explicit {@code jk lock}</b> — full fresh resolution, no version preferences; always
+ * picks the latest compatible versions.
  * </ul>
  */
 public final class AutoLock {
@@ -207,8 +207,8 @@ public final class AutoLock {
      * @param withDefaults whether to include the project's default features
      * @param observer resolver progress callbacks
      * @param warn sink for a soft-failure warning (one line per call); the engine must NOT write to
-     *     {@code System.out}/{@code System.err}, so callers route this to the view layer (e.g. {@code
-     *     ctx::output}). May be {@code null} to discard.
+     * {@code System.out}/{@code System.err}, so callers route this to the view layer (e.g. {@code
+     * ctx::output}). May be {@code null} to discard.
      */
     public static Lockfile maybeReLock(
             Path dir,
@@ -223,17 +223,17 @@ public final class AutoLock {
             Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
         try {
-            // One lock scope, shared with every other lock entry point (JK-1303): a workspace
+            // One lock scope, shared with every other lock entry pointa workspace
             // member (or root) resolves the merged union at the root — a module-scoped
             // conservative relock must never overwrite the root jk-lock.toml with one module's
-            // closure (JK-1304).
+            // closure.
             LockPipelines.LockScope scope = LockPipelines.lockScope(dir);
             JkBuild effective = scope.effective();
             Path scopeDir = scope.lockDir();
 
             Cas cas = JkStores.cas(cache);
-            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(
-                    effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(scopeDir));
+            cc.jumpkick.repo.RepoGroup repos =
+                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(scopeDir));
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
                     .withProjectDir(scopeDir)
                     .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, scopeDir))
@@ -279,5 +279,4 @@ public final class AutoLock {
             return null;
         }
     }
-
 }

@@ -72,7 +72,7 @@ public final class CachePipelines {
                     long totalFiles = 0;
                     long totalBytes = 0;
 
-                    // sha256/ lives in the store, not under the cache root (JK-1289).
+                    // sha256/ lives in the store, not under the cache root.
                     Path shaDir = cc.jumpkick.cache.JkStores.resolve(root, "sha256");
                     if (Files.isDirectory(shaDir)) {
                         for (Path file : tempFiles(shaDir)) {
@@ -121,7 +121,7 @@ public final class CachePipelines {
                     boolean doSweep = sweep || maxSize != null;
                     long budgetBytes = maxSize != null ? cc.jumpkick.task.LruEvictor.parseSize(maxSize) : -1L;
                     if (doSweep) {
-                        // Blobs live in the store; reachability roots (actions/, tools/) stay with the cache (JK-1289).
+                        // Blobs live in the store; reachability roots (actions/, tools/) stay with the cache.
                         cc.jumpkick.cache.Cas cas = cc.jumpkick.cache.JkStores.cas(root);
                         Path toolsDir = cc.jumpkick.cache.JkStores.resolve(root, "tools");
                         Path actionsDir2 = root.resolve("actions");

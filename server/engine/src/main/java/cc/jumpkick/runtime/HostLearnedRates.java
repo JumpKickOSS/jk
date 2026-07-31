@@ -160,8 +160,7 @@ public final class HostLearnedRates {
         return new HostLearnedRates(map);
     }
 
-    private static void readArray(
-            TomlParseResult t, String tomlKey, String rateKey, Map<String, List<Double>> map) {
+    private static void readArray(TomlParseResult t, String tomlKey, String rateKey, Map<String, List<Double>> map) {
         TomlArray arr = t.getArray(tomlKey);
         if (arr == null) return;
         List<Double> ring = new ArrayList<>();

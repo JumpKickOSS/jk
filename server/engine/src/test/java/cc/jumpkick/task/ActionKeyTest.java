@@ -127,7 +127,7 @@ class ActionKeyTest {
 
     @Test
     void kotlin_plugin_jar_content_is_part_of_action_key(@TempDir Path tempDir) throws IOException {
-        // Invariant: upgrading a compiler plugin jar invalidates the action key (ticket-1004).
+        // Invariant: upgrading a compiler plugin jar invalidates the action key.
         Path src = tempDir.resolve("Main.kt");
         Files.writeString(src, "fun main() {}");
         Path pluginV1 = tempDir.resolve("plugin-v1.jar");

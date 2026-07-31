@@ -1,4 +1,4 @@
-# Built-in Quarkus build plugin — declarative layer (JK-1158/1159/1160/1202).
+# Built-in Quarkus build plugin — declarative layer/1159/1160/1202).
 # Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
 
 [plugin]
@@ -83,7 +83,7 @@ template = "scaffold/GreetingResource.kt.tmpl"
 when     = { lang = "kotlin" }
 
 # Kotlin gets the same example test the java scaffold ships — the [test-dependencies]
-# fragment already added quarkus-junit5 + rest-assured for both languages (JK-1234).
+# fragment already added quarkus-junit5 + rest-assured for both languages.
 [[scaffold.file]]
 path     = "${test-root}/${package-path}/GreetingResourceTest.kt"
 template = "scaffold/GreetingResourceTest.kt.tmpl"

@@ -60,10 +60,8 @@ class BuildPlanForecastGroovyTest {
 
         List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache);
         // TempDir paths may be symlink-normalized by the graph — match by basename.
-        BuildPlan.Module a = plan.stream()
-                .filter(m -> m.dir().endsWith("a"))
-                .findFirst()
-                .orElseThrow();
+        BuildPlan.Module a =
+                plan.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow();
         BuildPlan.Step gv = a.steps().stream()
                 .filter(s -> s.name().equals("compile-groovy"))
                 .findFirst()
@@ -73,23 +71,13 @@ class BuildPlanForecastGroovyTest {
         // Stamp the merged classes dir (where write-stamp-groovy writes it) — CACHED.
         var layout = cc.jumpkick.layout.BuildLayout.of(mod, JkBuildParser.parse(mod.resolve("jk.toml")));
         FreshnessStamp.write(
-                layout.classesDir(),
-                FreshnessStamp.GROOVY_STAMP,
-                "compile-groovy",
-                "",
-                List.of(foo),
-                List.of(),
-                21);
+                layout.classesDir(), FreshnessStamp.GROOVY_STAMP, "compile-groovy", "", List.of(foo), List.of(), 21);
         List<BuildPlan.Module> warm = BuildPlanForecast.of(graph, cas, actionCache, cache);
-        BuildPlan.Step warmGv = warm.stream()
-                .filter(m -> m.dir().endsWith("a"))
-                .findFirst()
-                .orElseThrow()
-                .steps()
-                .stream()
-                .filter(s -> s.name().equals("compile-groovy"))
-                .findFirst()
-                .orElseThrow();
+        BuildPlan.Step warmGv =
+                warm.stream().filter(m -> m.dir().endsWith("a")).findFirst().orElseThrow().steps().stream()
+                        .filter(s -> s.name().equals("compile-groovy"))
+                        .findFirst()
+                        .orElseThrow();
         assertThat(warmGv.cached()).isTrue();
     }
 }

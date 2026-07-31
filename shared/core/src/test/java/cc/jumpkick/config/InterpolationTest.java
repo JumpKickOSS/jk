@@ -8,7 +8,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1271: where {@code ${VAR}} is honoured, and that everywhere else it is a loud error.
+ * where {@code ${VAR}} is honoured, and that everywhere else it is a loud error.
  *
  * <p>The whitelist is the reproducibility fence. {@code jk.toml} plus {@code jk-lock.toml} must fully
  * describe the artifact, and the action cache makes a leak worse than plain non-determinism: an
@@ -17,8 +17,7 @@ import org.junit.jupiter.api.Test;
  */
 class InterpolationTest {
 
-    private static final String PROJECT =
-            """
+    private static final String PROJECT = """
             [project]
             group   = "com.example"
             name    = "m"
@@ -33,20 +32,17 @@ class InterpolationTest {
 
     @Test
     void repository_credentials_may_interpolate() {
-        assertThatCode(() -> parse(PROJECT
-                        + """
+        assertThatCode(() -> parse(PROJECT + """
                         [repositories.r]
                         url = "https://nexus.example/repo/"
                         username = "${REPO_USER}"
                         password = "${REPO_PASS}"
-                        """))
-                .doesNotThrowAnyException();
+                        """)).doesNotThrowAnyException();
     }
 
     @Test
     void repository_object_store_keys_may_interpolate() {
-        assertThatCode(() -> parse(PROJECT
-                        + """
+        assertThatCode(() -> parse(PROJECT + """
                         [repositories.s3]
                         url = "s3://bucket/maven"
                         access-key = "${AWS_KEY}"
@@ -54,18 +50,15 @@ class InterpolationTest {
                         session-token = "${AWS_TOKEN}"
                         region = "${AWS_REGION}"
                         endpoint = "${AWS_ENDPOINT}"
-                        """))
-                .doesNotThrowAnyException();
+                        """)).doesNotThrowAnyException();
     }
 
     @Test
     void test_env_values_may_interpolate() {
-        assertThatCode(() -> parse(PROJECT
-                        + """
+        assertThatCode(() -> parse(PROJECT + """
                         [test]
                         env = { TOKEN = "${CI_TOKEN}", HOME_DIR = "${target}/h" }
-                        """))
-                .doesNotThrowAnyException();
+                        """)).doesNotThrowAnyException();
     }
 
     // ---- refused, because these decide what gets built -------------------------
@@ -73,7 +66,7 @@ class InterpolationTest {
     @Test
     void a_repository_url_may_not_interpolate() {
         // The lockfile records the URL, so an env-dependent one makes a committed lock differ
-        // between machines built from the same commit (JK-1272).
+        // between machines built from the same commit.
         assertThatThrownBy(() -> parse(PROJECT + """
                         [repositories]
                         r = "${MIRROR}/maven"
@@ -85,8 +78,7 @@ class InterpolationTest {
 
     @Test
     void a_url_inside_a_repository_table_may_not_interpolate() {
-        assertThatThrownBy(() -> parse(PROJECT
-                        + """
+        assertThatThrownBy(() -> parse(PROJECT + """
                         [repositories.r]
                         url = "${MIRROR}/maven"
                         username = "${REPO_USER}"
@@ -109,8 +101,7 @@ class InterpolationTest {
 
     @Test
     void a_dependency_coordinate_may_not_interpolate() {
-        assertThatThrownBy(() -> parse(PROJECT
-                        + """
+        assertThatThrownBy(() -> parse(PROJECT + """
                         [dependencies]
                         thing = { group = "com.example", name = "thing", version = "${DEP_VERSION}" }
                         """))
@@ -138,8 +129,7 @@ class InterpolationTest {
     @Test
     void extra_resources_inside_an_array_of_tables_may_not_interpolate() {
         // Array elements are walked too, so a reference cannot hide inside one.
-        assertThatThrownBy(() -> parse(PROJECT
-                        + """
+        assertThatThrownBy(() -> parse(PROJECT + """
                         [build]
                         extra-resources = [ { from = "${SRC}/x.txt", into = "d" } ]
                         """))
@@ -181,8 +171,7 @@ class InterpolationTest {
         assertThatCode(() -> parse(PROJECT + """
                         [manifest]
                         Note = "costs $5 and $ is fine"
-                        """))
-                .doesNotThrowAnyException();
+                        """)).doesNotThrowAnyException();
     }
 
     @Test

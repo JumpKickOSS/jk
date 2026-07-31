@@ -109,7 +109,7 @@ public final class PartialSolution {
     /**
      * After the solver replaces a lazy singleton {@link VersionUniverse} with the full metadata
      * list, rebuild {@code pkg}'s continuous constraint from all assignments and re-project onto the
-     * new universe (JK-1088).
+     * new universe.
      */
     public void rebindAfterUniverseExpand(String pkg) {
         VersionUniverse u = universes.get(pkg);
@@ -197,9 +197,9 @@ public final class PartialSolution {
     }
 
     /**
-     * True iff every allowed version of {@code term.pkg()} contradicts {@code term}.
+     * True iff every allowed version of {@code term.pkg} contradicts {@code term}.
      *
-     * <p>If no assignment mentions {@code term.pkg()} at all, the package is unconstrained —
+     * <p>If no assignment mentions {@code term.pkg} at all, the package is unconstrained
      * nothing the solution holds can contradict a term about it. Without this guard, a negative
      * term whose {@code effectiveVersions} is {@link VersionSet#EMPTY} (the negation of a positive
      * root term with {@code versionSet = ALL}, i.e. an unbounded {@code @latest} selector) would
@@ -227,7 +227,7 @@ public final class PartialSolution {
     /**
      * Live assignment stack (unmodifiable view). Callers must not retain across {@link #backtrack}
      * or {@link #decide}/{@link #derive}. Avoids per-call {@code List.copyOf} on the hot PubGrub
-     * path (JK-1202).
+     * path.
      */
     public List<Assignment> assignments() {
         return java.util.Collections.unmodifiableList(assignments);
@@ -270,12 +270,12 @@ public final class PartialSolution {
      * Distinguishes the three states PubGrub acts on (paper §3 / §4):
      *
      * <ul>
-     *   <li>{@link IncompatibilityRelation#SATISFIED}: every term holds — a real conflict, must be
-     *       resolved.
-     *   <li>{@link IncompatibilityRelation#ALMOST_SATISFIED}: exactly one term doesn't hold, the rest
-     *       do — unit propagation fires.
-     *   <li>{@link IncompatibilityRelation#INCONCLUSIVE}: more than one term unresolved — nothing to
-     *       do yet.
+     * <li>{@link IncompatibilityRelation#SATISFIED}: every term holds — a real conflict, must be
+     * resolved.
+     * <li>{@link IncompatibilityRelation#ALMOST_SATISFIED}: exactly one term doesn't hold, the rest
+     * do — unit propagation fires.
+     * <li>{@link IncompatibilityRelation#INCONCLUSIVE}: more than one term unresolved — nothing to
+     * do yet.
      * </ul>
      */
     public Relation relationTo(Incompatibility inco) {

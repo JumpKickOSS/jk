@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Machine-local preflight memo (JK-1100+): dirty-set, graph structure, and pipeline shape caches
+ * Machine-local preflight memo+): dirty-set, graph structure, and pipeline shape caches
  * under {@code <entry>/target/.jk/preflight/}. Never git-committed; miss or corrupt → full recompute
  * (fail-open).
  *
@@ -41,7 +41,7 @@ public final class PreflightMemo {
     private static final String SHAPE_FILE = "shape-memo.txt";
 
     /**
-     * Serialize shape-memo upserts per entry directory (JK-1124). Parallel prepare races
+     * Serialize shape-memo upserts per entry directory. Parallel prepare races
      * read-modify-write on a single file; last writer must not drop peer modules' rows.
      */
     private static final ConcurrentHashMap<Path, Object> SHAPE_LOCKS = new ConcurrentHashMap<>();
@@ -60,9 +60,7 @@ public final class PreflightMemo {
         return entryDir.resolve("target").resolve(".jk").resolve("preflight").resolve(SHAPE_FILE);
     }
 
-    // -------------------------------------------------------------------------
     // Dirty set (layer C)
-    // -------------------------------------------------------------------------
 
     /** A memo hit: the dirty set plus the validated per-module fingerprints (current as of load). */
     public record DirtyMemo(Set<Path> dirty, Map<Path, String> fingerprints) {}
@@ -118,9 +116,8 @@ public final class PreflightMemo {
                 // A clean claim is a promise that the module's output tree holds the outputs; a
                 // hand-deleted target invalidates it even though no source changed. Workspace
                 // members write under <workspace>/target/<rel>/ — checking <member>/target here
-                // silently killed the memo for every workspace (JK-1306).
-                if (!row.dirty()
-                        && !Files.isDirectory(cc.jumpkick.layout.BuildLayout.moduleTargetDir(root, dir))) {
+                // silently killed the memo for every workspace.
+                if (!row.dirty() && !Files.isDirectory(cc.jumpkick.layout.BuildLayout.moduleTargetDir(root, dir))) {
                     return Optional.empty();
                 }
                 seen.add(rel);
@@ -184,9 +181,7 @@ public final class PreflightMemo {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Graph structure (layer A) + rebuild without WorkspaceLoader (JK-1112)
-    // -------------------------------------------------------------------------
+    // Graph structure (layer A) + rebuild without WorkspaceLoader
 
     /**
      * Store graph snapshot: ordered units (rel, coord, origin) + prereq edges. Structure key is
@@ -234,7 +229,7 @@ public final class PreflightMemo {
     }
 
     /**
-     * Rebuild {@link BuildGraph.Result} from the graph memo without {@code WorkspaceLoader} (JK-1112).
+     * Rebuild {@link BuildGraph.Result} from the graph memo without {@code WorkspaceLoader}.
      * Validates structure fingerprint against current toml/lock files, then re-parses each unit's
      * manifest. Miss → empty.
      */
@@ -361,7 +356,8 @@ public final class PreflightMemo {
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feedFile(md, root.resolve("jk.toml"));
-            Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root).toAbsolutePath().normalize();
+            Path rootLock =
+                    cc.jumpkick.lock.LockPaths.lockFile(root).toAbsolutePath().normalize();
             feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
@@ -369,9 +365,10 @@ public final class PreflightMemo {
                 feedFile(md, d.resolve("jk.toml"));
                 // Every workspace member resolves to the single root lock — already digested
                 // above; re-reading a monorepo-sized lock once per module scaled the key cost by
-                // modules × lock size (JK-1320). A marker keeps the structural position; a module
+                // modules × lock size. A marker keeps the structural position; a module
                 // with a genuinely distinct lock (standalone unit) still digests its own.
-                Path lock = cc.jumpkick.lock.LockPaths.lockFile(d).toAbsolutePath().normalize();
+                Path lock =
+                        cc.jumpkick.lock.LockPaths.lockFile(d).toAbsolutePath().normalize();
                 if (lock.equals(rootLock)) {
                     feed(md, "lock=root");
                 } else {
@@ -393,14 +390,12 @@ public final class PreflightMemo {
         return structureFingerprint(entryDir, unitDirs);
     }
 
-    // -------------------------------------------------------------------------
-    // Pipeline shape (layer B) — JK-1113
-    // -------------------------------------------------------------------------
+    // Pipeline shape (layer B)
 
     /**
      * Static pipeline outline for one module: total weight, serial test-step weight, and step
-     * names/phases. Used to skip pipeline assembly on ETA-only paths (JK-1114) and to skip
-     * {@link cc.jumpkick.run.Pipeline#estimatedTotalWeight()} on prepare (JK-1113). Never trusted
+     * names/phases. Used to skip pipeline assembly on ETA-only paths and to skip
+     * {@link cc.jumpkick.run.Pipeline#estimatedTotalWeight} on prepare. Never trusted
      * under force/rebuild.
      */
     public record PipelineShape(int weight, int testWeight, List<StepShape> steps) {
@@ -471,7 +466,7 @@ public final class PreflightMemo {
 
     /**
      * Unique row key: module rel + shape fingerprint. Fingerprint embeds skipTests, so
-     * alternating {@code --skip-tests} keeps both variants instead of thrashing (JK-1124).
+     * alternating {@code --skip-tests} keeps both variants instead of thrashing.
      */
     private static String shapeRowKey(String rel, String fingerprint) {
         return rel + "\0" + fingerprint;
@@ -509,7 +504,7 @@ public final class PreflightMemo {
                     }
                 }
                 byKey.put(shapeRowKey(rel, fp), newLine);
-                // Bounded per-module rows (JK-1239): fingerprints embed skipTests (JK-1124), so
+                // Bounded per-module rowsfingerprints embed skipTests, so
                 // a live module keeps a couple of valid rows — but every jk.toml/lock edit mints
                 // a NEW fingerprint and stale rows can never hit again. Rotate out the oldest
                 // beyond a small cap instead of growing the memo forever.
@@ -554,7 +549,7 @@ public final class PreflightMemo {
     }
 
     /**
-     * JK-1115: wire-only {@link ModulePlan} from a warm shape memo — no real work steps. Used for an
+     * wire-only {@link ModulePlan} from a warm shape memo — no real work steps. Used for an
      * early {@code onPlan} so the aggregate bar can calibrate during prepare. Must never be
      * executed; the real plan replaces it after prepare.
      */
@@ -575,16 +570,14 @@ public final class PreflightMemo {
                     .weight(0)
                     .build());
         }
-        // Empty-step pipeline is fine; ModulePlan.weight() carries the bar share.
+        // Empty-step pipeline is fine; ModulePlan.weight carries the bar share.
         return new ModulePlan(unit.dir(), unit.coord(), b.build(), shape.weight(), false, cache);
     }
 
-    // -------------------------------------------------------------------------
     // Module dirty fingerprint (sources)
-    // -------------------------------------------------------------------------
 
     /**
-     * Every regular file under dirs the build consumes feeds the digest (JK-1144/1148): main
+     * Every regular file under dirs the build consumes feeds the digest/1148): main
      * sources, main resources, default + named test suites and suite resources. Derived from
      * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */
@@ -639,8 +632,6 @@ public final class PreflightMemo {
         String v = System.getenv("JK_PREFLIGHT_MEMO_MTIME");
         return v != null && (v.equals("1") || v.equalsIgnoreCase("true"));
     }
-
-    // -------------------------------------------------------------------------
 
     private static Path absFromRel(Path root, String rel) {
         if (".".equals(rel) || rel.isEmpty()) return root;

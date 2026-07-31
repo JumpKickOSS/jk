@@ -2,21 +2,21 @@
 # C1 — wall-time monorepo test parallel measure (serial gate vs --parallel-tests).
 #
 # Usage:
-#   ./scripts/test-parallel-measure.sh
-#   MODULES='shared/*' ./scripts/test-parallel-measure.sh
-#   JK_BIN=/path/to/jk ./scripts/test-parallel-measure.sh
+# ./scripts/test-parallel-measure.sh
+# MODULES='shared/*' ./scripts/test-parallel-measure.sh
+# JK_BIN=/path/to/jk ./scripts/test-parallel-measure.sh
 #
 # Env:
-#   JK_BIN      — jk binary (default: ~/.jk/bin/jk or PATH)
-#   MODULES     — --modules filter (default: multi-module library set without clients/cli)
-#   EXTRA_ARGS  — extra args appended to both runs (e.g. --no-progress)
-#   WARM        — if 1 (default), do one warm-up test before timing
-#   OUT_DIR     — where to write logs (default: build/test-parallel-measure)
+# JK_BIN — jk binary (default: ~/.jk/bin/jk or PATH)
+# MODULES — --modules filter (default: multi-module library set without clients/cli)
+# EXTRA_ARGS — extra args appended to both runs (e.g. --no-progress)
+# WARM — if 1 (default), do one warm-up test before timing
+# OUT_DIR — where to write logs (default: build/test-parallel-measure)
 #
 # Reports wall seconds for:
-#   A) -j0 -w0                 (default: auto within-module; serial across modules)
-#   B) -j0 -w0 --parallel-tests
-#   C) -j0 -w1                 (serial within-module baseline)
+# A) -j0 -w0 (default: auto within-module; serial across modules)
+# B) -j0 -w0 --parallel-tests
+# C) -j0 -w1 (serial within-module baseline)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -65,7 +65,7 @@ run_once() {
   local start end status
   start=$(date +%s)
   set +e
-  # shellcheck disable=SC2086
+ # shellcheck disable=SC2086
   "$JK" test "$@" $EXTRA_ARGS --modules "$MODULES" >>"$logf" 2>&1
   status=$?
   set -e
@@ -77,7 +77,7 @@ run_once() {
       echo "FAILED: $label (see $logf)"
     fi
   } | tee -a "$SUMMARY"
-  # last line of this function's stdout is the wall time only (for callers that capture)
+ # last line of this function's stdout is the wall time only (for callers that capture)
   echo "$wall" >"$OUT_DIR/${label}.wall"
   echo "$wall"
   return "$status"
@@ -98,7 +98,7 @@ log ""
 if [[ "$WARM" == "1" ]]; then
   log "Warm-up (not timed)..."
   set +e
-  # shellcheck disable=SC2086
+ # shellcheck disable=SC2086
   "$JK" test -j0 -w1 $EXTRA_ARGS --modules "$MODULES" >"$OUT_DIR/warm.log" 2>&1
   set -e
   log "warm done (log: $OUT_DIR/warm.log)"

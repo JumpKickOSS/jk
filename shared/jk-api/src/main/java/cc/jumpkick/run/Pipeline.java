@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.LongAdder;
  * Named DAG of {@link Step}s for one invocation: readiness-level scheduling, progress, diagnostics,
  * and a terminal {@link PipelineResult}. Cancellation is cooperative at the step level: a flag is
  * set, futures are cancelled after a short grace ({@link #COOPERATIVE_CANCEL_GRACE}). OS-level
- * worker JVMs are shut down by the engine ({@code JobWorkers}, JK-1096): soft then force within
+ * worker JVMs are shut down by the engine ({@code JobWorkers},soft then force within
  * ~500 ms — never hang.
  */
 public final class Pipeline {
@@ -125,8 +125,8 @@ public final class Pipeline {
     }
 
     /**
-     * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions —
-     * step failures are folded into {@link PipelineResult#success()}.
+     * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions
+     * step failures are folded into {@link PipelineResult#success}.
      */
     public PipelineResult run() {
         Instant pipelineStart = Instant.now();
@@ -344,7 +344,7 @@ public final class Pipeline {
                 ctx.notifyProgress(gap);
             }
             // A step that reported no real work (outputs up-to-date / served from cache via
-            // ctx.cached()) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
+            // ctx.cached) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
             // pipeline decides success (see isOk), so it never fails a build — it only feeds the
             // dashboard's per-project cache-hit ("steps skipped") ratio.
             StepStatus terminal = ctx.wasCached() ? StepStatus.SKIPPED : StepStatus.SUCCESS;
@@ -384,7 +384,7 @@ public final class Pipeline {
 
     /**
      * Human diagnostic for an unexpected step throwable. Bare messages like {@code closed} (pipe /
-     * stream closed mid-worker) are nearly useless alone — append the exception class (ticket-1053).
+     * stream closed mid-worker) are nearly useless alone — append the exception class.
      */
     static String diagnosticMessage(Throwable t) {
         String msg = t.getMessage();

@@ -7,7 +7,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Theme;
 import org.junit.jupiter.api.Test;
 
-/** Pure unit coverage for {@link ExplainCommand#buildTimeEstimate} (JK-1298). */
+/** Pure unit coverage for {@link ExplainCommand#buildTimeEstimate}. */
 class ExplainCommandEstimateTest {
 
     @Test

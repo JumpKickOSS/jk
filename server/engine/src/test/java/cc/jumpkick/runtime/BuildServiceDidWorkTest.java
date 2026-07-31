@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** JK-1296: productive-step accounting for "built" vs "checked" UX. */
+/**productive-step accounting for "built" vs "checked" UX. */
 class BuildServiceDidWorkTest {
 
     @Test
@@ -29,9 +29,7 @@ class BuildServiceDidWorkTest {
 
     @Test
     void compile_success_counts_as_work() {
-        var r = result(
-                step(StepNames.COMPILE_JAVA, StepStatus.SUCCESS),
-                step(StepNames.RUN_TESTS, StepStatus.SKIPPED));
+        var r = result(step(StepNames.COMPILE_JAVA, StepStatus.SUCCESS), step(StepNames.RUN_TESTS, StepStatus.SKIPPED));
         assertThat(BuildService.moduleDidWork(r)).isTrue();
     }
 

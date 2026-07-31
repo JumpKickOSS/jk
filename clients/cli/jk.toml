@@ -10,7 +10,7 @@ java     = 25
 main = "cc.jumpkick.cli.Jk"
 
 # The slim client's whole kernel surface — NO jk-io, jk-resolver, jk-toolchain, or jk-engine
-# (slim-client Stage 5 / ticket-1020): heavy verbs reach the engine over the wire.
+# (slim-client Stage 5): heavy verbs reach the engine over the wire.
 # Integration tests under src/test spawn the real :engine shadow jar.
 [dependencies]
 jk-core            = { group = "cc.jumpkick", name = "jk-core",            version = "0.10.1" }
@@ -27,7 +27,7 @@ graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version
 
 [test-dependencies]
 # Mirrors Gradle testImplementation(project(":engine")) — unit tests that touch TestSupport /
-# pipeline bridges need engine types; production classpath stays engine-free (ticket-1020).
+# pipeline bridges need engine types; production classpath stays engine-free.
 jk-engine               = { group = "cc.jumpkick", name = "jk-engine", version = "0.10.1" }
 assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
 junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }

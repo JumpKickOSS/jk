@@ -423,7 +423,13 @@ public final class PluginDescriptors {
         }
 
         return new PluginDescriptor.Contributions(
-                platformDeps, compilerArgs, kotlinPlugins, packagerDeps, stepDeps, provided, sourceRoots,
+                platformDeps,
+                compilerArgs,
+                kotlinPlugins,
+                packagerDeps,
+                stepDeps,
+                provided,
+                sourceRoots,
                 jvmEnvironment);
     }
 

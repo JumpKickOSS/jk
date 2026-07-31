@@ -19,7 +19,7 @@ public final class NewJkBuildRenderer {
     private static final String DEFAULT_GROOVY_VERSION = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
 
     /**
-     * Groovy for {@code --grails} scaffolds (JK-1223): Grails 8.0.0-M4's own members require a
+     * Groovy for {@code --grails} scaffoldsGrails 8.0.0-M4's own members require a
      * groovy NEWER than grails-bom manages (core declares 5.0.7, the bom pins 5.0.6), so the
      * scaffold pins the working version explicitly — the exact pin overrides the platform.
      * Bump together with the grails plugin's default boot line.

@@ -16,7 +16,7 @@ import java.time.Instant;
  * {@code docs/machine-output.md}.
  *
  * <p>Every object includes {@code schema} ({@link #SCHEMA}), {@code ts} (epoch ms), and {@code type}.
- * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — JK-1117) via
+ * Most lines also carry an additive {@code progress} rider (0–100 aggregate % — via
  * {@link #withProgress(String)}.
  */
 public final class JsonlShape {
@@ -63,7 +63,7 @@ public final class JsonlShape {
     }
 
     /**
-     * Attach the aggregate {@code progress} percent rider from {@link LiveProgress} (JK-1117).
+     * Attach the aggregate {@code progress} percent rider from {@link LiveProgress}.
      * Idempotent if the line already ends with a progress field. Returns {@code line} unchanged when
      * null/blank or not a single JSON object.
      */
@@ -257,7 +257,7 @@ public final class JsonlShape {
     }
 
     /**
-     * Engine workspace aggregate progress (JK-1120). Clients mirror the engine's tracker snapshot;
+     * Engine workspace aggregate progress. Clients mirror the engine's tracker snapshot;
      * do not recompute from module ticks.
      */
     public static String workspaceProgress(

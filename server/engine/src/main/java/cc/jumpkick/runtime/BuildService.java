@@ -166,7 +166,7 @@ public final class BuildService {
 
     /**
      * As {@link #forecastDirtyDirs(BuildGraph.Result, Path, boolean)} with optional {@code entryDir}
-     * for the local preflight dirty memo (JK-1100). When {@code entryDir} is non-null and inputs are
+     * for the local preflight dirty memo. When {@code entryDir} is non-null and inputs are
      * unchanged, returns the memoized dirty set without a full {@link BuildPlanForecast} walk.
      */
     public static Set<Path> forecastDirtyDirs(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
@@ -233,7 +233,7 @@ public final class BuildService {
      * Forecast the build without running it: resolve the module graph and run the truthful
      * per-step {@link BuildPlanForecast} over it, returning an {@link ExplainPlan} the caller
      * renders. Pure policy — nothing here writes to {@code stdout}/{@code stderr}. Graph-resolution
-     * errors come back in {@link ExplainPlan#errors()} (the caller renders the same failure); an
+     * errors come back in {@link ExplainPlan#errors} (the caller renders the same failure); an
      * {@link IOException} probing the workspace still propagates, exactly as the direct resolve did.
      */
     public static ExplainPlan explain(Path entryDir, JkBuild entryBuild, Path cache) throws IOException {
@@ -275,7 +275,8 @@ public final class BuildService {
             // borrows a learned rate from when it has no history of its own (EffortWeights.learned).
             Set<Path> projectModules = new HashSet<>();
             for (BuildPlan.Module m : plan.modules()) projectModules.add(m.dir());
-            List<String> projectDirs = projectModules.stream().map(Path::toString).toList();
+            List<String> projectDirs =
+                    projectModules.stream().map(Path::toString).toList();
             boolean distrust = SessionContext.current().config().forceOr(false)
                     || SessionContext.current().config().rebuildOr(false);
             BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
@@ -351,10 +352,10 @@ public final class BuildService {
      * An opaque, front-end-safe handle to a resolved build graph: enough for a caller to branch on
      * resolution errors / an empty workspace and then forecast dirty modules, without ever naming
      * {@link BuildGraph}/{@link BuildGraph.BuildUnit}. The engine-internal {@link BuildGraph.Result}
-     * is reachable only through the package-private {@link #graph()} accessor (feeding {@link
+     * is reachable only through the package-private {@link #graph} accessor (feeding {@link
      * #forecastDirtyDirs(ResolvedGraph, Path)}), so the boundary is compiler-enforced.
      *
-     * <p>A {@code final class} rather than a {@code record} precisely so {@code graph()} can drop
+     * <p>A {@code final class} rather than a {@code record} precisely so {@code graph} can drop
      * below {@code public}.
      */
     public static final class ResolvedGraph {
@@ -418,7 +419,7 @@ public final class BuildService {
 
     /**
      * Build a whole workspace: resolve the module graph, size the worker-JVM memory plan (unless
-     * {@link WorkspaceRequest#applyMemoryPlan()} is {@code false} — see its javadoc), assemble each
+     * {@link WorkspaceRequest#applyMemoryPlan} is {@code false} — see its javadoc), assemble each
      * module's pipeline, then schedule them in dependency order (each level concurrent) — running every
      * module's pipeline and surfacing artifacts under the workspace {@code target/}. Progress flows to
      * {@code listener}; the returned {@link WorkspaceResult} is the aggregate outcome. Pure of
@@ -461,7 +462,7 @@ public final class BuildService {
             return r;
         }
         List<BuildGraph.BuildUnit> units = graph.topoOrder();
-        // JK-1109: compare to prior structure memo before overwriting (fail-open).
+        // compare to prior structure memo before overwriting (fail-open).
         boolean graphMemoHit = PreflightMemo.graphStructureMatches(req.entryDir(), graph);
         PreflightMemo.storeGraph(req.entryDir(), graph);
         if (Perf.ENABLED && graphMemoHit) {
@@ -488,10 +489,10 @@ public final class BuildService {
         Set<Path> moduleDirs = new LinkedHashSet<>();
         for (BuildGraph.BuildUnit u : units) moduleDirs.add(u.dir());
         long tf = Perf.start();
-        // JK-1106: Checking runs inside this build request (no separate client forecast RPC).
+        // Checking runs inside this build request (no separate client forecast RPC).
         // Client dirty hint (selection / force path) still avoids a second walk when provided.
         // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
-        // JK-1100: when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
+        // when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
         if (req.dirtyHint() != null) {
             listener.onPreflight("checking", 0, 0, "Using dirty set…");
@@ -521,9 +522,9 @@ public final class BuildService {
             // complete=true drops the preflight row from the live tree (CommandManager.preflight).
             listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
         }
-        // JK-1102: only fully prepare modules that will execute (dirty). Clean modules skip prepare
+        // only fully prepare modules that will execute (dirty). Clean modules skip prepare
         // and schedule — prepare is pure pipeline assembly (parse + plugin describe + step list);
-        // real plugin work runs in steps. ensureMaterialized is idempotent CAS extract (JK-1107).
+        // real plugin work runs in steps. ensureMaterialized is idempotent CAS extract.
         List<BuildGraph.BuildUnit> dirtyUnits = new ArrayList<>();
         List<BuildGraph.BuildUnit> cleanUnits = new ArrayList<>();
         for (BuildGraph.BuildUnit u : units) {
@@ -536,10 +537,10 @@ public final class BuildService {
         final int concurrency =
                 req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
 
-        // JK-1114/1115 / JK-1151: early ETA during prepare — same seedEta routine as jk explain.
+        // /1115 /early ETA during prepare — same seedEta routine as jk explain.
         // When every dirty module has a warm shape memo (and not force/rebuild):
-        //   • provisional onPlan — bar denominator calibrates during prepare
-        //   • early onEtaEstimate from schedule + history (identical to estimateEtaMillis)
+        // • provisional onPlan — bar denominator calibrates during prepare
+        // • early onEtaEstimate from schedule + history (identical to estimateEtaMillis)
         // On force/rebuild (or partial shapes): still seed countdown from history alone so the
         // TUI never counts elapsed-up for the whole prepare window when metrics exist.
         boolean distrustShape = SessionContext.current().config().forceOr(false)
@@ -601,7 +602,7 @@ public final class BuildService {
                         req.jdksDir(),
                         historyShapeForCosts(earlyCosts.size())));
             } else {
-                // History-only early seed (rebuild/force or cold shapes) — JK-1151 / JK-1179.
+                // History-only early seed (rebuild/force or cold shapes) —.
                 // Prefer shape-aware rebuild history when this session is rebuild/force so the TUI
                 // can countdown before prepare finishes (never stay at 0 when journal has priors).
                 // Use dirty-count shape so the post-prepare reseed (same key) can only refine, not
@@ -615,7 +616,7 @@ public final class BuildService {
                 }
                 if (early <= 0 && distrustShape && !dirtyUnits.isEmpty()) {
                     // Cold machine: seed a coarse countdown from dirty-module count so rebuild does
-                    // not start in pure count-up mode (JK-1179). ~1.2s per module @ MS_PER_WEIGHT.
+                    // not start in pure count-up mode. ~1.2s per module @ MS_PER_WEIGHT.
                     early = (long) dirtyUnits.size() * EffortWeights.MS_PER_WEIGHT * 8L;
                 }
                 if (early > 0) listener.onEtaEstimate(early);
@@ -645,18 +646,19 @@ public final class BuildService {
         listener.onModuleGraph(graph.edges());
 
         // ETA seed — same cost sources + seedEta as estimateEtaMillis (jk explain). Do not mix
-        // ModulePlan.weight() with a separately estimated test slice: weight/testWeight must come
+        // ModulePlan.weight with a separately estimated test slice: weight/testWeight must come
         // from one source (shape pair, or pipeline walk) or the countdown diverges from explain.
         long teta = Perf.start();
         List<EffortWeights.ModuleCost> etaCosts = new ArrayList<>();
         BuildMetrics etaMetrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings etaTimings = StepTimings.load(req.cache());
-        List<String> etaProjectDirs = plans.keySet().stream().map(Path::toString).toList();
+        List<String> etaProjectDirs =
+                plans.keySet().stream().map(Path::toString).toList();
         for (var e : plans.entrySet()) {
             ModulePlan p = e.getValue();
             Set<Path> prereqs = graph.edges().getOrDefault(e.getKey(), Set.of());
-            etaCosts.add(etaCostForPreparedModule(
-                    req, p, prereqs, distrustShape, etaMetrics, etaTimings, etaProjectDirs));
+            etaCosts.add(
+                    etaCostForPreparedModule(req, p, prereqs, distrustShape, etaMetrics, etaTimings, etaProjectDirs));
         }
         Perf.end("ws-eta-costs", teta);
         listener.onEtaEstimate(seedEta(
@@ -707,7 +709,7 @@ public final class BuildService {
         Perf.end("ws-schedule-run", tsched);
         // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
         // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
-        // cancelled rather than a generic failure (JK-1252).
+        // cancelled rather than a generic failure.
         boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
         boolean ok = failure == null && !cancelled;
         if (ok) {
@@ -718,7 +720,7 @@ public final class BuildService {
             Calibration.learnFromSuccess(List.copyOf(hostSamples));
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
-            // JK-1100 / JK-1296: after a successful full forecast path, store an all-clean dirty
+            // after a successful full forecast path, store an all-clean dirty
             // memo so the next process skips the action-key walk. Dirty-hint paths (selection)
             // leave the memo alone — we didn't recompute the whole graph's dirtiness. Test-only
             // runs also leave it alone: they never package, so "clean" would be a lie for build.
@@ -734,16 +736,15 @@ public final class BuildService {
             }
         }
         int exit = ok ? 0 : (cancelled ? 1 : failure.exitCode());
-        WorkspaceResult result =
-                new WorkspaceResult(ok, exit, List.copyOf(outcomes), List.of(), cancelled);
+        WorkspaceResult result = new WorkspaceResult(ok, exit, List.copyOf(outcomes), List.of(), cancelled);
         listener.onWorkspaceFinish(result);
         return result;
     }
 
     /**
-     * Prepare pipelines for dirty modules only (JK-1102). When more than one module needs prepare and
-     * {@code JK_PREPARE_PARALLEL} is not {@code false}, prepares in parallel on {@link JkThreads#io()}
-     * (JK-1103). Dirty modules always {@code forceRebuild} the pipeline assembly path.
+     * Prepare pipelines for dirty modules only. When more than one module needs prepare and
+     * {@code JK_PREPARE_PARALLEL} is not {@code false}, prepares in parallel on {@link JkThreads#io}
+     * . Dirty modules always {@code forceRebuild} the pipeline assembly path.
      */
     private static Map<Path, ModulePlan> prepareModules(
             List<BuildGraph.BuildUnit> dirtyUnits,
@@ -857,12 +858,11 @@ public final class BuildService {
         // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
         // history is ground truth for "jk build --rebuild takes ~2m30s". Also consult plain `build`
         // full-dirty rows — organic 27-module runs are the same work as --rebuild.
-        //
-        // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relative (JK-1302): the
+        // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relativethe
         // floor source below is keyed by dirty count (`#dN`), so a wide-but-cheap incremental
-        // build is floored against other builds of ITS OWN shape, not against full-rebuild walls —
-        // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules()`
-        // always equals costs.size() here (historyShapeForCosts at every call site), so one
+        // build is floored against other builds of ITS OWN shape, not against full-rebuild walls
+        // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules`
+        // always equals costs.size here (historyShapeForCosts at every call site), so one
         // condition suffices.
         boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
         // Cold full rebuilds: ideal list-schedule over-states parallel efficiency (disk/CAS/GC).
@@ -873,8 +873,8 @@ public final class BuildService {
             // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput (provisional; n=1 jk).
             etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.75));
         }
-        long base = EffortWeights.scheduleMillis(
-                costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
+        long base =
+                EffortWeights.scheduleMillis(costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
         if (coldFull && base > 0) {
             // Modest contention margin — main fit is baselines; keep this thin (prefer mild high).
             base = Math.round(base * 1.08);
@@ -973,15 +973,15 @@ public final class BuildService {
      * Early countdown before prepare: sum measured heavy steps (compile/test/package) for each dirty
      * module dir. Returns 0 when no step history exists yet.
      */
-    private static long etaFromDirtyModuleDirs(
-            Path entryDir, List<BuildGraph.BuildUnit> dirtyUnits, Path cache) {
+    private static long etaFromDirtyModuleDirs(Path entryDir, List<BuildGraph.BuildUnit> dirtyUnits, Path cache) {
         if (dirtyUnits == null || dirtyUnits.isEmpty()) return 0;
         BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
         StepTimings timings = StepTimings.load(cache);
-        List<String> projectDirs = dirtyUnits.stream().map(u -> u.dir().toString()).toList();
+        List<String> projectDirs =
+                dirtyUnits.stream().map(u -> u.dir().toString()).toList();
         // Representative heavy steps — early seed before forecast details are known.
-        List<String> heavy = List.of(
-                "compile-java", "compile-kotlin", "compile-groovy", "compile-test", "run-tests", "package-jar");
+        List<String> heavy =
+                List.of("compile-java", "compile-kotlin", "compile-groovy", "compile-test", "run-tests", "package-jar");
         List<EffortWeights.ModuleCost> costs = new ArrayList<>();
         for (BuildGraph.BuildUnit u : dirtyUnits) {
             // Only include steps that have measured history for this module (don't invent compile
@@ -998,7 +998,11 @@ public final class BuildService {
         }
         if (costs.isEmpty()) return 0;
         return EffortWeights.scheduleMillis(
-                costs, Math.max(1, Runtime.getRuntime().availableProcessors()), false, false, EffortWeights.MS_PER_WEIGHT);
+                costs,
+                Math.max(1, Runtime.getRuntime().availableProcessors()),
+                false,
+                false,
+                EffortWeights.MS_PER_WEIGHT);
     }
 
     /**
@@ -1029,7 +1033,7 @@ public final class BuildService {
     }
 
     /**
-     * Successful build invocation stats with JK-1156 shape-aware keys.
+     * Successful build invocation stats with shape-aware keys.
      *
      * <p>Lookup order: exact shaped key → bare project dir → host {@code dir=""} for that shape's
      * kind → host bare {@code build}. Kind is {@code build} or {@code build:rebuild} so full
@@ -1074,7 +1078,7 @@ public final class BuildService {
             if (exact.isPresent() && exact.get().count() > 0) return exact.get();
             // Same path, any dirty-count for this kind — the write side always shapes the
             // key (path#dN), so merge across shapes instead of an exact bare lookup that
-            // reads a never-written key (JK-1226).
+            // reads a never-written key.
             BuildMetrics.Stats shapes = metrics.okAcrossShapes(kind, entryDir.toString());
             if (shapes.count() > 0) return shapes;
             // Fall back to plain "build" for the path (pre-1156 rows).
@@ -1102,12 +1106,12 @@ public final class BuildService {
 
     /**
      * Assemble one dirty module's pipeline + estimates. Only called for modules in the dirty set
-     * (JK-1102); clean modules never enter here. {@code forceRebuild} seeds {@link
+     * ; clean modules never enter here. {@code forceRebuild} seeds {@link
      * EffortWeights#predict} so bar weights don't collapse as fully-cached for upstream-dirty work.
      * Dirty modules are never fully-cached for plan purposes; {@link BuildPipelines#coreBuilder}
      * still predicts weights once via its lazy plan supplier.
      *
-     * <p>JK-1113: when the static pipeline shape fingerprint is warm and the session is not
+     * <p>when the static pipeline shape fingerprint is warm and the session is not
      * force/rebuild, reuse memoized {@code estimatedTotalWeight} (skip the parallel step estimate).
      */
     private static ModulePlan prepareModule(
@@ -1152,7 +1156,7 @@ public final class BuildService {
         return new ModulePlan(u.dir(), u.coord(), pipeline, weight, false, req.cache());
     }
 
-    /** JK-1155: learn run-tests rates from actual TestSummary counts when present. */
+    /**learn run-tests rates from actual TestSummary counts when present. */
     private static StepTimingsRecorder timingsRecorder(
             ModulePlan p, List<StepTimings.Sample> timingSamples, List<HostLearnedRates.HostSample> hostSamples) {
         return new StepTimingsRecorder(
@@ -1172,7 +1176,7 @@ public final class BuildService {
             long ms = (System.nanoTime() - t0) / 1_000_000;
             int exit = r.success() ? 0 : exitCodeFor(plan.pipeline());
             // Failures always count as work; successes count only when a productive step ran
-            // (not pure cache hits / no-ops — JK-1296).
+            // (not pure cache hits / no-ops —.
             boolean didWork = !r.success() || moduleDidWork(r);
             ModuleOutcome o = new ModuleOutcome(plan.coord(), plan.dir(), r.success(), exit, ms, didWork);
             listener.onModuleFinish(o);
@@ -1189,7 +1193,7 @@ public final class BuildService {
      * True when any productive step (compile / test / package / native / image / …) terminated
      * {@link StepStatus#SUCCESS} rather than cache-hit {@link StepStatus#SKIPPED}. Setup steps
      * (parse, resolve, ensure-jdk, copy-resources, write-stamp) always succeed without marking
-     * cached and must not make a pure check look like a rebuild (JK-1296).
+     * cached and must not make a pure check look like a rebuild.
      */
     public static boolean moduleDidWork(PipelineResult r) {
         for (PipelineResult.StepReport s : r.steps()) {

@@ -6,17 +6,17 @@ import cc.jumpkick.cli.theme.Theme;
 import org.jline.utils.Signals;
 
 /**
- * App-level SIGINT handler (JK-1252): cancel the live engine job through the same
+ * App-level SIGINT handlercancel the live engine job through the same
  * {@code cancel-request} path as {@code jk cancel}, settle the TUI as cancelled, then hard-exit
  * the CLI ({@link Runtime#halt(int) halt(2)}) as a backup so Ctrl-C never hangs.
  *
  * <p>Order matters:
  *
  * <ol>
- *   <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
- *       kill path as the web UI and {@code jk cancel}
- *   <li>Settle the active pipeline region ("Build job was cancelled by user took …")
- *   <li>{@code halt(2)} — guaranteed process death if anything above is stuck
+ * <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
+ * kill path as the web UI and {@code jk cancel}
+ * <li>Settle the active pipeline region ("Build job was cancelled by user took …")
+ * <li>{@code halt(2)} — guaranteed process death if anything above is stuck
  * </ol>
  *
  * <p>Wizards temporarily override this via {@link org.jline.terminal.Terminal#handle} so Ctrl-C
@@ -37,11 +37,11 @@ public final class GlobalCancel {
         Signals.register("INT", () -> {
             // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
             // background thread so the user sees the cancelled settle immediately instead of a
-            // still-animating spinner while a wedged engine eats socket watchdogs (JK-1314).
+            // still-animating spinner while a wedged engine eats socket watchdogs.
             cc.jumpkick.config.SessionContext.current().cancel().cancel();
             // The session's working dir honors -C/--directory (the raw process CWD does not),
             // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
-            // member dir cancels the covering workspace build (JK-1315).
+            // member dir cancels the covering workspace build.
             java.nio.file.Path invocationDir;
             try {
                 invocationDir = cc.jumpkick.config.SessionContext.current().workingDir();

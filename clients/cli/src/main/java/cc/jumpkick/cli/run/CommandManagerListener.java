@@ -19,7 +19,7 @@ import java.util.List;
  * the {@link ConsoleSpec} mappers.
  *
  * <p>When constructed with a {@code null} {@link ConsoleSpec} the listener uses {@code command} as the
- * display name and calls {@link CommandManager#dismiss()} on completion (the caller owns the result
+ * display name and calls {@link CommandManager#dismiss} on completion (the caller owns the result
  * line). This is used by {@link PipelineConsole#run(cc.jumpkick.run.Pipeline, PipelineConsole.Mode,
  * java.nio.file.Path)} to drive the CommandManager spinner for simple pipelines.
  *
@@ -39,7 +39,7 @@ public final class CommandManagerListener implements PipelineListener {
     private final boolean animate;
     /**
      * False for one member of a multi-module workspace run: engine {@code workspace-progress} is the
-     * only aggregate truth — pipeline-local fractions must not reach {@link LiveProgress} (JK-1121).
+     * only aggregate truth — pipeline-local fractions must not reach {@link LiveProgress}.
      */
     private final boolean aggregateRider;
 
@@ -68,7 +68,7 @@ public final class CommandManagerListener implements PipelineListener {
 
     /**
      * No-spec constructor: uses {@code command} as the spinner display name and calls {@link
-     * CommandManager#dismiss()} on completion so the caller can print its own result line.
+     * CommandManager#dismiss} on completion so the caller can print its own result line.
      */
     public CommandManagerListener(PrintStream out, String command, String module, List<Step> steps, boolean animate) {
         this.out = out;
@@ -129,7 +129,7 @@ public final class CommandManagerListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS (JK-1297).
+        // SKIPPED = cache hit / up-to-date — green terminal, same as SUCCESS.
         boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
         cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
     }

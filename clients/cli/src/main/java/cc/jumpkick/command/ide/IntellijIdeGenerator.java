@@ -22,7 +22,7 @@ import java.util.Set;
 import org.jline.utils.AttributedStyle;
 
 /**
- * Emits IntelliJ IDEA project files ({@code .idea/} + {@code *.iml}) from {@link IdeModel}. Modules
+ * Emits IntelliJ IDEA project files ({@code.idea/} + {@code *.iml}) from {@link IdeModel}. Modules
  * map to stable {@code jk-<vendor>-<level>} SDKs in the global {@code jdk.table.xml}.
  */
 public final class IntellijIdeGenerator implements IdeGenerator {
@@ -76,7 +76,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
                 files++;
             }
         }
-        // JK-1141: jk test suite run configurations (workspace root working dir).
+        // jk test suite run configurations (workspace root working dir).
         files += writeJkTestRunConfigs(runDir, wsRoot, allModules.keySet());
 
         // ---- generate *.iml for each module --------------------------------
@@ -298,7 +298,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append("    <exclude-output />\n");
 
         sb.append("    <content url=\"file://$MODULE_DIR$\">\n");
-        // JK-1139: all TestSuites roots as test sources (not only default test/).
+        // all TestSuites roots as test sources (not only default test/).
         for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
             if (root.resource()) {
                 addResourceFolder(sb, moduleDir, root.relative(), root.test());
@@ -372,7 +372,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
 
     /**
      * Shell run configs: {@code jk test}, {@code jk test --all}, and one per non-default suite
-     * discovered under any module (JK-1141).
+     * discovered under any module.
      */
     static int writeJkTestRunConfigs(Path runDir, Path wsRoot, Set<Path> moduleDirs) throws IOException {
         Files.createDirectories(runDir);
@@ -389,9 +389,7 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         }
         for (String suite : extraSuites) {
             String file = "jk_test_" + IdeSupport.sanitize(suite) + ".xml";
-            write(
-                    runDir.resolve(file),
-                    shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
+            write(runDir.resolve(file), shellRunConfigXml("jk test · " + suite, "jk test --suite " + suite, wsRoot));
             n++;
         }
         return n;
@@ -405,7 +403,9 @@ public final class IntellijIdeGenerator implements IdeGenerator {
         sb.append("  <configuration default=\"false\" name=\"")
                 .append(esc(name))
                 .append("\" type=\"ShConfigurationType\">\n");
-        sb.append("    <option name=\"SCRIPT_TEXT\" value=\"").append(esc(command)).append("\" />\n");
+        sb.append("    <option name=\"SCRIPT_TEXT\" value=\"")
+                .append(esc(command))
+                .append("\" />\n");
         sb.append("    <option name=\"INDEPENDENT_SCRIPT_PATH\" value=\"true\" />\n");
         sb.append("    <option name=\"SCRIPT_PATH\" value=\"\" />\n");
         sb.append("    <option name=\"SCRIPT_OPTIONS\" value=\"\" />\n");

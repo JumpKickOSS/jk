@@ -16,7 +16,7 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Module listeners drive the tree; aggregate % comes only from engine snapshots (JK-1121). */
+/** Module listeners drive the tree; aggregate % comes only from engine snapshots. */
 class AggregateModuleListenerTest {
 
     @Test
@@ -81,7 +81,7 @@ class AggregateModuleListenerTest {
 
     @Test
     void skipped_step_does_not_paint_phase_failed() {
-        // Cache-hit steps terminate SKIPPED; the live tree must not show ✘ Failed (JK-1297).
+        // Cache-hit steps terminate SKIPPED; the live tree must not show ✘ Failed.
         var buf = new ByteArrayOutputStream();
         CommandManager view =
                 CommandManager.pipeline(new PrintStream(buf, true, StandardCharsets.UTF_8), "Build", false);
@@ -95,7 +95,9 @@ class AggregateModuleListenerTest {
         // Successful SKIPPED → phase drops from the live chain (same as SUCCESS).
         String all = String.join(
                 "\n",
-                view.renderPipelineLines(120, 0).stream().map(AggregateModuleListenerTest::strip).toList());
+                view.renderPipelineLines(120, 0).stream()
+                        .map(AggregateModuleListenerTest::strip)
+                        .toList());
         assertThat(all).doesNotContain("Failed");
         assertThat(all).doesNotContain("✘");
         assertThat(all).doesNotContain("Test"); // success → removed from chain
@@ -116,7 +118,9 @@ class AggregateModuleListenerTest {
 
         String all = String.join(
                 "\n",
-                view.renderPipelineLines(120, 0).stream().map(AggregateModuleListenerTest::strip).toList());
+                view.renderPipelineLines(120, 0).stream()
+                        .map(AggregateModuleListenerTest::strip)
+                        .toList());
         assertThat(all).contains("Compile");
         assertThat(all).containsAnyOf("Failed", "cannot find symbol");
     }

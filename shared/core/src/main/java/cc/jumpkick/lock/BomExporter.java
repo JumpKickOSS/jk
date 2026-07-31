@@ -13,7 +13,7 @@ import java.util.Set;
 
 /**
  * Renders a Maven BOM ({@code packaging=pom} + {@code dependencyManagement}) from a resolved
- * {@link Lockfile} filtered by scope (JK-1207). Default freezes the main/export/runtime graph —
+ * {@link Lockfile} filtered by scope. Default freezes the main/export/runtime graph
  * the set actually resolved and typically tested.
  */
 public final class BomExporter {
@@ -58,7 +58,7 @@ public final class BomExporter {
             if (a.inAnyScope(scopes)) selected.add(a);
         }
         selected.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));
-        // One dependencyManagement entry per module (JK-1239): the lock can carry main/test
+        // One dependencyManagement entry per modulethe lock can carry main/test
         // duals of the same G:A at different versions, and Maven consumers warn on duplicate
         // managed entries then keep one arbitrarily. MAIN-scoped rows outrank test duals;
         // same-priority collisions keep the higher version (the later row after the sort).
@@ -104,9 +104,7 @@ public final class BomExporter {
     private static void writeDep(StringBuilder sb, Lockfile.Artifact a) {
         PackageId id;
         try {
-            id = PackageId.isMavenPackageKey(a.name())
-                    ? PackageId.parse(a.name())
-                    : PackageId.ofGa(a.name());
+            id = PackageId.isMavenPackageKey(a.name()) ? PackageId.parse(a.name()) : PackageId.ofGa(a.name());
         } catch (RuntimeException e) {
             return; // skip non-maven keys
         }

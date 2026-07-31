@@ -143,7 +143,7 @@ public final class LockCommand implements CliCommand {
         AtomicInteger globalLocked = new AtomicInteger(0);
         // Per-module package counts (cumulative wire samples, then the authoritative lockfile
         // count). The engine restarts totalSeen per module, so the workspace total is the SUM
-        // of per-module counts — folding with max reported only the largest module (JK-1233).
+        // of per-module counts — folding with max reported only the largest module.
         Map<String, Integer> lockedByDir = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> errorLines = new ArrayList<>();
         Map<String, String> coordByDir = new java.util.HashMap<>();
@@ -171,7 +171,9 @@ public final class LockCommand implements CliCommand {
                 int n;
                 if (totalSeen >= 0) {
                     lockedByDir.merge(moduleDir, totalSeen, Math::max);
-                    n = lockedByDir.values().stream().mapToInt(Integer::intValue).sum();
+                    n = lockedByDir.values().stream()
+                            .mapToInt(Integer::intValue)
+                            .sum();
                     globalLocked.set(Math.max(globalLocked.get(), n));
                 } else {
                     n = globalLocked.incrementAndGet();
@@ -285,7 +287,7 @@ public final class LockCommand implements CliCommand {
 
     /**
      * Best-effort revalidation of the downloaded library catalog layer ({@link
-     * LibraryCatalog#downloadedFile()}) before {@code jk.toml} is parsed — parsing is what expands
+     * LibraryCatalog#downloadedFile}) before {@code jk.toml} is parsed — parsing is what expands
      * short library names against the catalog, so this needs to land before resolution sees the
      * effective dependency list.
      *

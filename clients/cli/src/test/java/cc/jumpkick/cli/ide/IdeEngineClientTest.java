@@ -15,9 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/**
- * ticket-1014 / ticket-1020: IdeEngineClient facade over the real engine wire path.
- */
+/** IdeEngineClient facade over the real engine wire path. */
 @Tag("integration")
 class IdeEngineClientTest {
 

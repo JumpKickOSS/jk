@@ -79,19 +79,19 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * @param webRoot the resolved on-disk static root (the caller resolves {@code web-root} against
-     *     the live {@code JkDirs}; tests pass a temp dir) — need not exist
+     * the live {@code JkDirs}; tests pass a temp dir) — need not exist
      * @param tokenFile where to persist the minted bearer token (owner-only permissions) so the CLI
-     *     can hand the user a tokenized URL — {@code EnginePaths.Paths#httpToken()} in real use
-     * @param logFile the engine's own log ({@code EnginePaths.Paths#log()}), tailed by {@code
-     *     GET /api/log} for the dashboard's Status view
+     * can hand the user a tokenized URL — {@code EnginePaths.Paths#httpToken} in real use
+     * @param logFile the engine's own log ({@code EnginePaths.Paths#log}), tailed by {@code
+     * GET /api/log} for the dashboard's Status view
      * @param version the engine version, used for classpath-asset {@code ETag}s
      * @param status supplies the vitals {@code GET /api/status} reports, fresh per request
      * @param events the hub {@code GET /api/events} streams from ({@code EngineServer} publishes)
-     * @param jobs async build/test/lock/cancel for HTTP + MCP (JK-1095)
+     * @param jobs async build/test/lock/cancel for HTTP + MCP
      * @param metrics supplies the running build aggregates {@code GET /api/metrics} reports, fresh
-     *     per request (the engine's {@code BuildMetrics} store)
+     * per request (the engine's {@code BuildMetrics} store)
      * @param cache supplies the cache breakdown {@code GET /api/cache} reports, fresh per request
-     *     (an IO-shaped walk of the cache sections — see {@link CacheSnapshot#capture})
+     * (an IO-shaped walk of the cache sections — see {@link CacheSnapshot#capture})
      */
     public HttpEngineServer(
             JkHttpConfig config,
@@ -233,10 +233,10 @@ public final class HttpEngineServer implements AutoCloseable {
     }
 
     /**
-     * Stop serving and release the port immediately (grace 0), interrupting in-flight exchanges —
+     * Stop serving and release the port immediately (grace 0), interrupting in-flight exchanges
      * including the SSE stream. Called at handoff: a displaced engine invokes this the moment it
      * becomes a lame duck so its successor can bind the fixed port without waiting on the drain.
-     * Idempotent and safe alongside {@link #close()}.
+     * Idempotent and safe alongside {@link #close}.
      */
     public synchronized void stopNow() {
         stop(0);
@@ -253,8 +253,8 @@ public final class HttpEngineServer implements AutoCloseable {
             server.stop(graceSeconds);
             server = null;
         }
-        // shutdownNow, not shutdown: an SSE handler quietly parked in Subscription.next() holds no
-        // connection anymore after stop() — the interrupt is what tells it to unsubscribe and die.
+        // shutdownNow, not shutdown: an SSE handler quietly parked in Subscription.next holds no
+        // connection anymore after stop — the interrupt is what tells it to unsubscribe and die.
         if (executor != null) {
             executor.shutdownNow();
             executor = null;
@@ -482,7 +482,7 @@ public final class HttpEngineServer implements AutoCloseable {
         boolean read = method.equals("GET") || method.equals("HEAD");
         // /api/fs lists the filesystem with the engine owner's permissions, and /api/log can carry
         // build diagnostics — on a shared machine another local user must not browse either over
-        // loopback, so they are never token-exempt (JK-1305).
+        // loopback, so they are never token-exempt.
         String path = exchange.getRequestURI().getPath();
         boolean sensitiveRead = path.equals("/api/fs") || path.equals("/api/log");
         if (read && !readsRequireToken && !sensitiveRead) return true;
@@ -531,7 +531,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
                 .put("httpUrl", url())
-                // url() already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
+                // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
                 .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
                 .put("maxConcurrentRequests", config.effectiveMaxConcurrentRequests())
                 .put("maxEventStreams", config.maxEventStreams())
@@ -592,7 +592,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * SSE stream: event frames plus comment heartbeats. Holds an SSE-budget slot (not an RPC
-     * admission permit) for the stream's life; dead-client write and {@link #close()} interrupt
+     * admission permit) for the stream's life; dead-client write and {@link #close} interrupt
      * end it.
      */
     private void handleEvents(HttpExchange exchange) throws IOException {
@@ -621,7 +621,7 @@ public final class HttpEngineServer implements AutoCloseable {
     /**
      * {@code GET /api/fs?dir=…} — the workspace picker behind the dashboard's Browse button:
      * subdirectory names of an absolute path (default: the user's home), whether it holds a
-     * {@code jk.toml}, and its parent for the up-navigation. Token-required even on loopback —
+     * {@code jk.toml}, and its parent for the up-navigation. Token-required even on loopback
      * see {@link #authorized}.
      */
     private void handleFs(HttpExchange exchange) throws IOException {
@@ -686,18 +686,14 @@ public final class HttpEngineServer implements AutoCloseable {
             requestId = jobs.triggerBuild(dir);
         } catch (IllegalStateException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
-            // JK-1249: same fingerprint already running — 409 with human message for the UI.
+            // same fingerprint already running — 409 with human message for the UI.
             if (msg.contains("already running")) {
-                sendJson(
-                        exchange,
-                        409,
-                        JsonOut.object().put("error", msg).toString());
+                sendJson(exchange, 409, JsonOut.object().put("error", msg).toString());
                 return;
             }
             // Engine is draining (graceful shutdown in progress) — refuse new builds.
             exchange.getResponseHeaders().set("Retry-After", "1");
-            sendJson(
-                    exchange, 503, JsonOut.object().put("error", msg).toString());
+            sendJson(exchange, 503, JsonOut.object().put("error", msg).toString());
             return;
         } catch (IllegalArgumentException e) {
             sendJson(
@@ -716,7 +712,7 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * {@code POST /api/cancel} — body {@code {"jid":N}} or {@code {"requestId":N}} (alias). Same kill
-     * path as MCP {@code jk_cancel} / JSONL {@code cancel-request} (JK-1252).
+     * path as MCP {@code jk_cancel} / JSONL {@code cancel-request}.
      */
     private void handleCancel(HttpExchange exchange) throws IOException {
         String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
@@ -726,7 +722,9 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(
                     exchange,
                     400,
-                    JsonOut.object().put("error", "missing \"jid\" (or requestId)").toString());
+                    JsonOut.object()
+                            .put("error", "missing \"jid\" (or requestId)")
+                            .toString());
             return;
         }
         boolean ok = jobs.cancel(jid);
@@ -942,7 +940,7 @@ public final class HttpEngineServer implements AutoCloseable {
      *
      * <p>Used to decide whether an <em>orphaned</em> engine — one no endpoint pointer names, so no CLI can
      * reach it — still has a browser attached. It deliberately has no say in the <em>displaced</em> case:
-     * a successor needs this port, and a dashboard tab reconnects to it (JK-1293).
+     * a successor needs this port, and a dashboard tab reconnects to it.
      */
     public int liveEventStreams() {
         int web = config.maxEventStreams() - webSse.availablePermits();

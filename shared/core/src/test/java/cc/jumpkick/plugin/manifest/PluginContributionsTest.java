@@ -119,8 +119,7 @@ class PluginContributionsTest {
         JkBuild build = grails("");
         assertThat(build.dependencies().of(Scope.PLATFORM))
                 .extracting(Dependency::module, d -> d.version().raw())
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("org.apache.grails:grails-bom", "=8.0.0-M4"));
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("org.apache.grails:grails-bom", "=8.0.0-M4"));
         assertThat(PluginContributions.javacArgs(build, null, Set.of())).containsExactly("-parameters");
         assertThat(PluginContributions.groovyArgs(build, null, Set.of())).containsExactly("--parameters");
         assertThat(PluginContributions.kotlinArgs(build, null, Set.of())).isEmpty();
@@ -154,26 +153,23 @@ class PluginContributionsTest {
                 [[contribute.source-roots]]
                 %s
                 """;
-        assertThatThrownBy(() -> PluginDescriptors.parse(
-                        base.formatted("dir = \"/abs/path\"\nkind = \"source\""), "p.toml"))
+        assertThatThrownBy(() ->
+                        PluginDescriptors.parse(base.formatted("dir = \"/abs/path\"\nkind = \"source\""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("must be module-relative");
-        assertThatThrownBy(() -> PluginDescriptors.parse(
-                        base.formatted("dir = \"../outside\"\nkind = \"source\""), "p.toml"))
+        assertThatThrownBy(() ->
+                        PluginDescriptors.parse(base.formatted("dir = \"../outside\"\nkind = \"source\""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("must not escape the module");
-        assertThatThrownBy(() -> PluginDescriptors.parse(
-                        base.formatted("dir = \"a/../../b\"\nkind = \"source\""), "p.toml"))
+        assertThatThrownBy(() ->
+                        PluginDescriptors.parse(base.formatted("dir = \"a/../../b\"\nkind = \"source\""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("must not escape the module");
-        assertThatThrownBy(
-                        () -> PluginDescriptors.parse(base.formatted("dir = \"grails-app/domain\""), "p.toml"))
+        assertThatThrownBy(() -> PluginDescriptors.parse(base.formatted("dir = \"grails-app/domain\""), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("kind must be \"source\" or \"resource\"");
         assertThatThrownBy(() -> PluginDescriptors.parse(
-                        base.formatted(
-                                "dir = \"x\"\nkind = \"source\"\nwhen = { classpath-has = \"a:b\" }"),
-                        "p.toml"))
+                        base.formatted("dir = \"x\"\nkind = \"source\"\nwhen = { classpath-has = \"a:b\" }"), "p.toml"))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("classpath-has cannot gate a source-root");
     }

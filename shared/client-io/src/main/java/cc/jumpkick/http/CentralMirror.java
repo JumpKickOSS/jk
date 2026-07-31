@@ -10,7 +10,7 @@ import java.time.Instant;
 
 /**
  * When Maven Central rate-limits us, route Central traffic to Google's GCS mirror for a while
- * (JK-1277).
+ *
  *
  * <p>Sonatype enforces a <b>per-IP</b> quota on Central and it is sticky: once tripped, it does not
  * clear for hours, and a rejected request still costs something. jk's own request rate is not the
@@ -162,7 +162,7 @@ public final class CentralMirror {
      * standing preference for the download leg, and it is safe for a different reason — a locked artifact
      * is pinned by sha256, so the bytes are verified on arrival and where they came from does not matter.
      * Version <em>enumeration</em> is the opposite case: the mirror can lag, so metadata and POMs keep
-     * asking Central and only fall back on a 429 (JK-1290).
+     * asking Central and only fall back on a 429.
      *
      * <p>Also spends the mirror's much larger concurrency budget instead of Sonatype's per-IP quota, which
      * is the point of {@link HostRateLimiter#MIRROR_PERMITS}.

@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * The environment handed to a forked test JVM (JK-1267): a sandbox jk supplies by default, plus
+ * The environment handed to a forked test JVMa sandbox jk supplies by default, plus
  * whatever the module declares in {@code [test] env}.
  *
  * <p>The default matters more than the knob. A forked test JVM inherits the engine's environment, so
@@ -50,11 +50,9 @@ public final class TestEnv {
         out.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
         for (Map.Entry<String, String> e : project.build().testEnv().entrySet()) {
             String withPaths = expand(e.getValue(), moduleDir, target);
-            // Then environment references — a whitelisted position (JK-1271), resolved through the
-            // request's environment plus .env, and strict about an unset variable.
-            out.put(
-                    e.getKey(),
-                    cc.jumpkick.config.Interpolation.expand(withPaths, "[test].env." + e.getKey(), env));
+            // Then environment references — a whitelisted position, resolved through the
+            // request's environment plus.env, and strict about an unset variable.
+            out.put(e.getKey(), cc.jumpkick.config.Interpolation.expand(withPaths, "[test].env." + e.getKey(), env));
         }
         return Map.copyOf(out);
     }

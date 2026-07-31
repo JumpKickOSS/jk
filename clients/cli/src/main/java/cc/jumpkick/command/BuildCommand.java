@@ -58,7 +58,7 @@ public final class BuildCommand implements CliCommand {
                 .hide());
         opts.add(Opt.flag("Skip compiling and running tests.", "--skip-tests"));
         opts.add(Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"));
-        // Module concurrency is global -j/--jobs (JK-1082). Cross-module tests default on (C2).
+        // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         opts.add(Opt.value(
                 "<git-ref>", "Build only modules (and dependents) changed since this git ref.", "--affected-since"));
@@ -85,10 +85,9 @@ public final class BuildCommand implements CliCommand {
     String affectedSince;
     String modulesSpec;
     java.util.Map<String, String> clientEnv = java.util.Map.of();
-    /** Best-effort session transcript (JK-1079); null when disabled / no project. */
+    /** Best-effort session transcript; null when disabled / no project. */
     private CliSessionTranscript session;
     // ---- PipelineKeys -------------------------------------------------------
-    //
     // BuildPipelines owns the step DAG and all of its keys; BuildCommand only
     // reads a few results back out of the finished pipeline to render its result
     // line. PipelineKeys are name-keyed, so these match BuildPipelines's by name.
@@ -157,7 +156,7 @@ public final class BuildCommand implements CliCommand {
         }
         int code = runForDir(startDir);
         if (code == 0 && aotCache) {
-            // Post-build tail (like run's exec): extract layout + training run, client-side —
+            // Post-build tail (like run's exec): extract layout + training run, client-side
             // the layout inputs come from the engine's exec plan (thin client).
             code = AotCachePackage.run(startDir, cacheDir != null ? cacheDir : JkDirs.cache());
         }
@@ -198,7 +197,6 @@ public final class BuildCommand implements CliCommand {
         // The whole-workspace lock-staleness guard now runs engine-side, inside
         // BuildService.buildWorkspace (the request carries freshenLock=true) — the CLI only renders
         // the failure via the standard workspace-errors path. jobs=1 is strict serial; else N-wide.
-        //
         // Thin client: entryBuild never crosses the wire (EngineProtocol.buildRequest serializes
         // only entryDir + flags; the engine re-parses). The parsed model is needed ONLY by the
         // in-process test seam, so parse lazily on that branch alone.
@@ -212,8 +210,8 @@ public final class BuildCommand implements CliCommand {
 
     /**
      * Build the whole composite + workspace graph in parallel (Option B): one build graph,
-     * scheduled by topological level, independent units built concurrently on {@link JkThreads#io()}
-     * (their CPU work shares the bounded cpu pool, so no oversubscription). Each unit runs buffered —
+     * scheduled by topological level, independent units built concurrently on {@link JkThreads#io}
+     * (their CPU work shares the bounded cpu pool, so no oversubscription). Each unit runs buffered
      * its output is captured and flushed as one contiguous block on completion, so parallel logs
      * never interleave. Tests are serialized across units by default (BuildPipelines's gate); {@code
      * --parallel-tests} lifts that.
@@ -245,11 +243,11 @@ public final class BuildCommand implements CliCommand {
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext earlyAgg = new AggregateContext(view);
-        // Do not client-seed a "checking" phase row (JK-1128): the engine owns Checking /
-        // Lock / Graph preflight events on the single build RPC (JK-1106). A seed left a
+        // Do not client-seed a "checking" phase rowthe engine owns Checking /
+        // Lock / Graph preflight events on the single build RPC. A seed left a
         // stale Checking row until checking 1/1.
 
-        // JK-1106: live build uses a single engine request for Checking + Graph + Plan + execute.
+        // live build uses a single engine request for Checking + Graph + Plan + execute.
         // No separate client forecast RPC — the engine emits checking preflight and (when all clean)
         // returns with an empty plan. --modules / --affected-since force-include those dirs as the
         // dirty hint; --force/--rebuild leave the hint null so the engine marks everything dirty.
@@ -285,7 +283,7 @@ public final class BuildCommand implements CliCommand {
                     + (System.nanoTime() - buildStart) / 1_000_000 + "ms"
                     + (dirtyDirs != null ? " dirtyHint=" + dirtyDirs.size() : ""));
         }
-        // lockStale unused: engine freshenLock + internal forecast owns Checking (JK-1106).
+        // lockStale unused: engine freshenLock + internal forecast owns Checking.
         return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, false);
     }
 
@@ -354,8 +352,8 @@ public final class BuildCommand implements CliCommand {
                         @Override
                         public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                             // Durable run log, same as the old buffered path. Composed into the *returned*
-                            // listener (not attached to m.pipeline() directly) since an engine-hosted module's
-                            // pipeline is a client-side reconstruction that's never run() — only the returned
+                            // listener (not attached to m.pipeline directly) since an engine-hosted module's
+                            // pipeline is a client-side reconstruction that's never run — only the returned
                             // listener is actually driven by wire-replayed events either way.
                             var log = cc.jumpkick.cli.run.EventLogListener.open(
                                     m.cache(), m.pipeline().name());
@@ -509,7 +507,7 @@ public final class BuildCommand implements CliCommand {
         java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
         int[] total = {0};
         // Reuse the forecast dirty set unless the workspace lock is stale (engine re-locks and
-        // re-forecasts). Exception (JK-1060): an explicit --modules / --affected-since selection
+        // re-forecasts). Exceptionan explicit --modules / --affected-since selection
         // must still be honored — nulling the hint would cascade the whole workspace.
         boolean honorSelection =
                 (modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank());
@@ -569,13 +567,13 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
-                    // Composed into the returned listener, not attached to m.pipeline() directly — see
+                    // Composed into the returned listener, not attached to m.pipeline directly — see
                     // the headless path's onModuleStart above for why.
                     var log = cc.jumpkick.cli.run.EventLogListener.open(
                             m.cache(), m.pipeline().name());
                     List<String> buf = java.util.Collections.synchronizedList(new ArrayList<>());
                     buffers.put(m.dir(), buf);
-                    // Step tree + output only; aggregate bar is engine-owned (JK-1121).
+                    // Step tree + output only; aggregate bar is engine-owned.
                     var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
                             agg, m.coord(), m.pipeline().steps(), m.weight());
                     lis.bufferOutputInto(buf);
@@ -617,9 +615,9 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
         } catch (java.io.IOException e) {
-            // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName(),
+            // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName,
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
-            // (passing one double-wraps it into a garbled "‼ Build ‼ Build ..." chip).
+            // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
             view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
             if (session != null) session.error(String.valueOf(e.getMessage()));
             return Exit.SOFTWARE;
@@ -670,7 +668,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
             return result.exitCode();
         }
-        // Empty execute plan (total==0) = engine found nothing dirty (JK-1106 single-RPC path).
+        // Empty execute plan (total==0) = engine found nothing dirty single-RPC path).
         // Explicit empty dirtyHint is also up-to-date. Null dirtyDirs with work means force/rebuild.
         String okTail = successTail(result.modules(), total[0], dirtyDirs, start);
         view.finishPipelineSuccess(okTail, snapshot(deferredOutput));
@@ -699,7 +697,7 @@ public final class BuildCommand implements CliCommand {
      * A finished unit's scroll-back line: {@code ✓ [01 of 16] group:artifact took 16ms}. No leading
      * indent (it's complete, not active); the numerator is zero-padded to the denominator's width;
      * the duration is normalized like every other jk duration ({@link ConsoleSpec#took}). Colors:
-     * green check, bright-black {@code [ ]} brackets around a plain {@code NN of MM} count, the
+     * green check, bright-black {@code } brackets around a plain {@code NN of MM} count, the
      * {@code group:artifact} plain with a strikethrough to mark it done, and the bright-black italic
      * {@code took …} suffix. A failed unit keeps the red cross and {@code — failed}.
      */
@@ -823,7 +821,7 @@ public final class BuildCommand implements CliCommand {
             }
         }
         if (result.success()) return 0;
-        // Cancelled is not a failure shape: settle like the workspace paths do (JK-1307).
+        // Cancelled is not a failure shape: settle like the workspace paths do.
         if (result.cancelled()) {
             if (session != null) session.wedge("Build job was cancelled");
             return 1;
@@ -855,7 +853,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime()}.
+     * Dim italic {@code "took Xms"} from a wall-clock start captured with {@link System#nanoTime}.
      */
     static String elapsedSince(long startNanos) {
         long ms = (System.nanoTime() - startNanos) / 1_000_000;
@@ -868,12 +866,12 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * Workspace success wedge (JK-1296):
+     * Workspace success wedge
      *
      * <ul>
-     *   <li>nothing entered → {@code all modules up to date}
-     *   <li>entered modules, none did productive work → {@code checked N modules, all up to date}
-     *   <li>some productive work → {@code built K modules} (optionally {@code, checked M})
+     * <li>nothing entered → {@code all modules up to date}
+     * <li>entered modules, none did productive work → {@code checked N modules, all up to date}
+     * <li>some productive work → {@code built K modules} (optionally {@code, checked M})
      * </ul>
      *
      * @param modules outcomes from this run (may be empty on the fully-cached shortcut)
@@ -904,7 +902,9 @@ public final class BuildCommand implements CliCommand {
         if (built == 0) {
             return buildOk()
                     + ", checked "
-                    + Theme.colorize(String.valueOf(checked > 0 ? checked : planned), Theme.active().focused())
+                    + Theme.colorize(
+                            String.valueOf(checked > 0 ? checked : planned),
+                            Theme.active().focused())
                     + " module"
                     + ((checked > 0 ? checked : planned) == 1 ? "" : "s")
                     + ", all up to date "
@@ -993,7 +993,7 @@ public final class BuildCommand implements CliCommand {
     }
 
     /**
-     * The headline artifact this build produced, as {@code ". Built <relpath>"} in the path color —
+     * The headline artifact this build produced, as {@code ". Built <relpath>"} in the path color
      * the native binary/library if present, else the assembly jar, else the plain jar. Empty when
      * none exists. Shared with {@code jk native}.
      */
@@ -1078,4 +1078,3 @@ public final class BuildCommand implements CliCommand {
         return "project";
     }
 }
-

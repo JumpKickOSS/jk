@@ -144,7 +144,7 @@ public final class CleanCommand implements CliCommand {
     /**
      * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
      * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
-     * member, not {@code <member>/target/} (JK-1310). The member-local {@code target/} is still
+     * member, not {@code <member>/target/}. The member-local {@code target/} is still
      * swept for trees built before the layout change.
      */
     static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
@@ -185,7 +185,7 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * Module entries resolved against the workspace root; entries that escape it (absolute paths,
-     * {@code ..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
+     * {@code..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
      * never point {@code jk clean} outside the workspace.
      */
     static List<Path> resolveModuleDirs(Path workspaceRoot, List<String> modules, List<String> warnings) {

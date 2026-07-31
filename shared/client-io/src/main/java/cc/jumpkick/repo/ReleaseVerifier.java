@@ -19,7 +19,7 @@ import java.util.List;
 public final class ReleaseVerifier {
 
     /**
-     * Baked-in JumpKick release public key (base64 X.509/SPKI Ed25519, JK-1066). The matching
+     * Baked-in JumpKick release public key (base64 X.509/SPKI Ed25519,. The matching
      * private key is held only as the GitHub Actions secret {@code JK_RELEASE_SIGNING_KEY}
      * (PKCS#8 base64) and used by {@code scripts/sign-release.sh} on tag builds. Empty string
      * would mean "verification unavailable" — do not clear without rotating to a replacement.

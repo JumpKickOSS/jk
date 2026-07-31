@@ -5,11 +5,10 @@ import cc.jumpkick.layout.TestSuites;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
 /**
- * Which test suites and JUnit tags a {@code jk test} / build-with-tests run should use (JK-1134–1137).
+ * Which test suites and JUnit tags a {@code jk test} / build-with-tests run should use1137).
  *
  * <p>{@link #DEFAULT} runs only the {@code test} suite with no tag filters.
  */
@@ -61,7 +60,8 @@ public record TestSelection(
                 ordered.add(s);
             }
         }
-        return new Resolved(List.copyOf(ordered), includeTags, excludeTags, List.copyOf(missing), List.copyOf(discovered));
+        return new Resolved(
+                List.copyOf(ordered), includeTags, excludeTags, List.copyOf(missing), List.copyOf(discovered));
     }
 
     /** Stamp / wire identity fragment (stable). */
@@ -120,9 +120,8 @@ public record TestSelection(
 
         public String missingMessage() {
             if (ok()) return "";
-            String known = discovered == null || discovered.isEmpty()
-                    ? TestSuites.DEFAULT
-                    : String.join(", ", discovered);
+            String known =
+                    discovered == null || discovered.isEmpty() ? TestSuites.DEFAULT : String.join(", ", discovered);
             return "unknown test suite"
                     + (missing.size() == 1 ? "" : "s")
                     + " '"

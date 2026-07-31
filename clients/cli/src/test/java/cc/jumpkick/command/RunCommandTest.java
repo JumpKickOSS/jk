@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.TestAnsi;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -81,7 +80,8 @@ class RunCommandTest {
                 }
                 """);
 
-        String output = TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(0)));
+        String output = TestAnsi.strip(
+                runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(0)));
         assertThat(output)
                 .contains("Run")
                 .contains("Executing")
@@ -129,8 +129,8 @@ class RunCommandTest {
                 name     = "lib-only"
                 version  = "0.1.0"
                 """);
-        String output =
-                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
+        String output = TestAnsi.strip(
+                runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65))); // EX_DATAERR
         assertThat(output).contains("Failed to run").contains("No valid main method was specified or detected");
     }
 
@@ -164,8 +164,8 @@ class RunCommandTest {
                 }
                 """);
 
-        String output =
-                TestAnsi.strip(runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
+        String output = TestAnsi.strip(
+                runCapturingOutput(tempDir, exit -> assertThat(exit).isEqualTo(65)));
         assertThat(output).contains("Failed to run").contains("Multiple main methods found");
     }
 

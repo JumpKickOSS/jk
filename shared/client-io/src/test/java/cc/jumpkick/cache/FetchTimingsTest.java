@@ -3,6 +3,7 @@ package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.util.List;
 import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
@@ -33,7 +34,7 @@ class FetchTimingsTest {
         FetchTimings.record(456);
         // The trimmed mean sees both samples (order-independent; other tests may add more).
         assertThat(FetchTimings.trimmedMeanMs()).isGreaterThan(0);
-        assertThat(java.nio.file.Files.isRegularFile(FetchTimings.defaultFile())).isTrue();
+        assertThat(Files.isRegularFile(FetchTimings.defaultFile())).isTrue();
         // Non-positive samples never train.
         long before = FetchTimings.trimmedMeanMs();
         FetchTimings.record(0);

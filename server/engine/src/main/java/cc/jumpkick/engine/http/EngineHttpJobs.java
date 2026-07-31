@@ -2,7 +2,7 @@
 package cc.jumpkick.engine.http;
 
 /**
- * Async jobs started from the embedded HTTP / MCP surface (JK-1095). Progress on SSE {@code
+ * Async jobs started from the embedded HTTP / MCP surface. Progress on SSE {@code
  * GET /api/events}; cancel via {@link #cancel(long)}.
  */
 public interface EngineHttpJobs extends BuildTrigger {
@@ -27,7 +27,7 @@ public interface EngineHttpJobs extends BuildTrigger {
     long triggerLock(String dir);
 
     /**
-     * Cooperative cancel + worker grace→force for an HTTP/MCP request id (JK-1096). Returns {@code
+     * Cooperative cancel + worker grace→force for an HTTP/MCP request id. Returns {@code
      * false} if the id is unknown or already finished.
      */
     boolean cancel(long requestId);

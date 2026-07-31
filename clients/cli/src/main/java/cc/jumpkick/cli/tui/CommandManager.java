@@ -90,7 +90,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private double peakFraction; // monotonic-display floor: the bar never renders below this
     private long etaEstimateMs; // total predicted build wall-clock (the jk explain figure); 0 = no countdown
     private int modulesComplete;
-    private int modulesTotal; // 0 = hide module remaining (JK-1157)
+    private int modulesTotal; // 0 = hide module remaining
     private long finishSeq;
 
     private final Map<String, Row> rows = new LinkedHashMap<>();
@@ -308,9 +308,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * #pipeline(PrintStream, String, boolean) construction}:
      *
      * <ul>
-     *   <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
-     *       at overrun flip to {@code +Ns} count-up of the excess.
-     *   <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command.
+     * <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
+     * at overrun flip to {@code +Ns} count-up of the excess.
+     * <li>With no seed ({@code 0}): count up {@code +Ns} from {@code +0s} for the whole command.
      * </ul>
      *
      * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
@@ -329,7 +329,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Workspace module progress for the header secondary remaining-work display (JK-1157).
+     * Workspace module progress for the header secondary remaining-work display.
      * {@code total <= 0} hides the module counter.
      */
     public void setModuleProgress(int complete, int total) {
@@ -392,7 +392,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             Row r = rows.get(key(module, stepKey));
             if (r != null && !msg.isEmpty()) r.briefError = msg;
             // Prefer the row's recorded wire phase (e.g. "compile") when callers pass empty
-            // phase or a step key that has no PhaseNode (JK-1127).
+            // phase or a step key that has no PhaseNode.
             String pk = phaseKey(phase, stepKey);
             if (r != null && r.phase != null && !r.phase.isEmpty()) {
                 if (pk == null || pk.isEmpty() || !phases.containsKey(pk)) {
@@ -437,7 +437,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Record a finished unit's pre-formatted completion line in the live completed-tail rendered
      * below the active rows (newest first, capped to {@link #MAX_COMPLETIONS}; the rest collapse into
      * a "… plus N more …" footer). Callers that aren't animating should print append-only instead
-     * (see {@link #animating()}) — this only feeds the live region.
+     * (see {@link #animating}) — this only feeds the live region.
      */
     public void addCompletion(String line) {
         synchronized (lock) {
@@ -486,8 +486,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Settle with the play chip: {@code ▶ Run  Executing `java …`} — for commands that hand off to a
-     * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName()} is the
+     * Settle with the play chip: {@code ▶ Run Executing `java …`} — for commands that hand off to a
+     * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName} is the
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      */
     public void finishPipelineExec(String tail, List<String> above) {
@@ -616,7 +616,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. Pipeline mode replaces the wiped region
         // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
-        // ("✘ Build  job was cancelled by user took …") and returns true so GlobalCancel
+        // ("✘ Build job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
         // the handler print the notice.
         restoreStreams();
@@ -712,8 +712,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** Repaint the single simple-mode spinner line in place (must hold {@link #lock}). */
     private void paintSimple() {
         out.print('\r');
-        out.print(Theme.colorize(
-                PULSE, openPulseColors[Math.floorMod(frame, openPulseColors.length)]));
+        out.print(Theme.colorize(PULSE, openPulseColors[Math.floorMod(frame, openPulseColors.length)]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -815,7 +814,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             budget--;
             shown++;
             if (entry.briefError != null && !entry.briefError.isEmpty() && budget > 0) {
-                // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) — JK-1128.
+                // Under ├─ continue the rail; under ╰─ use spaces (no dangling │) —.
                 // Only the message is red; the rail/indent stays dim like the branch glyphs.
                 lines.add(renderBriefErrorLine(last, entry.briefError));
                 budget--;
@@ -875,8 +874,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         // Live detail only on running rows — failed rows use the brief under the branch.
         String detail = failed ? "" : detailForDisplay(r.module, r.message);
-        return new TreeEntry(
-                renderWorkRow(r.module, phaseLabel(r.phase), failed, detail), brief == null ? "" : brief);
+        return new TreeEntry(renderWorkRow(r.module, phaseLabel(r.phase), failed, detail), brief == null ? "" : brief);
     }
 
     private TreeEntry treeEntryForPhase(PhaseNode n) {
@@ -887,9 +885,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Step label for the tree detail segment. Strips a leading {@code module :: } prefix when the
+     * Step label for the tree detail segment. Strips a leading {@code module:: } prefix when the
      * engine label already embeds the coordinate (test progress labels) so the row does not read
-     * {@code g:a · Test · g:a :: FooTest}.
+     * {@code g:a · Test · g:a:: FooTest}.
      */
     static String detailForDisplay(String module, String message) {
         if (message == null || message.isBlank()) return "";
@@ -942,10 +940,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         sb.append(Theme.colorize(phase, phaseStyle));
         if (detail != null && !detail.isBlank()) {
-            sb.append(' ')
-                    .append(Theme.colorize("·", t.darkGray()))
-                    .append(' ')
-                    .append(colorDetail(phase, detail, t));
+            sb.append(' ').append(Theme.colorize("·", t.darkGray())).append(' ').append(colorDetail(phase, detail, t));
         }
         return sb.toString();
     }
@@ -954,39 +949,38 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Color a live step detail under the phase label.
      *
      * <ul>
-     *   <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
-     *       cc.jumpkick.cli.run.SyntaxHighlight} — not every step under the Test phase (compile-test
-     *       is phase Test too and must stay prose gray)
-     *   <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray()} {@code #A0A0A0}), never
-     *       cyan and never dim bright-black, with:
-     *       <ul>
-     *         <li>integers / counts / sizes → blue ({@link Theme#synNumber()})
-     *         <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
-     *         <li>artifact filenames and path-like tokens → {@link Theme#path()}
-     *         <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
-     *         <li>fetched short-names / bare library ids after resolve verbs → coord short-name
-     *         <li>short cache key hex → dimmest gray
-     *       </ul>
-     *   <li>Trailing {@code [wN]} worker tags stay gray
+     * <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
+     * cc.jumpkick.cli.run.SyntaxHighlight} — not every step under the Test phase (compile-test
+     * is phase Test too and must stay prose gray)
+     * <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray} {@code #A0A0A0}), never
+     * cyan and never dim bright-black, with:
+     * <ul>
+     * <li>integers / counts / sizes → blue ({@link Theme#synNumber})
+     * <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
+     * <li>artifact filenames and path-like tokens → {@link Theme#path}
+     * <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
+     * <li>fetched short-names / bare library ids after resolve verbs → coord short-name
+     * <li>short cache key hex → dimmest gray
+     * </ul>
+     * <li>Trailing {@code [wN]} worker tags stay gray
      * </ul>
      */
     static String colorDetail(String phase, String detail, Theme t) {
         if (detail == null || detail.isBlank()) return "";
         String body = detail;
         String worker = "";
-        // progressLabel appends "  [w2]" — keep it outside the Java highlighter.
+        // progressLabel appends " [w2]" — keep it outside the Java highlighter.
         int w = detail.lastIndexOf("  [w");
         if (w > 0 && detail.endsWith("]")) {
             body = detail.substring(0, w);
             worker = detail.substring(w);
         }
-        // Only syntax-highlight true member refs (FooTest.bar()). Phase "Test" also hosts
+        // Only syntax-highlight true member refs (FooTest.bar). Phase "Test" also hosts
         // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
         // (SyntaxHighlight paints unmatched text as terminal default/white).
-        String painted =
-                looksLikeJavaMember(body)
-                        ? cc.jumpkick.cli.run.SyntaxHighlight.highlight(body, -1)
-                        : colorProseDetail(body, t);
+        String painted = looksLikeJavaMember(body)
+                ? cc.jumpkick.cli.run.SyntaxHighlight.highlight(body, -1)
+                : colorProseDetail(body, t);
         if (worker.isEmpty()) return painted;
         return painted + Theme.colorize(worker, t.midGray());
     }
@@ -994,7 +988,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /**
      * Free-text step labels: mid-gray ({@code #A0A0A0}) prose with numbers, paths, coordinates, and
      * fetch names picked out. Never uses cyan for body text (reserved for {@code group:artifact} on
-     * the module segment) and never uses dim bright-black ({@link Theme#darkGray()}) for default
+     * the module segment) and never uses dim bright-black ({@link Theme#darkGray}) for default
      * prose.
      */
     static String colorProseDetail(String text, Theme t) {
@@ -1035,12 +1029,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 continue;
             }
 
-            // Pull the next non-whitespace token (may include : / . for coords & paths).
+            // Pull the next non-whitespace token (may include: /. for coords & paths).
             int j = scanTokenEnd(text, i);
             int end = j;
             while (end > i && isTrailingPunct(text.charAt(end - 1))) end--;
             String tok = text.substring(i, end);
-            String trail = text.substring(end, j); // trailing ,); etc.
+            String trail = text.substring(end, j); // trailing,); etc.
 
             // 1. Maven coordinate — group:artifact or GAV.
             if (looksLikeCoord(tok)) {
@@ -1142,14 +1136,40 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     static boolean looksLikeSizeUnit(String unit) {
         if (unit == null || unit.isEmpty()) return false;
         return switch (unit) {
-            case "B", "K", "M", "G", "T",
-                    "KB", "MB", "GB", "TB",
-                    "KiB", "MiB", "GiB", "TiB",
-                    "kb", "mb", "gb", "kib", "mib", "gib",
-                    "ms", "s", "m", "h",
-                    "files", "file", "sources", "source",
-                    "tests", "test", "jars", "jar",
-                    "classes", "inputs", "input" -> true;
+            case "B",
+                    "K",
+                    "M",
+                    "G",
+                    "T",
+                    "KB",
+                    "MB",
+                    "GB",
+                    "TB",
+                    "KiB",
+                    "MiB",
+                    "GiB",
+                    "TiB",
+                    "kb",
+                    "mb",
+                    "gb",
+                    "kib",
+                    "mib",
+                    "gib",
+                    "ms",
+                    "s",
+                    "m",
+                    "h",
+                    "files",
+                    "file",
+                    "sources",
+                    "source",
+                    "tests",
+                    "test",
+                    "jars",
+                    "jar",
+                    "classes",
+                    "inputs",
+                    "input" -> true;
             default -> false;
         };
     }
@@ -1158,12 +1178,25 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     static boolean isFetchOrResolveVerb(String word) {
         if (word == null || word.isEmpty()) return false;
         return switch (word) {
-            case "fetched", "fetch", "fetching",
-                    "resolve", "resolving", "resolved",
-                    "download", "downloading", "downloaded",
-                    "install", "installing", "installed",
-                    "load", "loading", "loaded",
-                    "pushing", "pushed", "pulling", "pulled" -> true;
+            case "fetched",
+                    "fetch",
+                    "fetching",
+                    "resolve",
+                    "resolving",
+                    "resolved",
+                    "download",
+                    "downloading",
+                    "downloaded",
+                    "install",
+                    "installing",
+                    "installed",
+                    "load",
+                    "loading",
+                    "loaded",
+                    "pushing",
+                    "pushed",
+                    "pulling",
+                    "pulled" -> true;
             default -> false;
         };
     }
@@ -1184,10 +1217,38 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
         // Reject common English words that follow "resolve" in prose.
         return switch (tok.toLowerCase(java.util.Locale.ROOT)) {
-            case "deps", "dependencies", "classpath", "jdk", "java", "sources", "tests",
-                    "resources", "plugins", "plugin", "modules", "module", "lock", "cache",
-                    "the", "a", "an", "to", "for", "from", "with", "and", "or", "of", "in",
-                    "on", "via", "no", "up", "date", "hit", "miss" -> false;
+            case "deps",
+                    "dependencies",
+                    "classpath",
+                    "jdk",
+                    "java",
+                    "sources",
+                    "tests",
+                    "resources",
+                    "plugins",
+                    "plugin",
+                    "modules",
+                    "module",
+                    "lock",
+                    "cache",
+                    "the",
+                    "a",
+                    "an",
+                    "to",
+                    "for",
+                    "from",
+                    "with",
+                    "and",
+                    "or",
+                    "of",
+                    "in",
+                    "on",
+                    "via",
+                    "no",
+                    "up",
+                    "date",
+                    "hit",
+                    "miss" -> false;
             default -> true;
         };
     }
@@ -1236,9 +1297,29 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         if (dot <= 0 || dot == tok.length() - 1) return false;
         String ext = tok.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
         return switch (ext) {
-            case "jar", "aar", "apk", "aab", "war", "ear", "zip", "tar", "gz", "tgz",
-                    "properties", "toml", "xml", "json", "so", "dylib", "dll", "exe",
-                    "class", "java", "kt", "kts", "groovy" -> true;
+            case "jar",
+                    "aar",
+                    "apk",
+                    "aab",
+                    "war",
+                    "ear",
+                    "zip",
+                    "tar",
+                    "gz",
+                    "tgz",
+                    "properties",
+                    "toml",
+                    "xml",
+                    "json",
+                    "so",
+                    "dylib",
+                    "dll",
+                    "exe",
+                    "class",
+                    "java",
+                    "kt",
+                    "kts",
+                    "groovy" -> true;
             default -> false;
         };
     }
@@ -1246,7 +1327,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
     static boolean looksLikeJavaMember(String s) {
         if (s == null || s.isEmpty()) return false;
-        // Capitalized type, optional .method(…), no spaces (worker tags already stripped).
+        // Capitalized type, optional.method(…), no spaces (worker tags already stripped).
         return s.matches("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
     }
 
@@ -1263,8 +1344,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean phase1 = denominator == 0 && !sl.isEmpty();
         AttributedStyle chip = t.pipelineChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
-        AttributedStyle pulse = t.withBackground(
-                chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
+        AttributedStyle pulse =
+                t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
         if (nerdfont) {
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
@@ -1306,17 +1387,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             clockStr = "+" + fmtClock(elapsedMillis);
         }
         AttributedStyle clockStyle = countUp ? t.warning() : t.blue();
-        h.append(' ')
-                .append(Theme.colorize("·", dim))
-                .append(' ')
-                .append(Theme.colorize(clockStr, clockStyle));
-        // JK-1157: remaining-work module counter (run-wide, not per-module local).
+        h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(clockStr, clockStyle));
+        // remaining-work module counter (run-wide, not per-module local).
         if (modulesTotal > 0) {
             String mods = modulesComplete + "/" + modulesTotal;
-            h.append(' ')
-                    .append(Theme.colorize("·", dim))
-                    .append(' ')
-                    .append(Theme.colorize(mods, dim));
+            h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(mods, dim));
         }
         return h.toString();
     }
@@ -1412,7 +1487,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             while (!stopped) {
                 // Flush a captured partial line that's gone quiet (no newline),
                 // OUTSIDE the render lock so the order matches step writes
-                // (sink → lock) and can't deadlock with tick() (lock only).
+                // (sink → lock) and can't deadlock with tick (lock only).
                 LineSink s = sink;
                 if (s != null) s.maybeFlushStale(STALE_FLUSH_MS);
                 tick();
@@ -1536,7 +1611,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /**
      * Terminal size {@code {rows, cols}}, detected once, leak-free. We deliberately do NOT build a
      * JLine terminal: JLine probes the terminal with capability queries (DA1 {@code \e[c}, mode
-     * reports like {@code \e[?2027$p}), and a transient build-then-close races the async replies —
+     * reports like {@code \e[?2027$p}), and a transient build-then-close races the async replies
      * they arrive after we exit and the shell echoes them as garbage. Instead ask the tty directly
      * via {@code stty size} (an ioctl, no escape sequences), then the {@code $LINES}/{@code $COLUMNS}
      * env, then conservative defaults. Only called when animating (interactive tty).

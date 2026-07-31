@@ -12,7 +12,7 @@ import java.util.Optional;
 
 /**
  * Action-cache front for Kotlin compile. The worker owns incremental recompile; this only does a
- * whole-input action-key hit/miss around the fork (behind the cheap {@code .kstamp} check).
+ * whole-input action-key hit/miss around the fork (behind the cheap {@code.kstamp} check).
  */
 public final class KotlinCompile {
 
@@ -28,8 +28,8 @@ public final class KotlinCompile {
 
     /**
      * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
-     *     <em>write</em> the action cache after a successful compile so the next explain/build can
-     *     CACHE_HIT.
+     * <em>write</em> the action cache after a successful compile so the next explain/build can
+     * CACHE_HIT.
      */
     public static Result run(
             String taskId, KotlincRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
@@ -40,7 +40,7 @@ public final class KotlinCompile {
     /**
      * As above with {@code persist}: false for {@code jk verify}'s scratch rebuild, whose
      * scratch-salted keys can never recur — a successful compile must not leave an orphan action
-     * record behind (JK-1297).
+     * record behind.
      */
     public static Result run(
             String taskId,

@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,9 +28,7 @@ class IdeSuiteRunConfigTest {
         Files.writeString(mod.resolve("test/src/T.java"), "class T {}");
         Files.createDirectories(mod.resolve("integration").resolve("src"));
         Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
-        Files.writeString(
-                mod.resolve("jk.toml"),
-                """
+        Files.writeString(mod.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "mod"
@@ -42,7 +42,8 @@ class IdeSuiteRunConfigTest {
         assertThat(n).isGreaterThanOrEqualTo(3);
         assertThat(Files.isRegularFile(runDir.resolve("jk_test.xml"))).isTrue();
         assertThat(Files.isRegularFile(runDir.resolve("jk_test_all.xml"))).isTrue();
-        assertThat(Files.isRegularFile(runDir.resolve("jk_test_integration.xml"))).isTrue();
+        assertThat(Files.isRegularFile(runDir.resolve("jk_test_integration.xml")))
+                .isTrue();
         String integ = Files.readString(runDir.resolve("jk_test_integration.xml"));
         assertThat(integ).contains("jk test --suite integration");
     }
@@ -54,9 +55,7 @@ class IdeSuiteRunConfigTest {
         Files.writeString(mod.resolve("test/src/T.java"), "class T {}");
         Files.createDirectories(mod.resolve("integration").resolve("src"));
         Files.writeString(mod.resolve("integration/src/I.java"), "class I {}");
-        Files.writeString(
-                mod.resolve("jk.toml"),
-                """
+        Files.writeString(mod.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "m"
@@ -78,15 +77,15 @@ class IdeSuiteRunConfigTest {
         IdeModel model = new IdeModel(
                 tmp,
                 "ws",
-                java.util.Map.of(mod, im),
-                java.util.Map.of(mod, im),
-                java.util.Map.of(),
-                java.util.Map.of(),
-                java.util.Map.of(),
-                java.util.Map.of(),
-                java.util.Map.of(),
+                Map.of(mod, im),
+                Map.of(mod, im),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
                 null,
-                java.util.List.of(),
+                List.of(),
                 null,
                 null,
                 null);

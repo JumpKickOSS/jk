@@ -2,23 +2,23 @@
 # Publish first-party plugin jars to the official JumpKick Maven layout on GCS.
 #
 # Layout (Maven standard under the repo root):
-#   gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
-#   gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar.sha256
+# gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
+# gs://jkbuild-releases/repo/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar.sha256
 #
 # Public HTTPS:
-#   https://storage.googleapis.com/jkbuild-releases/repo/...
-#   https://jumpkick.build/repo/...   (Firebase redirect once DNS is live)
+# https://storage.googleapis.com/jkbuild-releases/repo/...
+# https://jumpkick.build/repo/... (Firebase redirect once DNS is live)
 #
 # Usage:
-#   # After ./gradlew installLocal (or dist installLocal):
-#   scripts/publish-maven-repo.sh
+# # After ./gradlew installLocal (or dist installLocal):
+# scripts/publish-maven-repo.sh
 #
 # Env:
-#   JK_VERSION          default: from JkVersion.java
-#   JK_CACHE_DIR        default: ~/.jk/cache
-#   JK_MAVEN_BUCKET     default: jkbuild-releases
-#   JK_MAVEN_PREFIX     default: repo
-#   CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE  SA key for CI
+# JK_VERSION default: from JkVersion.java
+# JK_CACHE_DIR default: ~/.jk/cache
+# JK_MAVEN_BUCKET default: jkbuild-releases
+# JK_MAVEN_PREFIX default: repo
+# CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,7 +42,7 @@ trap 'rm -rf "$STAGE"' EXIT
 # Stage every installed first-party artifact for this version (jars + sha256 sidecars).
 count=0
 while IFS= read -r -d '' jar; do
-  # .../cc/jumpkick/<artifact>/<ver>/<artifact>-<ver>.jar
+ # .../cc/jumpkick/<artifact>/<ver>/<artifact>-<ver>.jar
   ver_dir="$(dirname "$jar")"
   ver="$(basename "$ver_dir")"
   art_dir="$(dirname "$ver_dir")"
@@ -62,7 +62,7 @@ while IFS= read -r -d '' jar; do
       sha256sum "$jar" | awk '{print $1}' >"$dest/$(basename "$jar").sha256"
     fi
   fi
-  # Minimal POM so Maven-compatible clients can resolve the module.
+ # Minimal POM so Maven-compatible clients can resolve the module.
   cat >"$dest/$art-$ver.pom" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0">

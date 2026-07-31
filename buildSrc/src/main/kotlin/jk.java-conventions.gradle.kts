@@ -32,18 +32,15 @@ dependencies {
     "testRuntimeOnly"(libs.findLibrary("junit-platform-launcher").orElseThrow())
 }
 
-// ---------------------------------------------------------------------------
-// Two-tier tests (JK-1123 / suite performance):
+// Two-tier tests (suite performance):
 //   ./gradlew test              — unit/fast (exclude integration|slow|bench); target <5 min
 //   ./gradlew integrationTest   — engine/e2e/network/worker suites
-//
 // Tag classes with @Tag("integration"), @Tag("slow"), or @Tag("bench").
-// ---------------------------------------------------------------------------
 val slowTags = listOf("integration", "slow", "bench")
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Isolate tests from the developer's real ~/.jk. JkDirs.home() honours
+    // Isolate tests from the developer's real ~/.jk. JkDirs.home honours
     // JK_HOME, and everything derived from it (the downloaded global library
     // catalog, cache, credentials, …) follows — so without this a machine
     // that has run `jk library update` would feed its real
@@ -53,7 +50,7 @@ tasks.withType<Test>().configureEach {
     environment("JK_HOME", layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
     // Same isolation for the Maven local repository (M2Dirs honours JK_M2_LOCAL):
     // tests that exercise the real fetch pipeline against a mock Maven server would
-    // otherwise mirror their stub artifacts into the developer's real ~/.m2 —
+    // otherwise mirror their stub artifacts into the developer's real ~/.m2
     // overwriting genuine jars when a fixture reuses real coordinates (e.g. the
     // injected junit-jupiter test deps) and corrupting every later build on the
     // machine. The env var also reaches any jk subprocess a test forks.
@@ -69,7 +66,7 @@ tasks.withType<Test>().configureEach {
     systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
     // Per-host rate-limit cooldowns are keyed by host, and every in-process HTTP test serves from
     // 127.0.0.1 — so without a throwaway store one test's simulated 429 cools down loopback for every
-    // other test, and the record lands in the developer's real ~/.jk (JK-1276, and the JK-1292 lesson).
+    // other test, and the record lands in the developer's real ~/.jk.
     systemProperty("jk.http.cooldown.dir", layout.buildDirectory.dir("test-http-cooldown").get().asFile.absolutePath)
 }
 

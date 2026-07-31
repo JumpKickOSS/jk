@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1290: the two legs of a build want opposite repositories, and the reasons are different.
+ * the two legs of a build want opposite repositories, and the reasons are different.
  *
  * <p>Version <em>enumeration</em> decides which versions exist, so it asks Central and only falls back once
  * refused — a lagging mirror would otherwise resolve to stale versions, which is the failure that got the
@@ -35,14 +35,15 @@ class MirrorPreferenceTest {
         assertThat(m.active()).as("no 429 has happened").isFalse();
 
         assertThat(m.routeForDownload(CENTRAL_JAR))
-                .hasToString("https://maven-central.storage-download.googleapis.com/maven2/org/foo/bar/1.0/bar-1.0.jar");
+                .hasToString(
+                        "https://maven-central.storage-download.googleapis.com/maven2/org/foo/bar/1.0/bar-1.0.jar");
     }
 
     @Test
     void enumeration_stays_on_central_until_it_refuses(@TempDir Path tmp) {
         CentralMirror m = mirror(tmp);
 
-        // route() is the rate-limit reaction, not a preference.
+        // route is the rate-limit reaction, not a preference.
         assertThat(m.route(CENTRAL_META)).isEqualTo(CENTRAL_META);
 
         m.noteRateLimited();
@@ -98,6 +99,7 @@ class MirrorPreferenceTest {
         // A caller that asked for 2 means 2, mirror or not.
         HostRateLimiter tight = new HostRateLimiter(2);
 
-        assertThat(tight.permitsFor(URI.create(CentralMirror.MIRROR_BASE).getHost())).isEqualTo(2);
+        assertThat(tight.permitsFor(URI.create(CentralMirror.MIRROR_BASE).getHost()))
+                .isEqualTo(2);
     }
 }

@@ -20,7 +20,7 @@ class GlobalConfigTest {
 
     @Test
     void defaults_false_when_unset_or_missing(@TempDir Path dir) throws IOException {
-        // JK-1080: safer default is no PUA until setup-terminal / install probes
+        // safer default is no PUA until setup-terminal / install probes
         assertThat(GlobalConfig.nerdfont(dir.resolve("nope.toml"), null)).isFalse(); // no file
         assertThat(GlobalConfig.nerdfont(write(dir, "[global]\n"), null)).isFalse(); // table, no key
         assertThat(GlobalConfig.nerdfont(write(dir, "[cache]\nauto-prune = true\n"), null))

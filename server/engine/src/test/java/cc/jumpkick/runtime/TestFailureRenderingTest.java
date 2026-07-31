@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.run.TestSummary;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 /** {@link TestSupport#renderFailures} surfaces each failure's name + stack, not just a count. */
@@ -86,21 +88,18 @@ class TestFailureRenderingTest {
 
     @Test
     void bridgeListener_labels_on_test_start() {
-        java.util.concurrent.atomic.AtomicReference<String> last = new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<String> last = new AtomicReference<>();
         var ctx = new LabelCaptureContext(last);
         var listener = TestSupport.bridgeListener(ctx, 1, false, "cc.jumpkick:core");
         listener.onTestStarted(
-                "[engine:junit-jupiter]/[class:cc.jumpkick.runtime.FooTest]/[method:bar()]",
-                "bar()",
-                true,
-                1);
+                "[engine:junit-jupiter]/[class:cc.jumpkick.runtime.FooTest]/[method:bar()]", "bar()", true, 1);
         assertThat(last.get()).isEqualTo("cc.jumpkick:core :: FooTest.bar()");
     }
 
     private static final class LabelCaptureContext implements cc.jumpkick.run.StepContext {
-        private final java.util.concurrent.atomic.AtomicReference<String> last;
+        private final AtomicReference<String> last;
 
-        LabelCaptureContext(java.util.concurrent.atomic.AtomicReference<String> last) {
+        LabelCaptureContext(AtomicReference<String> last) {
             this.last = last;
         }
 
@@ -133,8 +132,8 @@ class TestFailureRenderingTest {
         public <T> void put(cc.jumpkick.run.PipelineKey<T> key, T value) {}
 
         @Override
-        public <T> java.util.Optional<T> get(cc.jumpkick.run.PipelineKey<T> key) {
-            return java.util.Optional.empty();
+        public <T> Optional<T> get(cc.jumpkick.run.PipelineKey<T> key) {
+            return Optional.empty();
         }
 
         @Override

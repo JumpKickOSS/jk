@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1202: Quarkus platform + rest/arc must lock under the default engine budget (≪ 2 minutes).
+ * Quarkus platform + rest/arc must lock under the default engine budget (≪ 2 minutes).
  * Requires network (Maven Central); skipped offline.
  */
 @Tag("network")
@@ -32,9 +32,7 @@ class QuarkusLockPerfTest {
     @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void quarkus_rest_arc_locks_under_30s(@TempDir Path tmp) throws Exception {
         assumeTrue(networkOk(), "Maven Central unreachable");
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 name = "quarkus-hello"
                 group = "com.example.qhello"
@@ -56,12 +54,13 @@ class QuarkusLockPerfTest {
         Path cache = Path.of(System.getProperty("user.home"), ".jk/cache");
         assumeTrue(Files.isDirectory(cache), "local jk cache helps warm metadata");
         Cas cas = new Cas(cache);
-        MavenRepo central =
-                new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas);
+        MavenRepo central = new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas);
         long t0 = System.nanoTime();
-        Lockfile lock = new LockOrchestrator(RepoGroup.of(central)).withProjectDir(tmp).lock(project, "0.10.1-test");
+        Lockfile lock =
+                new LockOrchestrator(RepoGroup.of(central)).withProjectDir(tmp).lock(project, "0.10.1-test");
         long ms = (System.nanoTime() - t0) / 1_000_000L;
-        System.out.println("quarkus-rest lock ms=" + ms + " packages=" + lock.artifacts().size());
+        System.out.println(
+                "quarkus-rest lock ms=" + ms + " packages=" + lock.artifacts().size());
         assertThat(lock.artifacts()).isNotEmpty();
         assertThat(ms).as("lock wall time %d ms", ms).isLessThan(30_000L);
     }

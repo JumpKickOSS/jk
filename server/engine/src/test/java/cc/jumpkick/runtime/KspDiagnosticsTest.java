@@ -7,7 +7,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1257: a successful KSP round's processor diagnostics must reach the user. They used to be
+ * a successful KSP round's processor diagnostics must reach the user. They used to be
  * dropped on the floor unless the build failed, so non-fatal processor guidance only ever appeared
  * once something was already broken.
  */
@@ -15,8 +15,7 @@ class KspDiagnosticsTest {
 
     @Test
     void processor_warnings_are_surfaced_with_their_severity() {
-        String output =
-                """
+        String output = """
                 w: [ksp] [KNEST-W021] Task.title has no @Length; defaulting to varchar(255)
                 w: [ksp] generated 3 tables
                 """;
@@ -42,8 +41,7 @@ class KspDiagnosticsTest {
     void jvm_host_noise_is_filtered_out() {
         // KSP2's bundled IntelliJ containers trigger these on JDK 24+ every single run; echoing
         // them on every green build would train people to ignore the channel.
-        String output =
-                """
+        String output = """
                 WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
                 WARNING: sun.misc.Unsafe::objectFieldOffset has been called by ksp.com.intellij.util.containers.Unsafe
                 WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release

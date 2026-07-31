@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** JK-1120 — engine aggregate bar model (ported from former CLI AggregateContext tests). */
+/**engine aggregate bar model (ported from former CLI AggregateContext tests). */
 class WorkspaceProgressTrackerTest {
 
     private static final long PF = WorkspaceProgressTracker.PREFLIGHT_UNITS;
@@ -106,7 +106,7 @@ class WorkspaceProgressTrackerTest {
         assertThat(s.phase()).isEqualTo("preflight");
         assertThat(s.percent()).isLessThan(20.0);
         s = t.preflight("plan", 10, 10);
-        // Plan-complete stays below the full band (JK-1219) and well under half the provisional bar.
+        // Plan-complete stays below the full band and well under half the provisional bar.
         assertThat(s.numerator()).isEqualTo(95);
         assertThat(s.percent()).isLessThan(15.0);
         double preflightPeak = s.percent();
@@ -136,7 +136,7 @@ class WorkspaceProgressTrackerTest {
 
     @Test
     void calibrate_zero_weight_floors_to_module_count_tokens() {
-        // JK-1153/1154: empty execute weight with N modules still calibrates so module
+        // /1154: empty execute weight with N modules still calibrates so module
         // boundaries cannot fall into uncalibrated "reset" math.
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(0, 3);
@@ -147,14 +147,15 @@ class WorkspaceProgressTrackerTest {
         var mid = t.snapshot();
         assertThat(mid.numerator()).isGreaterThan(0);
         t.moduleProgress("b", 1, 0, 1);
-        assertThat(t.snapshot().numerator()).isGreaterThanOrEqualTo(mid.numerator() - WorkspaceProgressTracker.PREFLIGHT_UNITS);
+        assertThat(t.snapshot().numerator())
+                .isGreaterThanOrEqualTo(mid.numerator() - WorkspaceProgressTracker.PREFLIGHT_UNITS);
         // Absolute: after A complete, base holds A's slice even when B starts at 0 frac.
         assertThat(bar(t)).isEqualTo((PF + 1) + " of " + (PF + 3));
     }
 
     @Test
     void module_a_to_b_never_zeros_numerator_after_progress() {
-        // JK-1154 regression: monorepo module swap must keep completed work on the bar.
+        // regression: monorepo module swap must keep completed work on the bar.
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(200, 2);
         t.moduleProgress("a", 100, 100, 100);

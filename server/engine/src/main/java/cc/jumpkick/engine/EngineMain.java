@@ -4,7 +4,7 @@ package cc.jumpkick.engine;
 import cc.jumpkick.model.JkVersion;
 
 /**
- * Engine JVM entrypoint ({@code :engine}). Plain Java — never a native image. Spawned by the slim
+ * Engine JVM entrypoint ({@code:engine}). Plain Java — never a native image. Spawned by the slim
  * client as {@code java -cp jk-engine.jar cc.jumpkick.engine.EngineMain}. Not a client: no CLI
  * command tree, no TUI.
  */
@@ -14,13 +14,13 @@ public final class EngineMain {
 
     /**
      * {@code args} other than known role flags are deliberately ignored: on the {@code java -cp}
-     * spawn line every option is a real JVM flag consumed before {@code main()} runs, and a {@code
+     * spawn line every option is a real JVM flag consumed before {@code main} runs, and a {@code
      * JK_ENGINE_EXE} wrapper that fails to consume the {@code -Xms}/{@code -Xmx} the spawner
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
         // Relocate the fetched-artifact set out of cache/ if this is the first run since the split
-        // (JK-1289). A directory rename, so ~1.6 GB moves in milliseconds; never throws, and anything
+        // . A directory rename, so ~1.6 GB moves in milliseconds; never throws, and anything
         // left behind is still found via StoreMigration.resolveForRead.
         cc.jumpkick.util.StoreMigration.migrateIfNeeded();
         // --job: one-shot child — serve exactly one request over stdio, then exit.
@@ -156,7 +156,7 @@ public final class EngineMain {
     /**
      * The sidecar trainer's whole life: bring up a REAL engine server against a private temp state
      * dir (it can never win, lose, or see the real engine's election), idle briefly, then stop
-     * cleanly so the JVM assembles the {@code .aot} at exit.
+     * cleanly so the JVM assembles the {@code.aot} at exit.
      */
     /**
      * Hard ceiling on a trainer's life, enforced by a watchdog rather than by the happy path.
@@ -172,7 +172,8 @@ public final class EngineMain {
      * that a genuinely slow machine never trips it, tight enough that a stuck trainer is gone before it
      * matters.
      */
-    private static final long AOT_TRAINING_HARD_LIMIT_MS = java.time.Duration.ofMinutes(2).toMillis();
+    private static final long AOT_TRAINING_HARD_LIMIT_MS =
+            java.time.Duration.ofMinutes(2).toMillis();
 
     static int runAotTraining() {
         startTrainerWatchdog(AOT_TRAINING_HARD_LIMIT_MS);

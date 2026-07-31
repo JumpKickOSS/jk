@@ -24,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
- * headers, literal {@code ..} request targets).
+ * headers, literal {@code..} request targets).
  */
 @Tag("integration")
 class HttpEngineServerTest {
@@ -502,7 +502,7 @@ class HttpEngineServerTest {
 
     @Test
     void api_log_requires_the_token_even_on_loopback() throws Exception {
-        // The log can carry build diagnostics — another local user must not read it (JK-1305).
+        // The log can carry build diagnostics — another local user must not read it.
         assertThat(get("/api/log").statusCode()).isEqualTo(401);
     }
 
@@ -971,7 +971,7 @@ class HttpEngineServerTest {
         assertThat(resp.body()).contains("no jk.toml in /reject/me");
     }
 
-    // ---- live stream count: the veto on an orphaned engine exiting (JK-1293) -------------------
+    // ---- live stream count: the veto on an orphaned engine exiting------------------
 
     @Test
     void no_attached_streams_means_none_are_counted() {

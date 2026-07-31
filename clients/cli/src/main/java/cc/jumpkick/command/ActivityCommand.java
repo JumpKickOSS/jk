@@ -19,14 +19,14 @@ import org.jline.utils.AttributedStyle;
 
 /**
  * {@code jk jobs} — recent and running engine jobs via the journal RPC (same backend as the web UI).
- * {@code jk activity} / {@code act} remain hidden aliases (JK-1252).
+ * {@code jk activity} / {@code act} remain hidden aliases.
  *
  * <pre>
- *  ≡ Build Jobs
- *  │
- *  ├─▶ #23 Building group:name · building… · 1 module · 4% · 7.6s · id: 1
- *  │
- *  ╰─✓ #31 Success other:app · build · 8 modules · 2.3s · 1h ago
+ * ≡ Build Jobs
+ * │
+ * ├─▶ #23 Building group:name · building… · 1 module · 4% · 7.6s · id: 1
+ * │
+ * ╰─✓ #31 Success other:app · build · 8 modules · 2.3s · 1h ago
  * </pre>
  *
  * <p>Rail is indented one space. Outcome is a colored pill (Nerd Font half-circles, space pads
@@ -45,7 +45,7 @@ public final class ActivityCommand implements CliCommand {
 
     @Override
     public List<String> aliases() {
-        // Primary name is `jobs`; builds/activity/act for muscle memory (JK-1252).
+        // Primary name is `jobs`; builds/activity/act for muscle memory.
         return List.of("builds", "activity", "act");
     }
 
@@ -56,8 +56,8 @@ public final class ActivityCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value(
-                "<N>", "Maximum number of runs to show (default: " + DEFAULT_LIMIT + ").", "--limit", "-n"));
+        return List.of(
+                Opt.value("<N>", "Maximum number of runs to show (default: " + DEFAULT_LIMIT + ").", "--limit", "-n"));
     }
 
     @Override
@@ -111,7 +111,7 @@ public final class ActivityCommand implements CliCommand {
     }
 
     /**
-     * {@code  ├─} or {@code  ╰─} (ASCII {@code  +-} / {@code  `-}), indented one space under the
+     * {@code ├─} or {@code ╰─} (ASCII {@code +-} / {@code `-}), indented one space under the
      * title chip. No trailing space — the status pill abuts the connector.
      */
     static String branch(boolean last, Theme t) {
@@ -177,7 +177,10 @@ public final class ActivityCommand implements CliCommand {
         pillLabel.append(glyph).append(' ');
         if (buildNumber > 0) {
             int width = Math.max(1, buildNumberWidth);
-            pillLabel.append('#').append(String.format("%0" + width + "d", buildNumber)).append(' ');
+            pillLabel
+                    .append('#')
+                    .append(String.format("%0" + width + "d", buildNumber))
+                    .append(' ');
         } else if (!running) {
             pillLabel.append("#— ");
         }
@@ -230,9 +233,9 @@ public final class ActivityCommand implements CliCommand {
      * Status pill around {@code label} (e.g. {@code ✓ #20 Success}):
      *
      * <ul>
-     *   <li>Nerd Font: rounded half-circles in the chip color, black text on chip bg
-     *   <li>ANSI, no Nerd Font: space pads on chip bg (no half-circles)
-     *   <li>No ANSI: {@code [label]} plain ASCII
+     * <li>Nerd Font: rounded half-circles in the chip color, black text on chip bg
+     * <li>ANSI, no Nerd Font: space pads on chip bg (no half-circles)
+     * <li>No ANSI: {@code [label]} plain ASCII
      * </ul>
      */
     static String statusPill(String label, OutcomeStyle outcome, Theme t) {

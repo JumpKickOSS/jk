@@ -68,10 +68,10 @@ public final class LockPipelines {
      * global flags) and the engine (which reconstructs it from the wire request) behave alike.
      *
      * @param observer per-package resolution events (never {@code null}; use {@link
-     *     ResolveObserver#NOOP})
+     * ResolveObserver#NOOP})
      * @param coordLabel formats a {@code module, version} pair for progress labels, or {@code null}
-     *     to emit no per-package labels (the engine-hosted path — the client synthesizes them from
-     *     {@code lock-package} events so coloring stays client-side)
+     * to emit no per-package labels (the engine-hosted path — the client synthesizes them from
+     * {@code lock-package} events so coloring stays client-side)
      */
     public static Pipeline lockPipeline(
             Path dir,
@@ -348,7 +348,7 @@ public final class LockPipelines {
 
     /**
      * As {@link #updatePipeline(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
-     * platform-policy override ({@code enforced}|{@code floor}, JK-1206).
+     * platform-policy override ({@code enforced}|{@code floor},.
      */
     public static Pipeline updatePipeline(
             Path dir,
@@ -559,9 +559,7 @@ public final class LockPipelines {
         if (override != null && !override.isBlank()) {
             return PlatformPolicy.parse(override.trim());
         }
-        return project != null && project.build() != null
-                ? project.build().platformPolicy()
-                : PlatformPolicy.ENFORCED;
+        return project != null && project.build() != null ? project.build().platformPolicy() : PlatformPolicy.ENFORCED;
     }
 
     private static String gitKey(GitSource s) {
@@ -619,7 +617,7 @@ public final class LockPipelines {
      * The single lock scope for {@code entryDir}: workspace root (merged model) or standalone
      * project. A workspace <em>member</em> redirects to its root so any lock entry point — CLI
      * cascade, HTTP/MCP job — resolves the full workspace union and writes the root
-     * {@code jk-lock.toml}, never one module's closure over it (JK-1303).
+     * {@code jk-lock.toml}, never one module's closure over it.
      */
     public record LockScope(Path lockDir, JkBuild effective, String coord) {}
 
@@ -662,7 +660,7 @@ public final class LockPipelines {
      * or declared deps × a transitive expansion factor.
      */
     private static int scopeEstimate(JkBuild effective, Path lockFile) {
-        // Dual-phase budget (graph + materialize) ≈ 2× packages (JK-1088).
+        // Dual-phase budget (graph + materialize) ≈ 2× packages.
         try {
             int n = LockfileReader.read(lockFile).artifacts().size();
             if (n > 0) return Math.max(10, n * 2);

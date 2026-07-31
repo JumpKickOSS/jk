@@ -112,7 +112,7 @@ final class EngineBuildListenerAdapter {
     /**
      * Run a single project's test pipeline against the engine (Step 3). {@code listenerFactory} builds
      * the actual console {@link PipelineListener} once the pipeline's step list is known (mirroring {@code
-     * PipelineConsole.runPipeline}'s own mode-based listener choice, which also needs {@code pipeline.steps()}
+     * PipelineConsole.runPipeline}'s own mode-based listener choice, which also needs {@code pipeline.steps}
      * before it can construct a {@code CommandManagerListener}) — the wire doesn't have a real {@code
      * Pipeline} to ask, so the steps arrive as their own small event burst first. {@code testResultOut},
      * if non-null, is populated with the test-run counts (for exit-code/summary logic) before the
@@ -298,7 +298,7 @@ final class EngineBuildListenerAdapter {
      * Unlike {@link #buildModulePlan}, no inert-object trickery is needed here — {@link
      * cc.jumpkick.runtime.BuildPlan.Module}/{@code Step} are pure public data, reconstructed
      * via {@code Module.fromWire}, exactly as {@link #buildModulePlan} does with {@code
-     * ModulePlan.fromWire} ({@code Module.unit()} is package-private and never read here).
+     * ModulePlan.fromWire} ({@code Module.unit} is package-private and never read here).
      *
      * <p>Plan-affecting build options ride the request for the engine-side ETA estimate ({@code
      * eta} event; {@code 0} = unknown) before {@code explain-done}.
@@ -339,71 +339,71 @@ final class EngineBuildListenerAdapter {
             long notedJid = -1;
             try {
                 while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (type == null) continue;
-                if (EngineProtocol.JOB_START.equals(type)) {
-                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
-                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                    continue;
-                }
-                switch (type) {
-                    case EngineProtocol.EXPLAIN_MODULE -> {
-                        String dir = Jsonl.str(line, "dir");
-                        order.add(dir);
-                        coordByDir.put(dir, Jsonl.str(line, "coord"));
-                        countsByDir.put(dir, new int[] {
-                            Jsonl.intValue(line, "sourceCount", 0), Jsonl.intValue(line, "testCount", 0)
-                        });
-                        flagsByDir.put(dir, new boolean[] {
-                            Jsonl.bool(line, "producesJar", false), Jsonl.bool(line, "producesImage", false)
-                        });
-                        stepsByDir.put(dir, new ArrayList<>());
+                    String type = EngineProtocol.typeOf(line);
+                    if (type == null) continue;
+                    if (EngineProtocol.JOB_START.equals(type)) {
+                        notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                        cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                        continue;
                     }
-                    case EngineProtocol.EXPLAIN_STEP -> {
-                        String dir = Jsonl.str(line, "dir");
-                        stepsByDir
-                                .get(dir)
-                                .add(new cc.jumpkick.runtime.BuildPlan.Step(
-                                        Jsonl.str(line, "name"),
-                                        cc.jumpkick.runtime.BuildPlan.Status.valueOf(Jsonl.str(line, "status")),
-                                        Jsonl.str(line, "text"),
-                                        Jsonl.str(line, "key")));
-                    }
-                    case EngineProtocol.EXPLAIN_EDGE -> {
-                        Path dir = Path.of(Jsonl.str(line, "dir"));
-                        Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
-                        edges.computeIfAbsent(dir, d -> new java.util.LinkedHashSet<>())
-                                .add(dependsOn);
-                    }
-                    case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
-                    case EngineProtocol.ETA -> {
-                        if (etaOut != null) etaOut[0] = Jsonl.longValue(line, "millis", 0);
-                    }
-                    case EngineProtocol.EXPLAIN_DONE -> {
-                        for (String dir : order) {
-                            int[] counts = countsByDir.get(dir);
-                            boolean[] flags = flagsByDir.get(dir);
-                            modules.add(cc.jumpkick.runtime.BuildPlan.Module.fromWire(
-                                    Path.of(dir),
-                                    coordByDir.get(dir),
-                                    stepsByDir.get(dir),
-                                    counts[0],
-                                    counts[1],
-                                    flags[0],
-                                    flags[1]));
+                    switch (type) {
+                        case EngineProtocol.EXPLAIN_MODULE -> {
+                            String dir = Jsonl.str(line, "dir");
+                            order.add(dir);
+                            coordByDir.put(dir, Jsonl.str(line, "coord"));
+                            countsByDir.put(dir, new int[] {
+                                Jsonl.intValue(line, "sourceCount", 0), Jsonl.intValue(line, "testCount", 0)
+                            });
+                            flagsByDir.put(dir, new boolean[] {
+                                Jsonl.bool(line, "producesJar", false), Jsonl.bool(line, "producesImage", false)
+                            });
+                            stepsByDir.put(dir, new ArrayList<>());
                         }
-                        return new ExplainPlan(modules, edges, Jsonl.intValue(line, "maxReadyWidth", 1), errors);
+                        case EngineProtocol.EXPLAIN_STEP -> {
+                            String dir = Jsonl.str(line, "dir");
+                            stepsByDir
+                                    .get(dir)
+                                    .add(new cc.jumpkick.runtime.BuildPlan.Step(
+                                            Jsonl.str(line, "name"),
+                                            cc.jumpkick.runtime.BuildPlan.Status.valueOf(Jsonl.str(line, "status")),
+                                            Jsonl.str(line, "text"),
+                                            Jsonl.str(line, "key")));
+                        }
+                        case EngineProtocol.EXPLAIN_EDGE -> {
+                            Path dir = Path.of(Jsonl.str(line, "dir"));
+                            Path dependsOn = Path.of(Jsonl.str(line, "dependsOnDir"));
+                            edges.computeIfAbsent(dir, d -> new java.util.LinkedHashSet<>())
+                                    .add(dependsOn);
+                        }
+                        case EngineProtocol.ERROR -> errors.add(Jsonl.str(line, "message"));
+                        case EngineProtocol.ETA -> {
+                            if (etaOut != null) etaOut[0] = Jsonl.longValue(line, "millis", 0);
+                        }
+                        case EngineProtocol.EXPLAIN_DONE -> {
+                            for (String dir : order) {
+                                int[] counts = countsByDir.get(dir);
+                                boolean[] flags = flagsByDir.get(dir);
+                                modules.add(cc.jumpkick.runtime.BuildPlan.Module.fromWire(
+                                        Path.of(dir),
+                                        coordByDir.get(dir),
+                                        stepsByDir.get(dir),
+                                        counts[0],
+                                        counts[1],
+                                        flags[0],
+                                        flags[1]));
+                            }
+                            return new ExplainPlan(modules, edges, Jsonl.intValue(line, "maxReadyWidth", 1), errors);
+                        }
+                        default -> {
+                            /* forward-compatible no-op */
+                        }
                     }
-                    default -> {
-                        /* forward-compatible no-op */
-                    }
-                }
                 }
                 throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
                         + "(it may have crashed); run `jk engine status` for details");
             } finally {
                 // The job is over however the stream ended — a stale jid here would add a 2s
-                // cancel RPC to every future Ctrl-C in this process (JK-1314).
+                // cancel RPC to every future Ctrl-C in this process.
                 if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
             }
         }
@@ -607,7 +607,7 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
-    // Package-visible for tests (ActiveJobs lifecycle, cancel terminals — JK-1314 / JK-1312).
+    // Package-visible for tests (ActiveJobs lifecycle, cancel terminals —.
     static PipelineResult streamSinglePipelineEvents(
             BufferedReader reader,
             java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
@@ -626,102 +626,102 @@ final class EngineBuildListenerAdapter {
         long notedJid = -1;
         try {
             while ((line = reader.readLine()) != null) {
-            String type = EngineProtocol.typeOf(line);
-            if (type == null) continue;
-            if (EngineProtocol.JOB_START.equals(type)) {
-                notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
-                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                continue;
-            }
-            switch (type) {
-                case EngineProtocol.PLAN_STEP ->
-                    steps.add(Step.builder(Jsonl.str(line, "name"))
-                            .label(Jsonl.str(line, "label"))
-                            .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
-                            .build());
-                case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
-                case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
-                case EngineProtocol.STEP_START ->
-                    listener.stepStart(
-                            Jsonl.str(line, "step"),
-                            Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                            Jsonl.intValue(line, "ticks", 0));
-                case EngineProtocol.PROGRESS ->
-                    listener.progress(
-                            Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                case EngineProtocol.TICK_UPDATE ->
-                    listener.tickUpdate(
-                            Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
-                case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
-                case EngineProtocol.WARN ->
-                    listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-                case EngineProtocol.ERROR_LINE ->
-                    listener.error(
-                            Jsonl.str(line, "step"),
-                            Jsonl.str(line, "code"),
-                            Jsonl.str(line, "message"),
-                            Jsonl.str(line, "test"),
-                            Jsonl.str(line, "exceptionClass"));
-                case EngineProtocol.PIPELINE_DIAGNOSTIC ->
-                    diagnostics.add(new PipelineResult.Diagnostic(
-                            Jsonl.str(line, "step"),
-                            Jsonl.str(line, "code"),
-                            Jsonl.str(line, "message"),
-                            Jsonl.str(line, "test"),
-                            Jsonl.str(line, "exceptionClass")));
-                case EngineProtocol.STEP_FINISH ->
-                    listener.stepFinish(
-                            Jsonl.str(line, "step"),
-                            Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                            StepStatus.valueOf(Jsonl.str(line, "status")),
-                            Duration.ZERO);
-                case EngineProtocol.PIPELINE_FINISH -> {
-                    boolean success = Jsonl.bool(line, "success", false);
-                    long total = Jsonl.longValue(line, "testTotal", -1);
-                    if (total >= 0 && testResultOut != null) {
-                        testResultOut[0] = new cc.jumpkick.run.TestSummary(
-                                total,
-                                Jsonl.longValue(line, "testSucceeded", 0),
-                                Jsonl.longValue(line, "testFailed", 0),
-                                Jsonl.longValue(line, "testSkipped", 0),
-                                List.of());
-                    }
-                    if (buildOutcomeOut != null) {
-                        buildOutcomeOut[0] = Jsonl.str(line, "buildOutcome");
-                    }
-                    boolean cancelled = Jsonl.bool(line, "cancelled", false);
-                    PipelineResult result = new PipelineResult(
-                            "test",
-                            success,
-                            Duration.ofNanos(System.nanoTime() - startNanos),
-                            List.of(),
-                            List.of(),
-                            diagnostics,
-                            cancelled,
-                            cancelled);
-                    // A remote cancel injects this terminal from another thread — it can land
-                    // before plan-done ever created the listener (JK-1312).
-                    if (listener != null) listener.pipelineFinish(result);
-                    return result;
+                String type = EngineProtocol.typeOf(line);
+                if (type == null) continue;
+                if (EngineProtocol.JOB_START.equals(type)) {
+                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                    continue;
                 }
-                case EngineProtocol.ERROR ->
-                    throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
-                default -> {
-                    /* forward-compatible no-op */
+                switch (type) {
+                    case EngineProtocol.PLAN_STEP ->
+                        steps.add(Step.builder(Jsonl.str(line, "name"))
+                                .label(Jsonl.str(line, "label"))
+                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                .build());
+                    case EngineProtocol.PLAN_DONE -> listener = listenerFactory.apply(steps);
+                    case EngineProtocol.PIPELINE_START -> listener.pipelineStart(readPipelineView(line));
+                    case EngineProtocol.STEP_START ->
+                        listener.stepStart(
+                                Jsonl.str(line, "step"),
+                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                Jsonl.intValue(line, "ticks", 0));
+                    case EngineProtocol.PROGRESS ->
+                        listener.progress(
+                                Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                    case EngineProtocol.TICK_UPDATE ->
+                        listener.tickUpdate(
+                                Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
+                    case EngineProtocol.LABEL -> listener.label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
+                    case EngineProtocol.OUTPUT -> listener.output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+                    case EngineProtocol.WARN ->
+                        listener.warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                    case EngineProtocol.ERROR_LINE ->
+                        listener.error(
+                                Jsonl.str(line, "step"),
+                                Jsonl.str(line, "code"),
+                                Jsonl.str(line, "message"),
+                                Jsonl.str(line, "test"),
+                                Jsonl.str(line, "exceptionClass"));
+                    case EngineProtocol.PIPELINE_DIAGNOSTIC ->
+                        diagnostics.add(new PipelineResult.Diagnostic(
+                                Jsonl.str(line, "step"),
+                                Jsonl.str(line, "code"),
+                                Jsonl.str(line, "message"),
+                                Jsonl.str(line, "test"),
+                                Jsonl.str(line, "exceptionClass")));
+                    case EngineProtocol.STEP_FINISH ->
+                        listener.stepFinish(
+                                Jsonl.str(line, "step"),
+                                Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                StepStatus.valueOf(Jsonl.str(line, "status")),
+                                Duration.ZERO);
+                    case EngineProtocol.PIPELINE_FINISH -> {
+                        boolean success = Jsonl.bool(line, "success", false);
+                        long total = Jsonl.longValue(line, "testTotal", -1);
+                        if (total >= 0 && testResultOut != null) {
+                            testResultOut[0] = new cc.jumpkick.run.TestSummary(
+                                    total,
+                                    Jsonl.longValue(line, "testSucceeded", 0),
+                                    Jsonl.longValue(line, "testFailed", 0),
+                                    Jsonl.longValue(line, "testSkipped", 0),
+                                    List.of());
+                        }
+                        if (buildOutcomeOut != null) {
+                            buildOutcomeOut[0] = Jsonl.str(line, "buildOutcome");
+                        }
+                        boolean cancelled = Jsonl.bool(line, "cancelled", false);
+                        PipelineResult result = new PipelineResult(
+                                "test",
+                                success,
+                                Duration.ofNanos(System.nanoTime() - startNanos),
+                                List.of(),
+                                List.of(),
+                                diagnostics,
+                                cancelled,
+                                cancelled);
+                        // A remote cancel injects this terminal from another thread — it can land
+                        // before plan-done ever created the listener.
+                        if (listener != null) listener.pipelineFinish(result);
+                        return result;
+                    }
+                    case EngineProtocol.ERROR ->
+                        throw new IOException("jk engine: run failed: " + Jsonl.str(line, "message"));
+                    default -> {
+                        /* forward-compatible no-op */
+                    }
                 }
-            }
             }
             throw disconnectFailure();
         } finally {
-            // The job is over however the stream ended (JK-1314).
+            // The job is over however the stream ended.
             if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
         }
     }
 
     /**
      * Bare EOF without a terminal line: a crash — unless this process already asked for cancel
-     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling (JK-1307).
+     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling.
      */
     private static IOException disconnectFailure() {
         try {
@@ -747,170 +747,174 @@ final class EngineBuildListenerAdapter {
         long notedJid = -1;
         try {
             while ((line = reader.readLine()) != null) {
-            String type = EngineProtocol.typeOf(line);
-            if (type == null) continue;
-            if (EngineProtocol.JOB_START.equals(type)) {
-                notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
-                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
-                continue;
-            }
-            String dir = Jsonl.str(line, "dir");
-            switch (type) {
-                case EngineProtocol.PLAN_MODULE -> {
-                    planByDir.put(
-                            dir,
-                            new ModuleMeta(
-                                    Jsonl.str(line, "coord"),
-                                    Jsonl.str(line, "pipelineName"),
-                                    Jsonl.intValue(line, "weight", 0),
-                                    Jsonl.bool(line, "fullyCached", false)));
-                    pendingPlanDir = dir;
+                String type = EngineProtocol.typeOf(line);
+                if (type == null) continue;
+                if (EngineProtocol.JOB_START.equals(type)) {
+                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                    continue;
                 }
-                case EngineProtocol.PLAN_STEP -> {
-                    ModuleMeta m = planByDir.get(dir != null ? dir : pendingPlanDir);
-                    if (m != null) {
-                        m.steps.add(Step.builder(Jsonl.str(line, "name"))
-                                .label(Jsonl.str(line, "label"))
-                                .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
-                                .build());
+                String dir = Jsonl.str(line, "dir");
+                switch (type) {
+                    case EngineProtocol.PLAN_MODULE -> {
+                        planByDir.put(
+                                dir,
+                                new ModuleMeta(
+                                        Jsonl.str(line, "coord"),
+                                        Jsonl.str(line, "pipelineName"),
+                                        Jsonl.intValue(line, "weight", 0),
+                                        Jsonl.bool(line, "fullyCached", false)));
+                        pendingPlanDir = dir;
+                    }
+                    case EngineProtocol.PLAN_STEP -> {
+                        ModuleMeta m = planByDir.get(dir != null ? dir : pendingPlanDir);
+                        if (m != null) {
+                            m.steps.add(Step.builder(Jsonl.str(line, "name"))
+                                    .label(Jsonl.str(line, "label"))
+                                    .phase(Phase.fromWireOrNull(Jsonl.str(line, "phase")))
+                                    .build());
+                        }
+                    }
+                    case EngineProtocol.PREFLIGHT ->
+                        listener.onPreflight(
+                                Jsonl.str(line, "stage"),
+                                Jsonl.intValue(line, "done", 0),
+                                Jsonl.intValue(line, "total", 0),
+                                Jsonl.str(line, "label"));
+                    case EngineProtocol.WORKSPACE_PROGRESS -> {
+                        long num = Jsonl.longValue(line, "numerator", 0);
+                        long den = Jsonl.longValue(line, "denominator", 0);
+                        String phase = Jsonl.str(line, "phase");
+                        int mc = Jsonl.intValue(line, "modulesComplete", 0);
+                        int mt = Jsonl.intValue(line, "modulesTotal", 0);
+                        double pct =
+                                den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
+                        listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
+                                num, den, pct, phase == null ? "" : phase, mc, mt));
+                    }
+                    case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
+                    case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
+                    case EngineProtocol.MODULE_START -> {
+                        ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
+                        PipelineListener gl = listener.onModuleStart(plan);
+                        pipelineListenersByDir.put(dir, gl != null ? gl : new PipelineListener() {});
+                    }
+                    case EngineProtocol.PIPELINE_START ->
+                        pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineStart(readPipelineView(line));
+                    case EngineProtocol.STEP_START ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .stepStart(
+                                        Jsonl.str(line, "step"),
+                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                        Jsonl.intValue(line, "ticks", 0));
+                    case EngineProtocol.PROGRESS ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .progress(
+                                        Jsonl.str(line, "step"),
+                                        Jsonl.intValue(line, "delta", 0),
+                                        readPipelineView(line));
+                    case EngineProtocol.TICK_UPDATE ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .tickUpdate(
+                                        Jsonl.str(line, "step"),
+                                        Jsonl.intValue(line, "delta", 0),
+                                        readPipelineView(line));
+                    case EngineProtocol.LABEL ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
+                    case EngineProtocol.OUTPUT ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
+                    case EngineProtocol.WARN ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
+                    case EngineProtocol.ERROR_LINE ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .error(
+                                        Jsonl.str(line, "step"),
+                                        Jsonl.str(line, "code"),
+                                        Jsonl.str(line, "message"),
+                                        Jsonl.str(line, "test"),
+                                        Jsonl.str(line, "exceptionClass"));
+                    case EngineProtocol.PIPELINE_DIAGNOSTIC ->
+                        diagnosticsByDir
+                                .computeIfAbsent(dir, d -> new ArrayList<>())
+                                .add(new PipelineResult.Diagnostic(
+                                        Jsonl.str(line, "step"),
+                                        Jsonl.str(line, "code"),
+                                        Jsonl.str(line, "message"),
+                                        Jsonl.str(line, "test"),
+                                        Jsonl.str(line, "exceptionClass")));
+                    case EngineProtocol.STEP_FINISH ->
+                        pipelineListenersByDir
+                                .getOrDefault(dir, NOOP)
+                                .stepFinish(
+                                        Jsonl.str(line, "step"),
+                                        Phase.fromWireOrNull(Jsonl.str(line, "phase")),
+                                        StepStatus.valueOf(Jsonl.str(line, "status")),
+                                        Duration.ZERO);
+                    case EngineProtocol.PIPELINE_FINISH -> {
+                        ModuleMeta meta = planByDir.get(dir);
+                        String pipelineName = meta != null ? meta.pipelineName : dir;
+                        List<PipelineResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
+                        boolean cancelled = Jsonl.bool(line, "cancelled", false);
+                        PipelineResult result = new PipelineResult(
+                                pipelineName,
+                                Jsonl.bool(line, "success", false),
+                                Duration.ZERO,
+                                List.of(),
+                                List.of(),
+                                diags != null ? diags : List.of(),
+                                cancelled,
+                                cancelled);
+                        pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineFinish(result);
+                    }
+                    case EngineProtocol.MODULE_FINISH -> {
+                        // didWork defaults true for older engines that omit the field (fail-open "built").
+                        ModuleOutcome outcome = new ModuleOutcome(
+                                Jsonl.str(line, "coord"),
+                                Path.of(dir),
+                                Jsonl.bool(line, "success", false),
+                                Jsonl.intValue(line, "exitCode", 1),
+                                Jsonl.longValue(line, "millis", 0),
+                                Jsonl.bool(line, "didWork", true));
+                        outcomes.add(outcome);
+                        listener.onModuleFinish(outcome);
+                    }
+                    case EngineProtocol.WORKSPACE_FINISH -> {
+                        WorkspaceResult result = new WorkspaceResult(
+                                Jsonl.bool(line, "success", false),
+                                Jsonl.intValue(line, "exitCode", 1),
+                                List.copyOf(outcomes),
+                                Jsonl.strArray(line, "errors"),
+                                Jsonl.bool(line, "cancelled", false));
+                        listener.onWorkspaceFinish(result);
+                        return result;
+                    }
+                    case EngineProtocol.ERROR -> {
+                        String code = Jsonl.str(line, "code");
+                        String msg = Jsonl.str(line, "message");
+                        // surface as the wedge message body without engine noise.
+                        if (EngineProtocol.ERR_ALREADY_RUNNING.equals(code)) {
+                            throw new IOException(msg == null || msg.isBlank() ? "Build is already running" : msg);
+                        }
+                        throw new IOException("jk engine: build failed: " + msg);
+                    }
+                    default -> {
+                        /* forward-compatible no-op */
                     }
                 }
-                case EngineProtocol.PREFLIGHT ->
-                    listener.onPreflight(
-                            Jsonl.str(line, "stage"),
-                            Jsonl.intValue(line, "done", 0),
-                            Jsonl.intValue(line, "total", 0),
-                            Jsonl.str(line, "label"));
-                case EngineProtocol.WORKSPACE_PROGRESS -> {
-                    long num = Jsonl.longValue(line, "numerator", 0);
-                    long den = Jsonl.longValue(line, "denominator", 0);
-                    String phase = Jsonl.str(line, "phase");
-                    int mc = Jsonl.intValue(line, "modulesComplete", 0);
-                    int mt = Jsonl.intValue(line, "modulesTotal", 0);
-                    double pct =
-                            den > 0 ? cc.jumpkick.runtime.WorkspaceProgressTracker.percentOf(num, den) : Double.NaN;
-                    listener.onWorkspaceProgress(new cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot(
-                            num, den, pct, phase == null ? "" : phase, mc, mt));
-                }
-                case EngineProtocol.PLAN_DONE -> listener.onPlan(buildModulePlans(planByDir, cache));
-                case EngineProtocol.ETA -> listener.onEtaEstimate(Jsonl.longValue(line, "millis", 0));
-                case EngineProtocol.MODULE_START -> {
-                    ModulePlan plan = buildModulePlan(dir, planByDir.get(dir), cache);
-                    PipelineListener gl = listener.onModuleStart(plan);
-                    pipelineListenersByDir.put(dir, gl != null ? gl : new PipelineListener() {});
-                }
-                case EngineProtocol.PIPELINE_START ->
-                    pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineStart(readPipelineView(line));
-                case EngineProtocol.STEP_START ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .stepStart(
-                                    Jsonl.str(line, "step"),
-                                    Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                                    Jsonl.intValue(line, "ticks", 0));
-                case EngineProtocol.PROGRESS ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .progress(
-                                    Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                case EngineProtocol.TICK_UPDATE ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .tickUpdate(
-                                    Jsonl.str(line, "step"), Jsonl.intValue(line, "delta", 0), readPipelineView(line));
-                case EngineProtocol.LABEL ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .label(Jsonl.str(line, "step"), Jsonl.str(line, "label"));
-                case EngineProtocol.OUTPUT ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .output(Jsonl.str(line, "step"), Jsonl.str(line, "line"));
-                case EngineProtocol.WARN ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .warn(Jsonl.str(line, "step"), Jsonl.str(line, "code"), Jsonl.str(line, "message"));
-                case EngineProtocol.ERROR_LINE ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .error(
-                                    Jsonl.str(line, "step"),
-                                    Jsonl.str(line, "code"),
-                                    Jsonl.str(line, "message"),
-                                    Jsonl.str(line, "test"),
-                                    Jsonl.str(line, "exceptionClass"));
-                case EngineProtocol.PIPELINE_DIAGNOSTIC ->
-                    diagnosticsByDir
-                            .computeIfAbsent(dir, d -> new ArrayList<>())
-                            .add(new PipelineResult.Diagnostic(
-                                    Jsonl.str(line, "step"),
-                                    Jsonl.str(line, "code"),
-                                    Jsonl.str(line, "message"),
-                                    Jsonl.str(line, "test"),
-                                    Jsonl.str(line, "exceptionClass")));
-                case EngineProtocol.STEP_FINISH ->
-                    pipelineListenersByDir
-                            .getOrDefault(dir, NOOP)
-                            .stepFinish(
-                                    Jsonl.str(line, "step"),
-                                    Phase.fromWireOrNull(Jsonl.str(line, "phase")),
-                                    StepStatus.valueOf(Jsonl.str(line, "status")),
-                                    Duration.ZERO);
-                case EngineProtocol.PIPELINE_FINISH -> {
-                    ModuleMeta meta = planByDir.get(dir);
-                    String pipelineName = meta != null ? meta.pipelineName : dir;
-                    List<PipelineResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
-                    boolean cancelled = Jsonl.bool(line, "cancelled", false);
-                    PipelineResult result = new PipelineResult(
-                            pipelineName,
-                            Jsonl.bool(line, "success", false),
-                            Duration.ZERO,
-                            List.of(),
-                            List.of(),
-                            diags != null ? diags : List.of(),
-                            cancelled,
-                            cancelled);
-                    pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineFinish(result);
-                }
-                case EngineProtocol.MODULE_FINISH -> {
-                    // didWork defaults true for older engines that omit the field (fail-open "built").
-                    ModuleOutcome outcome = new ModuleOutcome(
-                            Jsonl.str(line, "coord"),
-                            Path.of(dir),
-                            Jsonl.bool(line, "success", false),
-                            Jsonl.intValue(line, "exitCode", 1),
-                            Jsonl.longValue(line, "millis", 0),
-                            Jsonl.bool(line, "didWork", true));
-                    outcomes.add(outcome);
-                    listener.onModuleFinish(outcome);
-                }
-                case EngineProtocol.WORKSPACE_FINISH -> {
-                    WorkspaceResult result = new WorkspaceResult(
-                            Jsonl.bool(line, "success", false),
-                            Jsonl.intValue(line, "exitCode", 1),
-                            List.copyOf(outcomes),
-                            Jsonl.strArray(line, "errors"),
-                            Jsonl.bool(line, "cancelled", false));
-                    listener.onWorkspaceFinish(result);
-                    return result;
-                }
-                case EngineProtocol.ERROR -> {
-                    String code = Jsonl.str(line, "code");
-                    String msg = Jsonl.str(line, "message");
-                    // JK-1249: surface as the wedge message body without engine noise.
-                    if (EngineProtocol.ERR_ALREADY_RUNNING.equals(code)) {
-                        throw new IOException(msg == null || msg.isBlank() ? "Build is already running" : msg);
-                    }
-                    throw new IOException("jk engine: build failed: " + msg);
-                }
-                default -> {
-                    /* forward-compatible no-op */
-                }
-            }
             }
             throw disconnectFailure();
         } finally {
-            // The job is over however the stream ended (JK-1314).
+            // The job is over however the stream ended.
             if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
         }
     }

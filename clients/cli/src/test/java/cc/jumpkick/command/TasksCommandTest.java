@@ -49,7 +49,7 @@ class TasksCommandTest {
         assertThat(out).contains("phase:").contains("compile");
         assertThat(out).contains("output:");
         assertThat(out).contains("cache:");
-        // JK-1056: not the old "unknown offline" stub when engine can forecast
+        // not the old "unknown offline" stub when engine can forecast
         assertThat(out).doesNotContain("unknown offline");
     }
 

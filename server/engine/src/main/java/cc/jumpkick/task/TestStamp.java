@@ -54,8 +54,8 @@ public final class TestStamp {
                 feed(md, "main:" + ClasspathFingerprint.entry(mainClasses));
             }
 
-            // Suite resource dirs (test/resources/, <suite>/resources/) by tree content —
-            // fixtures reach tests via classes/test, which is NOT on runtimeCp (JK-1208).
+            // Suite resource dirs (test/resources/, <suite>/resources/) by tree content
+            // fixtures reach tests via classes/test, which is NOT on runtimeCp.
             if (resourceRoots != null) {
                 List<Path> sortedRes = new ArrayList<>(resourceRoots);
                 sortedRes.sort(Comparator.comparing(Path::toString));
@@ -87,7 +87,6 @@ public final class TestStamp {
         }
     }
 
-    // -----------------------------------------------------------------------
     // Helpers
 
     private static void feed(MessageDigest md, String value) {

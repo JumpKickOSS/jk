@@ -46,7 +46,7 @@ public interface WorkspaceBuildListener {
     default void onModuleFinish(ModuleOutcome outcome) {}
 
     /**
-     * A wall-clock estimate (ms) for the whole build, computed by the engine's schedule-aware model —
+     * A wall-clock estimate (ms) for the whole build, computed by the engine's schedule-aware model
      * emitted once up front (from learned/calibrated rates) and re-projected as modules finish and
      * real throughput is measured. A front-end renders it as a countdown; {@code 0} means "no
      * trustworthy estimate — count up instead".
@@ -54,7 +54,7 @@ public interface WorkspaceBuildListener {
     default void onEtaEstimate(long millis) {}
 
     /**
-     * Workspace aggregate progress from the engine tracker (JK-1120). Clients must paint this for
+     * Workspace aggregate progress from the engine tracker. Clients must paint this for
      * the bar / {@code progress} rider — do not re-aggregate from per-module pipeline ticks.
      */
     default void onWorkspaceProgress(WorkspaceProgressTracker.Snapshot snapshot) {}

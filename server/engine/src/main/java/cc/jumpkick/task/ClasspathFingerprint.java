@@ -100,7 +100,7 @@ public final class ClasspathFingerprint {
                 if (!Files.isRegularFile(f)) continue;
                 if (isBuildMetadata(f.getFileName().toString())) continue;
                 // `.jk-*` plugin scratch (bootstrap m2/staging) is not output content and
-                // re-hashing it on every no-op build is pure waste (JK-1220).
+                // re-hashing it on every no-op build is pure waste.
                 if (ActionCache.hasJkScratchSegment(dir.relativize(f))) continue;
                 files.add(dir.relativize(f).toString().replace('\\', '/') + ":" + Hashing.sha256Hex(f));
             }
@@ -110,7 +110,7 @@ public final class ClasspathFingerprint {
     }
 
     /**
-     * jk's freshness/skip stamps ({@code .jstamp}, {@code .kstamp}, {@code .test-stamp}) — build-host
+     * jk's freshness/skip stamps ({@code.jstamp}, {@code.kstamp}, {@code.test-stamp}) — build-host
      * metadata that lives inside the classes tree but is not code, and whose content changes every
      * build. They must be excluded from a content fingerprint of a directory (the packagers already
      * drop them from jars, so {@link #hashArchive} never sees them).

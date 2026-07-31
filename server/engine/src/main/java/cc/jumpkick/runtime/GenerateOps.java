@@ -74,7 +74,7 @@ public final class GenerateOps {
     }
 
     /**
-     * JK-1207: freeze lockfile versions for a scope into a Maven BOM POM.
+     * freeze lockfile versions for a scope into a Maven BOM POM.
      *
      * <p>Params: {@code scope}=main|test|all (default main); {@code out}=optional relative path
      * (default {@code target/<name>-bom.pom}).

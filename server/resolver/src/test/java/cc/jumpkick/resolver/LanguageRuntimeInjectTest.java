@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1218: the language-runtime inject must key on the same inference the engine's lanes use —
+ * the language-runtime inject must key on the same inference the engine's lanes use
  * an unpinned project with {@code src/main/groovy} compiles the groovy lane, so its runtime must
  * land in the lock (jk run / packaging read the lock only).
  */
@@ -48,7 +48,7 @@ class LanguageRuntimeInjectTest {
 
     @Test
     void exact_pin_wins_over_the_bom_and_keeps_the_strip(@TempDir Path dir) throws IOException {
-        // JK-1223: an explicit exact pin is deliberate (grails needs a groovy NEWER than its
+        // an explicit exact pin is deliberate (grails needs a groovy NEWER than its
         // own bom manages) — it wins and is NOT in the strip skip-list.
         Files.createDirectories(dir.resolve("src/main/groovy"));
         Files.writeString(dir.resolve("src/main/groovy/A.groovy"), "class A {}");
@@ -75,7 +75,7 @@ class LanguageRuntimeInjectTest {
     @Test
     void sourceless_pin_does_not_inject_the_runtime(@TempDir Path dir) throws IOException {
         // A compiler-version pin on a module with no sources of that language locks the
-        // compiler but has nothing to run — no runtime dep (JK-1246).
+        // compiler but has nothing to run — no runtime dep.
         JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njdk=25\nkotlin=\"=2.1.0\"\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);

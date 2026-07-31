@@ -46,7 +46,7 @@ class JavaIncrementalCompileTest {
     @Test
     void abi_change_recompiles_dependents_via_the_dependency_graph(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
-        // A references B in bytecode (constructs it, calls greet()).
+        // A references B in bytecode (constructs it, calls greet).
         p.write("a/B.java", "package a; public class B { public String greet() { return \"hi\"; } }");
         p.write("a/A.java", "package a; public class A { public String use() { return new B().greet(); } }");
         p.build();
@@ -157,7 +157,7 @@ class JavaIncrementalCompileTest {
         assertThat(p.classExists("a/B.class")).isFalse();
     }
 
-    // ---- JK-1058: predict() dirty-reason strings for explain ----------------
+    // ----predict dirty-reason strings for explain ----------------
 
     @Test
     void ephemeral_full_compile_leaves_no_action_record_or_state(@TempDir Path dir) throws Exception {
@@ -169,7 +169,7 @@ class JavaIncrementalCompileTest {
 
         assertThat(r.outcome).isEqualTo("compiled");
         assertThat(p.classExists("a/A.class")).isTrue();
-        // No orphan residue: scratch-salted keys never recur (JK-1297).
+        // No orphan residue: scratch-salted keys never recur.
         assertThat(p.actionCache.lastFor("compile-main")).isEmpty();
         assertThat(emptyOrMissing(p.stateDir)).as("incremental state untouched").isTrue();
     }

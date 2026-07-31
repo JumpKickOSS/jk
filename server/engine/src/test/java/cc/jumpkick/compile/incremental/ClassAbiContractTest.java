@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ticket-1029 — ABI contract: method body edits do not change {@link ClassAbi#hash}; adding a
+ * — ABI contract: method body edits do not change {@link ClassAbi#hash}; adding a
  * public method does.
  */
 class ClassAbiContractTest {

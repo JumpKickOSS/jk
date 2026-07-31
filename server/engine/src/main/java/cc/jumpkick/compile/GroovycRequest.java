@@ -7,7 +7,7 @@ import java.util.Objects;
 
 /**
  * Input to {@link GroovycDriver} (forks {@code jk-groovy-compiler}). {@code workerClasspath} is
- * the plugin jar + Groovy runtime closure. {@code sources} may mix {@code .groovy} and {@code
+ * the plugin jar + Groovy runtime closure. {@code sources} may mix {@code.groovy} and {@code
  * .java} — any Java presence (also via {@code javaSourceRoots}) selects joint mode, where the Java
  * sources serve resolution only: stubs land in {@code stubsOut} (null ⇒ not retained) and javac's
  * class output is discarded under {@code workDir} (null ⇒ worker temp) — jk's javac step owns the
@@ -75,7 +75,7 @@ public record GroovycRequest(
             return this;
         }
 
-        /** Annotation-processor classpath for the joint-mode javac sweep (JK-1232). */
+        /** Annotation-processor classpath for the joint-mode javac sweep. */
         public Builder processorPath(List<Path> v) {
             this.processorPath = v;
             return this;
@@ -113,7 +113,15 @@ public record GroovycRequest(
 
         public GroovycRequest build() {
             return new GroovycRequest(
-                    sources, javaSourceRoots, classpath, processorPath, outputDir, stubsOut, jvmTarget, workerClasspath, workDir,
+                    sources,
+                    javaSourceRoots,
+                    classpath,
+                    processorPath,
+                    outputDir,
+                    stubsOut,
+                    jvmTarget,
+                    workerClasspath,
+                    workDir,
                     extraArgs);
         }
     }

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.TestAnsi;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.TestAnsi;
 import com.sun.net.httpserver.HttpServer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -194,7 +193,6 @@ class ReadSideIntegrationTest {
     }
 
     /** Remove ANSI CSI escape sequences from {@code s}. */
-
     private static String captureStdout(Runnable body) {
         PrintStream original = System.out;
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();

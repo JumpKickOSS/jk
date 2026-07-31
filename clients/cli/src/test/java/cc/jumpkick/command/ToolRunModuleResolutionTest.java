@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1316: {@code jk run <target>} workspace-module resolution — a shared leaf must not silently
+ * {@code jk run <target>} workspace-module resolution — a shared leaf must not silently
  * pick whichever module is declared first, and a leaf shortcut must not shadow a real local path.
  */
 class ToolRunModuleResolutionTest {

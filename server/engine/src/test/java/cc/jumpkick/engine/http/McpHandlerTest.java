@@ -9,7 +9,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-/** JK-1095 — MCP JSON-RPC tools without a full HTTP bind. */
+/**MCP JSON-RPC tools without a full HTTP bind. */
 @Tag("integration")
 class McpHandlerTest {
 
@@ -120,7 +120,7 @@ class McpHandlerTest {
     void tools_call_test_lock_cancel() {
         String testBody = mcp.handleBody("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\","
                 + "\"params\":{\"name\":\"jk_test\",\"arguments\":{\"dir\":\"/tmp/demo\"}}}");
-        // Nested tool payload is JSON-escaped inside content[].text
+        // Nested tool payload is JSON-escaped inside content.text
         assertThat(testBody).contains("test-accepted");
         assertThat(testBody).contains("requestId");
         assertThat(testBody).contains("43");

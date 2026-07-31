@@ -28,8 +28,8 @@ import java.util.Map;
  * <p>Remote selection by groupId:
  *
  * <ul>
- *   <li>{@code cc.jumpkick} / {@code build.jumpkick} (and subpackages) → JumpKick only
- *   <li>everything else → Central, then Google (JumpKick is not probed)
+ * <li>{@code cc.jumpkick} / {@code build.jumpkick} (and subpackages) → JumpKick only
+ * <li>everything else → Central, then Google (JumpKick is not probed)
  * </ul>
  *
  * <p>Resolve order (logical): local materialization (CAS, {@code repos/*}, {@code ~/.m2}) then
@@ -79,11 +79,11 @@ public final class RepoGroupBuilder {
 
     /**
      * As {@link #buildFor(JkBuild, URI, Cas)} but resolving credentials against {@code env}
-     * (JK-1272).
+     *
      *
      * <p>Inline {@code ${VAR}} credentials are expanded here rather than during the parse, so this
      * is where the request's environment has to arrive. Build-path callers pass
-     * {@code Inputs.env()}, which layers the project's {@code .env} under the caller's shell
+     * {@code Inputs.env}, which layers the project's {@code.env} under the caller's shell
      * environment; the three-argument overload keeps ambient behaviour for tooling and tests.
      */
     public static RepoGroup buildFor(
@@ -118,7 +118,7 @@ public final class RepoGroupBuilder {
                 // Per-repo object-store config (region/endpoint/keys) flows to the
                 // transport; HTTP credentials still ride the MavenRepo credential.
                 // Object-store keys carry raw ${VAR} out of the parse for the same reason
-                // credentials do (JK-1272) — they are secrets, so they must not be committed
+                // credentials dothey are secrets, so they must not be committed
                 // literally, and expansion belongs where the request's environment is in scope.
                 RepoTransport transport = RepoTransports.forUrl(
                         spec.url(),
@@ -126,9 +126,8 @@ public final class RepoGroupBuilder {
                         expandObjectStore(spec.name(), spec.objectStore().orElse(ObjectStoreConfig.EMPTY), env));
                 // Hand the client through, not just the transport: the transport-only constructor nulls it,
                 // which silently disabled the metadata TTL cache and the ~/.m2 probe for every real
-                // build (JK-1290).
-                repos.add(MavenRepo.overTransport(
-                        spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2));
+                // build.
+                repos.add(MavenRepo.overTransport(spec.name(), spec.url(), transport, cas, cred, http, mirrorToM2));
                 exclusiveGroups.add(spec.groups());
             }
             maybeWarnMultiRepoWithoutBindings(effective);
@@ -139,7 +138,7 @@ public final class RepoGroupBuilder {
 
     /**
      * Once per {@link #buildFor} when the effective remote list has more than one repo and none
-     * declare exclusive {@code groups} (JK-1064). Soft warn — resolve still proceeds.
+     * declare exclusive {@code groups}. Soft warn — resolve still proceeds.
      */
     static void maybeWarnMultiRepoWithoutBindings(List<RepositorySpec> effective) {
         if (effective == null || effective.size() <= 1) return;

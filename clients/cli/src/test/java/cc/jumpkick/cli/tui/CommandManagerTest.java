@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.TestAnsi;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.cli.theme.Rgb;
 import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
@@ -218,7 +217,7 @@ class CommandManagerTest {
 
     @Test
     void header_shows_module_remaining_work_counter() {
-        // JK-1157: modulesComplete/modulesTotal next to the wall clock.
+        // modulesComplete/modulesTotal next to the wall clock.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.progress(50, 100);
@@ -419,10 +418,7 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("cc.jumpkick:jk-core", "run-tests", "test");
-        cm.stepMessage(
-                "cc.jumpkick:jk-core",
-                "run-tests",
-                "cc.jumpkick:jk-core :: FooTest.bar()  [w2]");
+        cm.stepMessage("cc.jumpkick:jk-core", "run-tests", "cc.jumpkick:jk-core :: FooTest.bar()  [w2]");
 
         String all = String.join("\n", stripAll(cm.renderPipelineLines(120, 0)));
         assertThat(all).contains("FooTest.bar()").contains("[w2]");
@@ -437,10 +433,7 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
-        cm.stepMessage(
-                "cc.jumpkick:jk-engine",
-                "run-tests",
-                "VariantSwitchTest.switching_variants(Path)");
+        cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", "VariantSwitchTest.switching_variants(Path)");
 
         var raw = cm.renderPipelineLines(120, 0);
         String joined = String.join("\n", raw);
@@ -458,19 +451,20 @@ class CommandManagerTest {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("cc.jumpkick:jk-engine", "run-tests", "test");
-        String longName =
-                "VariantSwitchTest.switching_variants_drops_the_previous_values_extra_src_classes(Path)";
+        String longName = "VariantSwitchTest.switching_variants_drops_the_previous_values_extra_src_classes(Path)";
         cm.stepMessage("cc.jumpkick:jk-engine", "run-tests", longName);
 
         int cols = 60;
         for (String line : cm.renderPipelineLines(cols, 0)) {
             // Paint path hard-truncates; each rendered line must fit the terminal width.
-            assertThat(CommandManager.truncateVisible(line, cols).replaceAll("\033\\[[0-9;]*[A-Za-z]", "").length())
+            assertThat(CommandManager.truncateVisible(line, cols)
+                            .replaceAll("\033\\[[0-9;]*[A-Za-z]", "")
+                            .length())
                     .isLessThanOrEqualTo(cols);
         }
         // Truncation adds an ellipsis rather than wrapping.
-        String painted = CommandManager.truncateVisible(
-                cm.renderPipelineLines(cols, 0).get(1), cols);
+        String painted =
+                CommandManager.truncateVisible(cm.renderPipelineLines(cols, 0).get(1), cols);
         assertThat(TestAnsi.strip(painted)).contains("…");
     }
 
@@ -502,7 +496,7 @@ class CommandManagerTest {
 
     @Test
     void compile_test_under_test_phase_is_prose_mid_gray_not_syntax_white() {
-        // compile-test is Phase.TEST wire-wise, but labels are "compiling N sources" — not FooTest.bar().
+        // compile-test is Phase.TEST wire-wise, but labels are "compiling N sources" — not FooTest.bar.
         Theme t = Theme.active();
         String painted = CommandManager.colorDetail("Test", "compiling 12 Groovy test sources", t);
         assertThat(TestAnsi.strip(painted)).isEqualTo("compiling 12 Groovy test sources");
@@ -546,12 +540,10 @@ class CommandManagerTest {
     void resolve_detail_colors_maven_coords() {
         String painted = CommandManager.colorDetail(
                 "Resolve", "fetched com.fasterxml.jackson.core:jackson-core:2.18.0", Theme.active());
-        assertThat(TestAnsi.strip(painted))
-                .isEqualTo("fetched com.fasterxml.jackson.core:jackson-core:2.18.0");
+        assertThat(TestAnsi.strip(painted)).isEqualTo("fetched com.fasterxml.jackson.core:jackson-core:2.18.0");
         // Coords.gav splits group / artifact / version with their theme roles.
         assertThat(painted)
-                .contains(cc.jumpkick.cli.theme.Coords.gav(
-                        "com.fasterxml.jackson.core", "jackson-core", "2.18.0"));
+                .contains(cc.jumpkick.cli.theme.Coords.gav("com.fasterxml.jackson.core", "jackson-core", "2.18.0"));
     }
 
     @Test
@@ -638,7 +630,7 @@ class CommandManagerTest {
 
     @Test
     void attachPhaseError_uses_row_wire_phase_when_callers_pass_empty_phase() {
-        // JK-1127: listeners pass phase=""; step key is compile-java, phase node is compile.
+        // listeners pass phase=""; step key is compile-java, phase node is compile.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("m", "compile-java", "compile");
@@ -653,21 +645,19 @@ class CommandManagerTest {
 
     @Test
     void brief_error_line_colors_message_not_rail() {
-        // Rail/indent is dim; only the message is error-red (not the whole " │  Failed" string).
+        // Rail/indent is dim; only the message is error-red (not the whole " │ Failed" string).
         Theme t = Theme.active();
         String mid = CommandManager.renderBriefErrorLine(false, "Failed");
         String last = CommandManager.renderBriefErrorLine(true, "boom");
-        assertThat(mid)
-                .isEqualTo(Theme.colorize(" │  ", t.darkGray()) + Theme.colorize("Failed", t.error()));
-        assertThat(last)
-                .isEqualTo(Theme.colorize("    ", t.darkGray()) + Theme.colorize("boom", t.error()));
+        assertThat(mid).isEqualTo(Theme.colorize(" │  ", t.darkGray()) + Theme.colorize("Failed", t.error()));
+        assertThat(last).isEqualTo(Theme.colorize("    ", t.darkGray()) + Theme.colorize("boom", t.error()));
         // Whole-line coloring would put the rail inside one error-styled span — must not.
         assertThat(mid).isNotEqualTo(Theme.colorize(" │  Failed", t.error()));
     }
 
     @Test
     void brief_error_under_last_tree_entry_uses_space_indent_not_rail() {
-        // JK-1128: ╰─ then spaces, not │ under a closing branch.
+        // ╰─ then spaces, not │ under a closing branch.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.stepRunning("m", "compile-java", "compile");

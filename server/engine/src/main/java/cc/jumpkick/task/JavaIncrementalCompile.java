@@ -191,7 +191,7 @@ public final class JavaIncrementalCompile {
         // write" — rebuilds store successful results so the next `jk explain` / incremental build
         // sees CACHE_HIT instead of a phantom full recompile. persist=false (jk verify's scratch
         // rebuild) is the one mode that skips writes: its scratch-salted keys can never recur, so
-        // stored records/state would be orphans (JK-1297).
+        // stored records/state would be orphans.
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent()) {
@@ -207,7 +207,7 @@ public final class JavaIncrementalCompile {
 
         // A project only routes through the worker once a prior build has *proven* it
         // runs source-generating processors (the "orphan" signal). Until then — and
-        // for Lombok-style in-bytecode processors that emit no .java — the plain
+        // for Lombok-style in-bytecode processors that emit no.java — the plain
         // javac path is used and no worker need be present.
         ApFlags flags = loadApFlags(stateDir);
         // Resolve the worker lazily and only when this project has proven it runs
@@ -225,13 +225,12 @@ public final class JavaIncrementalCompile {
         // generated file had exactly one originating source); an aggregating processor
         // reads the whole source set, so a subset recompile would produce a stale
         // aggregate → stay full. Rebuild/force still does a full compile (no incremental).
-        boolean canInc =
-                useCache && persist && canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
+        boolean canInc = useCache && persist && canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
         if (canInc) {
             return incremental(
                     taskId, request, key, cas, actionCache, stateDir, out, prior.get(), abi, compiler, flags);
         }
-        // Persist after a successful full compile so explain/next-build cache keys match —
+        // Persist after a successful full compile so explain/next-build cache keys match
         // except ephemeral (verify-scratch) builds, which must leave no residue.
         return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, persist);
     }
@@ -270,7 +269,7 @@ public final class JavaIncrementalCompile {
     }
 
     /**
-     * {@code null} if incremental is allowed; otherwise a short reason for FULL (JK-1058 explain).
+     * {@code null} if incremental is allowed; otherwise a short reason for FULL explain).
      * When {@code flags} is {@link ApFlags#NONE}, AP isolation is not considered (run-path gate
      * still applies AP separately).
      */
@@ -340,7 +339,7 @@ public final class JavaIncrementalCompile {
         Map<String, List<String>> units = unitsOf(a, out);
         // storeResult=false is jk verify's ephemeral scratch rebuild: its scratch-salted keys and
         // state dirs can never recur, so neither the action record nor incremental state may be
-        // written (JK-1297). Rebuild/force runs store like any other success.
+        // written. Rebuild/force runs store like any other success.
         if (storeResult) {
             store(taskId, key, request, out, cas, actionCache, units);
             // Remodule whether this project source-generates (so the next build routes
@@ -382,7 +381,7 @@ public final class JavaIncrementalCompile {
         Map<String, List<String>> units = new HashMap<>();
         prior.units().forEach((s, rels) -> units.put(s, new ArrayList<>(rels)));
 
-        // Carried-over class outputs (incl. prior-build generated classes). A .class
+        // Carried-over class outputs (incl. prior-build generated classes). A.class
         // under one of these rel-paths that this build neither owns (input source) nor
         // regenerated (provenance) is a carry-over, not an untrackable orphan.
         Set<String> knownRelPaths = new HashSet<>();
@@ -543,15 +542,15 @@ public final class JavaIncrementalCompile {
             Map<Path, List<ClassInfo>> bySource, boolean orphans, boolean isolatingSafe, boolean hasGenerated) {}
 
     /**
-     * Read every {@code .class} under {@code out}, hash its ABI + deps, attribute it to a source.
+     * Read every {@code.class} under {@code out}, hash its ABI + deps, attribute it to a source.
      * Input sources match by SourceFile-attr suffix; annotation-processor <em>generated</em> classes
      * (whose SourceFile names a non-input file) are attributed to their originating input source via
-     * {@code provenance} (generated {@code .java} → originating {@code .java}), so they fold into the
+     * {@code provenance} (generated {@code.java} → originating {@code.java}), so they fold into the
      * same dirty-set/ABI graph.
      *
      * @param provenance generated source → originating source(s), this build's waves
      * @param knownRelPaths class outputs carried over from the prior build (so a carried-over
-     *     generated class isn't mistaken for an orphan)
+     * generated class isn't mistaken for an orphan)
      */
     private static Analysis analyze(
             Path out, List<Path> sources, Map<Path, Set<Path>> provenance, Set<String> knownRelPaths)

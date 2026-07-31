@@ -15,7 +15,7 @@ import java.util.Optional;
  * makes {@code JK_STORE_DIR} work, and also what let a throwaway store leave a daemon behind. Before
  * this existed, {@code jk engine status} and {@code jk engine stop} each addressed exactly one
  * identity, so the rest were invisible and unstoppable: eighteen were once found alive with no
- * supported way to clear them (JK-1293).
+ * supported way to clear them.
  *
  * <p>Stopping has to be reliable without the user reaching for {@code kill}. On Windows that means
  * hunting a JVM in Task Manager, which is not a reasonable thing to expect of anyone. So every stop
@@ -34,7 +34,7 @@ public final class EngineFleet {
      * One running engine. {@code current} marks the one this directory's commands would reach.
      *
      * <p>{@code status} is null for an engine that is alive but not answering. That case is the whole
-     * reason this is nullable rather than an {@code Optional<Status>} of convenience: a wedged engine —
+     * reason this is nullable rather than an {@code Optional<Status>} of convenience: a wedged engine
      * one that still holds its socket but cannot reply — used to be invisible, because discovery went
      * through a status probe. {@code status} would come back empty, the engine would be skipped, and
      * {@code stop --pid} would answer "no running engine with pid N" about a process that was very much
@@ -115,7 +115,8 @@ public final class EngineFleet {
      * mid-recording would discard work for no benefit.
      */
     private static List<Member> untracked(java.util.Set<Long> known) {
-        String home = cc.jumpkick.util.JkDirs.home().toAbsolutePath().normalize().toString();
+        String home =
+                cc.jumpkick.util.JkDirs.home().toAbsolutePath().normalize().toString();
         long self = ProcessHandle.current().pid();
         List<Member> out = new ArrayList<>();
         try {
@@ -208,7 +209,8 @@ public final class EngineFleet {
 
     private static boolean waitGone(long pid, long withinMs) {
         if (pid <= 0) return true; // nothing addressable; treat as gone rather than claim a kill
-        long deadline = System.nanoTime() + java.time.Duration.ofMillis(withinMs).toNanos();
+        long deadline =
+                System.nanoTime() + java.time.Duration.ofMillis(withinMs).toNanos();
         while (System.nanoTime() < deadline) {
             if (!alive(pid)) return true;
             try {

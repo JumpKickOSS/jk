@@ -30,12 +30,12 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * {@code jk tasks} — Mill-lite task list / show / inspect (JK-1047).
+ * {@code jk tasks} — Mill-lite task list / show / inspect.
  *
  * <pre>
- *   jk tasks
- *   jk tasks show package-jar
- *   jk tasks inspect compile-java
+ * jk tasks
+ * jk tasks show package-jar
+ * jk tasks inspect compile-java
  * </pre>
  *
  * Top-level {@code jk show} / {@code jk inspect} are thin aliases ({@link ShowCommand},
@@ -174,7 +174,7 @@ public final class TasksCommand implements CliCommand {
         GlobalOptions global = GlobalOptions.from(in);
         Path cache = in.value("cache-dir").map(Path::of).orElse(null);
         if (cache == null) cache = JkDirs.cache();
-        // One explain forecast for the entry project — maps steps to hit/miss (JK-1056).
+        // One explain forecast for the entry project — maps steps to hit/miss.
         ExplainPlan forecast = inspect ? explainBestEffort(startDir, cache, global) : null;
         for (var e : modules.entrySet()) {
             Path modDir = e.getKey();

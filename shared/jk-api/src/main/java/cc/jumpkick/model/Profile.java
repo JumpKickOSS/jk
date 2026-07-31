@@ -13,9 +13,9 @@ public record Profile(
         String inherits,
         List<String> javacArgs,
         List<String> jvmArgs,
-        /** JUnit tags to include when this profile is active (JK-1137). */
+        /** JUnit tags to include when this profile is active. */
         List<String> includeTags,
-        /** JUnit tags to exclude when this profile is active (JK-1137). */
+        /** JUnit tags to exclude when this profile is active. */
         List<String> excludeTags) {
 
     public Profile {

@@ -8,10 +8,10 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1287: the compact candidate window must always offer a stable version when one exists.
+ * the compact candidate window must always offer a stable version when one exists.
  *
- * <p>The cap exists so PubGrub does not thrash on long histories (JK-1202), and {@link
- * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred()} already prefers stable over
+ * <p>The cap exists so PubGrub does not thrash on long histories, and {@link
+ * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred} already prefers stable over
  * pre-release. But the two together had a hole: take simply the highest four and a project with four
  * or more pre-releases above its latest release leaves the stable preference nothing stable to pick.
  * jackson-annotations is exactly that shape, so a caret on 2.22 resolved to 3.0-rc5.
@@ -77,7 +77,7 @@ class CompactVersionWindowTest {
 
     @Test
     void a_pre_release_pin_at_the_front_survives_and_keeps_a_higher_version_beside_it() {
-        // JK-1072: an explicit lock/BOM pin outranks this policy, including a pre-release pin.
+        // an explicit lock/BOM pin outranks this policy, including a pre-release pin.
         // AllowedSet detects "this front is a pin, take it unconditionally" by finding some HIGHER
         // version in the universe — so the natural max has to stay in the window or the pin loses to
         // a lower stable.

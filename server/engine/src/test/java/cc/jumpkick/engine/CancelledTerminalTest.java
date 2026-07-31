@@ -8,7 +8,7 @@ import cc.jumpkick.plugin.protocol.Jsonl;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1307: a remote cancel must push the terminal the stream's client loop actually ends on.
+ * a remote cancel must push the terminal the stream's client loop actually ends on.
  * Single-project builds register kind "build" like workspace builds, but their loop only
  * terminates on {@code pipeline-finish} — a {@code workspace-finish} there is a forward-compat
  * no-op, so the CLI would only see the socket close and report an engine crash.

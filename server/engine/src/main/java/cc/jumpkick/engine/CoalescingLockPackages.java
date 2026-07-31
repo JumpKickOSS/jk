@@ -127,8 +127,8 @@ public final class CoalescingLockPackages implements AutoCloseable {
 
     @Override
     public void close() {
-        // Flush BEFORE marking closed — flush() no-ops once closed, so the old order
-        // silently dropped whatever was still pending (JK-1233).
+        // Flush BEFORE marking closed — flush no-ops once closed, so the old order
+        // silently dropped whatever was still pending.
         flush();
         if (!closed.compareAndSet(false, true)) return;
         synchronized (lock) {

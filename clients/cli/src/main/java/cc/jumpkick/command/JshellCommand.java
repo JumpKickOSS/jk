@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 
 /**
  * {@code jk jshell} (alias {@code jk repl}) — open JDK jshell on the module's compile classpath
- * (JK-1036). Ensures a build unless {@code --no-build}.
+ * . Ensures a build unless {@code --no-build}.
  */
 public final class JshellCommand implements CliCommand {
 

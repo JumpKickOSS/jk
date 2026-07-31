@@ -14,7 +14,7 @@ import java.util.List;
  * {@link Json}. {@code schema} lets a future reader detect and reject/upgrade an older layout.
  *
  * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
- * rehydrate active builds after refresh (JK-1251). Finished records keep {@code running=false}.
+ * rehydrate active builds after refresh. Finished records keep {@code running=false}.
  */
 public record BuildRecord(
         String id,
@@ -42,7 +42,7 @@ public record BuildRecord(
 
     /**
      * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
-     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics}) —
+     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics})
      * was added. {@code trigger}, {@code commit}, {@code benefit}, {@code running}, and {@code io}
      * (the run's byte counts) were added without a bump — pre-1.0 additive fields simply read back as
      * defaults on older records.
@@ -109,15 +109,9 @@ public record BuildRecord(
                 io);
     }
 
-    /** In-flight stub at admission (JK-1250 / JK-1251). */
+    /** In-flight stub at admission. */
     public static BuildRecord running(
-            long buildNumber,
-            String kind,
-            String dir,
-            String coord,
-            long startedAt,
-            String jkVersion,
-            String trigger) {
+            long buildNumber, String kind, String dir, String coord, long startedAt, String jkVersion, String trigger) {
         return new BuildRecord(
                 null,
                 buildNumber,

@@ -51,7 +51,8 @@ public final class DenyCommand implements CliCommand {
         if (!Files.exists(lockPath)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Deny",
-                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir) + " (run `jk lock` first)."));
+                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
+                            + " (run `jk lock` first)."));
             return Exit.CONFIG;
         }
         Path cache = JkDirs.cache();

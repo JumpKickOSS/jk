@@ -17,7 +17,7 @@ import java.nio.file.Path;
  * <p>Most of the build already does. {@code jk publish} did not — it parsed the module's
  * {@code jk.toml} directly and emitted the placeholder verbatim, producing POMs with
  * {@code <groupId>workspace</groupId>} and {@code <version>LATEST</version>} that nothing can
- * resolve (JK-1255). This is the shared helper so that stays fixed.
+ * resolve. This is the shared helper so that stays fixed.
  */
 public final class WorkspaceResolve {
 
@@ -36,7 +36,9 @@ public final class WorkspaceResolve {
             // resolveSiblingCoordinates, NOT applyToModule: the latter is the lock-orchestration
             // fold, which strips sibling edges entirely. A published POM has to keep them.
             return WorkspaceMerge.resolveSiblingCoordinates(
-                    root, module, WorkspaceLoader.loadModules(rootDir.get(), root).values());
+                    root,
+                    module,
+                    WorkspaceLoader.loadModules(rootDir.get(), root).values());
         } catch (Exception e) {
             // Best-effort: a standalone project has no workspace to merge, and a malformed root is
             // surfaced by the build itself rather than here.

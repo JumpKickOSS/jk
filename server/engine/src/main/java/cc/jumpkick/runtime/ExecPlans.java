@@ -152,7 +152,7 @@ public final class ExecPlans {
     }
 
     /**
-     * As above with the request's variant selection: the plan must describe the SELECTED product —
+     * As above with the request's variant selection: the plan must describe the SELECTED product
      * {@code jk run --release} on an Android app resolves the AAB packaging (and its deploy command),
      * not the debug APK's.
      */
@@ -198,7 +198,7 @@ public final class ExecPlans {
         // Without this, jk run at the workspace coordinator fails even when e.g. app/ has main.
         // A root that is ITSELF runnable ([workspace] + [application] main + sources — "rare but
         // legal" per WorkspaceLoader) runs its own main: it can never appear in loadModules, so
-        // the module scan would report "no launchable main" (JK-1231).
+        // the module scan would report "no launchable main".
         if (project.isWorkspaceRoot()) {
             String rootMain = project.mainClass();
             if (rootMain == null || rootMain.isBlank() || !CompileSupport.hasSources(dir)) {
@@ -408,7 +408,7 @@ public final class ExecPlans {
 
         // 1) Declared [application] main wins — but only when it is unambiguous. Several declared
         // apps must be an error naming the candidates: silently launching whichever is listed
-        // first means reordering [workspace].modules changes what `jk run` executes (JK-1316).
+        // first means reordering [workspace].modules changes what `jk run` executes.
         List<Path> declaredApps = new ArrayList<>();
         for (var e : modules.entrySet()) {
             String m = e.getValue().mainClass();
@@ -425,8 +425,8 @@ public final class ExecPlans {
                     .collect(java.util.stream.Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
-                    "multiple modules declare [application] main (" + names + ") — run one explicitly: jk "
-                            + kind + " <module>",
+                    "multiple modules declare [application] main (" + names + ") — run one explicitly: jk " + kind
+                            + " <module>",
                     "ambiguous");
         }
 
@@ -472,8 +472,8 @@ public final class ExecPlans {
                     .collect(java.util.stream.Collectors.joining(", "));
             return ExecPlan.error(
                     kind,
-                    "multiple modules contain a runnable main (" + names + ") — run one explicitly: jk "
-                            + kind + " <module>",
+                    "multiple modules contain a runnable main (" + names + ") — run one explicitly: jk " + kind
+                            + " <module>",
                     "ambiguous");
         }
         Path modDir = scannedModules.iterator().next();

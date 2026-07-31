@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 /**
- * Machine-scoped {@code [m2]} policy from {@code ~/.jk/config.toml} (JK-1290).
+ * Machine-scoped {@code [m2]} policy from {@code ~/.jk/config.toml}.
  *
  * <p>Before spending bandwidth on an artifact, jk can {@code stat} the Maven local repository for the
  * same coordinate. A hit still has to be confirmed against a checksum fetched from the repository the
@@ -37,7 +37,8 @@ public record JkM2Config(boolean enabled, boolean link) {
     public static JkM2Config resolve() {
         JkM2Config base = resolve(JkDirs.userConfigFile(), System::getenv);
         return new JkM2Config(
-                property("jk.m2.lookup").orElse(base.enabled()), property("jk.m2.link").orElse(base.link()));
+                property("jk.m2.lookup").orElse(base.enabled()),
+                property("jk.m2.link").orElse(base.link()));
     }
 
     private static java.util.Optional<Boolean> property(String name) {
@@ -61,7 +62,8 @@ public record JkM2Config(boolean enabled, boolean link) {
     /** {@code [m2]} table; missing/malformed → {@link #DEFAULTS}. */
     public static JkM2Config fromToml(Path file) {
         TomlScan scan = TomlScan.scan(file, "m2.enabled", "m2.link");
-        return new JkM2Config(bool(scan.get("m2.enabled"), DEFAULTS.enabled()), bool(scan.get("m2.link"), DEFAULTS.link()));
+        return new JkM2Config(
+                bool(scan.get("m2.enabled"), DEFAULTS.enabled()), bool(scan.get("m2.link"), DEFAULTS.link()));
     }
 
     private static boolean bool(Object raw, boolean fallback) {

@@ -129,8 +129,7 @@ class JdkResolutionTest {
         Path jre = tmp.resolve("java-25-openjdk");
         Files.createDirectories(jre.resolve("bin"));
         Files.writeString(jre.resolve("bin").resolve("java"), "#!/fake");
-        Files.writeString(
-                jre.resolve("release"), "JAVA_VERSION=\"25.0.4\"\nIMPLEMENTOR=\"Red Hat, Inc.\"\n");
+        Files.writeString(jre.resolve("release"), "JAVA_VERSION=\"25.0.4\"\nIMPLEMENTOR=\"Red Hat, Inc.\"\n");
 
         GlobalDefaultJdk gdj = gdj(tmp);
         gdj.setCurrent(new InstalledJdk("java-25-openjdk", jre));

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.ToDoubleFunction;
@@ -103,7 +104,7 @@ class EffortWeightsTest {
 
     @Test
     void predict_reserves_groovy_compile_until_the_stamp_holds(@TempDir Path dir) throws Exception {
-        java.nio.file.Files.writeString(dir.resolve("jk.toml"), """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "g"
@@ -112,12 +113,12 @@ class EffortWeightsTest {
                 groovy = "5.0.4"
                 layout = "simple"
                 """);
-        Path src = java.nio.file.Files.createDirectories(dir.resolve("src"));
+        Path src = Files.createDirectories(dir.resolve("src"));
         // Enough sources that the static compile weight (ceil(n/10)) clears the TOKEN floor.
-        java.util.List<Path> sources = new java.util.ArrayList<>();
+        List<Path> sources = new ArrayList<>();
         for (int i = 0; i < 20; i++) {
             Path f = src.resolve("Foo" + i + ".groovy");
-            java.nio.file.Files.writeString(f, "class Foo" + i + " {}");
+            Files.writeString(f, "class Foo" + i + " {}");
             sources.add(f);
         }
         BuildPipelines.Inputs in = new BuildPipelines.Inputs(
@@ -134,7 +135,7 @@ class EffortWeightsTest {
                 false,
                 false,
                 false,
-                java.util.Set.of(),
+                Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         var cas = new cc.jumpkick.cache.Cas(dir.resolve("cache"));
 
@@ -142,15 +143,15 @@ class EffortWeightsTest {
         assertThat(cold.compileGroovy()).isGreaterThan(EffortWeights.TOKEN);
 
         // The groovy stamp lives in the merged classes dir (where write-stamp-groovy writes it).
-        var layout = cc.jumpkick.layout.BuildLayout.of(dir, cc.jumpkick.config.JkBuildParser.parse(dir.resolve(
-                "jk.toml")));
+        var layout =
+                cc.jumpkick.layout.BuildLayout.of(dir, cc.jumpkick.config.JkBuildParser.parse(dir.resolve("jk.toml")));
         cc.jumpkick.task.FreshnessStamp.write(
                 layout.classesDir(),
                 cc.jumpkick.task.FreshnessStamp.GROOVY_STAMP,
                 "compile-groovy",
                 "",
                 sources,
-                java.util.List.of(),
+                List.of(),
                 21);
         var warm = EffortWeights.predict(in, cas, true, false, false, true, false);
         assertThat(warm.compileGroovy()).isEqualTo(EffortWeights.TOKEN);

@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 /**
  * BSP 2.x JSON-RPC over Content-Length framing (stdio). Wire-only via {@link IdeEngineClient}.
  *
- * <p>ticket-1028 MVP + ticket-1041 import reliability + JK-1048 test provider: per-target
+ * <p>MVP +import reliability + test provider: per-target
  * deps/sources, compile/test by target URI, workspace/reload, test source roots. {@code
  * buildTarget/run} is not implemented yet (use IDE tasks / {@code jk run}).
  */
@@ -92,7 +92,7 @@ public final class BspServer {
             }
         } catch (IOException e) {
             if ("bsp exit".equals(e.getMessage())) throw e;
-            // Per-request isolation (JK-1063): one failed handler must not kill the BSP session.
+            // Per-request isolationone failed handler must not kill the BSP session.
             invalidateModel();
             if (id != null) {
                 String msg =
@@ -146,7 +146,7 @@ public final class BspServer {
         return "{\"targets\":[" + String.join(",", targets) + "]}";
     }
 
-    /** Package-visible for contract tests (JK-1063). */
+    /** Package-visible for contract tests. */
     static String targetJson(String id, String display, String baseDir) {
         return "{\"id\":{\"uri\":"
                 + q(id)
@@ -188,7 +188,7 @@ public final class BspServer {
 
     private static String sourcesItem(String tid, Path mod) {
         List<String> srcs = new ArrayList<>();
-        // JK-1140: same roots as jk ide (all TestSuites + main).
+        // same roots as jk ide (all TestSuites + main).
         for (cc.jumpkick.command.ide.IdeSourceRoots.Root root : cc.jumpkick.command.ide.IdeSourceRoots.of(mod)) {
             // BSP SourceItemKind: 1 = file/normal source, 2 = test (see BSP protocol).
             int kind = root.test() ? 2 : 1;
@@ -252,14 +252,14 @@ public final class BspServer {
 
     /**
      * BSP {@code buildTarget/test} — run {@code jk test} for the selected module. Optional jk
-     * extension in {@code params.data} (JK-1143):
+     * extension in {@code params.data}
      *
      * <pre>
      * "data": {
-     *   "allSuites": false,
-     *   "suites": ["test","integration"],
-     *   "includeTags": ["smoke"],
-     *   "excludeTags": ["slow"]
+     * "allSuites": false,
+     * "suites": ["test","integration"],
+     * "includeTags": ["smoke"],
+     * "excludeTags": ["slow"]
      * }
      * </pre>
      *
@@ -280,8 +280,8 @@ public final class BspServer {
         if (requestJson == null || requestJson.isBlank()) {
             return cc.jumpkick.config.TestSelection.DEFAULT;
         }
-        // Structural parse (JK-1237): the old needle/brace-slicing degraded silently on
-        // pretty-printed payloads ("suites" : [...]) and non-object data values.
+        // Structural parsethe old needle/brace-slicing degraded silently on
+        // pretty-printed payloads ("suites": [...]) and non-object data values.
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(requestJson);
             if (!(parsed instanceof java.util.Map<?, ?> outer)) {
@@ -333,7 +333,7 @@ public final class BspServer {
         List<String> uris = extractTargetUris(requestJson);
         if (uris.isEmpty()) return null; // whole project / workspace
         // Multiple distinct targets: build the whole workspace rather than silently honoring
-        // only the first (JK-1237) — a superset that keeps every requested target correct.
+        // only the firsta superset that keeps every requested target correct.
         if (uris.stream().distinct().count() > 1) return null;
         String uri = uris.getFirst();
         int hash = uri.indexOf('#');
@@ -367,7 +367,7 @@ public final class BspServer {
 
     /** Collect target URIs from a BSP params object (targets array or single target). */
     static List<String> extractTargetUris(String json) {
-        // Structural (JK-1237): the old regex collected any "uri" anywhere — including ones
+        // Structuralthe old regex collected any "uri" anywhere — including ones
         // nested inside data payloads.
         try {
             Object parsed = cc.jumpkick.plugin.protocol.MiniJson.parse(json);

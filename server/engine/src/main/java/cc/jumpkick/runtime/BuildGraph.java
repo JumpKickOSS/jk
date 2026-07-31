@@ -88,10 +88,10 @@ public final class BuildGraph {
 
     /**
      * Resolve the graph rooted at {@code entryDir}/{@code entry}. On a preflight graph-memo hit
-     * (JK-1112), rebuilds topo + edges + re-parsed manifests without {@link WorkspaceLoader}.
+     * , rebuilds topo + edges + re-parsed manifests without {@link WorkspaceLoader}.
      */
     public static Result resolve(Path entryDir, JkBuild entry) throws IOException {
-        // JK-1112: try memo first — skip WorkspaceLoader membership walk when structure is warm.
+        // try memo first — skip WorkspaceLoader membership walk when structure is warm.
         var memo = PreflightMemo.tryLoadGraph(entryDir);
         if (memo.isPresent()) {
             if (Perf.ENABLED) {
@@ -128,8 +128,6 @@ public final class BuildGraph {
     private static List<Path> kahnSort(Collection<Path> nodes, Map<Path, Set<Path>> edges) {
         return cc.jumpkick.config.ModuleOrder.kahnSort(nodes, edges);
     }
-
-    // ---------------------------------------------------------------------
 
     private static final class Builder {
         final Map<Path, BuildUnit> units = new LinkedHashMap<>(); // canonical dir → unit

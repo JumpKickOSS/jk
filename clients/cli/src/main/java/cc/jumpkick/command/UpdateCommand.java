@@ -33,7 +33,7 @@ public final class UpdateCommand implements CliCommand {
     private URI repoUrl;
     private Path cacheDir;
     private GlobalOptions global;
-    /** Optional {@code enforced}|{@code floor} (JK-1206); null = project {@code [resolve] platform}. */
+    /** Optional {@code enforced}|{@code floor}; null = project {@code [resolve] platform}. */
     private String platform;
 
     @Override
@@ -65,7 +65,7 @@ public final class UpdateCommand implements CliCommand {
                         "<enforced|floor>",
                         "Platform BOM policy for this re-resolve only (default: project"
                                 + " [resolve] platform, else enforced). floor = BOM pins are lower"
-                                + " bounds (JK-1206).",
+                                + " bounds.",
                         "--platform"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }
@@ -126,7 +126,9 @@ public final class UpdateCommand implements CliCommand {
             public void onModuleFinish(String moduleDir, PipelineResult result, EngineClient.LockCounts counts) {
                 if (result.success() && !global.outputIsJson()) {
                     printUpdatedLine(
-                            cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)), (int) counts.packages(), global.workingDir());
+                            cc.jumpkick.lock.LockPaths.lockFile(Path.of(moduleDir)),
+                            (int) counts.packages(),
+                            global.workingDir());
                 }
             }
         };

@@ -9,7 +9,7 @@ import java.util.List;
 /**
  * Shared workspace UI sink for the CLI: one {@link CommandManager} plus last errors.
  *
- * <p><b>Dumb client (JK-1121):</b> aggregate bar math lives in the engine's {@link
+ * <p><b>Dumb client</b> aggregate bar math lives in the engine's {@link
  * WorkspaceProgressTracker}. This class only applies engine {@link
  * WorkspaceProgressTracker.Snapshot}s to the TUI / {@link LiveProgress}. It does not recompute
  * workspace percent from module ticks.
@@ -34,7 +34,7 @@ public final class AggregateContext {
     public void applySnapshot(WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;
         if (snap.denominator() > 0) cm.progress(snap.numerator(), snap.denominator());
-        // JK-1157: run-wide module remaining next to the wall-clock ETA.
+        // run-wide module remaining next to the wall-clock ETA.
         if (snap.modulesTotal() > 0) {
             cm.setModuleProgress(snap.modulesComplete(), snap.modulesTotal());
         }

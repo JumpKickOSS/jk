@@ -6,10 +6,9 @@ import java.util.List;
 /**
  * Aggregate test outcome: counts plus failures for exit codes and UI. {@code classes} is the
  * distinct executed test-class count when the runner could derive it, else 0 (unknown) — it
- * feeds the hierarchical class-rate ETA prior (JK-1226), never user-facing totals.
+ * feeds the hierarchical class-rate ETA prior, never user-facing totals.
  */
-public record TestSummary(
-        long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
+public record TestSummary(long total, long succeeded, long failed, long skipped, long classes, List<Failure> failures) {
 
     public TestSummary {
         failures = List.copyOf(failures);
@@ -30,7 +29,7 @@ public record TestSummary(
      * exited N). {@code details} is the full stack (empty when none).
      *
      * <p>{@code module} / {@code className} / {@code workerId} enrich multi-module / multi-worker
-     * failure lines (JK-1094). Empty module/class and {@code workerId <= 0} mean unknown / single
+     * failure lines. Empty module/class and {@code workerId <= 0} mean unknown / single
      * worker.
      */
     public record Failure(
@@ -57,7 +56,7 @@ public record TestSummary(
         }
 
         /**
-         * One-line label for console: {@code module :: display [wN]}. Module and worker omitted when
+         * One-line label for console: {@code module:: display [wN]}. Module and worker omitted when
          * unknown / serial.
          */
         public String headline() {

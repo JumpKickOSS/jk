@@ -67,7 +67,7 @@ public final class BuildPlanForecast {
             long t0 = Perf.start();
             BuildPlan.Module m = forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache);
             Perf.end("forecast " + u.coord(), t0);
-            // A module's consumed output changes — and so seeds downstream dirtiness —
+            // A module's consumed output changes — and so seeds downstream dirtiness
             // when its compile does real work (classes change) OR its jar will be
             // (re)packaged, or a dependency already changed. Package matters on its own:
             // a consumer's run-tests/compile classpath hashes the *content* of sibling
@@ -144,7 +144,8 @@ public final class BuildPlanForecast {
         boolean skip = testOnly ? false : skipTests;
         boolean compactEst = false;
         try {
-            compactEst = CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
+            compactEst =
+                    CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
         } catch (Exception ignored) {
             compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
         }
@@ -207,7 +208,7 @@ public final class BuildPlanForecast {
                             project, dir, BuildPipelines.lockModules(lock)),
                     List.of());
             // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
-            // included (JK-1253) — or the forecast hashes a different -processorpath than the
+            // includedor the forecast hashes a different -processorpath than the
             // build and every KSP module forecasts a phantom rebuild.
             List<Path> processorCp = BuildPipelines.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
@@ -230,9 +231,9 @@ public final class BuildPlanForecast {
                 List<Path> cp = BuildPipelines.mainCompileClasspath(lock, resolver, sib);
                 Path out = layout.classesDir();
                 // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
-                // fresh .jstamp is cached even when action-cache keys were not rewritten
+                // fresh.jstamp is cached even when action-cache keys were not rewritten
                 // (historical --rebuild skipped store). The input recipe is SHARED with the live
-                // check and write-stamp (JK-1298) — mixed modules previously hashed different
+                // check and write-stampmixed modules previously hashed different
                 // inputs here and never stamp-matched.
                 Path groovyJar = null;
                 boolean groovyJarUnavailable = false;
@@ -240,20 +241,21 @@ public final class BuildPlanForecast {
                     try {
                         String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
                         var repos = RepoGroupBuilder.buildFor(project, null, cas);
-                        groovyJar = GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
+                        groovyJar = GroovyPluginSetup.prepare(repos, cas, groovyVersion)
+                                .groovyJar();
                     } catch (Exception e) {
                         // Cannot reproduce the live stamp inputs without the jar — fall through to
                         // the action-cache prediction rather than guessing.
                         groovyJarUnavailable = true;
                     }
                 }
-                List<Path> stampInputs = BuildPipelines.mainStampClasspath(
-                        cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
+                List<Path> stampInputs =
+                        BuildPipelines.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
                 boolean stampFresh = false;
                 if (!depDirty && !force && !groovyJarUnavailable) {
                     try {
-                        stampFresh = FreshnessStamp.isFresh(
-                                out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
+                        stampFresh =
+                                FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
                     } catch (IOException ignored) {
                         stampFresh = false;
                     }
@@ -286,7 +288,7 @@ public final class BuildPlanForecast {
                 // The stamp lives with the MERGED classes (BuildPipelines writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
                 // Reading the wrong directory never found a stamp, so every Kotlin module
-                // forecast a full compile no matter how cached the build actually was (JK-1259).
+                // forecast a full compile no matter how cached the build actually was.
                 boolean fresh = !depDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
@@ -326,7 +328,7 @@ public final class BuildPlanForecast {
             } catch (Exception ignored) {
             }
 
-            // ---- compile-test (all discovered suites — JK-1145) ----
+            // ---- compile-test (all discovered suites —---
             List<Path> allTestSrc = List.of();
             try {
                 allTestSrc = TestSupport.collectAllSuiteTestSources(dir, compact);
@@ -389,7 +391,7 @@ public final class BuildPlanForecast {
                 if (compileDirty || testDirty) {
                     steps.add(new BuildPlan.Step("run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Same factory as live run-tests (JK-1243/JK-1296): default selection sources +
+                    // Same factory as live run-testsdefault selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
                     // stored green marker.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
@@ -409,7 +411,7 @@ public final class BuildPlanForecast {
             // ---- package-jar ----
             // Tokens MUST match BuildPipelines.packageJarStep (classes/main/sbom/manifest).
             // Omitting sbom: caused perpetual "repackage" in explain while live build restored
-            // the jar — cascading false depDirty downstream (JK-1176).
+            // the jar — cascading false depDirty downstream.
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
@@ -460,7 +462,7 @@ public final class BuildPlanForecast {
                     steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
                 } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
                     // extra-resources come from OUTSIDE the module, so the resource-root walk above
-                    // cannot see them (JK-1262). Editing a plugin's jk-plugin.toml must still rebuild
+                    // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
                     // whatever bakes it in.
                     steps.add(new BuildPlan.Step(
                             "copy-resources", BuildPlan.Status.RUN, "extra resources changed", null));
@@ -536,7 +538,7 @@ public final class BuildPlanForecast {
                 yield new BuildPlan.Step(name, BuildPlan.Status.PARTIAL, "compile · " + detail, null);
             }
             case FULL -> {
-                // JK-1058: surface the concrete gate (classpath, options, first compile, …).
+                // surface the concrete gate (classpath, options, first compile, …).
                 String why = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
                         : "sources / options / classpath";

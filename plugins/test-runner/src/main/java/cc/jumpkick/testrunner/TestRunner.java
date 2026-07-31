@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import org.junit.platform.engine.TestTag;
 import org.junit.platform.engine.ConfigurationParameters;
 import org.junit.platform.engine.DiscoveryFilter;
 import org.junit.platform.engine.DiscoverySelector;
@@ -25,6 +24,7 @@ import org.junit.platform.engine.EngineExecutionListener;
 import org.junit.platform.engine.ExecutionRequest;
 import org.junit.platform.engine.TestDescriptor;
 import org.junit.platform.engine.TestEngine;
+import org.junit.platform.engine.TestTag;
 import org.junit.platform.engine.UniqueId;
 import org.junit.platform.engine.discovery.ClassNameFilter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -179,8 +179,7 @@ public final class TestRunner implements Plugin {
                 }
                 String className = line.substring(4).trim();
                 if (useLauncher) {
-                    if (LauncherPath.runClass(
-                            className, args.includeTags, args.excludeTags, args.workerId, writer)) {
+                    if (LauncherPath.runClass(className, args.includeTags, args.excludeTags, args.workerId, writer)) {
                         launcherFailed = true;
                     }
                 } else {
@@ -202,9 +201,9 @@ public final class TestRunner implements Plugin {
     // --- shared --------------------------------------------------------------
 
     /**
-     * One {@code --filter} contract for both the Launcher and engine-fallback paths (JK-1227):
+     * One {@code --filter} contract for both the Launcher and engine-fallback paths
      * substring match for plain patterns, verbatim when the caller anchored it — pre-fix the
-     * launcher wrapped everything in {@code .*…​.*} (breaking anchored regexes) while the
+     * launcher wrapped everything in {@code.*…​.*} (breaking anchored regexes) while the
      * fallback passed raw (breaking substring expectations).
      */
     static String classNamePattern(String filter) {
@@ -306,11 +305,11 @@ public final class TestRunner implements Plugin {
      * Build an {@link ExecutionRequest} for the Platform on the classpath.
      *
      * <ul>
-     *   <li>JUnit 6: {@code create(..., OutputDirectoryCreator, store, CancellationToken)}
-     *   <li>Platform 1.12–1.13 (Jupiter 5.12–5.13 / Quarkus 3.x BOMs): {@code create(...,
-     *       OutputDirectoryProvider, NamespacedHierarchicalStore)} — the 3-arg ctor leaves store
-     *       null and Jupiter 5.13 fails with "No NamespacedHierarchicalStore was configured"
-     *   <li>Older 1.x: 3-arg constructor
+     * <li>JUnit 6: {@code create(..., OutputDirectoryCreator, store, CancellationToken)}
+     * <li>Platform 1.12–1.13 (Jupiter 5.12–5.13 / Quarkus 3.x BOMs): {@code create(...,
+     * OutputDirectoryProvider, NamespacedHierarchicalStore)} — the 3-arg ctor leaves store
+     * null and Jupiter 5.13 fails with "No NamespacedHierarchicalStore was configured"
+     * <li>Older 1.x: 3-arg constructor
      * </ul>
      *
      * <p>No JUnit-6-only types appear in this method's signature (reflection only).
@@ -339,7 +338,7 @@ public final class TestRunner implements Plugin {
             // fall through
         }
 
-        // 2) Platform 1.12–1.13: store is required (Jupiter 5.13 getStore() notNull)
+        // 2) Platform 1.12–1.13: store is required (Jupiter 5.13 getStore notNull)
         try {
             Class<?> storeClass = Class.forName("org.junit.platform.engine.support.store.NamespacedHierarchicalStore");
             Object store = newRequestLevelStore(storeClass);
@@ -384,7 +383,7 @@ public final class TestRunner implements Plugin {
     }
 
     /**
-     * Drop tests that fail include/exclude tag filters (JUnit Platform tag semantics, JK-1135).
+     * Drop tests that fail include/exclude tag filters (JUnit Platform tag semantics,.
      * Empty include = no include filter; exclude removes any node that carries a listed tag
      * (tags inherit from ancestors). Containers with no remaining children are removed.
      */
@@ -405,7 +404,8 @@ public final class TestRunner implements Plugin {
             }
             pruneChildren(child, tags, include, exclude);
             boolean leaf = child.getChildren().isEmpty() && child.getType().isTest();
-            boolean emptyContainer = child.getChildren().isEmpty() && !child.getType().isTest();
+            boolean emptyContainer =
+                    child.getChildren().isEmpty() && !child.getType().isTest();
             if (emptyContainer || (leaf && !tagMatch(tags, include, exclude))) {
                 parent.removeChild(child);
             } else if (!leaf && child.getChildren().isEmpty()) {

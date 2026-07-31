@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1270: precedence and search roots for {@code .env}.
+ * precedence and search roots for {@code.env}.
  *
- * <p>The two decisions worth pinning: the real environment beats {@code .env} (Node dotenv / Docker
+ * <p>The two decisions worth pinning: the real environment beats {@code.env} (Node dotenv / Docker
  * Compose convention — the file supplies defaults, so a shell or CI variable can still override it),
  * and the search stops at the workspace root rather than walking up to a git root.
  */
@@ -20,9 +20,7 @@ class EnvLookupTest {
 
     /** A workspace with one module, each able to carry a .env. */
     private static Path workspace(Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name  = "ws"
@@ -32,9 +30,7 @@ class EnvLookupTest {
                 modules = ["mod"]
                 """);
         Path module = Files.createDirectories(tmp.resolve("mod"));
-        Files.writeString(
-                module.resolve("jk.toml"),
-                """
+        Files.writeString(module.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name  = "mod"
@@ -49,7 +45,7 @@ class EnvLookupTest {
         Files.writeString(module.resolve(".env"), "TOKEN=first\n");
         assertThat(EnvLookup.forModule(module, name -> null).get("TOKEN")).isEqualTo("first");
 
-        // Redaction resolves per output line, so reads are memoized (JK-1308) — but an edit
+        // Redaction resolves per output line, so reads are memoizedbut an edit
         // (new size/mtime) must invalidate.
         Files.writeString(module.resolve(".env"), "TOKEN=second-longer\n");
         Files.setLastModifiedTime(
@@ -67,7 +63,7 @@ class EnvLookupTest {
         var first = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
         var second = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
 
-        // Same value set → same memoized instance: per-line redaction must not rebuild (JK-1308).
+        // Same value set → same memoized instance: per-line redaction must not rebuild.
         assertThat(second).isSameAs(first);
         assertThat(first.redact("token is hunter2-hunter2")).doesNotContain("hunter2");
     }
@@ -126,9 +122,7 @@ class EnvLookupTest {
     @Test
     void a_standalone_project_reads_only_its_own_env(@TempDir Path tmp) throws Exception {
         // No [workspace] anywhere: the module is the whole project.
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name  = "solo"
@@ -141,7 +135,7 @@ class EnvLookupTest {
 
     @Test
     void nothing_is_read_from_above_the_workspace_root(@TempDir Path tmp) throws Exception {
-        // A .env in a parent directory — a git root, say — must not be picked up: a build has to
+        // A.env in a parent directory — a git root, say — must not be picked up: a build has to
         // behave the same from a tarball as from a checkout.
         Path outer = Files.createDirectories(tmp.resolve("outer"));
         Files.writeString(outer.resolve(".env"), "LEAKED=yes\n");

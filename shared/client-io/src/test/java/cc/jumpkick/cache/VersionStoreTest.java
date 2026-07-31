@@ -79,7 +79,7 @@ class VersionStoreTest {
 
     @Test
     void rematerializing_snapshot_with_new_client_bytes_replaces_client(@TempDir Path dir) throws Exception {
-        // JK-1059: engine jar unchanged, client binary rebuilt — versions/ tree must update.
+        // engine jar unchanged, client binary rebuilt — versions/ tree must update.
         var cas = new Cas(dir.resolve("cache"));
         var store = new VersionStore(dir.resolve("versions"));
         Path jar = dir.resolve("engine.jar");

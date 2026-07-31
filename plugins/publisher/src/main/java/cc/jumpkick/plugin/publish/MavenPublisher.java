@@ -81,7 +81,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project} with no signing — every artifact gets its four
-     * checksum files but no {@code .asc} or {@code .sigstore} sidecar. See {@link
+     * checksum files but no {@code.asc} or {@code.sigstore} sidecar. See {@link
      * #publish(JkBuild.Project, Iterable, SigningOptions)} for the signed variant.
      */
     public Result publish(JkBuild.Project project, Iterable<Artifact> artifacts)
@@ -91,7 +91,7 @@ public final class MavenPublisher {
 
     /**
      * Upload {@code artifacts} for {@code project}. Per artifact: body + four checksums; optional
-     * {@code .asc} / {@code .sigstore} (each with their own checksums).
+     * {@code.asc} / {@code.sigstore} (each with their own checksums).
      */
     public Result publish(JkBuild.Project project, Iterable<Artifact> artifacts, SigningOptions signing)
             throws IOException, InterruptedException {
@@ -119,9 +119,8 @@ public final class MavenPublisher {
         return new Result(results, bytes[0]);
     }
 
-
     /**
-     * Write the artifact-level {@code maven-metadata.xml} (JK-1256).
+     * Write the artifact-level {@code maven-metadata.xml}.
      *
      * <p>Without it a resolver cannot enumerate an artifact's versions, so a published artifact is
      * unresolvable from a plain {@code file://} / static HTTP / object-store repo — even for an
@@ -132,13 +131,13 @@ public final class MavenPublisher {
      * <p>Existing remote versions are merged rather than clobbered, so publishing 0.2.0 after 0.1.0
      * leaves both listed.
      */
-    private void publishMetadata(
-            JkBuild.Project project, String groupPath, Map<String, Integer> results, long[] bytes)
+    private void publishMetadata(JkBuild.Project project, String groupPath, Map<String, Integer> results, long[] bytes)
             throws IOException, InterruptedException {
         String relPath = groupPath + "/" + project.name() + "/maven-metadata.xml";
         List<String> versions = new ArrayList<>();
         try {
-            transport.fetch(repoBase.resolve(relPath), credential)
+            transport
+                    .fetch(repoBase.resolve(relPath), credential)
                     .map(b -> new String(b, StandardCharsets.UTF_8))
                     .ifPresent(xml -> versions.addAll(parseVersions(xml)));
         } catch (IOException | InterruptedException e) {

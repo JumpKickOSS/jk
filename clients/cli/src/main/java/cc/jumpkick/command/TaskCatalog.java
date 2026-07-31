@@ -14,7 +14,7 @@ import java.util.function.Function;
 
 /**
  * First-party build pipeline tasks for {@code jk tasks} / {@code jk show} / {@code jk inspect}
- * (JK-1047). Names align with {@link StepNames} where possible; a few Mill-friendly aliases
+ * . Names align with {@link StepNames} where possible; a few Mill-friendly aliases
  * ({@code compile-main}, {@code package}) resolve to the same entry.
  */
 final class TaskCatalog {

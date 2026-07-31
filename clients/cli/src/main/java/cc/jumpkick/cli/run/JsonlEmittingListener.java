@@ -19,7 +19,7 @@ abstract class JsonlEmittingListener implements PipelineListener {
      * True when this listener owns the aggregate {@code progress} rider (single-pipeline stdout).
      * False for a member of a multi-module workspace run: the engine's {@code workspace-progress}
      * snapshot is the only aggregate truth there — pipeline-local fractions must not reach {@link
-     * LiveProgress} (JK-1121).
+     * LiveProgress}.
      */
     private final boolean aggregateRider;
 

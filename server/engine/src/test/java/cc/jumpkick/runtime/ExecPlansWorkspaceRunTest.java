@@ -9,14 +9,12 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Workspace-root {@code jk run} must pick a module with main (JK-1199). */
+/** Workspace-root {@code jk run} must pick a module with main. */
 class ExecPlansWorkspaceRunTest {
 
     @Test
     void workspace_run_uses_declared_application_main(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -45,10 +43,8 @@ class ExecPlansWorkspaceRunTest {
     @Test
     void workspace_run_with_two_declared_apps_is_ambiguous(@TempDir Path root) throws Exception {
         // Silently launching the first-listed app would make [workspace].modules ORDER change
-        // what `jk run` executes (JK-1316) — name the candidates instead.
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        // what `jk run` executesname the candidates instead.
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -62,9 +58,7 @@ class ExecPlansWorkspaceRunTest {
         for (String m : new String[] {"app", "tool"}) {
             Path dir = root.resolve(m);
             Files.createDirectories(dir.resolve("src"));
-            Files.writeString(
-                    dir.resolve("jk.toml"),
-                    """
+            Files.writeString(dir.resolve("jk.toml"), """
                     [project]
                     group = "com.example"
                     name = "%s"
@@ -75,8 +69,7 @@ class ExecPlansWorkspaceRunTest {
 
                     [application]
                     main = "com.example.%s"
-                    """
-                            .formatted(m, m));
+                    """.formatted(m, m));
             Files.writeString(
                     dir.resolve("src/Main.java"),
                     "package com.example; public class Main { public static void main(String[] a) {} }\n");
@@ -91,9 +84,7 @@ class ExecPlansWorkspaceRunTest {
 
     @Test
     void workspace_run_errors_when_no_main_anywhere(@TempDir Path root) throws Exception {
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "ws"
@@ -111,9 +102,7 @@ class ExecPlansWorkspaceRunTest {
 
     private static void writeLib(Path dir) throws Exception {
         Files.createDirectories(dir);
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "lib"
@@ -128,15 +117,11 @@ class ExecPlansWorkspaceRunTest {
 
     private static void writeApp(Path dir, boolean withMain) throws Exception {
         Files.createDirectories(dir);
-        String main = withMain
-                ? """
+        String main = withMain ? """
                 [application]
                 main = "com.example.App"
-                """
-                : "";
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+                """ : "";
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -148,12 +133,9 @@ class ExecPlansWorkspaceRunTest {
                 %s
                 [dependencies]
                 lib.workspace = true
-                """
-                        .formatted(main));
+                """.formatted(main));
         Files.createDirectories(dir.resolve("src"));
-        Files.writeString(
-                dir.resolve("src/App.java"),
-                """
+        Files.writeString(dir.resolve("src/App.java"), """
                 package com.example;
                 public class App {
                   public static void main(String[] args) {}

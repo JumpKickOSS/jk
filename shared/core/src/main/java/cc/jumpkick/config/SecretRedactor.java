@@ -11,20 +11,20 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Masks {@code .env}-sourced values in text that leaves the process (JK-1274).
+ * Masks {@code.env}-sourced values in text that leaves the process.
  *
  * <p>Masking is by <em>source</em>, not by name heuristics ({@code *_TOKEN}, {@code *_PASSWORD},
- * …): any value whose effective resolution came from a {@code .env} file is secret. That is what
+ * …): any value whose effective resolution came from a {@code.env} file is secret. That is what
  * {@link EnvLookup#isFromFile} records, and what this redactor consumes.
  *
  * <p>Two surfaces share one instinct:
  *
  * <ul>
- *   <li>{@link #redact(String)} — replace secret substrings in free-form text (JSONL, journal,
- *       error messages, labels, test output).
- *   <li>{@link #forCacheKey(String)} — when a secret must participate in an action key, emit a
- *       digest rather than the value. Matches how {@code VariantApply} secrets are folded into
- *       package keys.
+ * <li>{@link #redact(String)} — replace secret substrings in free-form text (JSONL, journal,
+ * error messages, labels, test output).
+ * <li>{@link #forCacheKey(String)} — when a secret must participate in an action key, emit a
+ * digest rather than the value. Matches how {@code VariantApply} secrets are folded into
+ * package keys.
  * </ul>
  */
 public final class SecretRedactor {
@@ -33,8 +33,8 @@ public final class SecretRedactor {
     public static final String MASK = "***";
 
     /**
-     * Values shorter than this are treated as configuration, not credentials (JK-1309). Masking is
-     * by source, so without a floor a {@code .env} holding {@code NODE_ENV=test} or
+     * Values shorter than this are treated as configuration, not credentials. Masking is
+     * by source, so without a floor a {@code.env} holding {@code NODE_ENV=test} or
      * {@code PORT=8080} turns every {@code test} / {@code 8080} in build output into {@code ***}
      * and hashes unrelated cache-key text that contains the substring. Real tokens are comfortably
      * longer; a deliberately short secret is outside what source-based masking can protect.
@@ -60,9 +60,9 @@ public final class SecretRedactor {
 
     /**
      * Build a redactor from an {@link EnvLookup}: every effective value that came from a
-     * {@code .env} file (not the real environment).
+     * {@code.env} file (not the real environment).
      */
-    /** Redactors are immutable; memo by value-set so per-line redaction reuses one (JK-1308). */
+    /** Redactors are immutable; memo by value-set so per-line redaction reuses one. */
     private static final java.util.concurrent.ConcurrentHashMap<Set<String>, SecretRedactor> MEMO =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -75,7 +75,7 @@ public final class SecretRedactor {
             if (v != null && !v.isEmpty()) values.add(v);
         }
         if (values.isEmpty()) return NONE;
-        if (MEMO.size() > 64) MEMO.clear(); // a handful of .env sets per engine; crude bound is fine
+        if (MEMO.size() > 64) MEMO.clear(); // a handful of.env sets per engine; crude bound is fine
         return MEMO.computeIfAbsent(Set.copyOf(values), SecretRedactor::of);
     }
 

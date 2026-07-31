@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1298: the compile-main freshness-stamp inputs come from ONE recipe
+ * the compile-main freshness-stamp inputs come from ONE recipe
  * ({@link BuildPipelines#mainStampClasspath}) shared by the live check, {@code write-stamp}, and
  * the forecast. Two hand-maintained copies drifted before: the forecast missed the mixed-language
  * classpath entries (mixed modules never forecast stamp-fresh) and write-stamp missed the
@@ -36,8 +36,7 @@ class MainStampParityTest {
 
     /** Backdate an input so same-millisecond creation never trips the {@code >=} mtime check. */
     private static Path aged(Path p) throws Exception {
-        Files.setLastModifiedTime(
-                p, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
+        Files.setLastModifiedTime(p, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() - 60_000));
         return p;
     }
 
@@ -59,18 +58,18 @@ class MainStampParityTest {
         List<Path> sources = List.of(src);
         Path out = layout.classesDir();
 
-        List<Path> written = BuildPipelines.mainStampClasspath(
-                List.of(dep), List.of(processor), true, false, layout, null);
+        List<Path> written =
+                BuildPipelines.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
         FreshnessStamp.write(out, FreshnessStamp.JAVA_STAMP, "compile-main", "", sources, written, 21);
 
         // The forecast/check recompute through the same recipe → fresh.
-        List<Path> recomputed = BuildPipelines.mainStampClasspath(
-                List.of(dep), List.of(processor), true, false, layout, null);
+        List<Path> recomputed =
+                BuildPipelines.mainStampClasspath(List.of(dep), List.of(processor), true, false, layout, null);
         assertThat(FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, sources, recomputed, 21))
                 .isTrue();
 
         // The pre-fix forecast recipe (base classpath + processors only, no kotlin classes dir)
-        // hashes different inputs → never fresh. This is the JK-1296-class divergence the shared
+        // hashes different inputs → never fresh. This is theclass divergence the shared
         // recipe closes.
         List<Path> oldForecast = new ArrayList<>(List.of(dep));
         oldForecast.add(processor);
@@ -107,8 +106,7 @@ class MainStampParityTest {
                         out,
                         FreshnessStamp.JAVA_STAMP,
                         sources,
-                        BuildPipelines.mainStampClasspath(
-                                List.of(dep), List.of(processor), false, false, layout, null),
+                        BuildPipelines.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
                         21))
                 .isTrue();
 
@@ -118,8 +116,7 @@ class MainStampParityTest {
                         out,
                         FreshnessStamp.JAVA_STAMP,
                         sources,
-                        BuildPipelines.mainStampClasspath(
-                                List.of(dep), List.of(processor), false, false, layout, null),
+                        BuildPipelines.mainStampClasspath(List.of(dep), List.of(processor), false, false, layout, null),
                         21))
                 .isFalse();
     }
@@ -130,8 +127,7 @@ class MainStampParityTest {
         Path dep = dir.resolve("dep.jar");
         Path groovyJar = dir.resolve("groovy.jar");
 
-        List<Path> inputs =
-                BuildPipelines.mainStampClasspath(List.of(dep), List.of(), false, true, layout, groovyJar);
+        List<Path> inputs = BuildPipelines.mainStampClasspath(List.of(dep), List.of(), false, true, layout, groovyJar);
 
         assertThat(inputs).containsExactly(dep, layout.groovyClassesDir(), groovyJar);
     }

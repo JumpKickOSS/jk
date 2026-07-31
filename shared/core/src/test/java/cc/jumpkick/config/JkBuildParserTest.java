@@ -26,7 +26,7 @@ class JkBuildParserTest {
 
     @Test
     void platform_policy_survives_kotlin_plugins_rebuild() {
-        // JK-1213: the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
+        // the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 kotlin = "2.1.0"
 
@@ -52,7 +52,7 @@ class JkBuildParserTest {
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization"
                 """);
         assertThat(parsed.build().unmappedPolicy()).isEqualTo(cc.jumpkick.model.UnmappedPolicy.STRICT);
-        // Default is mediate (JK-1241).
+        // Default is mediate.
         assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy())
                 .isEqualTo(cc.jumpkick.model.UnmappedPolicy.MEDIATE);
     }
@@ -89,7 +89,8 @@ class JkBuildParserTest {
         assertThat(parsed.project().isGroovy()).isTrue();
         assertThat(parsed.project().languageName()).isEqualTo("groovy");
         assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version()).isEqualTo("5.0.4");
+        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version())
+                .isEqualTo("5.0.4");
     }
 
     @Test
@@ -1040,7 +1041,7 @@ class JkBuildParserTest {
 
     @Test
     void object_store_keys_keep_their_raw_env_references() {
-        // Same contract as credentials (JK-1272): raw out of the parse, expanded by RepoGroupBuilder
+        // Same contract as credentialsraw out of the parse, expanded by RepoGroupBuilder
         // where the request's environment is in scope. Object-store keys are secrets, so they must
         // not be committed literally — but the parse is not the place to resolve them.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
@@ -1057,7 +1058,7 @@ class JkBuildParserTest {
 
     @Test
     void an_inline_credential_keeps_its_raw_env_reference() {
-        // The parse deliberately does NOT interpolate (JK-1272): it stays a pure function of the
+        // The parse deliberately does NOT interpolateit stays a pure function of the
         // file's bytes, so the memo needs no environment in its key and the engine cannot
         // accidentally resolve against the daemon's environment instead of the caller's.
         // Expansion — and its strictness — is RepoCredentialResolver's job; see
@@ -1110,7 +1111,7 @@ class JkBuildParserTest {
     }
 
     // ───────────────────────────────────────────────────────────────
-    //  Library-catalog shorthand
+    // Library-catalog shorthand
     // ───────────────────────────────────────────────────────────────
 
     /** Synthetic catalog used so the tests don't drift with the bundled set. */
@@ -1765,7 +1766,7 @@ class JkBuildParserTest {
 
     @Test
     void spring_boot_bom_is_not_duplicated_when_user_declares_it() {
-        // A deliberate [platform-dependencies] spring-boot-dependencies entry wins —
+        // A deliberate [platform-dependencies] spring-boot-dependencies entry wins
         // the auto-import must not add a second (conflicting) BOM row.
         JkBuild b = JkBuildParser.parse(PROJECT + """
 

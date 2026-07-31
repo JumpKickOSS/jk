@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.engine.protocol.EngineProtocol;
 import org.junit.jupiter.api.Test;
 
-/** ticket-1051 — heartbeat protocol + env defaults. */
+/** Heartbeat protocol and env defaults. */
 class JobWatchdogConfigTest {
 
     @Test

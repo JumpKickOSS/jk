@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1274: {@code .env}-sourced values are secret by source, not by name. The redactor masks them
+ * {@code.env}-sourced values are secret by source, not by name. The redactor masks them
  * in free-form text and hashes them for cache keys.
  */
 class SecretRedactorTest {
@@ -27,7 +27,7 @@ class SecretRedactorTest {
         // TOKEN is file-sourced → secret.
         assertThat(r.redact("Authorization: Bearer s3cret-from-file"))
                 .isEqualTo("Authorization: Bearer " + SecretRedactor.MASK);
-        // MODE is shadowed by the real env → not a secret (even though .env also names it).
+        // MODE is shadowed by the real env → not a secret (even though.env also names it).
         assertThat(r.redact("mode=from-shell")).isEqualTo("mode=from-shell");
         assertThat(r.redact("mode=file")).isEqualTo("mode=file");
     }
@@ -40,7 +40,7 @@ class SecretRedactorTest {
 
     @Test
     void short_common_values_are_config_not_credentials() {
-        // NODE_ENV=test / PORT=8080 style .env entries must not mangle output (JK-1309).
+        // NODE_ENV=test / PORT=8080 style.env entries must not mangle output.
         SecretRedactor r = SecretRedactor.of(List.of("test", "8080", "info"));
         assertThat(r.isEmpty()).isTrue();
         assertThat(r.redact("running 12 tests on port 8080 at info level"))
@@ -54,14 +54,13 @@ class SecretRedactorTest {
         Files.createDirectories(module);
         Files.writeString(
                 module.resolve(".env"),
-                "SHORT=" + "x".repeat(SecretRedactor.MIN_SECRET_LENGTH - 1) + "\n"
-                        + "LONG=" + "y".repeat(SecretRedactor.MIN_SECRET_LENGTH) + "\n");
+                "SHORT=" + "x".repeat(SecretRedactor.MIN_SECRET_LENGTH - 1) + "\n" + "LONG="
+                        + "y".repeat(SecretRedactor.MIN_SECRET_LENGTH) + "\n");
         SecretRedactor r = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
 
         assertThat(r.containsSecret("x".repeat(SecretRedactor.MIN_SECRET_LENGTH - 1)))
                 .isFalse();
-        assertThat(r.redact("y".repeat(SecretRedactor.MIN_SECRET_LENGTH)))
-                .isEqualTo(SecretRedactor.MASK);
+        assertThat(r.redact("y".repeat(SecretRedactor.MIN_SECRET_LENGTH))).isEqualTo(SecretRedactor.MASK);
     }
 
     @Test

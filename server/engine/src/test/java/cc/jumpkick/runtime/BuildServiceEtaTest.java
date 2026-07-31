@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
@@ -47,7 +47,7 @@ class BuildServiceEtaTest {
 
     @Test
     void host_history_fills_count_up_when_project_path_is_unknown() {
-        // JK-1151: applyHistoryPrior with host-tier stats must turn base=0 into a countdown seed.
+        // applyHistoryPrior with host-tier stats must turn base=0 into a countdown seed.
         BuildMetrics.Stats host = ok(10, 4500, 1000, 12_000);
         assertThat(BuildService.applyHistoryPrior(0, host)).isEqualTo(4500);
         assertThat(BuildService.applyHistoryPrior(3000, host)).isEqualTo(3000);
@@ -61,7 +61,8 @@ class BuildServiceEtaTest {
         assertThat(reb.kind()).isEqualTo("build:rebuild");
         assertThat(inc.dirKey(Path.of("/ws"))).isEqualTo("/ws#d4");
         assertThat(reb.dirKey(Path.of("/ws"))).isEqualTo("/ws#d200");
-        assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws"))).isEqualTo("/ws");
+        assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws")))
+                .isEqualTo("/ws");
     }
 
     @Test
@@ -86,13 +87,9 @@ class BuildServiceEtaTest {
         // must keep the full-build average, not blend the truncated cancel.
         Path metrics = dir.resolve("metrics.json");
         BuildMetrics.record(
-                metrics,
-                new BuildMetrics.Outcome("build", "/proj#d1", "g:n", true, false, 12_000, java.util.List.of()),
-                1_000L);
+                metrics, new BuildMetrics.Outcome("build", "/proj#d1", "g:n", true, false, 12_000, List.of()), 1_000L);
         BuildMetrics.record(
-                metrics,
-                new BuildMetrics.Outcome("build", "/proj#d1", "g:n", false, true, 350, java.util.List.of()),
-                2_000L);
+                metrics, new BuildMetrics.Outcome("build", "/proj#d1", "g:n", false, true, 350, List.of()), 2_000L);
         BuildMetrics m = BuildMetrics.load(metrics);
         BuildMetrics.Stats okOnly = m.okAcrossShapes("build", "/proj");
         assertThat(okOnly.count()).isEqualTo(1);

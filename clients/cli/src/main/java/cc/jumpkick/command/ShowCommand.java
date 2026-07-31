@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk show &lt;step&gt;} — print primary output path(s) for a pipeline step (JK-1047).
+ * {@code jk show &lt;step&gt;} — print primary output path(s) for a pipeline step.
  * Equivalent to {@code jk tasks show &lt;step&gt;}.
  */
 public final class ShowCommand implements CliCommand {

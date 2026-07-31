@@ -75,7 +75,7 @@ public final class CasPrewriter implements AutoCloseable {
 
                 String relPath = outputDir.relativize(file).toString().replace(File.separatorChar, '/');
                 // Authoritative pass always content-hashes. Size+mtime alone can miss a
-                // same-size rewrite within one filesystem mtime tick (JK-1069 / coarse mtime).
+                // same-size rewrite within one filesystem mtime tick / coarse mtime).
                 // Poll-time CAS ingest is still a win when the hex matches (put is a no-op hit).
                 String hex = Hashing.sha256Hex(file);
                 Processed pre = processed.get(file);

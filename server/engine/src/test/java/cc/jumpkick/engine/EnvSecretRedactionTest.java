@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1274: a known {@code .env} value must never appear in free-form engine output (wire/journal)
+ * a known {@code.env} value must never appear in free-form engine output (wire/journal)
  * or in stamp/cache key material that lands under {@code target/}.
  */
 class EnvSecretRedactionTest {
@@ -74,9 +74,8 @@ class EnvSecretRedactionTest {
     }
 
     @Test
-    void real_environment_values_are_not_masked_even_when_named_in_dotenv(@TempDir Path tmp)
-            throws Exception {
-        // Source-based masking: a real env var that shadows .env is not a secret.
+    void real_environment_values_are_not_masked_even_when_named_in_dotenv(@TempDir Path tmp) throws Exception {
+        // Source-based masking: a real env var that shadows.env is not a secret.
         Files.writeString(tmp.resolve(".env"), "MODE=from-file\n");
         // Simulate via SecretRedactor directly (same rule as BuildEnv when the shell wins).
         var env = cc.jumpkick.config.EnvLookup.forModule(tmp, name -> "MODE".equals(name) ? "from-shell" : null);

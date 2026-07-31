@@ -59,11 +59,8 @@ class RebuildPackageStoreParityTest {
         Path jar = jarDir.resolve("lib.jar");
         Files.writeString(jar, "jar-bytes");
 
-        List<String> tokens = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "main:",
-                "sbom:",
-                "manifest:" + Map.of());
+        List<String> tokens =
+                List.of("classes:" + ClasspathFingerprint.entry(classes), "main:", "sbom:", "manifest:" + Map.of());
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
         String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Package the JumpKick VS Code extension as a VSIX (ticket-1017).
+# Package the JumpKick VS Code extension as a VSIX.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EXT="$ROOT/clients/vscode"

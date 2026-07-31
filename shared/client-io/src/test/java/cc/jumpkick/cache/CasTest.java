@@ -32,7 +32,7 @@ class CasTest {
 
         Cas.Stored stored = cas.putStream(new ByteArrayInputStream(payload));
 
-        // Same key and bytes as the buffered put() — streaming must not change the hash.
+        // Same key and bytes as the buffered put — streaming must not change the hash.
         assertThat(stored.path()).isEqualTo(cas.put(payload));
         assertThat(stored.sha256()).isEqualTo("b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9");
         assertThat(stored.size()).isEqualTo(payload.length);
@@ -74,7 +74,7 @@ class CasTest {
 
     @Test
     void putFile_never_shares_inode_with_source(@TempDir Path tempDir) throws IOException {
-        // Invariant: CAS blobs must not hard-link workspace/target outputs (ticket-1004).
+        // Invariant: CAS blobs must not hard-link workspace/target outputs.
         Cas cas = new Cas(tempDir.resolve("cas"));
         Path buildOut = tempDir.resolve("target/classes/Hello.class");
         Files.createDirectories(buildOut.getParent());

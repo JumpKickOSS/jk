@@ -10,16 +10,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 /**
- * Canonical module input roots (JK-1198 Mill-like SIMPLE).
+ * Canonical module input roots Mill-like SIMPLE).
  *
  * <p><b>SIMPLE (default / Mill-shaped):</b>
  *
  * <ul>
- *   <li>main sources {@code src/}
- *   <li>main resources {@code resources/}
- *   <li>default tests {@code test/src/}
- *   <li>default test resources {@code test/resources/}
- *   <li>named suite {@code <name>/src/}, resources {@code <name>/resources/}
+ * <li>main sources {@code src/}
+ * <li>main resources {@code resources/}
+ * <li>default tests {@code test/src/}
+ * <li>default test resources {@code test/resources/}
+ * <li>named suite {@code <name>/src/}, resources {@code <name>/resources/}
  * </ul>
  *
  * <p><b>TRADITIONAL (Maven import):</b> {@code src/main/{java,kotlin,groovy,resources}},
@@ -75,8 +75,8 @@ public final class ModuleLayout {
     }
 
     /**
-     * Main Groovy source roots (JK-1165). SIMPLE shares {@code src/} by extension; TRADITIONAL is
-     * {@code src/main/groovy} plus {@code src/main/java} (stray {@code .groovy} under the Java
+     * Main Groovy source roots. SIMPLE shares {@code src/} by extension; TRADITIONAL is
+     * {@code src/main/groovy} plus {@code src/main/java} (stray {@code.groovy} under the Java
      * root compiles too, mirroring the Kotlin collector).
      */
     public static List<Path> mainGroovyRoots(Path moduleDir, boolean compact) {
@@ -95,13 +95,13 @@ public final class ModuleLayout {
     }
 
     /**
-     * Test-resource root for a suite (JK-1198 Mill-like).
+     * Test-resource root for a suite Mill-like).
      *
      * <ul>
-     *   <li>SIMPLE default: {@code test/resources/}
-     *   <li>SIMPLE named {@code integration}: {@code integration/resources/}
-     *   <li>TRADITIONAL default: {@code src/test/resources}
-     *   <li>TRADITIONAL named: {@code src/<name>/resources}
+     * <li>SIMPLE default: {@code test/resources/}
+     * <li>SIMPLE named {@code integration}: {@code integration/resources/}
+     * <li>TRADITIONAL default: {@code src/test/resources}
+     * <li>TRADITIONAL named: {@code src/<name>/resources}
      * </ul>
      */
     public static Path suiteResourcesDir(Path moduleDir, boolean compact, String suite) {
@@ -126,7 +126,7 @@ public final class ModuleLayout {
     }
 
     /**
-     * Plugin-contributed module roots (JK-1166): the active manifests' {@code
+     * Plugin-contributed module rootsthe active manifests' {@code
      * [[contribute.source-roots]]} entries (Grails' {@code grails-app} tree), relative dirs
      * regardless of on-disk presence. Empty when {@code jk.toml} is absent or unparseable.
      */
@@ -195,7 +195,7 @@ public final class ModuleLayout {
 
     /**
      * Directories to walk for preflight dirty fingerprints: every root the build consumes,
-     * deduplicated (JK-1148 / JK-1198). When {@code skipTests}, omits test / test-resource roots.
+     * deduplicated. When {@code skipTests}, omits test / test-resource roots.
      */
     public static List<Path> fingerprintDirs(Path moduleDir, boolean skipTests) {
         boolean compact = isCompact(moduleDir);
@@ -261,8 +261,10 @@ public final class ModuleLayout {
 
     private static void addAbs(List<Root> out, LinkedHashSet<String> seen, Path moduleDir, Path abs, Kind kind) {
         if (!Files.isDirectory(abs)) return;
-        Path relPath =
-                moduleDir.toAbsolutePath().normalize().relativize(abs.toAbsolutePath().normalize());
+        Path relPath = moduleDir
+                .toAbsolutePath()
+                .normalize()
+                .relativize(abs.toAbsolutePath().normalize());
         if (relPath.startsWith("..")) return;
         String rel = relPath.toString().replace('\\', '/');
         if (rel.isEmpty() || !seen.add(rel)) return;

@@ -3,7 +3,7 @@ package cc.jumpkick.run;
 
 /**
  * Canonical step-name constants (the {@code {phase}-{step}} step names (their place in the run hierarchy is {@code pipeline/phase/step}) used by {@link
- * Step#builder} producers and their {@code .requires(...)} consumers). Naming a step in one
+ * Step#builder} producers and their {@code.requires(...)} consumers). Naming a step in one
  * place kills the stringly-typed producer/consumer duplication where a typo would otherwise be a
  * silent missing-dependency edge rather than a compile error.
  */
@@ -20,11 +20,11 @@ public final class StepNames {
     public static final String COMPILE_KOTLIN = "compile-kotlin";
     public static final String COMPILE_TEST = "compile-test";
     public static final String COPY_RESOURCES = "copy-resources";
-    /** Optional project build logic (ticket-1037); often folded into copy-resources. */
+    /** Optional project build logic; often folded into copy-resources. */
     public static final String HATCH_GENERATE = "build-logic";
-    /** SPI AFTER_COMPILE anchor (JK-1044 / JK-1061). */
+    /** SPI AFTER_COMPILE anchor. */
     public static final String BUILD_LOGIC_AFTER_COMPILE = "build-logic-after-compile";
-    /** SPI BEFORE_PACKAGE anchor (JK-1044 / JK-1061). */
+    /** SPI BEFORE_PACKAGE anchor. */
     public static final String BUILD_LOGIC_BEFORE_PACKAGE = "build-logic-before-package";
 
     public static final String ENSURE_JDK = "ensure-jdk";

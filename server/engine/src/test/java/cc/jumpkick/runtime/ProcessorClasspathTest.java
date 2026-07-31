@@ -4,12 +4,12 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.compile.ClasspathResolver;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1253 / JK-1254: {@code [processor-dependencies]} must behave like every other scope in a
+ * {@code [processor-dependencies]} must behave like every other scope in a
  * workspace.
  *
  * <p>The processor classpath used to be built from the lockfile alone, while main and test both
@@ -35,8 +35,7 @@ class ProcessorClasspathTest {
         Path consumer = root.resolve("consumer");
         JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
 
-        WorkspaceClasspath.Result siblings =
-                WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
+        WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(consumer, build, Set.of(Scope.PROCESSOR));
         assertThat(siblings.missingSiblingJars()).isEmpty();
 
         List<Path> cp = BuildPipelines.processorClasspath(
@@ -63,9 +62,7 @@ class ProcessorClasspathTest {
     @Test
     void a_coordinate_processor_absent_from_the_lock_is_reported(@TempDir Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("solo"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "solo"
@@ -93,9 +90,7 @@ class ProcessorClasspathTest {
     /** A two-module workspace: {@code consumer} takes {@code proc} as a processor, and proc is built. */
     private static Path workspace(Path tmp) throws Exception {
         Path root = Files.createDirectories(tmp.resolve("ws"));
-        Files.writeString(
-                root.resolve("jk.toml"),
-                """
+        Files.writeString(root.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "ws"
@@ -106,9 +101,7 @@ class ProcessorClasspathTest {
                 """);
 
         Path proc = Files.createDirectories(root.resolve("proc"));
-        Files.writeString(
-                proc.resolve("jk.toml"),
-                """
+        Files.writeString(proc.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "proc"
@@ -119,9 +112,7 @@ class ProcessorClasspathTest {
         Files.writeString(procJar, "not-really-a-jar");
 
         Path consumer = Files.createDirectories(root.resolve("consumer"));
-        Files.writeString(
-                consumer.resolve("jk.toml"),
-                """
+        Files.writeString(consumer.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "consumer"

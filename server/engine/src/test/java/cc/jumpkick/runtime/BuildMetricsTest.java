@@ -60,7 +60,7 @@ class BuildMetricsTest {
         record(f, build("/p", true, 2000), NOW + 2);
         var s = BuildMetrics.load(f).invocation("build", "/p").orElseThrow().ok();
         assertThat(s.count()).isEqualTo(3);
-        // JK-1178: avg is EWMA-biased toward recent samples (not pure arithmetic mean of 2000).
+        // avg is EWMA-biased toward recent samples (not pure arithmetic mean of 2000).
         assertThat(s.minMillis()).isEqualTo(1000);
         assertThat(s.maxMillis()).isEqualTo(3000);
         // 1000 → +3000 (α0.4 → 1800) → +2000 (α0.4 → 1880)
@@ -72,10 +72,7 @@ class BuildMetricsTest {
     void rebuild_kind_is_stored_separately_from_incremental(@TempDir Path dir) {
         Path f = file(dir);
         record(f, build("/p", true, 500), NOW);
-        record(
-                f,
-                new BuildMetrics.Outcome("build:rebuild", "/p#d4", "g:n", true, false, 3200, List.of()),
-                NOW + 1);
+        record(f, new BuildMetrics.Outcome("build:rebuild", "/p#d4", "g:n", true, false, 3200, List.of()), NOW + 1);
         BuildMetrics m = BuildMetrics.load(f);
         assertThat(m.invocation("build", "/p").orElseThrow().ok().avgMillis()).isEqualTo(500);
         assertThat(m.invocation("build:rebuild", "/p#d4").orElseThrow().ok().avgMillis())

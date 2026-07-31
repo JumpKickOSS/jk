@@ -23,9 +23,6 @@ public final class ExportCommand extends GroupCommand {
     @Override
     public List<CliCommand> subcommands() {
         return List.of(
-                new ExportGradleCommand(),
-                new ExportMavenCommand(),
-                new ExportBomCommand(),
-                new ExportIdeaCommand());
+                new ExportGradleCommand(), new ExportMavenCommand(), new ExportBomCommand(), new ExportIdeaCommand());
     }
 }

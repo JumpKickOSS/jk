@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Dual-classifier package identity: plain jar and a classifier of the same GA must resolve as
- * distinct packages at the same version (ticket-1002).
+ * distinct packages at the same version.
  */
 class ClassifierPackageIdentityTest {
 

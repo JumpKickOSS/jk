@@ -2,7 +2,7 @@
 package cc.jumpkick.model;
 
 /**
- * Default versions for scaffolds and tooling fallbacks — ONE source (JK-1235). The Giter8
+ * Default versions for scaffolds and tooling fallbacks — ONE source. The Giter8
  * bundles ({@code templates/quarkus.g8}, {@code clients/cli/src/main/resources/giter8}) and the
  * quarkus plugin's gradle compileOnly pin carry their own copies by design (data files /
  * separate toolchain); everything java-side reads this.

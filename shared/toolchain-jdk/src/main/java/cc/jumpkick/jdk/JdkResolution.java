@@ -198,9 +198,7 @@ public final class JdkResolution {
      * compiler — those must not win current/default/JAVA_HOME tiers.
      */
     private static boolean hasBin(Path home) {
-        return home != null
-                && Files.isDirectory(home.resolve("bin"))
-                && ToolHealth.hasJavac(home);
+        return home != null && Files.isDirectory(home.resolve("bin")) && ToolHealth.hasJavac(home);
     }
 
     private static InstalledJdk installed(Path home) {

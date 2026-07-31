@@ -20,7 +20,7 @@ import java.util.Set;
  * Predicts each build step's progress-bar weight from on-disk state at pipeline start. Skip
  * detection uses {@link FreshnessStamp#looksFresh}; compile→test→package are correlated (if compile
  * will run, consumers are reserved too). Fresh/cached steps reserve {@link #TOKEN} (not zero) so
- * the aggregate bar keeps a denominator (JK-1153). Mispredictions only mis-size a slice — closed
+ * the aggregate bar keeps a denominator. Mispredictions only mis-size a slice — closed
  * by step-end auto-fill. See {@code docs/perf/progress-contract.md}.
  */
 public final class EffortWeights {
@@ -29,7 +29,7 @@ public final class EffortWeights {
 
     /**
      * Plan/runtime weight when a step is known skip/cache-hit but still appears in the pipeline
-     * (JK-1153). Keeps a non-zero phase tick so the aggregate bar has a denominator without
+     * . Keeps a non-zero phase tick so the aggregate bar has a denominator without
      * inventing full compile/test cost.
      */
     public static final int TOKEN = 1;
@@ -86,7 +86,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Hierarchical test weight (JK-1152 MVP): prefer learned module rate × method count; else
+     * Hierarchical test weight MVP): prefer learned module rate × method count; else
      * class-count × derived class rate; else method static floor. Does not replace
      * {@link #learned} — callers compose: {@code learned(..., runTestsHierarchical(...))}.
      */
@@ -242,13 +242,11 @@ public final class EffortWeights {
         if (ownMs > 0) return flatWeight(ownMs);
         // Cold module with a known planned method count: the count-scaled host prior beats the
         // host suite-wall average, which prices a 2000-method suite like the host's ~average
-        // suite (JK-1299). The host wall stays the fallback when no count is known.
+        // suite. The host wall stays the fallback when no count is known.
         if ("run-tests".equals(key) && count > 0) {
             var msPer = timings.hostAvgTestMethodMs();
             if (msPer.isPresent()) {
-                return Math.max(
-                        1,
-                        (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
+                return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
             }
         }
         long hostMs = stepOkAvgMillisHost(metrics, key);
@@ -302,7 +300,7 @@ public final class EffortWeights {
 
     /**
      * Steps that will do real work in a prepared pipeline (weight &gt; {@link #TOKEN}). Cached/skip
-     * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached()}.
+     * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
      */
     public static java.util.List<String> runningStepsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
         java.util.List<String> running = new java.util.ArrayList<>();
@@ -323,7 +321,7 @@ public final class EffortWeights {
      * walls — not a whole-build {@code build}/{@code build:rebuild} prior.
      *
      * @param stepCounts optional unit counts for cold residual fallback (e.g. {@code run-tests} →
-     *     method count); may be empty
+     * method count); may be empty
      */
     public static ModuleCost costFromRunningSteps(
             Path dir,
@@ -333,13 +331,12 @@ public final class EffortWeights {
             StepTimings timings,
             java.util.Collection<String> projectDirs,
             java.util.Map<String, Integer> stepCounts) {
-        return costFromRunningSteps(
-                dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
+        return costFromRunningSteps(dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
     }
 
     /**
      * @param testWorkers within-module test JVM count for cold {@code run-tests} walls (1 = serial
-     *     methods; Mill-shaped {@code -w})
+     * methods; Mill-shaped {@code -w})
      */
     public static ModuleCost costFromRunningSteps(
             Path dir,
@@ -364,14 +361,14 @@ public final class EffortWeights {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
             // Prefer this module's own measured whole-step wall; count-scaled/host/static tiers
-            // (via learned) only when the module is cold here (JK-1299).
+            // (via learned) only when the module is cold here.
             long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
             int w;
             if (ownMs > 0) {
                 w = flatWeight(ownMs);
             } else {
                 // run-tests defaults to 0 (unknown count) so the ms/method prior never fires on a
-                // fake count of 1; other steps keep the old floor of one unit (JK-1299).
+                // fake count of 1; other steps keep the old floor of one unit.
                 int defaultCount = "run-tests".equals(step) ? 0 : 1;
                 int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
                 int staticW = coldStaticWeight(step, count, wWorkers);
@@ -405,8 +402,8 @@ public final class EffortWeights {
         // at identity), and the same cold test-worker cap so ETA does not invent linear -w speedup.
         return switch (step) {
             case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
-                    flatWeight(Calibration.scaleBaseline(
-                            Calibration.BASELINE_COMPILE_PER_SOURCE_MS, 1.0) * Math.max(1, count));
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_COMPILE_PER_SOURCE_MS, 1.0)
+                        * Math.max(1, count));
             case "run-tests" -> {
                 int w = Calibration.coldTestParallel(testWorkers);
                 long method = Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
@@ -414,13 +411,18 @@ public final class EffortWeights {
                 long body = (long) Math.max(0, count) * method;
                 yield flatWeight(startup + (body + w - 1) / w);
             }
-            case "package-jar" ->
-                    flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
+            case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
             case "package-assembly" -> ASSEMBLY_RUN;
             case "native-image" -> NATIVE_RUN;
             case "write-image" -> OCI_RUN;
-            case "resolve-deps", "parse-build", "ensure-jdk", "copy-resources", "write-stamp",
-                    "write-stamp-kotlin", "write-stamp-groovy", "build-logic-after-compile",
+            case "resolve-deps",
+                    "parse-build",
+                    "ensure-jdk",
+                    "copy-resources",
+                    "write-stamp",
+                    "write-stamp-kotlin",
+                    "write-stamp-groovy",
+                    "build-logic-after-compile",
                     "build-logic-before-package" -> TOKEN;
             default -> 0;
         };
@@ -558,7 +560,7 @@ public final class EffortWeights {
             // Tests + packaging consume the compiled output: if a compile ran (or
             // --force), they run. The precise test skip is decided at run-tests via
             // the CAS marker (which survives `jk clean`); that step reweights down
-            // to TOKEN there (JK-1153).
+            // to TOKEN there.
             try {
                 testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
             } catch (IOException e) {
@@ -577,7 +579,7 @@ public final class EffortWeights {
             // with count=1 to match (a flat per-step cost). Multiplying it by the test
             // file count here was the bug that ballooned the estimate (e.g. ×46 → ~40s
             // of pure fiction for a ~1.2s compile). The static cold fallback stays a
-            // file-count guess. (compile-java is consistent: its .ticks is the source
+            // file-count guess. (compile-java is consistent: its.ticks is the source
             // count, the same count predict multiplies, so it stays per-source.)
             compileTest = testWillRun
                     ? learned(
@@ -593,8 +595,9 @@ public final class EffortWeights {
             int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
             // Cold bar weight uses the same host priors as ETA (not legacy TEST_METHOD×8).
             int testWorkers = resolveTestWorkersForPredict(in, classes);
-            int staticTests = coldWorkWeight("run-tests", methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
-            // JK-1155: prefer method-count × run-tests rate; fall back to class-count ×
+            int staticTests =
+                    coldWorkWeight("run-tests", methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
+            // prefer method-count × run-tests rate; fall back to class-count ×
             // run-tests-class rate when method annotations are not found.
             if (testWillRun) {
                 if (methods > 0) {
@@ -616,7 +619,7 @@ public final class EffortWeights {
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
         }
         // Fresh steps still sit in the pipeline for a stamp check — reserve a token so the
-        // workspace bar never calibrates to a pure-zero execute band (JK-1153).
+        // workspace bar never calibrates to a pure-zero execute band.
         if (useJava && compileJava == SKIP) compileJava = TOKEN;
         if (useKotlin && compileKotlin == SKIP) compileKotlin = TOKEN;
         if (useGroovy && compileGroovy == SKIP) compileGroovy = TOKEN;
@@ -730,7 +733,7 @@ public final class EffortWeights {
                 if (checksum == null) continue; // pom-only / path / git — nothing to fetch
                 // Only artifacts missing from the CAS cost anything to sync. --force/--refresh does
                 // NOT re-download blobs already present: the CAS is content-addressed (a stored
-                // sha256 is byte-identical), so a forced build resolves entirely from local disk —
+                // sha256 is byte-identical), so a forced build resolves entirely from local disk
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
                 // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
                 String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
@@ -770,7 +773,7 @@ public final class EffortWeights {
 
     /**
      * As {@link #costOf(Path, Set, cc.jumpkick.run.Pipeline)}, but charging {@link #SKIP} for steps
-     * the forecast already determined are cached (JK-1260).
+     * the forecast already determined are cached.
      *
      * <p>A pipeline's estimated weight is what the steps would cost if they all ran. Estimating a
      * build from that alone ignores the plan sitting right next to it: a workspace whose every
@@ -800,7 +803,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Module cost from pre-computed weights (JK-1114 shape memo / ETA-only path) — no pipeline
+     * Module cost from pre-computed weights shape memo / ETA-only path) — no pipeline
      * assembly. {@code testWeight} is the serial {@code run-tests} slice; 0 when unknown.
      */
     public static ModuleCost costOf(Path dir, Set<Path> prereqs, int weight, int testWeight) {
@@ -881,12 +884,12 @@ public final class EffortWeights {
      * Rolling-window list schedule matching {@link WorkspaceScheduler} (bounded path):
      *
      * <ul>
-     *   <li>A module is ready only when every dirty prereq has fully finished (entire weight).
-     *   <li>At most {@code concurrency} modules run at once.
-     *   <li>Ready modules are admitted longest-first (stable heuristic).
+     * <li>A module is ready only when every dirty prereq has fully finished (entire weight).
+     * <li>At most {@code concurrency} modules run at once.
+     * <li>Ready modules are admitted longest-first (stable heuristic).
      * </ul>
      *
-     * @return scheduled duration in the same units as {@link ModuleCost#weight()}
+     * @return scheduled duration in the same units as {@link ModuleCost#weight}
      */
     static long listSchedule(List<ModuleCost> mods, int concurrency) {
         if (mods == null || mods.isEmpty()) return 0;
@@ -937,8 +940,7 @@ public final class EffortWeights {
         return t;
     }
 
-    private static boolean prereqsDone(
-            ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
+    private static boolean prereqsDone(ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
         if (m.prereqs() == null) return true;
         for (Path p : m.prereqs()) {
             if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
@@ -946,6 +948,4 @@ public final class EffortWeights {
         }
         return true;
     }
-
 }
-

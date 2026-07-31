@@ -9,21 +9,24 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1126: top-level `$` class names vs nested types. */
+/**top-level `$` class names vs nested types. */
 class ShrunkJarPackagerTest {
 
     @Test
     void nested_class_with_outer_peer_is_skipped() {
         Set<String> paths = Set.of("com/ex/Outer.class", "com/ex/Outer$Inner.class");
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer$Inner.class", paths)).isTrue();
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer.class", paths)).isFalse();
+        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer$Inner.class", paths))
+                .isTrue();
+        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Outer.class", paths))
+                .isFalse();
     }
 
     @Test
     void top_level_dollar_name_without_outer_is_kept() {
         // Legal JVM top-level simple name containing `$` — no Outer.class peer.
         Set<String> paths = Set.of("com/ex/Foo$Bar.class");
-        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths)).isFalse();
+        assertThat(ShrunkJarPackager.isNestedClassFile("com/ex/Foo$Bar.class", paths))
+                .isFalse();
     }
 
     @Test

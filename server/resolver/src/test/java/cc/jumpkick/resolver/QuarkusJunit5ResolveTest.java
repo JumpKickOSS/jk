@@ -13,11 +13,13 @@ import cc.jumpkick.repo.RepoGroup;
 import cc.jumpkick.resolver.pubgrub.PubGrubSolver;
 import cc.jumpkick.resolver.pubgrub.Term;
 import cc.jumpkick.resolver.pubgrub.VersionSet;
+import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Tag;
@@ -47,19 +49,18 @@ class QuarkusJunit5ResolveTest {
         MavenPackageSource inner = new MavenPackageSource(repos, pomBuilder, bom);
         var src = new cc.jumpkick.resolver.pubgrub.PackageSource() {
             @Override
-            public List<String> versions(String pkg) throws java.io.IOException, InterruptedException {
+            public List<String> versions(String pkg) throws IOException, InterruptedException {
                 versions.incrementAndGet();
                 return inner.versions(pkg);
             }
 
             @Override
-            public java.util.Optional<String> preferredVersion(String pkg) {
+            public Optional<String> preferredVersion(String pkg) {
                 return inner.preferredVersion(pkg);
             }
 
             @Override
-            public List<Term> dependencies(String pkg, String version)
-                    throws java.io.IOException, InterruptedException {
+            public List<Term> dependencies(String pkg, String version) throws IOException, InterruptedException {
                 deps.incrementAndGet();
                 return inner.dependencies(pkg, version);
             }
@@ -69,8 +70,8 @@ class QuarkusJunit5ResolveTest {
         Map<String, String> sol = new PubGrubSolver(src, 50_000, 15_000L)
                 .solve("<root>", "0", List.of(Term.positive(pkg, VersionSet.exact("3.28.5"))));
         long ms = (System.nanoTime() - t0) / 1_000_000L;
-        System.out.println("junit5 n=" + sol.size() + " ms=" + ms + " versions=" + versions.get() + " deps="
-                + deps.get());
+        System.out.println(
+                "junit5 n=" + sol.size() + " ms=" + ms + " versions=" + versions.get() + " deps=" + deps.get());
         assertThat(sol).isNotEmpty();
         assertThat(ms).isLessThan(15_000L);
     }

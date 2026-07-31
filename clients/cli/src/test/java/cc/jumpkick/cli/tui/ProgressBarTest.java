@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.TestAnsi;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;

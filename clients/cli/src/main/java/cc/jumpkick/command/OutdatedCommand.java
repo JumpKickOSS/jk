@@ -105,7 +105,7 @@ public final class OutdatedCommand implements CliCommand {
         for (String line : renderTable(rows, report.workspace(), showTip, "Dependency versions")) {
             CliOutput.out(line);
         }
-        // Footer: lockfile-respecting workflow + graph inspection (ticket-1034).
+        // Footer: lockfile-respecting workflow + graph inspection.
         CliOutput.out("Next: review with `jk why <coord>` / `jk tree`, then `jk update` only when you intend"
                 + " to re-resolve (lockfile is law).");
         return Exit.SUCCESS;
@@ -116,9 +116,7 @@ public final class OutdatedCommand implements CliCommand {
         return "outdated";
     }
 
-    // ---------------------------------------------------------------
     // Version comparison (normalizes git tag names like "v1.2.3")
-    // ---------------------------------------------------------------
 
     /** True when {@code a} is a strictly-higher version than {@code b} (both version-like). */
     private static boolean ahead(String a, String b) {
@@ -139,9 +137,7 @@ public final class OutdatedCommand implements CliCommand {
         return !ahead(r.compatible(), r.current()) && !ahead(r.latest(), r.current());
     }
 
-    // ---------------------------------------------------------------
     // JSON
-    // ---------------------------------------------------------------
 
     private static String toJson(List<OutdatedReport.Row> rows) {
         StringBuilder sb = new StringBuilder("[");
@@ -169,10 +165,8 @@ public final class OutdatedCommand implements CliCommand {
         return sb.append(']').toString();
     }
 
-    // ---------------------------------------------------------------
     // Rendering — box-drawn table mirroring JdkListCommand's style.
     // Columns are dynamic: [Module?] Dependency Current Compatible Latest [Tip?] Scope.
-    // ---------------------------------------------------------------
 
     private static final String NONE = "—";
 

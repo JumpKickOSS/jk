@@ -112,10 +112,8 @@ class MavenRepoTest {
         assertThat(MavenLayout.metadataPath(widget))
                 .isEqualTo("com/fasterxml/jackson/core/jackson-databind/maven-metadata.xml");
         // Classified secondary artifacts share the main GAV POM (never guice-5.1.0-classes.pom).
-        Coordinate guiceClasses =
-                new Coordinate("com.google.inject", "guice", "5.1.0", "classes", "jar");
-        assertThat(MavenLayout.pomPath(guiceClasses))
-                .isEqualTo("com/google/inject/guice/5.1.0/guice-5.1.0.pom");
+        Coordinate guiceClasses = new Coordinate("com.google.inject", "guice", "5.1.0", "classes", "jar");
+        assertThat(MavenLayout.pomPath(guiceClasses)).isEqualTo("com/google/inject/guice/5.1.0/guice-5.1.0.pom");
         assertThat(MavenLayout.artifactPath(guiceClasses))
                 .isEqualTo("com/google/inject/guice/5.1.0/guice-5.1.0-classes.jar");
     }
@@ -214,7 +212,7 @@ class MavenRepoTest {
 
     @Test
     void online_warm_fetch_uses_local_store_without_network(@TempDir Path tempDir) throws Exception {
-        // JK-1088: second online fetch of the same GAV should not re-HTTP.
+        // second online fetch of the same GAV should not re-HTTP.
         byte[] pom = "<project><modelVersion>4.0.0</modelVersion></project>".getBytes(StandardCharsets.UTF_8);
         serve("/com/example/widget/1.0/widget-1.0.pom", 200, pom);
         // Checksum sidecars (optional) — miss is OK for TOFU
@@ -312,7 +310,7 @@ class MavenRepoTest {
     void missing_sidecar_proceeds_and_is_counted(@TempDir Path tempDir) throws Exception {
         byte[] jar = "no-sidecar".getBytes(StandardCharsets.UTF_8);
         serve("/com/example/widget/1.0/widget-1.0.jar", 200, jar);
-        // No .sha256 / .sha1 handlers → 404 → TOFU count
+        // No.sha256 /.sha1 handlers → 404 → TOFU count
         MavenRepo repo = new MavenRepo("test", base, new Http(), new Cas(tempDir));
         repo.fetchArtifact(Coordinate.of("com.example", "widget", "1.0"));
         assertThat(repo.missingUpstreamChecksums()).isEqualTo(1);

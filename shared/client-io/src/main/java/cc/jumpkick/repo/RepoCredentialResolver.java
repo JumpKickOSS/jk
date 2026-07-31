@@ -28,7 +28,7 @@ public final class RepoCredentialResolver {
         this(System::getenv, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
     }
 
-    /** The default resolver, but reading environment variables through {@code env} (JK-1272). */
+    /** The default resolver, but reading environment variables through {@code env}. */
     public static RepoCredentialResolver withEnv(Function<String, String> env) {
         return new RepoCredentialResolver(
                 env, MavenSettings.load(), new RepoCredentialStore(), new ForgeAuth(), ForgeIdentity.real());
@@ -83,12 +83,11 @@ public final class RepoCredentialResolver {
      * returns null; falls back to {@link RepoCredential#ANONYMOUS}.
      */
     public RepoCredential resolve(String repoId, URI url, Optional<RepoCredential> inline) {
-        // 1. inline jk.toml — expanding ${VAR} here rather than at parse time (JK-1272), because this
+        // 1. inline jk.toml — expanding ${VAR} here rather than at parse time, because this
         // is where the request's environment is in scope. Doing it during the parse made the parse
         // environment-dependent, so a memoized result served the first caller's values to everyone,
         // and inside the engine it read the daemon's environment instead of the caller's.
-        Optional<RepoCredential> fromInline =
-                inline.map(c -> expand(repoId, c)).filter(c -> !c.isAnonymous());
+        Optional<RepoCredential> fromInline = inline.map(c -> expand(repoId, c)).filter(c -> !c.isAnonymous());
         if (fromInline.isPresent()) return fromInline.get();
 
         // Sources 2–4 are keyed by repo id; skip them when there's no declared

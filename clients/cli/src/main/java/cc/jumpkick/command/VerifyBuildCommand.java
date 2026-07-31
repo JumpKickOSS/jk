@@ -102,7 +102,7 @@ public final class VerifyBuildCommand implements CliCommand {
                     ctx.label("parse jk.toml + jk-lock.toml");
                     ProjectInfo root = projectInfo(dir);
                     List<Path> moduleDirs = moduleDirs(dir, root);
-                    // Every module the user built must have its jar in place before we rebuild —
+                    // Every module the user built must have its jar in place before we rebuild
                     // same "run `jk build` first" gate the single-jar verify always had. The
                     // workspace root itself is exempt (a pure aggregator produces no jar).
                     for (Path moduleDir : moduleDirs) {
@@ -205,20 +205,20 @@ public final class VerifyBuildCommand implements CliCommand {
         // itself (the build request serializes entryDir, not the model — thin client).
         JkBuild scratchBuild = null;
         var request = new WorkspaceRequest(
-                scratch,
-                scratchBuild,
-                cache,
-                null, // jdksDir: default install root
-                1, // workers
-                null, // profile
-                true, // skipTests
-                false, // verbose
-                0, // module concurrency: auto
-                null, // dirtyHint: rerun marks everything dirty anyway
-                true, // only read by the in-process test path; the engine plans its own memory
-                false) // verify must rebuild against the pinned lock verbatim — never freshen it
+                        scratch,
+                        scratchBuild,
+                        cache,
+                        null, // jdksDir: default install root
+                        1, // workers
+                        null, // profile
+                        true, // skipTests
+                        false, // verbose
+                        0, // module concurrency: auto
+                        null, // dirtyHint: rerun marks everything dirty anyway
+                        true, // only read by the in-process test path; the engine plans its own memory
+                        false) // verify must rebuild against the pinned lock verbatim — never freshen it
                 // Scratch-salted action keys can never recur: tasks must not persist
-                // action-cache records or incremental state for this build (JK-1297).
+                // action-cache records or incremental state for this build.
                 .withEphemeralActions(true);
         Session session = SessionContext.current()
                 .withConfig(SessionContext.current().config().mergedWith(withRerun()))
@@ -361,7 +361,7 @@ public final class VerifyBuildCommand implements CliCommand {
     // ---- scratch checkout ---------------------------------------------------
 
     /**
-     * Copy the project tree into the scratch root, excluding {@code .git} and every module's {@code
+     * Copy the project tree into the scratch root, excluding {@code.git} and every module's {@code
      * target/} output tree (a directory named {@code target} whose parent holds a {@code jk.toml}).
      * Attributes (mtimes) are preserved so the copied {@code jk.toml}↔{@code jk-lock.toml} freshness
      * relationship survives; {@link #touchLockfiles} then bumps the locks regardless.
@@ -405,7 +405,8 @@ public final class VerifyBuildCommand implements CliCommand {
         FileTime now = FileTime.fromMillis(System.currentTimeMillis());
         try (var stream = Files.walk(root)) {
             for (Path p : (Iterable<Path>) stream::iterator) {
-                if (p.getFileName() != null && "jk-lock.toml".equals(p.getFileName().toString())) {
+                if (p.getFileName() != null
+                        && "jk-lock.toml".equals(p.getFileName().toString())) {
                     Files.setLastModifiedTime(p, now);
                 }
             }

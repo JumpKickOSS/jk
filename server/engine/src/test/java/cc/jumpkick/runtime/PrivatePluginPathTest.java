@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ticket-1010: path-pinned private plugins with required sha256 (fail closed on missing /
+ * : path-pinned private plugins with required sha256 (fail closed on missing /
  * mismatch).
  */
 @Tag("integration")

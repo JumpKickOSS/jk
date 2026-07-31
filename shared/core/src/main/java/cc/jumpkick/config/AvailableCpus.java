@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.function.IntSupplier;
 
 /**
- * Effective CPU count for concurrency defaults (JK-1084): cgroup CPU quota when present, else
- * {@link Runtime#availableProcessors()}.
+ * Effective CPU count for concurrency defaultscgroup CPU quota when present, else
+ * {@link Runtime#availableProcessors}.
  *
- * <p>Modern JDKs often already clamp {@code availableProcessors()} to the container quota; this
+ * <p>Modern JDKs often already clamp {@code availableProcessors} to the container quota; this
  * probe makes the rule <em>explicit and testable</em> so {@code jobs = 0} / default “all cores”
  * means <strong>quota cores</strong> (e.g. Docker/k8s), not the host’s physical count when the
  * JVM would otherwise over-report.
@@ -45,7 +45,7 @@ public final class AvailableCpus {
      *
      * @param cgroupRoot typically {@code /sys/fs/cgroup}
      * @param procSelfCgroup typically {@code /proc/self/cgroup}; may be missing
-     * @param jvmFallback usually {@code availableProcessors()}
+     * @param jvmFallback usually {@code availableProcessors}
      */
     public static int count(Path cgroupRoot, Path procSelfCgroup, IntSupplier jvmFallback) {
         int jvm = Math.max(1, jvmFallback.getAsInt());

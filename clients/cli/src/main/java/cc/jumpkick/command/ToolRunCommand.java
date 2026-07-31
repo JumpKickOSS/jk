@@ -25,7 +25,7 @@ import java.util.List;
 /**
  * {@code jk run [<target>] [<args>…]} — universal runner, mounted as top-level {@code run} and
  * {@code jk tool run} ({@code jkx} is the argv[0] alias). No target runs the current project; first
- * positional is always the target ({@code jk run . <args>} to pass project args). Resolve/fetch is
+ * positional is always the target ({@code jk run. <args>} to pass project args). Resolve/fetch is
  * engine-hosted; exec stays client-side with inherited stdio.
  */
 public final class ToolRunCommand implements CliCommand {
@@ -102,7 +102,7 @@ public final class ToolRunCommand implements CliCommand {
      * that module directory; otherwise {@code null}. Non-workspace dirs and names that look like
      * files/coords/URLs are ignored.
      */
-    // Package-visible for tests (leaf ambiguity + local-path precedence, JK-1316).
+    // Package-visible for tests (leaf ambiguity + local-path precedence,.
     static Path resolveWorkspaceModule(Path cwd, String name) {
         if (name == null || name.isBlank() || ".".equals(name) || name.contains(":") || name.contains("@")) {
             return null;
@@ -140,7 +140,7 @@ public final class ToolRunCommand implements CliCommand {
             while (want.startsWith("./")) want = want.substring(2);
             if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
             // A target naming an existing local path keeps its file/dir meaning: only an EXACT
-            // declared-path match may claim it — a leaf shortcut must not shadow `./web` (JK-1316).
+            // declared-path match may claim it — a leaf shortcut must not shadow `./web`.
             boolean localExists = Files.exists(start.resolve(want));
             List<Path> suffixHits = new ArrayList<>();
             for (String mod : rootBuild.workspace().modules()) {
@@ -154,13 +154,12 @@ public final class ToolRunCommand implements CliCommand {
             if (!suffixHits.isEmpty() && !localExists) {
                 if (suffixHits.size() > 1) {
                     // Two modules share the leaf: picking whichever is declared first silently
-                    // runs the wrong one — name the candidates instead (JK-1316).
+                    // runs the wrong one — name the candidates instead.
                     String candidates = suffixHits.stream()
                             .map(d -> wsRoot(d, start))
                             .collect(java.util.stream.Collectors.joining(", "));
-                    throw new AmbiguousModuleTarget(
-                            "`" + want + "` matches several workspace modules (" + candidates
-                                    + ") — use the full module path");
+                    throw new AmbiguousModuleTarget("`" + want + "` matches several workspace modules (" + candidates
+                            + ") — use the full module path");
                 }
                 return suffixHits.get(0);
             }
@@ -184,7 +183,7 @@ public final class ToolRunCommand implements CliCommand {
         }
     }
 
-    /** {@code jk run <leaf>} matched more than one workspace module (JK-1316). */
+    /** {@code jk run <leaf>} matched more than one workspace module. */
     static final class AmbiguousModuleTarget extends RuntimeException {
         AmbiguousModuleTarget(String message) {
             super(message);

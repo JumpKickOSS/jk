@@ -57,7 +57,7 @@ public final class JkBuildParser {
      * Process-lifetime memo of {@link #parse(Path)}, keyed by path + size + mtime (rewrites re-parse).
      */
     // A plain (path, size, mtime) memo: the parse is a pure function of the file's bytes again, so
-    // nothing environment-shaped belongs in this key (JK-1272).
+    // nothing environment-shaped belongs in this key.
     private static final Map<CacheKey, JkBuild> PARSE_CACHE = new ConcurrentHashMap<>();
 
     private record CacheKey(Path path, long size, FileTime modified) {}
@@ -119,7 +119,7 @@ public final class JkBuildParser {
         }
         // Reject ${VAR} outside the whitelisted positions before anything else reads the file, so
         // the message names the position rather than surfacing later as a bewildering "no such
-        // version" (JK-1271).
+        // version".
         Interpolation.guard(result);
         JkBuild.Project project = parseProject(result);
         LibraryCatalog effective = catalog.withProjectOverrides(parseProjectLibraries(result));
@@ -378,8 +378,8 @@ public final class JkBuildParser {
         VersionSelector kotlin = parseKotlinVersion(project);
         VersionSelector groovy = parseGroovyVersion(project);
         requireSupportedMajor("project.java", java);
-        // sources = true        → PUBLISH  (assembled during `jk publish` only)
-        // sources = "always"   → ALWAYS   (built as package-sources step + published)
+        // sources = true → PUBLISH (assembled during `jk publish` only)
+        // sources = "always" → ALWAYS (built as package-sources step + published)
         // sources absent/false → DISABLED (no sources jar)
         Object sourcesRaw = project.get("sources");
         JkBuild.SourcesMode sourcesMode;
@@ -471,7 +471,7 @@ public final class JkBuildParser {
 
     /**
      * {@code project.java} accepts either an unquoted TOML integer or a quoted numeric string
-     * (coerced). Absent → {@code 0} ({@code javaRelease()} falls back to the {@code jdk} major).
+     * (coerced). Absent → {@code 0} ({@code javaRelease} falls back to the {@code jdk} major).
      */
     private static int parseJavaRelease(TomlTable project) {
         if (!project.contains("java")) return 0;
@@ -539,9 +539,7 @@ public final class JkBuildParser {
         }
     }
 
-    // ---------------------------------------------------------------------
     // Dependencies
-    // ---------------------------------------------------------------------
 
     private static JkBuild.Dependencies parseDependencies(TomlTable root, Workspace workspace, LibraryCatalog catalog) {
         EnumMap<Scope, List<Dependency>> byScope = new EnumMap<>(Scope.class);
@@ -609,14 +607,14 @@ public final class JkBuildParser {
      * Resolve a {@code name = "value"} string shorthand. Two forms are recognised:
      *
      * <ul>
-     *   <li>Git URL — value starts with {@code git://} or {@code https://}: a git dependency with
-     *       URL-embedded ref/subdir parsing. When no ref is embedded, {@code branch = "main"} is
-     *       implied.
-     *   <li>Version spec — anything else: looked up in the bundled catalog by {@code name} and
-     *       treated as a floating version selector (the Cargo-style {@code name = "1.2.3"} form).
+     * <li>Git URL — value starts with {@code git://} or {@code https://}: a git dependency with
+     * URL-embedded ref/subdir parsing. When no ref is embedded, {@code branch = "main"} is
+     * implied.
+     * <li>Version spec — anything else: looked up in the bundled catalog by {@code name} and
+     * treated as a floating version selector (the Cargo-style {@code name = "1.2.3"} form).
      * </ul>
      *
-     * <p>A leading {@code .} or {@code /} is a local-path shorthand — a consume-only path dependency
+     * <p>A leading {@code.} or {@code /} is a local-path shorthand — a consume-only path dependency
      * ({@link Dependency#pathByName}), built compile/package-only. A local sibling that should be
      * built fully (with tests) belongs in {@code [workspace] modules} instead.
      */
@@ -671,11 +669,11 @@ public final class JkBuildParser {
      * reserved keyword — never as a filesystem path — regardless of what the filesystem contains.
      *
      * <ul>
-     *   <li>Reserved keywords: {@code latest}, {@code stable}, {@code lts}, {@code preview},
-     *       {@code nightly}.
-     *   <li>Version spec operators: leading {@code ^} (caret), {@code ~} (tilde), {@code =}
-     *       (exact), {@code >}, {@code <}.
-     *   <li>Bare version numbers: leading digit (e.g. {@code 1.2.3}, {@code 2.0}).
+     * <li>Reserved keywords: {@code latest}, {@code stable}, {@code lts}, {@code preview},
+     * {@code nightly}.
+     * <li>Version spec operators: leading {@code ^} (caret), {@code ~} (tilde), {@code =}
+     * (exact), {@code >}, {@code <}.
+     * <li>Bare version numbers: leading digit (e.g. {@code 1.2.3}, {@code 2.0}).
      * </ul>
      */
     static boolean isVersionSpecOrKeyword(String value) {
@@ -718,7 +716,7 @@ public final class JkBuildParser {
         boolean optional = Boolean.TRUE.equals(entry.getBoolean("optional"));
         Dependency dep =
                 parseDepEntryForm(name, entry, scope, workspace, catalog).withOptional(optional);
-        // Cross-package features (ticket-1006): only when the consumer set `features` and/or
+        // Cross-package features: only when the consumer set `features` and/or
         // `default-features` — absent keys leave prior resolve behavior unchanged.
         boolean hasFeaturesKey = entry.contains("features");
         boolean hasDefaultFeaturesKey = entry.contains("default-features");
@@ -965,7 +963,7 @@ public final class JkBuildParser {
      * URL, but the parser also handles both.
      *
      * @param baseUrl the git repository URL with no embedded suffix
-     * @param subdir  sub-directory inside the repo, from the {@code !path} suffix, or {@code null}
+     * @param subdir sub-directory inside the repo, from the {@code !path} suffix, or {@code null}
      * @param refSpec raw ref string prefixed by {@code "@"} or {@code "#"}, or {@code null}
      */
     record EmbeddedUrlParts(String baseUrl, String subdir, String refSpec) {}
@@ -975,12 +973,12 @@ public final class JkBuildParser {
      * a raw git URL. Either or both may be absent. The two suffixes may appear in either order:
      *
      * <ul>
-     *   <li>{@code url@ref!subdir} — ref before subdir
-     *   <li>{@code url!subdir@ref} — subdir before ref
-     *   <li>{@code url#sha!subdir} / {@code url!subdir#sha} — sha with subdir
+     * <li>{@code url@ref!subdir} — ref before subdir
+     * <li>{@code url!subdir@ref} — subdir before ref
+     * <li>{@code url#sha!subdir} / {@code url!subdir#sha} — sha with subdir
      * </ul>
      *
-     * <p>The {@code @} ref delimiter is searched only after the last {@code /} or {@code :} in the
+     * <p>The {@code @} ref delimiter is searched only after the last {@code /} or {@code:} in the
      * URL, so the {@code git@host} userinfo form is not confused for an embedded ref. The {@code #}
      * and {@code !} delimiters are searched from the start of the string (they are not valid in
      * standard git URL paths without encoding).
@@ -1069,14 +1067,12 @@ public final class JkBuildParser {
         return versionLike ? new GitRefSpec.Tag(name) : new GitRefSpec.Branch(name);
     }
 
-    // ---------------------------------------------------------------------
     // Repositories / profiles / features / workspace
-    // ---------------------------------------------------------------------
 
     /**
      * {@code [repositories]}. Credential and object-store fields keep their raw {@code ${VAR}} text:
      * expansion happens in {@code RepoCredentialResolver}, at the point a credential is actually
-     * used (JK-1272).
+     * used.
      *
      * <p>Interpolating here made the parse environment-dependent, which is wrong in two ways. The
      * parse is memoized on (path, size, mtime), so the first caller's environment pinned everyone
@@ -1147,10 +1143,8 @@ public final class JkBuildParser {
             String inherits = body.getString("inherits");
             List<String> javacArgs = optionalStringList(body, "javac", "profiles." + name + ".javac");
             List<String> jvmArgs = optionalStringList(body, "jvm-args", "profiles." + name + ".jvm-args");
-            List<String> includeTags =
-                    optionalStringList(body, "include-tags", "profiles." + name + ".include-tags");
-            List<String> excludeTags =
-                    optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags");
+            List<String> includeTags = optionalStringList(body, "include-tags", "profiles." + name + ".include-tags");
+            List<String> excludeTags = optionalStringList(body, "exclude-tags", "profiles." + name + ".exclude-tags");
             byName.put(name, new Profile(name, inherits, javacArgs, jvmArgs, includeTags, excludeTags));
         }
         return new Profiles(byName);
@@ -1158,7 +1152,7 @@ public final class JkBuildParser {
 
     /**
      * {@code [test] default-exclude-tags} — applied when CLI did not set {@code --exclude-tag}
-     * (JK-1137). Empty when the table/key is absent.
+     * . Empty when the table/key is absent.
      */
     public static List<String> parseDefaultExcludeTags(Path buildFile) {
         if (buildFile == null || !java.nio.file.Files.isRegularFile(buildFile)) return List.of();
@@ -1301,13 +1295,9 @@ public final class JkBuildParser {
         return new WorkspaceDependency(group, artifact, VersionSelector.parseFloating(versionRaw), null);
     }
 
-    // -----------------------------------------------------------------------
-
-    // -----------------------------------------------------------------------
-
     /**
      * The optional {@code [application]} table. Its mere presence marks the project as an
-     * application ({@link JkBuild#isApplication()}) — {@code Optional.empty()} when absent, never a
+     * application ({@link JkBuild#isApplication}) — {@code Optional.empty} when absent, never a
      * defaulted-fields sentinel, so presence and "declared but empty" stay distinguishable.
      */
     private static Optional<JkBuild.Application> parseApplication(TomlTable root) {
@@ -1373,11 +1363,11 @@ public final class JkBuildParser {
      * Apply a CLI packaging override over a parsed build for this invocation only.
      *
      * <ul>
-     *   <li>{@link JkBuild.AssemblyMode#SHRINK} — set assembly mode and inject shrink defaults when
-     *       missing
-     *   <li>{@link JkBuild.AssemblyMode#FAT} / {@link JkBuild.AssemblyMode#OFF} — set mode and drop
-     *       the shrink plugin config so a prior {@code assembly = "shrink"} or bare {@code [shrink]}
-     *       cannot still own packaging for this run
+     * <li>{@link JkBuild.AssemblyMode#SHRINK} — set assembly mode and inject shrink defaults when
+     * missing
+     * <li>{@link JkBuild.AssemblyMode#FAT} / {@link JkBuild.AssemblyMode#OFF} — set mode and drop
+     * the shrink plugin config so a prior {@code assembly = "shrink"} or bare {@code [shrink]}
+     * cannot still own packaging for this run
      * </ul>
      */
     public static JkBuild withAssemblyModeOverride(JkBuild build, JkBuild.AssemblyMode mode) {
@@ -1675,12 +1665,12 @@ public final class JkBuildParser {
 
     /**
      * {@code [build] extra-resources} — files from outside the module copied onto its classpath
-     * (JK-1262). Each entry is an inline table:
+     * . Each entry is an inline table:
      *
      * <pre>
      * extra-resources = [
-     *   { from = "../../plugins/&#42;/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest",
-     *     rename = "{1}.jk-plugin.toml" },
+     * { from = "../../plugins/&#42;/jk-plugin.toml", into = "cc/jumpkick/plugin/manifest",
+     * rename = "{1}.jk-plugin.toml" },
      * ]
      * </pre>
      *
@@ -1689,7 +1679,7 @@ public final class JkBuildParser {
      * contributes no files is indistinguishable from success until runtime).
      */
     /**
-     * {@code [test] env} — environment variables for each forked test JVM (JK-1267).
+     * {@code [test] env} — environment variables for each forked test JVM.
      *
      * <pre>
      * [test]
@@ -1698,7 +1688,7 @@ public final class JkBuildParser {
      *
      * Values are literal strings; {@code ${target}} and {@code ${module}} are substituted at launch
      * (see {@code TestEnv}). Environment variables are deliberately <em>not</em> interpolated here
-     * yet — that is whitelisted separately (JK-1271).
+     * yet — that is whitelisted separately.
      */
     private static Map<String, String> parseTestEnv(TomlTable root) {
         TomlTable test = root.getTable("test");
@@ -1714,8 +1704,7 @@ public final class JkBuildParser {
                     out.put(key, String.valueOf(value));
                     continue;
                 }
-                throw new JkBuildParseException(
-                        "[test].env." + key + " must be a string (or a bare boolean/number)");
+                throw new JkBuildParseException("[test].env." + key + " must be a string (or a bare boolean/number)");
             }
             out.put(key, s);
         }

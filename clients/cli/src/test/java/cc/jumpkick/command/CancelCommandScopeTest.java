@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1315: jobs register their workspace-root entry dir, so {@code jk cancel} (and Ctrl-C) from a
+ * jobs register their workspace-root entry dir, so {@code jk cancel} (and Ctrl-C) from a
  * member dir must resolve to the root before matching — a raw member path matched nothing.
  */
 class CancelCommandScopeTest {
@@ -52,6 +52,7 @@ class CancelCommandScopeTest {
                 java = 21
                 """);
 
-        assertThat(CancelCommand.cancelScope(dir)).isEqualTo(dir.toAbsolutePath().normalize());
+        assertThat(CancelCommand.cancelScope(dir))
+                .isEqualTo(dir.toAbsolutePath().normalize());
     }
 }

@@ -247,9 +247,9 @@ class JdkEnsureCommandTest {
                     tempDir,
                     s.installFolder(),
                     Map.of(
-                        "bin/java", "#!/fake/java",
-                        "bin/javac", "#!/fake/java",
-                        "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
+                            "bin/java", "#!/fake/java",
+                            "bin/javac", "#!/fake/java",
+                            "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
             String archivePath = "/archives/" + s.installFolder() + ".tar.gz";
             served.put(archivePath, archive);
             entries.add(entryJson(

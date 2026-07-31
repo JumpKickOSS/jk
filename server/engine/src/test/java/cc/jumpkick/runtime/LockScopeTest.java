@@ -11,7 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * {@link LockPipelines#lockScope}: every lock entry point (JSONL cascade, HTTP/MCP job) must
  * resolve the same single scope — workspace root with the merged union — so a module-scoped lock
- * can never overwrite the root {@code jk-lock.toml} with one module's closure (JK-1303).
+ * can never overwrite the root {@code jk-lock.toml} with one module's closure.
  */
 class LockScopeTest {
 

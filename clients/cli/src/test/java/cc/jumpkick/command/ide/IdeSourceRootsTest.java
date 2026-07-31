@@ -13,9 +13,7 @@ class IdeSourceRootsTest {
 
     @Test
     void simple_layout_includes_integration_as_test(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -40,9 +38,7 @@ class IdeSourceRootsTest {
 
     @Test
     void traditional_layout_includes_src_integration_java(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -70,9 +66,7 @@ class IdeSourceRootsTest {
 
     @Test
     void traditional_groovy_module_surfaces_groovy_roots(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -89,17 +83,14 @@ class IdeSourceRootsTest {
         Files.writeString(test.resolve("MainTest.groovy"), "class MainTest {}");
 
         List<IdeSourceRoots.Root> roots = IdeSourceRoots.of(tmp);
-        assertThat(roots.stream().map(IdeSourceRoots.Root::relative))
-                .contains("src/main/groovy", "src/test/groovy");
+        assertThat(roots.stream().map(IdeSourceRoots.Root::relative)).contains("src/main/groovy", "src/test/groovy");
         assertThat(roots.stream().filter(r -> "src/test/groovy".equals(r.relative())))
                 .allMatch(IdeSourceRoots.Root::test);
     }
 
     @Test
     void reserved_top_level_dirs_are_not_suites(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -117,9 +108,7 @@ class IdeSourceRootsTest {
 
     @Test
     void intellij_iml_contains_integration_root(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -135,6 +124,7 @@ class IdeSourceRootsTest {
         Files.writeString(tmp.resolve("integration/src/I.java"), "class I {}");
 
         // Unit-level: IdeSourceRoots is what imlXml consumes.
-        assertThat(IdeSourceRoots.of(tmp).stream().map(IdeSourceRoots.Root::relative)).contains("integration/src");
+        assertThat(IdeSourceRoots.of(tmp).stream().map(IdeSourceRoots.Root::relative))
+                .contains("integration/src");
     }
 }

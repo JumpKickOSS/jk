@@ -16,8 +16,7 @@ jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10
 # Compile against the bootstrap APIs only; at runtime the engine supplies these on the forked
 # worker CP as step-dependency jars (quarkus-bootstrap + maven-resolver + aligned smallrye-common),
 # so they must not be shaded into the assembly.
-# Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION (JK-1235).
-#
+# Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION.
 # Pinned exact (`=`), deliberately against jk's usual floating default. These are not ordinary
 # libraries we want point-release upgrades of: the engine hands the forked worker *these* jars at
 # QUARKUS_PLATFORM_VERSION, so compiling against anything else builds a worker that fails at

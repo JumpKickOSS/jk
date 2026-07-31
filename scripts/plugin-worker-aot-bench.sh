@@ -2,12 +2,12 @@
 # Benchmark PluginAot on *java … PluginMain* workers (not bare `javac`).
 #
 # Arms (engine host must be HotSpot 25+ — PluginAot.eligible rejects Graal):
-#   AOT-on  — default; maps -XX:AOTCache on kotlinc / java-compiler plugin JVMs
-#   AOT-off — JK_WORKER_AOT=off
+# AOT-on — default; maps -XX:AOTCache on kotlinc / java-compiler plugin JVMs
+# AOT-off — JK_WORKER_AOT=off
 #
 # Usage:
-#   ./scripts/plugin-worker-aot-bench.sh kotlin [/path/to/hello-kotlin]
-#   ./scripts/plugin-worker-aot-bench.sh java-worker   # requires engine test / AP project
+# ./scripts/plugin-worker-aot-bench.sh kotlin [/path/to/hello-kotlin]
+# ./scripts/plugin-worker-aot-bench.sh java-worker # requires engine test / AP project
 #
 # Env: RUNS (default 7), JDK_SPEC (default temurin-25)
 set -euo pipefail
@@ -24,7 +24,7 @@ median() {
 }
 
 took_ms() {
-  # parse "took Nms" from jk build line
+ # parse "took Nms" from jk build line
   local out
   out=$("$@" 2>&1) || true
   echo "$out" | sed -n 's/.*took \([0-9.]*\)ms.*/\1/p' | tail -1
@@ -67,7 +67,7 @@ case "$MODE" in
     echo "project: $PROJECT"
     cd "$PROJECT"
     unset JK_WORKER_AOT || true
-    # train: first rebuilds may miss AOT then background-train
+ # train: first rebuilds may miss AOT then background-train
     "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
     sleep 4
     "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC" >/dev/null 2>&1 || true

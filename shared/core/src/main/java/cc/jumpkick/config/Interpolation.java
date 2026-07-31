@@ -11,7 +11,7 @@ import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
- * Where {@code ${VAR}} may appear in a {@code jk.toml}, and what happens where it may not (JK-1271).
+ * Where {@code ${VAR}} may appear in a {@code jk.toml}, and what happens where it may not.
  *
  * <h2>The rule</h2>
  *
@@ -27,10 +27,10 @@ import org.tomlj.TomlTable;
  * <h2>Allowed</h2>
  *
  * <ul>
- *   <li>{@code [repositories.<name>]} credentials — {@code username}, {@code password}, {@code token}
- *   <li>{@code [repositories.<name>]} object-store keys — {@code region}, {@code endpoint},
- *       {@code access-key}, {@code secret-key}, {@code session-token}
- *   <li>{@code [test] env} values — what a forked test JVM sees
+ * <li>{@code [repositories.<name>]} credentials — {@code username}, {@code password}, {@code token}
+ * <li>{@code [repositories.<name>]} object-store keys — {@code region}, {@code endpoint},
+ * {@code access-key}, {@code secret-key}, {@code session-token}
+ * <li>{@code [test] env} values — what a forked test JVM sees
  * </ul>
  *
  * <h2>Not allowed, and why</h2>
@@ -155,8 +155,7 @@ public final class Interpolation {
         return RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
             if (value == null) {
-                throw new JkBuildParseException(
-                        describe + " references unset environment variable ${" + var + "}");
+                throw new JkBuildParseException(describe + " references unset environment variable ${" + var + "}");
             }
             return value;
         });

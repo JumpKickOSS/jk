@@ -12,14 +12,14 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Content fingerprints for source/input files (JK-1068).
+ * Content fingerprints for source/input files.
  *
  * <ul>
- *   <li><b>Thread-local walk cache</b> — each absolute path is content-hashed at most once per
- *       thread (so {@code ActionKey.forJavac} + {@code snapshotInputs} share one walk).
- *   <li><b>Disk memo</b> — {@code (path, size, mtime) → hex} under {@code <cache>/hash-memo/}.
- *       Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after
- *       settle. Fail open (re-hash) on any I/O error.
+ * <li><b>Thread-local walk cache</b> — each absolute path is content-hashed at most once per
+ * thread (so {@code ActionKey.forJavac} + {@code snapshotInputs} share one walk).
+ * <li><b>Disk memo</b> — {@code (path, size, mtime) → hex} under {@code <cache>/hash-memo/}.
+ * Trust only when size+mtime match and mtime is ≥ {@link #SETTLE_MS} old; store only after
+ * settle. Fail open (re-hash) on any I/O error.
  * </ul>
  */
 public final class FileHashMemo {

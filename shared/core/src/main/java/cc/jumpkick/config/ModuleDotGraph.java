@@ -135,19 +135,19 @@ public final class ModuleDotGraph {
         String fmt = format == null ? "dot" : format.trim().toLowerCase(Locale.ROOT);
         return switch (fmt) {
             case "mermaid" -> "flowchart LR\n  m0[\"" + escapeMermaidLabel(coord) + "\"]\n";
-            case "dot" -> "digraph modules {\n"
-                    + "  rankdir=LR;\n"
-                    + "  node [shape=box, fontname=\"Helvetica\"];\n"
-                    + "  m0 [label="
-                    + quoteDot(coord)
-                    + "];\n"
-                    + "}\n";
+            case "dot" ->
+                "digraph modules {\n"
+                        + "  rankdir=LR;\n"
+                        + "  node [shape=box, fontname=\"Helvetica\"];\n"
+                        + "  m0 [label="
+                        + quoteDot(coord)
+                        + "];\n"
+                        + "}\n";
             default -> throw new IllegalArgumentException("unsupported graph format: " + format);
         };
     }
 
-    private record Graph(
-            Path root, Map<Path, JkBuild> modules, Map<Path, Set<Path>> edges, Map<Path, String> ids) {}
+    private record Graph(Path root, Map<Path, JkBuild> modules, Map<Path, Set<Path>> edges, Map<Path, String> ids) {}
 
     private static Graph build(Path workspaceRoot, Map<Path, JkBuild> modulesByDir, Set<Path> only) {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
