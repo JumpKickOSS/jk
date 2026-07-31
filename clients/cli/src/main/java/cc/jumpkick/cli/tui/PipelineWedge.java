@@ -117,25 +117,26 @@ public final class PipelineWedge {
     }
 
     /**
-     * Settled cancel (JK-1252). Same red chip as a failure.
+     * Settled cancel (JK-1252). Same red chip as a failure. The chip already names the pipeline,
+     * so the body does not repeat it (JK-1321):
      *
      * <ul>
-     *   <li>Ctrl-C ({@code byUser}): {@code Build job was cancelled by user took 1.6s}
-     *   <li>Remote ({@code jk cancel} / web): {@code Build job was cancelled took 1.6s}
+     *   <li>Ctrl-C ({@code byUser}): {@code ✘ Build  job was cancelled by user took 1.6s}
+     *   <li>Remote ({@code jk cancel} / web): {@code ✘ Build  job was cancelled took 1.6s}
      * </ul>
      *
      * {@code cancelled} is warning yellow; {@code tookTail} is caller-styled (e.g.
      * {@link cc.jumpkick.cli.run.ConsoleSpec#took}) or empty.
      *
-     * <p>No-ANSI: {@code "! <name> Build job was cancelled[ by user][ took …]"}
+     * <p>No-ANSI: {@code "! <name> job was cancelled[ by user][ took …]"}
      */
     public static String cancelledJobLine(String name, boolean nerdfont, boolean byUser, String tookTail) {
         Theme t = Theme.active();
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         if (!t.isAnsi()) {
-            return "! " + name + " Build job was cancelled" + (byUser ? " by user" : "") + took;
+            return "! " + name + " job was cancelled" + (byUser ? " by user" : "") + took;
         }
-        String body = "Build job was "
+        String body = "job was "
                 + Theme.colorize("cancelled", t.warning())
                 + (byUser ? " by user" : "")
                 + took;
@@ -148,14 +149,5 @@ public final class PipelineWedge {
     /** Remote cancel — no "by user". */
     public static String cancelledJobLine(String name, boolean nerdfont, String tookTail) {
         return cancelledJobLine(name, nerdfont, false, tookTail);
-    }
-
-    /**
-     * @deprecated Prefer {@link #cancelledJobLine(String, boolean, boolean, String)}. Kept for
-     *     callers that still pass a pre-built "Canceled by user" style tail.
-     */
-    @Deprecated
-    public static String canceledLine(String name, boolean nerdfont, String tail) {
-        return cancelledJobLine(name, nerdfont, true, tail);
     }
 }

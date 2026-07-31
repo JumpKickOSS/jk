@@ -555,8 +555,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     public boolean renderCanceled() {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. Pipeline mode replaces the wiped region
-        // in place with the same cancelled-job line as a remote `jk cancel` / web cancel
-        // ("Failed to build. Build job was cancelled") and returns true so GlobalCancel
+        // in place with the same cancelled-job wedge as a remote `jk cancel` / web cancel
+        // ("✘ Build  job was cancelled by user took …") and returns true so GlobalCancel
         // suppresses its generic notice. Simple / non-animating modes just settle and let
         // the handler print the notice.
         restoreStreams();

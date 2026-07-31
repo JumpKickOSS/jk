@@ -58,13 +58,16 @@ class CommandWedgeTest {
     void cancelled_job_line_remote_vs_by_user() {
         String remote = PipelineWedge.cancelledJobLine("Build", false, false, "took 1.6s")
                 .replaceAll("\u001B\\[[0-9;]*m", "");
-        assertThat(remote).contains("Build job was cancelled");
+        // The chip names the pipeline; the body must not repeat it ("Build Build job…", JK-1321).
+        assertThat(remote).contains("Build").contains("job was cancelled");
+        assertThat(remote).containsOnlyOnce("Build");
         assertThat(remote).contains("took 1.6s");
         assertThat(remote).doesNotContain("by user");
 
         String local = PipelineWedge.cancelledJobLine("Build", false, true, "took 1.6s")
                 .replaceAll("\u001B\\[[0-9;]*m", "");
-        assertThat(local).contains("Build job was cancelled by user");
+        assertThat(local).contains("job was cancelled by user");
+        assertThat(local).containsOnlyOnce("Build");
         assertThat(local).contains("took 1.6s");
     }
 }
