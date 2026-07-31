@@ -282,7 +282,7 @@ class EffortWeightsTest {
     }
 
     @Test
-    void learned_falls_back_to_metrics_history_only_when_the_ledger_is_cold(@TempDir Path dir) {
+    void learned_prefers_absolute_step_metrics_over_residual_rates(@TempDir Path dir) {
         int staticWeight = EffortWeights.runTestsWeight(10);
         BuildMetrics metrics = metricsWith(dir.resolve("m.json"), "/m/a", "run-tests", 3, 3000); // → 20 units
         StepTimings.clearMemo();
@@ -292,11 +292,18 @@ class EffortWeightsTest {
         assertThat(EffortWeights.learned(cold, metrics, "/m/a", "run-tests", 10, staticWeight, List.of()))
                 .isEqualTo(20);
 
-        // A warm ledger still wins: rates are tighter than whole-step averages.
+        // Absolute step walls also win over residual rates: residual×count drifts when the trained
+        // unit count and the forecast count disagree; measured whole-step ms compose for ETA.
         StepTimings.record(dir, List.of(new StepTimings.Sample("/m/a", "run-tests", 1.0)), 0.4, 1L);
         StepTimings.clearMemo();
         assertThat(EffortWeights.learned(
                         StepTimings.load(dir), metrics, "/m/a", "run-tests", 10, staticWeight, List.of()))
+                .isEqualTo(20);
+
+        // Residual path only when metrics have no sample for this step.
+        BuildMetrics empty = BuildMetrics.load(dir.resolve("empty-metrics.json"));
+        assertThat(EffortWeights.learned(
+                        StepTimings.load(dir), empty, "/m/a", "run-tests", 10, staticWeight, List.of()))
                 .isEqualTo((int) Math.round(EffortWeights.TEST_STARTUP_FLOOR + 1.0 * 10));
     }
 

@@ -43,20 +43,23 @@ build countdown seed both assemble dirty-module costs the same way (shape-memo `
 pair when warm, else pipeline walk) then call `seedEta` (schedule + history prior). The initial
 countdown figure must match the explain estimate even when that figure is imperfect.
 
-1. Schedule over dirty-module costs (warm dirs at `MS_PER_WEIGHT`, cold at host calibration or
-   static `MS_PER_WEIGHT` so base is rarely zero). **Weight and testWeight from one source** — never
-   mix shape total weight with a separately estimated test slice.
-2. History prior: project shaped key (`build` or `build:rebuild`, optional `#dN` dirty count) →
-   bare project dir → host `dir=""` for that kind → host bare `build`.
-3. Clamp absurd over-estimates to 2× historical max when count ≥ 3 (one-sided; never clamp up).
-4. **TUI clock freezes the seed** — early (shape/history) and post-prepare seeds may refine the
-   total before execute; once modules run, the header does **not** re-project. Measured
-   throughput still updates `StepTimings` / host `Calibration` on success for the *next* run.
-   Emitting `elapsed + remaining schedule` mid-build made the countdown jump at module
-   boundaries and reset cold count-up near zero.
+1. **Compose from dirty steps.** For each dirty module, sum measured walls of steps that will run
+   (`BuildMetrics` step `ok` averages preferred; residual `StepTimings` / static only when cold).
+   Fully-cached modules contribute 0. A cached phase (e.g. compile up-to-date, tests dirty) is
+   excluded from that module’s sum.
+2. **Schedule like the live graph** (`WorkspaceScheduler`): a module starts only after every dirty
+   prereq has *fully* finished, with a rolling concurrency window (list schedule, longest-first).
+   Serial (`-j1`) is the plain sum. Serialized cross-module tests also apply a test-step sum floor.
+3. **`--rebuild` / `--force` = treat every module/step as dirty** — same composition formula. Full
+   work also floors the estimate at measured full-build walls (`build` / `build:rebuild` invocation
+   avgs, weighted toward max when stable) so a consistent ~2m30s rebuild is not estimated as ~1m25s.
+4. Whole-build history is otherwise a **cold seed** when no step costs exist, plus a one-sided clamp
+   of absurd over-estimates (never pull partial work up).
+5. **TUI clock freezes the seed** once execute starts. Successful runs teach step metrics +
+   invocation walls for the next estimate.
 
-`--rebuild` / `--force` may distrust shape-memo weights but still seeds ETA early from
-**rebuild-shaped** history and a coarse dirty-module floor so the TUI can countdown (JK-1179).
+Cold machine with zero step history: coarse dirty-module floor (JK-1179), then refine as work
+runs and teaches the next estimate.
 
 ## Learning / recency (JK-1178)
 
@@ -71,6 +74,20 @@ the request accumulator as user-cancelled immediately (even if the runner is for
 pipeline result). That truncated wall-clock goes into the `cancelled` bucket only — never `ok` —
 so history priors and explain/build countdown seeds stay calibrated from full successes. Session
 cancel also flips `PipelineResult.userCancelled` when the pipeline can finish cooperatively.
+
+**Success-only teaching (estimator hygiene):**
+
+| Layer | Trains on |
+|-------|-----------|
+| `BuildMetrics` invocation `ok` | Workspace success, not cancelled |
+| `BuildMetrics` step `ok` | Full successful workspace only (cancelled runs train no step ok) |
+| `StepTimings` rates | Successful non-cancelled module pipelines only |
+| Host ms/method prior | Successful `run-tests` suites (`__host__/test-method-ms`) |
+| `FetchTimings` | Successful remote CAS-miss downloads only (trimmed mean, drop top/bottom 10%) |
+
+Failed steps still land in the `failed` bucket for diagnostics; they never contribute to `ok`
+averages. Cold modules without local rates fall back to project/host medians, then host absolute
+test-method ms, then static floors.
 
 Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
 flag stored on the accumulator — not ambient session at journal write). Newer successes supersede

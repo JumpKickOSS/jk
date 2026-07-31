@@ -130,8 +130,40 @@ public final class EffortWeights {
         };
     }
 
-    /** Minimum successful runs before a metrics average outranks a static constant. */
+    /** Minimum successful runs before a metrics average outranks a static constant (bar weights). */
     static final int MIN_METRICS_SAMPLES = 3;
+
+    /**
+     * Forecast/plan step names → {@link BuildMetrics} / pipeline step names. Explain uses
+     * {@code compile-main}; the live pipeline and metrics store {@code compile-java}.
+     */
+    public static String metricsStepName(String step) {
+        if (step == null || step.isBlank()) return "";
+        return switch (step) {
+            case "compile-main" -> "compile-java";
+            default -> step;
+        };
+    }
+
+    /**
+     * Success-only average wall for one module step (ms), or 0 when never recorded. Count ≥ 1 is
+     * enough — ETA composes dirty steps from measured pieces, not whole-build priors.
+     */
+    public static long stepOkAvgMillis(BuildMetrics metrics, String dir, String step) {
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        String key = metricsStepName(step);
+        if (key.isEmpty()) return 0;
+        String d = dir == null ? "" : dir;
+        var own = metrics.step(d, key);
+        if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
+            return own.get().ok().avgMillis();
+        }
+        var host = metrics.step("", key);
+        if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
+            return host.get().ok().avgMillis();
+        }
+        return 0;
+    }
 
     /**
      * Metrics-learned flat weight for fixed-cost steps: module avg → host avg → {@code
@@ -142,11 +174,11 @@ public final class EffortWeights {
     }
 
     static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
-        var own = metrics.step(dir, step);
+        var own = metrics.step(dir, metricsStepName(step));
         if (own.isPresent() && own.get().ok().count() >= MIN_METRICS_SAMPLES) {
             return flatWeight(own.get().ok().avgMillis());
         }
-        var host = metrics.step("", step);
+        var host = metrics.step("", metricsStepName(step));
         if (host.isPresent() && host.get().ok().count() >= MIN_METRICS_SAMPLES) {
             return flatWeight(host.get().ok().avgMillis());
         }
@@ -154,7 +186,7 @@ public final class EffortWeights {
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
-    private static int flatWeight(long avgMillis) {
+    static int flatWeight(long avgMillis) {
         return Math.max(1, (int) Math.round(avgMillis / (double) MS_PER_WEIGHT));
     }
 
@@ -164,9 +196,12 @@ public final class EffortWeights {
     }
 
     /**
-     * Learned weight {@code floor + rate × count}. Rate preference: this module → project median →
-     * host median → {@link BuildMetrics} flat avg (survives {@code jk clean}) → {@code
-     * staticWeight}.
+     * Learned weight for a step. Preference: <strong>absolute step wall from {@link BuildMetrics}</strong>
+     * (module then host) → residual {@link StepTimings} rate × count → host ms/method → static.
+     *
+     * <p>Absolute step averages compose correctly for ETA: dirty modules sum their dirty steps; a
+     * full rebuild is the same sum over every module. Residual rates scale with count but drift
+     * when the trained unit count and the forecast count disagree.
      */
     static int learned(
             StepTimings timings,
@@ -187,25 +222,104 @@ public final class EffortWeights {
             int count,
             int staticWeight,
             java.util.Collection<String> projectDirs) {
+        String key = metricsStepName(step);
+        // Prefer measured whole-step walls (even a single success) over residual×count.
+        long absMs = stepOkAvgMillis(metrics, dir, key);
+        if (absMs > 0) return flatWeight(absMs);
+
         double rate;
-        var own = timings.perUnit(dir, step);
+        var own = timings.perUnit(dir, key);
         if (own.isPresent()) {
             rate = own.getAsDouble();
         } else {
-            var project = timings.medianPerUnit(step, projectDirs);
+            var project = timings.medianPerUnit(key, projectDirs);
             if (project.isPresent()) {
                 rate = project.getAsDouble();
             } else {
-                var host = timings.medianPerUnit(step);
+                var host = timings.medianPerUnit(key);
                 if (host.isEmpty()) {
+                    // Cold residual rates: for run-tests, use host absolute ms/method (from successful
+                    // suites) so brand-new modules still get a data-driven guess.
+                    if ("run-tests".equals(key) && count > 0) {
+                        var msPer = timings.hostAvgTestMethodMs();
+                        if (msPer.isPresent()) {
+                            return Math.max(
+                                    1,
+                                    (int) Math.round(
+                                            floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
+                        }
+                    }
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
                     // surviving metrics history before conceding to the Step-1 static guess.
-                    return learnedFixedWeight(metrics, dir, step, staticWeight);
+                    return learnedFixedWeight(metrics, dir, key, staticWeight);
                 }
                 rate = host.getAsDouble();
             }
         }
-        return Math.max(1, (int) Math.round(floor(step) + rate * Math.max(0, count)));
+        return Math.max(1, (int) Math.round(floor(key) + rate * Math.max(0, count)));
+    }
+
+    /**
+     * Module cost from the steps that will actually run (forecast non-cached / rebuild-all). Each
+     * step is priced from {@link BuildMetrics} ok averages when available so ETA is Σ dirty step
+     * walls — not a whole-build {@code build}/{@code build:rebuild} prior.
+     *
+     * @param stepCounts optional unit counts for cold residual fallback (e.g. {@code run-tests} →
+     *     method count); may be empty
+     */
+    public static ModuleCost costFromRunningSteps(
+            Path dir,
+            Set<Path> prereqs,
+            java.util.Collection<String> runningSteps,
+            BuildMetrics metrics,
+            StepTimings timings,
+            java.util.Collection<String> projectDirs,
+            java.util.Map<String, Integer> stepCounts) {
+        if (runningSteps == null || runningSteps.isEmpty()) {
+            return new ModuleCost(dir, prereqs, 0, 0);
+        }
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (projectDirs == null) projectDirs = java.util.List.of();
+        if (stepCounts == null) stepCounts = java.util.Map.of();
+        int weight = 0;
+        int testWeight = 0;
+        String mod = dir == null ? "" : dir.toString();
+        for (String raw : runningSteps) {
+            String step = metricsStepName(raw);
+            if (step.isEmpty()) continue;
+            // Prefer measured whole-step walls; residual/static only when cold.
+            long absMs = stepOkAvgMillis(metrics, mod, step);
+            int w;
+            if (absMs > 0) {
+                w = flatWeight(absMs);
+            } else {
+                int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 1));
+                int staticW = coldStaticWeight(step, count);
+                if (staticW <= 0) continue; // unknown tiny step with no history
+                w = timings != null
+                        ? learned(timings, metrics, mod, step, count, staticW, projectDirs)
+                        : staticW;
+            }
+            weight += w;
+            if ("run-tests".equals(step)) testWeight += w;
+        }
+        return new ModuleCost(dir, prereqs, weight, testWeight);
+    }
+
+    /** Cold static reservation when a running step has no metrics and no residual rate. */
+    private static int coldStaticWeight(String step, int count) {
+        return switch (step) {
+            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" -> compileWeight(Math.max(1, count));
+            case "run-tests" -> runTestsWeight(Math.max(0, count));
+            case "package-jar" -> PACKAGE_JAR;
+            case "package-assembly" -> ASSEMBLY_RUN;
+            case "native-image" -> NATIVE_RUN;
+            case "write-image" -> OCI_RUN;
+            case "resolve-deps", "parse-build", "ensure-jdk", "copy-resources", "write-stamp",
+                    "write-stamp-kotlin", "write-stamp-groovy", "build-logic-after-compile",
+                    "build-logic-before-package" -> TOKEN;
+            default -> 0;
+        };
     }
 
     /**
@@ -440,7 +554,8 @@ public final class EffortWeights {
     /** Fetch weight: 8 per artifact not already in the CAS (all of them under {@code  --force}). */
     private static int predictSync(BuildPipelines.Inputs in, Cas cas) {
         try {
-            if (!Files.exists(in.lockFile())) return ARTIFACT_FETCH; // first run resolves+fetches
+            int perFetch = artifactFetchWeight();
+            if (!Files.exists(in.lockFile())) return perFetch; // first run resolves+fetches
             Lockfile lock = LockfileReader.read(in.lockFile());
             int fetches = 0;
             for (Lockfile.Artifact a : lock.artifacts()) {
@@ -454,10 +569,18 @@ public final class EffortWeights {
                 String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
                 if (!cas.contains(hex)) fetches++;
             }
-            return fetches == 0 ? SKIP : fetches * ARTIFACT_FETCH;
+            return fetches == 0 ? SKIP : fetches * perFetch;
         } catch (Exception e) {
             return SKIP;
         }
+    }
+
+    /**
+     * Per-artifact fetch weight: trimmed-mean remote download duration when learned, else static
+     * {@link #ARTIFACT_FETCH}.
+     */
+    static int artifactFetchWeight() {
+        return cc.jumpkick.cache.FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
     }
 
     // --- parallel-aware wall-clock estimate ----------------------------------
@@ -518,15 +641,13 @@ public final class EffortWeights {
     }
 
     /**
-     * Estimate a build's wall-clock (ms) from per-module weights, honoring how {@code jk build}
-     * actually schedules. Serial ({@code -j1}) sums every module's weight. The parallel
-     * graph build overlaps independent modules, so the estimate is the largest of three lower bounds
-     * — the dependency <b>critical path</b> (longest weighted chain, since a module can't start
-     * before its prereqs finish), the <b>throughput</b> ceiling (Σweight ÷ concurrency, when work
-     * saturates the worker JVMs), and — when tests are serialized across modules (the default, no
-     * {@code --parallel-tests}) — the <b>serial test-step total</b>, since those steps share one
-     * test JVM and cannot overlap. Summing everything (the old estimate) over-counts the
-     * compile/package work that overlaps the long serial test tail.
+     * Estimate a build's wall-clock (ms) from per-module costs (Σ dirty step weights preferred).
+     *
+     * <p>Mirrors {@link WorkspaceScheduler}: a module may start only after every dirty prereq has
+     * <em>fully</em> finished (compile + test + package), and at most {@code concurrency} modules
+     * run at once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
+     * across modules ({@code parallelTests == false}), the serial test-step sum is also a lower
+     * bound (same as the live cross-module test gate).
      */
     public static long scheduleMillis(List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests) {
         return scheduleMillis(mods, concurrency, serial, parallelTests, MS_PER_WEIGHT);
@@ -534,13 +655,12 @@ public final class EffortWeights {
 
     /**
      * As {@link #scheduleMillis(List, int, boolean, boolean)} but with an explicit weight→ms
-     * conversion. Pass {@link #MS_PER_WEIGHT} on a warm machine (learned rates already encode this
-     * host, so the constant round-trips exactly); pass a {@link Calibration}-measured or live
-     * re-projected rate on a cold machine, where the constant is a blind guess. Applying a measured
-     * rate only when the learned ledger is cold keeps it from stacking on top of learned rates.
+     * conversion. Costs from measured step walls use {@link #flatWeight} so × {@link #MS_PER_WEIGHT}
+     * round-trips to milliseconds.
      */
     public static long scheduleMillis(
             List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests, long msPerWeight) {
+        if (mods == null || mods.isEmpty()) return 0;
         long serialSum = 0;
         long testSum = 0;
         for (ModuleCost m : mods) {
@@ -548,10 +668,12 @@ public final class EffortWeights {
             testSum += m.testWeight();
         }
         if (serial || concurrency <= 1) return serialSum * msPerWeight;
-        long critical = criticalPath(mods);
-        long throughput = (serialSum + concurrency - 1) / concurrency;
+        // List-schedule with the same dep rule as WorkspaceScheduler (full prereq completion) and
+        // a rolling concurrency window. Pure DAG critical-path alone under-estimates monorepo
+        // rebuilds (many heavy independent modules share a finite worker pool).
+        long scheduled = listSchedule(mods, Math.max(1, concurrency));
         long testFloor = parallelTests ? 0 : testSum;
-        return Math.max(critical, Math.max(throughput, testFloor)) * msPerWeight;
+        return Math.max(scheduled, testFloor) * msPerWeight;
     }
 
     /**
@@ -589,33 +711,74 @@ public final class EffortWeights {
     }
 
     /**
-     * Longest <em>blocking</em>-weighted path through the module DAG: {@code finish(m) = blocking(m)
-     * + max prereq finish}. Only a module's blocking work (compile + package — what produces the jar
-     * dependents wait on) sits on the path; its test step doesn't block dependents and is accounted
-     * for separately by the serial test floor, so counting it here would double the tail.
+     * Rolling-window list schedule matching {@link WorkspaceScheduler} (bounded path):
+     *
+     * <ul>
+     *   <li>A module is ready only when every dirty prereq has fully finished (entire weight).
+     *   <li>At most {@code concurrency} modules run at once.
+     *   <li>Ready modules are admitted longest-first (stable heuristic).
+     * </ul>
+     *
+     * @return scheduled duration in the same units as {@link ModuleCost#weight()}
      */
-    private static long criticalPath(List<ModuleCost> mods) {
+    static long listSchedule(List<ModuleCost> mods, int concurrency) {
+        if (mods == null || mods.isEmpty()) return 0;
+        int slots = Math.max(1, concurrency);
         java.util.Map<Path, ModuleCost> byDir = new java.util.HashMap<>();
-        for (ModuleCost m : mods) byDir.put(m.dir(), m);
-        java.util.Map<Path, Long> finish = new java.util.HashMap<>();
-        long best = 0;
-        for (ModuleCost m : mods) best = Math.max(best, pathFinish(m, byDir, finish));
-        return best;
+        for (ModuleCost m : mods) {
+            if (m != null && m.dir() != null) byDir.put(m.dir(), m);
+        }
+        if (byDir.isEmpty()) return 0;
+
+        java.util.Set<Path> remaining = new java.util.LinkedHashSet<>(byDir.keySet());
+        java.util.Map<Path, Long> doneAt = new java.util.HashMap<>();
+        record Flight(long finish, Path dir) {}
+        java.util.PriorityQueue<Flight> inFlight =
+                new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Flight::finish));
+        long t = 0;
+        int free = slots;
+
+        while (!remaining.isEmpty() || !inFlight.isEmpty()) {
+            while (free > 0 && !remaining.isEmpty()) {
+                Path next = null;
+                int bestW = -1;
+                for (Path d : remaining) {
+                    ModuleCost m = byDir.get(d);
+                    if (!prereqsDone(m, byDir.keySet(), doneAt)) continue;
+                    if (m.weight() > bestW) {
+                        bestW = m.weight();
+                        next = d;
+                    }
+                }
+                if (next == null) break;
+                remaining.remove(next);
+                long fin = t + Math.max(0, byDir.get(next).weight());
+                inFlight.add(new Flight(fin, next));
+                free--;
+            }
+            if (inFlight.isEmpty()) {
+                // Deadlock / missing edge: fall back to serial remainder.
+                long extra = 0;
+                for (Path d : remaining) extra += Math.max(0, byDir.get(d).weight());
+                return t + extra;
+            }
+            Flight done = inFlight.poll();
+            t = done.finish();
+            doneAt.put(done.dir(), t);
+            free++;
+        }
+        return t;
     }
 
-    private static long pathFinish(
-            ModuleCost m, java.util.Map<Path, ModuleCost> byDir, java.util.Map<Path, Long> memo) {
-        Long cached = memo.get(m.dir());
-        if (cached != null) return cached;
-        long blocking = Math.max(0, m.weight() - m.testWeight());
-        memo.put(m.dir(), blocking); // cycle guard
-        long upstream = 0;
+    private static boolean prereqsDone(
+            ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
+        if (m.prereqs() == null) return true;
         for (Path p : m.prereqs()) {
-            ModuleCost pm = byDir.get(p);
-            if (pm != null) upstream = Math.max(upstream, pathFinish(pm, byDir, memo));
+            if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
+            if (!doneAt.containsKey(p)) return false;
         }
-        long f = blocking + upstream;
-        memo.put(m.dir(), f);
-        return f;
+        return true;
     }
+
 }
+

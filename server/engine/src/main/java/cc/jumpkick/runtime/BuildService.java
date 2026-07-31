@@ -273,47 +273,40 @@ public final class BuildService {
             // borrows a learned rate from when it has no history of its own (EffortWeights.learned).
             Set<Path> projectModules = new HashSet<>();
             for (BuildPlan.Module m : plan.modules()) projectModules.add(m.dir());
+            List<String> projectDirs = projectModules.stream().map(Path::toString).toList();
             boolean distrust = SessionContext.current().config().forceOr(false)
                     || SessionContext.current().config().rebuildOr(false);
+            BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+            StepTimings timings = StepTimings.load(cache);
             List<EffortWeights.ModuleCost> costs = new ArrayList<>();
-            int shapeHits = 0;
-            // Only dirty modules reserve real work (JK-1176). Fully-cached modules would otherwise
-            // inflate the estimate (and history-prior of avg full builds would replace base=0).
+            // Only dirty modules (or every module under --rebuild/--force). Each cost is Σ of that
+            // module's *running* steps from measured step walls — not a whole-build prior, and not
+            // shape-memo bar weights that ignore which steps are actually dirty.
             for (BuildPlan.Module m : plan.modules()) {
                 if (!distrust && !m.dirty()) continue;
                 Path mdir = m.dir();
                 Set<Path> prereqs = plan.edges().getOrDefault(mdir, Set.of());
-                var fromShape = etaCostFromShape(entryDir, mdir, prereqs, skipTests, distrust);
-                if (fromShape.isPresent()) {
-                    costs.add(fromShape.get());
-                    shapeHits++;
-                    continue;
+                List<String> running = new ArrayList<>();
+                for (BuildPlan.Step s : m.steps()) {
+                    if (!distrust && s.cached()) continue;
+                    running.add(s.name());
                 }
-                BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
-                        mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
-                Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, true);
-                BuildPipelines.appendDeclaredTails(builder, inputs);
-                Pipeline pipeline = builder.build();
-                int weight = pipeline.estimatedTotalWeight();
-                // Charge nothing for forecast-cached steps (JK-1260), or a "Fully Cached" plan still
-                // advertises a full-build ETA.
-                Set<String> cachedSteps = new HashSet<>();
-                if (m.dirty()) {
-                    for (BuildPlan.Step s : m.steps()) {
-                        if (s.cached()) cachedSteps.add(s.name());
-                    }
-                } else {
-                    for (cc.jumpkick.run.Step s : pipeline.steps()) cachedSteps.add(s.name());
+                // Rebuild with an empty step list still means "all work" — fall back to pipeline.
+                if (running.isEmpty() && distrust) {
+                    BuildPipelines.Inputs inputs = BuildPlanForecast.inputsFor(
+                            mdir, cache, workers, jdksDir, profile, skipTests, verbose, projectModules);
+                    Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs, true);
+                    BuildPipelines.appendDeclaredTails(builder, inputs);
+                    for (cc.jumpkick.run.Step s : builder.build().steps()) running.add(s.name());
                 }
-                costs.add(EffortWeights.costOf(mdir, prereqs, pipeline, cachedSteps));
-                // Warm the shape memo for the next explain/build ETA path.
-                if (!distrust && entryDir != null) {
-                    PreflightMemo.storeShape(entryDir, mdir, skipTests, PreflightMemo.shapeOf(pipeline, weight));
+                java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+                if (m.testCount() > 0) counts.put("run-tests", m.testCount());
+                if (m.sourceCount() > 0) {
+                    counts.put("compile-java", m.sourceCount());
+                    counts.put("compile-test", m.sourceCount());
                 }
-            }
-            if (Perf.ENABLED && shapeHits > 0) {
-                System.err.println("[jk-perf] estimateEta shape-hits=" + shapeHits + "/"
-                        + plan.modules().size() + " dirty-costs=" + costs.size());
+                costs.add(EffortWeights.costFromRunningSteps(
+                        mdir, prereqs, running, metrics, timings, projectDirs, counts));
             }
             // Nothing dirty → nothing to do (do not inject whole-build history average).
             if (costs.isEmpty()) return 0;
@@ -324,7 +317,7 @@ public final class BuildService {
                             workers,
                             parallelTests,
                             Runtime.getRuntime().availableProcessors());
-            // Same seed as jk build's countdown (schedule + history prior).
+            // Same seed as jk build's countdown (schedule of dirty-step sums).
             return seedEta(
                     entryDir,
                     costs,
@@ -535,20 +528,24 @@ public final class BuildService {
             List<ModulePlan> provisional = new ArrayList<>();
             boolean allShaped = !distrustShape;
             if (allShaped) {
+                BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+                StepTimings timings = StepTimings.load(req.cache());
+                List<String> projectDirs =
+                        dirtyUnits.stream().map(u -> u.dir().toString()).toList();
                 for (BuildGraph.BuildUnit u : dirtyUnits) {
-                    var shaped = etaCostFromShape(
-                            req.entryDir(),
-                            u.dir(),
-                            graph.edges().getOrDefault(u.dir(), Set.of()),
-                            req.skipTests(),
-                            false);
-                    if (shaped.isEmpty()) {
+                    var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
+                    if (shape.isEmpty()) {
                         allShaped = false;
                         break;
                     }
-                    earlyCosts.add(shaped.get());
-                    var shape = PreflightMemo.tryLoadShape(req.entryDir(), u.dir(), req.skipTests());
-                    provisional.add(PreflightMemo.provisionalModulePlan(u, shape.orElseThrow(), req.cache()));
+                    PreflightMemo.PipelineShape sh = shape.get();
+                    Set<Path> prereqs = graph.edges().getOrDefault(u.dir(), Set.of());
+                    // Reprice shape steps from measured walls (not stale shape weight units).
+                    List<String> running = new ArrayList<>();
+                    for (var ss : sh.steps()) running.add(ss.name());
+                    earlyCosts.add(EffortWeights.costFromRunningSteps(
+                            u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of()));
+                    provisional.add(PreflightMemo.provisionalModulePlan(u, sh, req.cache()));
                 }
             }
             if (allShaped) {
@@ -575,7 +572,12 @@ public final class BuildService {
                 // Use dirty-count shape so the post-prepare reseed (same key) can only refine, not
                 // jump to a different history tier.
                 HistoryShape earlyShape = historyShapeForCosts(dirtyUnits.size());
-                long early = applyHistoryPrior(0, okHistory(req.entryDir(), earlyShape), earlyShape.rebuild());
+                // Early seed: sum measured step walls for dirty modules when we have them; else
+                // coarse whole-build average only if completely cold.
+                long early = etaFromDirtyModuleDirs(req.entryDir(), dirtyUnits, req.cache());
+                if (early <= 0) {
+                    early = applyHistoryPrior(0, okHistory(req.entryDir(), earlyShape));
+                }
                 if (early <= 0 && distrustShape && !dirtyUnits.isEmpty()) {
                     // Cold machine: seed a coarse countdown from dirty-module count so rebuild does
                     // not start in pure count-up mode (JK-1179). ~1.2s per module @ MS_PER_WEIGHT.
@@ -671,8 +673,8 @@ public final class BuildService {
         boolean ok = failure == null && !cancelled;
         if (ok) {
             // Fold this run's step durations + measured throughput into the learned ledger + host
-            // calibration (EWMA) so the next build's estimate is time-accurate. Failed builds don't
-            // record — their step times are abnormal.
+            // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
+            // builds never train — truncated walls poison ETA priors.
             StepTimings.record(req.cache(), timingSamples, StepTimings.DEFAULT_ALPHA, System.currentTimeMillis());
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
@@ -787,10 +789,9 @@ public final class BuildService {
 
     /**
      * Single schedule-aware ETA (ms) used by both {@code jk explain} and {@code jk build}'s initial
-     * countdown. Each module converts weight→ms at its own rate — warm (learned timings) at {@link
-     * EffortWeights#MS_PER_WEIGHT}; cold at host {@link Calibration} or static {@link
-     * EffortWeights#MS_PER_WEIGHT}. History prior fills base=0 or clamps absurd over-estimates.
-     * Pure count-up only when costs are empty and no history exists.
+     * countdown. Costs are already Σ of dirty-step weights (measured step walls preferred). Schedule
+     * composes them with concurrency / serial-test bounds. Whole-build history is only a cold seed
+     * when the schedule has no costs — never a substitute for step composition.
      */
     private static long seedEta(
             Path entryDir,
@@ -804,22 +805,44 @@ public final class BuildService {
             HistoryShape shape) {
         HistoryShape hist = shape == null ? historyShape() : shape;
         if (costs == null || costs.isEmpty()) {
-            return applyHistoryPrior(0, okHistory(entryDir, hist), hist.rebuild());
+            // No dirty work modeled — only then fall back to a coarse whole-build average.
+            return applyHistoryPrior(0, okHistory(entryDir, hist));
         }
-        StepTimings timings = StepTimings.load(cache);
-        java.util.function.Predicate<Path> warm = dir -> timings.hasTimingsFor(List.of(dir.toString()));
-        Set<Path> costDirs = dirs != null && !dirs.isEmpty() ? dirs : costDirs(costs);
-        boolean anyCold = costDirs.stream().anyMatch(dir -> !warm.test(dir));
-        Calibration cal = anyCold ? Calibration.ensure(jdksDir) : null;
-        double coldRate = cal != null && cal.present() ? cal.msPerWeight() : EffortWeights.MS_PER_WEIGHT;
-        // Always schedule — never drop to base=0 solely because a module is StepTimings-cold.
+        // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
+        // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
+        // reference frame.
         long base = EffortWeights.scheduleMillis(
-                costs,
-                concurrency,
-                serial,
-                parallelTests,
-                dir -> warm.test(dir) ? EffortWeights.MS_PER_WEIGHT : coldRate);
-        return applyHistoryPrior(base, okHistory(entryDir, hist), hist.rebuild());
+                costs, concurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
+        BuildMetrics.Stats okHist = okHistory(entryDir, hist);
+        // Full rebuild / monorepo-scale dirty: never estimate *below* measured full-build walls.
+        // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
+        // history is ground truth for "jk build --rebuild takes ~2m30s". Also consult plain `build`
+        // full-dirty rows — organic 27-module runs are the same work as --rebuild.
+        boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16 || (costs != null && costs.size() >= 16);
+        if (fullWork) {
+            BuildMetrics.Stats plainFull = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
+            BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
+            if (floorSrc != null && floorSrc.count() > 0) {
+                // Rebuilds are stable full work — weight recent max so a consistent ~2m30s wall is
+                // not pulled down by older shorter averages (EWMA still trains avg for other uses).
+                long floor = floorSrc.avgMillis();
+                if (floorSrc.count() >= 2 && floorSrc.maxMillis() > floor) {
+                    floor = hist.rebuild()
+                            ? Math.round(0.25 * floorSrc.avgMillis() + 0.75 * floorSrc.maxMillis())
+                            : Math.round(0.5 * floorSrc.avgMillis() + 0.5 * floorSrc.maxMillis());
+                }
+                if (floor > base) base = floor;
+            }
+        }
+        // One-sided clamp only for absurd over-estimates (never pull partial work up).
+        return applyHistoryPrior(base, okHist);
+    }
+
+    /** Prefer the stats row with the higher successful average (and samples). */
+    private static BuildMetrics.Stats higherAvg(BuildMetrics.Stats a, BuildMetrics.Stats b) {
+        if (a == null || a.count() == 0) return b;
+        if (b == null || b.count() == 0) return a;
+        return a.avgMillis() >= b.avgMillis() ? a : b;
     }
 
     /** History key with known dirty-module count so explain and build share the same prior tier. */
@@ -855,35 +878,87 @@ public final class BuildService {
      */
     private static EffortWeights.ModuleCost etaCostForPreparedModule(
             WorkspaceRequest req, ModulePlan p, Set<Path> prereqs, boolean distrustShape) {
+        // Prefer Σ measured step walls for steps the prepared pipeline will run (weight > TOKEN).
+        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        StepTimings timings = StepTimings.load(req.cache());
+        List<String> running = new ArrayList<>();
+        for (cc.jumpkick.run.Step s : p.pipeline().steps()) {
+            try {
+                if (s.estimateWeight() > EffortWeights.TOKEN) running.add(s.name());
+            } catch (RuntimeException ignored) {
+                running.add(s.name());
+            }
+        }
+        if (!running.isEmpty()) {
+            return EffortWeights.costFromRunningSteps(
+                    p.dir(),
+                    prereqs,
+                    running,
+                    metrics,
+                    timings,
+                    List.of(p.dir().toString()),
+                    java.util.Map.of());
+        }
         var shaped = etaCostFromShape(req.entryDir(), p.dir(), prereqs, req.skipTests(), distrustShape);
         if (shaped.isPresent()) return shaped.get();
         return EffortWeights.costOf(p.dir(), prereqs, p.pipeline());
     }
 
     /**
-     * The whole-build history sanity anchor: never "count up" when this project <em>or host</em>
-     * has real finished builds to average (JK-1151), and never a seed wildly beyond anything this
-     * project has ever done (an over-predicted cold estimate is clamped to 2× the historical max).
-     * One-sided on purpose: {@code base} prices only <em>this run's</em> mostly-cached, incremental
-     * work, which legitimately beats the historical average — clamping up would wreck every
-     * incremental estimate. Success-only stats: failed/cancelled runs have abnormal durations,
-     * matching what {@link StepTimings}/{@link Calibration} learn from.
-     *
-     * <p>JK-1178: for rebuild-shaped history, when the schedule base still looks cold (≫ trained
-     * avg), blend toward history so {@code explain --rebuild} tracks measured rebuild wall.
+     * Early countdown before prepare: sum measured heavy steps (compile/test/package) for each dirty
+     * module dir. Returns 0 when no step history exists yet.
+     */
+    private static long etaFromDirtyModuleDirs(
+            Path entryDir, List<BuildGraph.BuildUnit> dirtyUnits, Path cache) {
+        if (dirtyUnits == null || dirtyUnits.isEmpty()) return 0;
+        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        StepTimings timings = StepTimings.load(cache);
+        List<String> projectDirs = dirtyUnits.stream().map(u -> u.dir().toString()).toList();
+        // Representative heavy steps — early seed before forecast details are known.
+        List<String> heavy = List.of(
+                "compile-java", "compile-kotlin", "compile-groovy", "compile-test", "run-tests", "package-jar");
+        List<EffortWeights.ModuleCost> costs = new ArrayList<>();
+        for (BuildGraph.BuildUnit u : dirtyUnits) {
+            // Only include steps that have measured history for this module (don't invent compile
+            // cost for a test-only dirty module when we don't yet know which steps run).
+            List<String> running = new ArrayList<>();
+            for (String step : heavy) {
+                if (EffortWeights.stepOkAvgMillis(metrics, u.dir().toString(), step) > 0) {
+                    running.add(step);
+                }
+            }
+            if (running.isEmpty()) continue;
+            costs.add(EffortWeights.costFromRunningSteps(
+                    u.dir(), Set.of(), running, metrics, timings, projectDirs, java.util.Map.of()));
+        }
+        if (costs.isEmpty()) return 0;
+        return EffortWeights.scheduleMillis(
+                costs, Math.max(1, Runtime.getRuntime().availableProcessors()), false, false, EffortWeights.MS_PER_WEIGHT);
+    }
+
+    /**
+     * Whole-build history is a <em>cold seed only</em> (base=0) or an absurd-overestimate clamp.
+     * Normal ETA is Σ dirty step walls from {@link BuildMetrics} — never blend toward a full-build
+     * average, and never distinguish {@code build} vs {@code build:rebuild} for the schedule sum.
+     * Success-only stats: failed/cancelled runs have abnormal durations.
      */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist) {
         return applyHistoryPrior(base, okHist, false);
     }
 
+    /** @param rebuildShape ignored — kept for call-site compatibility; step composition owns ETA. */
     static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape) {
+        return applyHistoryPrior(base, okHist, rebuildShape, -1);
+    }
+
+    /**
+     * @param rebuildShape ignored (API compat)
+     * @param dirtyModules ignored (API compat)
+     */
+    static long applyHistoryPrior(long base, BuildMetrics.Stats okHist, boolean rebuildShape, int dirtyModules) {
         if (okHist == null || okHist.count() == 0) return base;
         if (base == 0) return okHist.avgMillis();
-        long histAvg = okHist.avgMillis();
-        if (rebuildShape && histAvg > 0 && base > histAvg * 3 / 2) {
-            // Schedule overshot trained rebuilds — pull toward history (α≈0.3 schedule / 0.7 hist).
-            return Math.round(0.3 * base + 0.7 * histAvg);
-        }
+        // One-sided clamp: never pull incremental / partial work up toward a full-build average.
         if (okHist.count() >= 3 && base > 2 * okHist.maxMillis()) return 2 * okHist.maxMillis();
         return base;
     }

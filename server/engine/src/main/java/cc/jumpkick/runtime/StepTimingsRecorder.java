@@ -46,21 +46,29 @@ public final class StepTimingsRecorder implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
+        // Only successful real work teaches the ledger — CANCELLED / FAIL / SKIPPED never do.
         if (status != StepStatus.SUCCESS || !learnable(step)) return;
         long ms = duration == null ? 0 : duration.toMillis();
         durationByStep.put(step, ms);
-        // Defer run-tests until pipelineFinish so TestSummary is available (JK-1155).
-        if ("run-tests".equals(step)) return;
-        int count = ticksByStep.getOrDefault(step, 0);
-        double perUnit = EffortWeights.observedPerUnit(step, ms, count);
-        if (perUnit > 0) {
-            sink.add(new StepTimings.Sample(moduleKey, step, perUnit));
-        }
+        // Defer all samples until pipelineFinish so a later cancel/fail drops the whole module's
+        // mid-run SUCCESS ticks (estimator hygiene: only successful pipelines train rates).
     }
 
     @Override
     public void pipelineFinish(PipelineResult result) {
-        if (result == null || !result.success()) return;
+        // Cancelled or failed pipelines must not train rates — truncated walls poison ETA.
+        if (result == null || !result.success() || result.cancelled() || result.userCancelled()) return;
+        // Compile / other count-scaled steps: deferred from stepFinish.
+        for (var e : durationByStep.entrySet()) {
+            String step = e.getKey();
+            if ("run-tests".equals(step)) continue;
+            if (!learnable(step)) continue;
+            int count = ticksByStep.getOrDefault(step, 0);
+            double perUnit = EffortWeights.observedPerUnit(step, e.getValue(), count);
+            if (perUnit > 0) {
+                sink.add(new StepTimings.Sample(moduleKey, step, perUnit));
+            }
+        }
         Long ms = durationByStep.get("run-tests");
         if (ms == null) return;
         int planned = ticksByStep.getOrDefault("run-tests", 0);
@@ -73,9 +81,20 @@ public final class StepTimingsRecorder implements PipelineListener {
             // empty on green runs, so the class-rate sample never recorded.
             classes = sum.classes() > 0 ? (int) Math.min(Integer.MAX_VALUE, sum.classes()) : distinctClassCount(sum);
         }
+        // Prefer succeeded method count when available (skipped tests shouldn't dilute the rate).
+        if (sum != null && sum.succeeded() > 0) {
+            methods = (int) Math.min(Integer.MAX_VALUE, sum.succeeded());
+        }
         double perMethod = EffortWeights.observedPerUnit("run-tests", ms, methods);
         if (perMethod > 0) {
             sink.add(new StepTimings.Sample(moduleKey, "run-tests", perMethod));
+            // Host-wide absolute ms/method for cold modules that have never run tests here.
+            if (methods > 0) {
+                double msPerMethod = ms / (double) methods;
+                if (msPerMethod > 0) {
+                    sink.add(new StepTimings.Sample(StepTimings.HOST_METHOD_MS_DIR, "test-method-ms", msPerMethod));
+                }
+            }
         }
         // Optional class-rate sample for hierarchical lookup (stored as synthetic step key).
         if (classes > 0) {

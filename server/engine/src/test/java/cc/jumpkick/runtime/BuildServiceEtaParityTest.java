@@ -31,22 +31,21 @@ class BuildServiceEtaParityTest {
 
         long coupledMs = EffortWeights.scheduleMillis(List.of(coupled), 11, false, true, 150);
         long splitMs = EffortWeights.scheduleMillis(List.of(split), 11, false, true, 150);
-        // Coupled: throughput bound ≈ ceil(869/11)=79 → 11.8s. Split: critical=869 → 130.3s.
-        assertThat(coupledMs).isEqualTo(79 * 150L);
+        // Single module: list schedule = full weight (tests included). Never the old throughput-only
+        // ~12s that dropped the 841-unit test slice.
+        assertThat(coupledMs).isEqualTo(869 * 150L);
         assertThat(splitMs).isEqualTo(869 * 150L);
-        assertThat(splitMs).isGreaterThan(coupledMs * 5);
     }
 
     @Test
-    void history_clamp_of_split_cost_matches_the_observed_30s_countdown() {
-        // After the split-cost over-estimate, applyHistoryPrior clamps to 2× max of #d1 history.
-        long splitBase = 869 * 150L; // ~130s
+    void history_clamp_still_bounds_absurd_over_estimates() {
+        long absurd = 869 * 150L; // ~130s
         BuildMetrics.Stats d1 = new BuildMetrics.Stats(4, 46_180, 730, 15_794);
-        long clamped = BuildService.applyHistoryPrior(splitBase, d1);
+        long clamped = BuildService.applyHistoryPrior(absurd, d1);
         assertThat(clamped).isEqualTo(2 * 15_794L); // 31588 ms ≈ 31s
 
-        long coupledBase = 79 * 150L; // ~11.8s — under 2× max, no clamp
-        assertThat(BuildService.applyHistoryPrior(coupledBase, d1)).isEqualTo(coupledBase);
+        long modest = 79 * 150L; // ~11.8s — under 2× max, no clamp
+        assertThat(BuildService.applyHistoryPrior(modest, d1)).isEqualTo(modest);
     }
 
     @Test

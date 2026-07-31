@@ -371,11 +371,21 @@ public final class MavenRepo {
 
     private Cas.Stored downloadAndVerify(Coordinate coord, URI uri, String relativePath, boolean mirror)
             throws IOException, InterruptedException {
+        long t0 = System.nanoTime();
         Cas.Stored stored;
         try (var in = transport
                 .fetchStream(uri, credential)
                 .orElseThrow(() -> new ArtifactNotFoundException("not found in " + name + ": " + uri))) {
             stored = cas.putStream(in);
+        }
+        // Successful remote fetch only — trains the host fetch-duration prior for CAS-miss ETA.
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        if (ms > 0) {
+            try {
+                cc.jumpkick.cache.FetchTimings.record(ms);
+            } catch (RuntimeException ignored) {
+                // advisory
+            }
         }
         if (mirror) {
             verifyUpstreamChecksum(coord, uri, relativePath, stored.sha256());

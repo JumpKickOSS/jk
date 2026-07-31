@@ -222,23 +222,41 @@ public final class BuildPlanForecast {
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
                 List<Path> cp = BuildPipelines.mainCompileClasspath(lock, resolver, sib);
                 Path out = layout.classesDir();
-                CompileRequest req = CompileRequest.builder()
-                        .sources(mainSrc)
-                        .classpath(cp)
-                        .outputDir(out)
-                        .release(release)
-                        .extraOptions(javacArgs)
-                        .processorPath(processorCp)
-                        .build();
-                String taskId = ActionKey.qualifiedTaskId("compile-main", out);
-                Path stateDir =
-                        cache.resolve("actions").resolve("incremental-java").resolve(taskId);
-                long tc = Perf.start();
-                var pred = JavaIncrementalCompile.predict(
-                        taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
-                Perf.end("  predict-compile-main", tc);
-                steps.add(compileStep("compile-main", pred, depDirty || force));
-                if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
+                // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
+                // fresh .jstamp is cached even when action-cache keys were not rewritten
+                // (historical --rebuild skipped store). Match the live build's skip path.
+                List<Path> stampInputs = new ArrayList<>(cp);
+                if (!processorCp.isEmpty()) stampInputs.addAll(processorCp);
+                boolean stampFresh = false;
+                if (!depDirty && !force) {
+                    try {
+                        stampFresh = FreshnessStamp.isFresh(
+                                out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
+                    } catch (IOException ignored) {
+                        stampFresh = false;
+                    }
+                }
+                if (stampFresh) {
+                    steps.add(new BuildPlan.Step("compile-main", BuildPlan.Status.CACHED, "", null));
+                } else {
+                    CompileRequest req = CompileRequest.builder()
+                            .sources(mainSrc)
+                            .classpath(cp)
+                            .outputDir(out)
+                            .release(release)
+                            .extraOptions(javacArgs)
+                            .processorPath(processorCp)
+                            .build();
+                    String taskId = ActionKey.qualifiedTaskId("compile-main", out);
+                    Path stateDir =
+                            cache.resolve("actions").resolve("incremental-java").resolve(taskId);
+                    long tc = Perf.start();
+                    var pred = JavaIncrementalCompile.predict(
+                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    Perf.end("  predict-compile-main", tc);
+                    steps.add(compileStep("compile-main", pred, depDirty || force));
+                    if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
+                }
             }
 
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----

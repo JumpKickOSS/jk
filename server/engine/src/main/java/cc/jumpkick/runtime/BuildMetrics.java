@@ -224,12 +224,19 @@ public final class BuildMetrics {
 
             foldInvocation(inv, o.kind(), o.dir(), o.coord(), o, nowMillis);
             foldInvocation(inv, o.kind(), "", null, o, nowMillis);
-            for (StepSample s : o.steps()) {
-                if (s.step() == null || s.step().isEmpty()) continue;
-                String bucket = bucketOf(s.status());
-                if (bucket == null) continue;
-                foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
-                foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+            // Cancelled workspaces must not train step/module averages: a mid-run kill leaves
+            // SUCCESS steps with truncated walls that poison ETA (JK-1252 / estimator hygiene).
+            // Only full successful (or failed-but-complete) runs teach per-step ok stats.
+            if (!o.cancelled()) {
+                for (StepSample s : o.steps()) {
+                    if (s.step() == null || s.step().isEmpty()) continue;
+                    String bucket = bucketOf(s.status());
+                    if (bucket == null) continue;
+                    // Success-only teaching for ok; failures stay in their bucket for diagnostics.
+                    if ("ok".equals(bucket) && !o.success()) continue;
+                    foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
+                    foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+                }
             }
 
             write(file, inv, ph);

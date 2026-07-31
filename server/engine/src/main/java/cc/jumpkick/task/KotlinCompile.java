@@ -27,9 +27,9 @@ public final class KotlinCompile {
     }
 
     /**
-     * @param useCache when false ({@code --force} / {@code jk verify}), skip the lookup AND the
-     *     final store — a bypassing run neither reads nor writes the action cache; the
-     *     result is still recorded.
+     * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
+     *     <em>write</em> the action cache after a successful compile so the next explain/build can
+     *     CACHE_HIT.
      */
     public static Result run(
             String taskId, KotlincRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
@@ -71,10 +71,9 @@ public final class KotlinCompile {
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(true, "compiled-no-outputs", key, kr.output());
         }
-        // Bypassing runs neither read NOR write: --force must not churn entries under keys
-        // the normal path already owns, and jk verify's scratch build (path-salted keys that
-        // can never recur) must not leave orphan records behind.
-        if (useCache) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        // Always store: rebuild/force re-ran the work and must refresh the action pointer so
+        // the next non-rebuild explain sees CACHE_HIT (same as JavaIncrementalCompile).
+        actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, kr.output());
     }
 

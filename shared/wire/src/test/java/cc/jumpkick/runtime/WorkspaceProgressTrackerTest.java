@@ -98,19 +98,40 @@ class WorkspaceProgressTrackerTest {
     @Test
     void preflight_advances_reserved_units_before_calibrate() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        long provisionalDen = PF + WorkspaceProgressTracker.PROVISIONAL_EXECUTE_UNITS;
         var s = t.preflight("plan", 0, 10);
-        assertThat(s.denominator()).isEqualTo(PF);
+        // Preflight uses a provisional execute band so the bar is never "almost full" then snap-back.
+        assertThat(s.denominator()).isEqualTo(provisionalDen);
         assertThat(s.numerator()).isGreaterThan(0);
         assertThat(s.phase()).isEqualTo("preflight");
+        assertThat(s.percent()).isLessThan(20.0);
         s = t.preflight("plan", 10, 10);
-        // Plan-complete stays below the full band: a 100% snapshot before calibrate would pin
-        // peak-holding riders at 100 for the whole execute phase (JK-1219).
+        // Plan-complete stays below the full band (JK-1219) and well under half the provisional bar.
         assertThat(s.numerator()).isEqualTo(95);
-        assertThat(s.percent()).isLessThan(100.0);
+        assertThat(s.percent()).isLessThan(15.0);
+        double preflightPeak = s.percent();
         s = t.calibrate(200, 3);
-        assertThat(bar(t)).isEqualTo(PF + " of " + (PF + 200));
+        // Calibrate must not flash the bar backward (peak-hold across den growth).
+        assertThat(s.percent()).isGreaterThanOrEqualTo(preflightPeak);
+        assertThat(s.denominator()).isEqualTo(PF + 200);
         assertThat(s.phase()).isEqualTo("execute");
         assertThat(s.modulesTotal()).isEqualTo(3);
+    }
+
+    @Test
+    void preflight_never_fills_the_bar_before_calibrate() {
+        // First-build flash regression: lock/graph/plan against den=PREFLIGHT alone looked ~100%.
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        for (String stage : new String[] {"checking", "lock", "graph", "plan"}) {
+            var s = t.preflight(stage, 1, 1);
+            assertThat(s.percent())
+                    .as("stage %s must stay a small early slice", stage)
+                    .isLessThan(20.0);
+        }
+        var before = t.snapshot();
+        t.calibrate(5_000, 12);
+        assertThat(t.snapshot().percent()).isGreaterThanOrEqualTo(before.percent());
+        assertThat(t.snapshot().percent()).isLessThan(25.0);
     }
 
     @Test

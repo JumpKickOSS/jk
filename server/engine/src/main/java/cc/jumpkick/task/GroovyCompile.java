@@ -27,9 +27,8 @@ public final class GroovyCompile {
     }
 
     /**
-     * @param useCache when false ({@code --force} / {@code jk verify}), skip the lookup AND the
-     *     final store — a bypassing run neither reads nor writes the action cache; the
-     *     result is still recorded.
+     * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
+     *     write the action cache after a successful compile so the next explain/build can CACHE_HIT.
      */
     public static Result run(
             String taskId, GroovycRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
@@ -68,10 +67,8 @@ public final class GroovyCompile {
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(true, "compiled-no-outputs", key, gr.output());
         }
-        // Bypassing runs neither read NOR write: --force must not churn entries under keys
-        // the normal path already owns, and jk verify's scratch build (path-salted keys that
-        // can never recur) must not leave orphan records behind.
-        if (useCache) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        // Always store after success so rebuild refreshes the action pointer for explain.
+        actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, gr.output());
     }
 
