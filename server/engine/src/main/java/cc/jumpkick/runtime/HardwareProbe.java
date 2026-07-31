@@ -26,13 +26,14 @@ import java.util.stream.Stream;
 /**
  * Host micro-benchmarks for {@link Calibration} (JK-1180 follow-ups).
  *
- * <p>Core suite is offline. Optional:
+ * <p>Core suite is always offline (JVM fork, javac, disk, hash, synthetic worker). When {@code
+ * allowNetwork} (default for {@code ensure} / {@code jk engine calibrate}; false under global {@code
+ * --offline}):
  *
  * <ul>
- *   <li><b>JUnit Platform</b> — when Jupiter jars are in the local cache (or {@code allowNetwork}
- *       fetches them), compile + run one real {@code @Test} via the Platform Launcher API.
- *   <li><b>Resolve</b> — when {@code allowNetwork}, time an HTTP GET of a tiny known Maven Central
- *       artifact (local I/O/CPU already covered; this fills network RTT + TLS).
+ *   <li><b>JUnit Platform</b> — when Jupiter jars are in the local cache (or network fetches them),
+ *       compile + run one real {@code @Test} via the Platform Launcher API.
+ *   <li><b>Resolve</b> — time an HTTP GET of a tiny known Maven Central artifact.
  * </ul>
  *
  * Samples aggregate <b>pessimistically</b> (max of warm samples after cold-cache discard).
@@ -42,6 +43,9 @@ final class HardwareProbe {
     static final int WARM_SAMPLES = 3;
     static final int JAVAC_SOURCES = 12;
     static final int WORKER_METHODS = 8;
+    /** Trivial empty {@code @Test} methods in the real JUnit Platform probe (startup vs method slope). */
+    static final int PLATFORM_METHODS = 8;
+
     static final int DISK_BYTES = 4 * 1024 * 1024;
     static final int HASH_BYTES = 8 * 1024 * 1024;
 
@@ -73,6 +77,7 @@ final class HardwareProbe {
             long junitForkMs,
             long junitRunMs,
             long junitPlatformMs,
+            int junitPlatformMethods,
             long resolveMs,
             boolean junitPlatformUsed,
             boolean resolveUsed,
@@ -106,6 +111,7 @@ final class HardwareProbe {
 
             JunitPlatformTimes junit = measureJunitPlatform(javaExe, javacExe, o);
             long junitPlatformMs = junit != null ? junit.wallMs : 0;
+            int junitPlatformMethods = junit != null ? junit.methodCount : 0;
             boolean junitUsed = junit != null;
 
             // Prefer real JUnit Platform wall for the test slot when available.
@@ -141,6 +147,7 @@ final class HardwareProbe {
                     synthFork,
                     synthRun,
                     junitPlatformMs,
+                    junitPlatformMethods,
                     resolveMs,
                     junitUsed,
                     resolveUsed,
@@ -294,11 +301,12 @@ final class HardwareProbe {
         }
     }
 
-    private record JunitPlatformTimes(long wallMs) {}
+    private record JunitPlatformTimes(long wallMs, int methodCount) {}
 
     /**
-     * Real JUnit Platform: one {@code @Test} method via LauncherFactory. Requires Jupiter jars
-     * locally or {@code allowNetwork} to pull them from Central.
+     * Real JUnit Platform: {@link #PLATFORM_METHODS} trivial {@code @Test} methods via
+     * LauncherFactory so cold ETA can separate suite startup from per-method cost. Requires Jupiter
+     * jars locally or {@code allowNetwork} to pull them from Central.
      */
     private static JunitPlatformTimes measureJunitPlatform(Path javaExe, Path javacExe, Options opts) {
         try {
@@ -310,20 +318,14 @@ final class HardwareProbe {
                 Path out = Files.createDirectory(dir.resolve("out"));
                 Path testSrc = dir.resolve("CalibTest.java");
                 Path mainSrc = dir.resolve("ProbeJunitMain.java");
-                Files.writeString(
-                        testSrc,
-                        """
-                        import org.junit.jupiter.api.Test;
-                        import static org.junit.jupiter.api.Assertions.*;
-                        public class CalibTest {
-                          @Test void known_method() {
-                            int s = 0;
-                            for (int i = 0; i < 10_000; i++) s += i;
-                            assertTrue(s > 0);
-                          }
-                        }
-                        """,
-                        StandardCharsets.UTF_8);
+                StringBuilder tests = new StringBuilder();
+                tests.append("import org.junit.jupiter.api.Test;\n");
+                tests.append("public class CalibTest {\n");
+                for (int i = 0; i < PLATFORM_METHODS; i++) {
+                    tests.append("  @Test void m").append(i).append("() {}\n");
+                }
+                tests.append("}\n");
+                Files.writeString(testSrc, tests.toString(), StandardCharsets.UTF_8);
                 Files.writeString(
                         mainSrc,
                         """
@@ -340,13 +342,14 @@ final class HardwareProbe {
                             var summary = new SummaryGeneratingListener();
                             launcher.registerTestExecutionListeners(summary);
                             launcher.execute(req);
-                            if (summary.getSummary().getTestsFailedCount() > 0
-                                || summary.getSummary().getTestsSucceededCount() < 1) {
+                            long ok = summary.getSummary().getTestsSucceededCount();
+                            if (summary.getSummary().getTestsFailedCount() > 0 || ok < %d) {
                               System.exit(1);
                             }
                           }
                         }
-                        """,
+                        """
+                                .formatted(PLATFORM_METHODS),
                         StandardCharsets.UTF_8);
 
                 String cp = joinCp(jars);
@@ -367,7 +370,7 @@ final class HardwareProbe {
                     if (ms >= 0) samples.add(ms);
                 }
                 long wall = maxWarm(samples);
-                return wall > 0 ? new JunitPlatformTimes(wall) : null;
+                return wall > 0 ? new JunitPlatformTimes(wall, PLATFORM_METHODS) : null;
             } finally {
                 deleteTree(dir);
             }

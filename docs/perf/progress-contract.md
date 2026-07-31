@@ -58,8 +58,10 @@ countdown figure must match the explain estimate even when that figure is imperf
 5. **TUI clock freezes the seed** once execute starts. Successful runs teach step metrics +
    invocation walls for the next estimate.
 
-Cold machine with zero step history: coarse dirty-module floor (JK-1179), then refine as work
-runs and teaches the next estimate.
+Cold machine with zero step history: bootstrap `Calibration.ensure` (multi-method JUnit Platform
+when online) then price dirty steps as **product baseline × host scale × cold bias**. Uncalibrated
+hosts use scale=1 (baselines alone). Successful builds refine continuous `learned-*` rates and
+per-module step walls for the next estimate.
 
 ## Learning / recency (JK-1178)
 
@@ -67,7 +69,7 @@ runs and teaches the next estimate.
 |---|---|---|
 | `StepTimings` (`timings.toml`) | Per-step rates from real SUCCESS work | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates) |
 | `BuildMetrics` (`metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
-| Calibration | Host ms/weight + component probes | Full multi-probe on fresh install / `jk engine calibrate`; refined on successful runs |
+| Calibration | Bootstrap probe + continuous host rates (`calibration.toml`) | `Calibration.ensure` on explain/build ETA (network unless `--offline`); `jk engine calibrate`; learned trimmed means on success |
 
 **Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
 the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
@@ -83,46 +85,61 @@ cancel also flips `PipelineResult.userCancelled` when the pipeline can finish co
 | `BuildMetrics` step `ok` | Full successful workspace only (cancelled runs train no step ok) |
 | `StepTimings` rates | Successful non-cancelled module pipelines only |
 | Host ms/method prior | Successful `run-tests` suites (`__host__/test-method-ms`) |
+| Continuous host rates | Successful builds → `calibration.toml` `learned-*` trimmed means |
 | `FetchTimings` | Successful remote CAS-miss downloads only (trimmed mean, drop top/bottom 10%) |
 
 Failed steps still land in the `failed` bucket for diagnostics; they never contribute to `ok`
 averages. Cold modules without local rates fall back to project/host medians, then host absolute
-test-method ms, then static floors.
+test-method ms / continuous calibration, then tight static floors.
 
 Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
 flag stored on the accumulator — not ambient session at journal write). Newer successes supersede
 older ones via EWMA; multi-year raw averages are not used as the sole ETA prior.
 
-## Host calibration suite (JK-1180)
+## Host calibration suite (JK-1180 + continuous learning)
 
-Offline micro-probes (no network), **pessimistic** aggregates (max of warm samples after one
-cold-cache discard). Stored in `~/.jk/state/builds/calibration.toml`:
+**Bootstrap probes** (pessimistic: max of warm samples after one cold-cache discard) measure how
+*this host* compares to a **reference laptop**. They do **not** become absolute cold method costs —
+empty Platform `@Test`s run in a few ms and under-shoot real suites by an order of magnitude.
 
-| Probe | What it stands for in real builds |
+**Cold ETA model:** product **baselines** (realistic unit-test / compile / package guesses) ×
+**host scale** (probe wall ÷ reference wall, clamped) × thin **cold bias** (~1.10 — prefer slight
+over-estimate; not the primary fit knob). Cold ETA does not credit within-module {@code -w}
+speedup (runtime still parallelizes). Full dirty monorepos without invocation history use ~75% of
+job concurrency and a thin contention margin. Baselines/schedule are provisional (fit on the jk
+monorepo); re-fit when multi-project OSS ports exist.
+
+**Continuous learning** folds successful-build absolute walls into trimmed-mean rings; those win
+over baselines when present. Stored in `~/.jk/state/builds/calibration.toml` (survives `jk clean`):
+
+| Field | What it stands for |
 |---|---|
-| `jvm-fork-ms` | `java -version` process spawn (warm worst-of) |
-| `javac-ms` | Micro compile (~12 sources) |
-| `disk-io-ms` | 4 MiB write+fsync+read (local I/O) |
-| `hash-cpu-ms` | 8 MiB SHA-256 (CPU-bound, CAS-like) |
+| `jvm-fork-ms` | `java -version` process spawn (warm worst-of) — fork scale |
+| `javac-ms` | Micro compile (~12 sources) — CPU scale |
+| `disk-io-ms` | 4 MiB write+fsync+read (local I/O) — I/O scale |
+| `hash-cpu-ms` | 8 MiB SHA-256 (CPU-bound, CAS-like) — CPU scale |
 | `junit-fork-ms` / `junit-run-ms` | Synthetic test-worker JVM + known body work |
-| `junit-platform-ms` | Real JUnit Platform Launcher + 1 `@Test` (when Jupiter jars in cache or fetched) |
-| `resolve-ms` | HTTP GET of a tiny Central artifact (`--with-network` only) |
+| `junit-platform-ms` | Real JUnit Platform Launcher + trivial `@Test`s — fork scale |
+| `resolve-ms` | HTTP GET of a tiny Central artifact (skipped under `--offline`) |
+| `probe-test-*-ms` / `probe-compile-per-source-ms` | Diagnostic residuals only (not absolute cold ETA) |
+| `learned-*` sample rings | Continuous host rates from real builds (trimmed mean) |
 | `engine-cold-start-ms` | Client-timed cold engine spawn (`jk engine calibrate`) |
-| `ms-per-weight` | Combined wall ÷ static weight model; floored near the historical constant |
+| `ms-per-weight` | Diagnostic host anchor (not the primary ETA scale) |
 
-Triggers: first `Calibration.ensure` (explain/build when cold), or explicit `jk engine calibrate
-[--force] [--with-network]`. Without `--with-network`, resolve is skipped and JUnit Platform runs
-only if jars are already local. Per-project `StepTimings` always win once present.
+**Triggers:** `Calibration.ensure` at the start of every explain/build ETA assembly (no-op when a
+current measured file exists), or explicit `jk engine calibrate [--force]`. Network is **on by
+default**; opt out with global **`--offline`**.
 
 ## Hierarchical lookup (effort prediction)
 
 For a variable step (e.g. `run-tests`):
 
-1. Module learned per-unit × planned count  
-2. Project median of modules  
-3. Host median  
-4. `BuildMetrics` flat step avg  
-5. Static constants  
+1. Module measured step wall (`BuildMetrics` ok)  
+2. Module / project residual rates (`StepTimings`)  
+3. Host residual median + `__host__/test-method-ms`  
+4. Continuous `calibration.toml` learned rates (alien project)  
+5. Product baseline × host scale (probe vs reference) × cold bias  
+6. Uncalibrated product baselines (same as scale=1)  
 
 Phase/module costs roll up child steps. Workspace ETA schedules **module** costs.
 

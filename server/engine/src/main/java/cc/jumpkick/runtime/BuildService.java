@@ -251,11 +251,10 @@ public final class BuildService {
      * Predicted wall-clock for building {@code plan}, in millis ({@code 0} = unknown — the estimate
      * never fails an explain).
      *
-     * <p><b>Single ETA routine with {@code jk build}</b>: assembles dirty-module costs (shape memo
-     * when warm, else pipeline + cached-step zeroing) then calls {@link #seedEta} — the same schedule
-     * + history prior the build countdown seeds from. Weight→ms conversion is per-module: a warm
-     * module converts at {@link EffortWeights#MS_PER_WEIGHT}; a cold module at this host's {@link
-     * Calibration} (the one sanctioned dry-run exception).
+     * <p><b>Single ETA routine with {@code jk build}</b>: ensures host {@link Calibration}, assembles
+     * dirty-module costs (measured step walls → residual rates → calibration priors → tight static)
+     * then calls {@link #seedEta}. Weights are always in the {@link EffortWeights#MS_PER_WEIGHT}
+     * frame so measured walls round-trip; calibration reprices cold steps into that frame.
      */
     public static long estimateEtaMillis(
             ExplainPlan plan,
@@ -269,6 +268,9 @@ public final class BuildService {
             boolean serial,
             boolean parallelTests) {
         try {
+            // Host calibration: cheap when present; bootstrap probe once when missing (network
+            // unless --offline). Host scale then multiplies product baselines for cold steps.
+            Calibration.ensure(jdksDir);
             // All modules of this build graph — the project/workspace set each module's prediction
             // borrows a learned rate from when it has no history of its own (EffortWeights.learned).
             Set<Path> projectModules = new HashSet<>();
@@ -279,6 +281,7 @@ public final class BuildService {
             BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
             StepTimings timings = StepTimings.load(cache);
             List<EffortWeights.ModuleCost> costs = new ArrayList<>();
+            int jobs = Math.max(1, Runtime.getRuntime().availableProcessors());
             // Only dirty modules (or every module under --rebuild/--force). Each cost is Σ of that
             // module's *running* steps from measured step walls — not a whole-build prior, and not
             // shape-memo bar weights that ignore which steps are actually dirty.
@@ -305,11 +308,18 @@ public final class BuildService {
                     counts.put("compile-java", m.sourceCount());
                     counts.put("compile-test", m.sourceCount());
                 }
+                // Within-module test workers: -w N or auto from jobs × estimated class count.
+                // Cold ETA caps parallel inside Calibration; runtime still uses the full resolve.
+                int classGuess = m.testCount() > 0 ? Math.max(1, m.testCount() / 3) : 0;
+                int testW = cc.jumpkick.test.TestWorkers.resolve(workers, classGuess, jobs);
                 costs.add(EffortWeights.costFromRunningSteps(
-                        mdir, prereqs, running, metrics, timings, projectDirs, counts));
+                        mdir, prereqs, running, metrics, timings, projectDirs, counts, testW));
             }
             // Nothing dirty → nothing to do (do not inject whole-build history average).
             if (costs.isEmpty()) return 0;
+            // Always price from measured walls → residual rates → baseline×host-scale. Product
+            // baselines apply even when uncalibrated (scale=1), so cold explain is never "unknown"
+            // just because the host probe has not run yet.
             int concurrency = serial
                     ? 1
                     : HeapPlan.requestedJvms(
@@ -499,6 +509,18 @@ public final class BuildService {
 
         // Each module's step durations feed one shared sink, folded into the learned ledger on success.
         List<StepTimings.Sample> timingSamples = Collections.synchronizedList(new ArrayList<>());
+        List<HostLearnedRates.HostSample> hostSamples = Collections.synchronizedList(new ArrayList<>());
+        // Host bootstrap + continuous priors for cold ETA (same as estimateEtaMillis).
+        // Surface probe work on the build aggregate wedge (Calibrating host…).
+        boolean probing = Calibration.needsProbe();
+        if (probing) {
+            listener.onPreflight("calibrate", 0, 1, "Calibrating host…");
+        }
+        Calibration.ensure(req.jdksDir());
+        if (probing) {
+            // complete=true drops the preflight row from the live tree (CommandManager.preflight).
+            listener.onPreflight("calibrate", 1, 1, "Calibrating host…");
+        }
         // JK-1102: only fully prepare modules that will execute (dirty). Clean modules skip prepare
         // and schedule — prepare is pure pipeline assembly (parse + plugin describe + step list);
         // real plugin work runs in steps. ensureMaterialized is idempotent CAS extract (JK-1107).
@@ -593,7 +615,7 @@ public final class BuildService {
                 "plan", 0, Math.max(nPrepare, 1), nPrepare == 0 ? "Nothing to prepare" : "Preparing modules…");
         Map<Path, ModulePlan> plans;
         try {
-            plans = prepareModules(dirtyUnits, req, moduleDirs, listener, nPrepare, timingSamples);
+            plans = prepareModules(dirtyUnits, req, moduleDirs, listener, nPrepare, timingSamples, hostSamples);
         } catch (PrepareFailed e) {
             ModuleOutcome o = new ModuleOutcome(e.coord(), e.dir(), false, 2, 0);
             listener.onModuleFinish(o);
@@ -676,6 +698,7 @@ public final class BuildService {
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed and cancelled
             // builds never train — truncated walls poison ETA priors.
             StepTimings.record(req.cache(), timingSamples, StepTimings.DEFAULT_ALPHA, System.currentTimeMillis());
+            Calibration.learnFromSuccess(List.copyOf(hostSamples));
             Double runMpw = medianRate(observedRates);
             if (runMpw != null) Calibration.refine(runMpw, System.currentTimeMillis());
             // JK-1100 / JK-1296: after a successful full forecast path, store an all-clean dirty
@@ -711,7 +734,8 @@ public final class BuildService {
             Set<Path> moduleDirs,
             WorkspaceBuildListener listener,
             int nPrepare,
-            List<StepTimings.Sample> timingSamples) {
+            List<StepTimings.Sample> timingSamples,
+            List<HostLearnedRates.HostSample> hostSamples) {
         if (dirtyUnits.isEmpty()) return Map.of();
         boolean parallel = nPrepare > 1 && prepareParallelEnabled();
         if (!parallel) {
@@ -723,7 +747,7 @@ public final class BuildService {
                 listener.onPreflight(
                         "plan", prepared, nPrepare, "Preparing " + u.coord() + " (" + prepared + "/" + nPrepare + ")");
                 if (p == null) throw new PrepareFailed(u.coord(), u.dir());
-                p.pipeline().addListener(timingsRecorder(p, timingSamples));
+                p.pipeline().addListener(timingsRecorder(p, timingSamples, hostSamples));
                 plans.put(u.dir(), p);
             }
             return plans;
@@ -737,7 +761,7 @@ public final class BuildService {
                     () -> {
                         ModulePlan p = prepareModule(u, req, moduleDirs, true);
                         if (p == null) throw new PrepareFailed(u.coord(), u.dir());
-                        p.pipeline().addListener(timingsRecorder(p, timingSamples));
+                        p.pipeline().addListener(timingsRecorder(p, timingSamples, hostSamples));
                         plans.put(u.dir(), p);
                         int n = prepared.incrementAndGet();
                         synchronized (preflightLock) {
@@ -811,14 +835,26 @@ public final class BuildService {
         // Always convert at MS_PER_WEIGHT. Costs are priced either as absolute step walls
         // (flatWeight(avgMs) round-trips with ×150) or residual/static units trained in that same
         // reference frame.
-        long base = EffortWeights.scheduleMillis(
-                costs, concurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
         BuildMetrics.Stats okHist = okHistory(entryDir, hist);
         // Full rebuild / monorepo-scale dirty: never estimate *below* measured full-build walls.
         // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
         // history is ground truth for "jk build --rebuild takes ~2m30s". Also consult plain `build`
         // full-dirty rows — organic 27-module runs are the same work as --rebuild.
         boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16 || (costs != null && costs.size() >= 16);
+        // Cold full rebuilds: ideal list-schedule over-states parallel efficiency (disk/CAS/GC).
+        // Shrink concurrency and apply a contention margin when we have no invocation floor yet.
+        boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);
+        int etaConcurrency = concurrency;
+        if (coldFull && !serial && concurrency > 1) {
+            // ~75% of jobs: monorepo rebuilds rarely sustain full -j throughput (provisional; n=1 jk).
+            etaConcurrency = Math.max(1, (int) Math.ceil(concurrency * 0.75));
+        }
+        long base = EffortWeights.scheduleMillis(
+                costs, etaConcurrency, serial, parallelTests, EffortWeights.MS_PER_WEIGHT);
+        if (coldFull && base > 0) {
+            // Modest contention margin — main fit is baselines; keep this thin (prefer mild high).
+            base = Math.round(base * 1.08);
+        }
         if (fullWork) {
             BuildMetrics.Stats plainFull = okHistory(entryDir, new HistoryShape(false, hist.dirtyModules()));
             BuildMetrics.Stats floorSrc = higherAvg(okHist, plainFull);
@@ -1087,11 +1123,13 @@ public final class BuildService {
     }
 
     /** JK-1155: learn run-tests rates from actual TestSummary counts when present. */
-    private static StepTimingsRecorder timingsRecorder(ModulePlan p, List<StepTimings.Sample> timingSamples) {
+    private static StepTimingsRecorder timingsRecorder(
+            ModulePlan p, List<StepTimings.Sample> timingSamples, List<HostLearnedRates.HostSample> hostSamples) {
         return new StepTimingsRecorder(
                 p.dir().toString(),
                 timingSamples,
-                () -> p.pipeline().get(BuildPipelines.TEST_RESULT).orElse(null));
+                () -> p.pipeline().get(BuildPipelines.TEST_RESULT).orElse(null),
+                hostSamples);
     }
 
     /** Run one module's pipeline, attaching the caller's per-module listener; map the result to an outcome. */

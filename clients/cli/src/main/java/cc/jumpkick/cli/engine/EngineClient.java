@@ -429,7 +429,8 @@ public final class EngineClient {
      */
     public static Optional<String> calibrate(EnginePaths.Paths paths, boolean force, long engineColdStartMs)
             throws IOException {
-        return calibrate(paths, force, engineColdStartMs, false);
+        // Network on by default (match Calibration.ensure); callers pass false under --offline.
+        return calibrate(paths, force, engineColdStartMs, true);
     }
 
     public static Optional<String> calibrate(

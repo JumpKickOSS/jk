@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -186,7 +187,7 @@ public final class EffortWeights {
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
-    static int flatWeight(long avgMillis) {
+    public static int flatWeight(long avgMillis) {
         return Math.max(1, (int) Math.round(avgMillis / (double) MS_PER_WEIGHT));
     }
 
@@ -250,7 +251,8 @@ public final class EffortWeights {
                         }
                     }
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
-                    // surviving metrics history before conceding to the Step-1 static guess.
+                    // surviving metrics history before conceding to the Step-1 static (which already
+                    // embeds Calibration priors when produced by coldStaticWeight).
                     return learnedFixedWeight(metrics, dir, key, staticWeight);
                 }
                 rate = host.getAsDouble();
@@ -275,6 +277,23 @@ public final class EffortWeights {
             StepTimings timings,
             java.util.Collection<String> projectDirs,
             java.util.Map<String, Integer> stepCounts) {
+        return costFromRunningSteps(
+                dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
+    }
+
+    /**
+     * @param testWorkers within-module test JVM count for cold {@code run-tests} walls (1 = serial
+     *     methods; Mill-shaped {@code -w})
+     */
+    public static ModuleCost costFromRunningSteps(
+            Path dir,
+            Set<Path> prereqs,
+            java.util.Collection<String> runningSteps,
+            BuildMetrics metrics,
+            StepTimings timings,
+            java.util.Collection<String> projectDirs,
+            java.util.Map<String, Integer> stepCounts,
+            int testWorkers) {
         if (runningSteps == null || runningSteps.isEmpty()) {
             return new ModuleCost(dir, prereqs, 0, 0);
         }
@@ -284,6 +303,7 @@ public final class EffortWeights {
         int weight = 0;
         int testWeight = 0;
         String mod = dir == null ? "" : dir.toString();
+        int wWorkers = Math.max(1, testWorkers);
         for (String raw : runningSteps) {
             String step = metricsStepName(raw);
             if (step.isEmpty()) continue;
@@ -294,7 +314,7 @@ public final class EffortWeights {
                 w = flatWeight(absMs);
             } else {
                 int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, 1));
-                int staticW = coldStaticWeight(step, count);
+                int staticW = coldStaticWeight(step, count, wWorkers);
                 if (staticW <= 0) continue; // unknown tiny step with no history
                 w = timings != null
                         ? learned(timings, metrics, mod, step, count, staticW, projectDirs)
@@ -306,12 +326,33 @@ public final class EffortWeights {
         return new ModuleCost(dir, prereqs, weight, testWeight);
     }
 
-    /** Cold static reservation when a running step has no metrics and no residual rate. */
+    /**
+     * Cold reservation when a running step has no metrics and no residual rate. Prefers host
+     * {@link Calibration} continuous/probe priors (absolute ms → flatWeight); falls back to tight
+     * static floors — never the legacy ~1.2s/method {@link #runTestsWeight} for ETA.
+     */
     private static int coldStaticWeight(String step, int count) {
+        return coldStaticWeight(step, count, 1);
+    }
+
+    private static int coldStaticWeight(String step, int count, int testWorkers) {
+        int fromCal = coldFromCalibration(step, count, testWorkers);
+        if (fromCal > 0) return fromCal;
+        // Uncalibrated host: product baselines with scale=1 (same formula as Calibration.scaleBaseline
+        // at identity), and the same cold test-worker cap so ETA does not invent linear -w speedup.
         return switch (step) {
-            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" -> compileWeight(Math.max(1, count));
-            case "run-tests" -> runTestsWeight(Math.max(0, count));
-            case "package-jar" -> PACKAGE_JAR;
+            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
+                    flatWeight(Calibration.scaleBaseline(
+                            Calibration.BASELINE_COMPILE_PER_SOURCE_MS, 1.0) * Math.max(1, count));
+            case "run-tests" -> {
+                int w = Calibration.coldTestParallel(testWorkers);
+                long method = Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
+                long startup = Calibration.scaleBaseline(Calibration.BASELINE_SUITE_STARTUP_MS, 1.0);
+                long body = (long) Math.max(0, count) * method;
+                yield flatWeight(startup + (body + w - 1) / w);
+            }
+            case "package-jar" ->
+                    flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
             case "package-assembly" -> ASSEMBLY_RUN;
             case "native-image" -> NATIVE_RUN;
             case "write-image" -> OCI_RUN;
@@ -320,6 +361,42 @@ public final class EffortWeights {
                     "build-logic-before-package" -> TOKEN;
             default -> 0;
         };
+    }
+
+    /**
+     * Weight units from {@link Calibration#coldStepWallMs} when the host has probe or continuous
+     * learned priors; 0 so callers can fall through to tight static floors.
+     */
+    private static int coldFromCalibration(String step, int count, int testWorkers) {
+        try {
+            Calibration cal = Calibration.load();
+            if (!cal.hasColdPriors()) return 0;
+            long wall = cal.coldStepWallMs(step, count, testWorkers);
+            return wall > 0 ? flatWeight(wall) : 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Cold progress-bar / ETA weight for a step using the same host priors as
+     * {@link #costFromRunningSteps} (calibration → tight static). Prefer this over
+     * {@link #runTestsWeight} / {@link #compileWeight} for real-work forecasts.
+     */
+    public static int coldWorkWeight(String step, int count) {
+        return coldWorkWeight(step, count, 1);
+    }
+
+    public static int coldWorkWeight(String step, int count, int testWorkers) {
+        int w = coldStaticWeight(metricsStepName(step), count, testWorkers);
+        return w > 0 ? w : TOKEN;
+    }
+
+    /** Within-module workers for plan-time test weights (matches runtime {@link TestWorkers}). */
+    private static int resolveTestWorkersForPredict(BuildPipelines.Inputs in, int classCount) {
+        int requested = in != null ? in.workerCount() : 0;
+        int jobs = TestWorkers.effectiveJobs();
+        return TestWorkers.resolve(requested, classCount, jobs);
     }
 
     /**
@@ -373,7 +450,13 @@ public final class EffortWeights {
                         compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java"));
                 javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, src);
                 compileJava = javaRun
-                        ? learned(timings, mod, "compile-java", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-java",
+                                src.size(),
+                                coldWorkWeight("compile-java", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean ktRun = false;
@@ -382,7 +465,13 @@ public final class EffortWeights {
                 ktRun = rerun
                         || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, src);
                 compileKotlin = ktRun
-                        ? learned(timings, mod, "compile-kotlin", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-kotlin",
+                                src.size(),
+                                coldWorkWeight("compile-kotlin", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean gvRun = false;
@@ -392,7 +481,13 @@ public final class EffortWeights {
                 List<Path> src = CompileSupport.collectGroovySources(in.dir(), compact);
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, src);
                 compileGroovy = gvRun
-                        ? learned(timings, mod, "compile-groovy", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-groovy",
+                                src.size(),
+                                coldWorkWeight("compile-groovy", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean compileRun = javaRun || ktRun || gvRun;
@@ -422,12 +517,20 @@ public final class EffortWeights {
             // file-count guess. (compile-java is consistent: its .ticks is the source
             // count, the same count predict multiplies, so it stays per-source.)
             compileTest = testWillRun
-                    ? learned(timings, mod, "compile-test", 1, compileWeight(testSrc.size()), projectDirs)
+                    ? learned(
+                            timings,
+                            mod,
+                            "compile-test",
+                            1,
+                            coldWorkWeight("compile-test", Math.max(1, testSrc.size())),
+                            projectDirs)
                     : SKIP;
 
             int methods = in.estimatedTestCount();
             int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
-            int staticTests = runTestsHierarchical(methods, classes);
+            // Cold bar weight uses the same host priors as ETA (not legacy TEST_METHOD×8).
+            int testWorkers = resolveTestWorkersForPredict(in, classes);
+            int staticTests = coldWorkWeight("run-tests", methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
             // JK-1155: prefer method-count × run-tests rate; fall back to class-count ×
             // run-tests-class rate when method annotations are not found.
             if (testWillRun) {
@@ -443,7 +546,8 @@ public final class EffortWeights {
             }
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
-            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", PACKAGE_JAR);
+            int staticPkg = coldWorkWeight("package-jar", 1);
+            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", staticPkg);
         } catch (Exception ignored) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.

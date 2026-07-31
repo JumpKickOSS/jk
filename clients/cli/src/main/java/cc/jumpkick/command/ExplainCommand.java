@@ -5,7 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
+import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleDotGraph;
 import cc.jumpkick.config.ModuleSelection;
@@ -17,6 +19,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.runtime.BuildPlan;
 import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.util.HostCalibrationStatus;
 import cc.jumpkick.util.JkDirs;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -156,23 +159,51 @@ public final class ExplainCommand implements CliCommand {
         // Engine-hosted like `jk build`/`jk test`, except in the fast unit-test suite (no real jk
         // schedule-aware build-time estimate is computed engine-side alongside the plan
         // (BuildService.estimateEtaMillis) and rides back as an `eta` event; 0 = unknown.
+        //
+        // When host calibration is still cold, show a live "Calibrating host…" wedge for the
+        // engine round-trip, then replace it with the normal build-plan tree below.
         ExplainPlan plan;
         long etaMillis;
         long[] etaOut = new long[1];
-        plan = cc.jumpkick.cli.engine.EngineClient.explain(
-                cc.jumpkick.engine.EnginePaths.current(),
-                new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
-                        startDir,
-                        cache,
-                        workers,
-                        skipTests,
-                        profile,
-                        jdksDir,
-                        serial,
-                        parallelTests,
-                        global.verbose,
-                        rebuild),
-                etaOut);
+        boolean showCalibrating = HostCalibrationStatus.needsBootstrapProbe()
+                && PipelineConsole.isInteractiveTerminal()
+                && PipelineConsole.modeFor(global) == PipelineConsole.Mode.AUTO
+                && !global.outputIsJson();
+        if (showCalibrating) {
+            try (CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Explain", true)) {
+                view.solveLabel("Calibrating host…");
+                plan = cc.jumpkick.cli.engine.EngineClient.explain(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
+                                startDir,
+                                cache,
+                                workers,
+                                skipTests,
+                                profile,
+                                jdksDir,
+                                serial,
+                                parallelTests,
+                                global.verbose,
+                                rebuild),
+                        etaOut);
+                // Closing the manager clears the live wedge; plan prints next.
+            }
+        } else {
+            plan = cc.jumpkick.cli.engine.EngineClient.explain(
+                    cc.jumpkick.engine.EnginePaths.current(),
+                    new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
+                            startDir,
+                            cache,
+                            workers,
+                            skipTests,
+                            profile,
+                            jdksDir,
+                            serial,
+                            parallelTests,
+                            global.verbose,
+                            rebuild),
+                    etaOut);
+        }
         etaMillis = etaOut[0];
 
         if (plan.hasErrors()) {
@@ -312,14 +343,15 @@ public final class ExplainCommand implements CliCommand {
 
     /**
      * Header estimate fragment: {@code Build time estimate ~8s}, {@code Build time estimate <1s}
-     * (fully cached / sub-second), or {@code Build time unknown} when dirty work has no timings.
+     * (fully cached / sub-second), or {@code Build time not yet measured} when dirty work has no
+     * host/project timings yet.
      */
     static String buildTimeEstimate(long etaMillis, boolean fullyCached, Theme t) {
         if (fullyCached || (etaMillis > 0 && etaMillis < 1000)) {
             return "Build time estimate " + Theme.colorize("<1s", t.warning());
         }
         if (etaMillis <= 0) {
-            return "Build time " + Theme.colorize("unknown", t.warning());
+            return "Build time " + Theme.colorize("not yet measured", t.warning());
         }
         return "Build time estimate " + Theme.colorize("~" + fmtDuration(etaMillis), t.warning());
     }

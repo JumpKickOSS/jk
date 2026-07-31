@@ -4126,13 +4126,14 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * JK-1180: offline multi-probe host calibration (or re-run with {@code force}). Optional
+     * JK-1180: multi-probe host calibration (or re-run with {@code force}). Network probes on by
+     * default ({@code allowNetwork} defaults true); opt out with global {@code --offline}. Optional
      * {@code engineColdStartMs} from the CLI (timed cold engine spawn) is folded into the file.
      */
     private void handleCalibrateRequest(String requestLine, BufferedWriter writer) {
         try {
             boolean force = Jsonl.bool(requestLine, "force", false);
-            boolean allowNetwork = Jsonl.bool(requestLine, "allowNetwork", false);
+            boolean allowNetwork = Jsonl.bool(requestLine, "allowNetwork", true);
             long cold = Jsonl.longValue(requestLine, "engineColdStartMs", 0);
             cc.jumpkick.runtime.Calibration cal =
                     cc.jumpkick.runtime.Calibration.ensure(null, force, allowNetwork);

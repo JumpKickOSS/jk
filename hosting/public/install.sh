@@ -249,6 +249,9 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
+  # Host calibration (JK-1180): multi-probe once so the first explain/build ETA is grounded.
+  run_jk engine calibrate >/dev/null 2>&1 \
+    || note "Host calibration deferred; it will run on first explain/build"
 fi
 
 # ---- one home for the bits ---------------------------------------------------

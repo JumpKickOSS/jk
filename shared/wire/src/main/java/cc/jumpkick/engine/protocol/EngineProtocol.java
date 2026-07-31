@@ -480,10 +480,12 @@ public final class EngineProtocol {
 
     /**
      * JK-1180: run host hardware calibration. {@code engineColdStartMs} ≤0 means omit.
-     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing.
+     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing (default
+     * true; false under global {@code --offline}).
      */
     public static String calibrateRequest(boolean force, long engineColdStartMs) {
-        return calibrateRequest(force, engineColdStartMs, false);
+        // Network on by default; pass allowNetwork=false under global --offline.
+        return calibrateRequest(force, engineColdStartMs, true);
     }
 
     public static String calibrateRequest(boolean force, long engineColdStartMs, boolean allowNetwork) {

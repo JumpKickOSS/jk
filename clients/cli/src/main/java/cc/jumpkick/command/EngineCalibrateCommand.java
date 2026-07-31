@@ -12,7 +12,6 @@ import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
-import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import java.io.IOException;
 import java.util.List;
@@ -23,14 +22,13 @@ import java.util.Optional;
  *
  * <ol>
  *   <li>If the engine is not running (or {@code --force} + stop), time a cold engine spawn.
- *   <li>Ask the engine to run the offline multi-probe suite (JVM fork, javac, disk, hash CPU,
- *       synthetic test-worker) and store a pessimistic {@code ms-per-weight} under {@code
+ *   <li>Ask the engine to run the multi-probe suite (JVM fork, javac, disk, hash CPU, synthetic
+ *       test-worker, JUnit Platform + resolve when online) and store timings under {@code
  *       ~/.jk/state/builds/calibration.toml}.
  * </ol>
  *
- * <p>Default is offline. Pass {@code --with-network} for an optional Maven Central micro-GET
- * (resolve RTT) and to download Jupiter jars if missing for a real JUnit Platform probe.
- * Idempotent unless the global {@code --force} flag is set.
+ * <p>Network is <strong>on by default</strong> (fetch Jupiter jars if missing + Maven Central
+ * micro-GET). Opt out with global {@code --offline}. Idempotent unless global {@code --force}.
  *
  * <p>TTY chrome: one live {@code ▶ Calibrate …} line that settles in place to
  * {@code ✓ Calibrate  Host calibration saved} (probe details print below).
@@ -44,25 +42,25 @@ public final class EngineCalibrateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Measure host build timings for better cold ETAs (use --force to re-run; --with-network for resolve)";
+        return "Measure host build timings for better cold ETAs (--force to re-run; --offline skips network probes)";
     }
 
     @Override
-    public List<Opt> options() {
-        // --force is global (GlobalOptions); re-run probes + retime cold engine start.
-        return List.of(Opt.flag(
-                "Allow network: HTTP resolve probe + fetch JUnit jars if not in local cache.", "--with-network"));
+    public List<cc.jumpkick.model.command.Opt> options() {
+        // --force and --offline are global (GlobalOptions).
+        return List.of();
     }
 
     @Override
     public int run(Invocation in) {
-        boolean force = GlobalOptions.from(in).force;
-        boolean allowNetwork = in.isSet("with-network");
+        GlobalOptions global = GlobalOptions.from(in);
+        boolean force = global.force;
+        boolean allowNetwork = !global.offline;
         EnginePaths.Paths paths = EnginePaths.current();
         long coldMs = 0;
         // One live chip line on a TTY (▶ … → ✓ …); pipes/json get a single settled line only.
         boolean animate = PipelineConsole.isInteractiveTerminal()
-                && PipelineConsole.modeFor(GlobalOptions.from(in)) == PipelineConsole.Mode.AUTO;
+                && PipelineConsole.modeFor(global) == PipelineConsole.Mode.AUTO;
         try (CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Calibrate", animate)) {
             boolean alreadyUp = EngineClient.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
                     .map(h -> Jk.VERSION.equals(h.version()))
@@ -82,7 +80,7 @@ public final class EngineCalibrateCommand implements CliCommand {
             }
 
             String msg = force ? "Re-running host probes" : "Running host probes";
-            if (allowNetwork) msg += " (with network)";
+            if (!allowNetwork) msg += " (offline)";
             view.solveLabel(msg + "…");
             Optional<String> ack = EngineClient.calibrate(paths, force, coldMs, allowNetwork);
             if (ack.isEmpty()) {

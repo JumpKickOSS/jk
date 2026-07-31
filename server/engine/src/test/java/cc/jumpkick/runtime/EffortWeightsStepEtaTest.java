@@ -110,6 +110,19 @@ class EffortWeightsStepEtaTest {
         assertThat(EffortWeights.metricsStepName("run-tests")).isEqualTo("run-tests");
     }
 
+    @Test
+    void cold_run_tests_weight_is_ballpark_not_empty_probe() {
+        // Uncalibrated cold path: product baselines × cold bias, not ~5ms empty-probe residual.
+        int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);
+        long ms = (long) w * EffortWeights.MS_PER_WEIGHT;
+        // 100 methods × baseline × cold bias ≈ 14s + startup — well above 1s, well below legacy 2m.
+        assertThat(ms).isGreaterThan(10_000L);
+        assertThat(ms).isLessThan(40_000L);
+        // Cold ETA does not credit -w parallel (prefer over-estimate on cold explain).
+        int w8 = EffortWeights.coldWorkWeight("run-tests", 100, 8);
+        assertThat((long) w8 * EffortWeights.MS_PER_WEIGHT).isEqualTo(ms);
+    }
+
     private static BuildMetrics.Outcome outcome(
             String kind, String dir, boolean ok, long millis, List<BuildMetrics.StepSample> steps) {
         return new BuildMetrics.Outcome(kind, dir, "g:a", ok, false, millis, steps);

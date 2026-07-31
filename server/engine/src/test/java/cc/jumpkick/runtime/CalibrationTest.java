@@ -89,4 +89,70 @@ class CalibrationTest {
         Calibration refined = Calibration.foldRefine(measured, 200.0, NOW + 1);
         assertThat(refined.msPerWeight()).isCloseTo(140.0, within(1e-6)); // 0.4*200 + 0.6*100
     }
+
+    @Test
+    void learned_rates_round_trip_toml(@TempDir Path dir) throws Exception {
+        HostLearnedRates learned = new HostLearnedRates()
+                .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 42, 0)
+                .withSample(HostLearnedRates.RUN_TESTS_PER_METHOD_MS, 48, 0);
+        Calibration written = Calibration.testInstance(
+                100.0, true, JkVersion.VERSION, NOW, learned, 200, 15, 20);
+        Path f = dir.resolve("calibration.toml");
+        Calibration.writeTo(f, written);
+        Calibration read = Calibration.readFrom(f, NOW);
+        assertThat(read.present()).isTrue();
+        assertThat(read.learned().sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS)).isEqualTo(2);
+        assertThat(read.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
+                .hasValueCloseTo(45.0, within(1e-6));
+        assertThat(read.probeTestMethodMs()).isEqualTo(15);
+        assertThat(read.probeTestSuiteStartupMs()).isEqualTo(200);
+        assertThat(read.testMethodMs()).isEqualTo(45); // learned wins over probe
+    }
+
+    @Test
+    void cold_run_tests_wall_uses_baseline_times_host_scale_not_empty_probe() {
+        // Probe residual method=20 must NOT become absolute cold cost (that under-shoots real suites).
+        Calibration cal = Calibration.testInstance(
+                100.0, true, JkVersion.VERSION, NOW, new HostLearnedRates(), 100, 20, 10);
+        long method = cal.testMethodMs();
+        long startup = cal.testSuiteStartupMs();
+        // Product baseline × scale × cold bias — well above empty-probe residual.
+        assertThat(method).isGreaterThanOrEqualTo(80);
+        assertThat(method).isLessThanOrEqualTo(Calibration.BASELINE_METHOD_MS * 2);
+        assertThat(startup).isGreaterThanOrEqualTo(350);
+        long expectedSerial = startup + 10 * method;
+        assertThat(cal.coldStepWallMs("run-tests", 10)).isEqualTo(expectedSerial);
+        // Cold ETA ignores -w speedup (COLD_MAX_TEST_PARALLEL=1) so explain prefers over- under-shoot.
+        assertThat(cal.coldStepWallMs("run-tests", 10, 8)).isEqualTo(expectedSerial);
+    }
+
+    @Test
+    void host_scale_clamps_and_prefers_identity_when_uncalibrated() {
+        assertThat(Calibration.hostScale()).isEqualTo(1.0);
+        assertThat(Calibration.clampScale(0.1)).isEqualTo(Calibration.HOST_SCALE_MIN);
+        assertThat(Calibration.clampScale(5.0)).isEqualTo(Calibration.HOST_SCALE_MAX);
+        // Slower host → higher scale → longer baseline.
+        long slow = Calibration.scaleBaseline(100, 2.0);
+        long fast = Calibration.scaleBaseline(100, 0.5);
+        assertThat(slow).isGreaterThan(fast);
+        assertThat(fast).isGreaterThanOrEqualTo(Math.round(100 * Calibration.HOST_SCALE_MIN * Calibration.COLD_BIAS));
+    }
+
+    @Test
+    void faster_host_probe_lowers_cold_method_cost_but_not_below_scale_floor() {
+        // testInstance uses small component ms (fast host relative to REF_*).
+        Calibration cal = Calibration.testInstance(100.0, true, JkVersion.VERSION, NOW);
+        assertThat(cal.cpuScale()).isEqualTo(Calibration.HOST_SCALE_MIN);
+        long method = cal.testMethodMs();
+        // At least baseline × min scale × bias, not empty-probe 5ms.
+        long floor = Math.round(
+                Calibration.BASELINE_METHOD_MS * Calibration.HOST_SCALE_MIN * Calibration.COLD_BIAS);
+        assertThat(method).isEqualTo(floor);
+    }
+
+    @Test
+    void derive_method_ms_clamps_synth_body() {
+        // 8 worker methods, 40 ms body → 5 ms/method (floor) — diagnostic residual only.
+        assertThat(Calibration.deriveMethodMs(40, false, 0)).isEqualTo(Calibration.METHOD_MS_FLOOR);
+    }
 }
