@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -13,9 +11,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -227,16 +223,20 @@ public final class AutoLock {
             Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
         try {
-            JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-            // Apply workspace context if this is a module (resolves workspace: deps)
-            JkBuild effective = applyWorkspaceContext(dir, build);
+            // One lock scope, shared with every other lock entry point (JK-1303): a workspace
+            // member (or root) resolves the merged union at the root — a module-scoped
+            // conservative relock must never overwrite the root jk-lock.toml with one module's
+            // closure (JK-1304).
+            LockPipelines.LockScope scope = LockPipelines.lockScope(dir);
+            JkBuild effective = scope.effective();
+            Path scopeDir = scope.lockDir();
 
             Cas cas = JkStores.cas(cache);
-            cc.jumpkick.repo.RepoGroup repos =
-                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
+            cc.jumpkick.repo.RepoGroup repos = RepoGroupBuilder.buildFor(
+                    effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(scopeDir));
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
-                    .withProjectDir(dir)
-                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir))
+                    .withProjectDir(scopeDir)
+                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, scopeDir))
                     .withPlatformPolicy(effective.build().platformPolicy())
                     .withUnmappedPolicy(effective.build().unmappedPolicy());
 
@@ -280,18 +280,4 @@ public final class AutoLock {
         }
     }
 
-    private static JkBuild applyWorkspaceContext(Path dir, JkBuild build) {
-        if (build.isWorkspaceRoot()) return build;
-        try {
-            var rootOpt = WorkspaceLocator.findRoot(dir);
-            if (rootOpt.isEmpty()) return Variants.unionDependencies(build);
-            Path wsRoot = rootOpt.get();
-            JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(build);
-            var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
-            return WorkspaceMerge.applyToModule(wsRootBuild, build, siblings.values());
-        } catch (Exception e) {
-            return Variants.unionDependencies(build);
-        }
-    }
 }
