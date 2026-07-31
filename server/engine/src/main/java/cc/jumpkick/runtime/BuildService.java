@@ -840,7 +840,14 @@ public final class BuildService {
         // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
         // history is ground truth for "jk build --rebuild takes ~2m30s". Also consult plain `build`
         // full-dirty rows — organic 27-module runs are the same work as --rebuild.
-        boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16 || (costs != null && costs.size() >= 16);
+        //
+        // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relative (JK-1302): the
+        // floor source below is keyed by dirty count (`#dN`), so a wide-but-cheap incremental
+        // build is floored against other builds of ITS OWN shape, not against full-rebuild walls —
+        // the constant only decides when the floor mechanism engages at all. `hist.dirtyModules()`
+        // always equals costs.size() here (historyShapeForCosts at every call site), so one
+        // condition suffices.
+        boolean fullWork = hist.rebuild() || hist.dirtyModules() >= 16;
         // Cold full rebuilds: ideal list-schedule over-states parallel efficiency (disk/CAS/GC).
         // Shrink concurrency and apply a contention margin when we have no invocation floor yet.
         boolean coldFull = fullWork && (okHist == null || okHist.count() == 0);

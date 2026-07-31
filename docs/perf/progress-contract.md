@@ -53,6 +53,10 @@ countdown figure must match the explain estimate even when that figure is imperf
 3. **`--rebuild` / `--force` = treat every module/step as dirty** — same composition formula. Full
    work also floors the estimate at measured full-build walls (`build` / `build:rebuild` invocation
    avgs, weighted toward max when stable) so a consistent ~2m30s rebuild is not estimated as ~1m25s.
+   "Full work" = rebuild shape, or ≥ 16 dirty modules — deliberately absolute, not
+   workspace-relative (JK-1302): the floor source is keyed by dirty count (`#dN`), so a wide but
+   cheap incremental build is floored against builds of its own shape, never against full-rebuild
+   walls; the constant only decides when the floor engages.
 4. Whole-build history is otherwise a **cold seed** when no step costs exist, plus a one-sided clamp
    of absurd over-estimates (never pull partial work up).
 5. **TUI clock freezes the seed** once execute starts. Successful runs teach step metrics +
