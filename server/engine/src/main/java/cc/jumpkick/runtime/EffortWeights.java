@@ -277,6 +277,47 @@ public final class EffortWeights {
     }
 
     /**
+     * Unit counts for cold/residual pricing from a prepared pipeline's declared ticks. Matches what
+     * {@code jk explain} gets from the forecast ({@code sourceCount}/{@code testCount}): compile
+     * steps expose source counts as ticks; {@code run-tests} exposes the method estimate. Used by
+     * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
+     * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
+     */
+    public static java.util.Map<String, Integer> stepCountsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        if (pipeline == null) return counts;
+        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+            String key = metricsStepName(s.name());
+            if (key.isEmpty()) continue;
+            int ticks;
+            try {
+                ticks = s.estimateTicks();
+            } catch (RuntimeException e) {
+                continue;
+            }
+            if (ticks > 0) counts.put(key, ticks);
+        }
+        return counts;
+    }
+
+    /**
+     * Steps that will do real work in a prepared pipeline (weight &gt; {@link #TOKEN}). Cached/skip
+     * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached()}.
+     */
+    public static java.util.List<String> runningStepsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+        java.util.List<String> running = new java.util.ArrayList<>();
+        if (pipeline == null) return running;
+        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+            try {
+                if (s.estimateWeight() > TOKEN) running.add(s.name());
+            } catch (RuntimeException e) {
+                running.add(s.name());
+            }
+        }
+        return running;
+    }
+
+    /**
      * Module cost from the steps that will actually run (forecast non-cached / rebuild-all). Each
      * step is priced from {@link BuildMetrics} ok averages when available so ETA is Σ dirty step
      * walls — not a whole-build {@code build}/{@code build:rebuild} prior.

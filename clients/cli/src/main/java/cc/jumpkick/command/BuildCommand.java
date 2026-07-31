@@ -242,6 +242,8 @@ public final class BuildCommand implements CliCommand {
 
         long buildStart = System.nanoTime();
         CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Build", animate);
+        // OSC 0 tab/window title while the live build region is open.
+        view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext earlyAgg = new AggregateContext(view);
         // Do not client-seed a "checking" phase row (JK-1128): the engine owns Checking /
         // Lock / Graph preflight events on the single build RPC (JK-1106). A seed left a
@@ -1050,6 +1052,30 @@ public final class BuildCommand implements CliCommand {
                 + where
                 + " "
                 + Theme.colorize(elapsedSince(start), Theme.active().darkGray());
+    }
+
+    /**
+     * {@code group:name:version} for the OSC window title. Soft-parses {@code entryDir/jk.toml} when
+     * {@code build} is null (live path does not always pre-parse the entry model).
+     */
+    static String projectGavLabel(Path entryDir, JkBuild build) {
+        try {
+            JkBuild b = build;
+            if (b == null && entryDir != null) {
+                Path toml = entryDir.resolve("jk.toml");
+                if (Files.isRegularFile(toml)) b = cc.jumpkick.config.JkBuildParser.parse(toml);
+            }
+            if (b != null && b.project() != null) {
+                var p = b.project();
+                String g = p.group() == null || p.group().isBlank() ? "?" : p.group();
+                String a = p.name() == null || p.name().isBlank() ? "?" : p.name();
+                String v = p.version() == null || p.version().isBlank() ? "?" : p.version();
+                return g + ":" + a + ":" + v;
+            }
+        } catch (Exception ignored) {
+            // best-effort title only
+        }
+        return "project";
     }
 }
 

@@ -94,6 +94,7 @@ class JdkListCommandTest {
     private static void makeJdkInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }

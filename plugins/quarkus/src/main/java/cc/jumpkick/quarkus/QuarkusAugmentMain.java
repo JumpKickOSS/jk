@@ -253,7 +253,7 @@ public final class QuarkusAugmentMain {
                     "",
                     "properties",
                     quarkusVersion);
-            propsPath = maven.resolve(art).getArtifact().getFile().toPath();
+            propsPath = resolvedArtifactPath(maven.resolve(art).getArtifact());
         }
         platforms.addPlatformProperties(
                 "io.quarkus.platform",
@@ -270,6 +270,29 @@ public final class QuarkusAugmentMain {
     }
 
     private record RuntimeCoord(String group, String artifact, String version, Path jar) {}
+
+    /**
+     * Path of a resolved Aether artifact. Prefer {@code getPath()} (maven-resolver 1.9.20+ / 2.x);
+     * fall back to {@code getFile()} for the older resolver pinned by quarkus-bootstrap. Looked up
+     * reflectively so compile against either surface stays free of deprecation noise and missing
+     * symbols.
+     */
+    static Path resolvedArtifactPath(org.eclipse.aether.artifact.Artifact art) {
+        if (art == null) throw new IllegalStateException("resolved artifact is null");
+        try {
+            Object path = art.getClass().getMethod("getPath").invoke(art);
+            if (path instanceof Path p) return p;
+        } catch (ReflectiveOperationException ignored) {
+            // Older Artifact interface — only getFile().
+        }
+        try {
+            Object file = art.getClass().getMethod("getFile").invoke(art);
+            if (file instanceof java.io.File f) return f.toPath();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot resolve path for " + art, e);
+        }
+        throw new IllegalStateException("resolved artifact has no path: " + art);
+    }
 
     /** Path/workspace jars written as {@code unknown:unknown:0} by the packager, or non-Maven paths. */
     private static boolean isPathOrUnknown(RuntimeCoord r) {

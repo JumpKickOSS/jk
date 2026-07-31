@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.discovery.ToolHealth;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -191,8 +192,15 @@ public final class JdkResolution {
         return Resolved.found(installed(p), tier, null);
     }
 
+    /**
+     * Accept only homes that can compile: a {@code bin/} tree with {@code javac}. Package-manager
+     * JREs under {@code /usr/lib/jvm} often have {@code bin/java} (and a {@code release} file) but no
+     * compiler — those must not win current/default/JAVA_HOME tiers.
+     */
     private static boolean hasBin(Path home) {
-        return home != null && Files.isDirectory(home.resolve("bin"));
+        return home != null
+                && Files.isDirectory(home.resolve("bin"))
+                && ToolHealth.hasJavac(home);
     }
 
     private static InstalledJdk installed(Path home) {

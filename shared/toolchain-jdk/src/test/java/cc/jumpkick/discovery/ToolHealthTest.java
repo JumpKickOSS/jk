@@ -72,12 +72,22 @@ class ToolHealthTest {
         assertThat(ToolHealth.isHealthy(ToolSpec.jdk("21.0.5", null), home)).isFalse();
     }
 
+    @Test
+    void jre_without_javac_fails_jdk_health_check(@TempDir Path tempDir) throws Exception {
+        Path home = jdkLayout(tempDir, "25.0.4", "Red Hat, Inc.");
+        Files.delete(home.resolve("bin").resolve("javac"));
+        assertThat(ToolHealth.hasJavac(home)).isFalse();
+        assertThat(ToolHealth.isHealthy(ToolSpec.jdk("25.0.4", null), home)).isFalse();
+        assertThat(ProbeSupport.discoverJdk(home, "system")).isEmpty();
+    }
+
     // --- fixture builders ---------------------------------------------------
 
     static Path jdkLayout(Path root, String version, String implementor) throws Exception {
         Path home = root.resolve("jdk-" + version);
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/bin/sh\n");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/bin/sh\n");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\n" + "IMPLEMENTOR=\"" + implementor + "\"\n");

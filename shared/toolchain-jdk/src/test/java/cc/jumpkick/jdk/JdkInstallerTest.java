@@ -59,6 +59,7 @@ class JdkInstallerTest {
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
 
         served.put("/jdk.tar.gz", archive);
@@ -88,6 +89,7 @@ class JdkInstallerTest {
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
         served.put("/jdk.tar.gz", archive);
         Path jdksRoot = tempDir.resolve("jdks");
@@ -143,7 +145,7 @@ class JdkInstallerTest {
 
     @Test
     void sha256_mismatch_aborts_install(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake"));
+        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "#!/fake", "bin/javac", "#!/fake"));
         served.put("/jdk.tar.gz", archive);
 
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
@@ -174,6 +176,7 @@ class JdkInstallerTest {
             {"jdk-21.0.5+11/bin/", null},
             {"jdk-21.0.5+11/._bin", "applesidecar"},
             {"jdk-21.0.5+11/bin/java", "#!/fake/java"},
+            {"jdk-21.0.5+11/bin/javac", "#!/fake/java"},
             {"jdk-21.0.5+11/bin/._java", "applesidecar"},
             {"jdk-21.0.5+11/release", "JAVA_VERSION=21.0.5\n"},
             {"jdk-21.0.5+11/._release", "applesidecar"},
@@ -202,7 +205,7 @@ class JdkInstallerTest {
 
     @Test
     void second_install_is_idempotent(@TempDir Path tempDir) throws Exception {
-        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "x"));
+        byte[] archive = buildTarGz("jdk", Map.of("bin/java", "x", "bin/javac", "x"));
         served.put("/jdk.tar.gz", archive);
         JdkInstaller installer = new JdkInstaller(new Http(), new JdkRegistry(tempDir.resolve("jdks")));
         JdkPackage pkg = new JdkPackage(
@@ -226,6 +229,7 @@ class JdkInstallerTest {
                 "jdk-21.0.5",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
         served.put("/jdk.tar.gz", archive);
 
@@ -246,6 +250,7 @@ class JdkInstallerTest {
                 "jdk-21.0.5.jdk",
                 Map.of(
                         "Contents/Home/bin/java", "#!/fake/java",
+                        "Contents/Home/bin/javac", "#!/fake/java",
                         "Contents/Home/release", "JAVA_VERSION=21.0.5\n"));
         served.put("/jdk.tar.gz", archive);
 

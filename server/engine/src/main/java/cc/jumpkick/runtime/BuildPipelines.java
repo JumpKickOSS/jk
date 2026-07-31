@@ -2447,14 +2447,17 @@ public final class BuildPipelines {
                                 result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
                     }
                     // All tests passed — record a CAS marker keyed by the content key so a
-                    // later build skips the runner when inputs are unchanged. It lives in the
-                    // CAS (not target/), so it survives `jk clean`: after clean+build the
+                    // later build / explain skips the runner when inputs are unchanged. It lives
+                    // in the CAS (not target/), so it survives `jk clean`: after clean+build the
                     // compile cache restores byte-identical classes, the key recomputes the
                     // same, and the marker is found. The green counts ride the record so the
-                    // skip path can replay them in its summary. (Skip if the key failed open —
-                    // nothing to key the marker on, and skip on a cache-bypassing run — verify's
-                    // scratch build must not leave orphan markers under unreachable keys.)
-                    if (!rerun && stampKey != null) {
+                    // skip path can replay them in its summary.
+                    //
+                    // Always store on success — including --rebuild/--force. Rerun only means
+                    // "do not restore/skip the runner"; the marker still uses the normal
+                    // content key (not a verify scratch salt), so the next explain must see it
+                    // (same contract as compile). Skip only when the key failed open.
+                    if (stampKey != null) {
                         actionCache.storeWithOutputs(
                                 testTaskId,
                                 stampKey,
@@ -4111,22 +4114,40 @@ public final class BuildPipelines {
     /**
      * Packaging cache (mirrors the compile {@link ActionCache} path, for artifacts). Returns {@code
      * true} when a cached artifact for {@code key} was hard-linked back into {@code baseDir} — the
-     * caller then skips the (re)packaging work. Honors {@code --force}.
+     * caller then skips the (re)packaging work.
+     *
+     * <p>{@code --rebuild}/{@code --force} skip <em>restore</em> (always re-package) but still
+     * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next
+     * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     private static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
+        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)
+                || cc.jumpkick.config.SessionContext.current().config().forceOr(false)) {
+            return false;
+        }
         ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
 
-    /** Record a freshly-produced packaging artifact so a later build can skip it. */
+    /**
+     * Record a freshly-produced packaging artifact so a later build / explain can skip it. Always
+     * writes — even under {@code --rebuild} — because rebuild only means "do not restore/skip
+     * work", not "do not teach the cache" (parity with compile; JK-1297 verify-scratch is the only
+     * path that must leave no residue, and it never reaches here).
+     */
     private static void storePackaged(
             Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
             throws IOException {
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return;
         new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
+    }
+
+    /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */
+    static void storePackagedForTest(
+            Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
+            throws IOException {
+        storePackaged(cacheRoot, taskId, key, tokens, baseDir, artifacts);
     }
 
     private static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {

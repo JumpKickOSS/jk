@@ -29,14 +29,49 @@ import org.jline.utils.AttributedStyle;
  */
 public final class Spinner implements AutoCloseable {
 
-    /** Solid circle used for the pulse animation (U+25CF). */
+    /** Solid circle used for the pulse animation (U+25CF) — CommandWedge / open pulse. */
     public static final String PULSE_GLYPH = "●";
+
+    /**
+     * Filling-circle phases for tree rows under the progress bar (not the CommandWedge). Cycle:
+     * white circle → bullseye → fisheye → bullseye, each held for {@link #FILL_HOLD} animator frames,
+     * constant blue. Distinct glyphs only — hold is applied in {@link #fillGlyph(int)}, not by
+     * repeating entries (the pipeline painter also skips rewriting a tree line when its text is
+     * unchanged, so held frames are free).
+     *
+     * <ul>
+     *   <li>U+25CB ○ white circle
+     *   <li>U+25CE ◎ bullseye
+     *   <li>U+25C9 ◉ fisheye
+     * </ul>
+     */
+    public static final String[] FILL_PHASES = {
+        "\u25CB", // ○
+        "\u25CE", // ◎
+        "\u25C9", // ◉
+        "\u25CE", // ◎
+    };
+
+    /** Animator frames to hold each {@link #FILL_PHASES} glyph before advancing. */
+    public static final int FILL_HOLD = 4;
+
+    /** Frames in one full fill cycle ({@code FILL_PHASES.length * FILL_HOLD}). */
+    public static final int FILL_FRAMES = FILL_PHASES.length * FILL_HOLD;
 
     /** Frames in one full bright→dim→bright cycle (odd so the midpoint lands exactly on dim). */
     static final int PULSE_FRAMES = 25;
 
     /** Interval between pulse frames (2.0s per full breath at 25 frames). */
     static final long FRAME_MS = cc.jumpkick.runtime.WorkspaceProgressTracker.TTY_FRAME_MS;
+
+    /**
+     * Glyph for animator frame {@code i} (wraps). Same glyph for {@link #FILL_HOLD} consecutive
+     * frames so the paint path can no-op on tree lines until the phase actually changes.
+     */
+    public static String fillGlyph(int i) {
+        int phase = Math.floorMod(i, FILL_FRAMES) / FILL_HOLD;
+        return FILL_PHASES[phase];
+    }
 
     /**
      * Bright end of the open (no-background) pulse — brand run blue ({@code #3D9BFF}, web {@code

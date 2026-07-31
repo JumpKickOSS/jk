@@ -33,11 +33,13 @@ public final class ToolHealth {
 
     /**
      * Does {@code home} contain a working install matching {@code spec}? Follows symlinks; a broken
-     * link returns false.
+     * link returns false. For {@code java} installs, {@code bin/javac} is required so JRE-only
+     * package-manager trees are rejected.
      */
     public static boolean isHealthy(ToolSpec spec, Path home) {
         if (!Files.isDirectory(home)) return false;
         if (!Files.exists(requiredBinary(spec, home))) return false;
+        if ("java".equals(spec.kind()) && !hasJavac(home)) return false;
         Optional<String> version = detectVersion(spec, home);
         if (version.isEmpty()) return false;
         if (!version.get().equals(spec.version())) return false;
@@ -50,6 +52,17 @@ public final class ToolHealth {
             }
         }
         return true;
+    }
+
+    /**
+     * Whether {@code home} looks like a full JDK (has a compiler), not a JRE. Distro packages under
+     * {@code /usr/lib/jvm} frequently ship a JRE with a full {@code release} file but no {@code
+     * javac}.
+     */
+    public static boolean hasJavac(Path home) {
+        if (home == null) return false;
+        String exe = HostPlatform.isWindows() ? "javac.exe" : "javac";
+        return Files.exists(home.resolve("bin").resolve(exe));
     }
 
     /** Read the version off disk for a candidate {@code home}. */

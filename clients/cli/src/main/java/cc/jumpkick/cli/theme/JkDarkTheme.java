@@ -48,6 +48,8 @@ public final class JkDarkTheme implements Theme {
     public static final Rgb HEADER_BLUE = Rgb.hex(0x0F4786); // dark royal blue (#1565C0 × 0.7)
     public static final Rgb NORMAL_WHITE = Rgb.hex(0xCFD8DC); // Blue Grey 100
     public static final Rgb GRAY = Rgb.hex(0x90A4AE); // Blue Grey 300 — badge chips
+    /** Neutral mid-gray for ordinary prose (step details) — between black and white, not dim chrome. */
+    public static final Rgb MID_GRAY = Rgb.hex(0xA0A0A0);
 
     /** Filesystem paths shown to the user. */
     public static final Rgb PATH = Rgb.hex(0x969DD4); // periwinkle
@@ -143,6 +145,11 @@ public final class JkDarkTheme implements Theme {
     @Override
     public Rgb darkBlackColor() {
         return DARK_BLACK;
+    }
+
+    @Override
+    public AttributedStyle midGray() {
+        return withColor(AttributedStyle.DEFAULT, MID_GRAY);
     }
 
     @Override

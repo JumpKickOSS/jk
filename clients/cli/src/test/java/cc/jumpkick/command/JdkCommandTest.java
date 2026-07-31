@@ -62,6 +62,7 @@ class JdkCommandTest {
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
         served.put("/archives/jdk.tar.gz", archive);
 
@@ -94,6 +95,7 @@ class JdkCommandTest {
                 "graalvm-jdk-25",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=25\nIMPLEMENTOR=\"Oracle Corporation\"\nGRAALVM_VERSION=\"25\"\n"));
         served.put("/archives/graal.tar.gz", archive);
         served.put(
@@ -455,6 +457,7 @@ class JdkCommandTest {
     private static void makeJdkInstall(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         // ProbeSupport.discoverJdk demands a release file — every modern
         // JDK ships one since 7u72, so the fixture follows suit.
         var m = Pattern.compile("(\\d+(?:\\.\\d+){0,2})")

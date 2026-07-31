@@ -208,6 +208,21 @@ public final class TestSupport {
         String module = moduleLabel == null ? "" : moduleLabel.trim();
         return new TestProgressListener() {
             @Override
+            public void onTestStarted(String id, String display, boolean isTest, int workerId) {
+                // Label at start so long-running tests/classes show as "current work" in the TUI
+                // tree (finish-only labels lag one event behind). Prefer Class > method when the
+                // unique id carries a class segment and display is the bare method name.
+                // Skip engine/suite roots (no [class:…] segment) so we don't flash "JUnit Jupiter".
+                if (!isTest && cc.jumpkick.test.JUnitLauncher.classFromUniqueId(id).isEmpty()) {
+                    return;
+                }
+                String detail = liveTestDetail(id, display, isTest);
+                if (!detail.isBlank()) {
+                    ctx.label(progressLabel(module, detail, workerId, workerCount));
+                }
+            }
+
+            @Override
             public void onTestFinished(
                     String id,
                     String display,
@@ -218,7 +233,9 @@ public final class TestSupport {
                     int workerId) {
                 if (!isTest) return;
                 if (wasStatic) ctx.progress(1);
-                ctx.label(progressLabel(module, display, workerId, workerCount));
+                // Keep the label in sync on finish for fast suites (start+finish race); also
+                // covers engines that omit start events for some nodes.
+                ctx.label(progressLabel(module, liveTestDetail(id, display, true), workerId, workerCount));
             }
 
             @Override
@@ -235,7 +252,7 @@ public final class TestSupport {
                 // diagnostic still flows to JSON consumers, but the human listeners
                 // suppress it so the same failure isn't printed twice. Test *infra*
                 // errors (interrupt/IO) keep code "test" and still surface in text mode.
-                String label = progressLabel(module, display, workerId, workerCount);
+                String label = progressLabel(module, liveTestDetail(id, display, true), workerId, workerCount);
                 ctx.error("test-failure", message, label, exClass);
             }
 
@@ -268,6 +285,50 @@ public final class TestSupport {
             sb.append("  [w").append(workerId).append(']');
         }
         return sb.toString();
+    }
+
+    /**
+     * Human detail for the live TUI / progress labels: simple class name, or Java-style {@code
+     * Class.method(ParamType)} when both are known. Container starts (class-level) use the class
+     * alone so the tree rotates through classes under a long Test phase. Never uses the JUnit {@code
+     * " > "} display separator — the CLI paints this with Java syntax highlighting.
+     */
+    static String liveTestDetail(String uniqueId, String display, boolean isTest) {
+        String cls = cc.jumpkick.test.JUnitLauncher.classFromUniqueId(uniqueId);
+        String simple = simpleClassName(cls);
+        String d = normalizeTestDisplay(display);
+        if (!isTest) {
+            // Class/container: prefer FQCN simple name; fall back to JUnit display name.
+            if (!simple.isEmpty()) return simple;
+            return d;
+        }
+        if (simple.isEmpty()) return d;
+        if (d.isEmpty() || d.equals(simple)) return simple;
+        // Already "FooTest.bar()" / "FooTest.bar(Path)".
+        if (d.startsWith(simple + ".") || d.startsWith(simple + "(")) return d;
+        // Method-only display ("bar()" / "bar(Path)") → Class.method(...).
+        return simple + "." + d;
+    }
+
+    /**
+     * Normalize a JUnit display name into a Java-ish member form: strips surrounding whitespace and
+     * rewrites the common {@code "Class > method"} separator to a dot.
+     */
+    static String normalizeTestDisplay(String display) {
+        if (display == null) return "";
+        String d = display.trim();
+        // JUnit Platform often uses "FooTest > bar()" as a composite display.
+        int sep = d.indexOf(" > ");
+        if (sep > 0) {
+            d = d.substring(0, sep).trim() + "." + d.substring(sep + 3).trim();
+        }
+        return d;
+    }
+
+    static String simpleClassName(String fqcn) {
+        if (fqcn == null || fqcn.isBlank()) return "";
+        int dot = fqcn.lastIndexOf('.');
+        return dot < 0 ? fqcn.trim() : fqcn.substring(dot + 1).trim();
     }
 
     /**

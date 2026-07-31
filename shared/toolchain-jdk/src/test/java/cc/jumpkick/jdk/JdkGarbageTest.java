@@ -16,6 +16,7 @@ class JdkGarbageTest {
         Path d = root.resolve(name);
         Files.createDirectories(d.resolve("bin"));
         Files.writeString(d.resolve("bin").resolve("java"), "x");
+        Files.writeString(d.resolve("bin").resolve("javac"), "x");
         return d;
     }
 

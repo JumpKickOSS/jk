@@ -4,6 +4,7 @@ package cc.jumpkick.android;
 import cc.jumpkick.plugin.build.PackageIo;
 import cc.jumpkick.plugin.build.StepExec;
 import com.android.apksig.ApkSigner;
+import com.android.apksig.KeyConfig;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -100,8 +101,10 @@ final class Signing {
 
     /** apksig over {@code unsigned} → {@code out}: v1+v2 always, v3 for release identities. */
     static void sign(Identity identity, Path unsigned, Path out) throws Exception {
-        ApkSigner.SignerConfig signer =
-                new ApkSigner.SignerConfig.Builder(identity.name(), identity.key(), identity.certs()).build();
+        // KeyConfig.Jca is the non-deprecated form (PrivateKey ctor is deprecated in apksig 8.x).
+        ApkSigner.SignerConfig signer = new ApkSigner.SignerConfig.Builder(
+                        identity.name(), new KeyConfig.Jca(identity.key()), identity.certs())
+                .build();
         new ApkSigner.Builder(List.of(signer))
                 .setInputApk(unsigned.toFile())
                 .setOutputApk(out.toFile())

@@ -105,6 +105,19 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
 
     private int completedCount;
 
+    /**
+     * OSC window title base (no spinner prefix), e.g. {@code JumpKick - Building g:a:v...}. The
+     * fill-circle glyph is prepended and the OSC is re-emitted only when that glyph advances
+     * ({@link Spinner#FILL_HOLD} cadence), not every animator frame.
+     */
+    private String windowTitleBase = "";
+
+    /** Last fill glyph written into the OSC title; null until first emit. */
+    private String windowTitleLastGlyph;
+
+    /** True after {@link #setWindowTitle} until cleared on settle/dismiss/cancel. */
+    private boolean windowTitleActive;
+
     private Thread animator;
 
     // output capture: while active, System.out/err are redirected so process
@@ -189,6 +202,46 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         synchronized (lock) {
             this.target = module == null ? "" : module;
         }
+    }
+
+    /**
+     * Set the terminal window/tab title (OSC 0) for the life of this live region. The fill-circle
+     * spinner glyph is prefixed ({@code "○ JumpKick - …"}); OSC is updated only when that glyph
+     * changes (same hold cadence as tree-row spinners). Cleared automatically on settle / dismiss /
+     * cancel / close.
+     *
+     * <p>Build passes the base string {@code JumpKick - Building g:a:v...} (no glyph).
+     */
+    public void setWindowTitle(String title) {
+        synchronized (lock) {
+            if (done) return;
+            windowTitleBase = title == null ? "" : title;
+            windowTitleActive = !windowTitleBase.isEmpty();
+            windowTitleLastGlyph = null; // force immediate emit with current fill glyph
+            emitWindowTitleIfGlyphChanged();
+            out.flush();
+        }
+    }
+
+    /**
+     * Emit OSC 0 with {@code fillGlyph + " " + base} only when the fill phase actually advances.
+     * Must hold {@link #lock}.
+     */
+    private void emitWindowTitleIfGlyphChanged() {
+        if (!windowTitleActive || windowTitleBase.isEmpty()) return;
+        String glyph = Spinner.fillGlyph(frame);
+        if (glyph.equals(windowTitleLastGlyph)) return;
+        windowTitleLastGlyph = glyph;
+        out.print(Ansi.windowTitle(glyph + " " + windowTitleBase));
+    }
+
+    /** Clear a title set by {@link #setWindowTitle}, if any. */
+    private void clearWindowTitle() {
+        if (!windowTitleActive) return;
+        windowTitleActive = false;
+        windowTitleBase = "";
+        windowTitleLastGlyph = null;
+        out.print(Ansi.WINDOW_TITLE_CLEAR);
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
@@ -309,6 +362,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 phases.put(key, n);
                 phaseOrder.add(key);
             }
+            // Prefer an explicit label; else "3/10" style progress on the tree row detail.
+            if (label != null && !label.isEmpty()) n.detail = label;
+            else if (total > 0) n.detail = done + "/" + total;
             boolean complete = total > 0 && done >= total;
             if (complete) {
                 // Success → drop from the live chain (failed preflight keeps a red row).
@@ -498,11 +554,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (done) return;
             done = true;
             LiveRegion.clearActive(this);
+            clearWindowTitle();
             if (animate) {
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
                 out.print(Ansi.TASKBAR_CLEAR);
                 out.print(Ansi.SHOW_CURSOR);
+                out.flush();
+            } else {
                 out.flush();
             }
         }
@@ -525,6 +584,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (done) return;
             done = true;
             LiveRegion.clearActive(this);
+            clearWindowTitle();
             if (animate) {
                 // Simple mode keeps the settled spinner line and prints the
                 // result below it; pipeline mode replaces the whole region.
@@ -565,6 +625,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (done) return true;
             done = true;
             LiveRegion.clearActive(this);
+            clearWindowTitle();
             if (!animate) return false;
             if (pipelineMode) {
                 wipeRegion();
@@ -592,7 +653,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (done) return;
             done = true;
             LiveRegion.clearActive(this);
-            if (!animate) return;
+            clearWindowTitle();
+            if (!animate) {
+                out.flush();
+                return;
+            }
             wipeRegion();
             out.print(Ansi.TASKBAR_CLEAR);
             out.print(Ansi.SHOW_CURSOR);
@@ -636,15 +701,19 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (done || !animate) return;
             if (pipelineMode) paintPipeline();
             else paintSimple();
+            // OSC title tracks the fill-circle phase (○→◎→◉→◎), not every chip-pulse frame.
+            emitWindowTitleIfGlyphChanged();
             out.flush();
-            frame = (frame + 1) % PULSE_FRAMES;
+            // One counter; chip pulse and fill-circle use different period via floorMod.
+            frame++;
         }
     }
 
     /** Repaint the single simple-mode spinner line in place (must hold {@link #lock}). */
     private void paintSimple() {
         out.print('\r');
-        out.print(Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]));
+        out.print(Theme.colorize(
+                PULSE, openPulseColors[Math.floorMod(frame, openPulseColors.length)]));
         out.print(' ');
         out.print(label);
         out.print(ELLIPSIS);
@@ -721,9 +790,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * tail). Pure — no cursor control. Package-private for tests.
      *
      * <p>Tree (newest at top): only <em>running</em> and <em>failed</em> work — successful steps drop
-     * out. Each row is {@code ├─ ● group:name · Phase} with a blue pulse spinner while running (no
-     * background pills). Failed rows use a red cross and keep a one-line brief under the branch.
-     * No blank spacer rails between rows — vertically compact.
+     * out. Each row is {@code ├─ ● group:name · Phase · detail} with a blue pulse spinner while
+     * running (no background pills). The trailing detail is the latest step {@link #stepMessage}
+     * (test class, package sub-task, fetch artifact, …). Failed rows use a red cross and keep a
+     * one-line brief under the branch. No blank spacer rails between rows — vertically compact.
      */
     public List<String> renderPipelineLines(int cols, long elapsedMillis) {
         AttributedStyle dim = Theme.active().darkGray();
@@ -803,13 +873,32 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             PhaseNode n = phases.get(r.phase);
             if (n != null) brief = n.briefError;
         }
-        return new TreeEntry(renderWorkRow(r.module, phaseLabel(r.phase), failed), brief == null ? "" : brief);
+        // Live detail only on running rows — failed rows use the brief under the branch.
+        String detail = failed ? "" : detailForDisplay(r.module, r.message);
+        return new TreeEntry(
+                renderWorkRow(r.module, phaseLabel(r.phase), failed, detail), brief == null ? "" : brief);
     }
 
     private TreeEntry treeEntryForPhase(PhaseNode n) {
         boolean failed = n.state == PhaseState.FAILED;
         String label = n.label == null || n.label.isEmpty() ? phaseLabel(n.key) : n.label;
-        return new TreeEntry(renderWorkRow("", label, failed), failed ? n.briefError : "");
+        String detail = failed ? "" : (n.detail == null ? "" : n.detail);
+        return new TreeEntry(renderWorkRow("", label, failed, detail), failed ? n.briefError : "");
+    }
+
+    /**
+     * Step label for the tree detail segment. Strips a leading {@code module :: } prefix when the
+     * engine label already embeds the coordinate (test progress labels) so the row does not read
+     * {@code g:a · Test · g:a :: FooTest}.
+     */
+    static String detailForDisplay(String module, String message) {
+        if (message == null || message.isBlank()) return "";
+        String msg = message.trim();
+        String mod = module == null ? "" : module.trim();
+        if (!mod.isEmpty() && msg.startsWith(mod + " :: ")) {
+            msg = msg.substring(mod.length() + 4).trim();
+        }
+        return msg;
     }
 
     /**
@@ -824,10 +913,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * One tree body: {@code ● group:name · Phase} (or {@code ● Phase} with no module). Running uses
-     * a blue pulse spinner with no background; failed uses a red cross; phase label is green or red.
+     * One tree body: {@code ● group:name · Phase · detail} (or {@code ● Phase} with no module).
+     * Running uses a blue pulse spinner with no background; failed uses a red cross; phase label is
+     * green or red. Detail text is phase-aware (see {@link #colorDetail}): gray by default, Java
+     * syntax for tests, path color for artifacts, blue counts for compile. Lines never wrap — the
+     * paint path hard-truncates to the terminal width.
      */
-    private String renderWorkRow(String module, String displayPhase, boolean failed) {
+    private String renderWorkRow(String module, String displayPhase, boolean failed, String detail) {
         Theme t = Theme.active();
         String icon;
         AttributedStyle phaseStyle;
@@ -835,8 +927,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             icon = Theme.colorize(Glyphs.CROSS, t.error());
             phaseStyle = t.error();
         } else {
-            // Blue pulse on the terminal background — no chip/pill fill.
-            icon = Theme.colorize(PULSE, openPulseColors[frame % openPulseColors.length]);
+            // Filling circle (○→◎→◉→◎) in constant blue — not the CommandWedge color-pulse ●.
+            icon = Theme.colorize(Spinner.fillGlyph(frame), t.blue());
             phaseStyle = t.success();
         }
         String phase = displayPhase == null || displayPhase.isEmpty() ? "?" : displayPhase;
@@ -849,7 +941,313 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                     .append(' ');
         }
         sb.append(Theme.colorize(phase, phaseStyle));
+        if (detail != null && !detail.isBlank()) {
+            sb.append(' ')
+                    .append(Theme.colorize("·", t.darkGray()))
+                    .append(' ')
+                    .append(colorDetail(phase, detail, t));
+        }
         return sb.toString();
+    }
+
+    /**
+     * Color a live step detail under the phase label.
+     *
+     * <ul>
+     *   <li><b>{@code Class.method(…)} form only</b> (run-tests live labels): Java {@link
+     *       cc.jumpkick.cli.run.SyntaxHighlight} — not every step under the Test phase (compile-test
+     *       is phase Test too and must stay prose gray)
+     *   <li><b>Everything else</b>: prose in mid-gray ({@link Theme#midGray()} {@code #A0A0A0}), never
+     *       cyan and never dim bright-black, with:
+     *       <ul>
+     *         <li>integers / counts / sizes → blue ({@link Theme#synNumber()})
+     *         <li>size units ({@code MiB}, {@code KB}, …) stay gray after the number
+     *         <li>artifact filenames and path-like tokens → {@link Theme#path()}
+     *         <li>Maven {@code group:artifact(:version)} → {@link cc.jumpkick.cli.theme.Coords}
+     *         <li>fetched short-names / bare library ids after resolve verbs → coord short-name
+     *         <li>short cache key hex → dimmest gray
+     *       </ul>
+     *   <li>Trailing {@code [wN]} worker tags stay gray
+     * </ul>
+     */
+    static String colorDetail(String phase, String detail, Theme t) {
+        if (detail == null || detail.isBlank()) return "";
+        String body = detail;
+        String worker = "";
+        // progressLabel appends "  [w2]" — keep it outside the Java highlighter.
+        int w = detail.lastIndexOf("  [w");
+        if (w > 0 && detail.endsWith("]")) {
+            body = detail.substring(0, w);
+            worker = detail.substring(w);
+        }
+        // Only syntax-highlight true member refs (FooTest.bar()). Phase "Test" also hosts
+        // compile-test labels like "compiling 12 sources" — those must stay mid-gray prose
+        // (SyntaxHighlight paints unmatched text as terminal default/white).
+        String painted =
+                looksLikeJavaMember(body)
+                        ? cc.jumpkick.cli.run.SyntaxHighlight.highlight(body, -1)
+                        : colorProseDetail(body, t);
+        if (worker.isEmpty()) return painted;
+        return painted + Theme.colorize(worker, t.midGray());
+    }
+
+    /**
+     * Free-text step labels: mid-gray ({@code #A0A0A0}) prose with numbers, paths, coordinates, and
+     * fetch names picked out. Never uses cyan for body text (reserved for {@code group:artifact} on
+     * the module segment) and never uses dim bright-black ({@link Theme#darkGray()}) for default
+     * prose.
+     */
+    static String colorProseDetail(String text, Theme t) {
+        if (text == null || text.isEmpty()) return "";
+        AttributedStyle gray = t.midGray(); // #A0A0A0 — ordinary gray, not dim chrome
+        AttributedStyle number = t.synNumber();
+        AttributedStyle path = t.path();
+        AttributedStyle hash = t.darkGray(); // slightly dimmer than body — cache key hex
+        StringBuilder out = new StringBuilder(text.length() + 64);
+        int i = 0;
+        int n = text.length();
+        // Track the previous word (lowercase) so "fetched foo" / "resolve bar" can tint the name.
+        String prevWord = "";
+        while (i < n) {
+            char c = text.charAt(i);
+            // Skip whitespace as gray, then continue.
+            if (Character.isWhitespace(c)) {
+                int j = i + 1;
+                while (j < n && Character.isWhitespace(text.charAt(j))) j++;
+                out.append(Theme.colorize(text.substring(i, j), gray));
+                i = j;
+                continue;
+            }
+
+            // Lone punctuation (parens, arrows, …) so "(12 classes)" still blues the 12.
+            if (!Character.isLetterOrDigit(c)
+                    && c != '_'
+                    && c != '-'
+                    && c != '.'
+                    && c != '/'
+                    && c != '\\'
+                    && c != '~'
+                    && c != ':') {
+                out.append(Theme.colorize(String.valueOf(c), gray));
+                // Don't reset prevWord on '(' so "fetched (jackson-core)" still works.
+                if (c != '(' && c != '[') prevWord = "";
+                i++;
+                continue;
+            }
+
+            // Pull the next non-whitespace token (may include : / . for coords & paths).
+            int j = scanTokenEnd(text, i);
+            int end = j;
+            while (end > i && isTrailingPunct(text.charAt(end - 1))) end--;
+            String tok = text.substring(i, end);
+            String trail = text.substring(end, j); // trailing ,); etc.
+
+            // 1. Maven coordinate — group:artifact or GAV.
+            if (looksLikeCoord(tok)) {
+                out.append(colorCoord(tok));
+                if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
+                prevWord = "";
+                i = j;
+                continue;
+            }
+
+            // 2. Path / artifact file.
+            if (looksLikePathOrArtifact(tok)) {
+                out.append(Theme.colorize(tok, path));
+                if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
+                prevWord = "";
+                i = j;
+                continue;
+            }
+
+            // 3. Number (count or size). Hex cache keys prefer dim gray.
+            if (Character.isDigit(c)) {
+                int hexEnd = i;
+                while (hexEnd < n && isHex(text.charAt(hexEnd))) hexEnd++;
+                if (hexEnd - i >= 8 && (hexEnd >= n || !Character.isLetterOrDigit(text.charAt(hexEnd)))) {
+                    out.append(Theme.colorize(text.substring(i, hexEnd), hash));
+                    prevWord = "";
+                    i = hexEnd;
+                    continue;
+                }
+                int k = i;
+                while (k < n && Character.isDigit(text.charAt(k))) k++;
+                if (k < n && text.charAt(k) == '.' && k + 1 < n && Character.isDigit(text.charAt(k + 1))) {
+                    k++;
+                    while (k < n && Character.isDigit(text.charAt(k))) k++;
+                }
+                out.append(Theme.colorize(text.substring(i, k), number));
+                // Optional size unit immediately after (or after one space): MiB, KB, …
+                int u = k;
+                if (u < n && text.charAt(u) == ' ') {
+                    int uEnd = scanTokenEnd(text, u + 1);
+                    String unit = text.substring(u + 1, uEnd);
+                    if (looksLikeSizeUnit(unit)) {
+                        out.append(Theme.colorize(" ", gray));
+                        out.append(Theme.colorize(unit, gray));
+                        i = uEnd;
+                        prevWord = "";
+                        continue;
+                    }
+                } else if (u < n && Character.isLetter(text.charAt(u))) {
+                    int uEnd = scanTokenEnd(text, u);
+                    String unit = text.substring(u, uEnd);
+                    if (looksLikeSizeUnit(unit)) {
+                        out.append(Theme.colorize(unit, gray));
+                        i = uEnd;
+                        prevWord = "";
+                        continue;
+                    }
+                }
+                prevWord = "";
+                i = k;
+                continue;
+            }
+
+            // 4. After resolve/fetch verbs, tint bare library / package short-names.
+            if (isFetchOrResolveVerb(prevWord) && looksLikeLibraryShortName(tok)) {
+                out.append(cc.jumpkick.cli.theme.Coords.shortName(tok));
+                if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
+                prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+                i = j;
+                continue;
+            }
+
+            // 5. Plain gray word (and remember it for verb context).
+            out.append(Theme.colorize(tok, gray));
+            if (!trail.isEmpty()) out.append(Theme.colorize(trail, gray));
+            prevWord = tok.toLowerCase(java.util.Locale.ROOT);
+            i = j;
+        }
+        return out.toString();
+    }
+
+    /** End index of the token starting at {@code i} (exclusive). Stops at whitespace. */
+    private static int scanTokenEnd(String text, int i) {
+        int n = text.length();
+        int j = i;
+        while (j < n && !Character.isWhitespace(text.charAt(j))) j++;
+        return j;
+    }
+
+    private static boolean isHex(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    private static boolean isTrailingPunct(char c) {
+        return c == ',' || c == ')' || c == ';' || c == '(' || c == '[' || c == ']';
+    }
+
+    /** {@code MiB}, {@code KB}, {@code ms}, … — stay gray after a blue number. */
+    static boolean looksLikeSizeUnit(String unit) {
+        if (unit == null || unit.isEmpty()) return false;
+        return switch (unit) {
+            case "B", "K", "M", "G", "T",
+                    "KB", "MB", "GB", "TB",
+                    "KiB", "MiB", "GiB", "TiB",
+                    "kb", "mb", "gb", "kib", "mib", "gib",
+                    "ms", "s", "m", "h",
+                    "files", "file", "sources", "source",
+                    "tests", "test", "jars", "jar",
+                    "classes", "inputs", "input" -> true;
+            default -> false;
+        };
+    }
+
+    /** Verbs whose following token is often a library / package id. */
+    static boolean isFetchOrResolveVerb(String word) {
+        if (word == null || word.isEmpty()) return false;
+        return switch (word) {
+            case "fetched", "fetch", "fetching",
+                    "resolve", "resolving", "resolved",
+                    "download", "downloading", "downloaded",
+                    "install", "installing", "installed",
+                    "load", "loading", "loaded",
+                    "pushing", "pushed", "pulling", "pulled" -> true;
+            default -> false;
+        };
+    }
+
+    /**
+     * Bare library short-name ({@code jackson-core}, {@code junit}) — not prose, not a path, not a
+     * pure number.
+     */
+    static boolean looksLikeLibraryShortName(String tok) {
+        if (tok == null || tok.length() < 2) return false;
+        if (looksLikePathOrArtifact(tok) || looksLikeCoord(tok)) return false;
+        // Must start with a letter; allow letters, digits, dots, hyphens, underscores.
+        char c0 = tok.charAt(0);
+        if (!Character.isLetter(c0)) return false;
+        for (int i = 0; i < tok.length(); i++) {
+            char c = tok.charAt(i);
+            if (!(Character.isLetterOrDigit(c) || c == '-' || c == '_' || c == '.')) return false;
+        }
+        // Reject common English words that follow "resolve" in prose.
+        return switch (tok.toLowerCase(java.util.Locale.ROOT)) {
+            case "deps", "dependencies", "classpath", "jdk", "java", "sources", "tests",
+                    "resources", "plugins", "plugin", "modules", "module", "lock", "cache",
+                    "the", "a", "an", "to", "for", "from", "with", "and", "or", "of", "in",
+                    "on", "via", "no", "up", "date", "hit", "miss" -> false;
+            default -> true;
+        };
+    }
+
+    /**
+     * Maven-style {@code group:artifact} or {@code group:artifact:version} (optionally with
+     * classifier/extension segments). Requires at least one {@code ':'} and no whitespace.
+     */
+    static boolean looksLikeCoord(String tok) {
+        if (tok == null || tok.isEmpty()) return false;
+        int first = tok.indexOf(':');
+        if (first <= 0 || first == tok.length() - 1) return false;
+        if (tok.indexOf('/') >= 0 || tok.indexOf('\\') >= 0) return false; // paths win
+        String[] parts = tok.split(":", -1);
+        if (parts.length < 2 || parts.length > 5) return false;
+        for (String p : parts) {
+            if (p.isEmpty()) return false;
+            for (int i = 0; i < p.length(); i++) {
+                char c = p.charAt(i);
+                if (!(Character.isLetterOrDigit(c) || c == '.' || c == '-' || c == '_')) return false;
+            }
+        }
+        // group usually has a dot (reverse-DNS) OR artifact has a hyphen/common form.
+        return parts[0].indexOf('.') >= 0 || parts[1].indexOf('-') >= 0 || parts[1].length() >= 2;
+    }
+
+    /** Paint {@code g:a} / {@code g:a:v} with the same colors as dependency trees. */
+    static String colorCoord(String tok) {
+        String[] parts = tok.split(":", -1);
+        if (parts.length == 2) return cc.jumpkick.cli.theme.Coords.ga(parts[0], parts[1]);
+        if (parts.length >= 3) {
+            // group:artifact:version — extra segments (classifier) stay on the version color.
+            StringBuilder ver = new StringBuilder(parts[2]);
+            for (int i = 3; i < parts.length; i++) ver.append(':').append(parts[i]);
+            return cc.jumpkick.cli.theme.Coords.gav(parts[0], parts[1], ver.toString());
+        }
+        return Theme.colorize(tok, Theme.active().midGray());
+    }
+
+    /** {@code lib.jar}, {@code app.aar}, absolute/relative paths — not ordinary prose words. */
+    static boolean looksLikePathOrArtifact(String tok) {
+        if (tok == null || tok.isEmpty()) return false;
+        if (tok.indexOf('/') >= 0 || tok.indexOf('\\') >= 0) return true;
+        if (tok.startsWith("~")) return true;
+        int dot = tok.lastIndexOf('.');
+        if (dot <= 0 || dot == tok.length() - 1) return false;
+        String ext = tok.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+        return switch (ext) {
+            case "jar", "aar", "apk", "aab", "war", "ear", "zip", "tar", "gz", "tgz",
+                    "properties", "toml", "xml", "json", "so", "dylib", "dll", "exe",
+                    "class", "java", "kt", "kts", "groovy" -> true;
+            default -> false;
+        };
+    }
+
+    /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
+    static boolean looksLikeJavaMember(String s) {
+        if (s == null || s.isEmpty()) return false;
+        // Capitalized type, optional .method(…), no spaces (worker tags already stripped).
+        return s.matches("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
     }
 
     /**
@@ -865,7 +1263,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean phase1 = denominator == 0 && !sl.isEmpty();
         AttributedStyle chip = t.pipelineChip();
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
-        AttributedStyle pulse = t.withBackground(chipPulseColors[frame % chipPulseColors.length], t.planBadgeColor());
+        AttributedStyle pulse = t.withBackground(
+                chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
         if (nerdfont) {
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
@@ -893,20 +1292,24 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(barStr);
             }
         }
-        // After the bar's percent: a bright-black middle dot, then the run-wide build clock
-        // in yellow. Seeded estimate → pure wall-clock countdown then +Ns overrun; no seed
-        // → +Ns count-up from construction. Never resets on phase/module boundaries.
+        // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
+        // Seeded estimate → pure wall-clock countdown (blue) then +Ns overrun (yellow); no seed
+        // → +Ns count-up from construction (yellow). Never resets on phase/module boundaries.
         String clockStr;
+        boolean countUp;
         if (etaEstimateMs > 0) {
             long remaining = etaEstimateMs - elapsedMillis;
-            clockStr = remaining > 0 ? fmtClock(remaining) : "+" + fmtClock(-remaining);
+            countUp = remaining <= 0;
+            clockStr = countUp ? "+" + fmtClock(-remaining) : fmtClock(remaining);
         } else {
+            countUp = true;
             clockStr = "+" + fmtClock(elapsedMillis);
         }
+        AttributedStyle clockStyle = countUp ? t.warning() : t.blue();
         h.append(' ')
                 .append(Theme.colorize("·", dim))
                 .append(' ')
-                .append(Theme.colorize(clockStr, Theme.active().warning()));
+                .append(Theme.colorize(clockStr, clockStyle));
         // JK-1157: remaining-work module counter (run-wide, not per-module local).
         if (modulesTotal > 0) {
             String mods = modulesComplete + "/" + modulesTotal;
@@ -1069,8 +1472,17 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * box/spinner glyphs never need. Not worth the binary growth, so this stays hand-rolled by
      * design.
      */
+    /**
+     * Hard-truncate to {@code maxCols} visible columns (never wraps). When cut, ends with {@code …}
+     * so long test member names stay on one line.
+     */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
+        if (maxCols == 1) {
+            // Only room for the ellipsis glyph.
+            return ELLIPSIS + Ansi.RESET;
+        }
+        int budget = maxCols;
         StringBuilder sb = new StringBuilder(s.length());
         int visible = 0;
         boolean truncated = false;
@@ -1086,7 +1498,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 sb.append(s, i, j);
                 i = j;
             } else {
-                if (visible >= maxCols) {
+                // Reserve one column for … when more content remains.
+                boolean moreAfter = i + 1 < s.length() && !isOnlyAnsiFrom(s, i + 1);
+                int need = moreAfter ? 1 : 0; // room for ellipsis
+                if (visible + 1 + need > budget) {
                     truncated = true;
                     break;
                 }
@@ -1095,8 +1510,27 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 i++;
             }
         }
-        if (truncated) sb.append(Ansi.RESET);
+        if (truncated) {
+            sb.append(ELLIPSIS);
+            sb.append(Ansi.RESET);
+        }
         return sb.toString();
+    }
+
+    /** True when {@code s[from..]} is only ANSI escapes (no more visible text). */
+    private static boolean isOnlyAnsiFrom(String s, int from) {
+        for (int i = from; i < s.length(); ) {
+            char c = s.charAt(i);
+            if (c != '\033') return false;
+            int j = i + 1;
+            if (j < s.length() && s.charAt(j) == '[') {
+                j++;
+                while (j < s.length() && !Character.isLetter(s.charAt(j))) j++;
+                if (j < s.length()) j++;
+            }
+            i = j;
+        }
+        return true;
     }
 
     /**
@@ -1272,6 +1706,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         boolean anyFailed;
         /** One-line summary under a failed phase (full diagnostics stay in result files). */
         String briefError = "";
+        /** Live sub-task for preflight / phase-only rows (e.g. artifact being fetched). */
+        String detail = "";
 
         PhaseNode(String key, String label) {
             this.key = key;

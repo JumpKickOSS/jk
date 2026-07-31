@@ -150,15 +150,79 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void cold_run_tests_weight_is_ballpark_not_empty_probe() {
-        // Uncalibrated cold path: product baselines × cold bias, not ~5ms empty-probe residual.
-        int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);
-        long ms = (long) w * EffortWeights.MS_PER_WEIGHT;
-        // 100 methods × baseline × cold bias ≈ 14s + startup — well above 1s, well below legacy 2m.
-        assertThat(ms).isGreaterThan(10_000L);
-        assertThat(ms).isLessThan(40_000L);
-        // Cold ETA does not credit -w parallel (prefer over-estimate on cold explain).
-        int w8 = EffortWeights.coldWorkWeight("run-tests", 100, 8);
-        assertThat((long) w8 * EffortWeights.MS_PER_WEIGHT).isEqualTo(ms);
+        // Hermetic: force uncalibrated static floors so ~/.jk host calibration cannot shrink the
+        // figure (this test is about product baselines × cold bias, not the developer's machine).
+        Calibration.installForTest(Calibration.absentForTest());
+        try {
+            int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);
+            long ms = (long) w * EffortWeights.MS_PER_WEIGHT;
+            // 100 methods × baseline × cold bias ≈ 14.5s + startup — well above 1s, well below
+            // legacy 1.2s/method (~2m).
+            assertThat(ms).isGreaterThan(10_000L);
+            assertThat(ms).isLessThan(40_000L);
+            // Cold ETA does not credit -w parallel (prefer over-estimate on cold explain).
+            int w8 = EffortWeights.coldWorkWeight("run-tests", 100, 8);
+            assertThat((long) w8 * EffortWeights.MS_PER_WEIGHT).isEqualTo(ms);
+        } finally {
+            Calibration.clearMemo();
+        }
+    }
+
+    @Test
+    void cold_reprice_without_counts_underprices_tests_that_counts_fix() {
+        // Regression: build countdown used costFromRunningSteps(..., Map.of()) while explain passed
+        // testCount → cold monorepo ETA collapsed to suite-startup × modules (~12s) vs minutes.
+        BuildMetrics metrics = BuildMetrics.load(Path.of("/nonexistent-" + System.nanoTime()));
+        var withCounts = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/cli"),
+                Set.of(),
+                List.of("compile-java", "run-tests", "package-jar"),
+                metrics,
+                null,
+                List.of(),
+                Map.of("compile-java", 227, "run-tests", 884));
+        var withoutCounts = EffortWeights.costFromRunningSteps(
+                Path.of("/ws/cli"),
+                Set.of(),
+                List.of("compile-java", "run-tests", "package-jar"),
+                metrics,
+                null,
+                List.of(),
+                Map.of());
+        long withMs = (long) withCounts.weight() * EffortWeights.MS_PER_WEIGHT;
+        long withoutMs = (long) withoutCounts.weight() * EffortWeights.MS_PER_WEIGHT;
+        // Count-aware cold pricing for ~884 tests is minutes; empty counts is seconds.
+        assertThat(withMs).isGreaterThan(60_000L);
+        assertThat(withoutMs).isLessThan(15_000L);
+        assertThat(withMs).isGreaterThan(withoutMs * 10);
+    }
+
+    @Test
+    void step_counts_and_running_steps_come_from_the_prepared_pipeline() {
+        var pipeline = cc.jumpkick.run.Pipeline.builder("m")
+                .addStep(cc.jumpkick.run.Step.builder("parse-build")
+                        .weight(EffortWeights.TOKEN)
+                        .ticks(1)
+                        .execute(ctx -> {})
+                        .build())
+                .addStep(cc.jumpkick.run.Step.builder("compile-java")
+                        .weight(40)
+                        .ticks(227)
+                        .execute(ctx -> {})
+                        .build())
+                .addStep(cc.jumpkick.run.Step.builder("run-tests")
+                        .weight(800)
+                        .ticks(884)
+                        .execute(ctx -> {})
+                        .build())
+                .build();
+        assertThat(EffortWeights.runningStepsFromPipeline(pipeline))
+                .containsExactly("compile-java", "run-tests"); // TOKEN parse-build omitted
+        // Counts include every step with ticks>0 (harmless extras); pricing only uses running steps.
+        assertThat(EffortWeights.stepCountsFromPipeline(pipeline))
+                .containsEntry("compile-java", 227)
+                .containsEntry("run-tests", 884)
+                .containsEntry("parse-build", 1);
     }
 
     private static BuildMetrics.Outcome outcome(

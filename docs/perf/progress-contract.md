@@ -39,14 +39,18 @@ At least one tick per phase that appears in the live tree.
 ## ETA seeding order
 
 **One routine for explain and build.** `BuildService.estimateEtaMillis` (`jk explain`) and the
-build countdown seed both assemble dirty-module costs the same way (shape-memo `weight`+`testWeight`
-pair when warm, else pipeline walk) then call `seedEta` (schedule + history prior). The initial
-countdown figure must match the explain estimate even when that figure is imperfect.
+build countdown seed both call `EffortWeights.costFromRunningSteps` + `seedEta` with the same
+inputs: dirty running steps, **unit counts** (sources / test methods), project dirs, and test
+workers. Explain takes counts from the forecast (`sourceCount` / `testCount`); build takes them
+from prepared pipeline ticks (`stepCountsFromPipeline`). Empty counts must never be passed on a
+cold host — that prices every `run-tests` as suite-startup only and yields a ~10s countdown next
+to a multi-minute explain. The initial countdown figure must match the explain estimate even when
+that figure is imperfect.
 
 1. **Compose from dirty steps.** For each dirty module, sum measured walls of steps that will run
-   (`BuildMetrics` step `ok` averages preferred; residual `StepTimings` / static only when cold).
-   Fully-cached modules contribute 0. A cached phase (e.g. compile up-to-date, tests dirty) is
-   excluded from that module’s sum.
+   (`BuildMetrics` step `ok` averages preferred; residual `StepTimings` / static only when cold,
+   scaled by unit counts). Fully-cached modules contribute 0. A cached phase (e.g. compile
+   up-to-date, tests dirty) is excluded from that module’s sum.
 2. **Schedule like the live graph** (`WorkspaceScheduler`): a module starts only after every dirty
    prereq has *fully* finished, with a rolling concurrency window (list schedule, longest-first).
    Serial (`-j1`) is the plain sum. Serialized cross-module tests also apply a test-step sum floor.

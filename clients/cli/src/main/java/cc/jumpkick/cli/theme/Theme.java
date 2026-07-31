@@ -30,6 +30,12 @@ public interface Theme {
     /** The {@link #darkBlack()} color as an {@link Rgb} — for use as a background fill. */
     Rgb darkBlackColor();
 
+    /**
+     * Neutral mid-gray body text ({@code #A0A0A0}) — ordinary gray between black and white. Use for
+     * default step/detail prose; not the dim "bright black" rail color ({@link #darkGray()}).
+     */
+    AttributedStyle midGray();
+
     /** De-emphasised body text adjacent to bright labels — Jk Dark primary-light. */
     AttributedStyle normalGray();
 

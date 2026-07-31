@@ -16,6 +16,7 @@ class StableJdkPointerTest {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\n");
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         return home;
     }
 

@@ -44,6 +44,7 @@ class JkEnvTest {
         var jdkHome = jdksRoot.resolve("temurin-25.0.3");
         Files.createDirectories(jdkHome.resolve("bin"));
         Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(jdkHome.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         var project = tempDir.resolve("project");
@@ -72,6 +73,7 @@ class JkEnvTest {
         var jdkHome = jdksRoot.resolve("graalvm-jdk-25");
         Files.createDirectories(jdkHome.resolve("bin"));
         Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(
                 jdkHome.resolve("release"),
                 "JAVA_VERSION=\"25.0.0\"\nIMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\n");
@@ -192,6 +194,7 @@ class JkEnvTest {
     private static Path fakeJdk(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         return home;
     }

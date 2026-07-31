@@ -27,15 +27,19 @@ public final class ProbeSupport {
 
     /**
      * Validate a JDK home directory and produce a {@link JdkHit}: resolves symlinks, confirms {@code
-     * bin/java} exists, then reads the {@code release} file once to derive both version and vendor.
-     * Returns empty when the candidate isn't a runnable JDK (or the {@code release} file is missing —
-     * mandatory since JDK 7u72).
+     * bin/java} <em>and</em> {@code bin/javac} exist, then reads the {@code release} file once to
+     * derive both version and vendor. Returns empty when the candidate is a JRE-only install (common
+     * under {@code /usr/lib/jvm} on Linux package managers), missing the {@code release} file
+     * (mandatory since JDK 7u72), or otherwise not a full JDK.
      */
     public static Optional<JdkHit> discoverJdk(Path home, String source) {
         try {
             if (!Files.isDirectory(home)) return Optional.empty();
             Path canonical = home.toRealPath();
             if (!Files.exists(ToolHealth.requiredBinary(JDK_SPEC, canonical))) return Optional.empty();
+            // Distro "openjdk" packages are often headless JREs (java/keytool only). Without javac
+            // they cannot compile, so they must not win de-facto default selection over real JDKs.
+            if (!ToolHealth.hasJavac(canonical)) return Optional.empty();
 
             Path release = canonical.resolve("release");
             if (!Files.isRegularFile(release)) return Optional.empty();

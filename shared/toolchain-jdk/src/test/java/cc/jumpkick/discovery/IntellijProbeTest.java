@@ -39,6 +39,7 @@ class IntellijProbeTest {
         Path install = tempDir.resolve("temurin-21");
         Files.createDirectories(install.resolve("bin"));
         Files.writeString(install.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(install.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(install.resolve("release"), "JAVA_VERSION=\"21.0.5\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         List<JdkHit> hits = new IntellijProbe(tempDir).discoverAllJdks();
@@ -52,6 +53,7 @@ class IntellijProbeTest {
         Path realHome = bundle.resolve("Contents").resolve("Home");
         Files.createDirectories(realHome.resolve("bin"));
         Files.writeString(realHome.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(realHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(realHome.resolve("release"), "JAVA_VERSION=\"21.0.5\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         List<JdkHit> hits = new IntellijProbe(tempDir).discoverAllJdks();

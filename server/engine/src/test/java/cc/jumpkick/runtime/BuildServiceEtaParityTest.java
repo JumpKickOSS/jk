@@ -10,9 +10,15 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@code jk explain} and {@code jk build}'s initial countdown must share one ETA routine: same
- * module costs (weight + testWeight from one source) and the same {@code seedEta} schedule + history
- * prior. Splitting ModulePlan.weight() from a separately estimated run-tests slice was the
- * explain≈11s / countdown≈30s divergence.
+ * {@code costFromRunningSteps} (with unit counts) and the same {@code seedEta} schedule + history
+ * prior. Historical divergences:
+ *
+ * <ul>
+ *   <li>Splitting {@code ModulePlan.weight()} from a separately estimated run-tests slice
+ *       (explain≈11s / countdown≈30s).
+ *   <li>Build re-pricing dirty steps with {@code Map.of()} counts while explain passed method /
+ *       source counts (explain≈5m / countdown≈12s on a cold calibrated host).
+ * </ul>
  */
 class BuildServiceEtaParityTest {
 

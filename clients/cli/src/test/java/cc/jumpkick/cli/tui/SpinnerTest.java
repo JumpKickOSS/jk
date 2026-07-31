@@ -96,6 +96,21 @@ class SpinnerTest {
     }
 
     @Test
+    void fill_glyph_holds_each_phase_then_advances() {
+        // Phases ○ ◎ ◉ ◎, each held FILL_HOLD frames — not a repeated array.
+        assertThat(Spinner.FILL_PHASES).containsExactly("\u25CB", "\u25CE", "\u25C9", "\u25CE");
+        assertThat(Spinner.FILL_HOLD).isEqualTo(4);
+        assertThat(Spinner.FILL_FRAMES).isEqualTo(16);
+        assertThat(Spinner.fillGlyph(0)).isEqualTo("\u25CB");
+        assertThat(Spinner.fillGlyph(3)).isEqualTo("\u25CB"); // still holding
+        assertThat(Spinner.fillGlyph(4)).isEqualTo("\u25CE"); // phase advance
+        assertThat(Spinner.fillGlyph(8)).isEqualTo("\u25C9");
+        assertThat(Spinner.fillGlyph(12)).isEqualTo("\u25CE");
+        assertThat(Spinner.fillGlyph(16)).isEqualTo("\u25CB");
+        assertThat(Spinner.fillGlyph(-1)).isEqualTo("\u25CE"); // last frame of cycle
+    }
+
+    @Test
     void close_clears_line_and_restores_cursor() {
         var buf = new ByteArrayOutputStream();
         var s = new Spinner(stream(buf), "Working");

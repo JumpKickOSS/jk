@@ -562,11 +562,24 @@ public final class BuildService {
                     }
                     PreflightMemo.PipelineShape sh = shape.get();
                     Set<Path> prereqs = graph.edges().getOrDefault(u.dir(), Set.of());
-                    // Reprice shape steps from measured walls (not stale shape weight units).
+                    // Prefer measured step walls when this module has history. Without counts the
+                    // cold reprice path collapses run-tests to suite-startup only (~seconds for a
+                    // monorepo) while jk explain prices method counts (~minutes) — never do that.
+                    // When cold, keep the coupled shape weight/testWeight pair (last prepare's
+                    // count-aware EffortWeights) until post-prepare reseeds with full counts.
+                    long ownWall = 0;
                     List<String> running = new ArrayList<>();
-                    for (var ss : sh.steps()) running.add(ss.name());
-                    earlyCosts.add(EffortWeights.costFromRunningSteps(
-                            u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of()));
+                    for (var ss : sh.steps()) {
+                        running.add(ss.name());
+                        ownWall += EffortWeights.stepOkAvgMillisOwn(
+                                metrics, u.dir().toString(), ss.name());
+                    }
+                    if (ownWall > 0) {
+                        earlyCosts.add(EffortWeights.costFromRunningSteps(
+                                u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of()));
+                    } else {
+                        earlyCosts.add(EffortWeights.costOf(u.dir(), prereqs, sh.weight(), sh.testWeight()));
+                    }
                     provisional.add(PreflightMemo.provisionalModulePlan(u, sh, req.cache()));
                 }
             }
@@ -636,10 +649,14 @@ public final class BuildService {
         // from one source (shape pair, or pipeline walk) or the countdown diverges from explain.
         long teta = Perf.start();
         List<EffortWeights.ModuleCost> etaCosts = new ArrayList<>();
+        BuildMetrics etaMetrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        StepTimings etaTimings = StepTimings.load(req.cache());
+        List<String> etaProjectDirs = plans.keySet().stream().map(Path::toString).toList();
         for (var e : plans.entrySet()) {
             ModulePlan p = e.getValue();
             Set<Path> prereqs = graph.edges().getOrDefault(e.getKey(), Set.of());
-            etaCosts.add(etaCostForPreparedModule(req, p, prereqs, distrustShape));
+            etaCosts.add(etaCostForPreparedModule(
+                    req, p, prereqs, distrustShape, etaMetrics, etaTimings, etaProjectDirs));
         }
         Perf.end("ws-eta-costs", teta);
         listener.onEtaEstimate(seedEta(
@@ -916,31 +933,36 @@ public final class BuildService {
     }
 
     /**
-     * Cost for a prepared dirty module: prefer shape pair (matches explain), else walk the prepared
-     * pipeline so weight and testWeight stay coupled.
+     * Cost for a prepared dirty module — same {@link EffortWeights#costFromRunningSteps} routine as
+     * {@link #estimateEtaMillis} ({@code jk explain}): measured step walls when present, else cold
+     * baselines × unit counts from the pipeline ticks (sources / test methods). Never reprice with
+     * empty counts; that was the explain≈5m / countdown≈12s cold divergence.
      */
     private static EffortWeights.ModuleCost etaCostForPreparedModule(
-            WorkspaceRequest req, ModulePlan p, Set<Path> prereqs, boolean distrustShape) {
-        // Prefer Σ measured step walls for steps the prepared pipeline will run (weight > TOKEN).
-        BuildMetrics metrics = BuildMetrics.load(BuildMetrics.defaultFile());
-        StepTimings timings = StepTimings.load(req.cache());
-        List<String> running = new ArrayList<>();
-        for (cc.jumpkick.run.Step s : p.pipeline().steps()) {
-            try {
-                if (s.estimateWeight() > EffortWeights.TOKEN) running.add(s.name());
-            } catch (RuntimeException ignored) {
-                running.add(s.name());
-            }
-        }
+            WorkspaceRequest req,
+            ModulePlan p,
+            Set<Path> prereqs,
+            boolean distrustShape,
+            BuildMetrics metrics,
+            StepTimings timings,
+            List<String> projectDirs) {
+        List<String> running = EffortWeights.runningStepsFromPipeline(p.pipeline());
         if (!running.isEmpty()) {
+            Map<String, Integer> counts = EffortWeights.stepCountsFromPipeline(p.pipeline());
+            // Within-module test workers: same resolve as explain (jobs × class guess from methods).
+            int methods = counts.getOrDefault("run-tests", 0);
+            int classGuess = methods > 0 ? Math.max(1, methods / 3) : 0;
+            int jobs = Math.max(1, Runtime.getRuntime().availableProcessors());
+            int testW = cc.jumpkick.test.TestWorkers.resolve(req.workers(), classGuess, jobs);
             return EffortWeights.costFromRunningSteps(
                     p.dir(),
                     prereqs,
                     running,
                     metrics,
                     timings,
-                    List.of(p.dir().toString()),
-                    java.util.Map.of());
+                    projectDirs != null ? projectDirs : List.of(p.dir().toString()),
+                    counts,
+                    testW);
         }
         var shaped = etaCostFromShape(req.entryDir(), p.dir(), prereqs, req.skipTests(), distrustShape);
         if (shaped.isPresent()) return shaped.get();

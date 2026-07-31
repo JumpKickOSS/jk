@@ -238,7 +238,10 @@ class JdkUpdateCommandTest {
             byte[] archive = buildTarGz(
                     tempDir,
                     s.installFolder(),
-                    Map.of("bin/java", "#!/fake/java", "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
+                    Map.of(
+                        "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
+                        "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
             String archivePath = "/archives/" + s.installFolder() + ".tar.gz";
             served.put(archivePath, archive);
             entries.add(entryJson(
@@ -323,6 +326,7 @@ class JdkUpdateCommandTest {
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
     }

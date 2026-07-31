@@ -1199,4 +1199,18 @@ public final class Calibration {
     static void clearMemo() {
         MEMO.set(null);
     }
+
+    /**
+     * Install a calibration for the current process (tests). Pass {@link #absentForTest()} to force
+     * the uncalibrated static-floor path in {@link EffortWeights} without reading {@code
+     * ~/.jk/state/builds/calibration.toml}. Always pair with {@link #clearMemo()} in {@code finally}.
+     */
+    static void installForTest(Calibration cal) {
+        MEMO.set(cal == null ? absent() : cal);
+    }
+
+    /** Empty calibration (no probe, no learned rates) for hermetic cold-path unit tests. */
+    static Calibration absentForTest() {
+        return absent();
+    }
 }
