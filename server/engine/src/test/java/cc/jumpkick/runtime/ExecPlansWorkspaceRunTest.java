@@ -43,6 +43,53 @@ class ExecPlansWorkspaceRunTest {
     }
 
     @Test
+    void workspace_run_with_two_declared_apps_is_ambiguous(@TempDir Path root) throws Exception {
+        // Silently launching the first-listed app would make [workspace].modules ORDER change
+        // what `jk run` executes (JK-1316) — name the candidates instead.
+        Files.writeString(
+                root.resolve("jk.toml"),
+                """
+                [project]
+                group = "com.example"
+                name = "ws"
+                version = "0.1.0"
+                jdk = 25
+                java = 25
+
+                [workspace]
+                modules = ["app", "tool"]
+                """);
+        for (String m : new String[] {"app", "tool"}) {
+            Path dir = root.resolve(m);
+            Files.createDirectories(dir.resolve("src"));
+            Files.writeString(
+                    dir.resolve("jk.toml"),
+                    """
+                    [project]
+                    group = "com.example"
+                    name = "%s"
+                    version = "0.1.0"
+                    jdk = 25
+                    java = 25
+                    layout = "simple"
+
+                    [application]
+                    main = "com.example.%s"
+                    """
+                            .formatted(m, m));
+            Files.writeString(
+                    dir.resolve("src/Main.java"),
+                    "package com.example; public class Main { public static void main(String[] a) {} }\n");
+        }
+
+        ExecPlan plan = ExecPlans.execPlan(root, root.resolve("cache"), "run", null, null);
+
+        assertThat(plan.error()).isNotNull();
+        assertThat(plan.mainIssue()).isEqualTo("ambiguous");
+        assertThat(plan.error()).contains("app").contains("tool");
+    }
+
+    @Test
     void workspace_run_errors_when_no_main_anywhere(@TempDir Path root) throws Exception {
         Files.writeString(
                 root.resolve("jk.toml"),

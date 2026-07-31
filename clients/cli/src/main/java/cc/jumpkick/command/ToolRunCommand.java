@@ -102,7 +102,8 @@ public final class ToolRunCommand implements CliCommand {
      * that module directory; otherwise {@code null}. Non-workspace dirs and names that look like
      * files/coords/URLs are ignored.
      */
-    private static Path resolveWorkspaceModule(Path cwd, String name) {
+    // Package-visible for tests (leaf ambiguity + local-path precedence, JK-1316).
+    static Path resolveWorkspaceModule(Path cwd, String name) {
         if (name == null || name.isBlank() || ".".equals(name) || name.contains(":") || name.contains("@")) {
             return null;
         }
@@ -138,30 +139,56 @@ public final class ToolRunCommand implements CliCommand {
             String want = name.replace('\\', '/');
             while (want.startsWith("./")) want = want.substring(2);
             if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
+            // A target naming an existing local path keeps its file/dir meaning: only an EXACT
+            // declared-path match may claim it — a leaf shortcut must not shadow `./web` (JK-1316).
+            boolean localExists = Files.exists(start.resolve(want));
+            List<Path> suffixHits = new ArrayList<>();
             for (String mod : rootBuild.workspace().modules()) {
                 String m = mod.replace('\\', '/');
-                if (m.equals(want) || m.endsWith("/" + want)) {
-                    Path dir = wsRoot.resolve(mod).normalize();
-                    if (Files.isRegularFile(dir.resolve("jk.toml"))) return dir;
-                }
-                // last path segment match: `jk run cli` → clients/cli
-                int slash = m.lastIndexOf('/');
-                String leaf = slash >= 0 ? m.substring(slash + 1) : m;
-                if (leaf.equals(want)) {
-                    Path dir = wsRoot.resolve(mod).normalize();
-                    if (Files.isRegularFile(dir.resolve("jk.toml"))) return dir;
-                }
+                Path dir = wsRoot.resolve(mod).normalize();
+                if (!Files.isRegularFile(dir.resolve("jk.toml"))) continue;
+                if (m.equals(want)) return dir; // exact declared path — always unambiguous
+                // Trailing-segment shortcut: `jk run cli` → clients/cli.
+                if (m.endsWith("/" + want)) suffixHits.add(dir);
             }
-            // Explicit path under workspace even if not listed? treat as standalone if has jk.toml
-            Path direct = wsRoot.resolve(want).normalize();
-            if (Files.isRegularFile(direct.resolve("jk.toml")) && !direct.equals(wsRoot)) {
-                // Only if it's a registered module — else standalone policy (user: not in modules)
-                return null;
+            if (!suffixHits.isEmpty() && !localExists) {
+                if (suffixHits.size() > 1) {
+                    // Two modules share the leaf: picking whichever is declared first silently
+                    // runs the wrong one — name the candidates instead (JK-1316).
+                    String candidates = suffixHits.stream()
+                            .map(d -> wsRoot(d, start))
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    throw new AmbiguousModuleTarget(
+                            "`" + want + "` matches several workspace modules (" + candidates
+                                    + ") — use the full module path");
+                }
+                return suffixHits.get(0);
             }
+            // Unlisted dirs under the workspace stay on the standalone/file classifiers.
+        } catch (AmbiguousModuleTarget e) {
+            throw e;
         } catch (Exception ignored) {
             return null;
         }
         return null;
+    }
+
+    /** Render a module dir relative to its workspace for an error message. */
+    private static String wsRoot(Path moduleDir, Path start) {
+        try {
+            return cc.jumpkick.config.WorkspaceLocator.findRoot(start)
+                    .map(r -> r.relativize(moduleDir).toString())
+                    .orElse(moduleDir.toString());
+        } catch (Exception e) {
+            return moduleDir.toString();
+        }
+    }
+
+    /** {@code jk run <leaf>} matched more than one workspace module (JK-1316). */
+    static final class AmbiguousModuleTarget extends RuntimeException {
+        AmbiguousModuleTarget(String message) {
+            super(message);
+        }
     }
 
     /**
@@ -330,7 +357,13 @@ public final class ToolRunCommand implements CliCommand {
 
         // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
         // (or any cwd) resolves against workspace.modules before other target classifiers.
-        Path moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        Path moduleHit;
+        try {
+            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        } catch (AmbiguousModuleTarget e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            return cc.jumpkick.model.command.Exit.USAGE;
+        }
         if (moduleHit != null) {
             return runDirectory(moduleHit, toolArgs);
         }

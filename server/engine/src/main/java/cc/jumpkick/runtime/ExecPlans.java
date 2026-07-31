@@ -406,15 +406,28 @@ public final class ExecPlans {
             return ExecPlan.error(kind, "workspace has no modules — nothing to run", "missing");
         }
 
-        // 1) Declared [application] main wins — first in workspace module declaration order
-        // (so bare `jk run` at the root is deterministic when several apps exist).
+        // 1) Declared [application] main wins — but only when it is unambiguous. Several declared
+        // apps must be an error naming the candidates: silently launching whichever is listed
+        // first means reordering [workspace].modules changes what `jk run` executes (JK-1316).
+        List<Path> declaredApps = new ArrayList<>();
         for (var e : modules.entrySet()) {
             String m = e.getValue().mainClass();
-            if (m != null && !m.isBlank()) {
-                Path modDir = e.getKey();
-                JkBuild mod = e.getValue();
-                return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
-            }
+            if (m != null && !m.isBlank()) declaredApps.add(e.getKey());
+        }
+        if (declaredApps.size() == 1) {
+            Path modDir = declaredApps.get(0);
+            JkBuild mod = modules.get(modDir);
+            return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
+        }
+        if (declaredApps.size() > 1) {
+            String names = declaredApps.stream()
+                    .map(d -> root.relativize(d).toString())
+                    .collect(java.util.stream.Collectors.joining(", "));
+            return ExecPlan.error(
+                    kind,
+                    "multiple modules declare [application] main (" + names + ") — run one explicitly: jk "
+                            + kind + " <module>",
+                    "ambiguous");
         }
 
         // 2) Best-effort scan: classes dir first, then main jar.
@@ -451,15 +464,19 @@ public final class ExecPlans {
                             + "on the app module (or run from that module directory)",
                     "missing");
         }
-        // Prefer declaration order among scanned mains.
-        for (var e : modules.entrySet()) {
-            if (mainToModule.containsValue(e.getKey())) {
-                Path modDir = e.getKey();
-                JkBuild mod = e.getValue();
-                return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
-            }
+        // Same rule as declared apps: scanned mains across SEVERAL modules are ambiguous.
+        java.util.Set<Path> scannedModules = new java.util.LinkedHashSet<>(mainToModule.values());
+        if (scannedModules.size() > 1) {
+            String names = scannedModules.stream()
+                    .map(d -> root.relativize(d).toString())
+                    .collect(java.util.stream.Collectors.joining(", "));
+            return ExecPlan.error(
+                    kind,
+                    "multiple modules contain a runnable main (" + names + ") — run one explicitly: jk "
+                            + kind + " <module>",
+                    "ambiguous");
         }
-        Path modDir = mainToModule.values().iterator().next();
+        Path modDir = scannedModules.iterator().next();
         JkBuild mod = modules.get(modDir);
         return runPlan(modDir, cache, mod, BuildLayout.of(modDir, mod), dev);
     }
