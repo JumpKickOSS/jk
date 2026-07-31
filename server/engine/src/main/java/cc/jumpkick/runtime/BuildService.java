@@ -1096,7 +1096,8 @@ public final class BuildService {
                         req.verbose(),
                         moduleDirs,
                         req.testOnly())
-                .withVariant(req.variant(), req.clientEnv());
+                .withVariant(req.variant(), req.clientEnv())
+                .withEphemeralActions(req.ephemeralActions());
         Pipeline.Builder b = BuildPipelines.coreBuilder(inputs, forceRebuild);
         BuildPipelines.appendDeclaredTails(b, inputs);
         Pipeline pipeline = b.build();

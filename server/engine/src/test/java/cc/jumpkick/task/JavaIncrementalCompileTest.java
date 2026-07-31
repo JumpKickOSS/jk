@@ -160,6 +160,40 @@ class JavaIncrementalCompileTest {
     // ---- JK-1058: predict() dirty-reason strings for explain ----------------
 
     @Test
+    void ephemeral_full_compile_leaves_no_action_record_or_state(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A {}");
+
+        // jk verify's scratch rebuild: useCache=false (rebuild-pinned) + persist=false.
+        Run r = p.build(false, false);
+
+        assertThat(r.outcome).isEqualTo("compiled");
+        assertThat(p.classExists("a/A.class")).isTrue();
+        // No orphan residue: scratch-salted keys never recur (JK-1297).
+        assertThat(p.actionCache.lastFor("compile-main")).isEmpty();
+        assertThat(emptyOrMissing(p.stateDir)).as("incremental state untouched").isTrue();
+    }
+
+    @Test
+    void rebuild_still_stores_the_action_record(@TempDir Path dir) throws Exception {
+        Project p = new Project(dir);
+        p.write("a/A.java", "package a; public class A {}");
+
+        // --rebuild: bypass reads but persist, so the next explain/build sees CACHE_HIT.
+        Run r = p.build(false, true);
+
+        assertThat(r.outcome).isEqualTo("compiled");
+        assertThat(p.actionCache.lastFor("compile-main")).isPresent();
+    }
+
+    private static boolean emptyOrMissing(Path dir) throws IOException {
+        if (!Files.exists(dir)) return true;
+        try (var files = Files.list(dir)) {
+            return files.findAny().isEmpty();
+        }
+    }
+
+    @Test
     void predict_first_build_reasons_full_with_no_prior_record(@TempDir Path dir) throws Exception {
         Project p = new Project(dir);
         p.write("a/A.java", "package a; public class A { public int f() { return 1; } }");
@@ -278,6 +312,17 @@ class JavaIncrementalCompileTest {
             if (requireSuccess) {
                 assertThat(result.success()).as("compile succeeded").isTrue();
             }
+            return new Run(result.outcome(), rec.compiled());
+        }
+
+        /** Build through the persist seam ({@code useCache}/{@code persist} as given). */
+        Run build(boolean useCache, boolean persist) throws IOException {
+            CompileRequest req = request(List.of(), 21);
+            Recording rec = new Recording(
+                    JavaIncrementalCompile.javacCompiler(new JavacRunner(), req.javaHome(), req.processorPath()));
+            JavaIncrementalCompile.Result result = JavaIncrementalCompile.run(
+                    "compile-main", req, "jk-test", useCache, persist, cas, actionCache, stateDir, rec, null);
+            assertThat(result.success()).as("compile succeeded").isTrue();
             return new Run(result.outcome(), rec.compiled());
         }
 

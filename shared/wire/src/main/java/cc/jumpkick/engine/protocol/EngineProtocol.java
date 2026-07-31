@@ -711,6 +711,41 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean freshenLock) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                false);
+    }
+
+    /**
+     * As above with {@code ephemeralActions} ({@code jk verify} scratch rebuild: tasks must not
+     * persist action-cache records or incremental state). Emitted only when true so older engines
+     * see an unchanged request.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
         return "{\"type\":\""
@@ -739,6 +774,7 @@ public final class EngineProtocol {
                 + force
                 + ",\"freshenLock\":"
                 + freshenLock
+                + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + "}";
     }
 

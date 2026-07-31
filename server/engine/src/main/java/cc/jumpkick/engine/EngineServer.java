@@ -1920,6 +1920,8 @@ public final class EngineServer implements AutoCloseable {
             // jk build sends true (auto-freshen a stale workspace lock engine-side before building);
             // jk verify's scratch rebuild sends false (pinned lock used verbatim).
             boolean freshenLock = Jsonl.bool(requestLine, "freshenLock", false);
+            // jk verify only: scratch-salted action keys never recur — tasks must not persist them.
+            boolean ephemeralActions = Jsonl.bool(requestLine, "ephemeralActions", false);
 
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
@@ -1939,6 +1941,7 @@ public final class EngineServer implements AutoCloseable {
                             null, // engine forecasts dirty modules
                             false, // this engine plans memory once at startup, not per request
                             freshenLock)
+                    .withEphemeralActions(ephemeralActions)
                     .withVariant(EngineProtocol.variantOf(requestLine), EngineProtocol.clientEnvOf(requestLine));
 
             JkConfig config = new JkConfig(

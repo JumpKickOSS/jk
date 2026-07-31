@@ -106,7 +106,7 @@ public final class JavaIncrementalCompile {
             ActionCache actionCache,
             Path stateDir)
             throws IOException {
-        return run(taskId, request, jkVersion, useCache, cas, actionCache, stateDir, null);
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, null);
     }
 
     public static Result run(
@@ -119,11 +119,31 @@ public final class JavaIncrementalCompile {
             Path stateDir,
             ApSetup ap)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, ap);
+    }
+
+    /**
+     * As above with {@code persist}: false for ephemeral builds ({@code jk verify}'s scratch
+     * rebuild) whose scratch-salted action keys can never recur — no action record or incremental
+     * state may be written.
+     */
+    public static Result run(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            ApSetup ap)
+            throws IOException {
         return run(
                 taskId,
                 request,
                 jkVersion,
                 useCache,
+                persist,
                 cas,
                 actionCache,
                 stateDir,
@@ -143,6 +163,22 @@ public final class JavaIncrementalCompile {
             Compiler javacBackend,
             ApSetup ap)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, javacBackend, ap);
+    }
+
+    /** Test seam: inject the full-compile ({@code javac}) backend. */
+    static Result run(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            Compiler javacBackend,
+            ApSetup ap)
+            throws IOException {
         Path out = request.outputDir();
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
@@ -152,8 +188,10 @@ public final class JavaIncrementalCompile {
         String key = ActionKey.forJavac(taskId, request, jkVersion);
 
         // useCache=false means "do not restore / skip work" (--rebuild / --force), NOT "do not
-        // write". Always store successful results so the next `jk explain` / incremental build
-        // sees CACHE_HIT instead of a phantom full recompile.
+        // write" — rebuilds store successful results so the next `jk explain` / incremental build
+        // sees CACHE_HIT instead of a phantom full recompile. persist=false (jk verify's scratch
+        // rebuild) is the one mode that skips writes: its scratch-salted keys can never recur, so
+        // stored records/state would be orphans (JK-1297).
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent()) {
@@ -187,13 +225,15 @@ public final class JavaIncrementalCompile {
         // generated file had exactly one originating source); an aggregating processor
         // reads the whole source set, so a subset recompile would produce a stale
         // aggregate → stay full. Rebuild/force still does a full compile (no incremental).
-        boolean canInc = useCache && canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
+        boolean canInc =
+                useCache && persist && canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
         if (canInc) {
             return incremental(
                     taskId, request, key, cas, actionCache, stateDir, out, prior.get(), abi, compiler, flags);
         }
-        // Always persist after a successful full compile so explain/next-build cache keys match.
-        return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, true);
+        // Persist after a successful full compile so explain/next-build cache keys match —
+        // except ephemeral (verify-scratch) builds, which must leave no residue.
+        return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, persist);
     }
 
     /**
@@ -298,20 +338,24 @@ public final class JavaIncrementalCompile {
         }
         Analysis a = analyze(out, request.sources(), co.generated(), Set.of());
         Map<String, List<String>> units = unitsOf(a, out);
-        // Bypassing runs neither read nor write the action cache (see KotlinCompile.run).
-        if (storeResult) store(taskId, key, request, out, cas, actionCache, units);
-        // Remodule whether this project source-generates (so the next build routes
-        // through the worker) and whether those processors are isolating.
-        boolean sgap = flags.sourceGenAps() || a.hasGenerated() || a.orphans();
-        saveApFlags(stateDir, new ApFlags(sgap, !a.orphans() && a.isolatingSafe()));
-        if (a.orphans()) {
-            // Generated sources present but no provenance (compiled without the worker):
-            // we can't attribute them, so drop state → this build is correct (full) and
-            // the now-set sourceGenAps flag routes the next build through the worker,
-            // which DOES capture provenance and can track incrementally.
-            Files.deleteIfExists(stateFile(stateDir));
-        } else {
-            saveState(stateDir, factsOf(a));
+        // storeResult=false is jk verify's ephemeral scratch rebuild: its scratch-salted keys and
+        // state dirs can never recur, so neither the action record nor incremental state may be
+        // written (JK-1297). Rebuild/force runs store like any other success.
+        if (storeResult) {
+            store(taskId, key, request, out, cas, actionCache, units);
+            // Remodule whether this project source-generates (so the next build routes
+            // through the worker) and whether those processors are isolating.
+            boolean sgap = flags.sourceGenAps() || a.hasGenerated() || a.orphans();
+            saveApFlags(stateDir, new ApFlags(sgap, !a.orphans() && a.isolatingSafe()));
+            if (a.orphans()) {
+                // Generated sources present but no provenance (compiled without the worker):
+                // we can't attribute them, so drop state → this build is correct (full) and
+                // the now-set sourceGenAps flag routes the next build through the worker,
+                // which DOES capture provenance and can track incrementally.
+                Files.deleteIfExists(stateFile(stateDir));
+            } else {
+                saveState(stateDir, factsOf(a));
+            }
         }
         return new Result(true, "compiled", key, co.result().diagnostics());
     }

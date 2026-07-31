@@ -164,7 +164,10 @@ public final class BuildPipelines {
             String variant,
             // Client-resolved env values (env: indirection in plugin configs — signing secrets):
             // the user's shell env rides the request; the engine env is only the fallback.
-            Map<String, String> clientEnv) {
+            Map<String, String> clientEnv,
+            // True for jk verify's scratch rebuild: action keys are scratch-salted and can never
+            // recur, so tasks must not persist action-cache records or incremental state.
+            boolean ephemeralActions) {
 
         /**
          * Back-compat: the pre-variant canonical shape. The variant selection defaults from the
@@ -207,6 +210,69 @@ public final class BuildPipelines {
                     session.clientEnv());
         }
 
+        /** Pre-ephemeralActions canonical shape (defaults false — persistent caches). */
+        public Inputs(
+                Path dir,
+                Path cache,
+                Path buildFile,
+                Path lockFile,
+                Path lockDir,
+                int workerCount,
+                int estimatedTestCount,
+                String profileName,
+                Path jdksDir,
+                boolean skipTests,
+                boolean verbose,
+                boolean testOnly,
+                boolean compileOnly,
+                Set<Path> projectModules,
+                cc.jumpkick.config.Session session,
+                String variant,
+                Map<String, String> clientEnv) {
+            this(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    false);
+        }
+
+        /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
+        public Inputs withEphemeralActions(boolean ephemeralActions) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
+        }
+
         /**
          * Environment lookup for this request: the caller's shell environment, falling back to the
          * engine's own (JK-1269).
@@ -240,7 +306,8 @@ public final class BuildPipelines {
                     projectModules,
                     session,
                     variant == null ? "" : variant,
-                    clientEnv == null ? Map.of() : clientEnv);
+                    clientEnv == null ? Map.of() : clientEnv,
+                    ephemeralActions);
         }
 
         /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
@@ -260,7 +327,10 @@ public final class BuildPipelines {
                     testOnly,
                     compileOnly,
                     modules == null ? Set.of() : modules,
-                    session);
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
         }
     }
 
@@ -1483,6 +1553,7 @@ public final class BuildPipelines {
                             request,
                             cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
                             !rerun,
+                            !in.ephemeralActions(), // verify-scratch: no persistent residue (JK-1297)
                             cas,
                             actionCache,
                             javaStateDir,
@@ -3798,7 +3869,13 @@ public final class BuildPipelines {
             }
         }
         return cc.jumpkick.task.KotlinCompile.run(
-                taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+                taskId,
+                req,
+                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                !rerun,
+                !in.ephemeralActions(), // verify-scratch: no persistent residue (JK-1297)
+                cas,
+                actionCache);
     }
 
     /**
@@ -3876,7 +3953,13 @@ public final class BuildPipelines {
             }
         }
         return cc.jumpkick.task.GroovyCompile.run(
-                taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+                taskId,
+                req,
+                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                !rerun,
+                !in.ephemeralActions(), // verify-scratch: no persistent residue (JK-1297)
+                cas,
+                actionCache);
     }
 
     /**

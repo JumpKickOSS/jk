@@ -216,7 +216,10 @@ public final class VerifyBuildCommand implements CliCommand {
                 0, // module concurrency: auto
                 null, // dirtyHint: rerun marks everything dirty anyway
                 true, // only read by the in-process test path; the engine plans its own memory
-                false); // verify must rebuild against the pinned lock verbatim — never freshen it
+                false) // verify must rebuild against the pinned lock verbatim — never freshen it
+                // Scratch-salted action keys can never recur: tasks must not persist
+                // action-cache records or incremental state for this build (JK-1297).
+                .withEphemeralActions(true);
         Session session = SessionContext.current()
                 .withConfig(SessionContext.current().config().mergedWith(withRerun()))
                 .withWorkingDir(scratch)

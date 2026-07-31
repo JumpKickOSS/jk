@@ -34,6 +34,23 @@ public final class KotlinCompile {
     public static Result run(
             String taskId, KotlincRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache);
+    }
+
+    /**
+     * As above with {@code persist}: false for {@code jk verify}'s scratch rebuild, whose
+     * scratch-salted keys can never recur — a successful compile must not leave an orphan action
+     * record behind (JK-1297).
+     */
+    public static Result run(
+            String taskId,
+            KotlincRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache)
+            throws IOException {
         String key = ActionKey.forKotlinc(taskId, request, jkVersion);
 
         if (useCache) {
@@ -71,9 +88,10 @@ public final class KotlinCompile {
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(true, "compiled-no-outputs", key, kr.output());
         }
-        // Always store: rebuild/force re-ran the work and must refresh the action pointer so
-        // the next non-rebuild explain sees CACHE_HIT (same as JavaIncrementalCompile).
-        actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        // Store on rebuild/force too: the work re-ran and must refresh the action pointer so
+        // the next non-rebuild explain sees CACHE_HIT (same as JavaIncrementalCompile). Only
+        // ephemeral (verify-scratch) runs skip the write — their keys never recur.
+        if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, kr.output());
     }
 

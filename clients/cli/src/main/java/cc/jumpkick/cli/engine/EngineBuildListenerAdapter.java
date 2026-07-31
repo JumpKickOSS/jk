@@ -90,7 +90,10 @@ final class EngineBuildListenerAdapter {
                             session.force(),
                             // jk build asks the engine to auto-freshen a stale workspace lock; verify's
                             // scratch rebuild must use the pinned lock verbatim (see WorkspaceRequest).
-                            req.freshenLock()),
+                            req.freshenLock(),
+                            // verify's scratch rebuild: never persist action records under
+                            // scratch-salted keys that can never recur.
+                            req.ephemeralActions()),
                     req.variant(),
                     req.clientEnv(),
                     SessionContext.current().jvm(),

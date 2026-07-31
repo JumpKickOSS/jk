@@ -33,6 +33,23 @@ public final class GroovyCompile {
     public static Result run(
             String taskId, GroovycRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache);
+    }
+
+    /**
+     * As above with {@code persist}: false for {@code jk verify}'s scratch rebuild, whose
+     * scratch-salted keys can never recur — a successful compile must not leave an orphan action
+     * record behind (JK-1297).
+     */
+    public static Result run(
+            String taskId,
+            GroovycRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache)
+            throws IOException {
         String key = ActionKey.forGroovyc(taskId, request, jkVersion);
 
         if (useCache) {
@@ -67,8 +84,9 @@ public final class GroovyCompile {
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(true, "compiled-no-outputs", key, gr.output());
         }
-        // Always store after success so rebuild refreshes the action pointer for explain.
-        actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        // Store on rebuild/force too so the next explain sees CACHE_HIT; only ephemeral
+        // (verify-scratch) runs skip the write — their keys never recur (JK-1297).
+        if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, gr.output());
     }
 
