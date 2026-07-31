@@ -226,7 +226,9 @@ public final class BuildMetrics {
             foldInvocation(inv, o.kind(), "", null, o, nowMillis);
             // Cancelled workspaces must not train step/module averages: a mid-run kill leaves
             // SUCCESS steps with truncated walls that poison ETA (JK-1252 / estimator hygiene).
-            // Only full successful (or failed-but-complete) runs teach per-step ok stats.
+            // Only fully-successful workspaces teach per-step `ok` stats (the guard two lines
+            // down); failed-but-complete runs teach only their failure buckets, for diagnostics
+            // (JK-1301; see docs/perf/progress-contract.md "Success-only teaching").
             if (!o.cancelled()) {
                 for (StepSample s : o.steps()) {
                     if (s.step() == null || s.step().isEmpty()) continue;
