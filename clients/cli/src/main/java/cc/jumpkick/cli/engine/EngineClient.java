@@ -321,15 +321,19 @@ public final class EngineClient {
      */
     public static void cancelBestEffortForInterrupt(Path cwd) {
         try {
+            // Overall deadline: each RPC self-limits at SOCKET_TIMEOUT_MILLIS, but N stale jids
+            // against a wedged engine would still serialize to N×2s of dead air (JK-1314).
+            long deadline = System.nanoTime() + 3 * SOCKET_TIMEOUT_MILLIS * 1_000_000L / 2;
             Path socket = EnginePaths.activeSocket(EnginePaths.current());
             for (long jid : ActiveJobs.snapshot()) {
+                if (System.nanoTime() >= deadline) break;
                 try {
                     cancelOnce(socket, EngineProtocol.cancelRequest(jid), jid);
                 } catch (Exception ignored) {
                     // best-effort — halt follows
                 }
             }
-            if (cwd != null) {
+            if (cwd != null && System.nanoTime() < deadline) {
                 try {
                     Optional<String> ack =
                             cancelOnce(socket, EngineProtocol.cancelRequestForDir(cwd.toString()), -1);

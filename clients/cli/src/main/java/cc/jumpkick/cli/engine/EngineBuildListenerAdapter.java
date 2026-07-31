@@ -336,12 +336,14 @@ final class EngineBuildListenerAdapter {
             List<String> errors = new ArrayList<>();
 
             String line;
-            while ((line = reader.readLine()) != null) {
+            long notedJid = -1;
+            try {
+                while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
                 if (EngineProtocol.JOB_START.equals(type)) {
-                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
-                            Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                    notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                     continue;
                 }
                 switch (type) {
@@ -396,9 +398,14 @@ final class EngineBuildListenerAdapter {
                         /* forward-compatible no-op */
                     }
                 }
+                }
+                throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
+                        + "(it may have crashed); run `jk engine status` for details");
+            } finally {
+                // The job is over however the stream ended — a stale jid here would add a 2s
+                // cancel RPC to every future Ctrl-C in this process (JK-1314).
+                if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
             }
-            throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                    + "(it may have crashed); run `jk engine status` for details");
         }
     }
 
@@ -600,7 +607,8 @@ final class EngineBuildListenerAdapter {
                 });
     }
 
-    private static PipelineResult streamSinglePipelineEvents(
+    // Package-visible for tests (ActiveJobs lifecycle, cancel terminals — JK-1314 / JK-1312).
+    static PipelineResult streamSinglePipelineEvents(
             BufferedReader reader,
             java.util.function.Function<List<Step>, PipelineListener> listenerFactory,
             cc.jumpkick.run.TestSummary[] testResultOut,
@@ -615,12 +623,14 @@ final class EngineBuildListenerAdapter {
         long startNanos = System.nanoTime();
 
         String line;
-        while ((line = reader.readLine()) != null) {
+        long notedJid = -1;
+        try {
+            while ((line = reader.readLine()) != null) {
             String type = EngineProtocol.typeOf(line);
             if (type == null) continue;
             if (EngineProtocol.JOB_START.equals(type)) {
-                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
-                        Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                 continue;
             }
             switch (type) {
@@ -701,8 +711,12 @@ final class EngineBuildListenerAdapter {
                     /* forward-compatible no-op */
                 }
             }
+            }
+            throw disconnectFailure();
+        } finally {
+            // The job is over however the stream ended (JK-1314).
+            if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
         }
-        throw disconnectFailure();
     }
 
     /**
@@ -730,12 +744,14 @@ final class EngineBuildListenerAdapter {
         String pendingPlanDir = null; // the dir most recently opened by plan-module, for plan-step lines
 
         String line;
-        while ((line = reader.readLine()) != null) {
+        long notedJid = -1;
+        try {
+            while ((line = reader.readLine()) != null) {
             String type = EngineProtocol.typeOf(line);
             if (type == null) continue;
             if (EngineProtocol.JOB_START.equals(type)) {
-                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
-                        Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
+                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
                 continue;
             }
             String dir = Jsonl.str(line, "dir");
@@ -891,8 +907,12 @@ final class EngineBuildListenerAdapter {
                     /* forward-compatible no-op */
                 }
             }
+            }
+            throw disconnectFailure();
+        } finally {
+            // The job is over however the stream ended (JK-1314).
+            if (notedJid > 0) cc.jumpkick.cli.engine.EngineClient.ActiveJobs.forget(notedJid);
         }
-        throw disconnectFailure();
     }
 
     private static List<ModulePlan> buildModulePlans(Map<String, ModuleMeta> planByDir, Path cache) {

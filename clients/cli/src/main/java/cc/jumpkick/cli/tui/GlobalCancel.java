@@ -35,11 +35,15 @@ public final class GlobalCancel {
 
     public static void install() {
         Signals.register("INT", () -> {
-            // 1) Same cancel path as `jk cancel` / web — before we paint or die. Best-effort,
-            // never spawns an engine, bounded by a short socket watchdog.
+            // 1) Cooperative cancel is synchronous (cheap, in-process); the engine RPCs go on a
+            // background thread so the user sees the cancelled settle immediately instead of a
+            // still-animating spinner while a wedged engine eats socket watchdogs (JK-1314).
             cc.jumpkick.config.SessionContext.current().cancel().cancel();
             java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
-            cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir);
+            Thread rpc = Thread.ofPlatform()
+                    .daemon(true)
+                    .name("jk-sigint-cancel")
+                    .start(() -> cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir));
 
             // 2) Settle the live region (pipeline → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();
@@ -58,7 +62,13 @@ public final class GlobalCancel {
             err.print(Ansi.RESET);
             err.flush();
 
-            // 3) Hard kill this CLI process — backup if the reader/engine path is wedged.
+            // 3) Give the cancel RPCs a short, bounded window (they also self-limit), then hard
+            // kill this CLI process — guaranteed death even if everything above is wedged.
+            try {
+                rpc.join(3_000L);
+            } catch (InterruptedException ignored) {
+                // halt follows regardless
+            }
             Runtime.getRuntime().halt(2);
         });
     }
