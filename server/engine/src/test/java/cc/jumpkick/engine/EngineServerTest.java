@@ -857,7 +857,9 @@ class EngineServerTest {
                 staleKey,
                 java.nio.file.attribute.FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
-        Path putTmp = cache.resolve("sha256/.put-1234");
+        // CAS blobs (and their .put-* temps) live in the store, not under the request's cache
+        // root, since JK-1289 — the sweep resolves sha256/ through JkStores.
+        Path putTmp = cc.jumpkick.cache.JkStores.resolve(cache, "sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
         Files.writeString(putTmp, "partial");
 
