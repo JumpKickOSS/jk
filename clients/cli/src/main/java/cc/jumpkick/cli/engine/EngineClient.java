@@ -292,6 +292,82 @@ public final class EngineClient {
     }
 
     /**
+     * Cancel a live engine job by jid (JK-1252). Returns the {@code cancel-ack} line, or empty if the
+     * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
+     */
+    public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            writer.write(EngineProtocol.cancelRequest(jid));
+            writer.write('\n');
+            writer.flush();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
+                    ActiveJobs.forget(jid);
+                    return Optional.of(line);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Cancel every live job under {@code dir} (JK-1252). Used by bare {@code jk cancel} and Ctrl-C.
+     */
+    public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            writer.write(EngineProtocol.cancelRequestForDir(dir));
+            writer.write('\n');
+            writer.flush();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
+                    ActiveJobs.forgetAll();
+                    return Optional.of(line);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Process-local set of jids this CLI session has started (from {@code job-start} wire events).
+     * Ctrl-C cancels these as a best-effort supplement to dir-based cancel.
+     */
+    public static final class ActiveJobs {
+        private static final java.util.concurrent.ConcurrentHashMap.KeySetView<Long, Boolean> LIVE =
+                java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        private ActiveJobs() {}
+
+        public static void note(long jid) {
+            if (jid > 0) LIVE.add(jid);
+        }
+
+        public static void forget(long jid) {
+            LIVE.remove(jid);
+        }
+
+        public static void forgetAll() {
+            LIVE.clear();
+        }
+
+        public static java.util.Set<Long> snapshot() {
+            return java.util.Set.copyOf(LIVE);
+        }
+    }
+
+    /**
      * Running aggregate rows ({@code metrics-entry} flat JSONL) for {@code dir}'s project tiers
      * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
      */

@@ -50,7 +50,36 @@ public final class GlobalCancel {
             // cooperative consumer sharing the process (e.g. an embedder that does NOT halt)
             // observe the cancel through StepContext.cancelled() via the SessionCancel seam.
             cc.jumpkick.config.SessionContext.current().cancel().cancel();
+            // JK-1252: notify the engine for this project's live job(s) before we die — EOF alone
+            // can race with halt. Best-effort; never block Ctrl-C for more than a short window.
+            notifyEngineCancel();
             Runtime.getRuntime().halt(2);
         });
+    }
+
+    /**
+     * Best-effort cancel of engine jobs for the current working directory (and any tracked jids).
+     * Bounded: failures are swallowed so Ctrl-C always exits.
+     */
+    private static void notifyEngineCancel() {
+        try {
+            java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
+            // Prefer explicit jids this process started.
+            for (long jid : cc.jumpkick.cli.engine.EngineClient.ActiveJobs.snapshot()) {
+                try {
+                    cc.jumpkick.cli.engine.EngineClient.cancel(cc.jumpkick.engine.EnginePaths.current(), jid);
+                } catch (Exception ignored) {
+                    // best-effort
+                }
+            }
+            try {
+                cc.jumpkick.cli.engine.EngineClient.cancelForDir(
+                        cc.jumpkick.engine.EnginePaths.current(), dir.toString());
+            } catch (Exception ignored) {
+                // best-effort
+            }
+        } catch (Throwable ignored) {
+            // never block halt
+        }
     }
 }

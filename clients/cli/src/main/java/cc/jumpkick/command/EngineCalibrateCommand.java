@@ -5,10 +5,9 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.PipelineConsole;
+import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.CommandWedge;
-import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -32,6 +31,9 @@ import java.util.Optional;
  * <p>Default is offline. Pass {@code --with-network} for an optional Maven Central micro-GET
  * (resolve RTT) and to download Jupiter jars if missing for a real JUnit Platform probe.
  * Idempotent unless the global {@code --force} flag is set.
+ *
+ * <p>TTY chrome: one live {@code ▶ Calibrate …} line that settles in place to
+ * {@code ✓ Calibrate  Host calibration saved} (probe details print below).
  */
 public final class EngineCalibrateCommand implements CliCommand {
 
@@ -58,7 +60,10 @@ public final class EngineCalibrateCommand implements CliCommand {
         boolean allowNetwork = in.isSet("with-network");
         EnginePaths.Paths paths = EnginePaths.current();
         long coldMs = 0;
-        try {
+        // One live chip line on a TTY (▶ … → ✓ …); pipes/json get a single settled line only.
+        boolean animate = PipelineConsole.isInteractiveTerminal()
+                && PipelineConsole.modeFor(GlobalOptions.from(in)) == PipelineConsole.Mode.AUTO;
+        try (CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Calibrate", animate)) {
             boolean alreadyUp = EngineClient.handshake(EnginePaths.activeSocket(paths), Jk.VERSION)
                     .map(h -> Jk.VERSION.equals(h.version()))
                     .orElse(false);
@@ -68,8 +73,7 @@ public final class EngineCalibrateCommand implements CliCommand {
                 alreadyUp = false;
             }
             if (!alreadyUp) {
-                CliOutput.out(PipelineWedge.chipLine(
-                        Glyphs.PLAY, "Calibrate", GlobalConfig.nerdfont(), "Starting engine (cold)…"));
+                view.solveLabel("Starting engine (cold)…");
                 long t0 = System.nanoTime();
                 EngineClient.ensureRunning(paths, Jk.VERSION);
                 coldMs = Math.max(1, (System.nanoTime() - t0) / 1_000_000);
@@ -79,21 +83,21 @@ public final class EngineCalibrateCommand implements CliCommand {
 
             String msg = force ? "Re-running host probes" : "Running host probes";
             if (allowNetwork) msg += " (with network)";
-            CliOutput.out(PipelineWedge.chipLine(Glyphs.PLAY, "Calibrate", GlobalConfig.nerdfont(), msg + "…"));
+            view.solveLabel(msg + "…");
             Optional<String> ack = EngineClient.calibrate(paths, force, coldMs, allowNetwork);
             if (ack.isEmpty()) {
-                CliOutput.err(CommandWedge.fail("Calibrate", "engine did not return calibration"));
+                view.finishPipelineFailure("engine did not return calibration");
                 return Exit.SOFTWARE;
             }
             String line = ack.get();
             if (!Jsonl.bool(line, "ok", false)) {
-                CliOutput.err(CommandWedge.fail(
-                        "Calibrate", Jsonl.str(line, "summary") != null ? Jsonl.str(line, "summary") : "failed"));
+                String fail = Jsonl.str(line, "summary");
+                view.finishPipelineFailure(fail != null && !fail.isBlank() ? fail : "failed");
                 return Exit.SOFTWARE;
             }
+            // In-place settle: replaces the ▶ probes line with the ✓ result.
+            view.finishPipelineSuccess("Host calibration saved");
             String summary = Jsonl.str(line, "summary");
-            CliOutput.out(PipelineWedge.chipLine(
-                    Glyphs.CHECK, "Calibrate", GlobalConfig.nerdfont(), "Host calibration saved"));
             if (summary != null && !summary.isBlank()) {
                 for (String row : summary.split("\n")) {
                     CliOutput.out("  " + row);

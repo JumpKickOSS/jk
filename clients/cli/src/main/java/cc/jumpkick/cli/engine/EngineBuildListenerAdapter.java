@@ -336,6 +336,11 @@ final class EngineBuildListenerAdapter {
             while ((line = reader.readLine()) != null) {
                 String type = EngineProtocol.typeOf(line);
                 if (type == null) continue;
+                if (EngineProtocol.JOB_START.equals(type)) {
+                    cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
+                            Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                    continue;
+                }
                 switch (type) {
                     case EngineProtocol.EXPLAIN_MODULE -> {
                         String dir = Jsonl.str(line, "dir");
@@ -610,6 +615,11 @@ final class EngineBuildListenerAdapter {
         while ((line = reader.readLine()) != null) {
             String type = EngineProtocol.typeOf(line);
             if (type == null) continue;
+            if (EngineProtocol.JOB_START.equals(type)) {
+                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
+                        Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                continue;
+            }
             switch (type) {
                 case EngineProtocol.PLAN_STEP ->
                     steps.add(Step.builder(Jsonl.str(line, "name"))
@@ -702,6 +712,11 @@ final class EngineBuildListenerAdapter {
         while ((line = reader.readLine()) != null) {
             String type = EngineProtocol.typeOf(line);
             if (type == null) continue;
+            if (EngineProtocol.JOB_START.equals(type)) {
+                cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(
+                        Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1)));
+                continue;
+            }
             String dir = Jsonl.str(line, "dir");
             switch (type) {
                 case EngineProtocol.PLAN_MODULE -> {

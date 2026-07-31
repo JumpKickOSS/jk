@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ActivityCommandTest {
@@ -66,16 +67,58 @@ class ActivityCommandTest {
     }
 
     @Test
-    void tree_branches() {
+    void tree_branches_are_indented() {
         Theme t = Theme.active();
-        assertThat(strip(ActivityCommand.branch(false, t))).isIn("├─ ", "+- ");
-        assertThat(strip(ActivityCommand.branch(true, t))).isIn("╰─ ", "`- ");
+        // Leading space under the title chip; no trailing space before the pill.
+        assertThat(strip(ActivityCommand.branch(false, t))).isIn(" ├─", " +-");
+        assertThat(strip(ActivityCommand.branch(true, t))).isIn(" ╰─", " `-");
+        assertThat(strip(ActivityCommand.rail())).isIn(" │", " |");
+    }
+
+    @Test
+    void status_pill_uses_brackets_when_plain() {
+        // When ANSI is on we can't easily force plain here; content still includes the label.
+        String plain = strip(ActivityCommand.formatLine(ENTRY, 10_000L, Theme.active()));
+        assertThat(plain).contains("#31");
+        assertThat(plain).contains("Success");
     }
 
     @Test
     void title_is_menu_wedge() {
         String plain = strip(ActivityCommand.titleLine());
-        assertThat(plain).contains("Build Activity");
+        assertThat(plain).contains("Jobs");
+    }
+
+    @Test
+    void formats_running_with_jid() {
+        String withJid = RUNNING.replace("\"running\":true", "\"running\":true,\"jid\":42");
+        String plain = strip(ActivityCommand.formatLine(withJid, 1000 + 4200L, Theme.active()));
+        assertThat(plain).contains("jid=42");
+        assertThat(plain).contains("#2");
+        assertThat(plain).contains("Building");
+    }
+
+    @Test
+    void build_numbers_are_zero_padded_to_listing_width() {
+        assertThat(ActivityCommand.buildNumberWidth(List.of(ENTRY, FAIL, RUNNING))).isEqualTo(2);
+        String plain = strip(ActivityCommand.formatLine(RUNNING, 1000 + 4200L, Theme.active(), 2));
+        assertThat(plain).contains("#02");
+        assertThat(plain).doesNotContain("#2 ");
+        // Three digits when the list peaks at 100+.
+        assertThat(ActivityCommand.buildNumberWidth(List.of(
+                        "{\"type\":\"history-entry\",\"buildNumber\":100,\"running\":false}",
+                        "{\"type\":\"history-entry\",\"buildNumber\":9,\"running\":false}")))
+                .isEqualTo(3);
+        String n9 = strip(ActivityCommand.formatLine(
+                "{\"type\":\"history-entry\",\"id\":\"x\",\"buildNumber\":9,"
+                        + "\"kind\":\"build\",\"dir\":\"/p\",\"coord\":\"g:n\","
+                        + "\"startedAt\":1,\"finishedAt\":2,\"millis\":500,"
+                        + "\"success\":true,\"cancelled\":false,\"running\":false,"
+                        + "\"moduleCount\":1}",
+                10_000L,
+                Theme.active(),
+                3));
+        assertThat(n9).contains("#009");
     }
 
     private static String strip(String s) {

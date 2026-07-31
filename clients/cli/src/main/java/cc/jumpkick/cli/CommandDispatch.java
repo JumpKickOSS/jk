@@ -8,6 +8,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.command.ActivateCommand;
 import cc.jumpkick.command.ActivityCommand;
+import cc.jumpkick.command.CancelCommand;
 import cc.jumpkick.command.AddCommand;
 import cc.jumpkick.command.AssemblyCommand;
 import cc.jumpkick.command.AuditCommand;
@@ -96,7 +97,8 @@ public final class CommandDispatch {
             new SelfCommand(),
             new WrapperCommand(),
             new HistoryCommand(),
-            new ActivityCommand(),
+            new ActivityCommand(), // name() = jobs; activity/act aliases
+            new CancelCommand(),
             new StatusCommand(),
             new TreeCommand(),
             new WhyCommand(),

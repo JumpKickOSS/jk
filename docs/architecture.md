@@ -55,7 +55,7 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
 | **Stream** (build / test / sync) | Protocol lines keep flowing | `JK_STREAM_IDLE_MS` (default 60 minutes between lines; `0` disables) |
 | **Job heartbeat** (ticket-1051) | Engine emits `heartbeat` while async jobs run | `JK_ENGINE_HEARTBEAT_MS` (default **30s**; `0` disables) — resets client stream idle |
 | **Job wall deadline** (ticket-1051 / JK-1067) | Cancel token + worker shutdown + interrupt runner; connection join bounded | `JK_ENGINE_JOB_DEADLINE_MS` (default **0** = off); join grace `JK_ENGINE_JOB_DEADLINE_GRACE_MS` (default **30s**, last-chance wait capped ~1s) |
-| **User cancel / EOF** (JK-1096) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
+| **User cancel / EOF** (JK-1096 / JK-1252) | Cancel token + **grace→force** worker kill; join bounded by cancel grace + 500 ms. Public cancel handle is **jid** (`requestId` alias). Entry points: Ctrl-C, `jk cancel` / `jk cancel <jid>`, `POST /api/cancel`, MCP `jk_cancel`. | `JK_CANCEL_GRACE_MS` (default **500**; max 5000). **Never hangs.** |
 | **Ensure** | Handshake must succeed | Silent peer (connect works, no reply) → hard-kill once + respawn |
 | **Stop** | Process death, not only `bye` | Force-stop waits for pid exit (~1.5s) then escalates |
 

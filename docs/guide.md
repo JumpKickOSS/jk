@@ -480,7 +480,23 @@ jk image                     # OCI (daemonless)
 jk native                    # GraalVM native-image
 jk verify                    # rebuild in a scratch dir and compare hashes
 jk new --template quarkus x  # Giter8 short name (or local path)
+jk jobs                      # running + recent engine jobs (jid, build #)
+jk cancel                    # cancel this project's running job(s)
+jk cancel 42                 # cancel by jid (from `jk jobs` / job-start)
 ```
+
+### Cancel and jobs
+
+Every engine-hosted operation gets a **jid** (job id) at admission. Use it to cancel work that is still running:
+
+| Action | Behavior |
+|--------|----------|
+| **Ctrl-C** | Cancels the engine job(s) for this project, then exits (bounded teardown; `JK_CANCEL_GRACE_MS`) |
+| **`jk cancel`** | Cancel all live jobs for the current project directory |
+| **`jk cancel <jid>`** | Cancel that job (unknown/finished jid → clear error) |
+| **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `jk_cancel` with `jid` (or `requestId` alias) |
+
+`jk jobs` (alias `jk activity`) lists running and recent jobs; running rows show **jid=…** and **#N** when applicable.
 
 ### Machine / agent output (JSONL)
 

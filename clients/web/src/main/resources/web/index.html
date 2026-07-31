@@ -87,6 +87,8 @@
           <span class="kind">{{ card.kind }}</span>
           <span v-if="card.modules.length > 1" class="summary">{{ summary(card) }}</span>
           <span class="spacer"></span>
+          <button v-if="outcome(card) === 'running' && card.id != null" class="rebuild icon danger"
+                  @click="cancelCard(card)" aria-label="Cancel" title="Cancel this job (jid)"><jk-icon name="ban"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.kind === 'build'" class="rebuild icon"
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"

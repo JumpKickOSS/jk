@@ -683,12 +683,25 @@ Vue.createApp({
       return outcomeOf(card);
     },
 
-    // Badge label for a finished Activity card — optional #buildNumber + capitalized outcome, e.g.
-    // "#11 Failed" or "Success". The leading state icon is a <jk-icon> in the template (see stateIcon).
+    // Badge label for a job card — optional jid (running) + #buildNumber + capitalized outcome.
     activityBadge(card) {
       const o = this.outcome(card);
+      const jid = card.id != null && o === 'running' ? 'jid=' + card.id + ' ' : '';
       const num = card.buildNumber ? '#' + card.buildNumber + ' ' : '';
-      return num + o.charAt(0).toUpperCase() + o.slice(1);
+      return jid + num + o.charAt(0).toUpperCase() + o.slice(1);
+    },
+
+    // Cancel a running job by jid (card.id === requestId/jid from request-start).
+    async cancelCard(card) {
+      if (card.id == null) return;
+      try {
+        await post('/api/cancel', { jid: card.id });
+      } catch (e) {
+        this.buildError =
+          e.status === 401
+            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
+            : e.error || 'Cancel failed';
+      }
     },
 
     summary(card) {
