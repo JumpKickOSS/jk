@@ -100,6 +100,14 @@ public final class BuildLayout {
      * the workspace root itself); {@code <workspace>/target/<rel>/} for a workspace member.
      */
     public Path moduleTargetDir() {
+        return moduleTargetDir(workspaceRoot, moduleRoot);
+    }
+
+    /**
+     * As {@link #moduleTargetDir()} from the two roots alone — the layout decision needs no parsed
+     * project, so callers on parse-free fast paths (preflight memo, JK-1306) share one rule.
+     */
+    public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
         Path mod = moduleRoot.toAbsolutePath().normalize();
         Path ws = workspaceRoot.toAbsolutePath().normalize();
         if (mod.equals(ws)) {

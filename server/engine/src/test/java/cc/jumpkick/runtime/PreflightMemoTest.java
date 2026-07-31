@@ -106,7 +106,7 @@ class PreflightMemoTest {
         storeDirty(tmp, graph, Set.of());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
-        deleteRecursively(tmp.resolve("a").resolve("target"));
+        deleteRecursively(tmp.resolve("target").resolve("a"));
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
     }
 
@@ -497,7 +497,9 @@ class PreflightMemoTest {
         Files.createDirectories(dir.resolve("target"));
         for (String m : new String[] {"a", "b"}) {
             Path md = dir.resolve(m);
-            Files.createDirectories(md.resolve("target"));
+            // The real layout: member outputs live under <workspace>/target/<rel>/, and
+            // <member>/target is never created (JK-1306) — the fixture must match production.
+            Files.createDirectories(dir.resolve("target").resolve(m));
             Files.createDirectories(md.resolve("src/main/java"));
             Files.writeString(md.resolve("jk.toml"), """
                     [project]

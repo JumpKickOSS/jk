@@ -115,9 +115,14 @@ public final class PreflightMemo {
                 MemoRow row = rows.get(rel);
                 if (row == null) return Optional.empty();
                 if (!row.fp().equals(fingerprintModule(dir, skipTests))) return Optional.empty();
-                // A clean claim is a promise that dir/target holds the outputs; a hand-deleted
-                // target invalidates it even though no source changed.
-                if (!row.dirty() && !Files.isDirectory(dir.resolve("target"))) return Optional.empty();
+                // A clean claim is a promise that the module's output tree holds the outputs; a
+                // hand-deleted target invalidates it even though no source changed. Workspace
+                // members write under <workspace>/target/<rel>/ — checking <member>/target here
+                // silently killed the memo for every workspace (JK-1306).
+                if (!row.dirty()
+                        && !Files.isDirectory(cc.jumpkick.layout.BuildLayout.moduleTargetDir(root, dir))) {
+                    return Optional.empty();
+                }
                 seen.add(rel);
                 fps.put(dir, row.fp());
                 if (row.dirty()) dirty.add(dir);
