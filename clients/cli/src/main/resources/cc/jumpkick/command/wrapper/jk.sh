@@ -16,7 +16,21 @@ case "$0" in */*) DIR="${0%/*}" ;; *) DIR="." ;; esac
 
 VERSION=""
 SHA=""
-if [ -f "$DIR/jk-lock.toml" ]; then
+# The lock lives at the WORKSPACE ROOT (one jk-lock.toml per workspace): a wrapper generated in
+# a member dir must walk up to find the pin, or every run takes the unverified bootstrap path.
+# Builtin-only bounded walk — the fast path stays fork-free.
+LOCK=""
+SEARCH="$DIR"
+I=0
+while [ "$I" -lt 24 ]; do
+  if [ -f "$SEARCH/jk-lock.toml" ]; then LOCK="$SEARCH/jk-lock.toml"; break; fi
+  case "$SEARCH" in
+    /) break ;;
+  esac
+  SEARCH="$SEARCH/.."
+  I=$((I+1))
+done
+if [ -n "$LOCK" ]; then
   while IFS= read -r LINE || [ -n "$LINE" ]; do
     case "$LINE" in
       "jk = "*)
@@ -25,7 +39,7 @@ if [ -f "$DIR/jk-lock.toml" ]; then
         break
         ;;
     esac
-  done < "$DIR/jk-lock.toml"
+  done < "$LOCK"
 fi
 
 BIN="$JK_HOME/versions/$VERSION/bin/jk"
@@ -62,6 +76,10 @@ if [ ! -x "$BIN" ]; then
       echo "jk wrapper: sha256 mismatch for jk $VERSION — refusing (expected $SHA, got $GOT)" >&2
       exit 1
     fi
+  else
+    # No pin anywhere up the tree: the bootstrap is unverified by construction — say so
+    # loudly instead of silently trusting the download (JK-1317).
+    echo "jk wrapper: WARNING — no jk-lock.toml pin found; installed jk $VERSION without sha256 verification. Run \`jk lock\` to pin it." >&2
   fi
   mkdir -p "$JK_HOME/versions/$VERSION/bin"
   cp "$CLIENT" "$BIN.part" && chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"

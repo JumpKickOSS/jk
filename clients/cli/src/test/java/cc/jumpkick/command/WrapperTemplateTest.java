@@ -30,6 +30,9 @@ class WrapperTemplateTest {
         assertThat(sh).contains("versions/$VERSION/bin/jk");
         // …and the sha pin gates the download.
         assertThat(sh).contains("sha256");
+        // Workspace member wrappers walk up to the root lock (JK-1317), and a pinless
+        // bootstrap warns instead of silently trusting the download.
+        assertThat(sh).contains("$SEARCH/jk-lock.toml").contains("WARNING");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness. (The word
         // "engine" itself appears in the doc-reference comment — assert on the mechanisms.)
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
