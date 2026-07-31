@@ -1434,7 +1434,9 @@ public final class BuildPipelines {
                         return;
                     }
                     @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = baseClasspath;
+                    Path groovyJar = null;
                     if (mixed) {
                         // See Kotlin's output so Java can reference Kotlin types.
                         classpath = new ArrayList<>(classpath);
@@ -1444,21 +1446,18 @@ public final class BuildPipelines {
                         // See Groovy's output so Java can reference Groovy types — plus the
                         // version-matched groovy jar: every Groovy class implements
                         // groovy.lang.GroovyObject, which javac must resolve.
+                        groovyJar = groovyCompileJar(ctx, cas);
                         classpath = new ArrayList<>(classpath);
                         classpath.add(ctx.require(LAYOUT).groovyClassesDir());
-                        classpath.add(groovyCompileJar(ctx, cas));
+                        classpath.add(groovyJar);
                     }
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     boolean rerun = in.session().config().rebuildOr(false);
-                    // Fold the processor path into the freshness inputs so a processor
-                    // bump busts the stamp (it isn't on the compile classpath).
-                    List<Path> stampInputs = classpath;
-                    if (!processorCp.isEmpty()) {
-                        stampInputs = new ArrayList<>(classpath);
-                        stampInputs.addAll(processorCp);
-                    }
+                    // The shared stamp recipe (JK-1298): forecast and write-stamp use it too.
+                    List<Path> stampInputs = mainStampClasspath(
+                            baseClasspath, processorCp, mixed, cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar);
                     if (!rerun
                             && cc.jumpkick.task.FreshnessStamp.isFresh(
                                     javaOut,
@@ -3065,16 +3064,20 @@ public final class BuildPipelines {
                     @SuppressWarnings("unchecked")
                     List<Path> sources = (List<Path>) ctx.require(JAVA_SOURCES);
                     @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
-                    if (mixed) { // match compile-java's freshness inputs
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).kotlinClassesDir());
-                    }
-                    if (cx.mixedGroovy()) { // match compile-java's freshness inputs
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).groovyClassesDir());
-                        classpath.add(groovyCompileJar(ctx, cx.cas()));
-                    }
+                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    @SuppressWarnings("unchecked")
+                    List<Path> processorCp =
+                            (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    // Match compile-java's freshness inputs exactly — the shared recipe includes
+                    // the processor path the old copy dropped, which kept processor modules from
+                    // ever stamp-matching (JK-1298).
+                    List<Path> stampInputs = mainStampClasspath(
+                            baseClasspath,
+                            processorCp,
+                            mixed,
+                            cx.mixedGroovy(),
+                            ctx.require(LAYOUT),
+                            cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null);
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     cc.jumpkick.task.FreshnessStamp.write(
                             javaOut,
@@ -3082,7 +3085,7 @@ public final class BuildPipelines {
                             "compile-main",
                             actionKey,
                             sources,
-                            classpath,
+                            stampInputs,
                             ctx.require(RELEASE));
                     ctx.progress(1);
                 })
@@ -3960,6 +3963,32 @@ public final class BuildPipelines {
                 !in.ephemeralActions(), // verify-scratch: no persistent residue (JK-1297)
                 cas,
                 actionCache);
+    }
+
+    /**
+     * The compile-main freshness-stamp classpath side — ONE recipe shared by the live check,
+     * {@code write-stamp}, and the forecast (JK-1298): the base compile classpath, then the
+     * mixed-language sibling outputs javac sees (kotlin/groovy classes dirs + the version-matched
+     * groovy jar), then the annotation-processor path (not on the compile classpath, but a
+     * processor bump must bust the stamp). Hand-maintained copies of this recipe drifted twice:
+     * the forecast missed the mixed-language entries and write-stamp missed {@code processorCp},
+     * so mixed and processor modules never stamp-matched.
+     */
+    static List<Path> mainStampClasspath(
+            List<Path> baseClasspath,
+            List<Path> processorCp,
+            boolean mixedKotlin,
+            boolean mixedGroovy,
+            BuildLayout layout,
+            Path groovyCompileJar) {
+        List<Path> inputs = new ArrayList<>(baseClasspath);
+        if (mixedKotlin) inputs.add(layout.kotlinClassesDir());
+        if (mixedGroovy) {
+            inputs.add(layout.groovyClassesDir());
+            if (groovyCompileJar != null) inputs.add(groovyCompileJar);
+        }
+        if (processorCp != null) inputs.addAll(processorCp);
+        return inputs;
     }
 
     /**

@@ -217,6 +217,13 @@ public final class BuildPlanForecast {
             // ---- compile-main (Java) ----
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
             List<Path> mainSrc = CompileSupport.collectJavaSources(mainSrcDir);
+            // Collected early: mixed-language modules fold the sibling compiler's outputs into the
+            // compile-main stamp inputs (shared recipe below); the kotlin/groovy forecast sections
+            // reuse these lists.
+            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
+            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            boolean mixedKotlin = !mainSrc.isEmpty() && !ktSrc.isEmpty();
+            boolean mixedGroovy = !mainSrc.isEmpty() && !gvSrc.isEmpty();
             if (!mainSrc.isEmpty()) {
                 WorkspaceClasspath.Result sib =
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
@@ -224,11 +231,26 @@ public final class BuildPlanForecast {
                 Path out = layout.classesDir();
                 // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
                 // fresh .jstamp is cached even when action-cache keys were not rewritten
-                // (historical --rebuild skipped store). Match the live build's skip path.
-                List<Path> stampInputs = new ArrayList<>(cp);
-                if (!processorCp.isEmpty()) stampInputs.addAll(processorCp);
+                // (historical --rebuild skipped store). The input recipe is SHARED with the live
+                // check and write-stamp (JK-1298) — mixed modules previously hashed different
+                // inputs here and never stamp-matched.
+                Path groovyJar = null;
+                boolean groovyJarUnavailable = false;
+                if (mixedGroovy) {
+                    try {
+                        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
+                        var repos = RepoGroupBuilder.buildFor(project, null, cas);
+                        groovyJar = GroovyPluginSetup.prepare(repos, cas, groovyVersion).groovyJar();
+                    } catch (Exception e) {
+                        // Cannot reproduce the live stamp inputs without the jar — fall through to
+                        // the action-cache prediction rather than guessing.
+                        groovyJarUnavailable = true;
+                    }
+                }
+                List<Path> stampInputs = BuildPipelines.mainStampClasspath(
+                        cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
                 boolean stampFresh = false;
-                if (!depDirty && !force) {
+                if (!depDirty && !force && !groovyJarUnavailable) {
                     try {
                         stampFresh = FreshnessStamp.isFresh(
                                 out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
@@ -260,7 +282,6 @@ public final class BuildPlanForecast {
             }
 
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
-            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             if (!ktSrc.isEmpty()) {
                 // The stamp lives with the MERGED classes (BuildPipelines writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
@@ -283,7 +304,6 @@ public final class BuildPlanForecast {
             // ---- compile-groovy (stamp-only, like Kotlin's — no content key yet) ----
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
-            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
             if (!gvSrc.isEmpty()) {
                 boolean fresh = !depDirty
                         && !force
