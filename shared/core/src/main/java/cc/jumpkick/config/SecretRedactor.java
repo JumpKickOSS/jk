@@ -32,6 +32,15 @@ public final class SecretRedactor {
     /** What a secret becomes in free-form text. */
     public static final String MASK = "***";
 
+    /**
+     * Values shorter than this are treated as configuration, not credentials (JK-1309). Masking is
+     * by source, so without a floor a {@code .env} holding {@code NODE_ENV=test} or
+     * {@code PORT=8080} turns every {@code test} / {@code 8080} in build output into {@code ***}
+     * and hashes unrelated cache-key text that contains the substring. Real tokens are comfortably
+     * longer; a deliberately short secret is outside what source-based masking can protect.
+     */
+    public static final int MIN_SECRET_LENGTH = 6;
+
     /** Prefix for hashed cache-key contributions. */
     public static final String KEY_PREFIX = "sha256:";
 
@@ -75,7 +84,7 @@ public final class SecretRedactor {
         if (values == null || values.isEmpty()) return NONE;
         List<String> list = new ArrayList<>();
         for (String v : values) {
-            if (v != null && !v.isEmpty()) list.add(v);
+            if (v != null && v.length() >= MIN_SECRET_LENGTH) list.add(v);
         }
         if (list.isEmpty()) return NONE;
         // Longest first: replacing a shorter substring first can leave pieces of a longer secret.

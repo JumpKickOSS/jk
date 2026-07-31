@@ -34,8 +34,34 @@ class SecretRedactorTest {
 
     @Test
     void longer_secrets_are_replaced_before_shorter_prefixes() {
-        SecretRedactor r = SecretRedactor.of(List.of("ab", "abcdef"));
-        assertThat(r.redact("x-abcdef-y")).isEqualTo("x-" + SecretRedactor.MASK + "-y");
+        SecretRedactor r = SecretRedactor.of(List.of("abcdef", "abcdefghij"));
+        assertThat(r.redact("x-abcdefghij-y")).isEqualTo("x-" + SecretRedactor.MASK + "-y");
+    }
+
+    @Test
+    void short_common_values_are_config_not_credentials() {
+        // NODE_ENV=test / PORT=8080 style .env entries must not mangle output (JK-1309).
+        SecretRedactor r = SecretRedactor.of(List.of("test", "8080", "info"));
+        assertThat(r.isEmpty()).isTrue();
+        assertThat(r.redact("running 12 tests on port 8080 at info level"))
+                .isEqualTo("running 12 tests on port 8080 at info level");
+        assertThat(r.forCacheKey("suite=test")).isEqualTo("suite=test");
+    }
+
+    @Test
+    void the_length_floor_is_exact(@TempDir Path tmp) throws Exception {
+        Path module = tmp.resolve("m");
+        Files.createDirectories(module);
+        Files.writeString(
+                module.resolve(".env"),
+                "SHORT=" + "x".repeat(SecretRedactor.MIN_SECRET_LENGTH - 1) + "\n"
+                        + "LONG=" + "y".repeat(SecretRedactor.MIN_SECRET_LENGTH) + "\n");
+        SecretRedactor r = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
+
+        assertThat(r.containsSecret("x".repeat(SecretRedactor.MIN_SECRET_LENGTH - 1)))
+                .isFalse();
+        assertThat(r.redact("y".repeat(SecretRedactor.MIN_SECRET_LENGTH)))
+                .isEqualTo(SecretRedactor.MASK);
     }
 
     @Test
@@ -63,10 +89,10 @@ class SecretRedactorTest {
     void secretValues_matches_isFromFile(@TempDir Path tmp) throws Exception {
         Path module = tmp.resolve("m");
         Files.createDirectories(module);
-        Files.writeString(module.resolve(".env"), "A=aaa\nB=bbb\n");
+        Files.writeString(module.resolve(".env"), "A=aaaaaa-token\nB=bbbbbb-token\n");
         EnvLookup env = EnvLookup.forModule(module, name -> "B".equals(name) ? "from-shell" : null);
-        assertThat(env.secretValues()).containsExactly("aaa");
-        assertThat(SecretRedactor.from(env).containsSecret("aaa")).isTrue();
-        assertThat(SecretRedactor.from(env).containsSecret("bbb")).isFalse();
+        assertThat(env.secretValues()).containsExactly("aaaaaa-token");
+        assertThat(SecretRedactor.from(env).containsSecret("aaaaaa-token")).isTrue();
+        assertThat(SecretRedactor.from(env).containsSecret("bbbbbb-token")).isFalse();
     }
 }
