@@ -664,7 +664,11 @@ public final class BuildService {
                     req.maxModuleConcurrency());
         }
         Perf.end("ws-schedule-run", tsched);
-        boolean ok = failure == null;
+        // Session cancel (Ctrl-C / jk cancel / web) may finish modules with a non-success exit
+        // without a distinct flag — fold SessionCancel into the aggregate so clients settle as
+        // cancelled rather than a generic failure (JK-1252).
+        boolean cancelled = cc.jumpkick.run.SessionCancel.cancelled();
+        boolean ok = failure == null && !cancelled;
         if (ok) {
             // Fold this run's step durations + measured throughput into the learned ledger + host
             // calibration (EWMA) so the next build's estimate is time-accurate. Failed builds don't
@@ -687,7 +691,9 @@ public final class BuildService {
                 }
             }
         }
-        WorkspaceResult result = new WorkspaceResult(ok, ok ? 0 : failure.exitCode(), List.copyOf(outcomes), List.of());
+        int exit = ok ? 0 : (cancelled ? 1 : failure.exitCode());
+        WorkspaceResult result =
+                new WorkspaceResult(ok, exit, List.copyOf(outcomes), List.of(), cancelled);
         listener.onWorkspaceFinish(result);
         return result;
     }

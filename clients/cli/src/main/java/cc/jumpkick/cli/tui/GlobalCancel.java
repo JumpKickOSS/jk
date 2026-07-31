@@ -6,8 +6,18 @@ import cc.jumpkick.cli.theme.Theme;
 import org.jline.utils.Signals;
 
 /**
- * App-level SIGINT handler: prints {@code ‼ Canceled by user} in red, performs an SGR reset, and
- * halts with exit code 2.
+ * App-level SIGINT handler (JK-1252): cancel the live engine job through the same
+ * {@code cancel-request} path as {@code jk cancel}, settle the TUI as cancelled, then hard-exit
+ * the CLI ({@link Runtime#halt(int) halt(2)}) as a backup so Ctrl-C never hangs.
+ *
+ * <p>Order matters:
+ *
+ * <ol>
+ *   <li>Cooperative session cancel + engine {@code cancel-request} (jid / project dir) — same
+ *       kill path as the web UI and {@code jk cancel}
+ *   <li>Settle the active pipeline region ("Build job was cancelled by user took …")
+ *   <li>{@code halt(2)} — guaranteed process death if anything above is stuck
+ * </ol>
  *
  * <p>Wizards temporarily override this via {@link org.jline.terminal.Terminal#handle} so Ctrl-C
  * inside a wizard runs the wizard's own cancel path instead. The wizard re-calls {@link #install}
@@ -25,15 +35,17 @@ public final class GlobalCancel {
 
     public static void install() {
         Signals.register("INT", () -> {
+            // 1) Same cancel path as `jk cancel` / web — before we paint or die. Best-effort,
+            // never spawns an engine, bounded by a short socket watchdog.
+            cc.jumpkick.config.SessionContext.current().cancel().cancel();
+            java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
+            cc.jumpkick.cli.engine.EngineClient.cancelBestEffortForInterrupt(dir);
+
+            // 2) Settle the live region (pipeline → cancelled job line) or a one-line notice.
             LiveRegion active = LiveRegion.active();
             boolean handled = false;
-            String message = "Canceled by user";
+            String message = "Build job was cancelled";
             if (active != null) {
-                // Wipe / settle the in-flight region. When it renders its own
-                // complete cancel line (the pipeline view's "‼ Build Canceled by user
-                // took Xs" wedge), it returns true and we skip the generic notice;
-                // otherwise we print it, named by the region's cancel text (e.g.
-                // "Building canceled by user").
                 handled = active.renderCanceled();
                 message = active.canceledMessage();
             }
@@ -43,43 +55,11 @@ public final class GlobalCancel {
                         + Theme.colorize(
                                 Glyphs.CROSS + " " + message, Theme.active().error()) + "\n");
             }
-            err.print(Ansi.RESET); // explicit SGR reset beyond the inline reset
+            err.print(Ansi.RESET);
             err.flush();
-            // Belt-and-suspenders: signal the current session's cooperative cancel token before
-            // the process-level halt. The CLI's guarantee is still the halt below; this lets a
-            // cooperative consumer sharing the process (e.g. an embedder that does NOT halt)
-            // observe the cancel through StepContext.cancelled() via the SessionCancel seam.
-            cc.jumpkick.config.SessionContext.current().cancel().cancel();
-            // JK-1252: notify the engine for this project's live job(s) before we die — EOF alone
-            // can race with halt. Best-effort; never block Ctrl-C for more than a short window.
-            notifyEngineCancel();
+
+            // 3) Hard kill this CLI process — backup if the reader/engine path is wedged.
             Runtime.getRuntime().halt(2);
         });
-    }
-
-    /**
-     * Best-effort cancel of engine jobs for the current working directory (and any tracked jids).
-     * Bounded: failures are swallowed so Ctrl-C always exits.
-     */
-    private static void notifyEngineCancel() {
-        try {
-            java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
-            // Prefer explicit jids this process started.
-            for (long jid : cc.jumpkick.cli.engine.EngineClient.ActiveJobs.snapshot()) {
-                try {
-                    cc.jumpkick.cli.engine.EngineClient.cancel(cc.jumpkick.engine.EnginePaths.current(), jid);
-                } catch (Exception ignored) {
-                    // best-effort
-                }
-            }
-            try {
-                cc.jumpkick.cli.engine.EngineClient.cancelForDir(
-                        cc.jumpkick.engine.EnginePaths.current(), dir.toString());
-            } catch (Exception ignored) {
-                // best-effort
-            }
-        } catch (Throwable ignored) {
-            // never block halt
-        }
     }
 }

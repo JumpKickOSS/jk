@@ -941,7 +941,9 @@ public final class EngineServer implements AutoCloseable {
         } catch (IOException ignored) {
             // client gone before job body — still run cancel registration below
         }
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, eventDir, eventKind);
+        // Capture this connection thread so remote cancel can wake it off client-readLine.
+        Thread connectionThread = Thread.currentThread();
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, writer, connectionThread, eventDir, eventKind);
         try {
             Thread started = Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
@@ -964,6 +966,10 @@ public final class EngineServer implements AutoCloseable {
                     inFlightBuilds.release(eventRequestId);
                     unregisterLiveJob(eventRequestId);
                     done.countDown();
+                    // Unblock the connection thread if it is parked on client readLine waiting for
+                    // BUILD_CANCEL / EOF — remote cancel finishes the runner without the client
+                    // writing anything (JK-1252).
+                    connectionThread.interrupt();
                 }
             });
             runnerRef.set(started);
@@ -1003,20 +1009,38 @@ public final class EngineServer implements AutoCloseable {
                 });
             }
             try {
-                String line;
-                while (done.getCount() > 0 && (line = reader.readLine()) != null) {
-                    if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
-                        // Explicit cancel: cooperative flag + schedule worker grace→force (JK-1096).
+                // Stay responsive after remote cancel: the client never writes on this socket, so a
+                // pure blocking readLine would park forever even after the runner finished. Cancel
+                // (and runner teardown) interrupt this thread so we can join and run the finally
+                // safety-net terminal.
+                while (done.getCount() > 0) {
+                    try {
+                        String line = reader.readLine();
+                        if (line == null) {
+                            // EOF / client gone mid-job — same bounded cancel path.
+                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                            break;
+                        }
+                        if (EngineProtocol.BUILD_CANCEL.equals(EngineProtocol.typeOf(line))) {
+                            // Explicit cancel on this socket: cooperative flag + worker grace→force.
+                            beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                        }
+                    } catch (IOException e) {
+                        // Interrupt during read (ClosedByInterruptException, etc.) or a real error.
+                        if (done.getCount() == 0 || Thread.currentThread().isInterrupted()) {
+                            break; // runner done / cancel wake — join below
+                        }
                         beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
+                        break;
                     }
                 }
+            } catch (RuntimeException ignored) {
                 if (done.getCount() > 0) {
-                    // EOF / client gone mid-job — same bounded cancel path (Ctrl-C halt, kill -9 client).
                     beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
                 }
-            } catch (IOException ignored) {
-                beginUserCancel(eventRequestId, cancelToken, runnerRef, cancelGraceMs);
             }
+            // Clear interrupt so await/join below is not spuriously skipped.
+            Thread.interrupted();
             try {
                 // Bound the join so a wedged runner cannot hang the connection forever.
                 if (deadlineMs > 0) {
@@ -1068,6 +1092,19 @@ public final class EngineServer implements AutoCloseable {
             // journal (a build that succeeded was not cancelled).
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
             if (!cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
+            // Safety net (JK-1252): if the runner was abandoned/interrupted without a terminal
+            // wire event, still tell the CLI the job was cancelled so it does not report a crash.
+            // Harmless if the runner already sent workspace-/pipeline-finish (client has returned).
+            if (cancelled && writer != null) {
+                if ("build".equals(eventKind)) {
+                    sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
+                } else {
+                    sendQuiet(
+                            writer,
+                            EngineProtocol.pipelineFinish(
+                                    eventDir == null ? "" : eventDir, false, true));
+                }
+            }
             publishEvent(
                     "request-finish",
                     withProgress(
@@ -1076,6 +1113,7 @@ public final class EngineServer implements AutoCloseable {
                                             .put("schema", 1)
                                             .put("type", "request-finish")
                                             .put("requestId", eventRequestId)
+                                            .put("jid", eventRequestId)
                                             .put("kind", eventKind)
                                             .put("dir", eventDir)
                                             .put("cancelled", cancelled)
@@ -1185,6 +1223,10 @@ public final class EngineServer implements AutoCloseable {
     private record LiveJob(
             Session.CancelToken token,
             java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
+            /** Streaming socket for this job — used to push an immediate cancelled terminal. */
+            BufferedWriter writer,
+            /** Connection thread parked on client readLine — interrupted so teardown can run. */
+            Thread connectionThread,
             String dir,
             String kind) {}
 
@@ -1192,9 +1234,11 @@ public final class EngineServer implements AutoCloseable {
             long jid,
             Session.CancelToken token,
             java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
+            BufferedWriter writer,
+            Thread connectionThread,
             String dir,
             String kind) {
-        liveJobs.put(jid, new LiveJob(token, runnerRef, dir, kind));
+        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, connectionThread, dir, kind));
     }
 
     private void unregisterLiveJob(long jid) {
@@ -1204,15 +1248,43 @@ public final class EngineServer implements AutoCloseable {
     /**
      * Cancel one live job by jid. Returns {@code false} if unknown/already finished (idempotent soft
      * miss). Covers CLI-socket jobs and HTTP/MCP jobs.
+     *
+     * <p>Pushes a cancelled terminal on the job's stream immediately so a remote {@code jk cancel}
+     * settles the building CLI without waiting for the runner to unwind (JK-1252).
      */
     boolean cancelJob(long jid) {
         LiveJob job = liveJobs.get(jid);
         if (job != null) {
             beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs());
+            // Immediate terminal on the streaming connection — the building CLI is blocked reading
+            // this writer; without this it often only sees EOF after the runner is abandoned.
+            pushCancelledTerminal(job);
+            if (job.connectionThread() != null) {
+                try {
+                    job.connectionThread().interrupt();
+                } catch (RuntimeException ignored) {
+                    // best-effort wake
+                }
+            }
             return true;
         }
         // HTTP path may still hold tokens briefly if registration order differs.
         return cancelHttpJob(jid);
+    }
+
+    /**
+     * Tell the streaming client this job was cancelled. Synchronized {@link #send} so concurrent
+     * progress lines cannot interleave mid-message.
+     */
+    private void pushCancelledTerminal(LiveJob job) {
+        if (job == null || job.writer() == null) return;
+        String kind = job.kind() == null ? "" : job.kind();
+        if ("build".equals(kind)) {
+            sendQuiet(job.writer(), EngineProtocol.workspaceFinish(false, 1, List.of(), true));
+        } else {
+            String dir = job.dir() == null ? "" : job.dir();
+            sendQuiet(job.writer(), EngineProtocol.pipelineFinish(dir, false, true));
+        }
     }
 
     /** Cancel every live job whose dir matches (canonical absolute path). */
@@ -1895,10 +1967,13 @@ public final class EngineServer implements AutoCloseable {
             WorkspaceResult result = SessionContext.where(session, () -> BuildService.buildWorkspace(req, listener));
             // Exclusive build work is done; free the fingerprint before finish events / bookkeeping.
             releaseExclusiveSlot();
-            accOutcome(rid, result.success(), result.exitCode());
+            // User/deadline cancel may set the token after modules already failed — trust either flag.
+            boolean cancelled = result.cancelled()
+                    || effectiveCancelled(rid, cancelToken.cancelled());
+            accOutcome(rid, result.success() && !cancelled, result.exitCode());
             if (rid > 0) {
                 // finish() pins 100%/done — a failed build keeps its last true percent.
-                if (result.success()) progressTracker(rid).finish();
+                if (result.success() && !cancelled) progressTracker(rid).finish();
                 emitWorkspaceProgress(rid, writer, true);
             }
             // Chrome timeline before terminal event so the client still has the socket open.
@@ -1906,17 +1981,29 @@ public final class EngineServer implements AutoCloseable {
             java.util.List<String> safeErrors = result.errors().stream()
                     .map(err -> redactEnv(entryDirStr, err))
                     .toList();
-            send(writer, EngineProtocol.workspaceFinish(result.success(), result.exitCode(), safeErrors));
-            if (!result.success()) {
+            // Always terminal with cancelled so the CLI never sees a bare disconnect after Ctrl-C /
+            // jk cancel / web cancel (JK-1252).
+            send(
+                    writer,
+                    EngineProtocol.workspaceFinish(
+                            result.success() && !cancelled, result.exitCode(), safeErrors, cancelled));
+            if (!result.success() && !cancelled) {
                 for (String error : safeErrors.stream().limit(5).toList()) {
                     publishRequestError(eventRequestId(), entryDirStr, error);
                 }
             }
         } catch (Exception e) {
             String dir = Jsonl.str(requestLine, "dir");
-            String msg = redactEnv(dir, String.valueOf(e.getMessage()));
-            sendQuiet(writer, requestFailedLine(dir, msg));
-            publishRequestError(eventRequestId(), dir, msg);
+            long rid = eventRequestId();
+            boolean cancelled = effectiveCancelled(rid, cancelToken.cancelled());
+            if (cancelled) {
+                // Cancelled mid-flight: settle as cancelled, not a crash / request-failed.
+                sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
+            } else {
+                String msg = redactEnv(dir, String.valueOf(e.getMessage()));
+                sendQuiet(writer, requestFailedLine(dir, msg));
+                publishRequestError(rid, dir, msg);
+            }
         }
     }
 
@@ -4338,16 +4425,20 @@ public final class EngineServer implements AutoCloseable {
                             : realPipeline
                                     .get(cc.jumpkick.runtime.BuildPipelines.BUILD_OUTCOME)
                                     .orElse(null);
-                    return testResult == null && buildOutcome == null
-                            ? EngineProtocol.pipelineFinish(dir, result.success())
-                            : EngineProtocol.pipelineFinish(
-                                    dir,
-                                    result.success(),
-                                    buildOutcome,
-                                    testResult != null ? testResult.total() : -1,
-                                    testResult != null ? testResult.succeeded() : -1,
-                                    testResult != null ? testResult.failed() : -1,
-                                    testResult != null ? testResult.skipped() : -1);
+                    boolean cancelled = result.userCancelled() || result.cancelled();
+                    String finish = testResult == null && buildOutcome == null
+                            ? EngineProtocol.pipelineFinish(dir, result.success(), cancelled)
+                            : EngineProtocol.withCancelled(
+                                    EngineProtocol.pipelineFinish(
+                                            dir,
+                                            result.success(),
+                                            buildOutcome,
+                                            testResult != null ? testResult.total() : -1,
+                                            testResult != null ? testResult.succeeded() : -1,
+                                            testResult != null ? testResult.failed() : -1,
+                                            testResult != null ? testResult.skipped() : -1),
+                                    cancelled);
+                    return finish;
                 },
                 flushTimeline);
     }
@@ -4670,7 +4761,8 @@ public final class EngineServer implements AutoCloseable {
         httpCancelTokens.put(eventRequestId, cancelToken);
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, entryDir.toString(), kind);
+        // HTTP/SSE has no CLI stream writer — cancel settles via request-finish on the dashboard.
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), kind);
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
@@ -4741,7 +4833,7 @@ public final class EngineServer implements AutoCloseable {
         httpCancelTokens.put(eventRequestId, cancelToken);
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, entryDir.toString(), "lock");
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock");
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
         notePipelineStarted();

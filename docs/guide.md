@@ -480,8 +480,8 @@ jk image                     # OCI (daemonless)
 jk native                    # GraalVM native-image
 jk verify                    # rebuild in a scratch dir and compare hashes
 jk new --template quarkus x  # Giter8 short name (or local path)
-jk jobs                      # running + recent engine jobs (jid, build #)
-jk cancel                    # cancel this project's running job(s)
+jk jobs                      # running + recent engine jobs (jid, build #); alias: builds
+jk cancel                    # cancel this project's running job(s); alias: kill
 jk cancel 42                 # cancel by jid (from `jk jobs` / job-start)
 ```
 
@@ -496,7 +496,7 @@ Every engine-hosted operation gets a **jid** (job id) at admission. Use it to ca
 | **`jk cancel <jid>`** | Cancel that job (unknown/finished jid → clear error) |
 | **Web / MCP** | `POST /api/cancel` with `{"jid":N}` · MCP `jk_cancel` with `jid` (or `requestId` alias) |
 
-`jk jobs` (alias `jk activity`) lists running and recent jobs; running rows show **jid=…** and **#N** when applicable.
+`jk jobs` (alias `jk activity`) lists running and recent jobs under a **Build Jobs** chip; running rows show **#N Building**, a **building…** kind, and **id: N** (the cancel handle) at the end of the line.
 
 ### Machine / agent output (JSONL)
 

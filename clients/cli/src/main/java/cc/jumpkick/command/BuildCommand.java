@@ -407,6 +407,16 @@ public final class BuildCommand implements CliCommand {
                     };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, headlessListener);
+        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
+            if (!json) {
+                String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsed));
+                CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+            }
+            if (session != null) session.wedge("Build job was cancelled");
+            return 1;
         } catch (java.io.IOException e) {
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(
@@ -420,6 +430,16 @@ public final class BuildCommand implements CliCommand {
         if (session != null) {
             for (var m : result.modules()) session.module(m.coord());
             for (String err : result.errors()) session.error(err);
+        }
+        if (result.cancelled()) {
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), json);
+            if (!json) {
+                String took = ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMs));
+                CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
+            }
+            if (session != null) session.wedge("Build job was cancelled");
+            return 1;
         }
         if (!result.errors().isEmpty()) {
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
@@ -590,6 +610,10 @@ public final class BuildCommand implements CliCommand {
             };
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
+        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            view.finishPipelineCancelled(List.of());
+            if (session != null) session.wedge("Build job was cancelled");
+            return 1;
         } catch (java.io.IOException e) {
             // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName(),
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
@@ -606,6 +630,14 @@ public final class BuildCommand implements CliCommand {
             }
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        if (result.cancelled()) {
+            List<String> above = snapshot(deferredOutput);
+            view.finishPipelineCancelled(above);
+            if (session != null) session.wedge("Build job was cancelled");
+            cc.jumpkick.cli.run.JsonlShape.emitJsonl(
+                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            return 1;
+        }
         if (!result.errors().isEmpty()) {
             List<String> above = new ArrayList<>();
             for (String err : result.errors()) above.add(ConsoleSpec.errorLine("composite", err));

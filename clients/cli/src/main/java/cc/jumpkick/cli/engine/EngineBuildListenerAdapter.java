@@ -677,6 +677,7 @@ final class EngineBuildListenerAdapter {
                     if (buildOutcomeOut != null) {
                         buildOutcomeOut[0] = Jsonl.str(line, "buildOutcome");
                     }
+                    boolean cancelled = Jsonl.bool(line, "cancelled", false);
                     PipelineResult result = new PipelineResult(
                             "test",
                             success,
@@ -684,8 +685,8 @@ final class EngineBuildListenerAdapter {
                             List.of(),
                             List.of(),
                             diagnostics,
-                            false,
-                            false);
+                            cancelled,
+                            cancelled);
                     listener.pipelineFinish(result);
                     return result;
                 }
@@ -823,6 +824,7 @@ final class EngineBuildListenerAdapter {
                     ModuleMeta meta = planByDir.get(dir);
                     String pipelineName = meta != null ? meta.pipelineName : dir;
                     List<PipelineResult.Diagnostic> diags = diagnosticsByDir.remove(dir);
+                    boolean cancelled = Jsonl.bool(line, "cancelled", false);
                     PipelineResult result = new PipelineResult(
                             pipelineName,
                             Jsonl.bool(line, "success", false),
@@ -830,8 +832,8 @@ final class EngineBuildListenerAdapter {
                             List.of(),
                             List.of(),
                             diags != null ? diags : List.of(),
-                            false,
-                            false);
+                            cancelled,
+                            cancelled);
                     pipelineListenersByDir.getOrDefault(dir, NOOP).pipelineFinish(result);
                 }
                 case EngineProtocol.MODULE_FINISH -> {
@@ -851,7 +853,8 @@ final class EngineBuildListenerAdapter {
                             Jsonl.bool(line, "success", false),
                             Jsonl.intValue(line, "exitCode", 1),
                             List.copyOf(outcomes),
-                            Jsonl.strArray(line, "errors"));
+                            Jsonl.strArray(line, "errors"),
+                            Jsonl.bool(line, "cancelled", false));
                     listener.onWorkspaceFinish(result);
                     return result;
                 }

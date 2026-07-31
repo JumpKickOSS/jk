@@ -1926,8 +1926,20 @@ public final class EngineProtocol {
     }
 
     public static String pipelineFinish(String dir, boolean success) {
-        return "{\"type\":\"" + PIPELINE_FINISH + "\",\"kind\":\"build\",\"dir\":" + Jsonl.quote(dir) + ",\"success\":"
-                + success + "}";
+        return pipelineFinish(dir, success, false);
+    }
+
+    /** Single-pipeline terminal with optional cancel flag (JK-1252). */
+    public static String pipelineFinish(String dir, boolean success, boolean cancelled) {
+        return "{\"type\":\""
+                + PIPELINE_FINISH
+                + "\",\"kind\":\"build\",\"dir\":"
+                + Jsonl.quote(dir)
+                + ",\"success\":"
+                + success
+                + ",\"cancelled\":"
+                + cancelled
+                + "}";
     }
 
     /**
@@ -2303,6 +2315,14 @@ public final class EngineProtocol {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {
+        return workspaceFinish(success, exitCode, errors, false);
+    }
+
+    /**
+     * Workspace terminal. {@code cancelled} (JK-1252) is additive so clients can settle as
+     * "cancelled" rather than treating a user kill as a crash/disconnect.
+     */
+    public static String workspaceFinish(boolean success, int exitCode, List<String> errors, boolean cancelled) {
         return "{\"type\":\""
                 + WORKSPACE_FINISH
                 + "\",\"success\":"
@@ -2311,7 +2331,20 @@ public final class EngineProtocol {
                 + exitCode
                 + ",\"errors\":"
                 + quoteArray(errors)
+                + ",\"cancelled\":"
+                + cancelled
                 + "}";
+    }
+
+    /**
+     * Append {@code "cancelled":true|false} to a pipeline-finish (or similar) JSON object. Additive
+     * field for JK-1252 without churning every {@code pipelineFinish*} overload.
+     */
+    public static String withCancelled(String jsonLine, boolean cancelled) {
+        if (jsonLine == null || jsonLine.isEmpty()) return jsonLine;
+        int end = jsonLine.lastIndexOf('}');
+        if (end <= 0) return jsonLine;
+        return jsonLine.substring(0, end) + ",\"cancelled\":" + cancelled + "}";
     }
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */

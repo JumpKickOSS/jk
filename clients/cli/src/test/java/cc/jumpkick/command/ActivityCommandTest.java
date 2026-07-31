@@ -58,6 +58,7 @@ class ActivityCommandTest {
         String plain = strip(ActivityCommand.formatLine(RUNNING, 1000 + 4200L, Theme.active()));
         assertThat(plain).contains("#2");
         assertThat(plain).contains("Building");
+        assertThat(plain).contains("building…");
         assertThat(plain).contains("com.contyngent");
         assertThat(plain).contains("jk-smoke-reinstall");
         assertThat(plain).contains("1 module");
@@ -86,16 +87,20 @@ class ActivityCommandTest {
     @Test
     void title_is_menu_wedge() {
         String plain = strip(ActivityCommand.titleLine());
-        assertThat(plain).contains("Jobs");
+        assertThat(plain).contains("Build Jobs");
     }
 
     @Test
-    void formats_running_with_jid() {
+    void formats_running_with_id_at_end() {
         String withJid = RUNNING.replace("\"running\":true", "\"running\":true,\"jid\":42");
         String plain = strip(ActivityCommand.formatLine(withJid, 1000 + 4200L, Theme.active()));
-        assertThat(plain).contains("jid=42");
+        assertThat(plain).contains("id: 42");
+        assertThat(plain).doesNotContain("jid=");
         assertThat(plain).contains("#2");
         assertThat(plain).contains("Building");
+        assertThat(plain).contains("building…");
+        // id is the last field on a running row.
+        assertThat(plain).endsWith("id: 42");
     }
 
     @Test

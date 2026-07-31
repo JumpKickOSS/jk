@@ -454,6 +454,20 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
+     * Settle as a remote engine cancel ({@code jk cancel} / web): {@code Build job was cancelled
+     * took …} — no "by user".
+     */
+    public void finishPipelineCancelled(List<String> above) {
+        String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
+        settle(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, false, took), above);
+    }
+
+    /** {@link #finishPipelineCancelled(List)} with no buffered output above. */
+    public void finishPipelineCancelled() {
+        finishPipelineCancelled(List.of());
+    }
+
+    /**
      * Settle the build pipeline with the red chip, but a fully caller-composed sentence instead of the
      * "Failed to &lt;pipeline&gt;" derivation {@link #finishPipelineFailure} applies — see {@link
      * PipelineWedge#failureLineCustom}.
@@ -531,20 +545,20 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Cancel line text (shown by {@link GlobalCancel}): {@code <pipeline> canceled by user}. */
+    /** Cancel line text (shown by {@link GlobalCancel} when the region did not paint itself). */
     @Override
     public String canceledMessage() {
-        return pipelineName().isEmpty() ? "Canceled by user" : pipelineName() + " canceled by user";
+        return "Build job was cancelled";
     }
 
     @Override
     public boolean renderCanceled() {
         // Ctrl-C: hand the streams back so any buffered output flushes above the
         // region, stop animating, then settle. Pipeline mode replaces the wiped region
-        // in place with its own cancel line — the failed-build wedge reading
-        // "Canceled by user took Xs" — and returns true so GlobalCancel suppresses
-        // its generic notice (no extra blank line). Simple / non-animating modes
-        // just settle and let the handler print the notice.
+        // in place with the same cancelled-job line as a remote `jk cancel` / web cancel
+        // ("Failed to build. Build job was cancelled") and returns true so GlobalCancel
+        // suppresses its generic notice. Simple / non-animating modes just settle and let
+        // the handler print the notice.
         restoreStreams();
         stopAnimator();
         synchronized (lock) {
@@ -556,8 +570,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 wipeRegion();
                 out.print(Ansi.TASKBAR_CLEAR);
                 out.print(Ansi.SHOW_CURSOR);
+                // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
-                out.println(PipelineWedge.canceledLine(pipelineName(), nerdfont, took));
+                out.println(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
                 out.flush();
                 return true;
             }

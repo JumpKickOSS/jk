@@ -4,9 +4,9 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
-import cc.jumpkick.engine.protocol.EngineProtocol;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -18,7 +18,8 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * {@code jk cancel} / {@code jk cancel &lt;jid&gt;} — cancel a live engine job (JK-1252).
+ * {@code jk cancel} / {@code jk kill} / {@code jk cancel &lt;jid&gt;} — cancel a live engine job
+ * (JK-1252).
  *
  * <ul>
  *   <li>No args: cancel every running job for the current project directory.
@@ -30,6 +31,11 @@ public final class CancelCommand implements CliCommand {
     @Override
     public String name() {
         return "cancel";
+    }
+
+    @Override
+    public List<String> aliases() {
+        return List.of("kill");
     }
 
     @Override
@@ -76,8 +82,8 @@ public final class CancelCommand implements CliCommand {
         String note = Jsonl.str(line, "note");
         long jid = Jsonl.longValue(line, "jid", -1);
         if (cancelled) {
-            String msg = jid > 0 ? "Cancelled job jid=" + jid : "Cancelled project jobs";
-            if (note != null && !note.isBlank()) msg = msg + " (" + note + ")";
+            String msg = jid > 0 ? cancelledJobMessage(jid) : "Cancelled project build jobs";
+            if (note != null && !note.isBlank() && jid <= 0) msg = msg + " (" + note + ")";
             CliOutput.out(CommandWedge.ok("Cancel", msg));
             return 0;
         }
@@ -85,5 +91,12 @@ public final class CancelCommand implements CliCommand {
         CliOutput.err(CommandWedge.fail("Cancel", fail));
         // Unknown jid is a soft user error (not a crash).
         return jidArg.isPresent() ? Exit.DATA_ERR : 0;
+    }
+
+    /** {@code Cancelled build job #N} with N bold white when ANSI is on. */
+    static String cancelledJobMessage(long jid) {
+        Theme t = Theme.active();
+        String num = t.isAnsi() ? Theme.colorize(String.valueOf(jid), t.focused()) : String.valueOf(jid);
+        return "Cancelled build job #" + num;
     }
 }

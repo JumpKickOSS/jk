@@ -101,10 +101,10 @@ class CommandManagerTest {
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
         assertThat(visible).contains(Spinner.PULSE_GLYPH + " Locking…");
         // The notice itself is GlobalCancel's job; the component only settles.
-        assertThat(visible).doesNotContain("Canceled");
+        assertThat(visible).doesNotContain("cancelled");
         assertThat(buf.toString(StandardCharsets.UTF_8)).contains("\033[?25h");
-        // …but the component supplies the pipeline-named cancel text.
-        assertThat(cm.canceledMessage()).isEqualTo("Locking canceled by user");
+        // Simple (non-pipeline) mode still supplies the generic cancel text for the notice.
+        assertThat(cm.canceledMessage()).isEqualTo("Build job was cancelled");
     }
 
     @Test

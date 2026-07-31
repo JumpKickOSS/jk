@@ -22,15 +22,16 @@ import org.jline.utils.AttributedStyle;
  * {@code jk activity} / {@code act} remain hidden aliases (JK-1252).
  *
  * <pre>
- *  ≡ Jobs
+ *  ≡ Build Jobs
  *  │
- *  ├─ ✓ #31 Success group:name · build · 8 modules · 2.3s · 1h ago
+ *  ├─▶ #23 Building group:name · building… · 1 module · 4% · 7.6s · id: 1
  *  │
- *  ╰─ ✘ #12 Failure other:app · test · 1 module · 1.3s · 6h ago
+ *  ╰─✓ #31 Success other:app · build · 8 modules · 2.3s · 1h ago
  * </pre>
  *
  * <p>Rail is indented one space. Outcome is a colored pill (Nerd Font half-circles, space pads
  * without, {@code […]} when ANSI is off) — same chip language as {@code jk tree} scope badges.
+ * Running pills use white label text; the job id sits at the end of the row ({@code id: N}).
  */
 public final class ActivityCommand implements CliCommand {
 
@@ -44,8 +45,8 @@ public final class ActivityCommand implements CliCommand {
 
     @Override
     public List<String> aliases() {
-        // Primary name is `jobs`; keep activity/act for muscle memory (JK-1252).
-        return List.of("activity", "act");
+        // Primary name is `jobs`; builds/activity/act for muscle memory (JK-1252).
+        return List.of("builds", "activity", "act");
     }
 
     @Override
@@ -97,9 +98,9 @@ public final class ActivityCommand implements CliCommand {
         return String.valueOf(max).length();
     }
 
-    /** Blue menu CommandWedge: {@code ≡ Jobs}. */
+    /** Blue menu CommandWedge: {@code ≡ Build Jobs}. */
     static String titleLine() {
-        return CommandWedge.menu("Jobs");
+        return CommandWedge.menu("Build Jobs");
     }
 
     /** Lone vertical rail between rows — indented one space under the title chip. */
@@ -149,7 +150,8 @@ public final class ActivityCommand implements CliCommand {
         if (running) {
             glyph = t.isAnsi() ? Glyphs.PLAY : "*";
             outcomeWord = "Building";
-            kindWord = "Building";
+            // Lowercase + ellipsis: still in process (distinct from the pill's "Building").
+            kindWord = "building…";
             outcome = OutcomeStyle.RUNNING;
         } else if (cancelled) {
             glyph = t.isAnsi() ? "⊛" : "o";
@@ -170,10 +172,9 @@ public final class ActivityCommand implements CliCommand {
         }
 
         long jid = Jsonl.longValue(entry, "jid", Jsonl.longValue(entry, "requestId", 0));
-        // Pill body: glyph + optional jid + #N (zero-padded) + outcome word.
+        // Pill body: glyph + #N (zero-padded) + outcome word. Job id rides at the end of the row.
         StringBuilder pillLabel = new StringBuilder();
         pillLabel.append(glyph).append(' ');
-        if (running && jid > 0) pillLabel.append("jid=").append(jid).append(' ');
         if (buildNumber > 0) {
             int width = Math.max(1, buildNumberWidth);
             pillLabel.append('#').append(String.format("%0" + width + "d", buildNumber)).append(' ');
@@ -204,7 +205,17 @@ public final class ActivityCommand implements CliCommand {
         if (!agoPart.isEmpty()) {
             line.append(sep).append(t.isAnsi() ? Theme.colorize(agoPart, t.dim()) : agoPart);
         }
+        // Running jobs: job id at the end — "id: N" with N bold white (cancel handle).
+        if (running && jid > 0) {
+            line.append(sep).append(formatJobId(jid, t));
+        }
         return line.toString();
+    }
+
+    /** {@code id: N} with the number bold white when ANSI is on. */
+    static String formatJobId(long jid, Theme t) {
+        if (!t.isAnsi()) return "id: " + jid;
+        return muted("id: ", t) + Theme.colorize(String.valueOf(jid), t.focused());
     }
 
     /** Outcome → chip colors for the status pill. */
@@ -228,7 +239,7 @@ public final class ActivityCommand implements CliCommand {
         if (!t.isAnsi()) {
             return "[" + label + "]";
         }
-        // Black text on the outcome color; caps painted in that same color as FG (rounded edges).
+        // Chip fill; caps painted in that same color as FG (rounded edges).
         cc.jumpkick.cli.theme.Rgb chipRgb =
                 switch (outcome) {
                     case SUCCESS -> t.pipelineChipColor();
@@ -236,8 +247,12 @@ public final class ActivityCommand implements CliCommand {
                     case CANCELLED -> cc.jumpkick.cli.theme.Rgb.hex(0xFFB800); // matches web --warn
                     case RUNNING -> t.planBadgeColor();
                 };
-        // Pure black (#000000) text on the chip color — not theme "black" (palette gray).
-        AttributedStyle body = t.withBackground(t.bright(0, 0, 0), chipRgb);
+        // Running: white label on the chip (live work). Finished: pure black (#000) on the chip.
+        AttributedStyle body =
+                switch (outcome) {
+                    case RUNNING -> t.withBackground(t.bright(255, 255, 255), chipRgb);
+                    default -> t.withBackground(t.bright(0, 0, 0), chipRgb);
+                };
         AttributedStyle caps = t.bright(chipRgb);
         return Badge.pill(label, GlobalConfig.nerdfont(), body, caps);
     }

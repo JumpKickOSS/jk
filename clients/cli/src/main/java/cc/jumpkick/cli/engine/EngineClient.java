@@ -297,23 +297,7 @@ public final class EngineClient {
      */
     public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            BufferedReader reader =
-                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-            writer.write(EngineProtocol.cancelRequest(jid));
-            writer.write('\n');
-            writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
-                    ActiveJobs.forget(jid);
-                    return Optional.of(line);
-                }
-            }
-        }
-        return Optional.empty();
+        return cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequest(jid), jid);
     }
 
     /**
@@ -321,20 +305,83 @@ public final class EngineClient {
      */
     public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
+        Optional<String> ack =
+                cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequestForDir(dir), -1);
+        if (ack.isPresent()) ActiveJobs.forgetAll();
+        return ack;
+    }
+
+    /**
+     * SIGINT path (JK-1252): same {@code cancel-request} wire as {@link #cancel}/{@link #cancelForDir},
+     * but <em>never</em> spawns or replaces an engine and never blocks long. Call this from the
+     * Ctrl-C handler before {@code halt}; the hard exit is the backup if this is too late.
+     *
+     * <p>Cancels every tracked jid from this CLI process, then a dir-scoped cancel for {@code cwd}.
+     * All failures are swallowed.
+     */
+    public static void cancelBestEffortForInterrupt(Path cwd) {
+        try {
+            Path socket = EnginePaths.activeSocket(EnginePaths.current());
+            for (long jid : ActiveJobs.snapshot()) {
+                try {
+                    cancelOnce(socket, EngineProtocol.cancelRequest(jid), jid);
+                } catch (Exception ignored) {
+                    // best-effort — halt follows
+                }
+            }
+            if (cwd != null) {
+                try {
+                    Optional<String> ack =
+                            cancelOnce(socket, EngineProtocol.cancelRequestForDir(cwd.toString()), -1);
+                    if (ack.isPresent()) ActiveJobs.forgetAll();
+                } catch (Exception ignored) {
+                    // best-effort
+                }
+            }
+        } catch (Throwable ignored) {
+            // never throw into the SIGINT handler
+        }
+    }
+
+    /**
+     * One cancel-request RPC on an already-running engine. Does not {@link #ensureRunning}. Used by
+     * the public cancel APIs and the interrupt best-effort path.
+     *
+     * @param forgetJid when ≥ 0, removed from {@link ActiveJobs} on a positive ack
+     */
+    private static Optional<String> cancelOnce(Path socket, String requestLine, long forgetJid)
+            throws IOException {
+        try (SocketChannel ch = connect(socket)) {
             BufferedWriter writer =
                     new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
             BufferedReader reader =
                     new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
-            writer.write(EngineProtocol.cancelRequestForDir(dir));
+            writer.write(requestLine);
             writer.write('\n');
             writer.flush();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
-                    ActiveJobs.forgetAll();
-                    return Optional.of(line);
+            // Watchdog: SIGINT must not hang waiting for a wedged engine.
+            Thread watchdog = new Thread(
+                    () -> {
+                        try {
+                            Thread.sleep(SOCKET_TIMEOUT_MILLIS);
+                            ch.close();
+                        } catch (InterruptedException | IOException ignored) {
+                            // done
+                        }
+                    },
+                    "jk-cancel-watchdog");
+            watchdog.setDaemon(true);
+            watchdog.start();
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
+                        if (forgetJid >= 0) ActiveJobs.forget(forgetJid);
+                        return Optional.of(line);
+                    }
                 }
+            } finally {
+                watchdog.interrupt();
             }
         }
         return Optional.empty();
