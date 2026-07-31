@@ -690,7 +690,9 @@ final class EngineBuildListenerAdapter {
                             diagnostics,
                             cancelled,
                             cancelled);
-                    listener.pipelineFinish(result);
+                    // A remote cancel injects this terminal from another thread — it can land
+                    // before plan-done ever created the listener (JK-1312).
+                    if (listener != null) listener.pipelineFinish(result);
                     return result;
                 }
                 case EngineProtocol.ERROR ->
@@ -700,7 +702,22 @@ final class EngineBuildListenerAdapter {
                 }
             }
         }
-        throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
+        throw disconnectFailure();
+    }
+
+    /**
+     * Bare EOF without a terminal line: a crash — unless this process already asked for cancel
+     * (Ctrl-C's cooperative token), in which case the disconnect IS the cancel settling (JK-1307).
+     */
+    private static IOException disconnectFailure() {
+        try {
+            if (cc.jumpkick.config.SessionContext.current().cancelled()) {
+                return new JobCancelledException();
+            }
+        } catch (RuntimeException ignored) {
+            // no session installed — fall through to the crash message
+        }
+        return new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
                 + "(it may have crashed); run `jk engine status` for details");
     }
 
@@ -875,8 +892,7 @@ final class EngineBuildListenerAdapter {
                 }
             }
         }
-        throw new IOException("jk engine: the build engine disconnected unexpectedly before finishing "
-                + "(it may have crashed); run `jk engine status` for details");
+        throw disconnectFailure();
     }
 
     private static List<ModulePlan> buildModulePlans(Map<String, ModuleMeta> planByDir, Path cache) {

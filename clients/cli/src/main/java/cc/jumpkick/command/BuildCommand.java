@@ -805,6 +805,10 @@ public final class BuildCommand implements CliCommand {
                     },
                     testResultHolder,
                     buildOutcomeHolder);
+        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, ""));
+            if (session != null) session.wedge("Build job was cancelled");
+            return 1;
         } catch (java.io.IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             if (session != null) session.error(e.getMessage());
@@ -817,6 +821,11 @@ public final class BuildCommand implements CliCommand {
             }
         }
         if (result.success()) return 0;
+        // Cancelled is not a failure shape: settle like the workspace paths do (JK-1307).
+        if (result.cancelled()) {
+            if (session != null) session.wedge("Build job was cancelled");
+            return 1;
+        }
         // Test failures get exit 4; other failures exit 1.
         TestSummary testResult = testResultHolder[0];
         if (testResult != null && !testResult.allPassed()) return 4;

@@ -841,7 +841,9 @@ public final class EngineServer implements AutoCloseable {
      * build finishes and its terminal message has been sent, or the connection drops.
      */
     private void handleBuildRequest(String requestLine, BufferedReader reader, BufferedWriter writer) {
-        handleAsyncPipelineRequest(requestLine, reader, writer, "jk-engine-build-", "build", this::runBuild);
+        // The one stream whose terminal is workspace-finish (see LiveJob.workspaceStream).
+        handleAsyncPipelineRequest(
+                requestLine, reader, writer, "jk-engine-build-", "build", this::runBuild, true, true);
     }
 
     /** An engine-hosted operation's body: decode the request, run it, stream events to {@code writer}. */
@@ -864,7 +866,7 @@ public final class EngineServer implements AutoCloseable {
             String threadPrefix,
             String kind,
             PipelineRunner runner) {
-        handleAsyncPipelineRequest(requestLine, reader, writer, threadPrefix, kind, runner, true);
+        handleAsyncPipelineRequest(requestLine, reader, writer, threadPrefix, kind, runner, true, false);
     }
 
     /**
@@ -880,6 +882,23 @@ public final class EngineServer implements AutoCloseable {
             String kind,
             PipelineRunner runner,
             boolean pipeline) {
+        handleAsyncPipelineRequest(requestLine, reader, writer, threadPrefix, kind, runner, pipeline, false);
+    }
+
+    /**
+     * As above; {@code workspaceStream=true} only for the workspace build stream, whose terminal
+     * wire line is {@code workspace-finish} — every other stream ends on {@code pipeline-finish}
+     * and a cancelled terminal must match (JK-1307).
+     */
+    private void handleAsyncPipelineRequest(
+            String requestLine,
+            BufferedReader reader,
+            BufferedWriter writer,
+            String threadPrefix,
+            String kind,
+            PipelineRunner runner,
+            boolean pipeline,
+            boolean workspaceStream) {
         // Refuse new jobs while draining (a graceful shutdown is finishing in-flight work). The client
         // normally can't even get here — its handshake sees `draining` and fails first — but guard the
         // server too so a raced/last-moment request is rejected instead of prolonging the drain.
@@ -943,7 +962,8 @@ public final class EngineServer implements AutoCloseable {
         }
         // Capture this connection thread so remote cancel can wake it off client-readLine.
         Thread connectionThread = Thread.currentThread();
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, writer, connectionThread, eventDir, eventKind);
+        registerLiveJob(
+                eventRequestId, cancelToken, runnerRef, writer, connectionThread, eventDir, eventKind, workspaceStream);
         try {
             Thread started = Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
@@ -1096,14 +1116,9 @@ public final class EngineServer implements AutoCloseable {
             // wire event, still tell the CLI the job was cancelled so it does not report a crash.
             // Harmless if the runner already sent workspace-/pipeline-finish (client has returned).
             if (cancelled && writer != null) {
-                if ("build".equals(eventKind)) {
-                    sendQuiet(writer, EngineProtocol.workspaceFinish(false, 1, List.of(), true));
-                } else {
-                    sendQuiet(
-                            writer,
-                            EngineProtocol.pipelineFinish(
-                                    eventDir == null ? "" : eventDir, false, true));
-                }
+                // Same shape rule as pushCancelledTerminal: single builds journal as "build" but
+                // their client loop only ends on pipeline-finish (JK-1307).
+                sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
             }
             publishEvent(
                     "request-finish",
@@ -1228,7 +1243,14 @@ public final class EngineServer implements AutoCloseable {
             /** Connection thread parked on client readLine — interrupted so teardown can run. */
             Thread connectionThread,
             String dir,
-            String kind) {}
+            String kind,
+            /**
+             * True when the stream's terminal line is {@code workspace-finish}; false for single
+             * pipelines (single build, test, lock, …), whose client loop only ends on
+             * {@code pipeline-finish}. Kind alone cannot tell: single builds journal as
+             * {@code "build"} too (JK-1307).
+             */
+            boolean workspaceStream) {}
 
     private void registerLiveJob(
             long jid,
@@ -1237,8 +1259,9 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer,
             Thread connectionThread,
             String dir,
-            String kind) {
-        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, connectionThread, dir, kind));
+            String kind,
+            boolean workspaceStream) {
+        liveJobs.put(jid, new LiveJob(token, runnerRef, writer, connectionThread, dir, kind, workspaceStream));
     }
 
     private void unregisterLiveJob(long jid) {
@@ -1278,13 +1301,19 @@ public final class EngineServer implements AutoCloseable {
      */
     private void pushCancelledTerminal(LiveJob job) {
         if (job == null || job.writer() == null) return;
-        String kind = job.kind() == null ? "" : job.kind();
-        if ("build".equals(kind)) {
-            sendQuiet(job.writer(), EngineProtocol.workspaceFinish(false, 1, List.of(), true));
-        } else {
-            String dir = job.dir() == null ? "" : job.dir();
-            sendQuiet(job.writer(), EngineProtocol.pipelineFinish(dir, false, true));
-        }
+        sendQuiet(job.writer(), cancelledTerminalLine(job.workspaceStream(), job.dir()));
+    }
+
+    /**
+     * The cancelled terminal matching the stream's real shape: a single-project build registers
+     * kind "build" too, but its client loop only ends on {@code pipeline-finish} — a
+     * {@code workspace-finish} there is a no-op and the CLI settles as "engine disconnected"
+     * instead of cancelled (JK-1307).
+     */
+    static String cancelledTerminalLine(boolean workspaceStream, String dir) {
+        return workspaceStream
+                ? EngineProtocol.workspaceFinish(false, 1, List.of(), true)
+                : EngineProtocol.pipelineFinish(dir == null ? "" : dir, false, true);
     }
 
     /** Cancel every live job whose dir matches (canonical absolute path). */
@@ -4740,7 +4769,8 @@ public final class EngineServer implements AutoCloseable {
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
         // HTTP/SSE has no CLI stream writer — cancel settles via request-finish on the dashboard.
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), kind);
+        // No CLI stream (writer null) — workspaceStream is moot for the terminal push.
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), kind, true);
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
@@ -4811,7 +4841,7 @@ public final class EngineServer implements AutoCloseable {
         httpCancelTokens.put(eventRequestId, cancelToken);
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
-        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock");
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock", false);
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
         notePipelineStarted();
