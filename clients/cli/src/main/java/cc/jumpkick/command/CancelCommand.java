@@ -48,9 +48,18 @@ public final class CancelCommand implements CliCommand {
         return List.of(Param.of("jid", Arity.ZERO_OR_ONE, "Job id from `jk jobs` (omit to cancel this project)"));
     }
 
+    /** The dir jobs are registered under: the workspace root when {@code dir} is inside one. */
+    static Path cancelScope(Path dir) {
+        Path normalized = dir.toAbsolutePath().normalize();
+        return cc.jumpkick.config.WorkspaceScan.findRoot(normalized).orElse(normalized);
+    }
+
     @Override
     public int run(Invocation in) throws Exception {
-        Path dir = new GlobalOptions().workingDir().toAbsolutePath().normalize();
+        // From the invocation (so -C/--directory works, like every other command), then resolved
+        // to the workspace root: jobs register their ENTRY dir, so cancelling from a member dir
+        // must match the workspace build that covers it (JK-1315).
+        Path dir = cancelScope(GlobalOptions.from(in).workingDir());
         Optional<String> jidArg = in.positionals().isEmpty()
                 ? Optional.empty()
                 : Optional.of(in.positionals().get(0).trim());

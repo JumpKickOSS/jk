@@ -39,7 +39,20 @@ public final class GlobalCancel {
             // background thread so the user sees the cancelled settle immediately instead of a
             // still-animating spinner while a wedged engine eats socket watchdogs (JK-1314).
             cc.jumpkick.config.SessionContext.current().cancel().cancel();
-            java.nio.file.Path dir = java.nio.file.Path.of("").toAbsolutePath().normalize();
+            // The session's working dir honors -C/--directory (the raw process CWD does not),
+            // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
+            // member dir cancels the covering workspace build (JK-1315).
+            java.nio.file.Path invocationDir;
+            try {
+                invocationDir = cc.jumpkick.config.SessionContext.current().workingDir();
+            } catch (RuntimeException e) {
+                invocationDir = null;
+            }
+            if (invocationDir == null) {
+                invocationDir = java.nio.file.Path.of("").toAbsolutePath().normalize();
+            }
+            java.nio.file.Path dir =
+                    cc.jumpkick.config.WorkspaceScan.findRoot(invocationDir).orElse(invocationDir);
             Thread rpc = Thread.ofPlatform()
                     .daemon(true)
                     .name("jk-sigint-cancel")
