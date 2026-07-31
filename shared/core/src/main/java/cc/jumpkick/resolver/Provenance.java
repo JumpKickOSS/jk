@@ -118,8 +118,10 @@ public final class Provenance {
             if (declared || lockTop) {
                 String rootKey = ga(current);
                 byRoot.putIfAbsent(rootKey, reconstruct(current, target, cameFrom, byModule));
-                // Do not walk past a declared root (it is the provenance answer).
-                if (declared) continue;
+                // Keep walking past a declared root: when declared root A depends on declared
+                // root B which depends on the target, A's path must still be reported — one
+                // shortest path per DISTINCT root, as the class contract says (JK-1318). The
+                // visited set keeps diamonds from exploding.
             }
 
             for (String parent : parents) {

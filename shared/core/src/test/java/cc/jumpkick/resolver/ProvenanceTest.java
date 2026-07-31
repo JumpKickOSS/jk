@@ -50,6 +50,23 @@ class ProvenanceTest {
     }
 
     @Test
+    void a_root_behind_another_declared_root_still_gets_a_path() {
+        // Declared root A depends on declared root B which depends on the target: the reverse BFS
+        // must not stop at B — one shortest path per DISTINCT root (JK-1318).
+        JkBuild project = projectWithMainDeps("com.foo:a", "com.foo:b");
+        Lockfile lock = lockOf(
+                pkg("com.foo:a", "1.0", List.of("com.foo:b@1.0")),
+                pkg("com.foo:b", "1.0", List.of("com.foo:leaf@1.0")),
+                pkg("com.foo:leaf", "1.0", List.of()));
+
+        List<Provenance.Path> paths = Provenance.pathsTo(project, lock, "com.foo:leaf");
+
+        assertThat(paths).hasSize(2);
+        assertThat(paths.stream().map(p -> p.steps().getFirst().module()).toList())
+                .containsExactlyInAnyOrder("com.foo:a", "com.foo:b");
+    }
+
+    @Test
     void distinct_roots_each_get_a_path() {
         // rootA -> leaf
         // rootB -> mid -> leaf
