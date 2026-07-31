@@ -3510,45 +3510,16 @@ public final class EngineServer implements AutoCloseable {
             BufferedWriter writer)
             throws Exception {
         java.nio.file.Files.createDirectories(cache);
-        JkBuild root;
-        try {
-            root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
-        } catch (RuntimeException e) {
-            sendQuiet(
-                    writer,
-                    EngineProtocol.lockFinish(
-                            false,
-                            cc.jumpkick.model.command.Exit.CONFIG,
-                            java.util.List.of(String.valueOf(e.getMessage())),
-                            -1));
-            return;
-        }
-
-        // One lock scope: workspace root (merged) or standalone project. Members redirect to root.
-        Path lockDir = entryDir;
+        // One lock scope: workspace root (merged) or standalone project. Members redirect to root
+        // (shared with the HTTP/MCP lock job — JK-1303).
+        Path lockDir;
         JkBuild effective;
         String coord;
         try {
-            if (root.isWorkspaceRoot()) {
-                var modules = cc.jumpkick.config.WorkspaceLoader.loadModules(entryDir, root);
-                effective = cc.jumpkick.model.WorkspaceMerge.merge(root, modules.values());
-                lockDir = entryDir;
-                coord = cc.jumpkick.runtime.LockPipelines.coordLabel(root, entryDir);
-            } else {
-                var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(entryDir);
-                if (rootOpt.isPresent()) {
-                    Path wsRoot = rootOpt.get();
-                    JkBuild rootManifest = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-                    var modules = cc.jumpkick.config.WorkspaceLoader.loadModules(wsRoot, rootManifest);
-                    effective = cc.jumpkick.model.WorkspaceMerge.merge(rootManifest, modules.values());
-                    lockDir = wsRoot;
-                    coord = cc.jumpkick.runtime.LockPipelines.coordLabel(rootManifest, wsRoot);
-                } else {
-                    effective = cc.jumpkick.runtime.LockPipelines.applyWorkspaceContextIfModule(entryDir, root);
-                    lockDir = entryDir;
-                    coord = cc.jumpkick.runtime.LockPipelines.coordLabel(effective, entryDir);
-                }
-            }
+            var scope = cc.jumpkick.runtime.LockPipelines.lockScope(entryDir);
+            lockDir = scope.lockDir();
+            effective = scope.effective();
+            coord = scope.coord();
         } catch (RuntimeException e) {
             sendQuiet(
                     writer,
@@ -4957,14 +4928,26 @@ public final class EngineServer implements AutoCloseable {
     private boolean runHttpLock(Path entryDir, Session.CancelToken cancelToken) {
         try {
             Path cache = cc.jumpkick.util.JkDirs.cache();
-            JkBuild effective = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            // Same scope rule as the JSONL lockCascade: a workspace member redirects to its root
+            // and locks the merged union — a module-scoped resolution must never overwrite the
+            // root jk-lock.toml (JK-1303).
+            var scope = cc.jumpkick.runtime.LockPipelines.lockScope(entryDir);
+            Path lockDir = scope.lockDir();
             Session session = Session.defaults()
-                    .withWorkingDir(entryDir)
+                    .withWorkingDir(lockDir)
                     .withCacheDir(cache)
                     .withCancel(cancelToken);
             cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                    entryDir, effective, cache, null, java.util.List.of(), true, false, ResolveObserver.NOOP, null);
-            pipeline.addListener(singlePipelineHubListener(entryDir.toString()));
+                    lockDir,
+                    scope.effective(),
+                    cache,
+                    null,
+                    java.util.List.of(),
+                    true,
+                    false,
+                    ResolveObserver.NOOP,
+                    null);
+            pipeline.addListener(singlePipelineHubListener(lockDir.toString()));
             cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
             accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
             if (!result.success()) {

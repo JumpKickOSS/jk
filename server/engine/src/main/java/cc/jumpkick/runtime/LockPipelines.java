@@ -616,6 +616,33 @@ public final class LockPipelines {
     }
 
     /**
+     * The single lock scope for {@code entryDir}: workspace root (merged model) or standalone
+     * project. A workspace <em>member</em> redirects to its root so any lock entry point — CLI
+     * cascade, HTTP/MCP job — resolves the full workspace union and writes the root
+     * {@code jk-lock.toml}, never one module's closure over it (JK-1303).
+     */
+    public record LockScope(Path lockDir, JkBuild effective, String coord) {}
+
+    /** Resolve the {@link LockScope} for {@code entryDir}. Throws like {@link JkBuildParser#parse}. */
+    public static LockScope lockScope(Path entryDir) throws java.io.IOException {
+        JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        if (root.isWorkspaceRoot()) {
+            var modules = WorkspaceLoader.loadModules(entryDir, root);
+            return new LockScope(entryDir, WorkspaceMerge.merge(root, modules.values()), coordLabel(root, entryDir));
+        }
+        var rootOpt = WorkspaceLocator.findRoot(entryDir);
+        if (rootOpt.isPresent()) {
+            Path wsRoot = rootOpt.get();
+            JkBuild rootManifest = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
+            return new LockScope(
+                    wsRoot, WorkspaceMerge.merge(rootManifest, modules.values()), coordLabel(rootManifest, wsRoot));
+        }
+        JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);
+        return new LockScope(entryDir, effective, coordLabel(effective, entryDir));
+    }
+
+    /**
      * Display coordinate for a module: {@code group:artifact} from its {@code [project]}, falling
      * back to the directory name.
      */
