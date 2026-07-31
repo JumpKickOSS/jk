@@ -54,6 +54,16 @@ public final class BuildEnv {
         });
     }
 
+    /**
+     * Redactor for {@code .env}-sourced values at {@code moduleDir} (JK-1274). Use before any
+     * free-form text (wire events, journal, errors) leaves the process, and before a value enters
+     * a cache key.
+     */
+    public static SecretRedactor secretsFor(Path moduleDir) {
+        if (moduleDir == null) return SecretRedactor.none();
+        return SecretRedactor.from(lookupFor(moduleDir));
+    }
+
     private static Map<String, String> clientEnv() {
         try {
             Session session = SessionContext.current();

@@ -699,6 +699,7 @@ public final class EngineServer implements AutoCloseable {
                     case EngineProtocol.HISTORY_LIST_REQUEST -> handleHistoryList(line, writer);
                     case EngineProtocol.HISTORY_SHOW_REQUEST -> handleHistoryShow(line, writer);
                     case EngineProtocol.HISTORY_DELETE_REQUEST -> handleHistoryDelete(line, writer);
+                    case EngineProtocol.CANCEL_REQUEST -> handleCancelRequest(line, writer);
                     case EngineProtocol.METRICS_REQUEST -> handleMetrics(line, writer);
                     case EngineProtocol.BUILD_REQUEST -> {
                         // Owns the rest of this connection's lifecycle: forks the build onto its own
@@ -932,6 +933,15 @@ public final class EngineServer implements AutoCloseable {
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
+        // Public jid surface (JK-1252): client tracks this for Ctrl-C / jk cancel.
+        try {
+            send(
+                    writer,
+                    EngineProtocol.jobStart(eventRequestId, eventKind, eventDir, admit.buildNumber()));
+        } catch (IOException ignored) {
+            // client gone before job body — still run cancel registration below
+        }
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, eventDir, eventKind);
         try {
             Thread started = Thread.ofVirtual().name(threadPrefix, 0).start(() -> {
                 if (pipeline) cacheGate.readLock().lock();
@@ -952,6 +962,7 @@ public final class EngineServer implements AutoCloseable {
                     // connection thread finishes teardown — so a follow-up same-project build is
                     // not rejected as already-running while journal/idle chores run.
                     inFlightBuilds.release(eventRequestId);
+                    unregisterLiveJob(eventRequestId);
                     done.countDown();
                 }
             });
@@ -1149,7 +1160,7 @@ public final class EngineServer implements AutoCloseable {
         markUserCancelled(eventRequestId);
         Thread.ofVirtual().name("jk-cancel-" + eventRequestId, 0).start(() -> {
             int killed = JobWorkers.shutdownForRequest(eventRequestId, cancelGraceMs);
-            interruptRunner(runnerRef.get());
+            interruptRunner(runnerRef != null ? runnerRef.get() : null);
             if (killed > 0) {
                 log.accept("jk engine: cancel job "
                         + eventRequestId
@@ -1160,6 +1171,95 @@ public final class EngineServer implements AutoCloseable {
                         + "ms)");
             }
         });
+    }
+
+    // ---- Live job cancel registry (JK-1252) ------------------------------------
+
+    /**
+     * Every admitted job (CLI JSONL or HTTP/MCP) registers here so {@code jk cancel <jid>} /
+     * {@code POST /api/cancel} / MCP {@code jk_cancel} share one kill path.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, LiveJob> liveJobs =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private record LiveJob(
+            Session.CancelToken token,
+            java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
+            String dir,
+            String kind) {}
+
+    private void registerLiveJob(
+            long jid,
+            Session.CancelToken token,
+            java.util.concurrent.atomic.AtomicReference<Thread> runnerRef,
+            String dir,
+            String kind) {
+        liveJobs.put(jid, new LiveJob(token, runnerRef, dir, kind));
+    }
+
+    private void unregisterLiveJob(long jid) {
+        liveJobs.remove(jid);
+    }
+
+    /**
+     * Cancel one live job by jid. Returns {@code false} if unknown/already finished (idempotent soft
+     * miss). Covers CLI-socket jobs and HTTP/MCP jobs.
+     */
+    boolean cancelJob(long jid) {
+        LiveJob job = liveJobs.get(jid);
+        if (job != null) {
+            beginUserCancel(jid, job.token(), job.runnerRef(), JobWorkers.cancelGraceMs());
+            return true;
+        }
+        // HTTP path may still hold tokens briefly if registration order differs.
+        return cancelHttpJob(jid);
+    }
+
+    /** Cancel every live job whose dir matches (canonical absolute path). */
+    int cancelJobsForDir(String dir) {
+        if (dir == null || dir.isBlank()) return 0;
+        String want = BuildJobFingerprint.canonicalDir(dir);
+        if (want == null || want.isBlank()) want = Path.of(dir).toAbsolutePath().normalize().toString();
+        int n = 0;
+        for (var e : liveJobs.entrySet()) {
+            String d = e.getValue().dir();
+            String got = d == null ? "" : BuildJobFingerprint.canonicalDir(d);
+            if (got == null || got.isBlank()) {
+                try {
+                    got = Path.of(d).toAbsolutePath().normalize().toString();
+                } catch (RuntimeException ignored) {
+                    got = d;
+                }
+            }
+            if (want.equals(got)) {
+                if (cancelJob(e.getKey())) n++;
+            }
+        }
+        return n;
+    }
+
+    private void handleCancelRequest(String requestLine, BufferedWriter writer) throws IOException {
+        long jid = Jsonl.longValue(requestLine, "jid", -1);
+        if (jid < 0) jid = Jsonl.longValue(requestLine, "requestId", -1);
+        String dir = Jsonl.str(requestLine, "dir");
+        if (jid >= 0) {
+            boolean ok = cancelJob(jid);
+            send(
+                    writer,
+                    EngineProtocol.cancelAck(
+                            jid, ok, ok ? null : "unknown or already finished jid"));
+            return;
+        }
+        if (dir != null && !dir.isBlank()) {
+            int n = cancelJobsForDir(dir);
+            // jid=0 means "dir batch"; cancelled true if any job was live.
+            send(
+                    writer,
+                    EngineProtocol.cancelAck(
+                            0, n > 0, n > 0 ? ("cancelled " + n + " job(s)") : "no running jobs for dir"));
+            return;
+        }
+        send(writer, EngineProtocol.cancelAck(-1, false, "cancel-request requires jid or dir"));
     }
 
     /** Stamp the request's accumulator so journal/metrics never treat a cancelled wall as success. */
@@ -1399,6 +1499,7 @@ public final class EngineServer implements AutoCloseable {
                 .put("schema", 1)
                 .put("type", "request-start")
                 .put("requestId", requestId)
+                .put("jid", requestId)
                 .put("kind", kind)
                 .put("dir", dir)
                 .put("coord", coord);
@@ -1478,7 +1579,7 @@ public final class EngineServer implements AutoCloseable {
                                     .put("dir", dir)
                                     .put("step", d.step())
                                     .put("code", d.code())
-                                    .put("message", d.message())
+                                    .put("message", redactEnv(dir, d.message()))
                                     .put("test", d.test())
                                     .put("exceptionClass", d.exceptionClass()),
                             requestId));
@@ -1501,7 +1602,7 @@ public final class EngineServer implements AutoCloseable {
                                 .put("dir", dir)
                                 .put("step", "request")
                                 .put("code", "error")
-                                .put("message", message)
+                                .put("message", redactEnv(dir, message))
                                 .put("test", "")
                                 .put("exceptionClass", ""),
                         requestId));
@@ -1802,15 +1903,20 @@ public final class EngineServer implements AutoCloseable {
             }
             // Chrome timeline before terminal event so the client still has the socket open.
             flushTimelineToClient(rid, writer);
-            send(writer, EngineProtocol.workspaceFinish(result.success(), result.exitCode(), result.errors()));
+            java.util.List<String> safeErrors = result.errors().stream()
+                    .map(err -> redactEnv(entryDirStr, err))
+                    .toList();
+            send(writer, EngineProtocol.workspaceFinish(result.success(), result.exitCode(), safeErrors));
             if (!result.success()) {
-                for (String error : result.errors().stream().limit(5).toList()) {
+                for (String error : safeErrors.stream().limit(5).toList()) {
                     publishRequestError(eventRequestId(), entryDirStr, error);
                 }
             }
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
-            publishRequestError(eventRequestId(), Jsonl.str(requestLine, "dir"), String.valueOf(e.getMessage()));
+            String dir = Jsonl.str(requestLine, "dir");
+            String msg = redactEnv(dir, String.valueOf(e.getMessage()));
+            sendQuiet(writer, requestFailedLine(dir, msg));
+            publishRequestError(eventRequestId(), dir, msg);
         }
     }
 
@@ -1945,7 +2051,7 @@ public final class EngineServer implements AutoCloseable {
             Thread.currentThread().interrupt();
             sendQuiet(writer, EngineProtocol.requestFailed("interrupted delegating to jk " + pin));
         } catch (IOException e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
         return true;
     }
@@ -2125,7 +2231,7 @@ public final class EngineServer implements AutoCloseable {
             ExplainPlan plan = SessionContext.where(session, () -> BuildService.explain(entryDir, entryBuild, cache));
             if (plan.hasErrors()) {
                 for (String err : plan.errors()) {
-                    sendQuiet(writer, EngineProtocol.requestFailed(err));
+                    sendQuiet(writer, requestFailedLine(entryDir.toString(), err));
                 }
                 sendQuiet(writer, EngineProtocol.explainDone(1, 0));
                 return;
@@ -2168,7 +2274,7 @@ public final class EngineServer implements AutoCloseable {
                     EngineProtocol.explainDone(
                             plan.maxReadyWidth(), plan.modules().size()));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
             sendQuiet(writer, EngineProtocol.explainDone(0, 0));
         }
     }
@@ -2273,7 +2379,7 @@ public final class EngineServer implements AutoCloseable {
             // pipelineFinish (with test counts, if any) was already sent by wirePipelineListener's own
             // pipelineFinish handling — nothing further to send here; the connection close signals "done".
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2390,7 +2496,7 @@ public final class EngineServer implements AutoCloseable {
                 PreflightMemo.storeGraph(entryDir, preGraph);
             }
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2424,7 +2530,7 @@ public final class EngineServer implements AutoCloseable {
                 return null;
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2479,7 +2585,7 @@ public final class EngineServer implements AutoCloseable {
                 return null;
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2530,7 +2636,7 @@ public final class EngineServer implements AutoCloseable {
                 return null;
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2589,7 +2695,7 @@ public final class EngineServer implements AutoCloseable {
             streamSinglePipeline(
                     pipeline, session, writer, result -> EngineProtocol.pipelineFinish(dir, result.success()));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2636,7 +2742,7 @@ public final class EngineServer implements AutoCloseable {
                             pipeline.get(cc.jumpkick.runtime.FormatPipelines.WORKER_EXIT)
                                     .orElse(-1)));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2691,7 +2797,7 @@ public final class EngineServer implements AutoCloseable {
                             pipeline.get(cc.jumpkick.runtime.PublishPipelines.FILES)
                                     .orElse(-1)));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2774,7 +2880,7 @@ public final class EngineServer implements AutoCloseable {
                         daemonExe);
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2819,7 +2925,7 @@ public final class EngineServer implements AutoCloseable {
                             pipeline.get(cc.jumpkick.runtime.CompatPipelines.DIAG)
                                     .orElse(null)));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2846,7 +2952,7 @@ public final class EngineServer implements AutoCloseable {
                             outcome.exit(),
                             outcome.diag()));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2871,7 +2977,7 @@ public final class EngineServer implements AutoCloseable {
             streamSinglePipeline(
                     pipeline, session, writer, result -> EngineProtocol.pipelineFinish(dir, result.success()));
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2913,7 +3019,7 @@ public final class EngineServer implements AutoCloseable {
                                 testResult.skipped());
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -2956,7 +3062,7 @@ public final class EngineServer implements AutoCloseable {
                         dir, result.success(), checkout != null ? checkout.toString() : null, sha);
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -3019,7 +3125,7 @@ public final class EngineServer implements AutoCloseable {
                         stdlib != null ? stdlib.toString() : null);
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -3059,7 +3165,7 @@ public final class EngineServer implements AutoCloseable {
                                 : java.util.List.of());
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -3133,7 +3239,7 @@ public final class EngineServer implements AutoCloseable {
                 cacheGate.writeLock().unlock();
             }
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -3171,7 +3277,7 @@ public final class EngineServer implements AutoCloseable {
                 return null;
             });
         } catch (Exception e) {
-            sendQuiet(writer, EngineProtocol.requestFailed(String.valueOf(e.getMessage())));
+            sendQuiet(writer, requestFailedLine(null, e));
         }
     }
 
@@ -4043,11 +4149,13 @@ public final class EngineServer implements AutoCloseable {
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
                     (int) r.modules().stream().filter(m -> !m.success()).count();
-            // Live progress for in-flight rows (Activity feed) — match journal id to the hold.
+            // Live progress + jid for in-flight rows (Jobs feed) — match journal id to the hold.
             int progressPct = -1;
+            long jid = 0;
             if (r.running()) {
                 for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
                     if (r.id() != null && r.id().equals(h.journalId())) {
+                        jid = h.requestId();
                         Double p = lastProgressByRequest.get(h.requestId());
                         if (p != null && !Double.isNaN(p)) progressPct = (int) Math.round(p);
                         break;
@@ -4077,6 +4185,9 @@ public final class EngineServer implements AutoCloseable {
                     .put("failedModules", failedModules)
                     .put("savedMillis", b != null ? b.savedMillis() : -1)
                     .put("estimatedUncachedMillis", b != null ? b.estimatedUncachedMillis() : -1);
+            if (jid > 0) {
+                entry = entry.put("jid", jid).put("requestId", jid);
+            }
             if (progressPct >= 0) entry = entry.put("progress", progressPct);
             send(writer, entry.toString());
         }
@@ -4318,23 +4429,27 @@ public final class EngineServer implements AutoCloseable {
 
             @Override
             public void label(String step, String label) {
-                sendQuiet(writer, EngineProtocol.label(dir, step, label));
+                sendQuiet(writer, EngineProtocol.label(dir, step, redactEnv(dir, label)));
             }
 
             @Override
             public void output(String step, String line) {
-                sendQuiet(writer, EngineProtocol.output(dir, step, line));
-                publishOutput(eventRequestId, dir, step, line);
+                String safe = redactEnv(dir, line);
+                sendQuiet(writer, EngineProtocol.output(dir, step, safe));
+                publishOutput(eventRequestId, dir, step, safe);
             }
 
             @Override
             public void warn(String step, String code, String message) {
-                sendQuiet(writer, EngineProtocol.warn(dir, step, code, message));
+                sendQuiet(writer, EngineProtocol.warn(dir, step, code, redactEnv(dir, message)));
             }
 
             @Override
             public void error(String step, String code, String message, String test, String exceptionClass) {
-                sendQuiet(writer, EngineProtocol.errorLine(dir, step, code, message, test, exceptionClass));
+                sendQuiet(
+                        writer,
+                        EngineProtocol.errorLine(
+                                dir, step, code, redactEnv(dir, message), test, exceptionClass));
             }
 
             @Override
@@ -4354,7 +4469,12 @@ public final class EngineServer implements AutoCloseable {
                     sendQuiet(
                             writer,
                             EngineProtocol.pipelineDiagnostic(
-                                    dir, d.step(), d.code(), d.message(), d.test(), d.exceptionClass()));
+                                    dir,
+                                    d.step(),
+                                    d.code(),
+                                    redactEnv(dir, d.message()),
+                                    d.test(),
+                                    d.exceptionClass()));
                 }
                 // Single-pipeline builds: timeline before terminal finish. Workspace modules skip
                 // (flush once in runBuild before workspace-finish).
@@ -4387,6 +4507,38 @@ public final class EngineServer implements AutoCloseable {
         } catch (IOException ignored) {
             // the cancel-watching read loop will notice the same disconnect and cancel the build
         }
+    }
+
+    /**
+     * Mask {@code .env}-sourced values in free-form text that leaves the engine (JK-1274): wire
+     * events, journal diagnostics, SSE, and request-failed messages. Lookup is by module/workspace
+     * dir so masking follows {@link cc.jumpkick.config.EnvLookup#isFromFile} (source, not name
+     * heuristics). When {@code dir} is blank, the ambient session's working dir is used. Failures
+     * fall through to the original text — redaction must never break a build.
+     */
+    static String redactEnv(String dir, String text) {
+        if (text == null || text.isEmpty()) return text;
+        try {
+            Path root;
+            if (dir != null && !dir.isBlank()) {
+                root = Path.of(dir);
+            } else {
+                root = cc.jumpkick.config.SessionContext.current().workingDir();
+            }
+            if (root == null) return text;
+            return cc.jumpkick.config.BuildEnv.secretsFor(root).redact(text);
+        } catch (RuntimeException e) {
+            return text;
+        }
+    }
+
+    /** {@link EngineProtocol#requestFailed} with {@code .env} values masked. */
+    private static String requestFailedLine(String dir, Throwable e) {
+        return EngineProtocol.requestFailed(redactEnv(dir, String.valueOf(e.getMessage())));
+    }
+
+    private static String requestFailedLine(String dir, String message) {
+        return EngineProtocol.requestFailed(redactEnv(dir, message));
     }
 
     /**
@@ -4484,7 +4636,7 @@ public final class EngineServer implements AutoCloseable {
 
             @Override
             public boolean cancel(long requestId) {
-                return cancelHttpJob(requestId);
+                return cancelJob(requestId);
             }
         };
     }
@@ -4516,6 +4668,9 @@ public final class EngineServer implements AutoCloseable {
         }
         Session.CancelToken cancelToken = Session.CancelToken.live();
         httpCancelTokens.put(eventRequestId, cancelToken);
+        java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, entryDir.toString(), kind);
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
@@ -4535,6 +4690,7 @@ public final class EngineServer implements AutoCloseable {
                 JobWorkers.close();
                 httpCancelTokens.remove(eventRequestId);
                 httpJobThreads.remove(eventRequestId);
+                unregisterLiveJob(eventRequestId);
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
                 // Free exclusive fingerprint before journal/idle chores so a follow-up build can start.
@@ -4549,6 +4705,7 @@ public final class EngineServer implements AutoCloseable {
                                                 .put("schema", 1)
                                                 .put("type", "request-finish")
                                                 .put("requestId", eventRequestId)
+                                                .put("jid", eventRequestId)
                                                 .put("kind", kind)
                                                 .put("dir", entryDir.toString())
                                                 .put("success", success)
@@ -4562,6 +4719,7 @@ public final class EngineServer implements AutoCloseable {
                 maybeIdleBoundary();
             }
         });
+        runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
         return eventRequestId;
     }
@@ -4581,6 +4739,9 @@ public final class EngineServer implements AutoCloseable {
         long startMillis = clockMillis.getAsLong();
         Session.CancelToken cancelToken = Session.CancelToken.live();
         httpCancelTokens.put(eventRequestId, cancelToken);
+        java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        registerLiveJob(eventRequestId, cancelToken, runnerRef, entryDir.toString(), "lock");
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
         notePipelineStarted();
@@ -4599,6 +4760,7 @@ public final class EngineServer implements AutoCloseable {
                 JobWorkers.close();
                 httpCancelTokens.remove(eventRequestId);
                 httpJobThreads.remove(eventRequestId);
+                unregisterLiveJob(eventRequestId);
                 currentEventRequestId.remove();
                 cacheGate.readLock().unlock();
                 long elapsedMillis = clockMillis.getAsLong() - startMillis;
@@ -4611,6 +4773,7 @@ public final class EngineServer implements AutoCloseable {
                                                 .put("schema", 1)
                                                 .put("type", "request-finish")
                                                 .put("requestId", eventRequestId)
+                                                .put("jid", eventRequestId)
                                                 .put("kind", "lock")
                                                 .put("dir", entryDir.toString())
                                                 .put("success", success)
@@ -4624,6 +4787,7 @@ public final class EngineServer implements AutoCloseable {
                 maybeIdleBoundary();
             }
         });
+        runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
         return eventRequestId;
     }
@@ -4687,6 +4851,7 @@ public final class EngineServer implements AutoCloseable {
             }
             return result.success();
         } catch (Exception e) {
+            // Log may keep the raw message for operators; the SSE path is redacted.
             log.accept("jk engine: http-triggered job of " + entryDir + " failed: " + e.getMessage());
             publishRequestError(eventRequestId(), entryDir.toString(), String.valueOf(e.getMessage()));
             return false;
@@ -5238,13 +5403,27 @@ public final class EngineServer implements AutoCloseable {
         /** Diagnostics + failure flag from a finished pipeline (steps come from {@link #addStep}). */
         void addPipeline(String dir, PipelineResult result) {
             String d0 = dir == null ? "" : dir;
+            // Prefer the pipeline's own dir for .env lookup; fall back to the run's entry dir.
+            String redactDir = (dir != null && !dir.isBlank()) ? dir : this.dir;
             for (PipelineResult.Diagnostic d : result.errors()) {
                 diagnostics.add(new BuildRecord.Diag(
-                        "error", d0, d.step(), d.code(), d.message(), d.test(), d.exceptionClass()));
+                        "error",
+                        d0,
+                        d.step(),
+                        d.code(),
+                        redactEnv(redactDir, d.message()),
+                        d.test(),
+                        d.exceptionClass()));
             }
             for (PipelineResult.Diagnostic d : result.warnings()) {
                 diagnostics.add(new BuildRecord.Diag(
-                        "warning", d0, d.step(), d.code(), d.message(), d.test(), d.exceptionClass()));
+                        "warning",
+                        d0,
+                        d.step(),
+                        d.code(),
+                        redactEnv(redactDir, d.message()),
+                        d.test(),
+                        d.exceptionClass()));
             }
             // Capture the step dependency edges from the genuine in-process result (engine-side
             // result.steps() is reliably populated, unlike a client-side reconstruction).

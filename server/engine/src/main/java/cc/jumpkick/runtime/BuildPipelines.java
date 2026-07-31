@@ -2256,7 +2256,11 @@ public final class BuildPipelines {
                             testResDirs,
                             in.lockFile(),
                             testRtCp,
-                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build().testEnv()));
+                            testStampExtras(
+                                    workerJars,
+                                    effectiveSel,
+                                    projectUnderTest.build().testEnv(),
+                                    in.dir()));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -4141,7 +4145,8 @@ public final class BuildPipelines {
         return testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
-                project.build().testEnv());
+                project.build().testEnv(),
+                dir);
     }
 
     /**
@@ -4179,15 +4184,65 @@ public final class BuildPipelines {
             Map<String, String> workerJars,
             cc.jumpkick.config.TestSelection selection,
             Map<String, String> testEnv) {
+        return testStampExtras(workerJars, selection, testEnv, cc.jumpkick.config.SecretRedactor.none(), null);
+    }
+
+    /**
+     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}
+     * (JK-1267 / JK-1274).
+     */
+    static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            cc.jumpkick.config.TestSelection selection,
+            Map<String, String> testEnv,
+            Path moduleDir) {
+        cc.jumpkick.config.EnvLookup lookup =
+                moduleDir == null
+                        ? null
+                        : cc.jumpkick.config.BuildEnv.lookupFor(moduleDir);
+        cc.jumpkick.config.SecretRedactor redactor =
+                lookup == null
+                        ? cc.jumpkick.config.SecretRedactor.none()
+                        : cc.jumpkick.config.SecretRedactor.from(lookup);
+        return testStampExtras(workerJars, selection, testEnv, redactor, lookup);
+    }
+
+    /**
+     * Stamp extras. Declared {@code [test] env} values only (sandbox defaults stay out — they are
+     * absolute paths that would defeat cache sharing). Environment references expand through
+     * {@code lookup}; a {@code .env}-sourced value is hashed into the key, never written verbatim
+     * (JK-1274).
+     */
+    static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            cc.jumpkick.config.TestSelection selection,
+            Map<String, String> testEnv,
+            cc.jumpkick.config.SecretRedactor redactor,
+            cc.jumpkick.config.EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
         // Suite + tag filters are part of the outcome (JK-1134/1135).
         if (selection != null) extras.add("sel:" + selection.identityToken());
-        // [test] env changes what the suite sees, so it must retest (JK-1267). Declared values only:
-        // the sandbox defaults derive from the module's own target dir, so they add nothing but
-        // absolute paths that would differ per checkout and defeat the cache.
+        // [test] env changes what the suite sees, so it must retest (JK-1267).
+        cc.jumpkick.config.SecretRedactor secrets =
+                redactor == null ? cc.jumpkick.config.SecretRedactor.none() : redactor;
         for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
-            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+            String raw = e.getValue() == null ? "" : e.getValue();
+            String expanded = raw;
+            if (lookup != null && raw.indexOf('$') >= 0) {
+                // Expand ${VAR} for cache identity, but leave ${target}/${module} as tokens so
+                // the key stays portable across checkouts (same instinct as the sandbox defaults).
+                try {
+                    expanded = cc.jumpkick.config.Interpolation.expand(raw, "[test].env." + e.getKey(), var -> {
+                        if ("target".equals(var) || "module".equals(var)) return "${" + var + "}";
+                        return lookup.get(var);
+                    });
+                } catch (cc.jumpkick.config.JkBuildParseException ex) {
+                    // Unset var — keep the raw text so a broken reference still changes the key.
+                    expanded = raw;
+                }
+            }
+            extras.add("test-env:" + e.getKey() + "=" + secrets.forCacheKey(expanded));
         }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {

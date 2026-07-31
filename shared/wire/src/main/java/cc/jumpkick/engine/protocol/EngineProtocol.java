@@ -62,6 +62,21 @@ public final class EngineProtocol {
     public static final String BUILD_CANCEL = "build-cancel";
 
     /**
+     * Client → server (any connection): cancel a live job by {@code jid} (or {@code requestId}
+     * alias). Terminal: {@link #CANCEL_ACK} (JK-1252).
+     */
+    public static final String CANCEL_REQUEST = "cancel-request";
+
+    /** Server → client: outcome of {@link #CANCEL_REQUEST}. */
+    public static final String CANCEL_ACK = "cancel-ack";
+
+    /**
+     * Server → client: job admitted; carries {@code jid} (and {@code requestId} alias), kind, dir,
+     * optional {@code buildNumber}. Clients track this for Ctrl-C / {@code jk cancel} (JK-1252).
+     */
+    public static final String JOB_START = "job-start";
+
+    /**
      * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst —
      * lock freshen, graph, prepare-module, etc.
      */
@@ -2320,7 +2335,49 @@ public final class EngineProtocol {
                 + buildNumber
                 + ",\"requestId\":"
                 + holderRequestId
+                + ",\"jid\":"
+                + holderRequestId
                 + "}";
+    }
+
+    /** {@link #JOB_START}: job admitted — {@code jid} is the public cancel handle (JK-1252). */
+    public static String jobStart(long jid, String kind, String dir, long buildNumber) {
+        StringBuilder b = new StringBuilder("{\"type\":\"")
+                .append(JOB_START)
+                .append("\",\"jid\":")
+                .append(jid)
+                .append(",\"requestId\":")
+                .append(jid)
+                .append(",\"kind\":")
+                .append(Jsonl.quote(kind == null ? "" : kind))
+                .append(",\"dir\":")
+                .append(Jsonl.quote(dir == null ? "" : dir));
+        if (buildNumber > 0) b.append(",\"buildNumber\":").append(buildNumber);
+        return b.append('}').toString();
+    }
+
+    /** {@link #CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
+    public static String cancelRequest(long jid) {
+        return "{\"type\":\"" + CANCEL_REQUEST + "\",\"jid\":" + jid + ",\"requestId\":" + jid + "}";
+    }
+
+    /** {@link #CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
+    public static String cancelRequestForDir(String dir) {
+        return "{\"type\":\"" + CANCEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir == null ? "" : dir) + "}";
+    }
+
+    /** {@link #CANCEL_ACK}. */
+    public static String cancelAck(long jid, boolean cancelled, String note) {
+        StringBuilder b = new StringBuilder("{\"type\":\"")
+                .append(CANCEL_ACK)
+                .append("\",\"jid\":")
+                .append(jid)
+                .append(",\"requestId\":")
+                .append(jid)
+                .append(",\"cancelled\":")
+                .append(cancelled);
+        if (note != null && !note.isBlank()) b.append(",\"note\":").append(Jsonl.quote(note));
+        return b.append('}').toString();
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */

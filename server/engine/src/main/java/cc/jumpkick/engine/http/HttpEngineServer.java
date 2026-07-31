@@ -132,6 +132,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/log", this::handleLog);
         api.register("GET", "/api/fs", this::handleFs);
         api.register("POST", "/api/build", this::handleBuild);
+        api.register("POST", "/api/cancel", this::handleCancel);
         api.register("GET", "/api/history", this::handleHistory);
         api.register("GET", "/api/history/artifact", this::handleHistoryArtifact);
         api.register("DELETE", "/api/history", this::handleHistoryDelete);
@@ -706,7 +707,35 @@ public final class HttpEngineServer implements AutoCloseable {
                 202,
                 JsonOut.object()
                         .put("requestId", requestId)
+                        .put("jid", requestId)
                         .put("events", "/api/events")
+                        .toString());
+    }
+
+    /**
+     * {@code POST /api/cancel} — body {@code {"jid":N}} or {@code {"requestId":N}} (alias). Same kill
+     * path as MCP {@code jk_cancel} / JSONL {@code cancel-request} (JK-1252).
+     */
+    private void handleCancel(HttpExchange exchange) throws IOException {
+        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        long jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "jid", -1);
+        if (jid < 0) jid = cc.jumpkick.plugin.protocol.Jsonl.longValue(body, "requestId", -1);
+        if (jid < 0) {
+            sendJson(
+                    exchange,
+                    400,
+                    JsonOut.object().put("error", "missing \"jid\" (or requestId)").toString());
+            return;
+        }
+        boolean ok = jobs.cancel(jid);
+        sendJson(
+                exchange,
+                ok ? 200 : 404,
+                JsonOut.object()
+                        .put("jid", jid)
+                        .put("requestId", jid)
+                        .put("cancelled", ok)
+                        .put("note", ok ? "" : "unknown or already finished jid")
                         .toString());
     }
 

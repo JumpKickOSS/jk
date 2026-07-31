@@ -33,8 +33,9 @@ import java.util.function.UnaryOperator;
  *
  * <h2>Secrets</h2>
  *
- * A {@code .env} is where tokens live, so {@link #isFromFile} lets callers treat file-sourced values
- * as secret — redacted in output, and never written into a cache key verbatim.
+ * A {@code .env} is where tokens live, so {@link #isFromFile} / {@link #secretValues} identify
+ * file-sourced values. {@link SecretRedactor#from(EnvLookup)} masks them in free-form text (JSONL,
+ * journal, errors) and hashes them for cache keys (JK-1274).
  */
 public final class EnvLookup {
 
@@ -92,6 +93,20 @@ public final class EnvLookup {
     /** Every name a {@code .env} file contributed, whether or not the real environment shadows it. */
     public java.util.Set<String> fileNames() {
         return fromFiles.keySet();
+    }
+
+    /**
+     * Effective values that came from a {@code .env} file (JK-1274). Empty / null values are
+     * skipped. Use {@link SecretRedactor#from(EnvLookup)} for redaction and cache-key hashing.
+     */
+    public java.util.Set<String> secretValues() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (String name : fromFiles.keySet()) {
+            if (!isFromFile(name)) continue;
+            String v = fromFiles.get(name);
+            if (v != null && !v.isEmpty()) out.add(v);
+        }
+        return java.util.Set.copyOf(out);
     }
 
     private static Optional<Path> workspaceRoot(Path moduleDir) {

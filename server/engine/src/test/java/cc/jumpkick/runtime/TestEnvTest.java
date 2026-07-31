@@ -8,6 +8,7 @@ import cc.jumpkick.layout.BuildLayout;
 import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -93,6 +94,26 @@ class TestEnvTest {
         assertThat(BuildPipelines.testStampExtras(tmp, before))
                 .isNotEqualTo(BuildPipelines.testStampExtras(tmp, after));
         assertThat(BuildPipelines.testStampExtras(tmp, before)).contains("test-env:MODE=a");
+    }
+
+    @Test
+    void env_sourced_secret_is_hashed_into_the_test_stamp_not_written_verbatim(@TempDir Path tmp)
+            throws Exception {
+        // JK-1274: a .env value that participates in the stamp key must be hashed, never literal.
+        String secret = "jk-1274-unique-secret-token-xyz";
+        Files.writeString(tmp.resolve(".env"), "TOKEN=" + secret + "\n");
+        JkBuild project = project(tmp, "[test]\nenv = { API_KEY = \"${TOKEN}\" }\n");
+
+        List<String> extras = BuildPipelines.testStampExtras(tmp, project);
+        assertThat(extras).noneMatch(s -> s.contains(secret));
+        assertThat(extras)
+                .anyMatch(s -> s.startsWith("test-env:API_KEY=" + cc.jumpkick.config.SecretRedactor.KEY_PREFIX));
+
+        // A different secret must retest (different digest).
+        Files.writeString(tmp.resolve(".env"), "TOKEN=other-secret-value\n");
+        List<String> after = BuildPipelines.testStampExtras(tmp, project);
+        assertThat(after).isNotEqualTo(extras);
+        assertThat(after).noneMatch(s -> s.contains("other-secret-value"));
     }
 
     private static JkBuild project(Path dir, String extra) throws Exception {
