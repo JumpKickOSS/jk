@@ -361,12 +361,22 @@ public final class PreflightMemo {
             feed(md, "entry");
             feed(md, "rootSources=" + (CompileSupport.hasSources(root) ? "1" : "0"));
             feedFile(md, root.resolve("jk.toml"));
-            feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(root));
+            Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root).toAbsolutePath().normalize();
+            feedFile(md, rootLock);
             for (Path dir : unitDirs) {
                 Path d = dir.toAbsolutePath().normalize();
                 feed(md, relKey(root, d));
                 feedFile(md, d.resolve("jk.toml"));
-                feedFile(md, cc.jumpkick.lock.LockPaths.lockFile(d));
+                // Every workspace member resolves to the single root lock — already digested
+                // above; re-reading a monorepo-sized lock once per module scaled the key cost by
+                // modules × lock size (JK-1320). A marker keeps the structural position; a module
+                // with a genuinely distinct lock (standalone unit) still digests its own.
+                Path lock = cc.jumpkick.lock.LockPaths.lockFile(d).toAbsolutePath().normalize();
+                if (lock.equals(rootLock)) {
+                    feed(md, "lock=root");
+                } else {
+                    feedFile(md, lock);
+                }
             }
             return HexFormat.of().formatHex(md.digest());
         } catch (Exception e) {
