@@ -53,6 +53,10 @@ public final class SecretRedactor {
      * Build a redactor from an {@link EnvLookup}: every effective value that came from a
      * {@code .env} file (not the real environment).
      */
+    /** Redactors are immutable; memo by value-set so per-line redaction reuses one (JK-1308). */
+    private static final java.util.concurrent.ConcurrentHashMap<Set<String>, SecretRedactor> MEMO =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     public static SecretRedactor from(EnvLookup env) {
         Objects.requireNonNull(env, "env");
         Set<String> values = new LinkedHashSet<>();
@@ -61,7 +65,9 @@ public final class SecretRedactor {
             String v = env.get(name);
             if (v != null && !v.isEmpty()) values.add(v);
         }
-        return of(values);
+        if (values.isEmpty()) return NONE;
+        if (MEMO.size() > 64) MEMO.clear(); // a handful of .env sets per engine; crude bound is fine
+        return MEMO.computeIfAbsent(Set.copyOf(values), SecretRedactor::of);
     }
 
     /** Build a redactor from an explicit set of secret values (tests, side-channel secrets). */

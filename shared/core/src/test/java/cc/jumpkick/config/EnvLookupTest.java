@@ -44,6 +44,35 @@ class EnvLookupTest {
     }
 
     @Test
+    void an_edited_env_file_is_picked_up_despite_the_read_memo(@TempDir Path tmp) throws Exception {
+        Path module = workspace(tmp);
+        Files.writeString(module.resolve(".env"), "TOKEN=first\n");
+        assertThat(EnvLookup.forModule(module, name -> null).get("TOKEN")).isEqualTo("first");
+
+        // Redaction resolves per output line, so reads are memoized (JK-1308) — but an edit
+        // (new size/mtime) must invalidate.
+        Files.writeString(module.resolve(".env"), "TOKEN=second-longer\n");
+        Files.setLastModifiedTime(
+                module.resolve(".env"),
+                java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 2_000));
+
+        assertThat(EnvLookup.forModule(module, name -> null).get("TOKEN")).isEqualTo("second-longer");
+    }
+
+    @Test
+    void repeated_lookups_reuse_one_redactor_instance(@TempDir Path tmp) throws Exception {
+        Path module = workspace(tmp);
+        Files.writeString(module.resolve(".env"), "SECRET=hunter2-hunter2\n");
+
+        var first = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
+        var second = SecretRedactor.from(EnvLookup.forModule(module, name -> null));
+
+        // Same value set → same memoized instance: per-line redaction must not rebuild (JK-1308).
+        assertThat(second).isSameAs(first);
+        assertThat(first.redact("token is hunter2-hunter2")).doesNotContain("hunter2");
+    }
+
+    @Test
     void the_module_env_beats_the_workspace_env(@TempDir Path tmp) throws Exception {
         Path module = workspace(tmp);
         Files.writeString(tmp.resolve(".env"), "SHARED=from-workspace\nONLY_WS=ws\n");

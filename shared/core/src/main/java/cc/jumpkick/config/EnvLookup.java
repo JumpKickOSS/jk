@@ -60,10 +60,39 @@ public final class EnvLookup {
     public static EnvLookup forModule(Path moduleDir, UnaryOperator<String> realEnv) {
         Map<String, String> layered = new LinkedHashMap<>();
         workspaceRoot(moduleDir).ifPresent(root -> {
-            if (!root.equals(moduleDir)) layered.putAll(DotEnv.read(root.resolve(FILE_NAME)));
+            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(FILE_NAME)));
         });
-        layered.putAll(DotEnv.read(moduleDir.resolve(FILE_NAME))); // module wins over workspace
+        layered.putAll(readCached(moduleDir.resolve(FILE_NAME))); // module wins over workspace
         return new EnvLookup(layered, realEnv);
+    }
+
+    /** One cached {@code .env} parse, invalidated by (size, mtime). */
+    private record CachedEnv(long size, long mtime, Map<String, String> values) {}
+
+    private static final java.util.concurrent.ConcurrentHashMap<Path, CachedEnv> READ_MEMO =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * {@link DotEnv#read} behind a freshness memo. Redaction resolves the lookup for every output
+     * line that leaves the engine (JK-1274), so an uncached read here is two file reads per line of
+     * build output (JK-1308). A missing file costs one stat and is never cached.
+     */
+    private static Map<String, String> readCached(Path file) {
+        Path key = file.toAbsolutePath().normalize();
+        try {
+            var attrs = java.nio.file.Files.readAttributes(
+                    key, java.nio.file.attribute.BasicFileAttributes.class);
+            long size = attrs.size();
+            long mtime = attrs.lastModifiedTime().toMillis();
+            CachedEnv hit = READ_MEMO.get(key);
+            if (hit != null && hit.size() == size && hit.mtime() == mtime) return hit.values();
+            Map<String, String> parsed = DotEnv.read(key);
+            if (READ_MEMO.size() > 256) READ_MEMO.clear(); // tiny working set; crude bound is fine
+            READ_MEMO.put(key, new CachedEnv(size, mtime, parsed));
+            return parsed;
+        } catch (java.io.IOException e) {
+            return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
+        }
     }
 
     /** A lookup over {@code .env} values only — for tests and for callers with no real environment. */
