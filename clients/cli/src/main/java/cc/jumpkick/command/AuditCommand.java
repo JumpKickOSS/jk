@@ -55,12 +55,20 @@ public final class AuditCommand implements CliCommand {
         this.osvVulnsUrl = in.value("osv-vulns-url").map(java.net.URI::create).orElse(null);
         String severity = in.value("severity").orElse("LOW");
         Path projectDir = global.workingDir();
+        if (!Files.exists(projectDir.resolve("jk.toml"))) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Audit", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)));
+            return Exit.CONFIG;
+        }
+        int lockCode =
+                cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, JkDirs.cache(), global, "Audit");
+        if (lockCode != 0) return lockCode;
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Audit",
                     "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)
-                            + " (run `jk lock` first)."));
+                            + " (lock refresh did not produce one)."));
             return Exit.CONFIG;
         }
         if (global.offline) {

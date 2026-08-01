@@ -147,8 +147,20 @@ public final class LockfileReader {
                         t.getString("layout")));
             }
         }
+        String manifestsSha = result.getString("manifests-sha256"); // optional, additive v1
+        if (manifestsSha != null && manifestsSha.isBlank()) manifestsSha = null;
         return new Lockfile(
-                lockVersion, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jkPin);
+                lockVersion,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jkPin,
+                manifestsSha);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {

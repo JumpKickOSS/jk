@@ -14,6 +14,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.resolver.DependencyTree;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,15 +79,18 @@ public final class TreeCommand implements CliCommand {
             }
             scopes = new ArrayList<>(ordered);
         }
-        Path dir = new GlobalOptions().workingDir();
+        GlobalOptions global = GlobalOptions.from(in);
+        Path dir = global.workingDir();
         var proj = ProjectContext.require(dir, "tree").orElse(null);
         if (proj == null) return Exit.CONFIG;
-        Path buildFile = proj.buildFile();
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Tree");
+        if (lockCode != 0) return lockCode;
         Path lockFile = proj.lockFile();
-        if (!proj.isLocked()) {
+        if (!Files.isRegularFile(lockFile)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Tree",
-                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
+                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                            + " (lock refresh did not produce one)"));
             return Exit.CONFIG;
         }
 

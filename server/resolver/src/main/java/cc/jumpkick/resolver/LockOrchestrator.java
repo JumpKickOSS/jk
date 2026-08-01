@@ -249,6 +249,7 @@ public final class LockOrchestrator {
             ResolveObserver observer,
             Map<String, String> lockedVersionPrefs)
             throws IOException, InterruptedException {
+        long lockStartNanos = System.nanoTime();
 
         Set<String> activated = project.features().activate(new LinkedHashSet<>(featuresRequested), withDefaults);
 
@@ -338,6 +339,7 @@ public final class LockOrchestrator {
         observer.onPhase("Resolving dependency graph…");
 
         // live graph ticks during PubGrub decisions (not only post-scope).
+        long graphStartNanos = System.nanoTime();
         Set<String> graphSeen = new LinkedHashSet<>();
         Resolution mainResolution = resolveGroup(
                 mainRoots,
@@ -369,11 +371,13 @@ public final class LockOrchestrator {
                 graphSeen,
                 estimate);
         noteGraph(observer, processorResolution, graphSeen, estimate);
+        long graphMs = (System.nanoTime() - graphStartNanos) / 1_000_000L;
 
         int uniquePackages = graphSeen.size() + fileDeps.size();
         // Exact remaining budget for jar materialization (+ any under-estimated graph ticks).
         observer.onTotal(Math.max(estimate * 2, graphSeen.size() + uniquePackages));
         observer.onPhase("Downloading " + uniquePackages + " artifacts…");
+        long materializeStartNanos = System.nanoTime();
 
         Map<String, EnumSet<Scope>> mainTags = tagScopes(project, mainResolution, MAIN_SCOPES, false);
         Map<String, EnumSet<Scope>> testTags = tagScopes(project, testResolution, TEST_SCOPES, true);
@@ -487,6 +491,16 @@ public final class LockOrchestrator {
                     new ArrayList<>(tags),
                     List.of(),
                     null));
+        }
+        long materializeMs = (System.nanoTime() - materializeStartNanos) / 1_000_000L;
+        long totalMs = (System.nanoTime() - lockStartNanos) / 1_000_000L;
+        // Host-wide atomized priors (every successful lock across every project).
+        try {
+            int graphPkgs = Math.max(1, graphSeen.size());
+            int matPkgs = Math.max(1, packages.size());
+            cc.jumpkick.cache.LockTimings.record(graphMs, graphPkgs, materializeMs, matPkgs, totalMs);
+        } catch (RuntimeException ignored) {
+            // advisory — never fail a lock over metrics I/O
         }
 
         return new Lockfile(Lockfile.CURRENT_VERSION, "jk " + jkVersion, Lockfile.RESOLUTION_ALGORITHM, packages);

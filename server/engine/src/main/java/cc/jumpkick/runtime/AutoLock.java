@@ -17,11 +17,8 @@ import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.task.AccessLedger;
-import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -48,19 +45,12 @@ public final class AutoLock {
     private AutoLock() {}
 
     /**
-     * Returns {@code true} when {@code jk.toml} has a newer modification time than {@code jk-lock.toml}.
-     * Both files must exist; any I/O error returns {@code false} (fail-open: assume up-to-date).
+     * Returns {@code true} when the lock no longer matches its manifests (content digest), or the
+     * lock lacks a valid {@code manifests-sha256} (always re-lock). See
+     * {@link cc.jumpkick.lock.LockFreshness#isStale}.
      */
     public static boolean isStale(Path dir, Path lockFile) {
-        try {
-            Path buildFile = dir.resolve("jk.toml");
-            if (!Files.exists(buildFile) || !Files.exists(lockFile)) return false;
-            FileTime tomlTime = Files.getLastModifiedTime(buildFile);
-            FileTime lockTime = Files.getLastModifiedTime(lockFile);
-            return tomlTime.compareTo(lockTime) > 0;
-        } catch (IOException e) {
-            return false;
-        }
+        return cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile);
     }
 
     /**

@@ -63,6 +63,13 @@ public final class IdeSupport {
             throw new IdeException(2, "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(startDir));
         }
 
+        // Fresh lock before sync/model — IDE files must match current manifests.
+        // EnsureFreshLock already printed any failure; rethrow without a second wedge line.
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(syncRoot(startDir), cache, global, "IDE");
+        if (lockCode != 0) {
+            throw new IdeException(lockCode, null);
+        }
+
         // Bring the CAS in line with the lockfiles up front (one sync-request covers the workspace
         // cascade, rendered here), then fetch the wire model from the engine.
         hostedBestEffortSync(syncRoot(startDir), cache, jdksDir, global);

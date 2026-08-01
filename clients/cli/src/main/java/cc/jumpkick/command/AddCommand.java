@@ -158,9 +158,11 @@ public final class AddCommand implements CliCommand {
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan()));
         CliOutput.out();
-        CliOutput.out("Run "
+        CliOutput.out("The next "
+                + Theme.colorize("jk build", Theme.active().warning())
+                + " / "
                 + Theme.colorize("jk lock", Theme.active().warning())
-                + " to lock your dependencies to hard versions");
+                + " will pin versions automatically");
         return 0;
     }
 
@@ -369,9 +371,11 @@ public final class AddCommand implements CliCommand {
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan()));
         CliOutput.out();
-        CliOutput.out("Run "
+        CliOutput.out("The next "
+                + Theme.colorize("jk build", Theme.active().warning())
+                + " / "
                 + Theme.colorize("jk lock", Theme.active().warning())
-                + " to lock your dependencies to hard versions");
+                + " will pin versions automatically");
         return 0;
     }
 

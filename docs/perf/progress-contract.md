@@ -47,6 +47,12 @@ cold host — that prices every `run-tests` as suite-startup only and yields a ~
 to a multi-minute explain. The initial countdown figure must match the explain estimate even when
 that figure is imperfect.
 
+**Same lock first.** `jk explain` and other lock-dependent read commands refresh a missing/stale
+lock before forecasting. Staleness is content-addressed (`manifests-sha256` vs live digests of every
+`jk.toml` that feeds the lock). Locks without a valid digest are always stale (one re-lock stamps
+them). That gives explain and build an identical dirty set. The engine emits remaining-work ETAs;
+the CLI seeds the clock as `elapsed + remaining` so preflight/lock time is not double-counted.
+
 1. **Compose from dirty steps.** For each dirty module, sum measured walls of steps that will run
    (`BuildMetrics` step `ok` averages preferred; residual `StepTimings` / static only when cold,
    scaled by unit counts). Fully-cached modules contribute 0. A cached phase (e.g. compile
@@ -94,7 +100,8 @@ cancel also flips `PipelineResult.userCancelled` when the pipeline can finish co
 | `StepTimings` rates | Successful non-cancelled module pipelines only |
 | Host ms/method prior | Successful `run-tests` suites (`__host__/test-method-ms`) |
 | Continuous host rates | Successful builds → `calibration.toml` `learned-*` trimmed means |
-| `FetchTimings` | Successful remote CAS-miss downloads only (trimmed mean, drop top/bottom 10%) |
+| `FetchTimings` | Successful remote CAS-miss jar downloads only (trimmed mean, drop top/bottom 10%) |
+| `LockTimings` | Successful locks: graph-ms/package, materialize-ms/package, fixed overhead (trimmed means); every project trains the host |
 
 Failed steps still land in the `failed` bucket for diagnostics; they never contribute to `ok`
 averages. Cold modules without local rates fall back to project/host medians, then host absolute
@@ -128,11 +135,25 @@ over baselines when present. Stored in `~/.jk/state/builds/calibration.toml` (su
 | `hash-cpu-ms` | 8 MiB SHA-256 (CPU-bound, CAS-like) — CPU scale |
 | `junit-fork-ms` / `junit-run-ms` | Synthetic test-worker JVM + known body work |
 | `junit-platform-ms` | Real JUnit Platform Launcher + trivial `@Test`s — fork scale |
-| `resolve-ms` | HTTP GET of a tiny Central artifact (skipped under `--offline`) |
+| `resolve-ms` | HTTP GET of a tiny Central artifact (network RTT scale only — **not** a full PubGrub lock) |
 | `probe-test-*-ms` / `probe-compile-per-source-ms` | Diagnostic residuals only (not absolute cold ETA) |
 | `learned-*` sample rings | Continuous host rates from real builds (trimmed mean) |
 | `engine-cold-start-ms` | Client-timed cold engine spawn (`jk engine calibrate`) |
 | `ms-per-weight` | Diagnostic host anchor (not the primary ETA scale) |
+
+**Lock ETA is size-aware, not a single whole-lock average.** Bootstrap calibration does **not** run
+PubGrub or lock a real project — only a micro HTTP probe (`resolve-ms`) for network scale. Real lock
+learning is continuous: every successful `jk lock` / auto-freshen / conservative re-lock records
+atomized rates into `~/.jk/state/builds/lock-timings.toml`. Estimate:
+
+```
+overhead + packages × graph_per_package + packages × materialize_per_package
+```
+
+`packages` comes from the existing lock when present, else `declared_roots × ~10`. A 200-dep graph
+and a 2-dep graph therefore scale differently; a workspace union of hundreds of modules uses the
+merged package count (one lock), not `modules × deps`. Remote jar misses additionally train
+`FetchTimings` (absolute download walls).
 
 **Triggers:** `Calibration.ensure` at the start of every explain/build ETA assembly (no-op when a
 current measured file exists), or explicit `jk engine calibrate [--force]`. Network is **on by

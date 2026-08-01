@@ -120,7 +120,10 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 
 ## Lockfile
 
-`jk-lock.toml` is **canonical**. Commit it.
+`jk-lock.toml` is **canonical**. Commit it. Day-to-day you should not think about it: any
+command that needs a current lock (build, explain, status, tree, sync, export, ide, …)
+auto-refreshes when the lock is missing or out of sync with manifests. Explicit `jk lock` /
+`jk update` remain for intentional re-resolve workflows.
 
 | Command | Role |
 |---|---|
@@ -680,9 +683,11 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 
 ### Why did this rebuild?
 
-Use **`jk explain`** (alias **`why-rebuilt`**) — offline, no network. It forecasts cache
-hit/miss per module and step (sources changed, dependency changed, options/classpath, lock
-stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
+Use **`jk explain`** (alias **`why-rebuilt`**). It forecasts cache hit/miss per module and
+step (sources changed, dependency changed, options/classpath). When the lock is missing or
+stale it refreshes it first (same as `jk build`) so the plan and ETA match the live build
+countdown; a CommandWedge spinner shows while locking. Prefer this over Gradle build scans
+for day-to-day rebuild questions.
 
 ```bash
 jk explain                   # full plan: cached vs rebuild sections + ETA

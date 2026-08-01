@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.cache;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+import org.junit.jupiter.api.Test;
+
+class LockTimingsTest {
+
+    @Test
+    void trimmed_mean_drops_deciles() {
+        List<Long> samples = java.util.stream.LongStream.rangeClosed(1, 10)
+                .boxed()
+                .toList();
+        assertThat(LockTimings.trimmedMean(samples)).isEqualTo(5);
+    }
+
+    @Test
+    void estimate_scales_with_package_count() {
+        // Pure composition from cold defaults — larger graphs cost more.
+        long small = LockTimings.estimateMillis(2, 10);
+        long large = LockTimings.estimateMillis(50, 400);
+        assertThat(large).isGreaterThan(small);
+        assertThat(small).isGreaterThanOrEqualTo(200);
+    }
+
+    @Test
+    void estimate_uses_known_packages_over_declared_expansion() {
+        // knownPackages=5 should not expand declared*10.
+        long withKnown = LockTimings.estimateMillis(100, 5);
+        long withoutKnown = LockTimings.estimateMillis(100, 0);
+        assertThat(withoutKnown).isGreaterThan(withKnown);
+    }
+
+    @Test
+    void record_persists_atomized_rates() {
+        LockTimings.clearMemo();
+        // graph 1000ms / 10 pkgs = 100; mat 200ms / 10 = 20; total 1500 → overhead 300
+        LockTimings.record(1000, 10, 200, 10, 1500);
+        assertThat(LockTimings.graphPerPackageMs()).isEqualTo(100);
+        assertThat(LockTimings.materializePerPackageMs()).isEqualTo(20);
+        assertThat(LockTimings.overheadMs()).isEqualTo(300);
+        assertThat(java.nio.file.Files.isRegularFile(LockTimings.defaultFile())).isTrue();
+    }
+}

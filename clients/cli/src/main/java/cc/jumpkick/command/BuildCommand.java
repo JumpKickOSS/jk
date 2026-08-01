@@ -564,10 +564,10 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public void onEtaEstimate(long millis) {
-                    // Seed only (early + post-prepare). Engine no longer re-projects mid-execute;
-                    // CommandManager locks after the first module finishes so the clock stays pure
-                    // wall-clock for the whole command.
-                    view.setEtaEstimate(millis);
+                    // Engine reports remaining work (post-lock dirty schedule — same figure as
+                    // `jk explain`). Convert to run-wide total so preflight/lock elapsed is not
+                    // double-counted and the countdown finishes near 0 when the estimate holds.
+                    view.setRemainingWorkEstimate(millis);
                 }
 
                 @Override

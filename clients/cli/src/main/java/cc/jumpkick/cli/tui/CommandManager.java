@@ -306,9 +306,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the header clock with the total predicted build wall-clock (the same figure {@code jk
-     * explain} reports). The clock is <em>run-wide</em> and pure wall-clock from {@link
-     * #pipeline(PrintStream, String, boolean) construction}:
+     * Seed the header clock with the total predicted build wall-clock from command start. The clock
+     * is <em>run-wide</em> pure wall-clock from {@link #pipeline(PrintStream, String, boolean)
+     * construction}:
      *
      * <ul>
      * <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
@@ -319,6 +319,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
      * execute has completed any module, further updates are ignored so mid-build re-projections
      * cannot jump the countdown or reset count-up at module boundaries.
+     *
+     * <p>Prefer {@link #setRemainingWorkEstimate} when the engine reports work still to do after
+     * elapsed preflight (lock/graph) — that keeps the explain figure and the live countdown equal.
      */
     public void setEtaEstimate(long totalMillis) {
         synchronized (lock) {
@@ -331,11 +334,27 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
+    /**
+     * Seed from a <em>remaining-work</em> estimate (what {@code jk explain} prints after lock).
+     * Converts to a run-wide total: {@code elapsed + remaining} so lock/preflight time already spent
+     * is not subtracted twice and the countdown ends near zero when the estimate is accurate.
+     */
+    public void setRemainingWorkEstimate(long remainingMillis) {
+        long rem = Math.max(0, remainingMillis);
+        if (rem == 0) return;
+        setEtaEstimate(elapsedMillis() + rem);
+    }
+
     /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */
     public long etaEstimateMs() {
         synchronized (lock) {
             return etaEstimateMs;
         }
+    }
+
+    /** Wall-clock ms since this manager was constructed (run-wide). */
+    public long elapsedMillisPublic() {
+        return elapsedMillis();
     }
 
     /**

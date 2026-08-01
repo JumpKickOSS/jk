@@ -63,8 +63,12 @@ public final class BuildService {
     public static LockGuard ensureWorkspaceLockFresh(Path root, JkBuild rootBuild, Path cache) {
         Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root);
         if (!workspaceLockStale(root, rootBuild, rootLock)) return LockGuard.OK;
+        long t0 = System.nanoTime();
         try {
             LockFlow.Result r = LockFlow.run(root, cache, List.of(), true, null);
+            if (r.status() == 0) {
+                recordLockSuccess(root, (System.nanoTime() - t0) / 1_000_000L);
+            }
             return r.status() != 0 ? new LockGuard(r.status(), r.error()) : LockGuard.OK;
         } catch (UnsatisfiableException e) {
             return new LockGuard(6, e.getMessage());
@@ -74,19 +78,81 @@ public final class BuildService {
     }
 
     /**
+     * Remaining-work estimate for a workspace re-lock (ms). Composes host atomized rates from
+     * {@link cc.jumpkick.cache.LockTimings} (graph/materialize per package + fixed overhead) scaled by
+     * this project's known package count or declared roots. Project-specific whole-lock history is a
+     * soft clamp only when the composed figure is absurdly low vs a stable prior of similar size.
+     * Never 0 when a re-lock is needed (avoids pure count-up).
+     */
+    static long estimateLockMillis(Path entryDir, Path cache) {
+        int packages = 0;
+        int declared = 0;
+        try {
+            Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
+            if (Files.isRegularFile(lockFile)) {
+                packages = cc.jumpkick.lock.LockfileReader.read(lockFile).artifacts().size();
+            }
+        } catch (Exception ignored) {
+            // unknown package count
+        }
+        try {
+            if (entryDir != null) {
+                Path toml = entryDir.resolve("jk.toml");
+                if (Files.isRegularFile(toml)) {
+                    JkBuild b = JkBuildParser.parseLocal(toml);
+                    // Workspace root: merge is done at lock time; package count from the existing
+                    // root lock (above) is the best size signal. Declared roots = rough cold seed.
+                    for (var scope : cc.jumpkick.model.Scope.values()) {
+                        if (scope == cc.jumpkick.model.Scope.PLATFORM) continue;
+                        declared += b.dependencies().of(scope).size();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // unknown declared count
+        }
+        long composed = cc.jumpkick.cache.LockTimings.estimateMillis(declared, packages);
+        // Soft floor from this project's prior whole-lock walls (same dir) — only when composition
+        // under-shoots a stable measured average by a wide margin (never pull a large monorepo down).
+        try {
+            String dir = entryDir == null ? "" : entryDir.toAbsolutePath().normalize().toString();
+            BuildMetrics.Stats hist = BuildMetrics.load(BuildMetrics.defaultFile())
+                    .invocation("lock", dir)
+                    .map(BuildMetrics.Entry::ok)
+                    .orElse(BuildMetrics.Stats.EMPTY);
+            if (hist.count() >= 2 && hist.avgMillis() > composed * 2) {
+                // Prefer composition for size-aware ETA; only lift when history says we routinely
+                // take much longer (e.g. cold-ish CAS on this host for this graph).
+                composed = Math.round(0.35 * hist.avgMillis() + 0.65 * composed);
+            }
+        } catch (RuntimeException ignored) {
+            // ignore
+        }
+        return Math.max(200, composed);
+    }
+
+    /** Fold a successful lock wall into BuildMetrics under kind {@code lock} (project tier). */
+    private static void recordLockSuccess(Path entryDir, long millis) {
+        if (millis <= 0 || entryDir == null) return;
+        try {
+            String dir = entryDir.toAbsolutePath().normalize().toString();
+            BuildMetrics.record(
+                    BuildMetrics.defaultFile(),
+                    new BuildMetrics.Outcome("lock", dir, null, true, false, millis, List.of()),
+                    System.currentTimeMillis());
+        } catch (Exception ignored) {
+            // never fail a build over metrics I/O
+        }
+    }
+
+    /**
      * True when {@code rootLock} is absent or older than the root manifest or any declared member
      * manifest — i.e. the merged workspace lock no longer reflects the manifests it was derived from.
      */
     public static boolean workspaceLockStale(Path root, JkBuild rootBuild, Path rootLock) {
-        if (!Files.exists(rootLock)) return true;
-        if (AutoLock.isStale(root, rootLock)) return true; // root jk.toml newer than the lock
-        if (rootBuild.workspace() != null) {
-            for (String module : rootBuild.workspace().modules()) {
-                Path moduleDir = root.resolve(module).normalize();
-                if (AutoLock.isStale(moduleDir, rootLock)) return true; // a member manifest is newer
-            }
-        }
-        return false;
+        // rootBuild is unused for the check — member list comes from the live root manifest inside
+        // LockFreshness (digest-aware, clone-safe). Kept on the signature for call-site compat.
+        return cc.jumpkick.lock.LockFreshness.workspaceLockStale(root, rootLock);
     }
 
     // =========================================================================
@@ -434,7 +500,20 @@ public final class BuildService {
         // Re-lock when the workspace lock is stale so unsatisfiable deps fail here instead of
         // a false "all up to date" from per-module forecasts. Soft I/O failures don't block.
         if (req.freshenLock()) {
-            listener.onPreflight("lock", 0, 0, "Refreshing workspace lock…");
+            Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(req.entryDir());
+            boolean lockStale = workspaceLockStale(req.entryDir(), req.entryBuild(), rootLock);
+            if (lockStale) {
+                // Countdown during lock: price lock + a coarse remaining-build prior so the TUI
+                // does not pure count-up for the whole re-lock window. Remaining-work semantics —
+                // the CLI converts via elapsed + remaining after each onEtaEstimate.
+                long lockEta = estimateLockMillis(req.entryDir(), req.cache());
+                long provisionalBuild = applyHistoryPrior(0, okHistory(req.entryDir()));
+                if (provisionalBuild <= 0) {
+                    provisionalBuild = EffortWeights.MS_PER_WEIGHT * 8L; // ~1.2s floor
+                }
+                listener.onEtaEstimate(lockEta + provisionalBuild);
+            }
+            listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
             LockGuard guard = ensureWorkspaceLockFresh(req.entryDir(), req.entryBuild(), req.cache());
             if (guard.status() != 0) {
                 WorkspaceResult r = new WorkspaceResult(

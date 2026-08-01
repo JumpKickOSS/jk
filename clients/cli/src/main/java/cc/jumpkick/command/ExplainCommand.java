@@ -31,9 +31,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk explain} — offline forecast of what a build would run (cache hit/miss per module/step).
- * Prefer this over Gradle build scans for "why will this rebuild?" questions. Alias: {@code
- * why-rebuilt}. {@code --verbose} expands all; {@code --run} executes the plan.
+ * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/step). Prefer
+ * this over Gradle build scans for "why will this rebuild?" questions. Alias: {@code why-rebuilt}.
+ * Refreshes a stale/missing lock first (same as {@code jk build}) so the ETA matches the build
+ * countdown. {@code --verbose} expands all; {@code --run} executes the plan.
  */
 public final class ExplainCommand implements CliCommand {
 
@@ -104,6 +105,11 @@ public final class ExplainCommand implements CliCommand {
                     in.value("affected-since").orElse(null),
                     in.value("graph-out").orElse(null));
         }
+
+        // Same starting lock as `jk build`: refresh when missing/stale so the dirty plan and ETA
+        // match the build countdown (CommandWedge spinner while locking).
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(startDir, cache, global, "Explain");
+        if (lockCode != 0) return lockCode;
 
         // The plan-affecting options `jk build` reads, forecast with the same defaults build uses
         // (jdksDir=null → full JDK probe chain, workers=1, skipTests=false) so a bare `jk explain`

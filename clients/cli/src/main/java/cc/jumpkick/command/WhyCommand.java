@@ -38,12 +38,20 @@ public final class WhyCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException {
-        Path dir = new GlobalOptions().workingDir();
+        GlobalOptions global = GlobalOptions.from(in);
+        Path dir = global.workingDir();
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
-        if (!Files.exists(buildFile) || !Files.exists(lockFile)) {
+        if (!Files.exists(buildFile)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Why", "project must have jk.toml and jk-lock.toml (run `jk lock` first)"));
+                    "Why", "project must have jk.toml (run `jk init` first)"));
+            return Exit.CONFIG;
+        }
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Why");
+        if (lockCode != 0) return lockCode;
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
+        if (!Files.exists(lockFile)) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "Why", "project must have jk-lock.toml (lock refresh did not produce one)"));
             return Exit.CONFIG;
         }
 

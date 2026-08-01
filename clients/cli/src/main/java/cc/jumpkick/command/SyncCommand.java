@@ -69,6 +69,10 @@ public final class SyncCommand implements CliCommand {
         String targetLabel = dir.getFileName() != null ? dir.getFileName().toString() : dir.toString();
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
 
+        // Sync materializes the lock — freshen first so users never hand-run `jk lock`.
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Sync");
+        if (lockCode != 0) return lockCode;
+
         // Pre-flight the JDK ensure client-side: a missing pinned JDK is downloaded HERE, before
         // the request — never silently inside the engine (docs/architecture.md keeps installs, and any
         // interactive consent, client-side). The engine's own ensure-jdk step then only resolves

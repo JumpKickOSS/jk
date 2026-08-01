@@ -114,6 +114,10 @@ public final class PluginCommand extends GroupCommand {
             int skipped = 0;
             List<String> missing = new ArrayList<>();
 
+            // Sidecar classpath comes from the lock — freshen so install-local is never stale.
+            int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Plugin");
+            if (lockCode != 0) return lockCode;
+
             for (var e : modules.entrySet()) {
                 Path modDir = e.getKey();
                 JkBuild build = e.getValue();

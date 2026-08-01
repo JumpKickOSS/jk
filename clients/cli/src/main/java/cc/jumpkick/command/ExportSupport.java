@@ -2,11 +2,14 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
+import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.model.command.Exit;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,12 +25,18 @@ final class ExportSupport {
     private ExportSupport() {}
 
     /** Fetch a generator's payloads; prints and returns {@code null} on error. */
-    static GeneratedFiles generate(Path dir, String kind, String cmd) {
-        return generate(dir, kind, java.util.Map.of(), cmd);
+    static GeneratedFiles generate(Path dir, String kind, String cmd, GlobalOptions global) {
+        return generate(dir, kind, java.util.Map.of(), cmd, global);
     }
 
     /** As above with generator parameters (scaffold inputs etc.). */
-    static GeneratedFiles generate(Path dir, String kind, java.util.Map<String, String> params, String cmd) {
+    static GeneratedFiles generate(
+            Path dir, String kind, java.util.Map<String, String> params, String cmd, GlobalOptions global) {
+        // Exports freeze lock versions — freshen first so users never hand-run `jk lock`.
+        if (global != null) {
+            int lockCode = EnsureFreshLock.ensure(dir, JkDirs.cache(), global, "Export");
+            if (lockCode != 0) return null;
+        }
         try {
             GeneratedFiles files = cc.jumpkick.cli.engine.EngineClient.generate(
                     cc.jumpkick.engine.EnginePaths.current(), dir, kind, params);

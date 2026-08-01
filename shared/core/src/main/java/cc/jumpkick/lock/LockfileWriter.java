@@ -20,7 +20,10 @@ public final class LockfileWriter {
     private LockfileWriter() {}
 
     public static void write(Lockfile lockfile, Path file) throws IOException {
-        Files.writeString(file, render(lockfile), StandardCharsets.UTF_8);
+        // Always stamp a live manifests digest so staleness survives git-clone mtimes.
+        Path owner = file.toAbsolutePath().normalize().getParent();
+        Lockfile stamped = LockManifestDigest.stamp(lockfile, owner);
+        Files.writeString(file, render(stamped), StandardCharsets.UTF_8);
     }
 
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
@@ -65,6 +68,11 @@ public final class LockfileWriter {
                 .append(", sha256 = ")
                 .append(quote(jk.sha256() == null ? "" : jk.sha256()))
                 .append(" }\n");
+        if (lockfile.manifestsSha256() != null && !lockfile.manifestsSha256().isBlank()) {
+            out.append("manifests-sha256 = ")
+                    .append(quote(lockfile.manifestsSha256()))
+                    .append('\n');
+        }
 
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
         sorted.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));

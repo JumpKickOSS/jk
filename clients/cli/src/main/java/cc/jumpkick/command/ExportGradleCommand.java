@@ -40,7 +40,8 @@ public final class ExportGradleCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         GlobalOptions global = GlobalOptions.from(in);
         boolean force = in.isSet("overwrite");
-        GeneratedFiles files = ExportSupport.generate(global.workingDir(), "export-gradle", "jk export gradle");
+        GeneratedFiles files =
+                ExportSupport.generate(global.workingDir(), "export-gradle", "jk export gradle", global);
         if (files == null) return Exit.NO_INPUT;
         return ExportSupport.writeAll(files, force, "jk export gradle");
     }

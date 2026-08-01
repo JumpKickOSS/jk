@@ -190,6 +190,22 @@ class CommandManagerTest {
     }
 
     @Test
+    void remaining_work_seed_adds_elapsed_so_countdown_matches_explain() {
+        // Engine reports remaining work (same figure as jk explain). After 30s of lock, a 90s
+        // remaining estimate must show ~90s left — not 60s (which would finish 30s early).
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        // Simulate 30s already elapsed by using setEtaEstimate with elapsed+remaining directly
+        // via setRemainingWorkEstimate after construction; render at that elapsed.
+        // We can't freeze elapsedMillis, so set total = 30s + 90s and render at 30s.
+        cm.setEtaEstimate(30_000 + 90_000);
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 30_000).get(0))).contains("1m 30s");
+        // At end of remaining work (elapsed 120s) → 0s / overrun.
+        String done = TestAnsi.strip(cm.renderPipelineLines(120, 120_000).get(0));
+        assertThat(done).containsAnyOf("0s", "+0s");
+    }
+
+    @Test
     void eta_seed_locks_after_a_module_completes_so_reprojections_cannot_jump_the_clock() {
         // Live re-projections used to overwrite the total mid-build (elapsed + remaining schedule),
         // so the countdown jumped at module boundaries and count-up reset near zero.

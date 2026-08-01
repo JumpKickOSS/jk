@@ -46,7 +46,8 @@ public final class ExportBomCommand implements CliCommand {
         Map<String, String> params = new LinkedHashMap<>();
         in.value("scope").ifPresent(s -> params.put("scope", s));
         in.value("out").ifPresent(o -> params.put("out", o));
-        GeneratedFiles files = ExportSupport.generate(global.workingDir(), "export-bom", params, "jk export bom");
+        GeneratedFiles files =
+                ExportSupport.generate(global.workingDir(), "export-bom", params, "jk export bom", global);
         if (files == null) return Exit.NO_INPUT;
         return ExportSupport.writeAll(files, force, "jk export bom");
     }

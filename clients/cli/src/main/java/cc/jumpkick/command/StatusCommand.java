@@ -85,6 +85,12 @@ public final class StatusCommand implements CliCommand {
         String lastHistory = null;
         CacheSnapshot cache = null;
 
+        // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
+        if (!globalOnly && Files.isRegularFile(cwd.resolve("jk.toml"))) {
+            int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
+            if (lockCode != 0) return lockCode;
+        }
+
         try (var analyzing =
                 live ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...") : null) {
             rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
