@@ -576,8 +576,10 @@ public final class BuildService {
                                 metrics, u.dir().toString(), ss.name());
                     }
                     if (ownWall > 0) {
-                        earlyCosts.add(EffortWeights.costFromRunningSteps(
-                                u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of()));
+                        EffortWeights.ModuleCost cost = EffortWeights.costFromRunningSteps(
+                                u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of());
+                        long testOwn = EffortWeights.stepOkAvgMillisOwn(metrics, u.dir().toString(), "run-tests");
+                        earlyCosts.add(floorColdTests(cost, testOwn, sh.testWeight()));
                     } else {
                         earlyCosts.add(EffortWeights.costOf(u.dir(), prereqs, sh.weight(), sh.testWeight()));
                     }
@@ -827,6 +829,24 @@ public final class BuildService {
         Path dir() {
             return dir;
         }
+    }
+
+    /**
+     * Mixed-history guard for the pre-prepare ETA seed: a module with own compile walls but no
+     * own run-tests history falls to the count path with zero counts, pricing tests as suite
+     * startup only — the collapsed cold test ETA the full-work floor forbids. Floor the test
+     * component with the shape's coupled count-aware {@code testWeight} until the post-prepare
+     * reseed arrives with real counts. No-op when run-tests has own history or the shape has no
+     * larger test weight (including skip-tests shapes, whose testWeight is 0).
+     */
+    static EffortWeights.ModuleCost floorColdTests(
+            EffortWeights.ModuleCost cost, long runTestsOwnMillis, int shapeTestWeight) {
+        if (runTestsOwnMillis > 0 || shapeTestWeight <= cost.testWeight()) return cost;
+        return new EffortWeights.ModuleCost(
+                cost.dir(),
+                cost.prereqs(),
+                cost.weight() - cost.testWeight() + shapeTestWeight,
+                shapeTestWeight);
     }
 
     /**
