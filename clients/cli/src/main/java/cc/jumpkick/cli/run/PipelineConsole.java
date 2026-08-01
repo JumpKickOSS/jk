@@ -140,7 +140,7 @@ public final class PipelineConsole {
      * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
      * multi-module workspace run: listeners never stamp their pipeline-local fraction into {@link
      * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
-     * workspace-progress} snapshots alone/1121).
+     * workspace-progress} snapshots alone.
      */
     public static PipelineListener chooseWorkspaceMemberListener(
             List<Step> steps, Mode mode, ConsoleSpec spec, String module) {

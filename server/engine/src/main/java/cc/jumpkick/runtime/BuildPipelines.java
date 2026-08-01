@@ -1929,7 +1929,7 @@ public final class BuildPipelines {
                     } else {
                         ctx.label("no static resources");
                     }
-                    // Project build logic (1037/1044): AFTER_RESOURCES anchor.
+                    // Project build logic: AFTER_RESOURCES anchor.
                     try {
                         boolean ran = BuildLogicSupport.run(
                                 in.dir(),
@@ -4385,7 +4385,7 @@ public final class BuildPipelines {
             cc.jumpkick.config.EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
-        // Suite + tag filters are part of the outcome/1135).
+        // Suite + tag filters are part of the outcome.
         if (selection != null) extras.add("sel:" + selection.identityToken());
         // [test] env changes what the suite sees, so it must retest.
         cc.jumpkick.config.SecretRedactor secrets =

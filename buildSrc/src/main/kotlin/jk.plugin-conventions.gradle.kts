@@ -49,7 +49,7 @@ tasks.jar {
 // Side-load the freshly-built worker jar into the developer's local Maven repo at
 // ~/.jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
 // so PluginJar.locate finds the worker without requiring -Djk.<x>.plugin.jar.
-// Also writes a.sha256 sidecar so RepoArtifactStore.locate sees it as complete.
+// Also writes a .sha256 sidecar so RepoArtifactStore.locate sees it as complete.
 tasks.register("installLocal") {
     description = "Side-load the freshly-built $workerArtifact jar into ~/.jk/store/repos/local/ (m2 layout)"
     group = "jk"

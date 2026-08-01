@@ -537,7 +537,7 @@ public final class BuildService {
         final int concurrency =
                 req.maxModuleConcurrency() > 0 ? Math.min(requestedJvms, req.maxModuleConcurrency()) : requestedJvms;
 
-        // /1115 /early ETA during prepare — same seedEta routine as jk explain.
+        // Early ETA during prepare — same seedEta routine as jk explain.
         // When every dirty module has a warm shape memo (and not force/rebuild):
         // • provisional onPlan — bar denominator calibrates during prepare
         // • early onEtaEstimate from schedule + history (identical to estimateEtaMillis)

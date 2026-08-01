@@ -269,7 +269,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path|short-name>} + catalog short names/1188).
+     * {@code jk new --template <local-path|short-name>} + catalog short names.
      * Git/HTTPS remotes remain.
      */
     private int runTemplatePipeline(Path cwd) {

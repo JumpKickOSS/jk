@@ -142,7 +142,7 @@ tasks.named<Test>("integrationTest") {
             "jk.test.cache.dir",
             layout.buildDirectory.dir("test-shared-cache").get().asFile.absolutePath)
     // Real engine over the wire — never jk.test.noEngine.
-    // EngineTestExtension autodetection: materialize jar + stop engine after each class (1042/1052).
+    // EngineTestExtension autodetection: materialize jar + stop engine after each class.
     systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
     systemProperty(
             "junit.jupiter.tempdir.deletion.strategy.default",
@@ -183,7 +183,7 @@ graalvmNative {
         // but the 0.10.4 / GraalVM 25 combination defaults to shared library
         // on this host. Force the executable mode explicitly.
         sharedLibrary.set(false)
-        // Slim classpath only (Stage 5 / — never link:engine.
+        // Slim classpath only (Stage 5) — never link :engine.
         classpath(tasks.named("jar"), configurations.runtimeClasspath)
 
         // Size-first build args. The jk binary's primary UX budget is its download +
@@ -194,7 +194,7 @@ graalvmNative {
         // the CLI process itself did the CAS/ClasspathFingerprint SHA-256
         // work — the SIMD -march bought ≈1.5x on no-op builds then. Since the
         // Stage 5 split that hashing lives in the jk-engine jar, which
-        // re-tunes for speed independently — see:engine shadowJar.)
+        // re-tunes for speed independently — see :engine shadowJar.)
         // --gc=serial
         // Generational serial GC. Small/fast for short verbs and a ≤256 MiB
         // engine heap alike, and — unlike epsilon — it actually reclaims, so
@@ -222,9 +222,9 @@ graalvmNative {
         // every wizard invocation prints a 4-line WARNING block before the UI.
         buildArgs.add("--enable-native-access=ALL-UNNAMED")
         // (No engine code in this image: the engine role — and its setsid(2)
-        // downcall — lives in the JVM-hosted engine, shipped as jars by:engine.)
+        // downcall — lives in the JVM-hosted engine, shipped as jars by :engine.)
         // Push heavy deps to lazy init. Build-time <clinit> is faster at
-        // runtime but blows up.svm_heap with cached objects we may never
+        // runtime but blows up .svm_heap with cached objects we may never
         // touch. The crypto/SBOM/git/Jib closures (bouncycastle, sigstore,
         // grpc, cyclonedx, spdx, jgit, com.google) live in forked workers, not
         // on the binary's classpath, so jline is the only contributor left:
@@ -232,7 +232,7 @@ graalvmNative {
         buildArgs.add("--initialize-at-run-time=org.jline")
         // jline-native ships a resource-config with a broad "org/jline/nativ/.*"
         // pattern that embeds ALL platform native libs (Windows DLLs, Linux/macOS/
-        // FreeBSD.so/.dylib for every arch) as image resources. jk uses the FFM
+        // FreeBSD .so/.dylib for every arch) as image resources. jk uses the FFM
         // terminal provider exclusively; the JNI/JNA fallback (JLineNativeLoader,
         // CLibrary, Kernel32, etc.) is reachable via jline-terminal's AbstractPty
         // but never exercised at runtime. Exclude those cross-platform binaries

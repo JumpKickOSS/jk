@@ -32,7 +32,7 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
 /**
- * Forked entry point for Quarkus production packaging/1202).
+ * Forked entry point for Quarkus production packaging.
  *
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
  * quarkusVersion}

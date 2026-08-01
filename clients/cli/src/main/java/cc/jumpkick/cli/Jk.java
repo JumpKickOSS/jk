@@ -29,7 +29,7 @@ public final class Jk {
             Map.entry("upgrade", List.of("update")), // npm/yarn/apt vocabulary
             Map.entry("sh", List.of("shell")),
             Map.entry("bash", List.of("shell")),
-            Map.entry("nativeCompile", List.of("native")), // Gradle:nativeCompile task
+            Map.entry("nativeCompile", List.of("native")), // Gradle :nativeCompile task
             Map.entry("verify-target", List.of("verify")), // Maven's `verify` step output naming
             Map.entry("why-rebuilt", List.of("explain"))); // early-roadmap name for the cache-diff report
 
