@@ -2757,13 +2757,15 @@ public final class BuildPipelines {
                     var hit = actionCache.lookup(actionKey);
                     if (hit.isPresent()) {
                         try {
-                            actionCache.restore(hit.get(), scratch);
-                            if (step.transforms()) {
-                                ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
+                            if (actionCache.restore(hit.get(), scratch)) {
+                                if (step.transforms()) {
+                                    ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
+                                }
+                                ctx.label(step.name() + " up-to-date");
+                                ctx.progress(1);
+                                return;
                             }
-                            ctx.label(step.name() + " up-to-date");
-                            ctx.progress(1);
-                            return;
+                            // false: missing/corrupt blob — fall through to a fresh run.
                         } catch (IOException e) {
                             // A missing CAS blob (pruned cache) falls through to a fresh run.
                         }

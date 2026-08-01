@@ -57,10 +57,12 @@ public final class GroovyCompile {
             if (hit.isPresent()) {
                 // Restore into a CLEAN dir: the worker is a full compile, so anything already
                 // here is a previous source set — a deleted.groovy's class would resurrect
-                // through the assemble merge and poison later records.
+                // through the assemble merge and poison later records. A failed restore
+                // (missing/corrupt blob) falls through to the real compile below.
                 wipe(request);
-                actionCache.restore(hit.get(), request.outputDir());
-                return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
+                if (actionCache.restore(hit.get(), request.outputDir())) {
+                    return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
+                }
             }
         }
         wipe(request);
