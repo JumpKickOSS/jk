@@ -137,7 +137,8 @@ public final class StoreFeedRefresh implements AutoCloseable {
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         if (!needsRefresh(cacheFile, INTERVAL)) return;
 
-        LibraryRegistryClient.Result result = new LibraryRegistryClient(http).fetch(librariesSource, etagFile);
+        LibraryRegistryClient.Result result =
+                new LibraryRegistryClient(http).fetch(librariesSource, etagFile, cacheFile);
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
             touch(cacheFile);
             return;
