@@ -2557,7 +2557,14 @@ public final class BuildPipelines {
                     }
                     if (!jarAttrs.isEmpty()) jarRequest = jarRequest.withAttributes(jarAttrs);
                     new JarPackager().packageJar(jarRequest);
-                    storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), List.of(jarPath));
+                    storePackaged(
+                            in.cache(),
+                            pkgTask,
+                            pkgKey,
+                            tokens,
+                            jarPath.getParent(),
+                            List.of(jarPath),
+                            !in.ephemeralActions());
                     ctx.put(JAR_PATH, jarPath);
                     ctx.progress(1);
                 })
@@ -2996,7 +3003,7 @@ public final class BuildPipelines {
                 }
             }
         }
-        storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), produced);
+        storePackaged(in.cache(), pkgTask, pkgKey, tokens, jarPath.getParent(), produced, !in.ephemeralActions());
         ctx.put(JAR_PATH, jarPath);
         ctx.progress(1);
     }
@@ -3241,10 +3248,10 @@ public final class BuildPipelines {
         try {
             JkBuild project = applyAssemblyOverride(JkBuildParser.parse(in.buildFile()), in.session());
             if (project.assembly()) {
-                b.addStep(assemblyStep(in.cache(), in.lockFile()));
+                b.addStep(assemblyStep(in.cache(), in.lockFile(), !in.ephemeralActions()));
             }
             if (project.project().sourcesMode() == JkBuild.SourcesMode.ALWAYS) {
-                b.addStep(sourcesStep(in.cache()));
+                b.addStep(sourcesStep(in.cache(), !in.ephemeralActions()));
             }
         } catch (Exception ignored) {
         }
@@ -3271,6 +3278,11 @@ public final class BuildPipelines {
 
     /** Assembly-jar packaging — requires package-jar. */
     public static Step assemblyStep(Path cache, Path lockFile) {
+        return assemblyStep(cache, lockFile, true);
+    }
+
+    /** As {@link #assemblyStep(Path, Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
+    public static Step assemblyStep(Path cache, Path lockFile, boolean persist) {
         return Step.builder(StepNames.PACKAGE_ASSEMBLY)
                 .phase(Phase.PACKAGE)
                 .label("Assembly")
@@ -3342,7 +3354,7 @@ public final class BuildPipelines {
                                     assemblyAttrs,
                                     assemblySbom == null ? Map.of() : Map.of(SBOM_JAR_ENTRY, assemblySbom),
                                     0L));
-                    storePackaged(cache, shTask, shKey, tokens, assemblyJar.getParent(), List.of(assemblyJar));
+                    storePackaged(cache, shTask, shKey, tokens, assemblyJar.getParent(), List.of(assemblyJar), persist);
                     ctx.progress(1);
                 })
                 .build();
@@ -3350,6 +3362,11 @@ public final class BuildPipelines {
 
     /** Sources-jar packaging — writes {@code <artifact>-<version>-sources.jar} to the artifact dir. */
     public static Step sourcesStep(Path cache) {
+        return sourcesStep(cache, true);
+    }
+
+    /** As {@link #sourcesStep(Path)}; {@code persist=false} keeps verify-scratch keys out of the cache. */
+    public static Step sourcesStep(Path cache, boolean persist) {
         return Step.builder(StepNames.PACKAGE_SOURCES)
                 .phase(Phase.PACKAGE)
                 .label("Sources")
@@ -3392,7 +3409,7 @@ public final class BuildPipelines {
                     byte[] bytes = cc.jumpkick.cache.SourcesJar.build(sourceRoots);
                     Files.createDirectories(sourcesJar.getParent());
                     Files.write(sourcesJar, bytes);
-                    storePackaged(cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar));
+                    storePackaged(cache, task, key, tokens, sourcesJar.getParent(), List.of(sourcesJar), persist);
                     ctx.progress(1);
                 })
                 .build();
@@ -3417,6 +3434,8 @@ public final class BuildPipelines {
             Path graalHome,
             String mainOverride,
             List<String> extraArgs) {
+        // Install / native pipelines never run under verify's ephemeral scratch — persist.
+        final boolean persist = true;
         List<String> extra = extraArgs == null ? List.of() : extraArgs;
         return Step.builder(StepNames.NATIVE_IMAGE)
                 .phase(Phase.PACKAGE)
@@ -3618,7 +3637,7 @@ public final class BuildPipelines {
                     // when no progress headers were emitted).
                     ctx.progress(1);
                     if (!shared) {
-                        storePackaged(cache, nTask, nKey, nativeTokens, out.getParent(), List.of(out));
+                        storePackaged(cache, nTask, nKey, nativeTokens, out.getParent(), List.of(out), persist);
                     }
                 })
                 .build();
@@ -4144,23 +4163,38 @@ public final class BuildPipelines {
     }
 
     /**
-     * Record a freshly-produced packaging artifact so a later build / explain can skip it. Always
-     * writes — even under {@code --rebuild} — because rebuild only means "do not restore/skip
-     * work", not "do not teach the cache" (parity with compile; verify-scratch is the only
-     * path that must leave no residue, and it never reaches here).
+     * Record a freshly-produced packaging artifact so a later build / explain can skip it. Writes
+     * even under {@code --rebuild} — rebuild only means "do not restore/skip work", not "do not
+     * teach the cache" (parity with compile). {@code persist=false} is {@code jk verify}'s scratch
+     * rebuild: packaging DOES run there (the artifact is what verify diffs), its keys embed the
+     * unique scratch path so they can never recur, and a store would be a permanent orphan record
+     * plus CAS copies on every verify run.
      */
     private static void storePackaged(
-            Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
+            Path cacheRoot,
+            String taskId,
+            String key,
+            List<String> tokens,
+            Path baseDir,
+            List<Path> artifacts,
+            boolean persist)
             throws IOException {
+        if (!persist) return;
         new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
     }
 
     /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */
     static void storePackagedForTest(
-            Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
+            Path cacheRoot,
+            String taskId,
+            String key,
+            List<String> tokens,
+            Path baseDir,
+            List<Path> artifacts,
+            boolean persist)
             throws IOException {
-        storePackaged(cacheRoot, taskId, key, tokens, baseDir, artifacts);
+        storePackaged(cacheRoot, taskId, key, tokens, baseDir, artifacts, persist);
     }
 
     private static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {
