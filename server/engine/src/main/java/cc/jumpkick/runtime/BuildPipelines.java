@@ -2598,10 +2598,14 @@ public final class BuildPipelines {
             } catch (Exception ignored) {
                 /* fall through to WorkerClasspath.paths */
             }
-            // paths() expands sidecar + findPluginSdk; use it to fill gaps (e.g. empty lock mid-bootstrap).
-            for (Path p : WorkerClasspath.paths(jarPath)) {
-                Path abs = p.toAbsolutePath().normalize();
-                if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
+            // The closure is authoritative when it produced anything: merging the OLD sidecar back
+            // in (via paths()) would carry removed/upgraded deps forever (JK-1352). Only an empty
+            // closure (e.g. empty lock mid-bootstrap) falls back to sidecar + findPluginSdk.
+            if (side.isEmpty()) {
+                for (Path p : WorkerClasspath.paths(jarPath)) {
+                    Path abs = p.toAbsolutePath().normalize();
+                    if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
+                }
             }
             WorkerClasspath.writeSidecar(jarPath, side);
         } catch (Exception ignored) {

@@ -144,8 +144,10 @@ public final class PluginCommand extends GroupCommand {
                     deps = List.of();
                 }
                 // Sidecar must not list the worker jar itself (resolve() prepends it).
-                // Merge ModuleRuntimeClasspath with WorkerClasspath.paths (findPluginSdk) so pure-jk
-                // thin jars never ship an empty .classpath (JK-1347).
+                // The lock closure is authoritative when non-empty — merging the old sidecar back
+                // in would carry removed/upgraded deps forever (JK-1352). Only an empty closure
+                // falls back to WorkerClasspath.paths (findPluginSdk) so pure-jk thin jars never
+                // ship an empty .classpath (JK-1347).
                 List<Path> sideDeps = new ArrayList<>();
                 Path sourceAbs = source.toAbsolutePath().normalize();
                 for (Path d : deps) {
@@ -153,9 +155,11 @@ public final class PluginCommand extends GroupCommand {
                     Path abs = d.toAbsolutePath().normalize();
                     if (!abs.equals(sourceAbs) && !sideDeps.contains(abs)) sideDeps.add(abs);
                 }
-                for (Path p : WorkerClasspath.paths(source)) {
-                    Path abs = p.toAbsolutePath().normalize();
-                    if (!abs.equals(sourceAbs) && !sideDeps.contains(abs)) sideDeps.add(abs);
+                if (sideDeps.isEmpty()) {
+                    for (Path p : WorkerClasspath.paths(source)) {
+                        Path abs = p.toAbsolutePath().normalize();
+                        if (!abs.equals(sourceAbs) && !sideDeps.contains(abs)) sideDeps.add(abs);
+                    }
                 }
                 // Materialize plugin-sdk into the same local store so sidecars don't dangle when
                 // workspace target/ is cleaned.
