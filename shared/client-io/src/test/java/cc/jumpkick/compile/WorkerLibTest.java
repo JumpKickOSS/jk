@@ -72,26 +72,105 @@ class WorkerLibTest {
         }
     }
 
+    /**
+     * Source dir on the store filesystem so materialize hardlinks (like real installs); a tmpfs
+     * {@code @TempDir} would copy-fall-back and never exercise the inode-match path.
+     */
+    private static Path storeSideSrc() throws Exception {
+        Path src = WorkerLib.root().resolve(".test-src-" + System.nanoTime());
+        Files.createDirectories(src);
+        return src;
+    }
+
+    private static void deleteTree(Path dir) {
+        try (var walk = Files.walk(dir)) {
+            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception ignored) {
+                    /* cleanup */
+                }
+            });
+        } catch (Exception ignored) {
+            /* cleanup */
+        }
+    }
+
     @Test
-    void worker_classpath_prefers_lib_when_materialized(@TempDir Path store) throws Exception {
-        Path worker = store.resolve("w/jk-pref-1.0.jar");
-        Path dep = store.resolve("d/extra.jar");
+    void stale_lib_is_ignored_for_a_newer_worker_jar() throws Exception {
+        // JK-1349: lib dir materialized from v1 must not hijack a v2 launch of the same worker id.
+        Path src = storeSideSrc();
+        Path v1 = src.resolve("jk-stale-1.0.jar");
+        Path v2 = src.resolve("jk-stale-2.0.jar");
+        Files.writeString(v1, "v1-bytes");
+        Files.writeString(v2, "v2-bytes");
+
+        String id = WorkerLib.idFromWorkerJar(v1); // == idFromWorkerJar(v2) == "jk-stale"
+        try {
+            WorkerLib.materialize(id, v1, List.of());
+            // The exact jar the lib was materialized from resolves through lib (inode match).
+            List<Path> sameCp = WorkerLib.pathsIfPresent(v1);
+            assertThat(sameCp).isNotNull();
+            assertThat(sameCp.get(0).getFileName().toString()).isEqualTo("jk-stale-1.0.jar");
+            // A different jar with the same id must fall back (null → sidecar path).
+            assertThat(WorkerLib.pathsIfPresent(v2)).isNull();
+            List<Path> cp = WorkerClasspath.paths(v2);
+            assertThat(cp.get(0)).isEqualTo(v2.toAbsolutePath().normalize());
+        } finally {
+            try {
+                WorkerLib.remove(id);
+            } catch (Exception ignored) {
+                /* cleanup */
+            }
+            deleteTree(src);
+        }
+    }
+
+    @Test
+    void override_jar_with_same_name_is_not_hijacked_by_lib() throws Exception {
+        // JK-1349: -Djk.*.plugin.jar override — same filename, different file → lib must not win.
+        Path src = storeSideSrc();
+        Path installed = src.resolve("installed/jk-ovr-1.0.jar");
+        Path override = src.resolve("custom/jk-ovr-1.0.jar");
+        Files.createDirectories(installed.getParent());
+        Files.createDirectories(override.getParent());
+        Files.writeString(installed, "installed-bytes");
+        Files.writeString(override, "override-bytes");
+
+        String id = WorkerLib.idFromWorkerJar(installed);
+        try {
+            WorkerLib.materialize(id, installed, List.of());
+            assertThat(WorkerLib.pathsIfPresent(installed)).isNotNull();
+            assertThat(WorkerLib.pathsIfPresent(override)).isNull();
+            assertThat(WorkerClasspath.paths(override).get(0))
+                    .isEqualTo(override.toAbsolutePath().normalize());
+        } finally {
+            try {
+                WorkerLib.remove(id);
+            } catch (Exception ignored) {
+                /* cleanup */
+            }
+            deleteTree(src);
+        }
+    }
+
+    @Test
+    void worker_classpath_prefers_lib_when_materialized() throws Exception {
+        // Store-side sources: real installs hardlink store → store/lib on one filesystem, and the
+        // JK-1349 inode guard only accepts a lib dir materialized from the exact jar launched.
+        Path src = storeSideSrc();
+        Path worker = src.resolve("w/jk-pref-1.0.jar");
+        Path dep = src.resolve("d/extra.jar");
         Files.createDirectories(worker.getParent());
         Files.createDirectories(dep.getParent());
         Files.writeString(worker, "w");
         Files.writeString(dep, "d");
         // Sidecar points at a third path that should be ignored when lib is present.
-        Path other = store.resolve("other.jar");
+        Path other = src.resolve("other.jar");
         Files.writeString(other, "o");
         WorkerClasspath.writeSidecar(worker, List.of(other));
 
-        String id = "jk-pref-test-" + System.nanoTime();
         try {
-            WorkerLib.materialize(id, worker, List.of(dep));
-            // pathsIfPresent uses id from jar name → jk-pref
-            // materialize used custom id — align id with idFromWorkerJar
-            // idFromWorkerJar("jk-pref-1.0.jar") → jk-pref
-            WorkerLib.remove(id);
             WorkerLib.materialize(WorkerLib.idFromWorkerJar(worker), worker, List.of(dep));
 
             List<Path> cp = WorkerClasspath.paths(worker);
@@ -107,6 +186,7 @@ class WorkerLibTest {
             } catch (Exception ignored) {
                 /* cleanup */
             }
+            deleteTree(src);
         }
     }
 }

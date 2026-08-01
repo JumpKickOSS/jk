@@ -140,9 +140,26 @@ public final class WorkerLib {
         return out.isEmpty() ? null : List.copyOf(out);
     }
 
-    /** Resolve lib paths for a worker jar when materialize has been run; else {@code null}. */
+    /**
+     * Resolve lib paths for a worker jar when materialize has been run <em>for this exact jar</em>;
+     * else {@code null}. Lib entries are hardlinks of their sources, so the requested jar must
+     * share an inode with one of them ({@link Files#isSameFile}) — a version bump, a freshly built
+     * workspace jar, or a {@code -Djk.*.plugin.jar} override points at different content and must
+     * launch via the sidecar path instead of a stale lib dir (JK-1349). A copy-fallback
+     * materialization (cross-device store) fails the check and simply keeps long-path launches.
+     */
     public static List<Path> pathsIfPresent(Path workerJar) {
-        return pathsIfPresent(idFromWorkerJar(workerJar));
+        List<Path> paths = pathsIfPresent(idFromWorkerJar(workerJar));
+        if (paths == null || workerJar == null) return null;
+        Path worker = workerJar.toAbsolutePath().normalize();
+        for (Path p : paths) {
+            try {
+                if (Files.isSameFile(worker, p)) return paths;
+            } catch (IOException ignored) {
+                // entry vanished mid-check — keep scanning
+            }
+        }
+        return null;
     }
 
     /** Remove {@code store/lib/&lt;id&gt;/} so GC may reclaim unreferenced CAS blobs. */

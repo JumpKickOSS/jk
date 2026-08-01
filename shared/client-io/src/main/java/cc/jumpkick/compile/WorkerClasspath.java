@@ -18,7 +18,9 @@ import java.util.stream.Stream;
  *
  * <p><strong>Preferred (JK-1348):</strong> {@code $JK_LIB_DIR/&lt;id&gt;/} (default {@code
  * store/lib/&lt;id&gt;/}, shared with installed tools) populated at install with hardlinked jars +
- * ordered {@code .classpath}. Compact paths in {@code ps}.
+ * ordered {@code .classpath}. Compact paths in {@code ps}. Used only when the lib dir was
+ * materialized from the exact jar being launched (inode match — JK-1349); otherwise the sidecar
+ * fallback below wins so upgrades and {@code -Djk.*.plugin.jar} overrides are honored.
  *
  * <p><strong>Fallback (JK-1347):</strong> {@code <worker>.jar} plus optional sidecar {@code
  * <worker>.jar.classpath} — one absolute jar path per line ({@code #} comments and blanks
