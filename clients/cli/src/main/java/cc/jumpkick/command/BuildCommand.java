@@ -219,11 +219,26 @@ public final class BuildCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         boolean live = mode == PipelineConsole.Mode.AUTO || mode == PipelineConsole.Mode.QUIET;
 
+        // --modules / --affected-since resolve identically for live and headless paths (JK-1363):
+        // the CI-shaped `jk build -m api --output json` must not silently build everything.
+        Selection sel = null;
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
+            sel = resolveSelection(entryDir, entryBuild);
+        }
+
         if (!live) {
             // --output json / --verbose: buffered, non-animated path. The engine drives the whole
             // workspace build (BuildService.buildWorkspace — resolve graph, memory plan, schedule,
             // run each module's pipeline); this listener renders the append-only block + [k/N] line.
-            return runWorkspaceHeadless(entryDir, entryBuild, cache);
+            if (sel != null && sel.error() != null) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                return Exit.CONFIG;
+            }
+            if (sel != null && sel.empty()) {
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Build", selectionEmptyMessage()));
+                return 0;
+            }
+            return runWorkspaceHeadless(entryDir, entryBuild, cache, sel != null ? sel.dirtyDirs() : null);
         }
 
         // Live path (AUTO / QUIET): open the TUI immediately so forecast + engine preflight are never
@@ -248,31 +263,17 @@ public final class BuildCommand implements CliCommand {
         // returns with an empty plan. --modules / --affected-since force-include those dirs as the
         // dirty hint; --force/--redo leave the hint null so the engine marks everything dirty.
         Set<Path> dirtyDirs = null;
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            JkBuild buildForSelect = entryBuild;
-            if (buildForSelect == null) {
-                try {
-                    buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                } catch (Exception e) {
-                    view.finishPipelineFailure(
-                            "cannot load jk.toml for module selection: " + e.getMessage(), List.of());
-                    return Exit.CONFIG;
-                }
-            }
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                    entryDir, buildForSelect, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                view.finishPipelineFailure(selected.errorMessage(), List.of());
+        if (sel != null) {
+            if (sel.error() != null) {
+                view.finishPipelineFailure(sel.error(), List.of());
                 return Exit.CONFIG;
             }
-            if (selected != null && selected.moduleDirs().isEmpty()) {
+            if (sel.empty()) {
                 view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
                 return 0;
             }
-            if (selected != null) {
-                // Force-include selected modules (engine still respects action cache unless --force).
-                dirtyDirs = selected.moduleDirs();
-            }
+            // Force-include selected modules (engine still respects action cache unless --force).
+            dirtyDirs = sel.dirtyDirs();
         }
         if (System.getenv("JK_PERF") != null) {
             System.err.println("[jk-perf] client-forecast skipped (single-rpc preflight) "
@@ -281,6 +282,26 @@ public final class BuildCommand implements CliCommand {
         }
         // lockStale unused: engine freshenLock + internal forecast owns Checking.
         return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, false);
+    }
+
+    /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
+    private record Selection(String error, boolean empty, Set<Path> dirtyDirs) {}
+
+    private Selection resolveSelection(Path entryDir, JkBuild entryBuild) {
+        JkBuild buildForSelect = entryBuild;
+        if (buildForSelect == null) {
+            try {
+                buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            } catch (Exception e) {
+                return new Selection("cannot load jk.toml for module selection: " + e.getMessage(), false, null);
+            }
+        }
+        var selected =
+                cc.jumpkick.config.ModuleSelection.resolveOptional(entryDir, buildForSelect, modulesSpec, affectedSince);
+        if (selected == null) return new Selection(null, false, null);
+        if (!selected.ok()) return new Selection(selected.errorMessage(), false, null);
+        if (selected.moduleDirs().isEmpty()) return new Selection(null, true, null);
+        return new Selection(null, false, selected.moduleDirs());
     }
 
     private String selectionEmptyMessage() {
@@ -299,7 +320,7 @@ public final class BuildCommand implements CliCommand {
      * [k/N]} line, then the summary chip — the same append-only output the CLI produced before, now a
      * pure renderer over the engine's events.
      */
-    private int runWorkspaceHeadless(Path entryDir, JkBuild entryBuild, Path cache) {
+    private int runWorkspaceHeadless(Path entryDir, JkBuild entryBuild, Path cache, Set<Path> dirtyDirs) {
         var request = new cc.jumpkick.runtime.WorkspaceRequest(
                         entryDir,
                         entryBuild,
@@ -310,7 +331,7 @@ public final class BuildCommand implements CliCommand {
                         buildOpts.skipTests,
                         global.verbose,
                         jobs, // -j / JK_JOBS / [engine] jobs (always ≥ 1)
-                        null, // headless: let the engine forecast dirty modules
+                        dirtyDirs, // -m/--affected-since hint; null → engine forecasts (JK-1363)
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv);
