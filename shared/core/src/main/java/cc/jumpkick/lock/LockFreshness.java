@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.lock;
 
-import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.model.JkBuild;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -31,26 +29,13 @@ public final class LockFreshness {
 
     /**
      * True when {@code rootLock} is absent or no longer matches the root manifest or any declared
-     * workspace member manifest.
+     * workspace member manifest. One digest comparison covers everything: the digest is
+     * workspace-wide (owner = the lock's directory) and already folds member and path-dep
+     * manifests in, so a per-module loop would recompute the identical digest N times (JK-1359).
      */
     public static boolean workspaceLockStale(Path root, Path rootLock) {
         if (!Files.exists(rootLock)) return true;
-        // Digest is workspace-wide; one comparison is enough when the stamp is present.
-        if (isStale(root, rootLock)) return true;
-        try {
-            Path toml = root.resolve("jk.toml");
-            if (!Files.isRegularFile(toml)) return false;
-            JkBuild rootBuild = JkBuildParser.parseLocal(toml);
-            if (rootBuild.workspace() != null) {
-                for (String module : rootBuild.workspace().modules()) {
-                    Path moduleDir = root.resolve(module).normalize();
-                    if (isStale(moduleDir, rootLock)) return true;
-                }
-            }
-        } catch (Exception e) {
-            return true; // unreadable → assume stale
-        }
-        return false;
+        return isStale(root, rootLock);
     }
 
     /**

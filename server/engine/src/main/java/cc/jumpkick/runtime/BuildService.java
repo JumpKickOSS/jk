@@ -62,7 +62,16 @@ public final class BuildService {
      */
     public static LockGuard ensureWorkspaceLockFresh(Path root, JkBuild rootBuild, Path cache) {
         Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(root);
-        if (!workspaceLockStale(root, rootBuild, rootLock)) return LockGuard.OK;
+        return ensureWorkspaceLockFresh(root, cache, workspaceLockStale(root, rootBuild, rootLock));
+    }
+
+    /**
+     * As {@link #ensureWorkspaceLockFresh(Path, JkBuild, Path)} with the staleness answer already
+     * computed — callers that just priced the re-lock for the ETA pass it in instead of
+     * re-hashing every manifest (JK-1359).
+     */
+    public static LockGuard ensureWorkspaceLockFresh(Path root, Path cache, boolean stale) {
+        if (!stale) return LockGuard.OK;
         long t0 = System.nanoTime();
         try {
             // noDefaultFeatures=false: every freshen resolves with the same feature selection as
@@ -516,7 +525,7 @@ public final class BuildService {
                 listener.onEtaEstimate(lockEta + provisionalBuild);
             }
             listener.onPreflight("lock", 0, 0, lockStale ? "Refreshing workspace lock…" : "Workspace lock ready");
-            LockGuard guard = ensureWorkspaceLockFresh(req.entryDir(), req.entryBuild(), req.cache());
+            LockGuard guard = ensureWorkspaceLockFresh(req.entryDir(), req.cache(), lockStale);
             if (guard.status() != 0) {
                 WorkspaceResult r = new WorkspaceResult(
                         false,
