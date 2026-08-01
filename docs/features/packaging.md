@@ -36,7 +36,7 @@ assembly = true
 ```
 
 ```bash
-jk assemble   # alias: jk assembly — errors with a one-line fix if assembly is off
+jk assemble   # errors with a one-line fix if assembly is off
 jk build      # same packaging graph when assembly = true
 # → target/<name>-<version>-all.jar
 ```

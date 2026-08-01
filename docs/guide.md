@@ -683,17 +683,15 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 
 ### Why did this rebuild?
 
-Use **`jk explain`** (hidden aliases **`plan`**, **`why-rebuilt`**). It forecasts cache hit/miss
-per module and step (sources changed, dependency changed, options/classpath). When the lock is
-missing or stale it refreshes it first (same as `jk build`) so the plan and ETA match the live
-build countdown; a CommandWedge spinner shows while locking. Automatic refreshes are
-conservative — pinned versions stay put; only `jk lock` / `jk update` float to latest. Prefer this over Gradle build scans
-for day-to-day rebuild questions.
+Use **`jk explain`**. It forecasts cache hit/miss per module and step (sources changed,
+dependency changed, options/classpath). When the lock is missing or stale it refreshes it first
+(same as `jk build`) so the plan and ETA match the live build countdown; a CommandWedge spinner
+shows while locking. Automatic refreshes are conservative — pinned versions stay put; only
+`jk lock` / `jk update` float to latest. Prefer this over Gradle build scans for day-to-day
+rebuild questions.
 
 ```bash
 jk explain                   # full plan: cached vs rebuild sections + ETA
-jk plan                      # hidden alias for explain
-jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
 jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
 
@@ -897,13 +895,21 @@ Monorepo tip: rebuild or retest only what you need:
 jk build --affected-since=origin/main
 jk test --affected-since=origin/main
 
-# Explicit module selectors (comma list, globs, braces)
-jk build --modules api,worker
-jk test --modules 'libs/*'
-jk explain --modules '{api,worker}'
+# Explicit module selectors (comma list, globs, braces); -m is the short flag
+jk build -m api,worker
+jk test -m 'libs/*'
+jk explain -m '{api,worker}'
+
+# Selectors also accept [project] names and Gradle-style colon paths
+jk build -m jk-engine
+jk build -m :server:engine
+
+# The same -m/--modules and --affected-since flags work across the build family:
+# build, test, explain, native, compile, image, show, tasks, inspect.
+# jk native -m compiles only the selection to native; prereqs build to jars.
 
 # Intersection when both flags set
-jk build --modules 'libs/*' --affected-since=origin/main
+jk build -m 'libs/*' --affected-since=origin/main
 
 # CI prepare → run (writes .jk/selective-plan.json with content hashes)
 jk selective prepare --since=origin/main

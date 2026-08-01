@@ -26,6 +26,8 @@ class JkAliasTest {
         assertThat(Jk.rewriteAlias(new String[] {"nativeCompile"})[0]).isEqualTo("native");
         assertThat(Jk.rewriteAlias(new String[] {"verify-target"})[0]).isEqualTo("verify");
         assertThat(Jk.rewriteAlias(new String[] {"why-rebuilt"})[0]).isEqualTo("explain");
+        assertThat(Jk.rewriteAlias(new String[] {"plan"})[0]).isEqualTo("explain");
+        assertThat(Jk.rewriteAlias(new String[] {"check"})[0]).isEqualTo("compile");
     }
 
     @Test
