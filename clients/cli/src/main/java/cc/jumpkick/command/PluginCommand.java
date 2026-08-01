@@ -103,9 +103,9 @@ public final class PluginCommand extends GroupCommand {
             }
 
             Path cache = in.value("cache-dir").map(Path::of).orElse(JkDirs.cache());
-            // Plugin jars live under the store (same root PluginJar.locate / CAS use), not a
-            // transient JK_CACHE_DIR (JK-1347).
-            Path store = JkStores.storeRootFor(cache);
+            // Ambient installs go to the shared store (PluginJar.locate / CAS). Explicit
+            // --cache-dir keeps tests isolated under that root.
+            Path installRoot = in.value("cache-dir").isPresent() ? cache : JkDirs.store();
             boolean dryRun = in.isSet("dry-run");
             int installed = 0;
             int skipped = 0;
@@ -129,7 +129,7 @@ public final class PluginCommand extends GroupCommand {
                 }
 
                 String rel = "cc/jumpkick/" + artifactId + "/" + version + "/" + artifactId + "-" + version + ".jar";
-                Path dest = store.resolve("repos/local").resolve(rel);
+                Path dest = installRoot.resolve("repos/local").resolve(rel);
                 List<Path> deps;
                 try {
                     deps = ModuleRuntimeClasspath.jars(
@@ -152,7 +152,7 @@ public final class PluginCommand extends GroupCommand {
                     installed++;
                     continue;
                 }
-                RepoArtifactStore.writeToLocalStore(store, rel, source);
+                RepoArtifactStore.writeToLocalStore(installRoot, rel, source);
                 WorkerClasspath.writeSidecar(dest, sideDeps);
                 // Also write sidecar next to the build output so -Djk.*.plugin.jar overrides work.
                 WorkerClasspath.writeSidecar(source, sideDeps);

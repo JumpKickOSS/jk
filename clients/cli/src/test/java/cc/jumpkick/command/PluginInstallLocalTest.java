@@ -16,6 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class PluginInstallLocalTest {
 
+    /** Thin PluginMain worker — no assembly (JK-1347). */
     private static final String WORKER_TOML = """
             [project]
             group = "cc.jumpkick"
@@ -25,11 +26,10 @@ class PluginInstallLocalTest {
             java = 25
             [application]
             main = "cc.jumpkick.plugin.process.PluginMain"
-            assembly = true
             """;
 
     @Test
-    void install_local_side_loads_assembly_jar(@TempDir Path dir) throws Exception {
+    void install_local_side_loads_thin_jar_and_classpath(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod.resolve("target"));
@@ -43,7 +43,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = mod.resolve("target/jk-test-runner-0.10.1-all.jar");
+        Path jar = mod.resolve("target/jk-test-runner-0.10.1.jar");
         Files.writeString(jar, "fake-worker-jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -61,6 +61,7 @@ class PluginInstallLocalTest {
         assertThat(Files.readString(dest)).isEqualTo("fake-worker-jar");
         assertThat(Path.of(dest + ".sha256")).exists();
         assertThat(Files.readString(Path.of(dest + ".sha256"))).matches("[0-9a-f]{64}");
+        assertThat(Path.of(dest + ".classpath")).exists();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("Installed");
     }
 
@@ -79,7 +80,7 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-all.jar"), "x");
+        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -121,7 +122,6 @@ class PluginInstallLocalTest {
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
-                assembly = true
                 """);
         Files.writeString(b.resolve("jk.toml"), """
                 [project]
@@ -132,10 +132,9 @@ class PluginInstallLocalTest {
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
-                assembly = true
                 """);
-        Files.writeString(a.resolve("target/jk-alpha-0.10.1-all.jar"), "A");
-        Files.writeString(b.resolve("target/jk-beta-0.10.1-all.jar"), "B");
+        Files.writeString(a.resolve("target/jk-alpha-0.10.1.jar"), "A");
+        Files.writeString(b.resolve("target/jk-beta-0.10.1.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",
@@ -154,56 +153,12 @@ class PluginInstallLocalTest {
     }
 
     @Test
-    void missing_jar_fails_when_no_workers_installed(@TempDir Path dir) throws Exception {
-        Path mod = dir.resolve("plugins/worker");
-        Files.createDirectories(mod);
+    void no_plugin_main_modules_is_config_error(@TempDir Path dir) throws Exception {
+        Path cache = dir.resolve("cache");
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
-                name = "ws"
-                version = "0.0.1"
-                jdk = 25
-                [workspace]
-                modules = ["plugins/worker"]
-                """);
-        Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        // no target jar
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
-        PrintStream orig = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
-        int exit;
-        try {
-            exit = Jk.execute(
-                    "plugin",
-                    "install-local",
-                    "-C",
-                    dir.toString(),
-                    "--cache-dir",
-                    dir.resolve("cache").toString());
-        } finally {
-            System.setErr(orig);
-        }
-        assertThat(exit).isEqualTo(1); // FAILURE
-        assertThat(err.toString(StandardCharsets.UTF_8)).contains("missing jar");
-    }
-
-    @Test
-    void skips_non_plugin_main_modules(@TempDir Path dir) throws Exception {
-        Path lib = dir.resolve("lib");
-        Files.createDirectories(lib);
-        Files.writeString(dir.resolve("jk.toml"), """
-                [project]
-                group = "t"
-                name = "ws"
-                version = "0.0.1"
-                jdk = 25
-                [workspace]
-                modules = ["lib"]
-                """);
-        Files.writeString(lib.resolve("jk.toml"), """
-                [project]
-                group = "t"
-                name = "lib"
+                name = "solo"
                 version = "0.0.1"
                 jdk = 25
                 """);
@@ -212,13 +167,7 @@ class PluginInstallLocalTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute(
-                    "plugin",
-                    "install-local",
-                    "-C",
-                    dir.toString(),
-                    "--cache-dir",
-                    dir.resolve("cache").toString());
+            exit = Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString());
         } finally {
             System.setErr(orig);
         }
