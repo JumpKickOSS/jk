@@ -46,11 +46,9 @@ public final class ExplainCommand implements CliCommand {
         return "explain";
     }
 
-    /** Hidden: {@code plan}, {@code why-rebuilt} — not listed in top-level help. */
-    @Override
-    public List<String> aliases() {
-        return List.of("plan", "why-rebuilt");
-    }
+    // Hidden aliases plan / why-rebuilt live in Jk.VERB_ALIASES (exact-token rewrite before
+    // dispatch) — never here: dispatcher aliases join the unique-prefix candidate set and would
+    // make `jk pl` ambiguous with plugin and `jk wh` with why (JK-1364).
 
     @Override
     public String description() {

@@ -21,6 +21,21 @@ class CommandDispatchTest {
     }
 
     @Test
+    void hidden_verb_aliases_stay_out_of_prefix_dispatch() {
+        // JK-1364: plan / why-rebuilt are VERB_ALIASES rewrites (exact token only), never
+        // dispatcher names — otherwise `jk pl` is ambiguous with plugin and `jk wh` with why.
+        var pl = CommandDispatch.resolveName("pl");
+        assertThat(pl.resolved()).as("jk pl → plugin, not ambiguous").isTrue();
+        assertThat(pl.value().name()).isEqualTo("plugin");
+        var wh = CommandDispatch.resolveName("wh");
+        assertThat(wh.resolved()).as("jk wh → why, not ambiguous").isTrue();
+        assertThat(wh.value().name()).isEqualTo("why");
+        // The exact alias tokens still reach explain via the rewrite layer.
+        assertThat(Jk.rewriteAlias(new String[] {"plan"})[0]).isEqualTo("explain");
+        assertThat(Jk.rewriteAlias(new String[] {"why-rebuilt"})[0]).isEqualTo("explain");
+    }
+
+    @Test
     void commandIndex_findsFirstPositional() {
         assertThat(CommandDispatch.commandIndex(List.of("build"))).isZero();
         assertThat(CommandDispatch.commandIndex(List.of("-q", "build"))).isEqualTo(1);
