@@ -123,13 +123,39 @@ public final class EnsureFreshLock {
                 String err = outcome.errors() == null || outcome.errors().isEmpty()
                         ? "could not refresh jk-lock.toml"
                         : outcome.errors().getFirst();
-                CliOutput.err(CommandWedge.fail(chip, err));
-                return outcome.exitCode() != 0 ? outcome.exitCode() : Exit.CONFIG;
+                return failSoftOrHard(dir, chip, err, outcome.exitCode(), spinner);
             }
             return Exit.SUCCESS;
         } catch (Exception e) {
-            CliOutput.err(CommandWedge.fail(chip, "could not refresh jk-lock.toml: " + e.getMessage()));
-            return Exit.CONFIG;
+            return failSoftOrHard(dir, chip, "could not refresh jk-lock.toml: " + e.getMessage(), Exit.CONFIG, spinner);
+        }
+    }
+
+    /**
+     * Failure policy, mirroring the engine's {@code AutoLock}/{@code BuildService} guards: with an
+     * existing readable lock, a freshen failure is soft — warn and proceed on the stale lock —
+     * unless resolution is genuinely unsatisfiable (the manifest itself is broken). No lock at all
+     * stays a hard failure: the command has nothing to read. Any live wedge spinner is settled
+     * before writing, so error lines never interleave with repaints.
+     */
+    static int failSoftOrHard(Path dir, String chip, String err, int exitCode, Spinner spinner) {
+        if (spinner != null) spinner.close(); // idempotent; caller's try-with-resources may close again
+        boolean unsatisfiable = err != null && err.contains("Cannot resolve dependencies");
+        Path lockFile = LockPaths.lockFile(lockOwnerOrSelf(dir));
+        if (!unsatisfiable && Files.isRegularFile(lockFile)) {
+            CliOutput.err("‼ jk: lock refresh failed — using existing jk-lock.toml: " + err);
+            CliOutput.err("    Run `jk lock` to resolve manually.");
+            return Exit.SUCCESS;
+        }
+        CliOutput.err(CommandWedge.fail(chip, err));
+        return exitCode != 0 ? exitCode : Exit.CONFIG;
+    }
+
+    private static Path lockOwnerOrSelf(Path dir) {
+        try {
+            return LockPaths.lockOwnerDir(dir);
+        } catch (Exception e) {
+            return dir;
         }
     }
 

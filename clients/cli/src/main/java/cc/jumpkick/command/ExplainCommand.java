@@ -176,9 +176,10 @@ public final class ExplainCommand implements CliCommand {
         long[] etaOut = new long[1];
         try (Spinner prep = livePrep ? CommandWedge.analyzing(CliOutput.stdout(), "Explain", prepMsg) : null) {
             // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
+            // Pass the prep spinner so a freshen failure settles it before writing stderr.
             if (needsLock) {
                 if (prep != null) prep.update("Locking versions…");
-                int lockCode = EnsureFreshLock.ensureQuiet(startDir, cache, global, "Explain");
+                int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain", prep, false);
                 if (lockCode != 0) return lockCode;
             }
             if (prep != null) {
