@@ -46,6 +46,17 @@ public final class StoreMigration {
     /** Marker recording that the move already ran, so a warm start does no filesystem probing. */
     private static final String DONE_MARKER = ".migrated-from-cache";
 
+    /** Marker line naming the entries a completed migration covered (see {@link #coveredBy}). */
+    private static final String ENTRIES_LINE = "entries: ";
+
+    /**
+     * What a marker without an {@code entries:} line covered: the original split set. Entries added
+     * to {@link #STORE_ENTRIES} later (the library registry pair) must still be probed on installs
+     * that migrated before those entries existed — a bare marker must not vouch for them.
+     */
+    private static final List<String> LEGACY_MARKER_ENTRIES =
+            List.of("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json", "tools");
+
     private static volatile boolean checkedThisProcess;
 
     /**
@@ -64,12 +75,18 @@ public final class StoreMigration {
     /** Testable core: {@code legacy} → {@code store}. */
     static int migrate(Path store, Path legacy) {
         try {
-            if (Files.exists(store.resolve(DONE_MARKER))) return 0;
+            // The marker only vouches for the entries it names — a set that grows in a later
+            // release must still be probed on installs whose migration predates the growth,
+            // or the new entries stay in prunable cache/ forever.
+            List<String> pending = STORE_ENTRIES.stream()
+                    .filter(e -> !coveredBy(store.resolve(DONE_MARKER)).contains(e))
+                    .toList();
+            if (pending.isEmpty()) return 0;
             if (store.equals(legacy) || !Files.isDirectory(legacy)) return 0;
 
             int moved = 0;
             boolean leftovers = false;
-            for (String entry : STORE_ENTRIES) {
+            for (String entry : pending) {
                 Path from = legacy.resolve(entry);
                 Path to = store.resolve(entry);
                 if (!Files.exists(from)) continue;
@@ -90,11 +107,30 @@ public final class StoreMigration {
                 Files.writeString(
                         store.resolve(DONE_MARKER),
                         "jk moved its fetched artifacts here from cache/ (see JkDirs#storeDir).\n"
-                                + "Delete this file to let jk look in the old location again.\n");
+                                + "Delete this file to let jk look in the old location again.\n"
+                                + ENTRIES_LINE + String.join(",", STORE_ENTRIES) + "\n");
             }
             return moved;
         } catch (IOException | RuntimeException e) {
             return 0;
+        }
+    }
+
+    /**
+     * The entries a completed migration marker vouches for: the {@code entries:} line when present,
+     * the original pre-growth set for a bare legacy marker, nothing when there is no marker.
+     */
+    private static List<String> coveredBy(Path marker) {
+        if (!Files.isRegularFile(marker)) return List.of();
+        try {
+            for (String line : Files.readAllLines(marker)) {
+                if (line.startsWith(ENTRIES_LINE)) {
+                    return List.of(line.substring(ENTRIES_LINE.length()).split(","));
+                }
+            }
+            return LEGACY_MARKER_ENTRIES;
+        } catch (IOException e) {
+            return LEGACY_MARKER_ENTRIES; // unreadable marker — assume the original set only
         }
     }
 
