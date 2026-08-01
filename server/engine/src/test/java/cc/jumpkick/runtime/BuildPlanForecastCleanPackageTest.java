@@ -55,23 +55,12 @@ class BuildPlanForecastCleanPackageTest {
         BuildLayout layout = BuildLayout.of(module, project);
         // Point layout classes at our wiped tree by using traditional? SIMPLE classes under target/
         // BuildLayout.of uses project layout — SIMPLE → target/classes/main typically.
+        // The helper reconstructs against layout.classesDir(); pin that it is the tree we
+        // stored the compile record for, so the equality below cannot silently test nothing.
+        assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
         String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac);
-        // Reconstruct should equal the pre-clean live fingerprint (class + resource).
-        // If layout.classesDir() differs from our classes path, fall back to direct reconstruct.
-        if (layout.classesDir().equals(classes.toAbsolutePath().normalize())
-                || !Files.isDirectory(layout.classesDir())) {
-            // lastFor was stored against compileTask using classes path from qualifiedTaskId
-            String rebuilt = ClasspathFingerprint.entryFromCompileAndResources(
-                    Map.of(
-                            "t/Lib.class",
-                            cc.jumpkick.util.Hashing.sha256Hex(
-                                    // content from CAS via re-hash of written bytes
-                                    "bytecode".getBytes(java.nio.charset.StandardCharsets.UTF_8))),
-                    List.of(res));
-            // Prefer equality of the public helper when layout aligns; always assert reconstruct.
-            assertThat(rebuilt).isEqualTo(live);
-        }
-        assertThat(tok).doesNotStartWith("missing:");
+        // Reconstruct must equal the pre-clean live fingerprint (class + resource).
+        assertThat(tok).isEqualTo(live);
     }
 
     @Test
