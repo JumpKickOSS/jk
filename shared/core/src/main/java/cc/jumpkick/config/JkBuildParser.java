@@ -110,6 +110,18 @@ public final class JkBuildParser {
         return parse(file);
     }
 
+    /**
+     * Raw structural probe: does {@code file} declare a non-empty {@code [workspace] modules}
+     * array? Reads the TOML directly — never builds a {@link JkBuild}, resolves plugins, or reads
+     * the lockfile. {@link cc.jumpkick.lock.LockPaths} calls this from lock-location discovery,
+     * which itself runs <em>inside</em> a full parse (plugin-manifest resolution needs the lock
+     * path); a full parse here would re-enter {@link #parseLocal} on the very file being parsed
+     * and recurse until the stack blows.
+     */
+    public static boolean declaresWorkspaceModules(Path file) throws IOException {
+        return hasWorkspaceModules(Toml.parse(Files.readString(file)));
+    }
+
     /** Drop memo and re-parse without workspace resolution. */
     public static JkBuild reparseLocal(Path file) throws IOException {
         Path key = file.toAbsolutePath().normalize();

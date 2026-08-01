@@ -49,13 +49,16 @@ class AndroidWorkspaceTest {
         acceptLicenses();
 
         // ---- 1. Build the library module: AAR + conventional classes jar ----
+        // Workspace members write to the central out tree: <workspace>/target/<module>/…
+        // (Mill-style layout; artifacts under lib/ since the modules declare no main).
         Path lib = root.resolve("lib");
         PipelineResult libResult = build(lib, cache);
         assertThat(libResult.errors()).isEmpty();
         assertThat(libResult.success()).isTrue();
 
-        Path aar = lib.resolve("target/lib/lib-1.0.0.aar");
-        Path conventional = lib.resolve("target/lib/lib-1.0.0.jar");
+        Path libTarget = root.resolve("target/lib");
+        Path aar = libTarget.resolve("lib/lib-1.0.0.aar");
+        Path conventional = libTarget.resolve("lib/lib-1.0.0.jar");
         assertThat(aar).exists();
         assertThat(conventional).exists();
         Set<String> aarEntries = zipEntries(aar);
@@ -87,13 +90,15 @@ class AndroidWorkspaceTest {
         assertThat(appResult.errors()).isEmpty();
         assertThat(appResult.success()).isTrue();
 
+        Path appTarget = root.resolve("target/app");
+
         // The library manifest joined the merge (--libs): its permission is in the app manifest.
-        String merged = Files.readString(app.resolve("target/plugin/android-manifest/merged/AndroidManifest.xml"));
+        String merged = Files.readString(appTarget.resolve("plugin/android-manifest/merged/AndroidManifest.xml"));
         assertThat(merged).contains("package=\"com.example.app\"").contains("android.permission.INTERNET");
 
         // Non-transitive R: the library's R regenerated under ITS namespace with final ids —
         // its own symbols, not the app's.
-        Path libR = app.resolve("target/plugin/android-res/gen/com/example/lib/R.java");
+        Path libR = appTarget.resolve("plugin/android-res/gen/com/example/lib/R.java");
         assertThat(libR).exists();
         String libRSource = Files.readString(libR);
         assertThat(libRSource)
@@ -104,11 +109,11 @@ class AndroidWorkspaceTest {
         assertThat(libRSource).contains("0x7f");
 
         // The app's own R sees the merged table (app resource present).
-        assertThat(Files.readString(app.resolve("target/plugin/android-res/gen/com/example/app/R.java")))
+        assertThat(Files.readString(appTarget.resolve("plugin/android-res/gen/com/example/app/R.java")))
                 .contains("app_name");
 
         // The APK carries the library's file-shaped resources and the dexed closure.
-        Path apk = app.resolve("target/lib/app-1.0.0.apk");
+        Path apk = appTarget.resolve("lib/app-1.0.0.apk");
         assertThat(apk).exists();
         assertThat(zipEntries(apk)).contains("classes.dex", "res/layout/lib_view.xml", "resources.arsc");
     }
