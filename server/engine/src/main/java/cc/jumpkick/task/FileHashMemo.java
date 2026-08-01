@@ -48,10 +48,12 @@ public final class FileHashMemo {
         CONTENT_HASH_INVOCATIONS.incrementAndGet();
         Path abs = file.toAbsolutePath().normalize();
         long size = Files.size(abs);
-        long mtime = Files.getLastModifiedTime(abs).toMillis();
+        java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
+        long mtime = ft.toMillis();
         boolean unsettled = System.currentTimeMillis() - mtime < SETTLE_MS;
-        // Key includes size+mtime so a same-path rewrite with a new mtime never hits a stale entry.
-        String tkey = abs + "\0" + size + "\0" + mtime;
+        // Key includes size+mtime (nanosecond precision) so a same-path rewrite — even one
+        // landing inside the same millisecond tick — never hits a stale entry.
+        String tkey = abs + "\0" + size + "\0" + ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
         Map<String, String> thread = THREAD_CACHE.get();
         String cached = thread.get(tkey);
         if (cached != null) {
@@ -130,6 +132,13 @@ public final class FileHashMemo {
      * The memoized fingerprint token for {@code file}, or {@code null} when absent, stale, or not
      * yet settled. {@code size}/{@code mtimeMillis} are the caller's freshly-stat'ed values (the
      * caller stats anyway; passing them avoids a second stat).
+     *
+     * <p>Trust is provenance-based: entries carrying a {@code nano=} field were seeded from a
+     * <em>known</em> digest ({@link #rememberContent}) and are trusted immediately, but only when
+     * the file's current nanosecond mtime still matches — an in-place rewrite that lands in the
+     * same millisecond tick (compilers do this to restored class files) changes the nano stamp
+     * and voids the seed. Everything else — including prefixed tokens written by {@link #store} —
+     * is settle-gated, so a same-size rewrite in the same mtime tick cannot reuse a stale digest.
      */
     public static String lookup(Path file, long size, long mtimeMillis) {
         Path entry = entryPath(file);
@@ -143,10 +152,16 @@ public final class FileHashMemo {
             if (Long.parseLong(content.substring(sp1 + 1, sp2)) != mtimeMillis) return null;
             String token = content.substring(sp2 + 1).trim();
             if (token.isEmpty()) return null;
-            // CAS-seeded entry tokens are safe immediately. Bare self-hashes require settle so a
-            // same-size rewrite in the same mtime tick cannot reuse a stale digest.
-            boolean seeded = token.startsWith("file:") || token.startsWith("jar:");
-            if (!seeded && System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
+            int nanoAt = token.lastIndexOf(" nano=");
+            if (nanoAt >= 0) {
+                long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
+                token = token.substring(0, nanoAt).trim();
+                if (token.isEmpty()) return null;
+                long current = Files.getLastModifiedTime(file)
+                        .to(java.util.concurrent.TimeUnit.NANOSECONDS);
+                return recorded == current ? token : null;
+            }
+            if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
             return token;
         } catch (IOException | NumberFormatException e) {
             return null; // fail open — caller hashes content
@@ -176,11 +191,14 @@ public final class FileHashMemo {
             Path abs = file.toAbsolutePath().normalize();
             if (!Files.isRegularFile(abs)) return;
             long size = Files.size(abs);
-            long mtime = Files.getLastModifiedTime(abs).toMillis();
-            String tkey = abs + "\0" + size + "\0" + mtime;
+            java.nio.file.attribute.FileTime ft = Files.getLastModifiedTime(abs);
+            long nanos = ft.to(java.util.concurrent.TimeUnit.NANOSECONDS);
+            String tkey = abs + "\0" + size + "\0" + nanos;
             THREAD_CACHE.get().put(tkey, "known:" + sha256Hex);
-            // Disk: file: form so entry() short-circuits; contentHash strips the prefix.
-            forceStore(abs, size, mtime, "file:" + sha256Hex);
+            // Disk: file: form so entry() short-circuits; contentHash strips the prefix. The
+            // nano= stamp is the seed's provenance mark — lookup trusts it immediately but only
+            // while the file's nanosecond mtime is unchanged (see lookup).
+            forceStore(abs, size, ft.toMillis(), "file:" + sha256Hex + " nano=" + nanos);
         } catch (IOException | RuntimeException ignored) {
             // best-effort
         }

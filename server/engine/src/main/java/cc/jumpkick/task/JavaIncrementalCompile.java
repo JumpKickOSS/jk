@@ -194,8 +194,8 @@ public final class JavaIncrementalCompile {
         // stored records/state would be orphans.
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
-            if (hit.isPresent()) {
-                actionCache.restore(hit.get(), out);
+            // A failed restore (missing/corrupt blob) falls through to a real compile.
+            if (hit.isPresent() && actionCache.restore(hit.get(), out)) {
                 return new Result(true, "cache-hit:" + key.substring(0, 8), key, List.of());
             }
         }
@@ -375,7 +375,11 @@ public final class JavaIncrementalCompile {
             ApFlags flags)
             throws IOException {
         // Carry over: lay down the prior full output, then recompile dirty waves on top.
-        actionCache.restore(prior, out);
+        // A prior that no longer restores (missing/corrupt blob) can't be built on — go full.
+        // (Only reached with useCache && persist, so persist=true here.)
+        if (!actionCache.restore(prior, out)) {
+            return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, true);
+        }
 
         Map<String, ClassFacts> facts = new HashMap<>(abi);
         Map<String, List<String>> units = new HashMap<>();

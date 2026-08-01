@@ -139,12 +139,14 @@ public final class BuildLogicSupport {
 
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent() && !hit.get().outputs().isEmpty()) {
-                label.accept("build-logic:" + simple + ": cache hit");
                 deleteContents(outDir);
                 Files.createDirectories(outDir);
-                actionCache.restore(hit.get(), outDir);
-                mergeIntoClasses(outDir, classesDir);
-                continue;
+                // A failed restore (missing/corrupt blob) falls through to the real run below.
+                if (actionCache.restore(hit.get(), outDir)) {
+                    label.accept("build-logic:" + simple + ": cache hit");
+                    mergeIntoClasses(outDir, classesDir);
+                    continue;
+                }
             }
 
             label.accept("build-logic:" + simple + ": " + anchor.name().toLowerCase(Locale.ROOT));
