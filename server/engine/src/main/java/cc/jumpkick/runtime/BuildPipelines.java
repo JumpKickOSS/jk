@@ -6,6 +6,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
+import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.GroovycRequest;
@@ -14,7 +15,6 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
-import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -45,10 +45,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -3737,82 +3734,12 @@ public final class BuildPipelines {
     }
 
     /**
-     * Jars to embed in an assembly / native-image classpath for one module: the lockfile
-     * <em>transitive</em> runtime closure of that module (and its workspace siblings' main/export
-     * external deps), plus sibling thin jars. Never the whole workspace lock (JK-1345).
+     * Jars to embed in an assembly / native-image classpath for one module — delegates to {@link
+     * ModuleRuntimeClasspath} (JK-1345 / JK-1347).
      */
     static List<Path> assemblyDependencyJars(Path moduleDir, JkBuild project, Path lockFile, Path cache)
             throws IOException {
-        List<Path> depJars = new ArrayList<>();
-        if (lockFile == null || !Files.exists(lockFile)) {
-            // Still try siblings when the lock is missing (incomplete tree).
-            try {
-                WorkspaceClasspath.Result siblings =
-                        WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-                depJars.addAll(siblings.jars());
-            } catch (Exception ignored) {
-                /* best-effort */
-            }
-            return depJars;
-        }
-        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
-        Lockfile lock = LockfileReader.read(lockFile);
-        WorkspaceClasspath.Result siblings =
-                WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-
-        LinkedHashSet<String> roots = new LinkedHashSet<>();
-        roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
-        // Sibling modules contribute their own MAIN/EXPORT external roots; their third-party
-        // transitive deps are then walked via the lock (same graph the sibling was locked with).
-        for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
-            roots.addAll(ClasspathResolver.declaredExternalRoots(
-                    sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
-        }
-        depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
-        for (Path j : siblings.jars()) {
-            if (!depJars.contains(j)) depJars.add(j);
-        }
-        return depJars;
-    }
-
-    /**
-     * Load workspace unit manifests whose {@code group:name} is in {@code siblingCoords}. Used to
-     * seed assembly external roots for the module's workspace dependency closure.
-     */
-    static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords)
-            throws IOException {
-        if (siblingCoords == null || siblingCoords.isEmpty()) return List.of();
-        Set<String> want = new HashSet<>(siblingCoords);
-        Path root;
-        JkBuild rootManifest;
-        if (project.isWorkspaceRoot()) {
-            root = moduleDir;
-            rootManifest = project;
-        } else {
-            var rootOpt = WorkspaceLocator.findRoot(moduleDir);
-            if (rootOpt.isEmpty()) return List.of();
-            root = rootOpt.get();
-            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
-            if (!rootManifest.isWorkspaceRoot()) return List.of();
-        }
-        List<JkBuild> out = new ArrayList<>();
-        for (String moduleName : rootManifest.workspace().modules()) {
-            Path unitDir = root.resolve(moduleName);
-            Path manifest = unitDir.resolve("jk.toml");
-            if (!Files.isRegularFile(manifest)) continue;
-            JkBuild unit;
-            try {
-                unit = JkBuildParser.parse(manifest);
-            } catch (RuntimeException e) {
-                continue;
-            }
-            String coord = unit.project().group() + ":" + unit.project().name();
-            if (want.contains(coord)) out.add(unit);
-        }
-        // Root is a unit too when a member depends on it.
-        String rootCoord = rootManifest.project().group() + ":" + rootManifest.project().name();
-        if (want.contains(rootCoord)) out.add(rootManifest);
-        return out;
+        return ModuleRuntimeClasspath.jars(moduleDir, project, lockFile, JkStores.cas(cache));
     }
 
     /**

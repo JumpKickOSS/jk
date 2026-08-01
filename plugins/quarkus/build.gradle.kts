@@ -16,8 +16,3 @@ dependencies {
     compileOnly("io.quarkus:quarkus-bootstrap-maven-resolver:$quarkusBootstrap")
     compileOnly("io.quarkus:quarkus-bootstrap-app-model:$quarkusBootstrap")
 }
-
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-}

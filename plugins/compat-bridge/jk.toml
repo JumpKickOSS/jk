@@ -4,7 +4,6 @@ description = "jk-compat-bridge: Maven/Gradle compat plugin worker."
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 [dependencies]
 jk-core.workspace = true

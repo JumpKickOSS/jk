@@ -13,9 +13,3 @@ description = "jk-spring-boot: the built-in Spring Boot build plugin's code laye
 dependencies {
     implementation(project(":plugin-sdk"))
 }
-
-// Fat JAR: bundle the runtime closure (plugin-api + model) so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-}

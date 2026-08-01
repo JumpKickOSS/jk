@@ -14,11 +14,3 @@ dependencies {
     // BootJarPackager — bundled into this fat jar below so the worker runs standalone.
     implementation(project(":spring-boot"))
 }
-
-// Fat JAR: bundle the runtime closure (plugin-api + jk-spring-boot classes) so the worker
-// runs as `java -jar`. Own resources win duplicates (this jar's services file registers
-// GrailsPlugin, not the bundled SpringBootPlugin).
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
-}

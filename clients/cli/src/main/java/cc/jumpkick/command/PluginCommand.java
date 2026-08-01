@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.JkVersion;
 import cc.jumpkick.model.command.CliCommand;
@@ -26,8 +30,9 @@ import java.util.Map;
 /**
  * {@code jk plugin …} — first-party worker packaging helpers for self-host / dogfood.
  *
- * <p>{@code install-local} side-loads workspace assembly jars into {@code
- * ~/.jk/cache/repos/local/…} so the engine can locate them without Gradle {@code installLocal}.
+ * <p>{@code install-local} side-loads workspace <strong>thin</strong> PluginMain jars into the
+ * local Maven layout and writes a {@code .classpath} sidecar of runtime deps (JK-1347) so the
+ * engine can {@code java -cp worker:deps… PluginMain}.
  */
 public final class PluginCommand extends GroupCommand {
 
@@ -47,8 +52,8 @@ public final class PluginCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk plugin install-local} — copy built PluginMain assembly jars into the local cache
-     * Maven layout used by the engine's worker locator.
+     * {@code jk plugin install-local} — copy built PluginMain thin jars + classpath sidecars into
+     * the local cache Maven layout used by the engine's worker locator.
      */
     static final class InstallLocalSub implements CliCommand {
 
@@ -59,7 +64,7 @@ public final class PluginCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Side-load workspace plugin assembly jars into ~/.jk/cache/repos/local/";
+            return "Side-load workspace plugin jars (+ .classpath) into local repos store";
         }
 
         @Override
@@ -67,7 +72,7 @@ public final class PluginCommand extends GroupCommand {
             return List.of(
                     Opt.value(
                             "<sel>",
-                            "Only these modules (comma list / path fragments). Default: all PluginMain assemblies.",
+                            "Only these modules (comma list / path fragments). Default: all PluginMain workers.",
                             "--modules"),
                     Opt.flag("Print what would be installed; write nothing.", "--dry-run"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());
@@ -85,7 +90,6 @@ public final class PluginCommand extends GroupCommand {
             }
 
             JkBuild root = JkBuildParser.parse(rootToml);
-            // modulePath → build (WorkspaceLoader keys by absolute module dir)
             Map<Path, JkBuild> modules = new LinkedHashMap<>();
             if (root.isWorkspaceRoot()) {
                 modules.putAll(WorkspaceLoader.loadModules(dir, root));
@@ -99,6 +103,9 @@ public final class PluginCommand extends GroupCommand {
             }
 
             Path cache = in.value("cache-dir").map(Path::of).orElse(JkDirs.cache());
+            // Plugin jars live under the store (same root PluginJar.locate / CAS use), not a
+            // transient JK_CACHE_DIR (JK-1347).
+            Path store = JkStores.storeRootFor(cache);
             boolean dryRun = in.isSet("dry-run");
             int installed = 0;
             int skipped = 0;
@@ -117,20 +124,42 @@ public final class PluginCommand extends GroupCommand {
                 Path source = preferredWorkerJar(layout);
                 String label = dir.relativize(modDir).toString();
                 if (source == null || !Files.isRegularFile(source)) {
-                    missing.add(label + " (expected " + layout.assemblyJar().getFileName() + " or main jar)");
+                    missing.add(label + " (expected " + layout.mainJar().getFileName() + ")");
                     continue;
                 }
 
                 String rel = "cc/jumpkick/" + artifactId + "/" + version + "/" + artifactId + "-" + version + ".jar";
-                Path dest = cache.resolve("repos/local").resolve(rel);
+                Path dest = store.resolve("repos/local").resolve(rel);
+                List<Path> deps;
+                try {
+                    deps = ModuleRuntimeClasspath.jars(
+                            modDir, build, LockPaths.lockFile(modDir), JkStores.cas(cache));
+                } catch (Exception ex) {
+                    deps = List.of();
+                }
+                // Sidecar must not list the worker jar itself (resolve() prepends it).
+                List<Path> sideDeps = new ArrayList<>();
+                Path sourceAbs = source.toAbsolutePath().normalize();
+                for (Path d : deps) {
+                    if (d == null) continue;
+                    Path abs = d.toAbsolutePath().normalize();
+                    if (!abs.equals(sourceAbs)) sideDeps.add(abs);
+                }
+
                 if (dryRun) {
-                    CliOutput.out("would install " + artifactId + " " + version + " ← " + source);
+                    CliOutput.out("would install " + artifactId + " " + version + " ← " + source
+                            + " (+ " + sideDeps.size() + " classpath jars)");
                     installed++;
                     continue;
                 }
-                RepoArtifactStore.writeToLocalStore(cache, rel, source);
+                RepoArtifactStore.writeToLocalStore(store, rel, source);
+                WorkerClasspath.writeSidecar(dest, sideDeps);
+                // Also write sidecar next to the build output so -Djk.*.plugin.jar overrides work.
+                WorkerClasspath.writeSidecar(source, sideDeps);
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
-                        "Plugin", "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)));
+                        "Plugin",
+                        "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)
+                                + " (" + sideDeps.size() + " deps)"));
                 installed++;
             }
 
@@ -142,7 +171,7 @@ public final class PluginCommand extends GroupCommand {
             }
             if (installed == 0 && skipped == 0) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "Plugin", "no PluginMain assembly modules found (need [application] assembly + PluginMain)"));
+                        "Plugin", "no PluginMain modules found (need [application] main = PluginMain)"));
                 return Exit.CONFIG;
             }
             if (skipped > 0 && installed == 0) return Exit.FAILURE;
@@ -151,15 +180,15 @@ public final class PluginCommand extends GroupCommand {
 
         private static boolean isPluginWorker(JkBuild build) {
             String main = build.mainClass();
-            if (main == null || !"cc.jumpkick.plugin.process.PluginMain".equals(main)) return false;
-            return build.assemblyMode().isBundled();
+            return main != null && "cc.jumpkick.plugin.process.PluginMain".equals(main);
         }
 
+        /** Prefer thin main jar; fall back to legacy assembly jar if present. */
         private static Path preferredWorkerJar(BuildLayout layout) {
-            Path assembly = layout.assemblyJar();
-            if (Files.isRegularFile(assembly)) return assembly;
             Path main = layout.mainJar();
             if (Files.isRegularFile(main)) return main;
+            Path assembly = layout.assemblyJar();
+            if (Files.isRegularFile(assembly)) return assembly;
             return null;
         }
 

@@ -15,20 +15,12 @@ dependencies {
     // formatter implementations are loaded at runtime via a Provisioner from
     // jar paths jk resolves and passes in the spec.
     implementation(libs.spotless.lib)
-    // OpenRewrite Java engine: ShortenFullyQualifiedTypeReferences + UseStaticImport
-    // and the YAML recipe loader. Bundled in the fat JAR.
-    // rewrite-java-21 provides the concrete JavaParser implementation for JDK 21+;
-    // it must be on the classpath alongside rewrite-java for JavaParser.fromJavaVersion() to work.
+    // OpenRewrite: on the worker *runtime classpath* (thin jar + .classpath sidecar), not fat-merged
+    // (JK-1347). rewrite-java-21 is the parser impl for JDK 21+; see JavaParser.fromJavaVersion().
     implementation(libs.openrewrite.java)
     implementation(libs.openrewrite.java21)
     // spotless-lib needs slf4j-api at runtime (it declares it compileOnly); a
     // no-op binding keeps the worker quiet (we report results via JSONL).
     implementation(libs.slf4j.api)
     runtimeOnly(libs.slf4j.nop)
-}
-
-// Fat JAR: bundle the full runtime closure so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }
