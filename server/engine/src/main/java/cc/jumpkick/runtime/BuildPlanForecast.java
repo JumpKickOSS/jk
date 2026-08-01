@@ -25,7 +25,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -465,7 +464,8 @@ public final class BuildPlanForecast {
                             .map(Map.Entry::getValue)
                             .findFirst()
                             .or(() -> rec.outputs().values().stream().findFirst())
-                            .ifPresent(sha -> restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
+                            .ifPresent(sha ->
+                                    restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
                 }
             }
 
@@ -477,7 +477,16 @@ public final class BuildPlanForecast {
                             "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
-                            dir, project, layout, lock, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
+                            dir,
+                            project,
+                            layout,
+                            lock,
+                            lockFile,
+                            cas,
+                            actionCache,
+                            cache,
+                            compileMainKey,
+                            restoredJarShas);
                     steps.add(
                             hit
                                     ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
@@ -530,8 +539,7 @@ public final class BuildPlanForecast {
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
                 }
                 if (outputsAbsent) {
-                    steps.add(new BuildPlan.Step(
-                            "restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
+                    steps.add(new BuildPlan.Step("restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
                 }
             }
         } catch (Exception e) {
@@ -623,7 +631,12 @@ public final class BuildPlanForecast {
             throws IOException {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
-                dir, CompileSupport.isSimpleLayout(project.project(), dir), layout, project, actionCache, compileMainKey);
+                dir,
+                CompileSupport.isSimpleLayout(project.project(), dir),
+                layout,
+                project,
+                actionCache,
+                compileMainKey);
         List<Path> depJars = new ArrayList<>();
         if (Files.exists(lockFile)) {
             ClasspathResolver resolver = new ClasspathResolver(cas);

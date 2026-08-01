@@ -35,7 +35,8 @@ class CommandDispatchTest {
     @Test
     void commandIndex_skipsAbbreviatedValueTakingGlobal() {
         // --di is a unique prefix of the value-taking global --dir, so it consumes /tmp too.
-        assertThat(CommandDispatch.commandIndex(List.of("--di", "/tmp", "build"))).isEqualTo(2);
+        assertThat(CommandDispatch.commandIndex(List.of("--di", "/tmp", "build")))
+                .isEqualTo(2);
     }
 
     @Test

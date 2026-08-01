@@ -151,8 +151,7 @@ class JkBuildWorkspaceTest {
                 name = "thin"
                 """);
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(
-                        () -> JkBuildParser.parse(thin.resolve("jk.toml")))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> JkBuildParser.parse(thin.resolve("jk.toml")))
                 .isInstanceOf(JkBuildParseException.class);
     }
 
@@ -279,8 +278,7 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
-    void minimal_module_only_name_inherits_everything_except_description(@TempDir Path tempDir)
-            throws IOException {
+    void minimal_module_only_name_inherits_everything_except_description(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
                 group       = "com.acme"

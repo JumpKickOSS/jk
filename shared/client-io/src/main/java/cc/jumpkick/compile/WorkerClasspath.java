@@ -138,7 +138,8 @@ public final class WorkerClasspath {
             Path base = storeLocal.resolve(artifact);
             if (!Files.isDirectory(base)) continue;
             try (Stream<Path> vers = Files.list(base)) {
-                List<Path> versionDirs = vers.filter(Files::isDirectory).sorted().toList();
+                List<Path> versionDirs =
+                        vers.filter(Files::isDirectory).sorted().toList();
                 // Prefer highest version string last
                 for (int i = versionDirs.size() - 1; i >= 0; i--) {
                     Path hit = firstJar(versionDirs.get(i), artifact);

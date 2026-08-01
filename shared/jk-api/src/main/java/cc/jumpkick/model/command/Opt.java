@@ -56,7 +56,8 @@ public record Opt(
 
     /** A value option, e.g. {@code --profile <name>}. */
     public static Opt value(String paramLabel, String description, String... names) {
-        return new Opt(List.of(names), paramLabel, description, true, false, null, false, false, false, null, List.of());
+        return new Opt(
+                List.of(names), paramLabel, description, true, false, null, false, false, false, null, List.of());
     }
 
     public Opt hide() {

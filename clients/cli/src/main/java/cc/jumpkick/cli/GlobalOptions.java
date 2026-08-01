@@ -243,11 +243,7 @@ public final class GlobalOptions {
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
                 Opt.value("<DIR>", "Change to this directory before running", "-C", "--dir")
                         .alias("--directory"),
-                Opt.value(
-                        "<N>",
-                        "Concurrent modules/workers: 0=max (default), 1=serial, N=cap",
-                        "-j",
-                        "--jobs"),
+                Opt.value("<N>", "Concurrent modules/workers: 0=max (default), 1=serial, N=cap", "-j", "--jobs"),
                 Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--ram-percent")
                         .alias("--max-ram-percent"),
                 Opt.value("<spec>", "JDK for this run; overrides project pins", "--jdk"),

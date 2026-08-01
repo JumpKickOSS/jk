@@ -6,13 +6,13 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
-import cc.jumpkick.compile.ModuleRuntimeClasspath;
-import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.GroovycRequest;
 import cc.jumpkick.compile.JarPackager;
 import cc.jumpkick.compile.KotlincRequest;
+import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
@@ -814,8 +814,7 @@ public final class BuildPipelines {
                             ctx.error("workspace", "processor sibling not built — " + missing);
                         throw new RuntimeException("missing workspace siblings");
                     }
-                    List<String> unresolvedProcessors =
-                            unresolvedProcessorDeps(project, lock, processorSiblings);
+                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock, processorSiblings);
                     if (!unresolvedProcessors.isEmpty()) {
                         for (String unresolved : unresolvedProcessors)
                             ctx.error(

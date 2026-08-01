@@ -33,8 +33,7 @@ public record CompileRequest(
         processorPath = List.copyOf(processorPath);
         // jk's support floor is JDK 17 (SupportedJdk.MIN_MAJOR) — 8/11 are not valid targets.
         if (release < SupportedJdk.MIN_MAJOR) {
-            throw new IllegalArgumentException(
-                    "release must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + release);
+            throw new IllegalArgumentException("release must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + release);
         }
         // javaHome nullable: the subprocess strategy falls back to
         // System.getProperty("java.home") when null.

@@ -156,8 +156,7 @@ public final class JdkUpdateCommand implements CliCommand {
         }
 
         if (updates.isEmpty()) {
-            CliOutput.out(CommandWedge.ok(
-                    "JDK", "Nothing to do. All JumpKick-managed JDKs are up to date."));
+            CliOutput.out(CommandWedge.ok("JDK", "Nothing to do. All JumpKick-managed JDKs are up to date."));
             return 0;
         }
 
@@ -229,9 +228,8 @@ public final class JdkUpdateCommand implements CliCommand {
         new JdkGarbage(registry.jdksRoot()).drain();
 
         if (failed == 0) {
-            String msg = updated == 1
-                    ? "Updated 1 JumpKick-managed JDK."
-                    : "Updated " + updated + " JumpKick-managed JDKs.";
+            String msg =
+                    updated == 1 ? "Updated 1 JumpKick-managed JDK." : "Updated " + updated + " JumpKick-managed JDKs.";
             CliOutput.out(CommandWedge.ok("JDK", msg));
         } else {
             CliOutput.out(CommandWedge.fail("JDK", updated + " updated, " + failed + " failed."));

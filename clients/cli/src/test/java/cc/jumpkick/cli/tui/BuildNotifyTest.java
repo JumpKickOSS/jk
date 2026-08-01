@@ -9,6 +9,7 @@ import cc.jumpkick.config.JkConfig;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class BuildNotifyTest {
@@ -71,17 +72,17 @@ class BuildNotifyTest {
     @Test
     void desktopNotify_empty_when_no_osc() {
         var noOsc = new cc.jumpkick.config.JkConfig(
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.of(true),
-                java.util.Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty());
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noOsc), () -> {
                     assertThat(Ansi.oscEnabled()).isFalse();

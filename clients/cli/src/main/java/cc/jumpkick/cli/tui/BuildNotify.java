@@ -48,8 +48,7 @@ public final class BuildNotify {
         // the machine stream).
         if (global.noProgress || global.noOsc || global.outputIsJson()) return false;
         if (!Ansi.oscEnabled()) return false;
-        JkConfig.NotifyChoice policy =
-                global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
+        JkConfig.NotifyChoice policy = global.notify == null ? JkConfig.NotifyChoice.AUTO : global.notify;
         return switch (policy) {
             case NEVER -> false;
             case ALWAYS -> true;

@@ -4,6 +4,7 @@ package cc.jumpkick.cache;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Assumptions;
@@ -55,7 +56,7 @@ class DiskUsageTest {
         try {
             Files.createLink(y, x);
             return true;
-        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+        } catch (UnsupportedOperationException | FileSystemException e) {
             return false;
         } finally {
             Files.deleteIfExists(y);

@@ -9,6 +9,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -64,7 +65,7 @@ class CacheCommandTest {
         Files.createDirectories(repoJar.getParent());
         try {
             Files.createLink(repoJar, casBlob);
-        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+        } catch (UnsupportedOperationException | FileSystemException e) {
             org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
         }
         Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));

@@ -135,8 +135,7 @@ public final class PluginCommand extends GroupCommand {
                 Path dest = installRoot.resolve("repos/local").resolve(rel);
                 List<Path> deps;
                 try {
-                    deps = ModuleRuntimeClasspath.jars(
-                            modDir, build, LockPaths.lockFile(modDir), JkStores.cas(cache));
+                    deps = ModuleRuntimeClasspath.jars(modDir, build, LockPaths.lockFile(modDir), JkStores.cas(cache));
                 } catch (Exception ex) {
                     deps = List.of();
                 }
@@ -159,8 +158,8 @@ public final class PluginCommand extends GroupCommand {
                 sideDeps = installSidecarDeps(installRoot, sideDeps);
 
                 if (dryRun) {
-                    CliOutput.out("would install " + artifactId + " " + version + " ← " + source
-                            + " (+ " + sideDeps.size() + " classpath jars)");
+                    CliOutput.out("would install " + artifactId + " " + version + " ← " + source + " (+ "
+                            + sideDeps.size() + " classpath jars)");
                     installed++;
                     continue;
                 }
@@ -187,8 +186,8 @@ public final class PluginCommand extends GroupCommand {
                 String libNote = libDir != null ? "; lib " + PathDisplay.styledRaw(libDir) : "";
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
                         "Plugin",
-                        "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)
-                                + " (" + sideDeps.size() + " deps" + libNote + ")"));
+                        "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest) + " ("
+                                + sideDeps.size() + " deps" + libNote + ")"));
                 installed++;
             }
 

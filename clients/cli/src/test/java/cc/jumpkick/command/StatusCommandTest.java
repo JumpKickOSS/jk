@@ -48,8 +48,8 @@ class StatusCommandTest {
         String down = stripAnsi(StatusCommand.engineStatusMessage(Optional.empty()));
         assertThat(down).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is not running");
 
-        EngineClient.Status s = new EngineClient.Status(
-                Jk.VERSION, 403279L, 0L, 0, 0, false, 0L, 0L, 0L, 0L, 0L, null, null, null);
+        EngineClient.Status s =
+                new EngineClient.Status(Jk.VERSION, 403279L, 0L, 0, 0, false, 0L, 0L, 0L, 0L, 0L, null, null, null);
         String up = stripAnsi(StatusCommand.engineStatusMessage(Optional.of(s)));
         assertThat(up).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is running (pid 403279)");
     }

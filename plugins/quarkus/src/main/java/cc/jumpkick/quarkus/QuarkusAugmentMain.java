@@ -126,8 +126,8 @@ public final class QuarkusAugmentMain {
         System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " pathDeps="
                 + pathDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
-        var model = modelResolver.resolveManagedModel(
-                appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
+        var model =
+                modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
         System.err.println(
                 "jk-quarkus-augment: model deps=" + model.getDependencies().size());
 

@@ -298,9 +298,17 @@ class PreflightMemoTest {
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
         PreflightMemo.storeShape(
-                tmp, mod, false, new PreflightMemo.PipelineShape(40, 10, List.of(new PreflightMemo.PipelineShape.StepShape("run-tests", "test"))));
+                tmp,
+                mod,
+                false,
+                new PreflightMemo.PipelineShape(
+                        40, 10, List.of(new PreflightMemo.PipelineShape.StepShape("run-tests", "test"))));
         PreflightMemo.storeShape(
-                tmp, mod, true, new PreflightMemo.PipelineShape(30, 0, List.of(new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"))));
+                tmp,
+                mod,
+                true,
+                new PreflightMemo.PipelineShape(
+                        30, 0, List.of(new PreflightMemo.PipelineShape.StepShape("compile-java", "compile"))));
         Optional<PreflightMemo.PipelineShape> withTests = PreflightMemo.tryLoadShape(tmp, mod, false);
         Optional<PreflightMemo.PipelineShape> skipTests = PreflightMemo.tryLoadShape(tmp, mod, true);
         assertThat(withTests).isPresent();
@@ -319,9 +327,7 @@ class PreflightMemoTest {
         Path b = tmp.resolve("b");
         Files.createDirectories(a);
         Files.createDirectories(b);
-        Files.writeString(
-                a.resolve("jk.toml"),
-                """
+        Files.writeString(a.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "a"
@@ -329,9 +335,7 @@ class PreflightMemoTest {
                 jdk = 21
                 java = 21
                 """);
-        Files.writeString(
-                b.resolve("jk.toml"),
-                """
+        Files.writeString(b.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "b"
@@ -352,9 +356,11 @@ class PreflightMemoTest {
         t1.join();
         t2.join();
         assertThat(PreflightMemo.tryLoadShape(tmp, a, false)).isPresent();
-        assertThat(PreflightMemo.tryLoadShape(tmp, a, false).orElseThrow().weight()).isEqualTo(11);
+        assertThat(PreflightMemo.tryLoadShape(tmp, a, false).orElseThrow().weight())
+                .isEqualTo(11);
         assertThat(PreflightMemo.tryLoadShape(tmp, b, false)).isPresent();
-        assertThat(PreflightMemo.tryLoadShape(tmp, b, false).orElseThrow().weight()).isEqualTo(22);
+        assertThat(PreflightMemo.tryLoadShape(tmp, b, false).orElseThrow().weight())
+                .isEqualTo(22);
     }
 
     @Test
@@ -388,7 +394,6 @@ class PreflightMemoTest {
         assertThat(plan.pipeline().run().success()).isTrue();
     }
 
-    
     @Test
     void fingerprint_includes_simple_resources_dir(@TempDir Path tmp) throws Exception {
         writeSimpleProject(tmp);
@@ -428,9 +433,7 @@ class PreflightMemoTest {
     private static void writeSimpleProject(Path dir) throws Exception {
         Files.createDirectories(dir.resolve("src"));
         Files.writeString(dir.resolve("src/App.java"), "class App {}\n");
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -439,9 +442,7 @@ class PreflightMemoTest {
                 java = 21
                 layout = "simple"
                 """);
-        Files.writeString(
-                dir.resolve("jk-lock.toml"),
-                """
+        Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"

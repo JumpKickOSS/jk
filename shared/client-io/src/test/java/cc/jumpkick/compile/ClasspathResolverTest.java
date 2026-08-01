@@ -12,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -96,11 +95,7 @@ class ClasspathResolverTest {
                 "jk test",
                 Lockfile.RESOLUTION_ALGORITHM,
                 List.of(
-                        pkg(
-                                "com.foo:app:jar:",
-                                "1.0",
-                                "sha256:aaaa1111",
-                                List.of("com.foo:lib:jar:@1.0")),
+                        pkg("com.foo:app:jar:", "1.0", "sha256:aaaa1111", List.of("com.foo:lib:jar:@1.0")),
                         pkg("com.foo:lib:jar:", "1.0", "sha256:bbbb2222", List.of()),
                         // Unrelated monorepo noise (android / quarkus / …) — must not ship in app fat jar.
                         pkg("com.other:noise:jar:", "9.0", "sha256:cccc3333", List.of())));

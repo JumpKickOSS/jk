@@ -544,16 +544,16 @@ public final class LockPipelines {
             spliced.add(old != null ? old : a);
         }
         Lockfile finalLock = new Lockfile(
-                        newLock.version(),
-                        newLock.generatedBy(),
-                        newLock.resolutionAlgorithm(),
-                        newLock.jdk(),
-                        newLock.kotlin(),
-                        spliced,
-                        oldLock != null ? oldLock.plugins() : newLock.plugins(),
-                        oldLock != null ? oldLock.sdk() : newLock.sdk(),
-                        List.of(),
-                        newLock.jk());
+                newLock.version(),
+                newLock.generatedBy(),
+                newLock.resolutionAlgorithm(),
+                newLock.jdk(),
+                newLock.kotlin(),
+                spliced,
+                oldLock != null ? oldLock.plugins() : newLock.plugins(),
+                oldLock != null ? oldLock.sdk() : newLock.sdk(),
+                List.of(),
+                newLock.jk());
         finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
         LockfileWriter.write(finalLock, lockFile);
         return refreshed;
@@ -633,7 +633,8 @@ public final class LockPipelines {
     public static LockScope lockScope(Path entryDir) throws java.io.IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
-        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
+        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
+                SessionContext.current().offline());
         JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
         if (root.isWorkspaceRoot()) {
             var modules = WorkspaceLoader.loadModules(entryDir, root);

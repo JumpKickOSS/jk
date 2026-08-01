@@ -71,9 +71,7 @@ class JkConfigLoaderTest {
     @Test
     void parses_notify_no_osc_no_ansi_from_toml(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [config]
                 notify = "always"
                 no-osc = true

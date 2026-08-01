@@ -142,16 +142,7 @@ public record Lockfile(
     /** Return a copy with the resolved Kotlin compiler version stamped in. */
     public Lockfile withKotlin(String kotlinVersion) {
         return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                kotlinVersion,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jk);
+                version, generatedBy, resolutionAlgorithm, jdk, kotlinVersion, artifacts, plugins, sdk, modules, jk);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */

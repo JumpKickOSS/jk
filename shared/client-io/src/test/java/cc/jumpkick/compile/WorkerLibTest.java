@@ -13,7 +13,8 @@ class WorkerLibTest {
 
     @Test
     void id_from_m2_layout_and_filename() {
-        Path m2 = Path.of("/home/u/.jk/store/repos/local/cc/jumpkick/jk-kotlin-compiler/0.10.1/jk-kotlin-compiler-0.10.1.jar");
+        Path m2 = Path.of(
+                "/home/u/.jk/store/repos/local/cc/jumpkick/jk-kotlin-compiler/0.10.1/jk-kotlin-compiler-0.10.1.jar");
         assertThat(WorkerLib.idFromWorkerJar(m2)).isEqualTo("jk-kotlin-compiler");
         assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-test-runner-0.10.1.jar")))
                 .isEqualTo("jk-test-runner");

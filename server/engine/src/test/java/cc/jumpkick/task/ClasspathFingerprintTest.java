@@ -8,7 +8,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.Test;
@@ -61,8 +63,8 @@ class ClasspathFingerprintTest {
         // Same tree reconstructed after clean (action record + resource roots).
         Path res = Files.createDirectories(dir.resolve("resources"));
         write(res.resolve("app.properties"), "x=1\n");
-        java.util.Map<String, String> compileOut = java.util.Map.of(
-                "a/A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("a/A.class")));
+        Map<String, String> compileOut =
+                Map.of("a/A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("a/A.class")));
         String reconstructed = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res));
         assertThat(reconstructed).isEqualTo(live);
     }
@@ -73,7 +75,7 @@ class ClasspathFingerprintTest {
         write(classes.resolve("A.class"), "AA");
         write(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp-noise");
         String live = ClasspathFingerprint.entry(classes);
-        java.util.Map<String, String> outs = new java.util.LinkedHashMap<>();
+        Map<String, String> outs = new LinkedHashMap<>();
         outs.put("A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("A.class")));
         outs.put(FreshnessStamp.JAVA_STAMP, "deadbeef");
         assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.DiskUsage;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -14,8 +16,6 @@ import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
-import cc.jumpkick.cache.DiskUsage;
-import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.JkDirs;
@@ -214,8 +214,7 @@ public final class CacheCommand extends GroupCommand {
             Path absRoot = root.toAbsolutePath().normalize();
             boolean isolated = !absRoot.equals(JkDirs.cache().toAbsolutePath().normalize());
             // Explicit --cache-dir: only that tree. Ambient: also consider the artifact store.
-            if (!Files.isDirectory(root)
-                    && (isolated || !Files.isDirectory(JkStores.storeRootFor(root)))) {
+            if (!Files.isDirectory(root) && (isolated || !Files.isDirectory(JkStores.storeRootFor(root)))) {
                 CliOutput.out("Cache directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
@@ -233,7 +232,15 @@ public final class CacheCommand extends GroupCommand {
             String lastPruned = lastPrunedLabel(root);
 
             for (String line : renderInfoTable(
-                    s.cas(), s.actions(), s.repos(), s.runs(), s.stamps(), totalFiles, totalBytes, maxBytes, lastPruned)) {
+                    s.cas(),
+                    s.actions(),
+                    s.repos(),
+                    s.runs(),
+                    s.stamps(),
+                    totalFiles,
+                    totalBytes,
+                    maxBytes,
+                    lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;

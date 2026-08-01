@@ -214,9 +214,8 @@ public final class JkBuildParser {
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
         // project.*.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
-            throw new JkBuildParseException(
-                    "workspace root must set concrete [project] values"
-                            + " (`*.workspace = true` is only valid on workspace modules)");
+            throw new JkBuildParseException("workspace root must set concrete [project] values"
+                    + " (`*.workspace = true` is only valid on workspace modules)");
         }
         return new JkBuild(
                 project,
@@ -539,18 +538,7 @@ public final class JkBuildParser {
         }
 
         return new JkBuild.Project(
-                group,
-                name,
-                version,
-                jdk,
-                java,
-                kotlin,
-                groovy,
-                sourcesMode,
-                description,
-                m2install,
-                layout,
-                inherits);
+                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, inherits);
     }
 
     /**
@@ -567,9 +555,8 @@ public final class JkBuildParser {
         String path = "project." + key;
         if (isWorkspaceInherit(project, key)) {
             if (workspaceRoot) {
-                throw new JkBuildParseException(
-                        "workspace root must set a concrete " + path + " (`" + key + ".workspace = true` is only valid"
-                                + " on workspace modules)");
+                throw new JkBuildParseException("workspace root must set a concrete " + path + " (`" + key
+                        + ".workspace = true` is only valid" + " on workspace modules)");
             }
             inherits.add(inherit);
             return JkBuild.VERSION_FROM_WORKSPACE;
@@ -589,8 +576,7 @@ public final class JkBuildParser {
         }
         String value = project.getString(key);
         if (value == null) {
-            throw new JkBuildParseException(
-                    path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
+            throw new JkBuildParseException(path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
         }
         if (value.isBlank()) {
             throw new JkBuildParseException(path + " must not be blank");

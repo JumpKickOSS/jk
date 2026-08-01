@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.util.AtomicWrites;
 import java.io.IOException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
@@ -50,7 +51,7 @@ class RepoArtifactStoreTest {
         try {
             Files.createLink(b, a);
             return true;
-        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+        } catch (UnsupportedOperationException | FileSystemException e) {
             return false;
         } finally {
             Files.deleteIfExists(b);

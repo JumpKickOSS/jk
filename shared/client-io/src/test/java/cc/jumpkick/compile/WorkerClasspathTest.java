@@ -28,18 +28,20 @@ class WorkerClasspathTest {
         WorkerClasspath.writeSidecar(jar, List.of(dep));
         String cp = WorkerClasspath.resolve(jar);
         String sep = System.getProperty("path.separator");
-        assertThat(cp).isEqualTo(jar.toAbsolutePath().normalize() + sep + dep.toAbsolutePath().normalize());
+        assertThat(cp)
+                .isEqualTo(jar.toAbsolutePath().normalize()
+                        + sep
+                        + dep.toAbsolutePath().normalize());
     }
 
     @Test
     void resolve_skips_missing_sidecar_paths(@TempDir Path dir) throws Exception {
         Path jar = dir.resolve("worker.jar");
         Files.writeString(jar, "w");
-        Files.writeString(
-                WorkerClasspath.sidecarPath(jar),
-                "# comment\n" + dir.resolve("gone.jar") + "\n");
+        Files.writeString(WorkerClasspath.sidecarPath(jar), "# comment\n" + dir.resolve("gone.jar") + "\n");
         // No PluginMain in a fake jar text file; findPluginSdk may still return null.
-        assertThat(WorkerClasspath.paths(jar)).containsExactly(jar.toAbsolutePath().normalize());
+        assertThat(WorkerClasspath.paths(jar))
+                .containsExactly(jar.toAbsolutePath().normalize());
     }
 
     @Test
@@ -53,8 +55,11 @@ class WorkerClasspathTest {
         Path sdk = sdkDir.resolve("jk-plugin-sdk-0.10.1.jar");
         Files.writeString(worker, "w");
         Files.writeString(sdk, "sdk");
-        assertThat(WorkerClasspath.findPluginSdk(worker)).isEqualTo(sdk.toAbsolutePath().normalize());
+        assertThat(WorkerClasspath.findPluginSdk(worker))
+                .isEqualTo(sdk.toAbsolutePath().normalize());
         assertThat(WorkerClasspath.paths(worker))
-                .contains(worker.toAbsolutePath().normalize(), sdk.toAbsolutePath().normalize());
+                .contains(
+                        worker.toAbsolutePath().normalize(),
+                        sdk.toAbsolutePath().normalize());
     }
 }

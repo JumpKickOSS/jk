@@ -542,9 +542,8 @@ public record JkBuild(
             if (sourcesMode == null) sourcesMode = SourcesMode.DISABLED;
             if (layout == null) layout = Layout.AUTO;
             if (description != null && description.isBlank()) description = null;
-            workspaceInherits = workspaceInherits == null || workspaceInherits.isEmpty()
-                    ? Set.of()
-                    : Set.copyOf(workspaceInherits);
+            workspaceInherits =
+                    workspaceInherits == null || workspaceInherits.isEmpty() ? Set.of() : Set.copyOf(workspaceInherits);
         }
 
         /** Back-compat: no workspace inheritance flags. */
@@ -560,7 +559,19 @@ public record JkBuild(
                 String description,
                 boolean m2install,
                 Layout layout) {
-            this(group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, Set.of());
+            this(
+                    group,
+                    name,
+                    version,
+                    jdk,
+                    java,
+                    kotlin,
+                    groovy,
+                    sourcesMode,
+                    description,
+                    m2install,
+                    layout,
+                    Set.of());
         }
 
         /** True when any {@code [project]} field still needs workspace-root resolution. */
@@ -638,9 +649,8 @@ public record JkBuild(
 
         private static String requireRoot(String value, String field) {
             if (value == null || value.isBlank() || VERSION_FROM_WORKSPACE.equals(value)) {
-                throw new IllegalArgumentException(
-                        "module inherits project." + field + " from the workspace, but the root has no concrete "
-                                + field);
+                throw new IllegalArgumentException("module inherits project." + field
+                        + " from the workspace, but the root has no concrete " + field);
             }
             return value;
         }

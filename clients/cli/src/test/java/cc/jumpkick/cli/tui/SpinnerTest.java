@@ -160,8 +160,7 @@ class SpinnerTest {
     void wedge_frame_uses_pulse_glyph_and_command_on_chip() {
         var colors = Spinner.buildChipPulseStyles(
                 Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
-        String visible = TestAnsi.strip(
-                Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", false, colors));
+        String visible = TestAnsi.strip(Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", false, colors));
         assertThat(visible).contains(Spinner.PULSE_GLYPH);
         assertThat(visible).contains("Status");
         assertThat(visible).contains("Analyzing status...");

@@ -61,8 +61,7 @@ public final class StatusCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
+        return List.of(Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
     }
 
     @Override
@@ -86,9 +85,8 @@ public final class StatusCommand implements CliCommand {
         String lastHistory = null;
         CacheSnapshot cache = null;
 
-        try (var analyzing = live
-                ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...")
-                : null) {
+        try (var analyzing =
+                live ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...") : null) {
             rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
                     .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
                     .toList();
@@ -236,8 +234,10 @@ public final class StatusCommand implements CliCommand {
         StringBuilder outcomes = new StringBuilder(formatCount(total));
         outcomes.append(" (");
         outcomes.append(formatCount(g.okCount)).append(" ok");
-        if (g.failCount > 0) outcomes.append(", ").append(formatCount(g.failCount)).append(" failed");
-        if (g.cancelCount > 0) outcomes.append(", ").append(formatCount(g.cancelCount)).append(" cancelled");
+        if (g.failCount > 0)
+            outcomes.append(", ").append(formatCount(g.failCount)).append(" failed");
+        if (g.cancelCount > 0)
+            outcomes.append(", ").append(formatCount(g.cancelCount)).append(" cancelled");
         outcomes.append(")");
         kv("Total Build Count", outcomes.toString());
         long wall = g.okTotalMillis + g.failTotalMillis + g.cancelTotalMillis;
@@ -324,8 +324,7 @@ public final class StatusCommand implements CliCommand {
     private static void kv(String label, String value) {
         Theme t = Theme.active();
         String padded = padLeft(label + ":", LABEL_W);
-        CliOutput.out(
-                Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
+        CliOutput.out(Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
     }
 
     static String padLeft(String s, int width) {
@@ -412,7 +411,8 @@ public final class StatusCommand implements CliCommand {
     record ProjectSnapshot(
             String coord, String languageLine, String jdk, int moduleCount, int sourceCount, int testCount) {}
 
-    record Forecast(long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
+    record Forecast(
+            long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
     private static ProjectSnapshot loadProject(Path cwd) {
         Path buildFile = cwd.resolve("jk.toml");
@@ -426,9 +426,8 @@ public final class StatusCommand implements CliCommand {
 
             var p = build.project();
             String group = sanitizeIdentity(p.group());
-            String name = p.name() == null || p.name().isBlank()
-                    ? cwd.getFileName().toString()
-                    : p.name();
+            String name =
+                    p.name() == null || p.name().isBlank() ? cwd.getFileName().toString() : p.name();
             String version = sanitizeIdentity(p.version());
             String coord = group.isEmpty()
                     ? name + (version.isEmpty() ? "" : ":" + version)
@@ -474,11 +473,14 @@ public final class StatusCommand implements CliCommand {
             Lockfile lock = LockfileReader.read(lockFile);
             if (lock.modules().isEmpty()) return build;
             Path owner = LockPaths.lockOwnerDir(cwd).toAbsolutePath().normalize();
-            String rel = owner.relativize(cwd.toAbsolutePath().normalize()).toString().replace('\\', '/');
+            String rel = owner.relativize(cwd.toAbsolutePath().normalize())
+                    .toString()
+                    .replace('\\', '/');
             if (rel.isEmpty()) rel = ".";
             final String pathKey = rel;
             Lockfile.ModuleEntry pin = lock.modules().stream()
-                    .filter(m -> pathKey.equals(m.path()) || build.project().name().equals(m.name()))
+                    .filter(m ->
+                            pathKey.equals(m.path()) || build.project().name().equals(m.name()))
                     .findFirst()
                     .orElse(null);
             if (pin == null) return build;
@@ -528,9 +530,7 @@ public final class StatusCommand implements CliCommand {
                     ? cwd
                     : WorkspaceLocator.findRoot(cwd).orElse(null);
             if (rootDir != null) {
-                JkBuild root = build.isWorkspaceRoot()
-                        ? build
-                        : JkBuildParser.parse(rootDir.resolve("jk.toml"));
+                JkBuild root = build.isWorkspaceRoot() ? build : JkBuildParser.parse(rootDir.resolve("jk.toml"));
                 if (root.isWorkspaceRoot()) {
                     for (var e : WorkspaceLoader.loadModules(rootDir, root).entrySet()) {
                         out.add(e.getKey());
@@ -632,16 +632,7 @@ public final class StatusCommand implements CliCommand {
             ExplainPlan plan = EngineClient.explain(
                     paths,
                     new EngineClient.ExplainRequest(
-                            cwd,
-                            JkDirs.cache(),
-                            1,
-                            false,
-                            null,
-                            null,
-                            true,
-                            false,
-                            false,
-                            false),
+                            cwd, JkDirs.cache(), 1, false, null, null, true, false, false, false),
                     etaOut);
             if (plan == null || plan.modules() == null) return null;
             int total = plan.modules().size();
@@ -650,8 +641,7 @@ public final class StatusCommand implements CliCommand {
             for (BuildPlan.Module m : plan.modules()) {
                 sources += m.sourceCount();
                 tests += m.testCount();
-                boolean allCached = !m.steps().isEmpty()
-                        && m.steps().stream().allMatch(BuildPlan.Step::cached);
+                boolean allCached = !m.steps().isEmpty() && m.steps().stream().allMatch(BuildPlan.Step::cached);
                 if (allCached) cached++;
                 for (BuildPlan.Step s : m.steps()) {
                     if (s.cached()) artifacts++;

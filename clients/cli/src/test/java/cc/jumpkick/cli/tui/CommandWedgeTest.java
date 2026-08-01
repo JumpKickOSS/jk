@@ -4,6 +4,9 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.theme.Theme;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
@@ -56,11 +59,9 @@ class CommandWedgeTest {
 
     @Test
     void analyzing_returns_live_wedge_spinner() {
-        var buf = new java.io.ByteArrayOutputStream();
+        var buf = new ByteArrayOutputStream();
         try (Spinner s = CommandWedge.analyzing(
-                new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8),
-                "Status",
-                "Analyzing status...")) {
+                new PrintStream(buf, true, StandardCharsets.UTF_8), "Status", "Analyzing status...")) {
             assertThat(s).isNotNull();
         }
         // Closed without throwing; silent under --no-progress is fine.

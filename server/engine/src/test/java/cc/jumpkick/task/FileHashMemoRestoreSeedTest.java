@@ -6,9 +6,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -70,9 +73,9 @@ class FileHashMemoRestoreSeedTest {
         Path actions = Files.createDirectories(cache.resolve("actions"));
         Path out = Files.createDirectories(tmp.resolve("out"));
         Path jar = out.resolve("mod.jar");
-        try (var zos = new java.util.zip.ZipOutputStream(Files.newOutputStream(jar))) {
-            zos.putNextEntry(new java.util.zip.ZipEntry("A.class"));
-            zos.write("AAAA".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        try (var zos = new ZipOutputStream(Files.newOutputStream(jar))) {
+            zos.putNextEntry(new ZipEntry("A.class"));
+            zos.write("AAAA".getBytes(StandardCharsets.UTF_8));
             zos.closeEntry();
         }
         String before = ClasspathFingerprint.entry(jar);

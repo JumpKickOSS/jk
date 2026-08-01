@@ -46,8 +46,7 @@ public final class GroovyPluginSetup {
         Path groovyJar = GroovyToolResolver.resolveGroovyJar(repos, cas, version);
 
         // Expand thin worker jar + optional .classpath sidecar (plugin-sdk, …) then Groovy closure.
-        List<Path> workerClasspath = new ArrayList<>(
-                cc.jumpkick.compile.WorkerClasspath.paths(locateWorkerJar(cas)));
+        List<Path> workerClasspath = new ArrayList<>(cc.jumpkick.compile.WorkerClasspath.paths(locateWorkerJar(cas)));
         for (Path p : closure) {
             if (!workerClasspath.contains(p)) workerClasspath.add(p);
         }

@@ -62,8 +62,8 @@ public final class ClasspathFingerprint {
      * tree. Resource paths overwrite compile paths on collision (copy order: compile then
      * resources).
      */
-    public static String entryFromCompileAndResources(
-            Map<String, String> compileOutputs, List<Path> resourceRoots) throws IOException {
+    public static String entryFromCompileAndResources(Map<String, String> compileOutputs, List<Path> resourceRoots)
+            throws IOException {
         Map<String, String> digests = new TreeMap<>();
         if (compileOutputs != null) {
             for (Map.Entry<String, String> e : compileOutputs.entrySet()) {

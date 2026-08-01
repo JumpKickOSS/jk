@@ -168,7 +168,9 @@ class SelfHostingTomlTest {
         // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.assemblyMode().isBundled()).as(module + " must not fat-assemble").isFalse();
+            assertThat(p.assemblyMode().isBundled())
+                    .as(module + " must not fat-assemble")
+                    .isFalse();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
             assertThat(p.dependencies().of(Scope.MAIN).stream()
                             .map(d -> d.module())

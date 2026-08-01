@@ -4268,9 +4268,7 @@ public final class EngineServer implements AutoCloseable {
         for (BuildMetrics.Entry e : BuildMetrics.load(metricsFile).entries()) {
             // Project rows are stored as bare dir and dirty-count shapes (dir#dN). Match
             // the project's base path so `jk status` sees the folded project tier.
-            if (dirFilter != null
-                    && !e.dir().isEmpty()
-                    && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+            if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
                 continue;
             }
             send(writer, metricsEntryJson(e));

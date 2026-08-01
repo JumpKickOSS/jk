@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
@@ -261,17 +262,17 @@ class CommandManagerTest {
     void window_title_suppressed_in_no_ansi_mode() {
         // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
         var noAnsi = new cc.jumpkick.config.JkConfig(
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.of(true), // noAnsi
-                java.util.Optional.empty(),
-                java.util.Optional.empty()); // noOsc
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true), // noAnsi
+                Optional.empty(),
+                Optional.empty()); // noOsc
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();

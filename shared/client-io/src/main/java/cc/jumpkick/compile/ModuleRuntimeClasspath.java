@@ -5,9 +5,9 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
-import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
 import java.io.IOException;
@@ -56,8 +56,8 @@ public final class ModuleRuntimeClasspath {
         LinkedHashSet<String> roots = new LinkedHashSet<>();
         roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
         for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
-            roots.addAll(ClasspathResolver.declaredExternalRoots(
-                    sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
+            roots.addAll(
+                    ClasspathResolver.declaredExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
         }
         depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
         for (Path j : siblings.jars()) {
@@ -71,8 +71,7 @@ public final class ModuleRuntimeClasspath {
         return jars(moduleDir, project, LockPaths.lockFile(moduleDir), cas);
     }
 
-    static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords)
-            throws IOException {
+    static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords) throws IOException {
         if (siblingCoords == null || siblingCoords.isEmpty()) return List.of();
         Set<String> want = new HashSet<>(siblingCoords);
         Path root;
@@ -101,7 +100,8 @@ public final class ModuleRuntimeClasspath {
             String coord = unit.project().group() + ":" + unit.project().name();
             if (want.contains(coord)) out.add(unit);
         }
-        String rootCoord = rootManifest.project().group() + ":" + rootManifest.project().name();
+        String rootCoord =
+                rootManifest.project().group() + ":" + rootManifest.project().name();
         if (want.contains(rootCoord)) out.add(rootManifest);
         return out;
     }

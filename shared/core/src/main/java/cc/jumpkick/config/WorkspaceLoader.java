@@ -25,9 +25,8 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(root, "root");
         if (!root.isWorkspaceRoot()) return Map.of();
         if (root.project().inheritsFromWorkspace()) {
-            throw new JkBuildParseException(
-                    "workspace root must set concrete [project] values"
-                            + " (`*.workspace = true` is only valid on workspace modules)");
+            throw new JkBuildParseException("workspace root must set concrete [project] values"
+                    + " (`*.workspace = true` is only valid on workspace modules)");
         }
 
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
@@ -70,8 +69,7 @@ public final class WorkspaceLoader {
         try {
             return module.withProject(module.project().resolveFromWorkspaceRoot(root.project()));
         } catch (IllegalArgumentException e) {
-            throw new JkBuildParseException(
-                    "module `" + module.project().name() + "`: " + e.getMessage(), e);
+            throw new JkBuildParseException("module `" + module.project().name() + "`: " + e.getMessage(), e);
         }
     }
 

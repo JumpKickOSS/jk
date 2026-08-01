@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.compile.WorkerClasspath;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -31,6 +30,9 @@ class JUnitLauncherWorkerCpTest {
         Files.writeString(thin, "thin");
         Files.writeString(sdkJar, "sdk");
         List<Path> paths = WorkerClasspath.paths(thin);
-        assertThat(paths).contains(thin.toAbsolutePath().normalize(), sdkJar.toAbsolutePath().normalize());
+        assertThat(paths)
+                .contains(
+                        thin.toAbsolutePath().normalize(),
+                        sdkJar.toAbsolutePath().normalize());
     }
 }

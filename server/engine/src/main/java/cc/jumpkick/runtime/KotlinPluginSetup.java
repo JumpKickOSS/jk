@@ -49,8 +49,7 @@ public final class KotlinPluginSetup {
         Path stdlib = KotlinBtaResolver.resolveStdlib(repos, cas, version);
 
         // Expand thin worker jar + optional .classpath sidecar (plugin-sdk, …) then BTA closure.
-        List<Path> workerClasspath = new ArrayList<>(
-                cc.jumpkick.compile.WorkerClasspath.paths(locateWorkerJar(cas)));
+        List<Path> workerClasspath = new ArrayList<>(cc.jumpkick.compile.WorkerClasspath.paths(locateWorkerJar(cas)));
         for (Path p : closure) {
             if (!workerClasspath.contains(p)) workerClasspath.add(p);
         }

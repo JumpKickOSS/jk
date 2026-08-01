@@ -67,7 +67,9 @@ class CacheRootsLocalRepoTest {
 
         CasSweep.sweep(cas, roots, false);
         assertThat(Files.exists(blob)).as("unreferenced mirror blob is swept").isFalse();
-        assertThat(Files.exists(artifact)).as("mirror entry follows its blob (link or copy)").isFalse();
+        assertThat(Files.exists(artifact))
+                .as("mirror entry follows its blob (link or copy)")
+                .isFalse();
         assertThat(Files.exists(Path.of(artifact + ".sha256"))).isFalse();
     }
 

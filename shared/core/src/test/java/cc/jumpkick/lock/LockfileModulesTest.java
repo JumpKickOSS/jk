@@ -37,17 +37,13 @@ class LockfileModulesTest {
         List<Lockfile.ModuleEntry> modules = LockfileModules.capture(tmp);
         assertThat(modules).hasSize(2);
 
-        Lockfile.ModuleEntry root = modules.stream()
-                .filter(m -> ".".equals(m.path()))
-                .findFirst()
-                .orElseThrow();
+        Lockfile.ModuleEntry root =
+                modules.stream().filter(m -> ".".equals(m.path())).findFirst().orElseThrow();
         assertThat(root.group()).isEqualTo("com.acme");
         assertThat(root.version()).isEqualTo("9.9.9");
 
-        Lockfile.ModuleEntry member = modules.stream()
-                .filter(m -> "lib".equals(m.path()))
-                .findFirst()
-                .orElseThrow();
+        Lockfile.ModuleEntry member =
+                modules.stream().filter(m -> "lib".equals(m.path())).findFirst().orElseThrow();
         assertThat(member.group()).isEqualTo("com.acme");
         assertThat(member.name()).isEqualTo("lib");
         assertThat(member.version()).isEqualTo("9.9.9");

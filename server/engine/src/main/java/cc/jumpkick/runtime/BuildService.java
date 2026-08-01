@@ -578,7 +578,8 @@ public final class BuildService {
                     if (ownWall > 0) {
                         EffortWeights.ModuleCost cost = EffortWeights.costFromRunningSteps(
                                 u.dir(), prereqs, running, metrics, timings, projectDirs, Map.of());
-                        long testOwn = EffortWeights.stepOkAvgMillisOwn(metrics, u.dir().toString(), "run-tests");
+                        long testOwn = EffortWeights.stepOkAvgMillisOwn(
+                                metrics, u.dir().toString(), "run-tests");
                         earlyCosts.add(floorColdTests(cost, testOwn, sh.testWeight()));
                     } else {
                         earlyCosts.add(EffortWeights.costOf(u.dir(), prereqs, sh.weight(), sh.testWeight()));
@@ -843,10 +844,7 @@ public final class BuildService {
             EffortWeights.ModuleCost cost, long runTestsOwnMillis, int shapeTestWeight) {
         if (runTestsOwnMillis > 0 || shapeTestWeight <= cost.testWeight()) return cost;
         return new EffortWeights.ModuleCost(
-                cost.dir(),
-                cost.prereqs(),
-                cost.weight() - cost.testWeight() + shapeTestWeight,
-                shapeTestWeight);
+                cost.dir(), cost.prereqs(), cost.weight() - cost.testWeight() + shapeTestWeight, shapeTestWeight);
     }
 
     /**

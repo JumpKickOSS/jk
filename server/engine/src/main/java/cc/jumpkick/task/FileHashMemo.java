@@ -157,8 +157,7 @@ public final class FileHashMemo {
                 long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
                 token = token.substring(0, nanoAt).trim();
                 if (token.isEmpty()) return null;
-                long current = Files.getLastModifiedTime(file)
-                        .to(java.util.concurrent.TimeUnit.NANOSECONDS);
+                long current = Files.getLastModifiedTime(file).to(java.util.concurrent.TimeUnit.NANOSECONDS);
                 return recorded == current ? token : null;
             }
             if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;

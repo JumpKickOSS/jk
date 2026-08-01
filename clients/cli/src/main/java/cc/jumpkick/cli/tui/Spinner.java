@@ -106,6 +106,7 @@ public final class Spinner implements AutoCloseable {
     private final boolean silent;
     /** Non-null when painting as a CommandWedge chip ({@link #showWedge}). */
     private final String wedgeCommand;
+
     private final boolean nerdfont;
 
     private volatile String message;
@@ -214,8 +215,7 @@ public final class Spinner implements AutoCloseable {
             return "* " + command + ": " + (message == null ? "" : message);
         }
         AttributedStyle chip = t.pipelineChip();
-        AttributedStyle pulse =
-                t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
+        AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
         String name = command == null ? "" : command;
         StringBuilder h = new StringBuilder();
         h.append(Theme.colorize(" ", chip))

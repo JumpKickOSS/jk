@@ -10,6 +10,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,8 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 class LibraryRegistrySyncTest {
 
     private static final String ETAG = "\"sync-v1\"";
-    private static final byte[] BODY =
-            "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] BODY = "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
 
     private HttpServer server;
     private URI uri;
@@ -78,9 +79,8 @@ class LibraryRegistrySyncTest {
         Path cache = tmp.resolve("libs.global.toml");
         Files.write(cache, BODY);
         Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
-        java.time.Instant stale =
-                java.time.Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60);
-        Files.setLastModifiedTime(cache, java.nio.file.attribute.FileTime.from(stale));
+        Instant stale = Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60);
+        Files.setLastModifiedTime(cache, FileTime.from(stale));
         LibraryRegistrySync.ensurePresent(false, uri, cache);
         assertThat(hits.get()).isEqualTo(1);
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);

@@ -239,13 +239,11 @@ public final class JdkListCommand implements CliCommand {
             boolean isActive = sameHome(currentHome, j.home());
             boolean isDefault = sameHome(defaultHome, j.home());
             boolean isNative = sameHome(graalHome, j.home());
-            Optional<JdkCatalog.Entry> latest =
-                    e != null
-                            ? Optional.ofNullable(latestPerTuple.get(familyKey(e)))
-                            : latestPointRelease(catalog, id, os, arch);
+            Optional<JdkCatalog.Entry> latest = e != null
+                    ? Optional.ofNullable(latestPerTuple.get(familyKey(e)))
+                    : latestPointRelease(catalog, id, os, arch);
             String installedVersion = j.version() != null && !j.version().isBlank() ? j.version() : id;
-            boolean outdated =
-                    latest.isPresent() && newerThan(latest.get().version(), installedVersion);
+            boolean outdated = latest.isPresent() && newerThan(latest.get().version(), installedVersion);
             if (latest.isPresent()) {
                 String key = familyKey(latest.get());
                 String prev = maxInstalledVersion.get(key);
@@ -266,17 +264,10 @@ public final class JdkListCommand implements CliCommand {
                     ? Status.ACTIVE
                     : isDefault
                             ? Status.DEFAULT
-                            : isNative
-                                    ? Status.NATIVE
-                                    : outdated ? Status.OUTDATED : Status.INSTALLED;
+                            : isNative ? Status.NATIVE : outdated ? Status.OUTDATED : Status.INSTALLED;
             if (isActive) currentShown = true;
             rows.add(new Row(
-                    major,
-                    vendor,
-                    id,
-                    status,
-                    compositeLabel(isActive, isDefault, isNative, outdated),
-                    j.source()));
+                    major, vendor, id, status, compositeLabel(isActive, isDefault, isNative, outdated), j.source()));
         }
 
         // The active javac may resolve to a JDK no probe surfaced (e.g. on PATH
@@ -292,8 +283,7 @@ public final class JdkListCommand implements CliCommand {
                 Optional<JdkCatalog.Entry> latest = latestPointRelease(catalog, id, os, arch);
                 String installedVersion =
                         hit.version() != null && !hit.version().isBlank() ? hit.version() : id;
-                boolean outdated =
-                        latest.isPresent() && newerThan(latest.get().version(), installedVersion);
+                boolean outdated = latest.isPresent() && newerThan(latest.get().version(), installedVersion);
                 if (latest.isPresent()) {
                     String key = familyKey(latest.get());
                     String prev = maxInstalledVersion.get(key);
@@ -302,12 +292,7 @@ public final class JdkListCommand implements CliCommand {
                     }
                 }
                 rows.add(new Row(
-                        parseMajor(id),
-                        vendor,
-                        id,
-                        Status.ACTIVE,
-                        compositeLabel(true, d, n, outdated),
-                        hit.source()));
+                        parseMajor(id), vendor, id, Status.ACTIVE, compositeLabel(true, d, n, outdated), hit.source()));
             });
         }
 

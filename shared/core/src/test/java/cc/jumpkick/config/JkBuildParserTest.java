@@ -438,7 +438,8 @@ class JkBuildParserTest {
         assertThat(parsed.project().inherits(JkBuild.ProjectInherit.GROUP)).isTrue();
         assertThat(parsed.project().inherits(JkBuild.ProjectInherit.VERSION)).isTrue();
         assertThat(parsed.project().inherits(JkBuild.ProjectInherit.JAVA)).isTrue();
-        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.DESCRIPTION)).isFalse();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.DESCRIPTION))
+                .isFalse();
         assertThat(parsed.project().description()).isNull();
     }
 

@@ -57,7 +57,9 @@ public final class WorkerLib {
         if (parent != null) {
             Path grand = parent.getParent(); // artifactId in m2 layout
             String ver = parent.getFileName() != null ? parent.getFileName().toString() : "";
-            String art = grand != null && grand.getFileName() != null ? grand.getFileName().toString() : "";
+            String art = grand != null && grand.getFileName() != null
+                    ? grand.getFileName().toString()
+                    : "";
             // …/artifactId/version/file.jar
             if (!art.isBlank() && looksLikeVersion(ver) && art.startsWith("jk-")) {
                 return sanitizeId(art);

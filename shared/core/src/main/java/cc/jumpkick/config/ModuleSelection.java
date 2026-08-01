@@ -113,8 +113,7 @@ public final class ModuleSelection {
                 }
             }
             if (!any) {
-                return Result.fail(
-                        "no module matched `" + token + "` (known: " + knownLabels(candidates) + ")");
+                return Result.fail("no module matched `" + token + "` (known: " + knownLabels(candidates) + ")");
             }
         }
         if (matched.isEmpty()) {

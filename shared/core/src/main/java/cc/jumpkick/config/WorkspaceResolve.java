@@ -34,10 +34,9 @@ public final class WorkspaceResolve {
                 // Standalone: optional-field auto-inherits (java/jdk/…) drop back to local defaults.
                 // group/version inheritance still requires a workspace.
                 if (module.project().requiresWorkspaceRoot()) {
-                    throw new JkBuildParseException(
-                            "project.group/version inherit from the workspace"
-                                    + " (no enclosing workspace lists this module — set concrete"
-                                    + " group and version, or place this project under a workspace)");
+                    throw new JkBuildParseException("project.group/version inherit from the workspace"
+                            + " (no enclosing workspace lists this module — set concrete"
+                            + " group and version, or place this project under a workspace)");
                 }
                 if (module.project().inheritsFromWorkspace()) {
                     return module.withProject(module.project().droppingOptionalInherits());

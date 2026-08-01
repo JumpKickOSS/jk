@@ -84,7 +84,8 @@ class ModuleSelectionTest {
         assertThat(ModuleSelection.resolve(root, build, ":server:engine").moduleDirs())
                 .containsExactly(root.resolve("server/engine").normalize());
         // Comma list of colon forms
-        assertThat(ModuleSelection.resolve(root, build, ":jk-engine,:jk-client-io").moduleDirs())
+        assertThat(ModuleSelection.resolve(root, build, ":jk-engine,:jk-client-io")
+                        .moduleDirs())
                 .containsExactlyInAnyOrder(
                         root.resolve("server/engine").normalize(),
                         root.resolve("shared/client-io").normalize());
