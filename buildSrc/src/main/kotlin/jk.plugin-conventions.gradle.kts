@@ -120,8 +120,10 @@ tasks.register("installLocal") {
         File(target.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
         // Mirror next to build jar for -Djk.*.plugin.jar test overrides.
         File(jar.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
-        // JK-1348: hard-link worker + deps into store/lib/<artifact>/ for short -cp in ps.
-        val libDir = storeRoot.resolve("lib/$artifact")
+        // JK-1348: hard-link worker + deps into JK_LIB_DIR/<artifact>/ (default store/lib/).
+        val libRoot: File = System.getenv("JK_LIB_DIR")?.let { File(it) }
+                ?: storeRoot.resolve("lib")
+        val libDir = libRoot.resolve(artifact)
         try {
             if (libDir.exists()) libDir.deleteRecursively()
             libDir.mkdirs()
@@ -154,7 +156,7 @@ tasks.register("installLocal") {
             if (order.size > 1) {
                 val libCp =
                         order.drop(1).map { libDir.resolve(it).absolutePath }
-                val libLines = mutableListOf("# jk worker classpath — store/lib (JK-1348)")
+                val libLines = mutableListOf("# jk worker classpath — lib/<id> (JK-1348)")
                 libLines.addAll(libCp)
                 File(target.path + ".classpath").writeText(libLines.joinToString("\n", postfix = "\n"))
             }

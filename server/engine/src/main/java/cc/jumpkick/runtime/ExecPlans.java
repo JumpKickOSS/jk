@@ -516,7 +516,7 @@ public final class ExecPlans {
     }
 
     /**
-     * {@code jk install}'s application half: the gates, the {@code ~/.jk/lib} link set, and the
+     * {@code jk install}'s application half: the gates, the {@code $JK_LIB_DIR/&lt;bin&gt;/} link set, and the
      * launcher script — the client applies links, writes the script, and marks it executable.
      */
     private static ExecPlan installPlan(
@@ -532,8 +532,10 @@ public final class ExecPlans {
         var p = project.project();
         String bin = binName != null && !binName.isBlank() ? binName : p.name();
         Path javaHome = projectJavaHome(dir);
-        Path binDir = binDirOverride != null ? binDirOverride : JkDirs.home().resolve("bin");
-        Path libDir = libDirOverride != null ? libDirOverride : JkDirs.home().resolve("lib");
+        Path binDir = binDirOverride != null ? binDirOverride : JkDirs.binDir();
+        // Same root as plugin workers (JkDirs.lib → store/lib); each tool gets lib/<bin>/.
+        Path libRoot = libDirOverride != null ? libDirOverride : JkDirs.lib();
+        Path libDir = libRoot.resolve(bin);
 
         if (!project.isApplication()) {
             return ExecPlan.error(
@@ -553,7 +555,7 @@ public final class ExecPlans {
 
         Path launcherPath = binDir.resolve(AppLauncher.launcherFileName(bin));
 
-        // Shadow / self-contained packager output: one jar in lib.
+        // Shadow / self-contained packager output: one jar in lib/<bin>/.
         var shape = PluginBuild.shape(project, dir);
         boolean selfContained = shape.map(sh -> sh.selfContained()).orElse(false);
         if (project.assembly() || selfContained) {
@@ -568,7 +570,7 @@ public final class ExecPlans {
             return installAck(linkSrcs, linkDests, launcherPath.toString(), script, launcherPath.toString());
         }
 
-        // Plain jar: app jar + hard-linked runtime dependency jars, coordinate-named.
+        // Plain jar: app jar + hard-linked runtime dependency jars under lib/<bin>/.
         List<Path> classpath = new ArrayList<>();
         Path appDest = libDir.resolve(layout.mainJar().getFileName().toString());
         linkSrcs.add(layout.mainJar().toAbsolutePath().toString());

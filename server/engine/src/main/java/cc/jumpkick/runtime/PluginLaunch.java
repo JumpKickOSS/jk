@@ -16,8 +16,9 @@ import java.util.List;
  * cc.jumpkick.plugin.process.PluginMain <spec>} (JK-1347). Heap sizing goes through {@link
  * JvmOptions}' shared plan.
  *
- * <p>Classpath resolution: prefer {@code $JK_STORE_DIR/lib/&lt;id&gt;/} hardlinks when install
- * materialised them (JK-1348); else the optional {@code <worker>.jar.classpath} sidecar (JK-1347).
+ * <p>Classpath resolution: prefer {@code $JK_LIB_DIR/&lt;id&gt;/} hardlinks (default {@code
+ * store/lib/&lt;id&gt;/}, same tree as installed tools) when install materialised them (JK-1348);
+ * else the optional {@code <worker>.jar.classpath} sidecar (JK-1347).
  */
 final class PluginLaunch {
 

@@ -18,14 +18,14 @@ import java.util.stream.Stream;
 /**
  * Stable short classpaths for thin plugin/tool workers (JK-1348).
  *
- * <p>On install, each worker's main jar and runtime deps are hard-linked into {@code
- * $JK_STORE_DIR/lib/&lt;id&gt;/} (default {@code ~/.jk/store/lib/&lt;id&gt;/}). Launch prefers
- * those paths so {@code ps} shows compact {@code -cp …/store/lib/&lt;id&gt;/…} entries instead of
- * long CAS/repos absolute paths.
+ * <p>On install, each worker's main jar and runtime deps are hard-linked into {@link
+ * JkDirs#lib()}{@code /&lt;id&gt;/} (default {@code ~/.jk/store/lib/&lt;id&gt;/} — same tree as
+ * installed tools). Launch prefers those paths so {@code ps} shows compact {@code -cp
+ * …/store/lib/&lt;id&gt;/…} entries instead of long CAS/repos absolute paths.
  *
  * <p><strong>GC contract:</strong> these hardlinks keep the CAS inode alive after a normal
  * repos/CAS unlink sweep. Uninstall ({@link #remove}) drops the lib dir so a later GC can reclaim
- * unreferenced blobs. Do not place store/lib under a sweep that deletes live hardlinks.
+ * unreferenced blobs.
  */
 public final class WorkerLib {
 
@@ -34,9 +34,9 @@ public final class WorkerLib {
 
     private WorkerLib() {}
 
-    /** {@code $JK_STORE_DIR/lib} (or {@code ~/.jk/store/lib}). */
+    /** {@link JkDirs#lib()} — shared tool + plugin jar root. */
     public static Path root() {
-        return JkDirs.store().resolve("lib");
+        return JkDirs.lib();
     }
 
     /** Lib directory for one worker/tool id (sanitized). */

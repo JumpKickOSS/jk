@@ -106,10 +106,12 @@ For each PluginMain worker:
 1. Thin jar → `~/.jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
    same as Gradle `installLocal`).
 2. Runtime deps → `.classpath` sidecar next to the jar (JK-1347).
-3. Worker + deps hard-linked into `~/.jk/store/lib/jk-<name>/` so launch uses a
-   short classpath in `ps` (JK-1348). A normal CAS/`repos/` sweep that unlinks
-   repo materializations leaves these hardlinks; the inode stays until you
-   uninstall (remove that lib dir) or reinstall.
+3. Worker + deps hard-linked into `~/.jk/store/lib/jk-<name>/` (same
+   `JK_LIB_DIR` tree as `jk tool install` / `jk install` apps — default
+   `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps` (JK-1348). A
+   normal CAS/`repos/` sweep that unlinks repo materializations leaves these
+   hardlinks; the inode stays until you uninstall (remove that lib dir) or
+   reinstall.
 
 ## Ship layout (`jk release` / `jk dist`)
 

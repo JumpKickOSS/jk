@@ -187,14 +187,17 @@ public final class JkDirs {
     }
 
     /**
-     * Where jk keeps the jars its binaries need: the engine's {@code jk-engine-<version>.jar} and
-     * the jar(s) {@code jk install} places for an application — the app jar and its hard-linked
-     * runtime dependencies, or a single fat jar. Defaults to {@code ~/.jk/lib/}. Override via
-     * {@code JK_LIB_DIR}. Launchers in {@link #binDirectory} reference jars here by absolute
-     * path.
+     * Shared jar library for <strong>tools and plugin workers</strong>: {@code
+     * $JK_STORE_DIR/lib/} by default ({@code ~/.jk/store/lib/}). Each tool or plugin gets a
+     * subdirectory ({@code lib/&lt;id&gt;/}) of hard-linked jars for a short {@code -cp} (JK-1348).
+     *
+     * <p>Override via {@code JK_LIB_DIR} (absolute). When unset, always under {@link #storeDir()}
+     * — not a separate {@code ~/.jk/lib} tree.
      */
     public Path libDir() {
-        return resolve("JK_LIB_DIR", "lib");
+        String override = nonBlank(env.apply("JK_LIB_DIR"));
+        if (override != null) return Path.of(override);
+        return storeDir().resolve("lib");
     }
 
     /**

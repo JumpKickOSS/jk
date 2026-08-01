@@ -16,8 +16,9 @@ import java.util.stream.Stream;
 /**
  * Resolves the JVM classpath for a thin plugin/worker jar.
  *
- * <p><strong>Preferred (JK-1348):</strong> {@code $JK_STORE_DIR/lib/&lt;id&gt;/} populated at
- * install with hardlinked jars + ordered {@code .classpath}. Compact paths in {@code ps}.
+ * <p><strong>Preferred (JK-1348):</strong> {@code $JK_LIB_DIR/&lt;id&gt;/} (default {@code
+ * store/lib/&lt;id&gt;/}, shared with installed tools) populated at install with hardlinked jars +
+ * ordered {@code .classpath}. Compact paths in {@code ps}.
  *
  * <p><strong>Fallback (JK-1347):</strong> {@code <worker>.jar} plus optional sidecar {@code
  * <worker>.jar.classpath} — one absolute jar path per line ({@code #} comments and blanks
