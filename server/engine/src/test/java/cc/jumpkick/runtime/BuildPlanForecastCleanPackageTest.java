@@ -58,7 +58,7 @@ class BuildPlanForecastCleanPackageTest {
         // The helper reconstructs against layout.classesDir(); pin that it is the tree we
         // stored the compile record for, so the equality below cannot silently test nothing.
         assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
-        String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac);
+        String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac, "key-compile");
         // Reconstruct must equal the pre-clean live fingerprint (class + resource).
         assertThat(tok).isEqualTo(live);
     }
@@ -88,12 +88,51 @@ class BuildPlanForecastCleanPackageTest {
         Files.delete(classFile);
         Files.delete(classes);
 
-        Map<String, String> compileOut = ac.lastFor(compileTask).orElseThrow().outputs();
+        Map<String, String> compileOut = ac.lookup("ck").orElseThrow().outputs();
         String classesTokClean = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of());
         List<String> tokensClean = List.of(
                 "classes:" + classesTokClean, "main:", "sbom:", "manifest:" + Map.of());
         String keyClean = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokensClean);
         assertThat(keyClean).isEqualTo(keyLive);
+    }
+
+    @Test
+    void reconstruction_follows_the_current_compile_key_not_the_last_record(@TempDir Path tmp) throws Exception {
+        Path module = Files.createDirectories(tmp.resolve("mod"));
+        Path classes = Files.createDirectories(module.resolve("target/classes/main"));
+        Path classFile = classes.resolve("t/Lib.class");
+        Files.createDirectories(classFile.getParent());
+
+        Path cache = Files.createDirectories(tmp.resolve("cache"));
+        Cas cas = new Cas(cache.resolve("store"));
+        ActionCache ac = new ActionCache(cas, cache.resolve("actions"));
+        String compileTask = ActionKey.qualifiedTaskId("compile-main", classes);
+
+        // v1 built and recorded…
+        Files.writeString(classFile, "v1-bytecode");
+        String v1Live = ClasspathFingerprint.entry(classes);
+        ac.store(compileTask, "key-v1", Map.of(), classes);
+        // …then an edit builds v2, so the task's LAST record is v2's.
+        Files.writeString(classFile, "v2-bytecode");
+        ac.store(compileTask, "key-v2", Map.of(), classes);
+        assertThat(ac.lastFor(compileTask).orElseThrow().actionKey()).isEqualTo("key-v2");
+
+        // Revert to v1 and jk clean: the current compile key is v1's again.
+        deleteTree(classes);
+
+        JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
+                        .jdkMajor(21)
+                        .java(21)
+                        .layout(JkBuild.Layout.SIMPLE)
+                        .build())
+                .build();
+        BuildLayout layout = BuildLayout.of(module, project);
+        assertThat(layout.classesDir()).isEqualTo(classes.toAbsolutePath().normalize());
+
+        // Reconstruction keyed by the CURRENT (v1) key must produce v1's fingerprint —
+        // the live build restores v1 and computes v1's package key, not v2's.
+        String tok = BuildPlanForecast.classesTokenForPackage(module, true, layout, project, ac, "key-v1");
+        assertThat(tok).isEqualTo(v1Live);
     }
 
     @Test
