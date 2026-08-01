@@ -886,7 +886,6 @@ public final class JUnitLauncher {
         }
     }
 
-    /** Parse JUnit Platform unique id fragment {@code [class:fqcn]}. */
     /** Extract {@code com.example.FooTest} from a JUnit Platform unique id segment {@code [class:…]}. */
     public static String classFromUniqueId(String id) {
         if (id == null || id.isBlank()) return "";
