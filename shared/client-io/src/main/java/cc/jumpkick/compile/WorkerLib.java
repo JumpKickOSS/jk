@@ -208,15 +208,40 @@ public final class WorkerLib {
     }
 
     static String stripJarVersion(String fileName) {
-        String n = fileName;
-        if (n.toLowerCase(Locale.ROOT).endsWith(".jar")) n = n.substring(0, n.length() - 4);
-        // artifact-1.2.3 or artifact-1.2.3-SNAPSHOT
-        int dash = n.lastIndexOf('-');
-        if (dash > 0 && looksLikeVersion(n.substring(dash + 1))) {
-            return n.substring(0, dash);
+        int dash = versionDashIndex(fileName);
+        String n = noJarExt(fileName);
+        return dash > 0 ? n.substring(0, dash) : n;
+    }
+
+    /**
+     * The version part of {@code artifact-<version>[.jar]} — multi-segment qualifiers included
+     * ({@code jk-foo-0.10.1-SNAPSHOT.jar} → {@code 0.10.1-SNAPSHOT}) — or {@code null} when the
+     * name carries none. The single parser for jar-name versions (JK-1368): {@code
+     * stripJarVersion} and install-side m2 placement must never disagree on where the version
+     * starts.
+     */
+    public static String jarVersion(String fileName) {
+        int dash = versionDashIndex(fileName);
+        return dash > 0 ? noJarExt(fileName).substring(dash + 1) : null;
+    }
+
+    /** Index of the dash starting the first digit-led, version-shaped tail; {@code -1} if none. */
+    private static int versionDashIndex(String fileName) {
+        String n = noJarExt(fileName);
+        for (int dash = n.indexOf('-'); dash > 0; dash = n.indexOf('-', dash + 1)) {
+            if (dash + 1 < n.length()
+                    && Character.isDigit(n.charAt(dash + 1))
+                    && looksLikeVersion(n.substring(dash + 1))) {
+                return dash;
+            }
         }
-        // artifact-0.10.1 → already handled; try second dash for 0.10.1-rc1 style already in looksLikeVersion
-        return n;
+        return -1;
+    }
+
+    private static String noJarExt(String fileName) {
+        return fileName.toLowerCase(Locale.ROOT).endsWith(".jar")
+                ? fileName.substring(0, fileName.length() - 4)
+                : fileName;
     }
 
     private static void linkInto(Path dir, Path source, List<String> order) throws IOException {

@@ -300,14 +300,11 @@ public final class PluginCommand extends GroupCommand {
                 if (d == null || !Files.isRegularFile(d)) continue;
                 String name = d.getFileName().toString();
                 if (name.contains("plugin-sdk") && name.endsWith(".jar")) {
-                    // jk-plugin-sdk-0.10.1.jar or plugin-sdk-0.1.0.jar
-                    String base = name.endsWith(".jar") ? name.substring(0, name.length() - 4) : name;
-                    String artifact = base.contains("jk-plugin-sdk") ? "jk-plugin-sdk" : "plugin-sdk";
-                    String version = JkVersion.VERSION;
-                    int lastDash = base.lastIndexOf('-');
-                    if (lastDash > 0 && lastDash < base.length() - 1) {
-                        version = base.substring(lastDash + 1);
-                    }
+                    // jk-plugin-sdk-0.10.1.jar, plugin-sdk-0.1.0-SNAPSHOT.jar — the shared parser
+                    // (WorkerLib.jarVersion) keeps m2 placement aligned with lib-id derivation.
+                    String artifact = name.contains("jk-plugin-sdk") ? "jk-plugin-sdk" : "plugin-sdk";
+                    String parsed = WorkerLib.jarVersion(name);
+                    String version = parsed != null ? parsed : JkVersion.VERSION;
                     String rel = "cc/jumpkick/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar";
                     try {
                         RepoArtifactStore.writeToLocalStore(installRoot, rel, d);

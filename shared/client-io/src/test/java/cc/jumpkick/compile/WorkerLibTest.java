@@ -24,6 +24,18 @@ class WorkerLibTest {
     }
 
     @Test
+    void snapshot_style_versions_parse_consistently() {
+        // JK-1368: one parser for jar-name versions — id derivation and m2 placement agree on
+        // multi-segment qualifiers.
+        assertThat(WorkerLib.stripJarVersion("jk-foo-0.10.1-SNAPSHOT.jar")).isEqualTo("jk-foo");
+        assertThat(WorkerLib.jarVersion("jk-foo-0.10.1-SNAPSHOT.jar")).isEqualTo("0.10.1-SNAPSHOT");
+        assertThat(WorkerLib.jarVersion("jk-plugin-sdk-0.10.1.jar")).isEqualTo("0.10.1");
+        assertThat(WorkerLib.jarVersion("plain-name.jar")).isNull();
+        assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-foo-0.10.1-SNAPSHOT.jar")))
+                .isEqualTo("jk-foo");
+    }
+
+    @Test
     void materialize_hardlinks_and_paths_if_present(@TempDir Path store) throws Exception {
         // Redirect store via JK_STORE_DIR for this test process.
         String prev = System.getenv("JK_STORE_DIR");

@@ -191,13 +191,17 @@ tasks.register("installLocal") {
                 Files.move(tmpDir.toPath(), libDir.toPath())
             }
             if (oldDir.exists()) oldDir.deleteRecursively()
-            // Prefer lib-dir paths in the store sidecar when materialize succeeded.
+            // Prefer lib-dir paths in both sidecars when materialize succeeded (JK-1368: the
+            // build-jar mirror serves -Djk.*.plugin.jar overrides and wants the same compact,
+            // GC-pinned paths as the store copy).
             if (order.size > 1) {
                 val libCp =
                         order.drop(1).map { libDir.resolve(it).absolutePath }
                 val libLines = mutableListOf("# jk worker classpath — lib/<id> (JK-1348)")
                 libLines.addAll(libCp)
-                File(target.path + ".classpath").writeText(libLines.joinToString("\n", postfix = "\n"))
+                val libText = libLines.joinToString("\n", postfix = "\n")
+                File(target.path + ".classpath").writeText(libText)
+                File(jar.path + ".classpath").writeText(libText)
             }
             println("Installed $artifact $ver ${jar.length()} bytes (+ ${order.size - 1} classpath jars)")
             println("  sha256: $hex")

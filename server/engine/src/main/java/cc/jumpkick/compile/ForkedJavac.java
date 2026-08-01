@@ -86,7 +86,7 @@ public final class ForkedJavac {
             List<String> jvmFlags = new ArrayList<>(cc.jumpkick.engine.plugin.PluginAot.javaCompilerFlags(
                     hostJavaHome,
                     workerCp,
-                    (aotOutput, scratch) -> trainerCommand(req, hostJavaHome, aotOutput, scratch)));
+                    (aotOutput, scratch) -> trainerCommand(req, workerCp, hostJavaHome, aotOutput, scratch)));
             jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
             List<String> command = cc.jumpkick.engine.plugin.PluginLoader.command(
                     javaExe, workerCp, jvmFlags, List.of("@" + spec.toAbsolutePath()));
@@ -135,8 +135,8 @@ public final class ForkedJavac {
      * Background AOT trainer: same {@code java -cp worker PluginMain @spec} shape as a real
      * compile, recording with {@code -XX:AOTCacheOutput} while compiling a synthetic Hello.java.
      */
-    private static List<String> trainerCommand(Request req, Path hostJavaHome, Path aotOutput, Path scratch)
-            throws IOException {
+    private static List<String> trainerCommand(
+            Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch) throws IOException {
         Path src = scratch.resolve("Hello.java");
         Files.writeString(src, """
                 package demo;
@@ -160,7 +160,9 @@ public final class ForkedJavac {
         jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
         boolean win = HostPlatform.isWindows();
         Path javaExe = hostJavaHome.resolve("bin").resolve(win ? "java.exe" : "java");
+        // Same classpath as the real fork (JK-1368): the classpath is part of the AOT key, and a
+        // thin worker jar alone would CNFE on PluginMain, silently never training.
         return cc.jumpkick.engine.plugin.PluginLoader.command(
-                javaExe, req.workerJar().toString(), jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
+                javaExe, workerCp, jvmFlags, List.of("@" + trainSpec.toAbsolutePath()));
     }
 }
