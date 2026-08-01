@@ -244,6 +244,43 @@ class CommandManagerTest {
     }
 
     @Test
+    void window_title_never_reaches_non_animated_output() {
+        // Piped / CI / --quiet builds (animate=false) must stay byte-clean of OSC — the
+        // escapes would land verbatim in the redirected stream.
+        var buf = new ByteArrayOutputStream();
+        var cm = CommandManager.pipeline(stream(buf), "Build", false);
+        cm.setWindowTitle("JumpKick - Building g:a:v...");
+        cm.addStep("g:a", "compile-main");
+        cm.stepDone("g:a", "compile-main", true);
+        cm.tick();
+        cm.finishPipelineSuccess("ok", List.of());
+        assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
+    }
+
+    @Test
+    void window_title_suppressed_in_no_ansi_mode() {
+        // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
+        var noAnsi = new cc.jumpkick.config.JkConfig(
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.of(true));
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = CommandManager.pipeline(stream(buf), "Build", true);
+                    cm.setWindowTitle("JumpKick - Building g:a:v...");
+                    cm.finishPipelineSuccess("ok", List.of());
+                    assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
+                });
+    }
+
+    @Test
     void window_title_updates_only_when_fill_glyph_changes() {
         var buf = new ByteArrayOutputStream();
         var cm = new CommandManager(stream(buf), true, true, 80);

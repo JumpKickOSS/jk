@@ -214,7 +214,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     public void setWindowTitle(String title) {
         synchronized (lock) {
-            if (done) return;
+            // Only an interactive ANSI terminal gets OSC 0 — under pipes/--quiet (!animate)
+            // or no-ANSI mode (--no-ansi, TERM=dumb, CI) the escapes would land verbatim in
+            // the output stream.
+            if (done || !animate || !Theme.active().isAnsi()) return;
             windowTitleBase = title == null ? "" : title;
             windowTitleActive = !windowTitleBase.isEmpty();
             windowTitleLastGlyph = null; // force immediate emit with current fill glyph
