@@ -4044,7 +4044,13 @@ public final class BuildPipelines {
     /** The resolved lock's {@code group:artifact} names — the classpath-has condition's universe. */
     static java.util.Set<String> lockModules(Lockfile lock) {
         java.util.Set<String> out = new java.util.HashSet<>();
-        for (var a : lock.artifacts()) out.add(a.name());
+        for (var a : lock.artifacts()) {
+            out.add(a.name());
+            // Rows are keyed by full package id (g:a:type:classifier) since package identity
+            // gained type/classifier; consumers (classpath-has conditions, processor-dependency
+            // checks) still speak plain group:artifact — expose that form too.
+            out.add(a.moduleGroup() + ":" + a.moduleArtifact());
+        }
         return out;
     }
 
