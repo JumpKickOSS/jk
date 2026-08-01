@@ -480,7 +480,6 @@ public final class BuildPlanForecast {
                             dir,
                             project,
                             layout,
-                            lock,
                             lockFile,
                             cas,
                             actionCache,
@@ -614,14 +613,16 @@ public final class BuildPlanForecast {
 
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
-     * computes (classes + dep jar content + main + manifest). Sibling jars missing after clean are
-     * fingerprinted via the CAS shas the walk recovered from each sibling's current package record.
+     * computes (classes + module runtime-closure deps + main + manifest + packaging:fat). Dep jars
+     * must come from {@link BuildPipelines#assemblyDependencyJars} (JK-1345) — never the whole
+     * workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm assembly.
+     * Sibling jars missing after clean are fingerprinted via CAS shas recovered from each sibling's
+     * package record.
      */
     static boolean assemblyActionCached(
             Path dir,
             JkBuild project,
             BuildLayout layout,
-            Lockfile lock,
             Path lockFile,
             Cas cas,
             ActionCache actionCache,
@@ -637,25 +638,8 @@ public final class BuildPlanForecast {
                 project,
                 actionCache,
                 compileMainKey);
-        List<Path> depJars = new ArrayList<>();
-        if (Files.exists(lockFile)) {
-            ClasspathResolver resolver = new ClasspathResolver(cas);
-            depJars.addAll(resolver.classpathFor(lock, ClasspathResolver.RUNTIME));
-            WorkspaceClasspath.Result siblings =
-                    WorkspaceClasspath.resolve(layout.moduleRoot(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-            for (Path j : siblings.jars()) {
-                if (!depJars.contains(j)) depJars.add(j);
-            }
-            for (Path sibLock : siblings.siblingLockfiles()) {
-                try {
-                    for (Path p : resolver.classpathFor(LockfileReader.read(sibLock), ClasspathResolver.RUNTIME)) {
-                        if (!depJars.contains(p)) depJars.add(p);
-                    }
-                } catch (Exception ignored) {
-                    /* best-effort */
-                }
-            }
-        }
+        // Same jar set as BuildPipelines.assemblyStep (ModuleRuntimeClasspath / JK-1345).
+        List<Path> depJars = BuildPipelines.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, cas, restoredJarShas);
         List<String> tokens = List.of(
                 "classes:" + classesTok,

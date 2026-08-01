@@ -31,7 +31,8 @@ public final class Jk {
             Map.entry("bash", List.of("shell")),
             Map.entry("nativeCompile", List.of("native")), // Gradle :nativeCompile task
             Map.entry("verify-target", List.of("verify")), // Maven's `verify` step output naming
-            Map.entry("why-rebuilt", List.of("explain"))); // early-roadmap name for the cache-diff report
+            Map.entry("why-rebuilt", List.of("explain")), // early-roadmap name for the cache-diff report
+            Map.entry("plan", List.of("explain"))); // hidden alias: build-plan forecast
 
     public static void main(String[] args) {
         // Invoked as `jkx` (hardlink/link to this binary): behave exactly like

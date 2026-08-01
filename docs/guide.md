@@ -683,14 +683,15 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 
 ### Why did this rebuild?
 
-Use **`jk explain`** (alias **`why-rebuilt`**). It forecasts cache hit/miss per module and
-step (sources changed, dependency changed, options/classpath). When the lock is missing or
-stale it refreshes it first (same as `jk build`) so the plan and ETA match the live build
-countdown; a CommandWedge spinner shows while locking. Prefer this over Gradle build scans
+Use **`jk explain`** (hidden aliases **`plan`**, **`why-rebuilt`**). It forecasts cache hit/miss
+per module and step (sources changed, dependency changed, options/classpath). When the lock is
+missing or stale it refreshes it first (same as `jk build`) so the plan and ETA match the live
+build countdown; a CommandWedge spinner shows while locking. Prefer this over Gradle build scans
 for day-to-day rebuild questions.
 
 ```bash
 jk explain                   # full plan: cached vs rebuild sections + ETA
+jk plan                      # hidden alias for explain
 jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
 jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)

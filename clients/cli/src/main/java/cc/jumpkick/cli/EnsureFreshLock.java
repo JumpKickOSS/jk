@@ -35,13 +35,38 @@ public final class EnsureFreshLock {
     private EnsureFreshLock() {}
 
     /**
-     * Ensure the lock for {@code projectDir} is present and fresh.
+     * Ensure the lock for {@code projectDir} is present and fresh. Shows its own {@code Locking
+     * g:n…} spinner when interactive.
      *
      * @param wedgeCommand chip label (e.g. {@code "Explain"}, {@code "Status"})
      * @return 0 when the lock is already fresh or was refreshed successfully; otherwise a non-zero
      *     exit code (and an error already printed)
      */
     public static int ensure(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, /* spinner */ null, /* ownSpinner */ true);
+    }
+
+    /**
+     * Like {@link #ensure(Path, Path, GlobalOptions, String)} but never creates a spinner — the
+     * caller owns progress UI (e.g. {@code jk explain}'s shared prep wedge). Still prints a fail
+     * wedge on error.
+     */
+    public static int ensureQuiet(Path projectDir, Path cacheDir, GlobalOptions global, String wedgeCommand) {
+        return ensure(projectDir, cacheDir, global, wedgeCommand, null, false);
+    }
+
+    /**
+     * @param spinner optional existing live wedge; when non-null, {@code ownSpinner} is ignored and
+     *     this spinner is left open (caller may {@link Spinner#update} before/after)
+     * @param ownSpinner when true and {@code spinner} is null, show a short-lived lock spinner
+     */
+    public static int ensure(
+            Path projectDir,
+            Path cacheDir,
+            GlobalOptions global,
+            String wedgeCommand,
+            Spinner spinner,
+            boolean ownSpinner) {
         Path dir = projectDir.toAbsolutePath().normalize();
         if (!Files.isRegularFile(dir.resolve("jk.toml"))) {
             return Exit.SUCCESS; // caller already validated project
@@ -56,7 +81,10 @@ public final class EnsureFreshLock {
         String chip = wedgeCommand == null || wedgeCommand.isBlank() ? "Lock" : wedgeCommand;
 
         EnginePrewarm.ensure();
-        boolean showSpinner = isInteractiveAuto(global) && !global.outputIsJson();
+        boolean showOwn = ownSpinner
+                && spinner == null
+                && isInteractiveAuto(global)
+                && !global.outputIsJson();
         try {
             EngineClient.LockRequest req = new EngineClient.LockRequest(
                     dir,
@@ -78,7 +106,10 @@ public final class EnsureFreshLock {
             };
 
             EngineClient.LockOutcome outcome;
-            if (showSpinner) {
+            if (spinner != null) {
+                spinner.update(message);
+                outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
+            } else if (showOwn) {
                 try (Spinner ignored = CommandWedge.analyzing(CliOutput.stdout(), chip, message)) {
                     outcome = EngineClient.runLock(EnginePaths.current(), req, quiet);
                 }
@@ -100,7 +131,8 @@ public final class EnsureFreshLock {
         }
     }
 
-    private static boolean isInteractiveAuto(GlobalOptions global) {
+    /** True when interactive AUTO mode (live spinners allowed). */
+    public static boolean isInteractiveAuto(GlobalOptions global) {
         try {
             return cc.jumpkick.cli.run.PipelineConsole.isInteractiveTerminal()
                     && cc.jumpkick.cli.run.PipelineConsole.modeFor(global)

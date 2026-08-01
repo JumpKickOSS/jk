@@ -1,7 +1,7 @@
 version = 1
 generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "6ddd29344ec5a37a6a904465af11cc384534b009d5f1b265e55c791f6c2ab57b" }
+jk = { version = "0.10.1", sha256 = "b5063157eda67a7961da36ea46533671e4b4528f96bb358ade96bf447235b09a" }
 manifests-sha256 = "39145749c0882a42edf03f7c2852d38ecb0ca6920491a3f7c305074ead7cc82d"
 
 [[artifact]]
