@@ -59,7 +59,7 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value(
                 "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
         opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
-        // --rebuild is a global flag (same as `jk build --rebuild`); see GlobalOptions.
+        // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
@@ -115,7 +115,7 @@ public final class ExplainCommand implements CliCommand {
         boolean serial = jobs == 1;
         int workers = in.value("workers").map(Integer::parseInt).orElse(1);
         boolean skipTests = in.isSet("skip-tests");
-        // Global --rebuild / --force: forecast full work + rebuild ETA priors.
+        // Global --redo / --force: forecast full work + rebuild ETA priors.
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);

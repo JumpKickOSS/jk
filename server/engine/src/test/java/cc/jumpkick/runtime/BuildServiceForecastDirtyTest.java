@@ -36,6 +36,8 @@ class BuildServiceForecastDirtyTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -49,6 +51,8 @@ class BuildServiceForecastDirtyTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(force),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
     }
 

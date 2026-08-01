@@ -54,7 +54,7 @@ that figure is imperfect.
 2. **Schedule like the live graph** (`WorkspaceScheduler`): a module starts only after every dirty
    prereq has *fully* finished, with a rolling concurrency window (list schedule, longest-first).
    Serial (`-j1`) is the plain sum. Serialized cross-module tests also apply a test-step sum floor.
-3. **`--rebuild` / `--force` = treat every module/step as dirty** — same composition formula. Full
+3. **`--redo` / `--force` = treat every module/step as dirty** — same composition formula. Full
    work also floors the estimate at measured full-build walls (`build` / `build:rebuild` invocation
    avgs, weighted toward max when stable) so a consistent ~2m30s rebuild is not estimated as ~1m25s.
    "Full work" = rebuild shape, or ≥ 16 dirty modules — deliberately absolute, not
@@ -100,7 +100,7 @@ Failed steps still land in the `failed` bucket for diagnostics; they never contr
 averages. Cold modules without local rates fall back to project/host medians, then host absolute
 test-method ms / continuous calibration, then tight static floors.
 
-Successful **`jk build --rebuild`** always folds timings + metrics under **`build:rebuild`** (request
+Successful **`jk build --redo`** always folds timings + metrics under **`build:rebuild`** (request
 flag stored on the accumulator — not ambient session at journal write). Newer successes supersede
 older ones via EWMA; multi-year raw averages are not used as the sole ETA prior.
 

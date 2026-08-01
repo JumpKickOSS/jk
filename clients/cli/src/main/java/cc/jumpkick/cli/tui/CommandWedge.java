@@ -3,6 +3,7 @@ package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
+import java.io.PrintStream;
 
 /**
  * Human-facing settled command result chrome.
@@ -24,6 +25,10 @@ import cc.jumpkick.config.GlobalConfig;
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
+ *
+ * <p>For indeterminate work that should keep CommandWedge chrome (e.g. {@code jk status}
+ * collecting metrics), use {@link #analyzing} — a live blue chip with a pulsing spinner icon —
+ * then print a settled line ({@link #chip}, {@link #ok}, …) after it closes.
  */
 public final class CommandWedge {
 
@@ -42,6 +47,15 @@ public final class CommandWedge {
     /** Blue / neutral working chip (play glyph) + message. */
     public static String working(String command, String message) {
         return PipelineWedge.chipLine(Glyphs.PLAY, command, GlobalConfig.nerdfont(), message);
+    }
+
+    /**
+     * Live working CommandWedge: blue chip with a pulsing spinner icon and {@code message} after the
+     * cap (e.g. {@code ● Status  Analyzing status...}). Silent under {@code --no-progress}.
+     * Clears the line on close so the caller can settle with {@link #chip} / {@link #ok} in place.
+     */
+    public static Spinner analyzing(PrintStream out, String command, String message) {
+        return Spinner.showWedge(out, command, message);
     }
 
     /**

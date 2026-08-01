@@ -315,9 +315,9 @@ public final class CommandDispatch {
     private static Command withGlobals(CliCommand cmd) {
         List<Opt> opts = new ArrayList<>(cmd.options());
         java.util.Set<String> own = new java.util.HashSet<>();
-        for (Opt opt : opts) own.addAll(opt.names());
+        for (Opt opt : opts) own.addAll(opt.allNames());
         for (Opt global : GlobalOptions.globalOpts()) {
-            for (String n : global.names()) {
+            for (String n : global.allNames()) {
                 if (own.contains(n)) {
                     throw new IllegalStateException("command '" + cmd.name() + "' declares option " + n
                             + ", which collides with the global option " + n
@@ -461,7 +461,7 @@ public final class CommandDispatch {
         Map<String, Opt> valueGlobals = new LinkedHashMap<>();
         for (Opt o : GlobalOptions.globalOpts()) {
             if (o.takesValue()) {
-                for (String n : o.names()) valueGlobals.put(n, o);
+                for (String n : o.allNames()) valueGlobals.put(n, o);
             }
         }
         int i = 0;
@@ -470,8 +470,8 @@ public final class CommandDispatch {
             if (a.equals("--")) return i + 1 < args.size() ? i + 1 : -1;
             if (!a.startsWith("-") || a.equals("-")) return i; // first positional = command
             String name = a.contains("=") ? a.substring(0, a.indexOf('=')) : a;
-            // A value-taking global before the command (exact or unique prefix, e.g. --dir for
-            // --directory) consumes the next token, so skip both to reach the command.
+            // A value-taking global before the command (exact or unique prefix, e.g. --di for
+            // --dir) consumes the next token, so skip both to reach the command.
             boolean consumesNext = !a.contains("=")
                     && Abbreviations.resolve(name, valueGlobals).resolved();
             i += consumesNext ? 2 : 1;
@@ -487,7 +487,7 @@ public final class CommandDispatch {
     private static boolean helpRequested(CliCommand cmd, List<String> args) {
         Map<String, Opt> byName = new LinkedHashMap<>();
         for (Opt o : withGlobals(cmd).options()) {
-            for (String n : o.names()) byName.put(n, o);
+            for (String n : o.allNames()) byName.put(n, o);
         }
         Opt help = byName.get("--help");
         for (String tok : args) {

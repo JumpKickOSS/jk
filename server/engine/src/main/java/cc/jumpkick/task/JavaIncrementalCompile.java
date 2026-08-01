@@ -187,7 +187,7 @@ public final class JavaIncrementalCompile {
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
 
-        // useCache=false means "do not restore / skip work" (--rebuild / --force), NOT "do not
+        // useCache=false means "do not restore / skip work" (--redo / --force), NOT "do not
         // write" — rebuilds store successful results so the next `jk explain` / incremental build
         // sees CACHE_HIT instead of a phantom full recompile. persist=false (jk verify's scratch
         // rebuild) is the one mode that skips writes: its scratch-salted keys can never recur, so

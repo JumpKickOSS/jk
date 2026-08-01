@@ -619,7 +619,7 @@ class EngineServerTest {
      * The session envelope's {@code rebuild} flag must defeat every engine-side freshness fast
      * path: after a first build populates the stamps and action cache, a second request with
      * {@code withSession(..., rebuild=true)} must genuinely re-run the compile — never label it
-     * "up to date". (Regression: --rebuild once vanished between the CLI and the stamp checks.)
+     * "up to date". (Regression: --redo once vanished between the CLI and the stamp checks.)
      */
     @Test
     void rebuild_in_the_session_envelope_defeats_the_freshness_fast_path() throws Exception {

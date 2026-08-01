@@ -217,7 +217,7 @@ public final class SelectiveCommand implements CliCommand {
         }
 
         // Content-hash skipwhen plan has contentHashes, only re-run modules whose
-        // fingerprints changed (unless --force / --rebuild).
+        // fingerprints changed (unless --force / --redo).
         GlobalOptions g = GlobalOptions.from(in);
         if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
             List<String> planned = !plan.modules.isEmpty()
@@ -269,7 +269,7 @@ public final class SelectiveCommand implements CliCommand {
             args.add(effectiveSince);
         }
         if (g.force) args.add("--force");
-        if (g.rebuild) args.add("--rebuild");
+        if (g.rebuild) args.add("--redo");
 
         return cc.jumpkick.cli.Jk.execute(args.toArray(String[]::new));
     }

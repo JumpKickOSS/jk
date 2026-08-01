@@ -217,7 +217,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             // Only an interactive ANSI terminal gets OSC 0 — under pipes/--quiet (!animate)
             // or no-ANSI mode (--no-ansi, TERM=dumb, CI) the escapes would land verbatim in
             // the output stream.
-            if (done || !animate || !Theme.active().isAnsi()) return;
+            if (done || !animate || !Theme.active().isAnsi() || !Ansi.oscEnabled()) return;
             windowTitleBase = title == null ? "" : title;
             windowTitleActive = !windowTitleBase.isEmpty();
             windowTitleLastGlyph = null; // force immediate emit with current fill glyph
@@ -244,7 +244,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         windowTitleActive = false;
         windowTitleBase = "";
         windowTitleLastGlyph = null;
-        out.print(Ansi.WINDOW_TITLE_CLEAR);
+        out.print(Ansi.windowTitleClear());
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
@@ -328,6 +328,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             // After any module finishes, lock the seed for pure wall-clock display.
             if (etaEstimateMs > 0 && modulesComplete > 0) return;
             this.etaEstimateMs = next;
+        }
+    }
+
+    /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */
+    public long etaEstimateMs() {
+        synchronized (lock) {
+            return etaEstimateMs;
         }
     }
 
@@ -561,7 +568,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (animate) {
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
-                out.print(Ansi.TASKBAR_CLEAR);
+                out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 out.flush();
             } else {
@@ -593,7 +600,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 // result below it; pipeline mode replaces the whole region.
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
-                out.print(Ansi.TASKBAR_CLEAR);
+                out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
@@ -632,7 +639,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (!animate) return false;
             if (pipelineMode) {
                 wipeRegion();
-                out.print(Ansi.TASKBAR_CLEAR);
+                out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
@@ -641,7 +648,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 return true;
             }
             freezeSpinnerLine();
-            out.print(Ansi.TASKBAR_CLEAR);
+            out.print(Ansi.taskbarClear());
             out.print(Ansi.SHOW_CURSOR);
             out.flush();
             return false;
@@ -662,7 +669,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 return;
             }
             wipeRegion();
-            out.print(Ansi.TASKBAR_CLEAR);
+            out.print(Ansi.taskbarClear());
             out.print(Ansi.SHOW_CURSOR);
             out.flush();
         }
@@ -720,7 +727,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         out.print(label);
         out.print(ELLIPSIS);
         out.print(Ansi.ERASE_LINE_TO_END);
-        out.print(Ansi.TASKBAR_INDETERMINATE);
+        out.print(Ansi.taskbarIndeterminate());
     }
 
     /**

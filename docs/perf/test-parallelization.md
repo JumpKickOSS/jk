@@ -123,7 +123,7 @@ Phase A answer: **yes, split** — JK-1087 owns the Mill within-suite investigat
 
 ## C1 measure (2026-07-22)
 
-**Method:** `scripts/test-parallel-measure.sh` with `MODULES='shared/*'`, `EXTRA_ARGS='--no-progress --rebuild'`,
+**Method:** `scripts/test-parallel-measure.sh` with `MODULES='shared/*'`, `EXTRA_ARGS='--no-progress --redo'`,
 `JK_AOT_TRAIN=off`. Host: Darwin arm64, 12 cores. Thin client + engine jar after B4/C1 wiring
 (`jk test --parallel-tests` now parses; multi-module selection runs concurrent `runTest` with the
 engine test gate lifted).
@@ -141,10 +141,10 @@ via `--serial-tests`.
 Re-run:
 
 ```bash
-MODULES='shared/*' EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+MODULES='shared/*' EXTRA_ARGS='--no-progress --redo' ./scripts/test-parallel-measure.sh
 # fuller monorepo (matches CI filter):
 MODULES='shared/*,server/io,server/resolver,server/toolchain,server/engine,clients/cli,plugins/*' \
-  EXTRA_ARGS='--no-progress --rebuild' ./scripts/test-parallel-measure.sh
+  EXTRA_ARGS='--no-progress --redo' ./scripts/test-parallel-measure.sh
 ```
 
 ## Refs

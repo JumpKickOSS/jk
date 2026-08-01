@@ -2039,6 +2039,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2143,6 +2145,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session =
                     Session.defaults().withConfig(config).withWorkingDir(dir).withCacheDir(cache);
@@ -2338,6 +2342,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2386,7 +2392,7 @@ public final class EngineServer implements AutoCloseable {
             String cacheStr = Jsonl.str(requestLine, "cache");
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
-            // --rebuild rides the same session flag as jk build --rebuild so forecast
+            // --redo rides the same session flag as jk build --redo so forecast
             // (all steps RUN) and ETA (build:rebuild history) match the live rebuild path.
             boolean rebuild = Jsonl.bool(requestLine, "rebuild", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
@@ -2401,6 +2407,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2502,6 +2510,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -3003,6 +3013,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -3221,6 +3233,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(refresh),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session =
                     Session.defaults().withConfig(config).withCacheDir(cache).withCancel(cancelToken);
@@ -3700,6 +3714,8 @@ public final class EngineServer implements AutoCloseable {
                 Optional.of(Jsonl.bool(requestLine, "verbose", false)),
                 Optional.empty(),
                 Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
         return Session.defaults()
                 .withConfig(config)
@@ -5435,7 +5451,7 @@ public final class EngineServer implements AutoCloseable {
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
-        /**request was {@code --rebuild}/{@code --force} — train {@code build:rebuild} metrics. */
+        /** request was {@code --redo}/{@code --force} — train {@code build:rebuild} metrics. */
         private final boolean rebuild;
 
         /**

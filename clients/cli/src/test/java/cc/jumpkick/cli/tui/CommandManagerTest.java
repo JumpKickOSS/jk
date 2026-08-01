@@ -269,7 +269,9 @@ class CommandManagerTest {
                 java.util.Optional.empty(),
                 java.util.Optional.empty(),
                 java.util.Optional.empty(),
-                java.util.Optional.of(true));
+                java.util.Optional.of(true), // noAnsi
+                java.util.Optional.empty(),
+                java.util.Optional.empty()); // noOsc
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();

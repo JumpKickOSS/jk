@@ -156,6 +156,35 @@ class SpinnerTest {
         assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
     }
 
+    @Test
+    void wedge_frame_uses_pulse_glyph_and_command_on_chip() {
+        var colors = Spinner.buildChipPulseStyles(
+                Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
+        String visible = TestAnsi.strip(
+                Spinner.renderWedgeFrame(0, "Status", "Analyzing status...", false, colors));
+        assertThat(visible).contains(Spinner.PULSE_GLYPH);
+        assertThat(visible).contains("Status");
+        assertThat(visible).contains("Analyzing status...");
+        // Settled menu glyph must not appear while analyzing.
+        assertThat(visible).doesNotContain(Glyphs.MENU);
+    }
+
+    @Test
+    void wedge_step_paints_chip_then_clears_on_close() {
+        var buf = new ByteArrayOutputStream();
+        var s = Spinner.wedge(stream(buf), "Status", "Analyzing status...");
+        s.step();
+        String painted = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
+        assertThat(painted).contains(Spinner.PULSE_GLYPH);
+        assertThat(painted).contains("Status");
+        assertThat(painted).contains("Analyzing status...");
+        buf.reset();
+        s.close();
+        String closed = buf.toString(StandardCharsets.UTF_8);
+        assertThat(closed).contains("\r\033[K"); // clear current line on close
+        assertThat(closed).contains("\033[?25h"); // show cursor
+    }
+
     private static PrintStream stream(ByteArrayOutputStream buf) {
         return new PrintStream(buf, true, StandardCharsets.UTF_8);
     }

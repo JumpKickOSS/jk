@@ -62,7 +62,7 @@ public final class MvnCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        this.directory = in.value("directory").map(Path::of).orElse(null);
+        this.directory = in.value("dir").map(Path::of).orElse(null);
         this.toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         this.jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         this.noDiscover = in.isSet("no-discover");

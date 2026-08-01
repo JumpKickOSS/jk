@@ -385,7 +385,7 @@ Live tickets: **`JK-NNNN`** in [kanartist](https://github.com/jkbuild/kanartist)
 | **P1** | JK-1037 | Escape hatch MVP | go-do (after 1026) |
 | **P1-depth** | JK-1031 · JK-1039 · JK-1040 · JK-1041 | Selectors, multi-task logic, selective prepare/run, BSP import | often done |
 | **P2** | JK-1034 | `jk outdated` polish | go-do (command exists) |
-| **P2** | JK-1032 | Fat-jar rules + R8 productization | go-do (`assembly` exists) |
+| **P2** | JK-1032 | Fat-jar rules + R8 productization | go-do (`jk assemble` exists) |
 | **P2** | JK-1038 | Showcase monorepo CI | go-do |
 | **P2** | JK-1033 | Lint matrix | research → thin go-do |
 | **P2** | JK-1017 | Marketplace IDE plugin (one track) | go-do after BSP |

@@ -79,6 +79,8 @@ class JkAliasTest {
         }
 
         assertThat(commandNames).contains("compile");
+        assertThat(commandNames).contains("assemble");
+        assertThat(commandNames).as("hidden alias assembly must not appear in --help").doesNotContain("assembly");
         for (String alias : Jk.VERB_ALIASES.keySet()) {
             assertThat(commandNames).as("alias %s leaked into --help", alias).doesNotContain(alias);
         }

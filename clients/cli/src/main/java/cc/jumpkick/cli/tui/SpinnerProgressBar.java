@@ -35,7 +35,6 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     // (clear) on close. BEL terminator is more universally honored
     // than ST in OSC handling. Terminals that don't recognise OSC 9;4
     // silently swallow the sequence in their OSC parser.
-    static final String OSC_CLEAR = Ansi.TASKBAR_CLEAR;
 
     private final PrintStream out;
     private final AttributedStyle[] segmentColors;
@@ -114,7 +113,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
         if (drawn) out.print(Ansi.CLEAR_LINE);
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
     }
@@ -137,7 +136,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
             return;
         }
         out.print(Ansi.CLEAR_LINE); // clear the bar line
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println(message);
         out.flush();
@@ -201,7 +200,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) status
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println();
         out.flush();
@@ -229,7 +228,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) cancel status
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
         // Cursor is left mid-line with no newline; GlobalCancel prints the

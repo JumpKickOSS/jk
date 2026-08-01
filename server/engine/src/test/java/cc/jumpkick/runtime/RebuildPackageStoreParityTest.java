@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * After {@code jk build --rebuild}, package-jar and run-tests must leave action-cache records under
+ * After {@code jk build --redo}, package-jar and run-tests must leave action-cache records under
  * the <em>same</em> keys a normal build uses — so {@code jk explain} does not report a phantom
  * repackage / retest while {@code jk build} (preflight memo) says fully cached.
  *
@@ -42,6 +42,8 @@ class RebuildPackageStoreParityTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(true), // rebuild
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),

@@ -1469,7 +1469,7 @@ public final class EngineProtocol {
 
     /**
      * As {@link #explainRequest(String, String, int, boolean, String, String, boolean, boolean, boolean)}
-     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild}.
+     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --redo}.
      */
     public static String explainRequest(
             String dir,
@@ -2660,7 +2660,7 @@ public final class EngineProtocol {
     /**
      * Append the client's flag/env JVM-tuning layer to an already-encoded request line (thin-client
      * contract: the {@code jk.toml [jvm]} table never resolves client-side — the engine overlays it
-     * at worker-fork time; only {@code --max-ram-percent}/{@code --jvm-arg} and {@code JK_JVM_*}
+     * at worker-fork time; only {@code --ram-percent}/{@code --jvm-arg} and {@code JK_JVM_*}
      * cross the wire). A NONE tuning returns the line unchanged, so absent fields stay absent.
      */
     /**
@@ -2704,7 +2704,7 @@ public final class EngineProtocol {
 
     /**
      * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code shrink}) for
-     * {@code jk assembly --shrink} one-offs.
+     * {@code jk assemble --shrink} one-offs.
      */
     public static String withSession(
             String request,

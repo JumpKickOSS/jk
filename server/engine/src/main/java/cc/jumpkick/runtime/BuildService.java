@@ -184,7 +184,7 @@ public final class BuildService {
     static Preflight forecastWithFingerprints(BuildGraph.Result graph, Path cache, boolean skipTests, Path entryDir) {
         Set<Path> all = new HashSet<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) all.add(u.dir());
-        // --force / --rebuild: every module runs — skip the expensive per-step forecast walk.
+        // --force / --redo: every module runs — skip the expensive per-step forecast walk.
         if (SessionContext.current().config().rebuildOr(false)
                 || SessionContext.current().config().forceOr(false)) {
             return new Preflight(all, Map.of());
@@ -283,7 +283,7 @@ public final class BuildService {
             StepTimings timings = StepTimings.load(cache);
             List<EffortWeights.ModuleCost> costs = new ArrayList<>();
             int jobs = Math.max(1, Runtime.getRuntime().availableProcessors());
-            // Only dirty modules (or every module under --rebuild/--force). Each cost is Σ of that
+            // Only dirty modules (or every module under --redo/--force). Each cost is Σ of that
             // module's *running* steps from measured step walls — not a whole-build prior, and not
             // shape-memo bar weights that ignore which steps are actually dirty.
             for (BuildPlan.Module m : plan.modules()) {
@@ -491,7 +491,7 @@ public final class BuildService {
         long tf = Perf.start();
         // Checking runs inside this build request (no separate client forecast RPC).
         // Client dirty hint (selection / force path) still avoids a second walk when provided.
-        // --force/--rebuild short-circuits forecastDirtyDirs to "all" without per-step hashing.
+        // --force/--redo short-circuits forecastDirtyDirs to "all" without per-step hashing.
         // when forecasting here, consult/store the local dirty memo under target/.jk/preflight/.
         Set<Path> dirty;
         if (req.dirtyHint() != null) {
@@ -876,8 +876,8 @@ public final class BuildService {
         BuildMetrics.Stats okHist = okHistory(entryDir, hist);
         // Full rebuild / monorepo-scale dirty: never estimate *below* measured full-build walls.
         // List-scheduling step averages can under-shoot (CPU contention, missing steps). Invocation
-        // history is ground truth for "jk build --rebuild takes ~2m30s". Also consult plain `build`
-        // full-dirty rows — organic 27-module runs are the same work as --rebuild.
+        // history is ground truth for "jk build --redo takes ~2m30s". Also consult plain `build`
+        // full-dirty rows — organic 27-module runs are the same work as --redo.
         // The 16-dirty threshold is deliberately ABSOLUTE, not workspace-relativethe
         // floor source below is keyed by dirty count (`#dN`), so a wide-but-cheap incremental
         // build is floored against other builds of ITS OWN shape, not against full-rebuild walls

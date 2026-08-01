@@ -113,7 +113,7 @@ public final class GradleExporter {
                     .append("\"\n");
         }
         if (app) sb.append("    application\n");
-        // Map jk assembly packaging onto Gradle's Shadow plugin (export only).
+        // Map jk assemble packaging onto Gradle's Shadow plugin (export only).
         if (assembly)
             sb.append("    id(\"com.gradleup.shadow\") version \"")
                     .append(SHADOW)

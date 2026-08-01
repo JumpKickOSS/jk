@@ -68,18 +68,18 @@ case "$MODE" in
     cd "$PROJECT"
     unset JK_WORKER_AOT || true
  # train: first rebuilds may miss AOT then background-train
-    "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
+    "$JK_BIN" build --skip-tests --redo --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
     sleep 4
-    "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
+    "$JK_BIN" build --skip-tests --redo --jdk "$JDK_SPEC" >/dev/null 2>&1 || true
     echo "kotlinc aot files:"
     ls -la "${HOME}/.jk/state/aot"/kotlinc-*.aot 2>/dev/null | sed 's/^/  /' || echo "  (none yet)"
     echo
     echo "| arm | median rebuild | samples |"
     echo "|---|---|---|"
     unset JK_WORKER_AOT || true
-    run_median_rebuild "kotlinc worker AOT-on" "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC"
+    run_median_rebuild "kotlinc worker AOT-on" "$JK_BIN" build --skip-tests --redo --jdk "$JDK_SPEC"
     export JK_WORKER_AOT=off
-    run_median_rebuild "kotlinc worker AOT-off" "$JK_BIN" build --skip-tests --rebuild --jdk "$JDK_SPEC"
+    run_median_rebuild "kotlinc worker AOT-off" "$JK_BIN" build --skip-tests --redo --jdk "$JDK_SPEC"
     unset JK_WORKER_AOT
     echo
     echo "Confirm AOT map: during a rebuild, ps should show:"

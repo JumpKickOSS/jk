@@ -105,7 +105,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         LiveRegion.clearActive(this);
         if (silent) return;
         if (drawn) out.print(Ansi.CLEAR_LINE);
-        out.print(Ansi.TASKBAR_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
     }
@@ -127,7 +127,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
         for (int i = 0; i < ProgressBar.SEGMENTS; i++) {
             out.print(Theme.colorize(String.valueOf(ProgressBar.FILLED_CHAR), failColors[i]));
         }
-        out.print(Ansi.TASKBAR_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(Ansi.SHOW_CURSOR);
         out.flush();
         return true;

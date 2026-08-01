@@ -56,7 +56,7 @@ public final class CancelCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws Exception {
-        // From the invocation (so -C/--directory works, like every other command), then resolved
+        // From the invocation (so -C/--dir works, like every other command), then resolved
         // to the workspace root: jobs register their ENTRY dir, so cancelling from a member dir
         // must match the workspace build that covers it.
         Path dir = cancelScope(GlobalOptions.from(in).workingDir());

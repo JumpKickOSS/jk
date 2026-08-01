@@ -5,10 +5,10 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -72,30 +72,46 @@ public final class StatusCommand implements CliCommand {
         Path cwd = Path.of("").toAbsolutePath().normalize();
         EnginePaths.Paths paths = EnginePaths.current();
 
-        List<String> rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
-                .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
-                .toList();
+        // Collect under a live CommandWedge spinner; settle when ready (same line chrome).
+        // JSON skips the wedge — structured metrics only.
+        boolean live = !global.outputIsJson()
+                && !global.quiet
+                && !global.noProgress
+                && PipelineConsole.isInteractiveTerminal();
 
-        if (global.outputIsJson()) {
-            CliOutput.out("[" + String.join(",", rows) + "]");
-            return 0;
-        }
-
-        // ── Header: ≡ Status  vX.Y.Z Engine is running (pid N) ───────────────
-        Optional<EngineClient.Status> engine = EngineClient.status(EnginePaths.activeSocket(paths));
-        String engineMsg = engine
-                .map(s -> "v" + Jk.VERSION + " Engine is running (pid " + s.pid() + ")")
-                .orElse("v" + Jk.VERSION + " Engine is not running");
-        CliOutput.out(PipelineWedge.chipLine(Glyphs.MENU, "Status", GlobalConfig.nerdfont(), engineMsg));
-        CliOutput.out("");
-
-        ProjectSnapshot project = globalOnly ? null : loadProject(cwd);
+        List<String> rows;
+        Optional<EngineClient.Status> engine = Optional.empty();
+        ProjectSnapshot project = null;
         Forecast forecast = null;
         String lastHistory = null;
-        if (!globalOnly && project != null) {
-            lastHistory = findLastHistory(paths, cwd);
-            forecast = tryForecast(paths, cwd);
+        CacheSnapshot cache = null;
+
+        try (var analyzing = live
+                ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...")
+                : null) {
+            rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
+                    .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
+                    .toList();
+
+            if (global.outputIsJson()) {
+                CliOutput.out("[" + String.join(",", rows) + "]");
+                return 0;
+            }
+
+            engine = EngineClient.status(EnginePaths.activeSocket(paths));
+            if (!globalOnly) {
+                project = loadProject(cwd);
+                if (project != null) {
+                    lastHistory = findLastHistory(paths, cwd);
+                    forecast = tryForecast(paths, cwd);
+                }
+            }
+            cache = loadCacheSnapshot();
         }
+
+        // ── Header: ≡ Status  JumpKick Engine v[bold]X.Y.Z[/] is running (pid [yellow]N[/]) ─
+        CliOutput.out(CommandWedge.chip(Glyphs.MENU, "Status", engineStatusMessage(engine)));
+        CliOutput.out("");
 
         if (!globalOnly) {
             printProjectSection(project, forecast, lastHistory);
@@ -106,7 +122,7 @@ public final class StatusCommand implements CliCommand {
 
         printGlobalBuildSection(rows);
         CliOutput.out("");
-        printCacheSection();
+        printCacheSection(cache);
         return 0;
     }
 
@@ -228,30 +244,52 @@ public final class StatusCommand implements CliCommand {
         kv("Total Build Time", wall > 0 ? formatDuration(wall) : "—");
     }
 
-    private static void printCacheSection() {
-        sectionHeader("Cache", null);
+    /** Pre-collected cache footprint so the disk walk stays under the analyzing wedge. */
+    private record CacheSnapshot(String sizeOnDisk, String casEntries, String actionsCached) {}
+
+    private static CacheSnapshot loadCacheSnapshot() {
         Path root = JkDirs.cache();
         try {
             Path storeRoot = cc.jumpkick.cache.JkStores.storeRootFor(root);
             if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
-                kv("Size on Disk", "—");
-                kv("CAS Entries", "0");
-                kv("Actions Cached", "0");
-                return;
+                return new CacheSnapshot("—", "0", "0");
             }
             // Exclusive sizes: hard-linked repos/ + sha256/ share one allocation (not 2×).
             CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
-            kv("Size on Disk", CacheCommand.fmtBytes(s.totalBytes()));
-            kv("CAS Entries", formatCount(s.cas().files()));
-            kv("Actions Cached", formatCount(s.actions().files()));
+            return new CacheSnapshot(
+                    CacheCommand.fmtBytes(s.totalBytes()),
+                    formatCount(s.cas().files()),
+                    formatCount(s.actions().files()));
         } catch (IOException e) {
-            kv("Size on Disk", "—");
-            kv("CAS Entries", "—");
-            kv("Actions Cached", "—");
+            return new CacheSnapshot("—", "—", "—");
         }
     }
 
+    private static void printCacheSection(CacheSnapshot cache) {
+        sectionHeader("Cache", null);
+        CacheSnapshot c = cache != null ? cache : new CacheSnapshot("—", "—", "—");
+        kv("Size on Disk", c.sizeOnDisk());
+        kv("CAS Entries", c.casEntries());
+        kv("Actions Cached", c.actionsCached());
+    }
+
     // ── rendering helpers ────────────────────────────────────────────────────
+
+    /**
+     * Status chip tail: {@code JumpKick Engine v}<bold version>{@code  is running (pid }<yellow
+     * pid>{@code )}. Version is theme focused (bold); pid matches engine start/stop yellow.
+     */
+    static String engineStatusMessage(Optional<EngineClient.Status> engine) {
+        Theme t = Theme.active();
+        // focused() is bold bright-white; plain terminals keep the bare version string.
+        String version = t.isAnsi() ? Theme.colorize(Jk.VERSION, t.focused()) : Jk.VERSION;
+        if (engine.isEmpty()) {
+            return "JumpKick Engine v" + version + " is not running";
+        }
+        String pid = Long.toString(engine.get().pid());
+        String pidStyled = t.isAnsi() ? Theme.colorize(pid, t.warning()) : pid;
+        return "JumpKick Engine v" + version + " is running (pid " + pidStyled + ")";
+    }
 
     private static void sectionHeader(String title, String suffix) {
         Theme t = Theme.active();

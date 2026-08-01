@@ -92,7 +92,7 @@ public final class JvmOptions {
 
     /**
      * Worker-fork JVM flags for {@code concurrency} simultaneously-launched JVMs, built from the
-     * request's {@linkplain #tuning() tuning} — so a {@code --max-ram-percent} flag or a {@code [jvm]}
+     * request's {@linkplain #tuning() tuning} — so a {@code --ram-percent} flag or a {@code [jvm]}
      * table reaches the worker.
      *
      * <p>When a {@linkplain #processHeapPlan() heap plan} is in effect (the default — no explicit
@@ -160,7 +160,7 @@ public final class JvmOptions {
 
     /**
      * True when jk should auto-size worker heaps: the request pinned neither a {@code
-     * --max-ram-percent} / {@code [jvm] max-ram-percent} nor an explicit heap flag ({@code
+     * --ram-percent} / {@code [jvm] max-ram-percent} nor an explicit heap flag ({@code
      * -Xmx}/{@code -Xms}/{@code -XX:MaxHeapSize}/ {@code -XX:MaxRAMPercentage}) via {@code --jvm-arg}
      * / {@code [jvm] args}.
      */

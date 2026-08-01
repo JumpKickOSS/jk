@@ -27,7 +27,7 @@ public final class GroovyCompile {
     }
 
     /**
-     * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
+     * @param useCache when false ({@code --redo}/{@code --force}), skip restore/skip — still
      * write the action cache after a successful compile so the next explain/build can CACHE_HIT.
      */
     public static Result run(

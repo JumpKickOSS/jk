@@ -30,7 +30,7 @@ public final class ArgParser {
             throws ParseException {
         Map<String, Opt> byName = new HashMap<>();
         for (Opt opt : command.options()) {
-            for (String n : opt.names()) byName.put(n, opt);
+            for (String n : opt.allNames()) byName.put(n, opt);
         }
 
         Invocation.Builder out = Invocation.builder();

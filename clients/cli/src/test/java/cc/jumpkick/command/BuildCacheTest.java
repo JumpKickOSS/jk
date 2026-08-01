@@ -62,10 +62,11 @@ class BuildCacheTest {
                 .isEqualTo(0);
         Files.setLastModifiedTime(src, FileTime.fromMillis(System.currentTimeMillis() - 5_000));
 
-        // --rebuild: stamps and action cache are distrusted — a genuine recompile, never the
+        // --redo: stamps and action cache are distrusted — a genuine recompile, never the
         // "project up to date" fast path (and unlike --force, no dependency re-fetch).
+        // (--rebuild remains a supported alias for --redo.)
         String stdout = captureStdout(
-                () -> run("build", "--rebuild", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
+                () -> run("build", "--redo", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(stdout).doesNotContain("project up to date");
         assertThat(stdout).contains("Build successful");
     }

@@ -74,6 +74,34 @@ class CommandHelpRenderTest {
     }
 
     @Test
+    void optionAliasesAreOmittedFromHelp() {
+        CliCommand withAlias = new CliCommand() {
+            @Override
+            public String name() {
+                return "build";
+            }
+
+            @Override
+            public String description() {
+                return "Build";
+            }
+
+            @Override
+            public List<Opt> options() {
+                return List.of(Opt.flag("Redo work", "-r", "--redo").alias("--rebuild"));
+            }
+
+            @Override
+            public int run(Invocation in) {
+                return 0;
+            }
+        };
+        String help = HelpRenderer.renderHelp(CommandModels.from(withAlias, "jk build", List.of()), false);
+        assertThat(help).contains("-r, --redo");
+        assertThat(help).doesNotContain("--rebuild");
+    }
+
+    @Test
     void requiredParamRendersAngleBrackets() {
         CliCommand req = new CliCommand() {
             @Override

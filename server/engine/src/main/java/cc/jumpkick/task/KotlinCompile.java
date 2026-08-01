@@ -27,7 +27,7 @@ public final class KotlinCompile {
     }
 
     /**
-     * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
+     * @param useCache when false ({@code --redo}/{@code --force}), skip restore/skip — still
      * <em>write</em> the action cache after a successful compile so the next explain/build can
      * CACHE_HIT.
      */

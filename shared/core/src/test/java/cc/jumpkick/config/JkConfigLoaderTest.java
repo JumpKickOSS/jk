@@ -32,6 +32,8 @@ class JkConfigLoaderTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(), // force
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty()); // noAnsi
         JkConfig over = new JkConfig(
                 Optional.of(JkConfig.ColorChoice.ALWAYS),
@@ -42,6 +44,8 @@ class JkConfigLoaderTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(), // force
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty()); // noAnsi
         JkConfig merged = base.mergedWith(over);
         assertThat(merged.color()).hasValue(JkConfig.ColorChoice.ALWAYS); // over wins
@@ -62,6 +66,60 @@ class JkConfigLoaderTest {
         assertThat(loaded.color()).hasValue(JkConfig.ColorChoice.ALWAYS);
         assertThat(loaded.offline()).hasValue(true);
         assertThat(loaded.quiet()).hasValue(false);
+    }
+
+    @Test
+    void parses_notify_no_osc_no_ansi_from_toml(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(
+                toml,
+                """
+                [config]
+                notify = "always"
+                no-osc = true
+                no-ansi = false
+                no-progress = true
+                """);
+        JkConfig loaded = JkConfigLoader.loadTomlOrEmpty(toml);
+        assertThat(loaded.notifyPolicy()).hasValue(JkConfig.NotifyChoice.ALWAYS);
+        assertThat(loaded.noOsc()).hasValue(true);
+        assertThat(loaded.noAnsi()).hasValue(false);
+        assertThat(loaded.noProgress()).hasValue(true);
+    }
+
+    @Test
+    void parses_notify_boolean_true_false_as_always_never(@TempDir Path tempDir) throws IOException {
+        Path always = tempDir.resolve("always.toml");
+        Files.writeString(always, "[config]\nnotify = true\n");
+        assertThat(JkConfigLoader.loadTomlOrEmpty(always).notifyPolicy()).hasValue(JkConfig.NotifyChoice.ALWAYS);
+
+        Path never = tempDir.resolve("never.toml");
+        Files.writeString(never, "[config]\nnotify = false\n");
+        assertThat(JkConfigLoader.loadTomlOrEmpty(never).notifyPolicy()).hasValue(JkConfig.NotifyChoice.NEVER);
+
+        Path auto = tempDir.resolve("auto.toml");
+        Files.writeString(auto, "[config]\nnotify = \"auto\"\n");
+        assertThat(JkConfigLoader.loadTomlOrEmpty(auto).notifyPolicy()).hasValue(JkConfig.NotifyChoice.AUTO);
+    }
+
+    @Test
+    void env_var_notify_and_no_osc() {
+        JkConfig env = JkConfigLoader.loadFromEnv(Map.of(
+                "JK_NOTIFY", "never",
+                "JK_NO_OSC", "true",
+                "JK_NO_ANSI", "1")::get);
+        assertThat(env.notifyPolicy()).hasValue(JkConfig.NotifyChoice.NEVER);
+        assertThat(env.noOsc()).hasValue(true);
+        assertThat(env.noAnsi()).hasValue(true);
+    }
+
+    @Test
+    void notify_choice_parse_accepts_aliases() {
+        assertThat(JkConfig.NotifyChoice.parse("ALWAYS")).hasValue(JkConfig.NotifyChoice.ALWAYS);
+        assertThat(JkConfig.NotifyChoice.parse("yes")).hasValue(JkConfig.NotifyChoice.ALWAYS);
+        assertThat(JkConfig.NotifyChoice.parse("0")).hasValue(JkConfig.NotifyChoice.NEVER);
+        assertThat(JkConfig.NotifyChoice.parse("auto")).hasValue(JkConfig.NotifyChoice.AUTO);
+        assertThat(JkConfig.NotifyChoice.parse("maybe")).isEmpty();
     }
 
     @Test
@@ -130,7 +188,9 @@ class JkConfigLoaderTest {
                 Optional.of(false), // verbose
                 Optional.empty(),
                 Optional.of(false), // force: present-and-false, as every wire decode materializes it
-                Optional.empty());
+                Optional.empty(), // noAnsi
+                Optional.empty(), // noOsc
+                Optional.empty()); // notifyPolicy
         assertThat(wireShaped.rebuildOr(false)).isTrue();
         assertThat(wireShaped.forceOr(false)).isFalse();
 

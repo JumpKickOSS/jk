@@ -412,13 +412,13 @@ Import that POM like any other platform BOM (`[platform-dependencies]`).
 | Artifact | Config | Command |
 |---|---|---|
 | Thin jar | default | `jk build` |
-| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
-| Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
-| Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
-| Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not `assembly`) |
-| Grails jar (Boot layout) | grails plugin | `jk build` (not `assembly`) |
+| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Shrunk jar | `[application] assembly = "shrink"` | `jk assemble` / `jk build` (R8; size labels) |
+| Spring Boot jar | spring-boot plugin | `jk build` (not assembly packaging) |
+| Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not assembly packaging) |
+| Grails jar (Boot layout) | grails plugin | `jk build` (not assembly packaging) |
 
-One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
+One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --shrink`. Persist with
 `--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
@@ -428,7 +428,7 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 ```toml
 [application]
 main = "com.example.App"
-assembly = true       # fat jar — jk assembly / jk assemble
+assembly = true       # fat jar — jk assemble (or jk build)
 # assembly = "shrink" # R8 small fat jar — same commands
 ```
 
@@ -466,7 +466,7 @@ jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see pla
 jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
 jk build                     # package (thin, assembly, shrink, Boot, Quarkus, …)
-jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
+jk assemble                  # assembly/shrink jar (alias: assembly; or --fat/--shrink)
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
@@ -532,6 +532,37 @@ jk self setup-terminal --no-nerd   # force off
 ```
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
+
+Global CLI prefs live in the **`[config]`** table of `~/.jk/config.toml` and/or project
+`jk.toml` (CLI flags and `JK_*` env win). Precedence: **flag > env > project > machine**.
+
+```toml
+# ~/.jk/config.toml or project jk.toml
+[config]
+color = "auto"          # auto | always | never   (also JK_COLOR / NO_COLOR)
+offline = false
+quiet = false
+verbose = false
+no-progress = false     # hide bars/spinners; also suppresses build notifications
+no-ansi = false         # ASCII-only; implies no-progress
+no-osc = false          # no window title, taskbar progress, or desktop notifications
+notify = "auto"         # auto | always | never   (booleans: true=always, false=never)
+force = false
+# directory = "/path"   # optional default -C
+```
+
+| Setting | CLI | Env |
+|---------|-----|-----|
+| `color` | `--color` | `JK_COLOR`, `NO_COLOR` |
+| `no-progress` | `--no-progress` | `JK_NO_PROGRESS` |
+| `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
+| `no-osc` | `--no-osc` | `JK_NO_OSC` |
+| `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
+| `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
+
+**`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
+elapsed time is ≥ 1 minute; `always`/`true` always notifies; `never`/`false` never does.
+`--no-progress` and `--no-osc` also suppress notifications.
 
 ### Session transcripts (`details.jsonl`)
 
@@ -657,7 +688,7 @@ stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
 jk explain                   # full plan: cached vs rebuild sections + ETA
 jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
-jk explain --rebuild         # global flag: forecast full rebuild ETA (same as `jk build --rebuild`)
+jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
 
 # Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot
@@ -874,7 +905,7 @@ jk selective resolve --modules 'api,worker'   # dry list
 ```
 
 `prepare` records per-module content fingerprints (`jk.toml` + `src/**`). A later
-`selective run` without `--force`/`--rebuild` skips modules that still match (prints
+`selective run` without `--force`/`--redo` skips modules that still match (prints
 “nothing changed” when the whole plan is clean). Hashes are content-based (not absolute
 paths) so plans are shareable when trees match. Generated/`target` trees are not fingerprinted.
 

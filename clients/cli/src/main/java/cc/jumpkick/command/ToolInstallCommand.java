@@ -112,7 +112,7 @@ public final class ToolInstallCommand implements CliCommand {
 
         // A local script/jar installs as a snapshot env (launcher must not depend on the source
         // path). Project dirs and git URLs delegate to InstallCommand. Local paths (including
-        // ".") resolve against -C/--directory, not the process cwd.
+        // ".") resolve against -C/--dir, not the process cwd.
         Path base = global.workingDir();
         cc.jumpkick.tool.ToolTarget classified = cc.jumpkick.tool.ToolTarget.classify(coord);
         boolean m2Intent = groupFlag != null || nameFlag != null || verFlag != null;

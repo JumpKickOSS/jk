@@ -27,7 +27,17 @@ public record JkConfig(
          * Disable all ANSI (color and attributes). Distinct from {@code --color never}, which
          * strips color only.
          */
-        Optional<Boolean> noAnsi) {
+        Optional<Boolean> noAnsi,
+        /**
+         * Disable OSC capabilities (window title, taskbar progress, desktop notifications).
+         * {@code --no-osc} / {@code config.no-osc} / {@code JK_NO_OSC}.
+         */
+        Optional<Boolean> noOsc,
+        /**
+         * Desktop notification policy for long builds ({@code config.notify} /
+         * {@code --notify}/{@code --no-notify} / {@code JK_NOTIFY}).
+         */
+        Optional<NotifyChoice> notifyPolicy) {
 
     public enum ColorChoice {
         AUTO,
@@ -45,6 +55,27 @@ public record JkConfig(
         }
     }
 
+    /**
+     * Desktop notification policy. Default {@link #AUTO}: notify when ETA or elapsed ≥ 1 minute.
+     * {@link #ALWAYS} / {@link #NEVER} force on/off (CLI {@code --notify}/{@code --no-notify}).
+     * TOML accepts {@code "auto"|"always"|"never"} and booleans {@code true}/{@code false}.
+     */
+    public enum NotifyChoice {
+        AUTO,
+        ALWAYS,
+        NEVER;
+
+        public static Optional<NotifyChoice> parse(String s) {
+            if (s == null || s.isBlank()) return Optional.empty();
+            return switch (s.trim().toLowerCase(java.util.Locale.ROOT)) {
+                case "auto" -> Optional.of(AUTO);
+                case "always", "true", "yes", "on", "1" -> Optional.of(ALWAYS);
+                case "never", "false", "no", "off", "0" -> Optional.of(NEVER);
+                default -> Optional.empty();
+            };
+        }
+    }
+
     public JkConfig {
         Objects.requireNonNull(color, "color");
         Objects.requireNonNull(offline, "offline");
@@ -54,11 +85,15 @@ public record JkConfig(
         Objects.requireNonNull(directory, "directory");
         Objects.requireNonNull(force, "force");
         Objects.requireNonNull(noAnsi, "noAnsi");
+        Objects.requireNonNull(noOsc, "noOsc");
+        Objects.requireNonNull(notifyPolicy, "notifyPolicy");
     }
 
     /** Empty config — every setting unset. Used as the seed before layers merge. */
     public static JkConfig empty() {
         return new JkConfig(
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -84,7 +119,9 @@ public record JkConfig(
                 over.verbose.or(() -> this.verbose),
                 over.directory.or(() -> this.directory),
                 over.force.or(() -> this.force),
-                over.noAnsi.or(() -> this.noAnsi));
+                over.noAnsi.or(() -> this.noAnsi),
+                over.noOsc.or(() -> this.noOsc),
+                over.notifyPolicy.or(() -> this.notifyPolicy));
     }
 
     /** Convenience: color with a fallback when empty. */
@@ -96,7 +133,7 @@ public record JkConfig(
         return offline.orElse(fallback);
     }
 
-    /** True when {@code --force} / {@code JK_FORCE} was set for this invocation. */
+    /** True when {@code -F}/{@code --force} / {@code JK_FORCE} was set for this invocation. */
     public boolean forceOr(boolean fallback) {
         return force.orElse(fallback);
     }
@@ -117,6 +154,11 @@ public record JkConfig(
         return noAnsi.orElse(fallback);
     }
 
+    /** True when {@code --no-osc} was set — no window title, taskbar progress, or notifications. */
+    public boolean noOscOr(boolean fallback) {
+        return noOsc.orElse(fallback);
+    }
+
     public boolean noProgressOr(boolean fallback) {
         return noProgress.orElse(fallback);
     }
@@ -127,5 +169,10 @@ public record JkConfig(
 
     public boolean verboseOr(boolean fallback) {
         return verbose.orElse(fallback);
+    }
+
+    /** Notify policy with fallback (default {@link NotifyChoice#AUTO}). */
+    public NotifyChoice notifyOr(NotifyChoice fallback) {
+        return notifyPolicy.orElse(fallback);
     }
 }

@@ -815,7 +815,7 @@ public record JkBuild(
      *
      * <ul>
      * <li>{@link #OFF} — thin main jar only
-     * <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assembly})
+     * <li>{@link #FAT} — {@code assembly = true}: all-in-one assembly jar ({@code jk assemble})
      * <li>{@link #SHRINK} — {@code assembly = "shrink"}: R8 shrunk fat jar via the shrink packager
      * </ul>
      */

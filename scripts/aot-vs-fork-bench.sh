@@ -87,9 +87,9 @@ unset JK_WORKER_AOT || true
 "$JK_BIN" engine status >/dev/null 2>&1 || true
 "${JK[@]}" build --skip-tests >/dev/null 2>&1 || true
 # train pass (rebuild) + settle background trainer
-"${JK[@]}" build --skip-tests --rebuild >/dev/null 2>&1 || true
+"${JK[@]}" build --skip-tests --redo >/dev/null 2>&1 || true
 sleep 3
-"${JK[@]}" build --skip-tests --rebuild >/dev/null 2>&1 || true
+"${JK[@]}" build --skip-tests --redo >/dev/null 2>&1 || true
 
 JAVA_FILE=$(find . -name '*.java' -not -path './target/*' -not -path './out/*' -not -path './.jk/*' 2>/dev/null | head -1 || true)
 
@@ -102,7 +102,7 @@ rm -rf target out 2>/dev/null || true
 run_median "AOT-on clean (rm target)" "${JK[@]}" build --skip-tests
 run_median "AOT-on noop" "${JK[@]}" build --skip-tests
 # Force recompile even when action cache is warm (the fair AOT stress):
-run_median "AOT-on rebuild (cold fork+AOT)" "${JK[@]}" build --skip-tests --rebuild
+run_median "AOT-on rebuild (cold fork+AOT)" "${JK[@]}" build --skip-tests --redo
 if [[ -n "${JAVA_FILE:-}" ]]; then
   echo "" >>"$JAVA_FILE"
   run_median "AOT-on incr-body" "${JK[@]}" build --skip-tests
@@ -113,7 +113,7 @@ export JK_WORKER_AOT=off
 rm -rf target out 2>/dev/null || true
 run_median "AOT-off clean (rm target)" "${JK[@]}" build --skip-tests
 run_median "AOT-off noop" "${JK[@]}" build --skip-tests
-run_median "AOT-off rebuild (cold fork)" "${JK[@]}" build --skip-tests --rebuild
+run_median "AOT-off rebuild (cold fork)" "${JK[@]}" build --skip-tests --redo
 if [[ -n "${JAVA_FILE:-}" ]]; then
   echo "" >>"$JAVA_FILE"
   run_median "AOT-off incr-body" "${JK[@]}" build --skip-tests

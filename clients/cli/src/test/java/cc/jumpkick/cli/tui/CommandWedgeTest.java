@@ -55,6 +55,18 @@ class CommandWedgeTest {
     }
 
     @Test
+    void analyzing_returns_live_wedge_spinner() {
+        var buf = new java.io.ByteArrayOutputStream();
+        try (Spinner s = CommandWedge.analyzing(
+                new java.io.PrintStream(buf, true, java.nio.charset.StandardCharsets.UTF_8),
+                "Status",
+                "Analyzing status...")) {
+            assertThat(s).isNotNull();
+        }
+        // Closed without throwing; silent under --no-progress is fine.
+    }
+
+    @Test
     void cancelled_job_line_remote_vs_by_user() {
         String remote = PipelineWedge.cancelledJobLine("Build", false, false, "took 1.6s")
                 .replaceAll("\u001B\\[[0-9;]*m", "");
