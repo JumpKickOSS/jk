@@ -30,7 +30,7 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 | **IDE / BSP** | **Closer** | jk BSP + VS Code/IntelliJ wire-only plugins; Mill still broader IDE polish |
 | **Language surface** | **Mill** | Java + Kotlin + Scala (+ more); jk is Java/Kotlin/Groovy-first |
 | **Extensibility model** | **Mill** (today) | OO traits; jk has out-of-process plugins, not yet a Mill-like task escape hatch |
-| **Lockfile / resolve diagnostics** | **JumpKick** | Canonical `jk.lock`, PubGrub prose; Mill is Coursier-resolve-on-demand |
+| **Lockfile / resolve diagnostics** | **JumpKick** | Canonical `jk-lock.toml`, PubGrub prose; Mill is Coursier-resolve-on-demand |
 | **Supply chain defaults** | **JumpKick** (intent) | audit / deny / sigstore / SLSA / dual SBOM are first-class product claims |
 | **Client/engine memory model** | **JumpKick** (intent) | Capped resident engine + forked workers; Mill is a warm daemon |
 
@@ -44,7 +44,7 @@ This is **not** a marketing comparison. JumpKick and Mill occupy overlapping “
 |---|---|---|
 | Config default | Declarative YAML *or* programmable Scala `build.mill` | Declarative `jk.toml` (data) by convention |
 | Mental model | Object hierarchy of modules; tasks are methods | Workspace + verbs (`build`/`test`/`lock`); plugins own steps |
-| Resolve | Coursier; no committed lockfile as law | PubGrub + **`jk.lock` is law**; builds do not re-resolve |
+| Resolve | Coursier; no committed lockfile as law | PubGrub + **`jk-lock.toml` is law**; builds do not re-resolve |
 | Extension | Override `Task`s in-process; publish Mill plugins | Out-of-process workers today; **Mill-like escape hatch planned** |
 | Process model | Launcher + long-lived Mill daemon | Native CLI + memory-capped engine (JSONL wire) |
 | Maturity | Stable 1.x, commercial support, large examples | Alpha; self-host partial |
@@ -302,7 +302,7 @@ Android, protobuf, shrink, image, …). Gaps that matter for “modern JVM shop�
 
 Mill uses **Coursier**: BOMs (`bomMvnDeps`), `depManagement`, forceVersion, exclusions, `showMvnDepsTree --whatDependsOn`, dependency update search. Tests are separate modules (no Maven `test` scope)—clear model.
 
-JumpKick is stronger on **reproducibility** (`jk.lock`, scopes main/test/processor, PubGrub diagnostics, `jk why` / `jk tree`). Gaps vs Mill:
+JumpKick is stronger on **reproducibility** (`jk-lock.toml`, scopes main/test/processor, PubGrub diagnostics, `jk why` / `jk tree`). Gaps vs Mill:
 
 - Mill’s update search (`Dependency/showUpdates`) is polished  
 - BOM publishing modules (`BomModule`)  

@@ -16,7 +16,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * Parses {@code jk.lock} into a {@link Lockfile}. Strict: unknown top-level keys, missing required
+ * Parses {@code jk-lock.toml} into a {@link Lockfile}. Strict: unknown top-level keys, missing required
  * keys, and unsupported schema versions are rejected.
  */
 public final class LockfileReader {
@@ -53,16 +53,16 @@ public final class LockfileReader {
 
     private static Lockfile fromResult(TomlParseResult result, String origin) {
         if (result.hasErrors()) {
-            throw new IllegalArgumentException("jk.lock parse error in " + origin + ": "
+            throw new IllegalArgumentException("jk-lock.toml parse error in " + origin + ": "
                     + result.errors().getFirst().getMessage());
         }
         Long lockVersionLong = result.getLong("version");
         if (lockVersionLong == null) {
-            throw new IllegalArgumentException("jk.lock is missing required key `version`");
+            throw new IllegalArgumentException("jk-lock.toml is missing required key `version`");
         }
         int lockVersion = lockVersionLong.intValue();
         if (lockVersion < Lockfile.MIN_SUPPORTED_VERSION || lockVersion > Lockfile.CURRENT_VERSION) {
-            throw new IllegalArgumentException("jk.lock schema version "
+            throw new IllegalArgumentException("jk-lock.toml schema version "
                     + lockVersion
                     + " is not supported (this jk reads v"
                     + Lockfile.MIN_SUPPORTED_VERSION
@@ -113,7 +113,42 @@ public final class LockfileReader {
                 sdk.add(new Lockfile.SdkEntry(component, revision));
             }
         }
-        return new Lockfile(lockVersion, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, jkPin);
+
+        List<Lockfile.ModuleEntry> modules = new ArrayList<>();
+        TomlArray moduleArray = result.getArray("module");
+        if (moduleArray != null) {
+            for (int i = 0; i < moduleArray.size(); i++) {
+                TomlTable t = moduleArray.getTable(i);
+                if (t == null) continue;
+                String path = t.getString("path");
+                String group = t.getString("group");
+                String name = t.getString("name");
+                String ver = t.getString("version");
+                if (path == null || group == null || name == null || ver == null) continue;
+                Integer java = null;
+                if (t.contains("java")) {
+                    Object raw = t.get("java");
+                    if (raw instanceof Long l) java = l.intValue();
+                    else if (raw instanceof Integer n) java = n;
+                }
+                Boolean m2 = t.contains("m2install") ? t.getBoolean("m2install") : null;
+                modules.add(new Lockfile.ModuleEntry(
+                        path,
+                        group,
+                        name,
+                        ver,
+                        t.getString("jdk"),
+                        java,
+                        t.getString("kotlin"),
+                        t.getString("groovy"),
+                        t.getString("description"),
+                        t.getString("sources"),
+                        m2,
+                        t.getString("layout")));
+            }
+        }
+        return new Lockfile(
+                lockVersion, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jkPin);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {
@@ -159,7 +194,7 @@ public final class LockfileReader {
     private static String requireString(TomlParseResult result, String key) {
         String value = result.getString(key);
         if (value == null) {
-            throw new IllegalArgumentException("jk.lock is missing required key `" + key + "`");
+            throw new IllegalArgumentException("jk-lock.toml is missing required key `" + key + "`");
         }
         return value;
     }

@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.function.Function;
 
 /**
- * Best-effort Nerd Font / PUA-glyph capability probe (JK-1080). Intended for <strong>install-time
+ * Best-effort Nerd Font / PUA-glyph capability probe. Intended for <strong>install-time
  * / setup-command</strong> use — write the result to {@code ~/.jk/config.toml}, do not call on every
  * build. Env {@code JK_NERDFONT} still overrides at runtime.
  */
@@ -60,7 +60,7 @@ public final class NerdFontDetect {
                 || termProgram.contains("hyper")) {
             return new Result(true, "TERM_PROGRAM=" + termProgram);
         }
-        // VS Code integrated terminal often has a nerd-capable font by default in recent builds —
+        // VS Code integrated terminal often has a nerd-capable font by default in recent builds
         // still conservative: only if TERM_PROGRAM=vscode
         if (termProgram.contains("vscode") || termProgram.contains("cursor")) {
             return new Result(true, "TERM_PROGRAM=" + termProgram);

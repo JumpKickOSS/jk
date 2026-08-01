@@ -5,7 +5,7 @@ import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 
 /**
- * Human-facing settled command result chrome (JK-1076 / JK-1077).
+ * Human-facing settled command result chrome.
  *
  * <p>Preferred name for what historically lived as {@link PipelineWedge}: every interactive
  * command should settle with a wedge (or a tree / table / wizard substitute). Agents should use
@@ -14,12 +14,12 @@ import cc.jumpkick.config.GlobalConfig;
  * <h2>Output modes</h2>
  *
  * <table>
- *   <tr><th>Mode</th><th>Trigger</th><th>Chrome</th></tr>
- *   <tr><td>nerd</td><td>ansi + {@link GlobalConfig#nerdfont()}</td><td>PUA caps + Unicode glyphs</td></tr>
- *   <tr><td>ansi</td><td>ansi, nerdfont false</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>
- *   <tr><td>plain</td><td>NO_COLOR / --no-ansi</td><td>{@code +}/{@code !}/{@code *} prefixes</td></tr>
- *   <tr><td>verbose</td><td>{@code -v}</td><td>same wedge + extra post-wedge detail (caller)</td></tr>
- *   <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
+ * <tr><th>Mode</th><th>Trigger</th><th>Chrome</th></tr>
+ * <tr><td>nerd</td><td>ansi + {@link GlobalConfig#nerdfont}</td><td>PUA caps + Unicode glyphs</td></tr>
+ * <tr><td>ansi</td><td>ansi, nerdfont false</td><td>colored chip + trailing bg space, Unicode glyphs, no PUA</td></tr>
+ * <tr><td>plain</td><td>NO_COLOR / --no-ansi</td><td>{@code +}/{@code !}/{@code *} prefixes</td></tr>
+ * <tr><td>verbose</td><td>{@code -v}</td><td>same wedge + extra post-wedge detail (caller)</td></tr>
+ * <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
  * </table>
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.

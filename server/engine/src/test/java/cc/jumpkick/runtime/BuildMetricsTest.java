@@ -60,7 +60,7 @@ class BuildMetricsTest {
         record(f, build("/p", true, 2000), NOW + 2);
         var s = BuildMetrics.load(f).invocation("build", "/p").orElseThrow().ok();
         assertThat(s.count()).isEqualTo(3);
-        // JK-1178: avg is EWMA-biased toward recent samples (not pure arithmetic mean of 2000).
+        // avg is EWMA-biased toward recent samples (not pure arithmetic mean of 2000).
         assertThat(s.minMillis()).isEqualTo(1000);
         assertThat(s.maxMillis()).isEqualTo(3000);
         // 1000 → +3000 (α0.4 → 1800) → +2000 (α0.4 → 1880)
@@ -72,10 +72,7 @@ class BuildMetricsTest {
     void rebuild_kind_is_stored_separately_from_incremental(@TempDir Path dir) {
         Path f = file(dir);
         record(f, build("/p", true, 500), NOW);
-        record(
-                f,
-                new BuildMetrics.Outcome("build:rebuild", "/p#d4", "g:n", true, false, 3200, List.of()),
-                NOW + 1);
+        record(f, new BuildMetrics.Outcome("build:rebuild", "/p#d4", "g:n", true, false, 3200, List.of()), NOW + 1);
         BuildMetrics m = BuildMetrics.load(f);
         assertThat(m.invocation("build", "/p").orElseThrow().ok().avgMillis()).isEqualTo(500);
         assertThat(m.invocation("build:rebuild", "/p#d4").orElseThrow().ok().avgMillis())
@@ -97,6 +94,22 @@ class BuildMetricsTest {
         assertThat(e.cancelled().count()).isEqualTo(1);
         // The failure never leaks into the success stats the estimator reads.
         assertThat(e.ok().minMillis()).isEqualTo(1000);
+    }
+
+    @Test
+    void cancelled_wins_over_success_so_truncated_ctrl_c_wall_never_trains_eta(@TempDir Path dir) {
+        // A force-killed runner can racy-report success=true with a short wall. Cancelled must win
+        // so applyHistoryPrior / okHistory never blend that truncated sample into the ok average.
+        Path f = file(dir);
+        record(f, build("/p", true, 10_000), NOW);
+        record(f, new BuildMetrics.Outcome("build", "/p", "g:n", true, true, 400, List.of()), NOW + 1);
+        var e = BuildMetrics.load(f).invocation("build", "/p").orElseThrow();
+        assertThat(e.ok().count()).isEqualTo(1);
+        assertThat(e.ok().avgMillis()).isEqualTo(10_000);
+        assertThat(e.cancelled().count()).isEqualTo(1);
+        assertThat(e.cancelled().totalMillis()).isEqualTo(400);
+        // Estimators only read ok — cancelled wall must not pull the average down.
+        assertThat(e.ok().minMillis()).isEqualTo(10_000);
     }
 
     @Test
@@ -264,5 +277,67 @@ class BuildMetricsTest {
         assertThat(s.count()).isEqualTo(n);
         assertThat(s.minMillis()).isEqualTo(100);
         assertThat(s.maxMillis()).isEqualTo(100 + n - 1);
+    }
+
+    @Test
+    void cancelled_run_does_not_train_step_ok_or_invocation_ok(@TempDir Path dir) {
+        Path f = file(dir);
+        // A successful run trains both invocation and step ok.
+        record(
+                f,
+                new BuildMetrics.Outcome(
+                        "build",
+                        "/p",
+                        "g:n",
+                        true,
+                        false,
+                        5000,
+                        List.of(new BuildMetrics.StepSample("/p", "compile-java", "SUCCESS", 2000))),
+                NOW);
+        // A cancelled run with a short SUCCESS step must not poison ok averages.
+        record(
+                f,
+                new BuildMetrics.Outcome(
+                        "build",
+                        "/p",
+                        "g:n",
+                        false,
+                        true,
+                        400,
+                        List.of(new BuildMetrics.StepSample("/p", "compile-java", "SUCCESS", 100))),
+                NOW + 1);
+        BuildMetrics m = BuildMetrics.load(f);
+        var inv = m.invocation("build", "/p").orElseThrow();
+        assertThat(inv.ok().count()).isEqualTo(1);
+        assertThat(inv.ok().avgMillis()).isEqualTo(5000);
+        assertThat(inv.cancelled().count()).isEqualTo(1);
+        assertThat(inv.cancelled().avgMillis()).isEqualTo(400);
+        var step = m.step("/p", "compile-java").orElseThrow();
+        assertThat(step.ok().count()).isEqualTo(1);
+        assertThat(step.ok().avgMillis()).isEqualTo(2000);
+    }
+
+    @Test
+    void failed_run_does_not_train_success_step_ok(@TempDir Path dir) {
+        Path f = file(dir);
+        record(
+                f,
+                new BuildMetrics.Outcome(
+                        "build",
+                        "/p",
+                        "g:n",
+                        false,
+                        false,
+                        900,
+                        List.of(
+                                new BuildMetrics.StepSample("/p", "compile-java", "SUCCESS", 100),
+                                new BuildMetrics.StepSample("/p", "run-tests", "FAIL", 800))),
+                NOW);
+        BuildMetrics m = BuildMetrics.load(f);
+        // SUCCESS steps on a failed workspace are not trained into ok (estimator hygiene).
+        assertThat(m.step("/p", "compile-java")).isEmpty();
+        var failed = m.step("/p", "run-tests").orElseThrow();
+        assertThat(failed.failed().count()).isEqualTo(1);
+        assertThat(failed.ok().count()).isEqualTo(0);
     }
 }

@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1217: Groovy is a full-recompile lane — the output dir must hold exactly one compile's
+ * Groovy is a full-recompile lane — the output dir must hold exactly one compile's
  * results. A cache-hit restore into a dirty dir resurrected deleted sources' classes.
  */
 class GroovyCompileWipeTest {
@@ -57,7 +57,11 @@ class GroovyCompileWipeTest {
 
         assertThat(result.cacheHit()).isTrue();
         assertThat(out.resolve("A.class")).exists();
-        assertThat(out.resolve("B.class")).as("deleted source's class must not resurrect").doesNotExist();
-        assertThat(stubs.resolve("B.java")).as("stale stub must not shadow javac resolution").doesNotExist();
+        assertThat(out.resolve("B.class"))
+                .as("deleted source's class must not resurrect")
+                .doesNotExist();
+        assertThat(stubs.resolve("B.java"))
+                .as("stale stub must not shadow javac resolution")
+                .doesNotExist();
     }
 }

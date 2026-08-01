@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Remembers that a host rate-limited us, and stops asking until it is worth asking again (JK-1276).
+ * Remembers that a host rate-limited us, and stops asking until it is worth asking again.
  *
  * <p>{@link Http} never retried a 4xx, 429 included, so a rate limit failed instantly and was forgotten
  * instantly. The expensive half was the forgetting: nothing stopped the next invocation — or the other
@@ -72,7 +72,7 @@ public final class HostCooldown {
      * <p>{@code jk.http.cooldown.dir} redirects it, following the same precedent as {@code jk.m2.local}.
      * Tests need it: the store is keyed by host, every in-process HTTP test serves from {@code 127.0.0.1},
      * and without a seam one test's simulated 429 would cool down loopback for every other test — and
-     * write that record into the developer's real {@code ~/.jk} (the JK-1292 failure mode again).
+     * write that record into the developer's real {@code ~/.jk} (the failure mode again).
      */
     public static HostCooldown standard() {
         String override = System.getProperty("jk.http.cooldown.dir");
@@ -127,8 +127,9 @@ public final class HostCooldown {
      * record costs politeness, and failing a build over bookkeeping would be worse than the problem.
      */
     public Instant noteRateLimited(String host, Optional<Duration> retryAfter) {
-        if (exempt(host)) return clock.get(); // see exempt(): loopback is not a metered quota
-        Duration window = retryAfter.filter(d -> !d.isNegative() && !d.isZero())
+        if (exempt(host)) return clock.get(); // see exempt: loopback is not a metered quota
+        Duration window = retryAfter
+                .filter(d -> !d.isNegative() && !d.isZero())
                 .map(d -> d.compareTo(MAX_COOLDOWN) > 0 ? MAX_COOLDOWN : d)
                 .orElse(DEFAULT_COOLDOWN);
         Instant expiry = clock.get().plus(window);

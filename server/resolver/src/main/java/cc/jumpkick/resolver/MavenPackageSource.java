@@ -26,7 +26,7 @@ import java.util.concurrent.Semaphore;
 
 /**
  * Maven-backed PubGrub {@link PackageSource}. Caches versions/deps per solve; prefetches transitive
- * metadata on {@link JkThreads#io()} when no preferred pin is known. Platform policy (default
+ * metadata on {@link JkThreads#io} when no preferred pin is known. Platform policy (default
  * {@link PlatformPolicy#ENFORCED}) controls BOM-map pins; without a BOM map, bare edges stay
  * highest-wins floors. BOM/lock prefs seed lazy singleton universes via {@link #preferredVersion}.
  * POM exclusions strip modules when expanding a package.
@@ -50,14 +50,14 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * GA keys the manifest asked for with the {@code snapshot} selector — the one opt-in that wants
-     * pre-releases (JK-1287). Mutable for the same reason as {@link #lockedVersionPrefs}.
+     * pre-releases. Mutable for the same reason as {@link #lockedVersionPrefs}.
      */
     private volatile java.util.Set<String> snapshotPackages = java.util.Set.of();
 
     private final Map<String, List<String>> versionCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> expandedVersionCache = new ConcurrentHashMap<>();
     /**
-     * Raw POM edge cache keyed by {@code pkg@version} only (JK-1202). Exclusion filtering is applied
+     * Raw POM edge cache keyed by {@code pkg@version} only. Exclusion filtering is applied
      * per-call so backtracking does not re-parse EffectivePoms under shifting exclusion keys.
      */
     private final Map<String, List<RawEdge>> rawDepsCache = new ConcurrentHashMap<>();
@@ -110,7 +110,7 @@ public final class MavenPackageSource implements PackageSource {
         this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, PlatformPolicy.ENFORCED);
     }
 
-    /** As above with {@link PlatformPolicy} (JK-1206); unmapped fills default to MEDIATE. */
+    /** As above with {@link PlatformPolicy}; unmapped fills default to MEDIATE. */
     public MavenPackageSource(
             RepoGroup repos,
             EffectivePomBuilder pomBuilder,
@@ -121,7 +121,7 @@ public final class MavenPackageSource implements PackageSource {
         this(repos, pomBuilder, bomConstraints, lockedVersionPrefs, kmp, platformPolicy, null);
     }
 
-    /** Full constructor with both platform policies (JK-1206/JK-1241). */
+    /** Full constructor with both platform policies. */
     public MavenPackageSource(
             RepoGroup repos,
             EffectivePomBuilder pomBuilder,
@@ -136,8 +136,7 @@ public final class MavenPackageSource implements PackageSource {
         this.lockedVersionPrefs = Map.copyOf(Objects.requireNonNull(lockedVersionPrefs, "lockedVersionPrefs"));
         this.kmp = Objects.requireNonNull(kmp, "kmp");
         this.platformPolicy = platformPolicy == null ? PlatformPolicy.ENFORCED : platformPolicy;
-        this.unmappedPolicy =
-                unmappedPolicy == null ? cc.jumpkick.model.UnmappedPolicy.MEDIATE : unmappedPolicy;
+        this.unmappedPolicy = unmappedPolicy == null ? cc.jumpkick.model.UnmappedPolicy.MEDIATE : unmappedPolicy;
     }
 
     public PlatformPolicy platformPolicy() {
@@ -166,12 +165,13 @@ public final class MavenPackageSource implements PackageSource {
     /** True when {@code pkg} was requested with the {@code snapshot} selector. */
     private boolean isSnapshotPackage(String pkg) {
         if (snapshotPackages.isEmpty()) return false;
-        return snapshotPackages.contains(pkg) || snapshotPackages.contains(PackageId.parse(pkg).ga());
+        return snapshotPackages.contains(pkg)
+                || snapshotPackages.contains(PackageId.parse(pkg).ga());
     }
 
     /**
      * Lock pin wins over BOM pin (same order as {@link #versions} soft-prefer). Used by the solver to
-     * seed a lazy singleton universe without maven-metadata (JK-1088).
+     * seed a lazy singleton universe without maven-metadata.
      */
     @Override
     public Optional<String> preferredVersion(String pkg) {
@@ -205,8 +205,8 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * FLOOR lower bound: the higher of the platform pin and the edge's own declared version —
-     * a floor must never clamp an edge below what its POM requires (JK-1212).
+     * FLOOR lower bound: the higher of the platform pin and the edge's own declared version
+     * a floor must never clamp an edge below what its POM requires.
      */
     private static String floorOf(String bomPin, String edgeVersion) {
         if (edgeVersion == null || edgeVersion.isEmpty()) return bomPin;
@@ -218,7 +218,7 @@ public final class MavenPackageSource implements PackageSource {
         List<String> cached = versionCache.get(pkg);
         if (cached != null) return cached;
 
-        // JK-1202: highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
+        // highest-wins only needs the soft-prefer pin (if any) + a few highest releases.
         // Full maven-metadata histories (80+ versions) made PubGrub thrash on Quarkus test graphs.
         List<String> ordered = orderedVersions(pkg);
         // `snapshot` asked for the bleeding edge explicitly, so leave its window unnarrowed.
@@ -229,7 +229,7 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Un-capped candidate list for the solver's widen-on-failure path (JK-1216): when every
+     * Un-capped candidate list for the solver's widen-on-failure pathwhen every
      * compact candidate is ruled out (a Maven range below the top releases, backtracking past
      * the pin), the solver re-expands from the full advertised history instead of hard-failing
      * a satisfiable graph. The solver applies its own cap.
@@ -252,7 +252,7 @@ public final class MavenPackageSource implements PackageSource {
         // BOM + lock soft-prefer are GA-scoped (one pin applies to every classifier of the GA).
         // Later calls win the front — mirror preferredVersion's precedence exactly
         // (lock pkg > lock ga > bom ga > bom pkg) or classifier duals pick divergent
-        // versions between the lazy-seed and expanded paths (JK-1239).
+        // versions between the lazy-seed and expanded paths.
         String ga = PackageId.parse(pkg).ga();
         preferBom(sorted, bomConstraints.get(pkg));
         preferBom(sorted, bomConstraints.get(ga));
@@ -268,18 +268,18 @@ public final class MavenPackageSource implements PackageSource {
      * Cap the candidate list while preserving the soft-prefer front and, critically, keeping
      * something <em>stable</em> in the window.
      *
-     * <p>The cap exists so PubGrub does not thrash on 80-version histories (JK-1202). Taking simply
+     * <p>The cap exists so PubGrub does not thrash on 80-version histories. Taking simply
      * the highest four, though, starves {@link
-     * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred()} of any stable candidate whenever a
+     * cc.jumpkick.resolver.pubgrub.AllowedSet#choosePreferred} of any stable candidate whenever a
      * project publishes four or more pre-releases above its latest release. jackson-annotations sits
-     * at 3.0-rc5..rc2 above a stable 2.22, so a caret on 2.22 resolved to <b>3.0-rc5</b> (JK-1287).
+     * at 3.0-rc5..rc2 above a stable 2.22, so a caret on 2.22 resolved to <b>3.0-rc5</b>.
      * The stable preference downstream was correct all along — it was simply never offered a stable.
      *
      * <p>So the highest <em>stable</em> versions fill the window first and pre-releases take only the
      * slots left over (which is what keeps a project that has never cut a stable release resolvable).
      * A constraint that genuinely needs a pre-release still resolves: every stable candidate fails it,
      * the window is exhausted, and the solver widens to the unfiltered history via {@link
-     * #expandedVersions} — the JK-1216 path that exists for exactly this shape of miss. That keeps
+     * #expandedVersions} — the path that exists for exactly this shape of miss. That keeps
      * transitive POM edges pinned to milestone builds working, since those arrive as constraints
      * rather than as manifest selectors.
      */
@@ -292,7 +292,7 @@ public final class MavenPackageSource implements PackageSource {
 
         // A lock/BOM soft-prefer sits at index 0 without necessarily being the highest version, and
         // it must survive the cap even when it is itself a pre-release: an explicit pin outranks this
-        // policy (JK-1072).
+        // policy.
         String front = sortedHighestFirst.get(0);
         String naturalMax = highestOf(sortedHighestFirst);
         boolean pinnedFront = !front.equals(naturalMax);
@@ -351,7 +351,7 @@ public final class MavenPackageSource implements PackageSource {
 
     /**
      * BOM soft-prefer: move {@code pin} to front when it is already in the metadata list. Does
-     * <em>not</em> invent a missing pin (JK-1202): inserting unreleased/stale pins that sit below
+     * <em>not</em> invent a missing pininserting unreleased/stale pins that sit below
      * transitive floors made PubGrub thrash on Quarkus-sized graphs.
      */
     static void preferBom(List<String> versions, String pin) {
@@ -399,7 +399,7 @@ public final class MavenPackageSource implements PackageSource {
         return immutable;
     }
 
-    /** POM edges for {@code pkg@version}, cached without inherited exclusions (JK-1202). */
+    /** POM edges for {@code pkg@version}, cached without inherited exclusions. */
     private List<RawEdge> rawEdges(String pkg, String version) throws IOException, InterruptedException {
         String key = pkg + "@" + version;
         List<RawEdge> hit = rawDepsCache.get(key);
@@ -496,15 +496,15 @@ public final class MavenPackageSource implements PackageSource {
      * (e.g. {@code named-locks} 2.x next to {@code maven-resolver-api} 1.9).
      *
      * <ul>
-     *   <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
-     *       (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
-     *   <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): BOM-map GAs
-     *       use {@code exact(bomPin)}; unmapped bare fills follow {@link
-     *       cc.jumpkick.model.UnmappedPolicy} — highest-wins by default, {@code exact} under
-     *       {@code strict} (JK-1241).
-     *   <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
-     *       atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
-     *       version — JK-1212); unmapped bare fills follow {@link cc.jumpkick.model.UnmappedPolicy}.
+     * <li><b>No platform BOM</b> ({@code bomConstraints} empty): bare → {@code atLeast}
+     * (highest-wins). Explicit user ranges / open selectors still use their VersionSet.
+     * <li><b>Platform BOM present + {@link PlatformPolicy#ENFORCED}</b> (default): BOM-map GAs
+     * use {@code exact(bomPin)}; unmapped bare fills follow {@link
+     * cc.jumpkick.model.UnmappedPolicy} — highest-wins by default, {@code exact} under
+     * {@code strict}.
+     * <li><b>Platform BOM + {@link PlatformPolicy#FLOOR}</b>: BOM-map GAs use {@code
+     * atLeast(max(bomPin, edge))} (may lift, never clamps below the edge's declared
+     * version —; unmapped bare fills follow {@link cc.jumpkick.model.UnmappedPolicy}.
      * </ul>
      */
     VersionSet constraintForManagedEdge(String depPkg, String version) {
@@ -515,7 +515,7 @@ public final class MavenPackageSource implements PackageSource {
         PackageId id = PackageId.parse(depPkg);
         String ga = id.ga();
         // Classified artifacts (guice:jar:classes): GA maven-metadata highest-wins picks versions
-        // that often have no classifier POM → Unavailable thrash (JK-1202).
+        // that often have no classifier POM → Unavailable thrash.
         if (!id.classifier().isEmpty()) {
             String bomPin = firstNonBlank(bomConstraints.get(ga), bomConstraints.get(depPkg));
             if (bomPin != null && platformPolicy == PlatformPolicy.FLOOR) {
@@ -535,7 +535,7 @@ public final class MavenPackageSource implements PackageSource {
         }
         if (!bomConstraints.isEmpty() && unmappedPolicy == cc.jumpkick.model.UnmappedPolicy.STRICT) {
             // [resolve] unmapped = "strict": exact fills for unmanaged GAs — every diamond on
-            // them is a hard error (maximum reproducibility). Default is MEDIATE (JK-1241):
+            // them is a hard error (maximum reproducibility). Default is MEDIATE
             // fall through to highest-wins, Maven/Gradle parity; the named-locks hazard class
             // is covered by family-align MAPPING those GAs into the BOM constraints.
             return VersionSet.exact(trimmed);
@@ -545,20 +545,20 @@ public final class MavenPackageSource implements PackageSource {
     }
 
     /**
-     * Speculative I/O for children of a just-expanded package (JK-1088):
+     * Speculative I/O for children of a just-expanded package
      *
      * <ul>
-     *   <li>When a child has an exact or soft-prefer pin, prefetch that GAV's <b>POM</b> (and let
-     *       {@link EffectivePomBuilder} warm its cache) so the next decision hits local-first.
-     *   <li>When the child needs a full version list (open range, no prefer), prefetch
-     *       maven-metadata as before.
+     * <li>When a child has an exact or soft-prefer pin, prefetch that GAV's <b>POM</b> (and let
+     * {@link EffectivePomBuilder} warm its cache) so the next decision hits local-first.
+     * <li>When the child needs a full version list (open range, no prefer), prefetch
+     * maven-metadata as before.
      * </ul>
      *
-     * <p>JK-1202: only prefetch the first few children (breadth limit) so large Quarkus-style
+     * <p>only prefetch the first few children (breadth limit) so large Quarkus-style
      * fan-outs do not stampede parallel BOM expansions under a 256 MiB engine cap.
      */
     private void prefetchTransitiveAsync(List<Term> deps) {
-        // JK-1202: skip speculative prefetch when a large platform BOM is in play — parallel
+        // skip speculative prefetch when a large platform BOM is in play — parallel
         // EffectivePom expansions of quarkus-bom parents dominated CPU/heap without helping the
         // exact-pin happy path. Small graphs still warm a few children.
         if (bomConstraints.size() > 200) return;
@@ -578,7 +578,7 @@ public final class MavenPackageSource implements PackageSource {
                         prefetchSlots.acquire();
                         try {
                             // Full effective POM (parents + BOM imports). Builder is concurrent-safe
-                            // (JK-1090) so sibling prefetches walk chains in parallel.
+                            // so sibling prefetches walk chains in parallel.
                             pomBuilder.build(child);
                         } finally {
                             prefetchSlots.release();

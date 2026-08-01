@@ -64,7 +64,7 @@ public final class ActionCache {
                     // don't accidentally cache a stamp from a previous run.
                     if (FreshnessStamp.isStampFile(file.getFileName().toString())) continue;
                     // `.jk-*` scratch (a plugin's private bootstrap repo/staging — the
-                    // plugin-sdk copyTree convention) is never an action output (JK-1220).
+                    // plugin-sdk copyTree convention) is never an action output.
                     if (hasJkScratchSegment(outputDir.relativize(file))) continue;
                     // Hash once, then COPY into the CAS (never link — see Cas.putFile).
                     String hex = Hashing.sha256Hex(file);
@@ -125,7 +125,7 @@ public final class ActionCache {
         meter(outputs, true); // every store path funnels here — one place to count cache-in bytes
         ActionRecord record = new ActionRecord(taskId, actionKey, inputs, outputs, units);
         // Atomic temp+move: concurrent store/lookup under cacheGate read mode must never see a
-        // truncated keys/ or tasks/ file (JK-1069). Order preserved: key before task pointer.
+        // truncated keys/ or tasks/ file. Order preserved: key before task pointer.
         AtomicWrites.replace(keysDir().resolve(actionKey), render(record));
         AtomicWrites.replace(tasksDir().resolve(taskId), actionKey);
         return record;
@@ -164,6 +164,8 @@ public final class ActionCache {
             // Cas.putFile). Costs O(bytes) instead of O(entries) — correctness wins.
             Files.createDirectories(target.getParent());
             Files.copy(cas.pathFor(entry.getValue()), target);
+            // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
+            FileHashMemo.rememberContent(target, entry.getValue());
             // Best-effort access journal — feeds the LRU evictor when the
             // user configures a cache size budget.
             ledger.touch(entry.getValue());
@@ -171,7 +173,7 @@ public final class ActionCache {
     }
 
     /**
-     * Restore recorded outputs by copying them into {@code baseDir} WITHOUT clearing it first —
+     * Restore recorded outputs by copying them into {@code baseDir} WITHOUT clearing it first
      * for single/few-file artifact tasks (jars, fat-jars, native binaries) whose output dir ({@code
      * target/}) holds unrelated files. Overwrites a stale artifact already at the path. Returns
      * {@code false} (restoring nothing) if any cached blob is missing, so the caller rebuilds.
@@ -181,7 +183,7 @@ public final class ActionCache {
         for (String sha : record.outputs().values()) {
             if (!Files.isRegularFile(cas.pathFor(sha))) return false;
         }
-        // Clear the DIRECTORY roots this record owns before copying (JK-1245): a multi-file
+        // Clear the DIRECTORY roots this record owns before copyinga multi-file
         // layout (quarkus fast-jar lib/ app/ quarkus-app/) restored over a dirty target/
         // otherwise keeps stale extras beside the restored set — real packager runs clean
         // up, restores must too. Top-level FILE outputs are handled per-file below.
@@ -192,7 +194,7 @@ public final class ActionCache {
         }
         // Prune rather than delete the root outright. The recorded outputs are exactly the files
         // about to be restored, so deleting one guarantees the byte-identical check below misses and
-        // re-copies it with a fresh mtime — which is the precise churn JK-1258 removed, since
+        // re-copies it with a fresh mtime — which is the precise churn removed, since
         // FreshnessStamp compares classpath entries by mtime. Dropping only the files this record
         // does NOT own clears stale extras just as well and leaves the unchanged ones alone.
         if (!dirRoots.isEmpty()) {
@@ -212,13 +214,15 @@ public final class ActionCache {
             // Leave a byte-identical target alone. Re-copying it is not merely wasted I/O: it
             // bumps the file's mtime, and FreshnessStamp compares classpath entries by mtime — so
             // restoring an unchanged sibling jar invalidated every downstream stamp and forced a
-            // full KSP round (and Kotlin recompile) on every single build (JK-1258).
+            // full KSP round (and Kotlin recompile) on every single build.
             if (!identicalTo(target, e.getValue())) {
                 Files.deleteIfExists(target);
                 // COPY, never link: a packager may later rewrite the target in place, and a link
                 // would let that rewrite mutate the blob (see Cas.putFile).
                 Files.copy(cas.pathFor(e.getValue()), target);
             }
+            // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
+            FileHashMemo.rememberContent(target, e.getValue());
             ledger.touch(e.getValue());
         }
         return true;
@@ -226,8 +230,8 @@ public final class ActionCache {
 
     /**
      * Delete every file under {@code dir} that {@code owned} does not name, then any directory left
-     * empty — so a restore clears stale extras (JK-1245) without disturbing the outputs it is about
-     * to restore (JK-1258). Deepest-first, so a directory is only tested once its children are gone.
+     * empty — so a restore clears stale extras without disturbing the outputs it is about
+     * to restore. Deepest-first, so a directory is only tested once its children are gone.
      */
     private static void pruneUnowned(Path dir, java.util.Set<Path> owned) throws IOException {
         if (!Files.isDirectory(dir)) return;

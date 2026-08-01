@@ -66,3 +66,7 @@ Thumbs.db
 .firebase/
 firebase-debug.log
 firebase-debug.*.log
+
+# Generated monorepo-root wrappers (`jk wrapper`) — keep local
+/jk
+/jk.bat

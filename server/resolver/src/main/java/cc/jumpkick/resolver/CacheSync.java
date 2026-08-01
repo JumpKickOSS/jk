@@ -20,7 +20,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Ensures every lockfile sha256 is present in the CAS (fetch+verify on miss). Parallel on {@link
- * JkThreads#io()}; per-host concurrency is capped inside {@link MavenRepo} (JK-1221) — do not wrap
+ * JkThreads#io}; per-host concurrency is capped inside {@link MavenRepo}do not wrap
  * fetches again or nested acquires deadlock the shared limiter. Checksum mismatches are reported,
  * never accepted.
  */
@@ -132,7 +132,7 @@ public final class CacheSync {
             pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
         }
 
-        // Dispatch all fetches concurrently. MavenRepo rate-limits the network leg (JK-1221).
+        // Dispatch all fetches concurrently. MavenRepo rate-limits the network leg.
         List<CompletableFuture<FetchResult>> futures = new ArrayList<>(pending.size());
         for (PendingFetch p : pending) {
             CompletableFuture<FetchResult> fut = CompletableFuture.supplyAsync(() -> fetch(p), JkThreads.io());
@@ -184,7 +184,7 @@ public final class CacheSync {
                 observer.upToDate(pkg);
                 continue;
             }
-            // Reuse the existing repoFor() with the package's original source.
+            // Reuse the existing repoFor with the package's original source.
             try {
                 pending.add(new PendingFetch(pkg, hex, repoFor(pkg.source(), repoCache)));
             } catch (IllegalArgumentException ignored) {

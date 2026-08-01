@@ -33,12 +33,12 @@ import org.codehaus.groovy.tools.javac.JavaAwareCompilationUnit;
  * <p>jk launches this as {@code java -cp <worker.jar>:<groovy-closure>
  * cc.jumpkick.plugin.process.PluginMain @&lt;spec&gt;}. The plugin reads the {@link CompileSpec},
  * runs a full JVM compile ({@link CompilationUnit}, or {@link JavaAwareCompilationUnit} when the
- * source set carries {@code .java} files — joint mode), streams diagnostics back as JSONL, and
+ * source set carries {@code.java} files — joint mode), streams diagnostics back as JSONL, and
  * exits: {@code 0} success, {@code 1} compilation error, {@code 3} OOM/internal compiler error,
  * {@code 2} bad spec / unexpected failure.
  *
  * <p>Joint mode uses the Java sources for resolution only: Groovy-class stubs are written to
- * {@code stubsOut} (kept only when the spec names one) and javac's {@code .class} output is
+ * {@code stubsOut} (kept only when the spec names one) and javac's {@code.class} output is
  * diverted to a discard dir under the workdir — the real Java outputs are owned by jk's javac
  * step, never this worker. Depends only on the Groovy compiler at compile time — the Groovy jar
  * arrives on the classpath at runtime, version-matched by jk, so the plugin never leaks compiler
@@ -88,7 +88,7 @@ public final class GroovyCompiler implements Plugin {
             Map<String, Object> joint0 = new LinkedHashMap<>();
             joint0.put("stubDir", stubDir);
             joint0.put("keepStubs", spec.stubsOut != null);
-            // Pin the swept javac pass to the project's release (JK-1244): without it the
+            // Pin the swept javac pass to the project's releasewithout it the
             // sweep typechecks at the worker JVM's level — newer-language sources pass here
             // and fail in jk's real javac lane (or vice versa). namedValues keys are javac
             // flags minus the leading dash; -source/-target is the pairing groovy's javac
@@ -100,7 +100,7 @@ public final class GroovyCompiler implements Plugin {
             if (!spec.processorPath.isEmpty()) {
                 // Mixed module with annotation processors (Lombok, source generators): the swept
                 // javac pass must run them or references to generated members fail resolution
-                // (JK-1232). Generated sources land in scratch; their classes go to the discard
+                // . Generated sources land in scratch; their classes go to the discard
                 // dir like all swept output.
                 File generated = new File(scratch, "javac-generated");
                 generated.mkdirs();
@@ -147,7 +147,7 @@ public final class GroovyCompiler implements Plugin {
     }
 
     /**
-     * Explicit sources plus every {@code .java} under the spec's Java source roots — joint
+     * Explicit sources plus every {@code.java} under the spec's Java source roots — joint
      * resolution needs the whole Java neighborhood on javac's compile set, since only stubs (not
      * the roots) ride its sourcepath. Deduped by absolute path, spec order first.
      */
@@ -176,7 +176,8 @@ public final class GroovyCompiler implements Plugin {
         cfg.setTargetDirectory(spec.outputDir);
         cfg.setTargetBytecode(spec.jvmTarget);
         if (!spec.classpath.isEmpty()) {
-            cfg.setClasspathList(spec.classpath.stream().map(File::getAbsolutePath).toList());
+            cfg.setClasspathList(
+                    spec.classpath.stream().map(File::getAbsolutePath).toList());
         }
         for (String arg : spec.extraArgs) {
             switch (arg) {

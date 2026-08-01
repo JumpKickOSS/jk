@@ -7,29 +7,29 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Per-request registry of forked worker {@link Process}es (plugin/test JVMs). On cancel or job wall
- * deadline the engine shuts them down so a wedged worker cannot pin the runner forever (JK-1067 /
- * JK-1096).
+ * deadline the engine shuts them down so a wedged worker cannot pin the runner forever /
+ *
  *
  * <p>Workers register via {@link #register} when a request scope is open ({@link #open}/{@link
  * #close}).
  *
- * <p><strong>Cancel contract (JK-1096):</strong> {@link #shutdownForRequest} signals <em>all</em>
+ * <p><strong>Cancel contract</strong> {@link #shutdownForRequest} signals <em>all</em>
  * live workers first (tight loop — effectively simultaneous), then waits one shared wall-clock
  * grace (default {@value #DEFAULT_CANCEL_GRACE_MS} ms for the whole set, not per process), then
  * force-kills survivors. Cancel never hangs. Plugins must treat that shared sub-second window as
  * all they get.
  *
- * <p><strong>Windows:</strong> {@link Process#destroy()} is <em>not</em> SIGTERM. On the HotSpot
+ * <p><strong>Windows:</strong> {@link Process#destroy} is <em>not</em> SIGTERM. On the HotSpot
  * Windows implementation it typically maps to an immediate terminate (similar to
- * {@link Process#destroyForcibly()}); there is no portable “ask politely then wait” OS signal.
+ * {@link Process#destroyForcibly}); there is no portable “ask politely then wait” OS signal.
  * The grace wait still bounds our side of the join; do not rely on Windows workers running
- * shutdown hooks after {@code destroy()}. Prefer designing workers so cancel is observed via the
+ * shutdown hooks after {@code destroy}. Prefer designing workers so cancel is observed via the
  * session cancel token / stdin EOF where possible, and treat force-kill as the portable last step.
  */
 public final class JobWorkers {
 
     /**
-     * Default <strong>shared</strong> wall-clock grace for the whole worker set (JK-1096). Not
+     * Default <strong>shared</strong> wall-clock grace for the whole worker set. Not
      * per-worker and not additive. Override: {@code JK_CANCEL_GRACE_MS} (clamped 0…{@link
      * #MAX_CANCEL_GRACE_MS} so a mistaken env cannot reintroduce multi-second wedged UX).
      */
@@ -99,14 +99,14 @@ public final class JobWorkers {
     }
 
     /**
-     * Shut down <em>all</em> workers for {@code requestId} (JK-1096):
+     * Shut down <em>all</em> workers for {@code requestId}
      *
      * <ol>
-     *   <li>If {@code graceMs > 0}: {@link Process#destroy()} on <strong>every</strong> live process
-     *       first (tight loop — one shared signal phase; not staggered per worker).
-     *   <li>Wait up to {@code graceMs} <strong>once</strong> for the set to exit (shared wall clock;
-     *       early exit if all dead). Never {@code graceMs × N}.
-     *   <li>{@link Process#destroyForcibly()} any survivors.
+     * <li>If {@code graceMs > 0}: {@link Process#destroy} on <strong>every</strong> live process
+     * first (tight loop — one shared signal phase; not staggered per worker).
+     * <li>Wait up to {@code graceMs} <strong>once</strong> for the set to exit (shared wall clock;
+     * early exit if all dead). Never {@code graceMs × N}.
+     * <li>{@link Process#destroyForcibly} any survivors.
      * </ol>
      *
      * If {@code graceMs <= 0}, force-kills immediately. Always finishes; never waits unboundedly.
@@ -166,7 +166,7 @@ public final class JobWorkers {
     }
 
     /**
-     * Shared wall-clock cancel grace for the whole worker set (JK-1096). Default {@link
+     * Shared wall-clock cancel grace for the whole worker set. Default {@link
      * #DEFAULT_CANCEL_GRACE_MS}; env {@code JK_CANCEL_GRACE_MS} clamped to {@code 0}…{@link
      * #MAX_CANCEL_GRACE_MS} so a typo cannot restore multi-second wedged UX.
      */

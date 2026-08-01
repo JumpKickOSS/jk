@@ -57,7 +57,7 @@ import java.util.stream.Stream;
 public final class BuildPipelines {
 
     static {
-        // Wire session cancel into StepContext.cancelled() (lazy; pool tasks see it via
+        // Wire session cancel into StepContext.cancelled (lazy; pool tasks see it via
         // SessionContext propagation on JkThreads).
         cc.jumpkick.run.SessionCancel.bind(
                 () -> cc.jumpkick.config.SessionContext.current().cancelled());
@@ -108,7 +108,7 @@ public final class BuildPipelines {
     @SuppressWarnings("rawtypes")
     public static final PipelineKey<List> TEST_SOURCES = PipelineKey.of("test-sources", List.class);
 
-    /** Suite resource dirs copied into classes/test — a TestStamp input (JK-1208). */
+    /** Suite resource dirs copied into classes/test — a TestStamp input. */
     @SuppressWarnings("rawtypes")
     public static final PipelineKey<List> TEST_RESOURCE_DIRS = PipelineKey.of("test-resource-dirs", List.class);
 
@@ -126,7 +126,7 @@ public final class BuildPipelines {
      * Process-wide gate that serializes the {@code run-tests} step across concurrently-built units
      * (parallel workspace module builds). Tests commonly contend on shared resources — ports, lock
      * files, fixtures — so they run one at a time by default; the request's {@link
-     * cc.jumpkick.config.Session#parallelTests()} (default on; {@code --serial-tests} holds the gate).
+     * cc.jumpkick.config.Session#parallelTests} (default on; {@code --serial-tests} holds the gate).
      *
      * <p>The gate itself remains a per-invocation shared primitive (one process, one build at a
      * time in the CLI); a per-session gate is part of the M1c server-hardening remainder.
@@ -156,7 +156,7 @@ public final class BuildPipelines {
             Set<Path> projectModules,
             // The request-scoped session (config incl. --force, working dir, cache/JDK roots).
             // Threaded so the engine reads request state explicitly instead of the ambient
-            // global — callers that want the ambient session say SessionContext.current() OUT
+            // global — callers that want the ambient session say SessionContext.current OUT
             // LOUD at the call site; no overload hides that read anymore.
             cc.jumpkick.config.Session session,
             // The variant selection ("", "release", "release|tier=free") — folded into plugin
@@ -164,7 +164,10 @@ public final class BuildPipelines {
             String variant,
             // Client-resolved env values (env: indirection in plugin configs — signing secrets):
             // the user's shell env rides the request; the engine env is only the fallback.
-            Map<String, String> clientEnv) {
+            Map<String, String> clientEnv,
+            // True for jk verify's scratch rebuild: action keys are scratch-salted and can never
+            // recur, so tasks must not persist action-cache records or incremental state.
+            boolean ephemeralActions) {
 
         /**
          * Back-compat: the pre-variant canonical shape. The variant selection defaults from the
@@ -207,9 +210,72 @@ public final class BuildPipelines {
                     session.clientEnv());
         }
 
+        /** Pre-ephemeralActions canonical shape (defaults false — persistent caches). */
+        public Inputs(
+                Path dir,
+                Path cache,
+                Path buildFile,
+                Path lockFile,
+                Path lockDir,
+                int workerCount,
+                int estimatedTestCount,
+                String profileName,
+                Path jdksDir,
+                boolean skipTests,
+                boolean verbose,
+                boolean testOnly,
+                boolean compileOnly,
+                Set<Path> projectModules,
+                cc.jumpkick.config.Session session,
+                String variant,
+                Map<String, String> clientEnv) {
+            this(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    false);
+        }
+
+        /** Copy with {@link #ephemeralActions()} set ({@code jk verify} scratch rebuild). */
+        public Inputs withEphemeralActions(boolean ephemeralActions) {
+            return new Inputs(
+                    dir,
+                    cache,
+                    buildFile,
+                    lockFile,
+                    lockDir,
+                    workerCount,
+                    estimatedTestCount,
+                    profileName,
+                    jdksDir,
+                    skipTests,
+                    verbose,
+                    testOnly,
+                    compileOnly,
+                    projectModules,
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
+        }
+
         /**
          * Environment lookup for this request: the caller's shell environment, falling back to the
-         * engine's own (JK-1269).
+         * engine's own.
          *
          * <p>The build's authoritative parse runs inside a long-lived daemon, so reading
          * {@code System.getenv} directly meant {@code FOO=x jk build} had no effect on
@@ -240,7 +306,8 @@ public final class BuildPipelines {
                     projectModules,
                     session,
                     variant == null ? "" : variant,
-                    clientEnv == null ? Map.of() : clientEnv);
+                    clientEnv == null ? Map.of() : clientEnv,
+                    ephemeralActions);
         }
 
         /** Copy carrying the project/workspace module set — set by the estimate paths (explain/build). */
@@ -260,7 +327,10 @@ public final class BuildPipelines {
                     testOnly,
                     compileOnly,
                     modules == null ? Set.of() : modules,
-                    session);
+                    session,
+                    variant,
+                    clientEnv,
+                    ephemeralActions);
         }
     }
 
@@ -346,7 +416,7 @@ public final class BuildPipelines {
         } catch (Exception ignored) {
             // Unparseable/missing jk.toml — parse-build will surface the real error.
         }
-        // Triple-language modules are out of scope (JK-1165): fail loudly rather than guess an
+        // Triple-language modules are out of scopefail loudly rather than guess an
         // ordering between two stub-generating compilers.
         if (useKotlin && useGroovy) {
             throw new IllegalStateException(
@@ -381,7 +451,7 @@ public final class BuildPipelines {
         // Plugin-contributed generated sources can be Java even in a Kotlin- or Groovy-only
         // module (protoc's --kotlin_out DSL wraps its own --java_out classes) — same
         // mixed-pipeline routing the KSP/Hilt case above takes, decided here because the
-        // declarations only exist after the describe round (JK-1240).
+        // declarations only exist after the describe round.
         if ((useKotlin || useGroovy) && !useJava && pluginDecls != null) {
             for (PluginBuild.StepDecl step : pluginDecls.steps()) {
                 if (!step.contributesSources().isEmpty()) {
@@ -404,7 +474,7 @@ public final class BuildPipelines {
         // classes. The terminal step downstream steps wait on is the assembler
         // when mixed, else whichever single compiler ran.
         final boolean mixed = useJava && useKotlin;
-        // Groovy takes the same shape: joint groovyc first (sweeps .java for resolution,
+        // Groovy takes the same shape: joint groovyc first (sweeps.java for resolution,
         // emits ONLY Groovy classes + Java-visible stubs), then javac (stubs on its
         // sourcepath, Groovy classes on its classpath), then assemble merges.
         final boolean mixedGroovy = useJava && useGroovy;
@@ -587,7 +657,7 @@ public final class BuildPipelines {
     }
 
     /**
-     * The build-scoped services, estimation state, and layout flags shared by every core step —
+     * The build-scoped services, estimation state, and layout flags shared by every core step
      * the explicit replacement for the effectively-final locals the step lambdas used to capture.
      */
     private record Ctx(
@@ -728,27 +798,28 @@ public final class BuildPipelines {
 
                     // Annotation processors live in their own scope (kept off the
                     // compile classpath); javac discovers them via -processorpath and
-                    // KspProcessors.split() routes the KSP ones to the forked KSP2 round.
+                    // KspProcessors.split routes the KSP ones to the forked KSP2 round.
                     // Workspace siblings must merge in exactly as they do for main/test
-                    // (JK-1253): a processor declared `{ workspace = true }` is never in the
+                    // a processor declared `{ workspace = true }` is never in the
                     // lock, so a lock-only path silently yields no processors at all.
                     WorkspaceClasspath.Result processorSiblings =
                             WorkspaceClasspath.resolve(in.dir(), project, Set.of(Scope.PROCESSOR));
                     // A declared processor that cannot be found generates nothing, and a build
                     // that silently skips code generation is worse than one that fails
-                    // (JK-1254). Mirror the main-classpath missing-sibling guard above.
+                    // . Mirror the main-classpath missing-sibling guard above.
                     if (!processorSiblings.missingSiblingJars().isEmpty()) {
                         for (String missing : processorSiblings.missingSiblingJars())
                             ctx.error("workspace", "processor sibling not built — " + missing);
                         throw new RuntimeException("missing workspace siblings");
                     }
-                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock);
+                    List<String> unresolvedProcessors =
+                            unresolvedProcessorDeps(project, lock, processorSiblings);
                     if (!unresolvedProcessors.isEmpty()) {
                         for (String unresolved : unresolvedProcessors)
                             ctx.error(
                                     "processor",
                                     "processor dependency '" + unresolved + "' is declared in"
-                                            + " [processor-dependencies] but is not in jk.lock —"
+                                            + " [processor-dependencies] but is not in jk-lock.toml —"
                                             + " run `jk lock`");
                         throw new RuntimeException("unresolved processor dependencies");
                     }
@@ -857,7 +928,7 @@ public final class BuildPipelines {
                     Lockfile lock = ctx.require(LOCKFILE);
                     JkBuild project = ctx.require(PROJECT);
                     boolean mirrorToM2 = project.project().m2install();
-                    // Ticks are already counted up front by estimateTicks() (artifact
+                    // Ticks are already counted up front by estimateTicks (artifact
                     // count); progress(1)-per-artifact below fills it.
                     var observer = new CacheSync.ProgressObserver() {
                         @Override
@@ -1006,7 +1077,7 @@ public final class BuildPipelines {
     record KspDiagnostic(String severity, String message) {}
 
     /**
-     * The processor-authored diagnostics in a successful KSP round's output (JK-1257).
+     * The processor-authored diagnostics in a successful KSP round's output.
      *
      * <p>KSP's CLI prefixes them {@code w:} / {@code i:} / {@code v:}, usually with a {@code [ksp]}
      * tag. Everything else on that stream is host noise — the JVM's {@code sun.misc.Unsafe}
@@ -1107,7 +1178,7 @@ public final class BuildPipelines {
                     if (!rerun
                             && cc.jumpkick.task.FreshnessStamp.isFresh(
                                     outBase, KSP_STAMP, stampInputs, stampCp, ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick (JK-1153)
+                        ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
                         ctx.label("up to date");
                         ctx.progress(1);
                         return;
@@ -1186,7 +1257,7 @@ public final class BuildPipelines {
                     cmd.add("-jvm-target=" + CompileSupport.kotlinJvmTarget(ctx.require(RELEASE)));
                     cmd.add("-jdk-home=" + javaHome.toAbsolutePath());
                     cmd.add("-libraries=" + joinPaths(libs, sep));
-                    // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp —
+                    // Processor options: plugin-contributed ([[contribute.compiler-args]] ksp
                     // Hilt's superclass-validation toggle) plus project-declared ([build]
                     // ksp-options — Room's schemaLocation; last wins, so the project overrides).
                     // KSP's map syntax joins entries with the platform path separator, same as
@@ -1245,7 +1316,7 @@ public final class BuildPipelines {
                     // A green round still has things to say. Processor `logger.warn`/`info` is how
                     // an annotation-driven framework explains what it did and what to do
                     // differently; dropping it on success meant guidance only ever appeared once
-                    // the build was already broken (JK-1257). Surfaced the same way javac
+                    // the build was already broken. Surfaced the same way javac
                     // diagnostics are, so -q/-v behave consistently.
                     for (KspDiagnostic diagnostic : kspDiagnostics(output)) {
                         ctx.warn(diagnostic.severity(), diagnostic.message());
@@ -1321,7 +1392,7 @@ public final class BuildPipelines {
                 .kind(StepKind.CPU)
                 .requires(javaCompileRequires(mixed, cx.mixedGroovy(), pluginDecls, cx.ksp()))
                 // Ticks count sources (granularity); weight is the bar share. javac
-                // is opaque — one progress(sources.size()) on completion — so ease the
+                // is opaque — one progress(sources.size) on completion — so ease the
                 // slice forward over time while it runs instead of sitting flat.
                 .weight(() -> plan.get().compileJava())
                 .interpolated()
@@ -1364,7 +1435,9 @@ public final class BuildPipelines {
                         return;
                     }
                     @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    List<Path> classpath = baseClasspath;
+                    Path groovyJar = null;
                     if (mixed) {
                         // See Kotlin's output so Java can reference Kotlin types.
                         classpath = new ArrayList<>(classpath);
@@ -1374,21 +1447,18 @@ public final class BuildPipelines {
                         // See Groovy's output so Java can reference Groovy types — plus the
                         // version-matched groovy jar: every Groovy class implements
                         // groovy.lang.GroovyObject, which javac must resolve.
+                        groovyJar = groovyCompileJar(ctx, cas);
                         classpath = new ArrayList<>(classpath);
                         classpath.add(ctx.require(LAYOUT).groovyClassesDir());
-                        classpath.add(groovyCompileJar(ctx, cas));
+                        classpath.add(groovyJar);
                     }
                     @SuppressWarnings("unchecked")
                     List<Path> processorCp =
                             (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
                     boolean rerun = in.session().config().rebuildOr(false);
-                    // Fold the processor path into the freshness inputs so a processor
-                    // bump busts the stamp (it isn't on the compile classpath).
-                    List<Path> stampInputs = classpath;
-                    if (!processorCp.isEmpty()) {
-                        stampInputs = new ArrayList<>(classpath);
-                        stampInputs.addAll(processorCp);
-                    }
+                    // The shared stamp recipeforecast and write-stamp use it too.
+                    List<Path> stampInputs = mainStampClasspath(
+                            baseClasspath, processorCp, mixed, cx.mixedGroovy(), ctx.require(LAYOUT), groovyJar);
                     if (!rerun
                             && cc.jumpkick.task.FreshnessStamp.isFresh(
                                     javaOut,
@@ -1396,7 +1466,7 @@ public final class BuildPipelines {
                                     sources,
                                     stampInputs,
                                     ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(BUILD_OUTCOME, "up-to-date");
@@ -1409,7 +1479,7 @@ public final class BuildPipelines {
                         // The joint Groovy compile retained Java-visible stubs — put them on
                         // javac's sourcepath so Java→Groovy references resolve even before the
                         // real Groovy classes are visible; the assemble merge overwrites any
-                        // stub-compiled .class with the real Groovy output afterwards.
+                        // stub-compiled.class with the real Groovy output afterwards.
                         Path stubs = ctx.require(LAYOUT).groovyStubsDir();
                         if (Files.isDirectory(stubs)) {
                             javacArgs = new ArrayList<>(javacArgs);
@@ -1483,6 +1553,7 @@ public final class BuildPipelines {
                             request,
                             cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
                             !rerun,
+                            !in.ephemeralActions(), // verify-scratch: no persistent residue
                             cas,
                             actionCache,
                             javaStateDir,
@@ -1572,7 +1643,7 @@ public final class BuildPipelines {
                 .label("Kotlin")
                 .kind(StepKind.CPU)
                 // Kotlin compiles first (reads Java declarations from source), so it
-                // only needs the base steps — javac runs after it in a mixed module —
+                // only needs the base steps — javac runs after it in a mixed module
                 // plus any source-generating plugin steps.
                 .requires(kotlinCompileRequires(pluginDecls, cx.ksp()))
                 // Ticks count Kotlin sources (granularity); weight is the bar share
@@ -1615,14 +1686,14 @@ public final class BuildPipelines {
                     }
                     @SuppressWarnings("unchecked")
                     List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
-                    // Freshness inputs: Kotlin sources plus — in a mixed module —
+                    // Freshness inputs: Kotlin sources plus — in a mixed module
                     // the Java sources, since kotlinc compiles against the Java
                     // output (kotlincCp includes `classes`) and a Java edit can
-                    // make our .class files stale. Unlike compile-java there is
+                    // make our.class files stale. Unlike compile-java there is
                     // no content-hash action cache behind this stamp, so the
                     // check must err conservative: any Java change forces a
                     // Kotlin recompile. The output dir itself is deliberately not
-                    // an input (directory mtimes don't track in-place .class
+                    // an input (directory mtimes don't track in-place.class
                     // rewrites, and copy-resources churns it).
                     List<Path> freshInputs = new ArrayList<>(ktSources);
                     if (mixedWithJava) freshInputs.addAll(javaSources(ctx));
@@ -1644,7 +1715,7 @@ public final class BuildPipelines {
                                     freshInputs,
                                     classpath,
                                     ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(KOTLIN_OUTCOME, "up-to-date");
@@ -1655,7 +1726,7 @@ public final class BuildPipelines {
                     // Kotlin compiles into its own dir, then we merge into the
                     // shared classes dir. The incremental compiler owns its output
                     // dir and prunes files it didn't produce — so it can't share a
-                    // dir with javac's output (it would delete the .class files).
+                    // dir with javac's output (it would delete the.class files).
                     Path ktOut = ctx.require(LAYOUT).kotlinClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(StepNames.COMPILE_KOTLIN, classes);
                     Path workingDir = in.cache()
@@ -1746,7 +1817,7 @@ public final class BuildPipelines {
                     List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
                     // Freshness inputs: Groovy sources plus — in a mixed module — the Java
                     // sources, since joint mode resolves against them (any Java edit can make
-                    // our .class files or retained stubs stale). Same conservative posture as
+                    // our.class files or retained stubs stale). Same conservative posture as
                     // compile-kotlin; the action cache behind decides precisely.
                     List<Path> freshInputs = new ArrayList<>(gvSources);
                     if (mixedGroovy) freshInputs.addAll(javaSources(ctx));
@@ -1765,7 +1836,7 @@ public final class BuildPipelines {
                                     freshInputs,
                                     classpath,
                                     ctx.require(RELEASE))) {
-                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick (JK-1153)
+                        ctx.reweight(EffortWeights.TOKEN); // stamp skip — token tick
                         ctx.label("up to date");
                         ctx.cached();
                         ctx.put(GROOVY_OUTCOME, "up-to-date");
@@ -1778,7 +1849,7 @@ public final class BuildPipelines {
                     // never share one with javac).
                     Path gvOut = ctx.require(LAYOUT).groovyClassesDir();
                     String taskId = ActionKey.qualifiedTaskId(StepNames.COMPILE_GROOVY, classes);
-                    // Mixed module: joint mode sweeps the Java roots for resolution only —
+                    // Mixed module: joint mode sweeps the Java roots for resolution only
                     // stubs are retained for javac's sourcepath; jk's javac worker stays
                     // authoritative for the real Java outputs.
                     cc.jumpkick.task.GroovyCompile.Result gr = compileGroovySources(
@@ -1828,13 +1899,13 @@ public final class BuildPipelines {
                 .phase(Phase.COMPILE)
                 .label("Resources")
                 .kind(StepKind.CPU)
-                // After AFTER_COMPILE SPI so generated classes land before resource merge (JK-1061).
+                // After AFTER_COMPILE SPI so generated classes land before resource merge.
                 .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE)
                 .weight(() -> plan.get().fullyCached() ? 0 : W_RESOURCES)
                 .ticks(1)
                 .execute(ctx -> {
                     Path classes = ctx.require(MAIN_CLASSES);
-                    // JK-1144/1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
+                    // /1145: SIMPLE uses top-level resources/; TRADITIONAL uses src/main/resources.
                     // Plugin-contributed resource roots (grails-app/conf, i18n, views) merge after.
                     List<Path> resDirs = new ArrayList<>();
                     Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(in.dir(), compact);
@@ -1845,7 +1916,7 @@ public final class BuildPipelines {
                         if (Files.isDirectory(dir)) resDirs.add(dir);
                     }
                     // [build] extra-resources: individual files from outside the module, each with
-                    // its own destination and optional rename, so they cannot ride resDirs (JK-1262).
+                    // its own destination and optional rename, so they cannot ride resDirs.
                     List<ExtraResources.Copy> extra = ExtraResources.resolve(ctx.require(PROJECT), in.dir());
                     if (!resDirs.isEmpty() || !extra.isEmpty()) {
                         ctx.label("copy resources");
@@ -1965,7 +2036,7 @@ public final class BuildPipelines {
                 .phase(Phase.TEST)
                 .label("Test Compile")
                 .kind(StepKind.CPU)
-                // AFTER_COMPILE SPI may generate types tests import (JK-1061).
+                // AFTER_COMPILE SPI may generate types tests import.
                 .requires(StepNames.BUILD_LOGIC_AFTER_COMPILE, StepNames.RESOLVE_DEPS)
                 .weight(() -> plan.get().compileTest())
                 .interpolated() // opaque javac/kotlinc call — ease it over time
@@ -1974,13 +2045,12 @@ public final class BuildPipelines {
                     var sel = in.session() == null
                             ? cc.jumpkick.config.TestSelection.DEFAULT
                             : in.session().testSelection();
-                    List<String> discovered =
-                            cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
+                    List<String> discovered = cc.jumpkick.layout.TestSuites.discover(in.dir(), compact);
                     var resolved = sel.resolve(discovered);
                     if (!resolved.ok()) {
                         // Workspace run: a named suite need not exist in EVERY module — the
                         // IDE-generated `jk test --suite integration` config must run where the
-                        // suite exists and skip the rest, not fail the workspace (JK-1230).
+                        // suite exists and skip the rest, not fail the workspace.
                         // Single-module runs keep the hard error (typo protection).
                         if (in.projectModules().size() > 1) {
                             ctx.label("suite not present — skipped");
@@ -1991,8 +2061,7 @@ public final class BuildPipelines {
                         throw new IllegalArgumentException(resolved.missingMessage());
                     }
                     List<String> suiteNames = resolved.suites();
-                    Path javaTestSrc =
-                            cc.jumpkick.layout.TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
+                    Path javaTestSrc = cc.jumpkick.layout.TestSuites.primaryJavaRoot(in.dir(), compact, suiteNames);
                     List<Path> javaTest =
                             cc.jumpkick.layout.TestSuites.collectJavaSources(in.dir(), compact, suiteNames);
                     List<Path> ktTest =
@@ -2016,7 +2085,7 @@ public final class BuildPipelines {
                     List<Path> baseCp = new ArrayList<>();
                     baseCp.add(ctx.require(MAIN_CLASSES));
                     baseCp.addAll(compileCp);
-                    // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject —
+                    // A Groovy module's classes (main or test) implement groovy.lang.GroovyObject
                     // javac (and groovyc itself) must resolve it from the version-matched jar.
                     if (cx.groovyModule() || !gvTest.isEmpty()) {
                         baseCp.add(groovyCompileJar(ctx, cas));
@@ -2025,9 +2094,9 @@ public final class BuildPipelines {
                     // All suites share classes/test and run-tests scans it: when the SELECTION
                     // changes, wipe the shared output and the per-language merge sources, or the
                     // previous selection's classes and copied resources keep running/shadowing
-                    // under the new one indefinitely (JK-1228). `.jk-suites` records the
+                    // under the new one indefinitely. `.jk-suites` records the
                     // selection that produced the tree (excluded from action stores/fingerprints
-                    // by the .jk- rule).
+                    // by the.jk- rule).
                     String selectionKey = String.join(",", suiteNames);
                     Path suiteMarker = testClasses.resolve(".jk-suites");
                     String prevSelection = Files.isRegularFile(suiteMarker)
@@ -2164,7 +2233,7 @@ public final class BuildPipelines {
                     // Test resources ride the test classpath next to compiled tests (Gradle's
                     // processTestResources). Without this, getResourceAsStream fixtures NPE under
                     // self-host.
-                    // JK-1149: copy resources for every suite in this run's selection
+                    // copy resources for every suite in this run's selection
                     // (default test/resources/ + e.g. integration/resources/).
                     List<Path> suiteResDirs =
                             cc.jumpkick.layout.ModuleLayout.suiteResourceDirs(in.dir(), compact, suiteNames);
@@ -2172,8 +2241,8 @@ public final class BuildPipelines {
                         Files.createDirectories(testClasses);
                         copyResources(resTest, testClasses);
                     }
-                    // Fixtures affect test outcomes but classes/test is not on the runtime cp —
-                    // run-tests folds these dirs into its TestStamp key (JK-1208).
+                    // Fixtures affect test outcomes but classes/test is not on the runtime cp
+                    // run-tests folds these dirs into its TestStamp key.
                     ctx.put(TEST_RESOURCE_DIRS, suiteResDirs);
                     Files.createDirectories(testClasses);
                     Files.writeString(suiteMarker, selectionKey);
@@ -2220,21 +2289,21 @@ public final class BuildPipelines {
                     Path testClassesForStamp = ctx.require(TEST_CLASSES);
                     @SuppressWarnings("unchecked")
                     List<Path> testSrcs = ctx.get(TEST_SOURCES).orElse(java.util.List.of());
-                    // Plugin jars handed to the test JVM ([build.test-plugin-jars]) —
+                    // Plugin jars handed to the test JVM ([build.test-plugin-jars])
                     // plugin-forking tests' behavior depends on their content, so resolve
                     // them up front so they also feed the freshness key below.
                     JkBuild projectUnderTest = ctx.require(PROJECT);
-                    // Worker jars feed both the forked JVM and the TestStamp (JK-1296):
+                    // Worker jars feed both the forked JVM and the TestStamp
                     // nested-engine CLI modules enrich with engine + every PluginJar so the stamp
                     // matches what the suite actually loads — same set forecast uses.
                     Map<String, String> workerJars = testStampWorkerJars(in.dir(), projectUnderTest);
                     // Nested-engine suites (jk-cli): isolate JK_STATE_DIR so EngineTestExtension
                     // cannot kill the host engine running this test step. Sandboxed JK_HOME/JK_M2_LOCAL
                     // plus this module's [test] env — without it a forked test JVM inherits the
-                    // engine's environment and runs against the developer's real ~/.jk (JK-1267).
+                    // engine's environment and runs against the developer's real ~/.jk.
                     // Nested-engine isolation layers on top and wins on any key both set.
-                    Map<String, String> testEnv =
-                            new java.util.LinkedHashMap<>(TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
+                    Map<String, String> testEnv = new java.util.LinkedHashMap<>(
+                            TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
                     if (needsNestedEngineIsolation(projectUnderTest)) {
                         testEnv.putAll(nestedEngineTestEnv(in.dir()));
                     }
@@ -2245,7 +2314,7 @@ public final class BuildPipelines {
                     // toolchain/runner/plugin identity. Unchanged → skip the runner.
                     @SuppressWarnings("unchecked")
                     List<Path> testResDirs = ctx.get(TEST_RESOURCE_DIRS).orElse(java.util.List.of());
-                    // [test] default-exclude-tags reaches jk build / BSP too (JK-1229): the CLI
+                    // [test] default-exclude-tags reaches jk build / BSP toothe CLI
                     // resolves defaults only for `jk test`; when the session selection carries
                     // no tags at all, apply this module's own config defaults here. The
                     // effective selection feeds BOTH the stamp and the runner.
@@ -2256,7 +2325,11 @@ public final class BuildPipelines {
                             testResDirs,
                             in.lockFile(),
                             testRtCp,
-                            testStampExtras(workerJars, effectiveSel, projectUnderTest.build().testEnv()));
+                            testStampExtras(
+                                    workerJars,
+                                    effectiveSel,
+                                    projectUnderTest.build().testEnv(),
+                                    in.dir()));
                     String testTaskId = ActionKey.qualifiedTaskId(StepNames.RUN_TESTS, testClassesForStamp);
                     // --force forces a real test run, matching the compile/package
                     // freshness checks above (which all guard on !rerun). Without
@@ -2272,7 +2345,7 @@ public final class BuildPipelines {
                     if (!rerun && stampKey != null) {
                         var greenRecord = actionCache.lookup(stampKey);
                         if (greenRecord.isPresent()) {
-                            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick (JK-1153)
+                            ctx.reweight(EffortWeights.TOKEN); // cache/stamp skip — token tick
                             ctx.label("tests up-to-date");
                             ctx.cached();
                             // Replay the green run's counts (stored on the marker) so the summary
@@ -2290,7 +2363,7 @@ public final class BuildPipelines {
                     // forecast under-sized (predicted SKIP, but the CAS marker was
                     // missing so we run) stays pinned near-zero while the slow,
                     // serialized run executes — the "stuck near 100% during tests" bug.
-                    // Reweight through the SAME learned ledger predict() used, NOT the
+                    // Reweight through the SAME learned ledger predict used, NOT the
                     // raw static per-method floor: the static constant is ~10× hot for a
                     // fast suite, so reweighting to it ballooned the denominator (574
                     // tests × 8 → ~11 min) the instant testing began, then collapsed as
@@ -2310,10 +2383,9 @@ public final class BuildPipelines {
                     // Language runtimes keyed on the SELECTED suites' sources (TEST_SOURCES is
                     // selection-scoped) — the old default-suite-only collectors missed a
                     // Kotlin/Groovy-only named suite and the forked JVM lacked the runtime
-                    // (JK-1229).
                     boolean ktTestSources = testSrcs.stream()
-                            .anyMatch(p -> p.toString().endsWith(".kt")
-                                    || p.toString().endsWith(".kts"));
+                            .anyMatch(p ->
+                                    p.toString().endsWith(".kt") || p.toString().endsWith(".kts"));
                     boolean gvTestSources =
                             testSrcs.stream().anyMatch(p -> p.toString().endsWith(".groovy"));
                     if (kotlinModule || ktTestSources) {
@@ -2366,21 +2438,23 @@ public final class BuildPipelines {
                     if (!result.allPassed()) {
                         // No marker on failure — the next build re-runs (the absence
                         // of a record for this key is the "not yet green" signal).
-                        // Surface each failure (name + stack trace) above the bar —
+                        // Surface each failure (name + stack trace) above the bar
                         // not just the count — like Maven/Gradle.
                         for (String line : TestSupport.renderFailures(result)) ctx.output(line);
                         throw new RuntimeException(
                                 result.failed() + " test failure" + (result.failed() == 1 ? "" : "s"));
                     }
                     // All tests passed — record a CAS marker keyed by the content key so a
-                    // later build skips the runner when inputs are unchanged. It lives in the
-                    // CAS (not target/), so it survives `jk clean`: after clean+build the
+                    // later build / explain skips the runner when inputs are unchanged. It lives
+                    // in the CAS (not target/), so it survives `jk clean`: after clean+build the
                     // compile cache restores byte-identical classes, the key recomputes the
                     // same, and the marker is found. The green counts ride the record so the
-                    // skip path can replay them in its summary. (Skip if the key failed open —
-                    // nothing to key the marker on, and skip on a cache-bypassing run — verify's
-                    // scratch build must not leave orphan markers under unreachable keys.)
-                    if (!rerun && stampKey != null) {
+                    // skip path can replay them in its summary.
+                    // Always store on success — including --rebuild/--force. Rerun only means
+                    // "do not restore/skip the runner"; the marker still uses the normal
+                    // content key (not a verify scratch salt), so the next explain must see it
+                    // (same contract as compile). Skip only when the key failed open.
+                    if (stampKey != null) {
                         actionCache.storeWithOutputs(
                                 testTaskId,
                                 stampKey,
@@ -2438,7 +2512,7 @@ public final class BuildPipelines {
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path jarPath = layout.mainJar();
                     if (pluginDecls != null && pluginDecls.packager() != null) {
-                        // The packager's declared artifact extension replaces .jar (an APK, …).
+                        // The packager's declared artifact extension replaces.jar (an APK, …).
                         jarPath = PluginBuild.mainArtifactPath(layout, pluginActive);
                         Files.createDirectories(jarPath.getParent());
                         packagePlugin(
@@ -2492,7 +2566,7 @@ public final class BuildPipelines {
 
     /**
      * package-jar's requires: SPI BEFORE_PACKAGE (which itself waits on resources/tests), plus
-     * every before-PACKAGE plugin step (JK-1061).
+     * every before-PACKAGE plugin step.
      */
     private static String[] packageRequires(Inputs in, PluginBuild.Declarations decls) {
         List<String> requires = new ArrayList<>();
@@ -2591,7 +2665,7 @@ public final class BuildPipelines {
         for (String input : step.inputs()) {
             if (input.startsWith("step:")) requires.add("plugin-" + input.substring("step:".length()));
         }
-        // Any other classes-consuming step reads MAIN_CLASSES, which the transform re-points —
+        // Any other classes-consuming step reads MAIN_CLASSES, which the transform re-points
         // it must observe the transformed dir, never race the transform (dex after Hilt's rewrite).
         if (transform != null
                 && !step.name().equals(transform.name())
@@ -2728,7 +2802,7 @@ public final class BuildPipelines {
                     }
                     actionCache.store(taskId, actionKey, java.util.Map.of(), scratch);
                     // A transform's output IS the classes dir from here on: re-point MAIN_CLASSES
-                    // so packaging, later steps' In.classes(), and the native tail read it
+                    // so packaging, later steps' In.classes, and the native tail read it
                     // (ordering: consumers carry a requires edge on this step).
                     if (step.transforms()) {
                         ctx.put(MAIN_CLASSES, scratch.resolve(step.transformsClasses()));
@@ -2901,7 +2975,7 @@ public final class BuildPipelines {
         }
         // Packager-declared extras (PackageIo.produced — quarkus fast-jar lib/ siblings): a
         // multi-file layout must cache whole or a hit after `jk clean` restores a broken
-        // artifact (JK-1210). Directories expand recursively; escapes of the artifact dir
+        // artifact. Directories expand recursively; escapes of the artifact dir
         // are a packager bug.
         Path outBase = jarPath.getParent().toAbsolutePath().normalize();
         for (String line : workerLines) {
@@ -2990,16 +3064,20 @@ public final class BuildPipelines {
                     @SuppressWarnings("unchecked")
                     List<Path> sources = (List<Path>) ctx.require(JAVA_SOURCES);
                     @SuppressWarnings("unchecked")
-                    List<Path> classpath = (List<Path>) ctx.require(CLASSPATH);
-                    if (mixed) { // match compile-java's freshness inputs
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).kotlinClassesDir());
-                    }
-                    if (cx.mixedGroovy()) { // match compile-java's freshness inputs
-                        classpath = new ArrayList<>(classpath);
-                        classpath.add(ctx.require(LAYOUT).groovyClassesDir());
-                        classpath.add(groovyCompileJar(ctx, cx.cas()));
-                    }
+                    List<Path> baseClasspath = (List<Path>) ctx.require(CLASSPATH);
+                    @SuppressWarnings("unchecked")
+                    List<Path> processorCp =
+                            (List<Path>) ctx.get(JAVAC_PROCESSOR_CP).orElseGet(() -> ctx.require(PROCESSOR_CP));
+                    // Match compile-java's freshness inputs exactly — the shared recipe includes
+                    // the processor path the old copy dropped, which kept processor modules from
+                    // ever stamp-matching.
+                    List<Path> stampInputs = mainStampClasspath(
+                            baseClasspath,
+                            processorCp,
+                            mixed,
+                            cx.mixedGroovy(),
+                            ctx.require(LAYOUT),
+                            cx.mixedGroovy() ? groovyCompileJar(ctx, cx.cas()) : null);
                     String actionKey = ctx.get(ACTION_KEY).orElse("");
                     cc.jumpkick.task.FreshnessStamp.write(
                             javaOut,
@@ -3007,7 +3085,7 @@ public final class BuildPipelines {
                             "compile-main",
                             actionKey,
                             sources,
-                            classpath,
+                            stampInputs,
                             ctx.require(RELEASE));
                     ctx.progress(1);
                 })
@@ -3171,8 +3249,8 @@ public final class BuildPipelines {
     }
 
     /**
-     * Apply {@link cc.jumpkick.config.Session#assemblyOverride()} (CLI {@code --fat}/{@code --shrink})
-     * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session()}
+     * Apply {@link cc.jumpkick.config.Session#assemblyOverride} (CLI {@code --fat}/{@code --shrink})
+     * over the parsed manifest for this invocation only. Prefer the request {@link Inputs#session}
      * over ambient {@link SessionContext} so single-build pipeline construction (outside {@code
      * SessionContext.where}) still sees the wire override.
      */
@@ -3209,7 +3287,7 @@ public final class BuildPipelines {
                         depJars.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
                         // Workspace siblings are filtered out of the lockfile by
                         // WorkspaceMerge, but a fat jar must bundle them (and their
-                        // own transitive external deps) or it can't run standalone —
+                        // own transitive external deps) or it can't run standalone
                         // e.g. a plugin jar would be missing PluginMain.
                         WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(
                                 layout.moduleRoot(), project, Set.of(Scope.EXPORT, Scope.MAIN));
@@ -3387,7 +3465,7 @@ public final class BuildPipelines {
                     if (shared) mainClass = null;
                     // Output path: [native].name overrides the artifact-derived name.
                     // Executable → target/<name>; library → target/lib<name> (native-image
-                    // appends the platform extension .so/.dylib/.dll and emits C headers).
+                    // appends the platform extension.so/.dylib/.dll and emits C headers).
                     Path out;
                     if (nativeCfg.name() != null) {
                         String nm = nativeCfg.name();
@@ -3461,7 +3539,8 @@ public final class BuildPipelines {
                                 runtimeArtifacts.add(a);
                             }
                         }
-                        cc.jumpkick.repo.RepoGroup metaRepos = RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
+                        cc.jumpkick.repo.RepoGroup metaRepos =
+                                RepoGroupBuilder.buildFor(project, null, JkStores.cas(cache));
                         metadataDirs = ReachabilityMetadata.configDirs(
                                 cache, metaRepos, runtimeArtifacts, msg -> ctx.label(msg));
                     }
@@ -3507,12 +3586,10 @@ public final class BuildPipelines {
                     ctx.label("native-image " + out.getFileName());
 
                     // Progress listener: parse [N/M] headers from native-image stdout.
-                    //
                     // ticks(10) is declared upfront (preamble + 8 GraalVM stages + done).
                     // Ticks: 1 preamble (when step 1 first appears) +
-                    //        8 steps ([1/8]…[8/8]) +
-                    //        1 final (ctx.progress after run() returns) = 10.
-                    //
+                    // 8 steps ([1/8]…[8/8]) +
+                    // 1 final (ctx.progress after run returns) = 10.
                     // Fallback: if no [N/M] headers appear (older GraalVM, --quiet),
                     // the listener never fires and the single ctx.progress(1) at the end
                     // is the only tick — the bar jumps to 1/10, which is acceptable.
@@ -3599,7 +3676,7 @@ public final class BuildPipelines {
     /**
      * The {@code -processorpath} / KSP processor classpath: the lock's PROCESSOR scope plus any
      * workspace siblings declared in {@code [processor-dependencies]} and their own external
-     * closures (JK-1253).
+     * closures.
      *
      * <p>A processor runs as a program, so it needs its own dependencies (a KSP processor needs
      * {@code symbol-processing-api}, an emitter library, …) — hence the sibling-lockfile loop,
@@ -3626,15 +3703,30 @@ public final class BuildPipelines {
     }
 
     /**
-     * Declared {@code [processor-dependencies]} entries that resolve to nothing (JK-1254): not a
-     * workspace sibling and absent from the lock. Silently skipping code generation is the worst
-     * failure mode for an annotation-driven project, so callers turn this into a build error.
+     * Declared {@code [processor-dependencies]} entries that resolve to nothing — not a workspace
+     * sibling and absent from the lock. Silently skipping code generation is the worst failure mode
+     * for an annotation-driven project, so callers turn this into a build error.
+     *
+     * <p>After {@link cc.jumpkick.model.WorkspaceMerge#resolveSiblingCoordinates}, workspace
+     * processors are real {@code group:name} coords (so {@link
+     * cc.jumpkick.model.Dependency#isWorkspace()} is false) and still never appear in the lock —
+     * pass the {@link WorkspaceClasspath} result so rewritten siblings stay covered.
      */
     public static List<String> unresolvedProcessorDeps(JkBuild project, Lockfile lock) {
+        return unresolvedProcessorDeps(project, lock, null);
+    }
+
+    public static List<String> unresolvedProcessorDeps(
+            JkBuild project, Lockfile lock, WorkspaceClasspath.Result processorSiblings) {
         java.util.Set<String> locked = lockModules(lock);
+        java.util.Set<String> siblings = new java.util.HashSet<>();
+        if (processorSiblings != null) {
+            siblings.addAll(processorSiblings.siblingCoords());
+        }
         List<String> missing = new ArrayList<>();
         for (cc.jumpkick.model.Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
             if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+            if (siblings.contains(dep.module())) continue;
             if (!locked.contains(dep.module())) missing.add(dep.module());
         }
         return missing;
@@ -3643,7 +3735,7 @@ public final class BuildPipelines {
     public static List<Path> mainCompileClasspath(
             Lockfile lock, ClasspathResolver resolver, WorkspaceClasspath.Result siblings) throws IOException {
         List<Path> cp = new ArrayList<>(resolver.classpathFor(lock, ClasspathResolver.COMPILE_MAIN));
-        // The declared closure (deterministic jar paths) — not just the built ones —
+        // The declared closure (deterministic jar paths) — not just the built ones
         // so the action key is stable whether or not target/ is currently populated.
         // In a valid build the siblings are all built (the missing-sibling check
         // upstream guarantees it), so these are the same paths javac compiles against;
@@ -3669,7 +3761,7 @@ public final class BuildPipelines {
      * freshness stamps, output assembly, and outcome reporting.
      *
      * @param javaSourceRoots when non-empty, passed as {@code -Xjava-source-roots} so a mixed module's
-     *     Kotlin can read Java declarations from source
+     * Kotlin can read Java declarations from source
      */
     private static cc.jumpkick.task.KotlinCompile.Result compileKotlinSources(
             StepContext ctx,
@@ -3794,17 +3886,23 @@ public final class BuildPipelines {
             }
         }
         return cc.jumpkick.task.KotlinCompile.run(
-                taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+                taskId,
+                req,
+                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                !rerun,
+                !in.ephemeralActions(), // verify-scratch: no persistent residue
+                cas,
+                actionCache);
     }
 
     /**
      * Compile Groovy {@code sources} into {@code outputDir} via the plugin (action-cached: restores
-     * from the CAS on an exact-input hit without launching the plugin, else forks a full compile —
+     * from the CAS on an exact-input hit without launching the plugin, else forks a full compile
      * Groovy has no incremental state). Shared by the main {@code compile-groovy} and {@code
      * compile-test} steps. The caller owns freshness stamps, output assembly, and outcome reporting.
      *
-     * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code .java} under them
-     *     for resolution only (jk's javac worker owns the real Java outputs)
+     * @param javaSourceRoots when non-empty, joint mode: the worker sweeps {@code.java} under them
+     * for resolution only (jk's javac worker owns the real Java outputs)
      * @param stubsOut when non-null, Java-visible stubs are retained there for javac's sourcepath
      */
     private static cc.jumpkick.task.GroovyCompile.Result compileGroovySources(
@@ -3841,8 +3939,8 @@ public final class BuildPipelines {
                 ctx.require(PROJECT), in.dir(), lockModules(ctx.require(LOCKFILE)))) {
             if (!gvArgs.contains(arg)) gvArgs.add(arg);
         }
-        // Joint mode sweeps .java sources through a real javac pass — annotation processors
-        // must run there or generated members fail resolution (JK-1232).
+        // Joint mode sweeps.java sources through a real javac pass — annotation processors
+        // must run there or generated members fail resolution.
         @SuppressWarnings("unchecked")
         List<Path> processorCp = javaSourceRoots == null
                 ? List.of()
@@ -3872,7 +3970,39 @@ public final class BuildPipelines {
             }
         }
         return cc.jumpkick.task.GroovyCompile.run(
-                taskId, req, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), !rerun, cas, actionCache);
+                taskId,
+                req,
+                cc.jumpkick.model.BuildIdentity.cacheKeyVersion(),
+                !rerun,
+                !in.ephemeralActions(), // verify-scratch: no persistent residue
+                cas,
+                actionCache);
+    }
+
+    /**
+     * The compile-main freshness-stamp classpath side — ONE recipe shared by the live check,
+     * {@code write-stamp}, and the forecastthe base compile classpath, then the
+     * mixed-language sibling outputs javac sees (kotlin/groovy classes dirs + the version-matched
+     * groovy jar), then the annotation-processor path (not on the compile classpath, but a
+     * processor bump must bust the stamp). Hand-maintained copies of this recipe drifted twice:
+     * the forecast missed the mixed-language entries and write-stamp missed {@code processorCp},
+     * so mixed and processor modules never stamp-matched.
+     */
+    static List<Path> mainStampClasspath(
+            List<Path> baseClasspath,
+            List<Path> processorCp,
+            boolean mixedKotlin,
+            boolean mixedGroovy,
+            BuildLayout layout,
+            Path groovyCompileJar) {
+        List<Path> inputs = new ArrayList<>(baseClasspath);
+        if (mixedKotlin) inputs.add(layout.kotlinClassesDir());
+        if (mixedGroovy) {
+            inputs.add(layout.groovyClassesDir());
+            if (groovyCompileJar != null) inputs.add(groovyCompileJar);
+        }
+        if (processorCp != null) inputs.addAll(processorCp);
+        return inputs;
     }
 
     /**
@@ -3995,22 +4125,40 @@ public final class BuildPipelines {
     /**
      * Packaging cache (mirrors the compile {@link ActionCache} path, for artifacts). Returns {@code
      * true} when a cached artifact for {@code key} was hard-linked back into {@code baseDir} — the
-     * caller then skips the (re)packaging work. Honors {@code --force}.
+     * caller then skips the (re)packaging work.
+     *
+     * <p>{@code --rebuild}/{@code --force} skip <em>restore</em> (always re-package) but still
+     * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next
+     * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     private static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return false;
+        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)
+                || cc.jumpkick.config.SessionContext.current().config().forceOr(false)) {
+            return false;
+        }
         ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
         var hit = ac.lookup(key);
         return hit.isPresent() && ac.restoreArtifacts(hit.get(), baseDir);
     }
 
-    /** Record a freshly-produced packaging artifact so a later build can skip it. */
+    /**
+     * Record a freshly-produced packaging artifact so a later build / explain can skip it. Always
+     * writes — even under {@code --rebuild} — because rebuild only means "do not restore/skip
+     * work", not "do not teach the cache" (parity with compile; verify-scratch is the only
+     * path that must leave no residue, and it never reaches here).
+     */
     private static void storePackaged(
             Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
             throws IOException {
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) return;
         new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"))
                 .storeArtifacts(taskId, key, Map.of("inputs", String.join(";", tokens)), baseDir, artifacts);
+    }
+
+    /** Test hook: {@link #storePackaged} under a rebuild session must still persist. */
+    static void storePackagedForTest(
+            Path cacheRoot, String taskId, String key, List<String> tokens, Path baseDir, List<Path> artifacts)
+            throws IOException {
+        storePackaged(cacheRoot, taskId, key, tokens, baseDir, artifacts);
     }
 
     private static Map<String, String> workerJarProps(Path moduleDir, List<String> modules) throws IOException {
@@ -4106,14 +4254,12 @@ public final class BuildPipelines {
     /**
      * The selection the runner actually executes: the session's, with this module's
      * {@code [test] default-exclude-tags} folded in when the session carries no tags at all
-     * (jk build / BSP without data — JK-1229). `jk test` resolves defaults CLI-side and its
+     * (jk build / BSP without data —. `jk test` resolves defaults CLI-side and its
      * selection already carries them.
      */
-    static cc.jumpkick.config.TestSelection effectiveSelection(
-            cc.jumpkick.config.TestSelection sel, Path moduleDir) {
+    static cc.jumpkick.config.TestSelection effectiveSelection(cc.jumpkick.config.TestSelection sel, Path moduleDir) {
         if (!sel.includeTags().isEmpty() || !sel.excludeTags().isEmpty()) return sel;
-        List<String> defaults =
-                cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
+        List<String> defaults = cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(moduleDir.resolve("jk.toml"));
         if (defaults.isEmpty()) return sel;
         return cc.jumpkick.config.TestSelection.of(sel.suites(), sel.allSuites(), List.of(), defaults);
     }
@@ -4122,10 +4268,11 @@ public final class BuildPipelines {
      * Worker / engine jar props that feed both the forked test JVM and the {@link
      * cc.jumpkick.task.TestStamp} extras. Includes declared {@code [build] test-plugin-jars} and,
      * for nested-engine CLI modules, every first-party {@link PluginJar} plus the engine assembly
-     * (JK-1296 — forecast and live run-tests must hash the same set).
+     * forecast and live run-tests must hash the same set).
      */
     public static Map<String, String> testStampWorkerJars(Path dir, JkBuild project) throws IOException {
-        Map<String, String> props = new LinkedHashMap<>(workerJarProps(dir, project.build().testPluginJars()));
+        Map<String, String> props =
+                new LinkedHashMap<>(workerJarProps(dir, project.build().testPluginJars()));
         if (needsNestedEngineIsolation(project)) {
             enrichCliTestProps(dir, props);
         }
@@ -4135,33 +4282,28 @@ public final class BuildPipelines {
     /**
      * The run-tests stamp's identity tokens for {@code project} at {@code dir} — the same set the
      * build folds into its {@link cc.jumpkick.task.TestStamp} key, so {@code jk explain}'s forecast
-     * predicts test-skip without drifting (JK-1229/JK-1243/JK-1296).
+     * predicts test-skip without drifting.
      */
     public static List<String> testStampExtras(Path dir, JkBuild project) throws IOException {
         return testStampExtras(
                 testStampWorkerJars(dir, project),
                 effectiveSelection(cc.jumpkick.config.TestSelection.DEFAULT, dir),
-                project.build().testEnv());
+                project.build().testEnv(),
+                dir);
     }
 
     /**
-     * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection —
+     * Full {@link cc.jumpkick.task.TestStamp} key for the default {@code jk build} selection
      * single factory for forecast and any offline checker. {@code testRuntimeCp} must match the
      * build's runtime classpath for the stamp (lock deps + workspace sibling jars; plugin
      * contributions optional for non-plugin modules).
      */
     public static String runTestsStampKey(
-            Path dir,
-            JkBuild project,
-            boolean compact,
-            Path mainClasses,
-            Path lockFile,
-            List<Path> testRuntimeCp)
+            Path dir, JkBuild project, boolean compact, Path mainClasses, Path lockFile, List<Path> testRuntimeCp)
             throws IOException {
         List<String> discovered = cc.jumpkick.layout.TestSuites.discover(dir, compact);
         var resolved = cc.jumpkick.config.TestSelection.DEFAULT.resolve(discovered);
-        List<String> suites =
-                resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
+        List<String> suites = resolved.ok() ? resolved.suites() : List.of(cc.jumpkick.layout.TestSuites.DEFAULT);
         List<Path> stampSrcs = new ArrayList<>();
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectJavaSources(dir, compact, suites));
         stampSrcs.addAll(cc.jumpkick.layout.TestSuites.collectKotlinSources(dir, compact, suites));
@@ -4175,19 +4317,72 @@ public final class BuildPipelines {
                 testStampExtras(dir, project));
     }
 
+    /**
+     * Stamp extras with env expansion and secret hashing for a module at {@code moduleDir}
+     * . There is deliberately no lookup-free overload: it would silently skip
+     * both expansion and hashing and produce a key that disagrees with this one.
+     */
     static List<String> testStampExtras(
             Map<String, String> workerJars,
             cc.jumpkick.config.TestSelection selection,
-            Map<String, String> testEnv) {
+            Map<String, String> testEnv,
+            Path moduleDir) {
+        cc.jumpkick.config.EnvLookup lookup =
+                moduleDir == null ? null : cc.jumpkick.config.BuildEnv.lookupFor(moduleDir);
+        cc.jumpkick.config.SecretRedactor redactor = lookup == null
+                ? cc.jumpkick.config.SecretRedactor.none()
+                : cc.jumpkick.config.SecretRedactor.from(lookup);
+        return testStampExtras(workerJars, selection, testEnv, redactor, lookup);
+    }
+
+    /**
+     * Stamp extras. Declared {@code [test] env} values only (sandbox defaults stay out — they are
+     * absolute paths that would defeat cache sharing). Environment references expand through
+     * {@code lookup}; a {@code.env}-sourced value is hashed into the key, never written verbatim
+     *
+     */
+    static List<String> testStampExtras(
+            Map<String, String> workerJars,
+            cc.jumpkick.config.TestSelection selection,
+            Map<String, String> testEnv,
+            cc.jumpkick.config.SecretRedactor redactor,
+            cc.jumpkick.config.EnvLookup lookup) {
         List<String> extras = new ArrayList<>();
         extras.add("jk:" + cc.jumpkick.model.BuildIdentity.cacheKeyVersion());
-        // Suite + tag filters are part of the outcome (JK-1134/1135).
+        // Suite + tag filters are part of the outcome/1135).
         if (selection != null) extras.add("sel:" + selection.identityToken());
-        // [test] env changes what the suite sees, so it must retest (JK-1267). Declared values only:
-        // the sandbox defaults derive from the module's own target dir, so they add nothing but
-        // absolute paths that would differ per checkout and defeat the cache.
+        // [test] env changes what the suite sees, so it must retest.
+        cc.jumpkick.config.SecretRedactor secrets =
+                redactor == null ? cc.jumpkick.config.SecretRedactor.none() : redactor;
         for (Map.Entry<String, String> e : new java.util.TreeMap<>(testEnv).entrySet()) {
-            extras.add("test-env:" + e.getKey() + "=" + e.getValue());
+            String raw = e.getValue() == null ? "" : e.getValue();
+            String expanded = raw;
+            boolean envResolved = false;
+            if (lookup != null && raw.indexOf('$') >= 0) {
+                // Expand ${VAR} for cache identity, but leave ${target}/${module} as tokens so
+                // the key stays portable across checkouts (same instinct as the sandbox defaults).
+                boolean[] resolved = {false};
+                try {
+                    expanded = cc.jumpkick.config.Interpolation.expand(raw, "[test].env." + e.getKey(), var -> {
+                        if ("target".equals(var) || "module".equals(var)) return "${" + var + "}";
+                        String v = lookup.get(var);
+                        if (v != null) resolved[0] = true;
+                        return v;
+                    });
+                } catch (cc.jumpkick.config.JkBuildParseException ex) {
+                    // Unset var — keep the raw text so a broken reference still changes the key.
+                    expanded = raw;
+                }
+                envResolved = resolved[0];
+            }
+            String keyed = secrets.forCacheKey(expanded);
+            if (envResolved && keyed.equals(expanded)) {
+                // Non-secret env reference (${HOME}, a CI id): the VALUE still keys the stamp
+                // a changed environment retestsbut the literal must not land in a
+                // (potentially shared) key: no absolute paths or ids on disk.
+                keyed = cc.jumpkick.config.SecretRedactor.KEY_PREFIX + cc.jumpkick.util.Hashing.sha256Hex(expanded);
+            }
+            extras.add("test-env:" + e.getKey() + "=" + keyed);
         }
         // Plugin jars by content — a plugin change retests the module that forks it.
         for (Map.Entry<String, String> e : workerJars.entrySet()) {

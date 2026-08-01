@@ -67,7 +67,7 @@ class CasPrewriterTest {
             // Let pre-processing happen.
             Thread.sleep(350);
             // Now mutate the file — the recorded snapshot will mismatch
-            // current state, so finish() should re-hash.
+            // current state, so finish should re-hash.
             Files.writeString(file, "second-version-longer");
         } finally {
             Map<String, String> outputs = prewriter.finish();
@@ -104,7 +104,7 @@ class CasPrewriterTest {
 
     /**
      * Same size + same mtime as a poll-stable file must still re-content-hash on finish — coarse
-     * mtime filesystems can rewrite bytes without advancing mtime within one tick (JK-1069).
+     * mtime filesystems can rewrite bytes without advancing mtime within one tick.
      */
     @Test
     void finish_rehashes_when_content_changes_without_size_mtime_change(@TempDir Path tempDir) throws Exception {

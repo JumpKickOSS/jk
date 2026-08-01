@@ -40,7 +40,7 @@ class EngineClientTest {
 
     @AfterEach
     void cleanup() {
-        // Every test that gets a real EngineServer to run() triggers planSharedWorkerMemoryOnce(),
+        // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests sharing this test JVM.
         cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
@@ -169,7 +169,7 @@ class EngineClientTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
         long pid = EngineClient.readPidForSocket(EnginePaths.activeSocket(p));
-        // In-process EngineServer records this JVM's pid; forceStop must not kill us (ticket-1043).
+        // In-process EngineServer records this JVM's pid; forceStop must not kill us.
         assertThat(pid).isEqualTo(ProcessHandle.current().pid());
 
         assertThat(EngineClient.forceStop(EnginePaths.activeSocket(p))).isTrue();
@@ -179,7 +179,7 @@ class EngineClientTest {
 
     @Test
     void handshake_is_empty_within_seconds_against_a_silent_peer() throws Exception {
-        // Accept connections, never read or write — models a wedged engine (ticket-1043).
+        // Accept connections, never read or write — models a wedged engine.
         Path dir = shortTempDir();
         Path sock = dir.resolve("silent.sock");
         try (var server = java.nio.channels.ServerSocketChannel.open(java.net.StandardProtocolFamily.UNIX)) {
@@ -222,7 +222,7 @@ class EngineClientTest {
     }
 
     /**
-     * No real Windows box in this test run, but {@code EngineTransport.useLoopbackTcp()} only ever
+     * No real Windows box in this test run, but {@code EngineTransport.useLoopbackTcp} only ever
      * reads {@code os.name} — overriding it exercises {@link EngineClient#connect}'s TCP+token
      * branch for real, end-to-end through the same public API every other test above uses.
      */
@@ -255,7 +255,7 @@ class EngineClientTest {
 
     /**
      * The spawn path's artifact resolution: JK_ENGINE_EXE override, then the side-by-side layout
-     * ({@code ~/.jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK (ticket-1020).
+     * ({@code ~/.jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK.
      */
     @Test
     void engine_artifact_resolution_prefers_override_then_versions_layout() throws IOException {

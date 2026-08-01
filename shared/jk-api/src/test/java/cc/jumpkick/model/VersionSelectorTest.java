@@ -50,7 +50,7 @@ class VersionSelectorTest {
 
     @Test
     void snapshot_keyword() {
-        // The deliberate opt-in for pre-releases (JK-1287); every other floating selector is
+        // The deliberate opt-in for pre-releases; every other floating selector is
         // stable-only.
         assertThat(VersionSelector.parse("snapshot")).isInstanceOf(VersionSelector.Snapshot.class);
         assertThat(VersionSelector.parse("SNAPSHOT")).isInstanceOf(VersionSelector.Snapshot.class);

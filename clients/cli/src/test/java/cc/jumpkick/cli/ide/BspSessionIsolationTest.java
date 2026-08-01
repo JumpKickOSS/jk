@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1063: per-request BSP errors must not tear down the session. */
+/**per-request BSP errors must not tear down the session. */
 @Tag("integration")
 class BspSessionIsolationTest {
 

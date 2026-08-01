@@ -75,12 +75,9 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value(
                         "<ref>",
-                        "Giter8-style template: local path (MVP). Remote/git short names in JK-1182.",
+                        "Giter8-style template: local path (remote/git short names not yet supported).",
                         "--template"),
-                Opt.value(
-                                "<k=v>",
-                                "Template property override (repeatable; with --template).",
-                                "--param")
+                Opt.value("<k=v>", "Template property override (repeatable; with --template).", "--param")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
@@ -132,7 +129,7 @@ public final class NewCommand implements CliCommand {
 
     /**
      * The enclosing project/workspace this invocation will add a module to, or {@code null} when
-     * we're creating a standalone project. Resolved once in {@link #call()} and consumed by the
+     * we're creating a standalone project. Resolved once in {@link #call} and consumed by the
      * wizard (UX + inherited defaults), the flag path, and scaffolding.
      */
     private ParentInfo parent;
@@ -166,7 +163,7 @@ public final class NewCommand implements CliCommand {
 
         /**
          * The {@code java = N} compile target, which flows through even when it diverges from {@link
-         * #jdkMajor()}.
+         * #jdkMajor}.
          */
         int javaRelease() {
             return info.javaRelease();
@@ -174,7 +171,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code .git} or
+     * Walk up from {@code startDir} for a parent {@code jk.toml}; stop at {@code.git} or
      * {@code $HOME}. {@code --no-module} → empty.
      */
     static Optional<Path> detectParentDir(Path startDir, Path home, boolean noModule) {
@@ -191,7 +188,7 @@ public final class NewCommand implements CliCommand {
     /**
      * Where to begin the parent search — the directory the project will live <em>in</em> (its
      * target's parent). For {@code jk new foo} that's the cwd; for {@code jk new /abs/foo} it's
-     * {@code /abs}; for {@code .} / no arg it's the cwd (the module is the cwd itself, or
+     * {@code /abs}; for {@code.} / no arg it's the cwd (the module is the cwd itself, or
      * cwd/&lt;name&gt;).
      */
     private Path detectionStartDir(Path cwd) {
@@ -243,7 +240,7 @@ public final class NewCommand implements CliCommand {
     int callBody() throws IOException {
         Path cwd = Path.of(".").toAbsolutePath().normalize();
 
-        // Fail-fast for `jk new .` when the cwd already has a project.
+        // Fail-fast for `jk new.` when the cwd already has a project.
         // For any other invocation we defer the existing-manifest check to
         // after the target is fully resolved (the project name may come from
         // the wizard or from `--name`).
@@ -272,8 +269,8 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path|short-name>} (JK-1182 + catalog short names JK-1183/1188).
-     * Git/HTTPS remotes remain JK-1203.
+     * {@code jk new --template <local-path|short-name>} + catalog short names/1188).
+     * Git/HTTPS remotes remain.
      */
     private int runTemplatePipeline(Path cwd) {
         if (spring || grails || quarkus || plugin) {
@@ -286,7 +283,7 @@ public final class NewCommand implements CliCommand {
         Path extractScratch = null;
         // Only a template-SHAPED local dir wins over the catalog: a stray cwd subdirectory
         // sharing a short name (./quarkus) must not have its arbitrary contents copied as a
-        // project (JK-1234).
+        // project.
         boolean localTemplate = Files.isDirectory(template)
                 && (Files.isRegularFile(template.resolve("default.properties"))
                         || Files.isDirectory(template.resolve("src/main/g8")));
@@ -297,16 +294,18 @@ public final class NewCommand implements CliCommand {
                 if (shortResolved.isPresent()) {
                     template = shortResolved.get();
                 } else {
-                    String known = String.join(", ", Giter8Catalog.descriptions().keySet());
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                            "New",
-                            "template not found as a local directory: "
-                                    + template
-                                    + (Giter8Catalog.isShortName(templateRef)
-                                            ? " (short name not in local catalog; known: "
-                                                    + known
-                                                    + "; git/HTTPS remotes: JK-1203 — see docs/features/giter8-templates.md)"
-                                            : " (git/HTTPS remotes not implemented yet — see docs/features/giter8-templates.md)")));
+                    String known =
+                            String.join(", ", Giter8Catalog.descriptions().keySet());
+                    CliOutput.err(
+                            cc.jumpkick.cli.tui.CommandWedge.fail(
+                                    "New",
+                                    "template not found as a local directory: "
+                                            + template
+                                            + (Giter8Catalog.isShortName(templateRef)
+                                                    ? " (short name not in local catalog; known: "
+                                                            + known
+                                                            + "; see docs/features/giter8-templates.md)"
+                                                    : " (git/HTTPS remotes not implemented yet — see docs/features/giter8-templates.md)")));
                     return Exit.USAGE;
                 }
             } catch (IOException e) {
@@ -318,8 +317,7 @@ public final class NewCommand implements CliCommand {
         for (String p : templateParams) {
             int eq = p.indexOf('=');
             if (eq <= 0) {
-                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                        "New", "--param expects key=value, got: " + p));
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("New", "--param expects key=value, got: " + p));
                 return Exit.USAGE;
             }
             params.put(p.substring(0, eq), p.substring(eq + 1));
@@ -327,14 +325,13 @@ public final class NewCommand implements CliCommand {
         var presetName = wizardPresetName(directory, cwd);
         // Fallback order: explicit --name, --param name, wizard preset, the template's own
         // default.properties name, then the short name minus ".g8" — never the raw catalog
-        // filename, which produced projects literally named "quarkus.g8" (JK-1234).
+        // filename, which produced projects literally named "quarkus.g8".
         String templateDefault = Giter8LocalApply.defaultName(template).orElse(null);
         String fileBase = template.getFileName().toString();
         if (fileBase.endsWith(".g8")) fileBase = fileBase.substring(0, fileBase.length() - 3);
         String resolvedName = (name != null && !name.isBlank())
                 ? name
-                : params.getOrDefault(
-                        "name", presetName.orElse(templateDefault != null ? templateDefault : fileBase));
+                : params.getOrDefault("name", presetName.orElse(templateDefault != null ? templateDefault : fileBase));
         params.putIfAbsent("name", resolvedName);
         if (group != null && !group.isBlank()) {
             params.putIfAbsent("organization", group);
@@ -445,7 +442,7 @@ public final class NewCommand implements CliCommand {
                     if (wizardResult.isEmpty()) {
                         // Cancelled via Ctrl-C. Wizard.printCancellation
                         // preserves the cyan active-rail closer and prints
-                        // the red marker beside it. Runtime.halt() skips
+                        // the red marker beside it. Runtime.halt skips
                         // shutdown hooks — JLine's cleanup hook would block
                         // on the NonBlockingReader.
                         Wizard.printCancellation(
@@ -600,7 +597,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * TTY + no real flags. A bare positional ({@code jk new my-project} or {@code jk new .}) still
+     * TTY + no real flags. A bare positional ({@code jk new my-project} or {@code jk new.}) still
      * runs the wizard — the positional only pre-seeds the name.
      */
     private boolean shouldRunWizard() {
@@ -635,7 +632,7 @@ public final class NewCommand implements CliCommand {
 
     /**
      * Scaffold the project, then — if it lands inside an existing workspace — skip the per-module
-     * {@code jk.lock} and register the new module in the root {@code [workspace].modules} (Cargo/uv:
+     * {@code jk-lock.toml} and register the new module in the root {@code [workspace].modules} (Cargo/uv:
      * {@code cargo new} / {@code uv init} edit the workspace manifest). Records the registration for
      * the success message.
      */
@@ -733,11 +730,10 @@ public final class NewCommand implements CliCommand {
                 : (spring || grails || quarkus)
                         // Kotlin's top-level main lives on the ApplicationKt facade class.
                         // Quarkus scaffold uses an object Application with @JvmStatic main → Application.
-                        ? Optional.of(
-                                resolvedGroup
-                                        + (resolvedLang == NewInputs.Language.KOTLIN && !quarkus
-                                                ? ".ApplicationKt"
-                                                : ".Application"))
+                        ? Optional.of(resolvedGroup
+                                + (resolvedLang == NewInputs.Language.KOTLIN && !quarkus
+                                        ? ".ApplicationKt"
+                                        : ".Application"))
                         : isExecutable
                                 ? Optional.of(deriveMainFqcn(
                                         resolvedGroup, resolvedLang, "simple".equalsIgnoreCase(resolvedLayout)))
@@ -823,7 +819,7 @@ public final class NewCommand implements CliCommand {
         String warnLine = Theme.colorize(Glyphs.BANG, t.warning()) + " The " + coordStyled + " " + noun
                 + " already exists in this directory.";
 
-        // Line 2: ✘ New Project  Failed to create project large. Project already exists.
+        // Line 2: ✘ New Project Failed to create project large. Project already exists.
         // Use chipLine (not failureLine) — failureLine auto-prepends "Failed to {command}"
         // which would double up if the tail also starts with "Failed to".
         String chipCommand = isModule ? "New Module" : "New Project";
@@ -938,7 +934,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * Resolve the wizard's {@code jdk} answer back to a candidate. The candidate's {@code id()}
+     * Resolve the wizard's {@code jdk} answer back to a candidate. The candidate's {@code id}
      * matches one of the entries we surfaced via {@link NewJdkCandidate#filter}, so this is just a
      * lookup.
      */
@@ -963,7 +959,7 @@ public final class NewCommand implements CliCommand {
 
     /**
      * Download + extract an installable candidate. Reuses the same progress UI as {@code jk jdk
-     * install}. On success, returns the freshly-resolved installed candidate (so its {@code home()}
+     * install}. On success, returns the freshly-resolved installed candidate (so its {@code home}
      * points at the new JDK). On failure, prints the error and returns empty so the caller exits.
      */
     private Optional<NewJdkCandidate> installCandidate(NewJdkCandidate candidate) {
@@ -1003,14 +999,14 @@ public final class NewCommand implements CliCommand {
      * NewScaffolder} actually writes the file.
      *
      * <ul>
-     *   <li>Java (both layouts) → {@code <group>.Main}; the scaffolder always packages {@code Main}
-     *       under {@code <group>}, even in the simple layout (it just lives in {@code src/<group>/}
-     *       rather than {@code src/main/java/<group>/}).
-     *   <li>Kotlin compact → {@code MainKt} (no package; Kotlin emits a {@code FilenameKt} synthetic
-     *       class for top-level {@code fun main}).
-     *   <li>Kotlin standard → {@code <group>.MainKt}.
-     *   <li>Groovy compact → {@code Main} (package-less, like compact Kotlin); standard →
-     *       {@code <group>.Main}.
+     * <li>Java (both layouts) → {@code <group>.Main}; the scaffolder always packages {@code Main}
+     * under {@code <group>}, even in the simple layout (it just lives in {@code src/<group>/}
+     * rather than {@code src/main/java/<group>/}).
+     * <li>Kotlin compact → {@code MainKt} (no package; Kotlin emits a {@code FilenameKt} synthetic
+     * class for top-level {@code fun main}).
+     * <li>Kotlin standard → {@code <group>.MainKt}.
+     * <li>Groovy compact → {@code Main} (package-less, like compact Kotlin); standard →
+     * {@code <group>.Main}.
      * </ul>
      */
     private static String deriveMainFqcn(String group, NewInputs.Language lang, boolean compact) {
@@ -1032,11 +1028,10 @@ public final class NewCommand implements CliCommand {
         // Modules inherit the parent's group, JDK, and language as defaults; a
         // standalone project guesses the group and defaults to the latest LTS.
         String effectiveGroup = module ? parent.group() : groupGuess;
-        String langDefault =
-                module && parent.kotlin() ? "kotlin" : module && parent.groovy() ? "groovy" : "java";
+        String langDefault = module && parent.kotlin() ? "kotlin" : module && parent.groovy() ? "groovy" : "java";
 
         // The wizard opens with the "native" toggle off, so the initial radio
-        // list is whatever filter() produces for the non-native case — which
+        // list is whatever filter produces for the non-native case — which
         // promotes Temurin LTS to the top. Take the default selection from
         // there so the preselected row matches what the user sees. For a
         // module, prefer the candidate matching the parent's JDK major.
@@ -1092,7 +1087,6 @@ public final class NewCommand implements CliCommand {
         // release newer than the toolchain). Modules inherit the parent's
         // release, and when a global default JDK is set we adopt its major, so
         // both skip this question. Kotlin projects skip it too.
-        //
         // Two tracks, both derived from the live jdks.json catalog (so a newly
         // published major appears automatically): a standard track over all
         // distributions, and a native track restricted to native-image-capable
@@ -1117,14 +1111,13 @@ public final class NewCommand implements CliCommand {
 
         // Dynamic choices: the JDKs that can compile the chosen Java release
         // (major >= the target), in the full preference order (installed plus
-        // auto-installable latest-LTS rows). This is the *build* JDK only —
+        // auto-installable latest-LTS rows). This is the *build* JDK only
         // native projects do NOT pick a GraalVM here. The native-image GraalVM
-        // is resolved automatically (latest Oracle GraalVM) into jk.lock when
+        // is resolved automatically (latest Oracle GraalVM) into jk-lock.toml when
         // project.native is set, so the toolchain choice stays decoupled from
         // the Java language version. Rebuilt per render so changing the language
         // version refreshes the list; empty results fall back so the user can
         // still progress.
-        //
         // Only shown when there's a real choice to make: a standalone project,
         // no global default JDK, and more than one eligible installed JDK for
         // the chosen Java level. Modules inherit the parent; a default JDK is

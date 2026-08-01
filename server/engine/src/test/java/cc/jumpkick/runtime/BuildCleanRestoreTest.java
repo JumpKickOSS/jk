@@ -1,0 +1,246 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
+import cc.jumpkick.layout.BuildLayout;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.resolver.ResolveObserver;
+import cc.jumpkick.run.Pipeline;
+import cc.jumpkick.run.PipelineResult;
+import cc.jumpkick.task.ActionCache;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
+import java.util.List;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * A fully-cached forecast is only actionable when the outputs it promises exist. After
+ * {@code jk clean} every step can predict CACHED (keys survive the wipe by design) — the
+ * module must still schedule so the build restores {@code target/} from cache instead of
+ * skipping the module and leaving workspace links dangling.
+ *
+ * <p>Network test (Maven Central for the launcher/junit pins); the CAS persists under
+ * build/ so repeat runs are warm.
+ */
+@Tag("integration")
+class BuildCleanRestoreTest {
+
+    private static final String REPOS = """
+            [repositories]
+            central = "https://repo.maven.apache.org/maven2/"
+            """;
+
+    // No tests: the exact shape that used to forecast fully-CACHED after clean and skip.
+    private static final String NO_TEST_MANIFEST = """
+            [project]
+            name    = "cleanlib"
+            group   = "com.example"
+            version = "1.0.0"
+            jdk     = 21
+            java    = 21
+            layout  = "simple"
+
+            # This project runs no tests; owning [test-dependencies] keeps the injected
+            # junit-jupiter "latest" out of the graph and the launcher pin keeps the lock
+            # deterministic (see KotlinSerializationTest).
+            [test-dependencies]
+            junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+
+            """ + REPOS;
+
+    @Test
+    void no_test_module_restores_wiped_outputs_on_clean_build(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("cleanlib"));
+        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Files.writeString(project.resolve("jk.toml"), NO_TEST_MANIFEST);
+        Path src = Files.createDirectories(project.resolve("src/com/example"));
+        Files.writeString(src.resolve("Lib.java"), """
+                package com.example;
+
+                public class Lib {
+                    public static String greet() { return "hi"; }
+                }
+                """);
+
+        JkBuild parsed = JkBuildParser.parse(project.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(project, parsed);
+        Session nested = Session.defaults().withCacheDir(cache);
+        run(nested, () -> {
+            Pipeline lock = LockPipelines.lockPipeline(
+                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            assertThat(lock.run().errors()).isEmpty();
+
+            PipelineResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+                    .build()
+                    .run();
+            assertThat(first.errors()).isEmpty();
+            assertThat(Files.isRegularFile(layout.mainJar())).isTrue();
+
+            // jk clean.
+            deleteTree(project.resolve("target"));
+
+            // The wiped module must forecast dirty (restore), not fully cached + skipped.
+            BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
+            Cas cas = JkStores.cas(cache);
+            ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
+            List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
+            assertThat(plan).hasSize(1);
+            assertThat(plan.get(0).dirty())
+                    .as("wiped no-test module must schedule so the build restores target/")
+                    .isTrue();
+            // When everything else is cache-clean the schedule reason is the restore gate.
+            if (plan.get(0).steps().stream()
+                    .filter(s -> !s.name().equals("restore-outputs"))
+                    .allMatch(BuildPlan.Step::cached)) {
+                assertThat(plan.get(0).steps())
+                        .extracting(BuildPlan.Step::name)
+                        .contains("restore-outputs");
+            }
+
+            // The scheduled build restores the outputs from cache.
+            PipelineResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, false))
+                    .build()
+                    .run();
+            assertThat(second.errors()).isEmpty();
+            assertThat(Files.isRegularFile(layout.mainJar()))
+                    .as("clean → build must repopulate target/ for a fully-cached module")
+                    .isTrue();
+            try (var walk = Files.walk(layout.classesDir())) {
+                assertThat(walk.anyMatch(Files::isRegularFile)).isTrue();
+            }
+        });
+    }
+
+    @Test
+    void skip_tests_module_with_tests_restores_wiped_outputs(@TempDir Path tmp) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("cleanapp"));
+        Path cache = Path.of(System.getProperty("user.dir"), "build", "clean-restore-cache");
+        Files.writeString(project.resolve("jk.toml"), """
+                [project]
+                name    = "cleanapp"
+                group   = "com.example"
+                version = "1.0.0"
+                jdk     = 21
+                java    = 21
+                layout  = "simple"
+
+                [test-dependencies]
+                junit-jupiter           = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=6.1.1" }
+                junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "=6.1.1" }
+
+                """ + REPOS);
+        Path src = Files.createDirectories(project.resolve("src/com/example"));
+        Files.writeString(src.resolve("App.java"), """
+                package com.example;
+
+                public class App {
+                    public static int one() { return 1; }
+                }
+                """);
+        Path test = Files.createDirectories(project.resolve("test/src/com/example"));
+        Files.writeString(test.resolve("AppTest.java"), """
+                package com.example;
+
+                import static org.junit.jupiter.api.Assertions.assertEquals;
+
+                import org.junit.jupiter.api.Test;
+
+                class AppTest {
+                    @Test
+                    void one() {
+                        assertEquals(1, App.one());
+                    }
+                }
+                """);
+
+        JkBuild parsed = JkBuildParser.parse(project.resolve("jk.toml"));
+        BuildLayout layout = BuildLayout.of(project, parsed);
+        Session nested = Session.defaults().withCacheDir(cache);
+        run(nested, () -> {
+            Pipeline lock = LockPipelines.lockPipeline(
+                    project, parsed, cache, null, List.of(), true, false, ResolveObserver.NOOP, null);
+            assertThat(lock.run().errors()).isEmpty();
+
+            PipelineResult first = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+                    .build()
+                    .run();
+            assertThat(first.errors()).isEmpty();
+            assertThat(Files.isRegularFile(layout.mainJar())).isTrue();
+
+            deleteTree(project.resolve("target"));
+
+            // Under --skip-tests the TestStamp escape hatch (its key fingerprints the missing
+            // classes dir) is gone, so only the restore gate schedules the module.
+            BuildGraph.Result graph = BuildGraph.resolve(project, parsed);
+            Cas cas = JkStores.cas(cache);
+            ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
+            List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, true);
+            assertThat(plan).hasSize(1);
+            assertThat(plan.get(0).dirty()).isTrue();
+
+            PipelineResult second = BuildPipelines.coreBuilder(inputs(project, cache, nested, true))
+                    .build()
+                    .run();
+            assertThat(second.errors()).isEmpty();
+            assertThat(Files.isRegularFile(layout.mainJar())).isTrue();
+        });
+    }
+
+    /** {@link SessionContext#runWhere} with checked exceptions allowed in the body. */
+    private static void run(Session session, ThrowingBody body) {
+        SessionContext.runWhere(session, () -> {
+            try {
+                body.run();
+            } catch (RuntimeException | Error e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @FunctionalInterface
+    private interface ThrowingBody {
+        void run() throws Exception;
+    }
+
+    private static BuildPipelines.Inputs inputs(Path project, Path cache, Session session, boolean skipTests) {
+        return new BuildPipelines.Inputs(
+                project,
+                cache,
+                project.resolve("jk.toml"),
+                project.resolve("jk-lock.toml"),
+                project,
+                1,
+                0,
+                null,
+                null,
+                skipTests,
+                false,
+                false,
+                false,
+                java.util.Set.of(),
+                session);
+    }
+
+    private static void deleteTree(Path root) throws Exception {
+        if (!Files.exists(root)) return;
+        try (var walk = Files.walk(root)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (Exception ignored) {
+                }
+            });
+        }
+    }
+}

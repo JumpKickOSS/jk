@@ -17,18 +17,18 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * First-party Giter8 short-name catalog (JK-1183/1188).
+ * First-party Giter8 short-name catalog/1188).
  *
  * <p>Resolution order for a short name (e.g. {@code quarkus}, {@code java-cli}):
  *
  * <ol>
- *   <li>{@code $JK_TEMPLATES/&lt;name&gt;.g8} when the env var is set
- *   <li>{@code ~/.jk/templates/&lt;name&gt;.g8}
- *   <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
- *   <li>Classpath resource tree {@code giter8/&lt;name&gt;/} bundled in the CLI jar
+ * <li>{@code $JK_TEMPLATES/&lt;name&gt;.g8} when the env var is set
+ * <li>{@code ~/.jk/templates/&lt;name&gt;.g8}
+ * <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
+ * <li>Classpath resource tree {@code giter8/&lt;name&gt;/} bundled in the CLI jar
  * </ol>
  *
- * <p>Git/HTTPS remotes remain JK-1203.
+ * <p>Git/HTTPS remotes remain.
  */
 public final class Giter8Catalog {
 

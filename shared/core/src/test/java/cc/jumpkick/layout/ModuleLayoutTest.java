@@ -16,7 +16,8 @@ class ModuleLayoutTest {
         writeToml(tmp, "simple");
         Files.createDirectories(tmp.resolve("resources"));
         assertThat(ModuleLayout.mainResourcesDir(tmp, true)).isEqualTo(tmp.resolve("resources"));
-        assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative)).contains("resources");
+        assertThat(ModuleLayout.roots(tmp).stream().map(ModuleLayout.Root::relative))
+                .contains("resources");
     }
 
     @Test
@@ -37,14 +38,17 @@ class ModuleLayoutTest {
         assertThat(dirs).anyMatch(p -> p.endsWith("integration") || p.toString().contains("integration"));
         assertThat(dirs).anyMatch(p -> p.endsWith("resources"));
         assertThat(dirs).anyMatch(p -> p.endsWith("test") || p.toString().contains("test/src"));
-        assertThat(dirs).anyMatch(p -> p.toString().contains("integration") && p.toString().contains("resources"));
+        assertThat(dirs)
+                .anyMatch(p ->
+                        p.toString().contains("integration") && p.toString().contains("resources"));
     }
 
     @Test
     void traditional_main_resources_under_src_main(@TempDir Path tmp) throws Exception {
         writeToml(tmp, "traditional");
         Files.createDirectories(tmp.resolve("src/main/resources"));
-        assertThat(ModuleLayout.mainResourcesDir(tmp, false).endsWith("src/main/resources")).isTrue();
+        assertThat(ModuleLayout.mainResourcesDir(tmp, false).endsWith("src/main/resources"))
+                .isTrue();
     }
 
     @Test
@@ -64,9 +68,7 @@ class ModuleLayoutTest {
     }
 
     private static void writeToml(Path dir, String layout) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "app"
@@ -74,7 +76,6 @@ class ModuleLayoutTest {
                 jdk = 21
                 java = 21
                 layout = "%s"
-                """
-                        .formatted(layout));
+                """.formatted(layout));
     }
 }

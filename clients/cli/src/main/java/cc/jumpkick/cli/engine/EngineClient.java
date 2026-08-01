@@ -43,7 +43,7 @@ public final class EngineClient {
 
     /**
      * After force-stop / hard-kill, wait this long for the OS process to exit before escalating
-     * (ticket-1043). Keeps the next client from racing a half-dead generation.
+     * . Keeps the next client from racing a half-dead generation.
      */
     private static final Duration STOP_DEATH_WAIT = Duration.ofMillis(1_500);
 
@@ -79,7 +79,7 @@ public final class EngineClient {
             long aotTrainingPid,
             String httpUrl,
             String httpError,
-            /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null (JK-1095). */
+            /** MCP JSON-RPC endpoint when HTTP is up ({@code httpUrl + "/mcp"}), else null. */
             String mcpUrl) {
 
         /** {@code true} when the engine has an {@code [http]} table — serving or bind-failed. */
@@ -196,7 +196,7 @@ public final class EngineClient {
      * running; {@code false} if reachable but unresponsive (caller may {@link #hardKill} as fallback).
      *
      * <p>When a pid file is present for {@code socket}, waits for that process to actually die
-     * (ticket-1043) so the next {@link #ensureRunning} does not race a half-stopped generation.
+     * so the next {@link #ensureRunning} does not race a half-stopped generation.
      */
     public static boolean forceStop(Path socket) {
         long pid = readPidForSocket(socket);
@@ -233,7 +233,7 @@ public final class EngineClient {
     }
 
     /**
-     * Read the engine pid from the socket's sibling {@code .pid} file (generation-scoped). {@code -1}
+     * Read the engine pid from the socket's sibling {@code.pid} file (generation-scoped). {@code -1}
      * when missing or unreadable.
      */
     static long readPidForSocket(Path socket) {
@@ -292,6 +292,130 @@ public final class EngineClient {
     }
 
     /**
+     * Cancel a live engine job by jid. Returns the {@code cancel-ack} line, or empty if the
+     * engine is unreachable. Idempotent: already-finished jids yield {@code cancelled=false}.
+     */
+    public static Optional<String> cancel(EnginePaths.Paths paths, long jid) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        return cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequest(jid), jid);
+    }
+
+    /**
+     * Cancel every live job under {@code dir}. Used by bare {@code jk cancel} and Ctrl-C.
+     */
+    public static Optional<String> cancelForDir(EnginePaths.Paths paths, String dir) throws IOException {
+        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
+        Optional<String> ack = cancelOnce(EnginePaths.activeSocket(paths), EngineProtocol.cancelRequestForDir(dir), -1);
+        if (ack.isPresent()) ActiveJobs.forgetAll();
+        return ack;
+    }
+
+    /**
+     * SIGINT pathsame {@code cancel-request} wire as {@link #cancel}/{@link #cancelForDir},
+     * but <em>never</em> spawns or replaces an engine and never blocks long. Call this from the
+     * Ctrl-C handler before {@code halt}; the hard exit is the backup if this is too late.
+     *
+     * <p>Cancels every tracked jid from this CLI process, then a dir-scoped cancel for {@code cwd}.
+     * All failures are swallowed.
+     */
+    public static void cancelBestEffortForInterrupt(Path cwd) {
+        try {
+            // Overall deadline: each RPC self-limits at SOCKET_TIMEOUT_MILLIS, but N stale jids
+            // against a wedged engine would still serialize to N×2s of dead air.
+            long deadline = System.nanoTime() + 3 * SOCKET_TIMEOUT_MILLIS * 1_000_000L / 2;
+            Path socket = EnginePaths.activeSocket(EnginePaths.current());
+            for (long jid : ActiveJobs.snapshot()) {
+                if (System.nanoTime() >= deadline) break;
+                try {
+                    cancelOnce(socket, EngineProtocol.cancelRequest(jid), jid);
+                } catch (Exception ignored) {
+                    // best-effort — halt follows
+                }
+            }
+            if (cwd != null && System.nanoTime() < deadline) {
+                try {
+                    Optional<String> ack = cancelOnce(socket, EngineProtocol.cancelRequestForDir(cwd.toString()), -1);
+                    if (ack.isPresent()) ActiveJobs.forgetAll();
+                } catch (Exception ignored) {
+                    // best-effort
+                }
+            }
+        } catch (Throwable ignored) {
+            // never throw into the SIGINT handler
+        }
+    }
+
+    /**
+     * One cancel-request RPC on an already-running engine. Does not {@link #ensureRunning}. Used by
+     * the public cancel APIs and the interrupt best-effort path.
+     *
+     * @param forgetJid when ≥ 0, removed from {@link ActiveJobs} on a positive ack
+     */
+    private static Optional<String> cancelOnce(Path socket, String requestLine, long forgetJid) throws IOException {
+        try (SocketChannel ch = connect(socket)) {
+            BufferedWriter writer =
+                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(Channels.newInputStream(ch), StandardCharsets.UTF_8));
+            writer.write(requestLine);
+            writer.write('\n');
+            writer.flush();
+            // Watchdog: SIGINT must not hang waiting for a wedged engine.
+            Thread watchdog = new Thread(
+                    () -> {
+                        try {
+                            Thread.sleep(SOCKET_TIMEOUT_MILLIS);
+                            ch.close();
+                        } catch (InterruptedException | IOException ignored) {
+                            // done
+                        }
+                    },
+                    "jk-cancel-watchdog");
+            watchdog.setDaemon(true);
+            watchdog.start();
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (EngineProtocol.CANCEL_ACK.equals(EngineProtocol.typeOf(line))) {
+                        if (forgetJid >= 0) ActiveJobs.forget(forgetJid);
+                        return Optional.of(line);
+                    }
+                }
+            } finally {
+                watchdog.interrupt();
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Process-local set of jids this CLI session has started (from {@code job-start} wire events).
+     * Ctrl-C cancels these as a best-effort supplement to dir-based cancel.
+     */
+    public static final class ActiveJobs {
+        private static final java.util.concurrent.ConcurrentHashMap.KeySetView<Long, Boolean> LIVE =
+                java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+        private ActiveJobs() {}
+
+        public static void note(long jid) {
+            if (jid > 0) LIVE.add(jid);
+        }
+
+        public static void forget(long jid) {
+            LIVE.remove(jid);
+        }
+
+        public static void forgetAll() {
+            LIVE.clear();
+        }
+
+        public static java.util.Set<Long> snapshot() {
+            return java.util.Set.copyOf(LIVE);
+        }
+    }
+
+    /**
      * Running aggregate rows ({@code metrics-entry} flat JSONL) for {@code dir}'s project tiers
      * plus the global tiers; {@code null} dir asks for every row. Spawns the engine if needed.
      */
@@ -300,13 +424,14 @@ public final class EngineClient {
     }
 
     /**
-     * JK-1180: run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
+     * run host hardware calibration on the engine. {@code engineColdStartMs} ≤0 omits the
      * client-measured cold-spawn component. Returns the {@code calibrate-ack} JSONL line, or empty
      * on protocol failure.
      */
     public static Optional<String> calibrate(EnginePaths.Paths paths, boolean force, long engineColdStartMs)
             throws IOException {
-        return calibrate(paths, force, engineColdStartMs, false);
+        // Network on by default (match Calibration.ensure); callers pass false under --offline.
+        return calibrate(paths, force, engineColdStartMs, true);
     }
 
     public static Optional<String> calibrate(
@@ -353,9 +478,9 @@ public final class EngineClient {
 
     /**
      * The one entry point real commands use: a live, version-matched engine is guaranteed to be
-     * reachable at {@code paths.socket()} when this returns normally. Spawns lazily if none is
+     * reachable at {@code paths.socket} when this returns normally. Spawns lazily if none is
      * running; kills and replaces a stale (version-mismatched) engine transparently. Throws with a
-     * message pointing at the engine's log file if it still can't be reached after a fresh spawn —
+     * message pointing at the engine's log file if it still can't be reached after a fresh spawn
      * per {@code docs/architecture.md}, the engine is load-bearing and this is not silently swallowed.
      */
     public static Handshake ensureRunning(EnginePaths.Paths paths, String clientVersion) throws IOException {
@@ -681,7 +806,7 @@ public final class EngineClient {
             boolean offline,
             boolean force,
             boolean verbose,
-            /** Optional {@code enforced}|{@code floor} platform override (JK-1206); null = project default. */
+            /** Optional {@code enforced}|{@code floor} platform override; null = project default. */
             String platform) {
         /** Back-compat without platform override. */
         public UpdateRequest(
@@ -725,8 +850,8 @@ public final class EngineClient {
 
         /**
          * @param totalSeen cumulative packages at this sample ({@code ≥ 0}), or {@code -1} when the
-         *     event is a single unbatched package (legacy). Defaults to {@link #onPackage(String,
-         *     String, String)}.
+         * event is a single unbatched package (legacy). Defaults to {@link #onPackage(String,
+         * String, String)}.
          */
         default void onPackage(String dir, String name, String version, int totalSeen) {
             onPackage(dir, name, version);
@@ -1376,7 +1501,7 @@ public final class EngineClient {
     /**
      * Run a cache maintenance op against the engine, which executes it as an idle-boundary job: the
      * mutation waits until no pipeline is in flight (and blocks new ones while it runs), holding the
-     * cross-process {@code .prune.lock} throughout. {@code onWait} fires when the engine reports the
+     * cross-process {@code.prune.lock} throughout. {@code onWait} fires when the engine reports the
      * job is queued — {@code pipelines} in-flight builds ({@code external=true}: another process's
      * prune) — so the command can explain the pause before the progress UI starts. {@code
      * summaryOut} (a single-slot holder) is populated from the terminal pipeline-finish <em>before</em>
@@ -1448,7 +1573,7 @@ public final class EngineClient {
             // a kill: spawn this client's engine; its startup atomically repoints the endpoint and
             // drains the displaced engine — in-flight jobs finish untouched.
         } else if (reach instanceof Reachability.Silent silent) {
-            // Accepts connections but never replies (ticket-1043). Displace so startWithSelfHeal
+            // Accepts connections but never replies. Displace so startWithSelfHeal
             // can bind — do not wait for the 60m stream idle on the next build.
             long pid = silent.pidHint() > 0 ? silent.pidHint() : readPidForSocket(socket);
             logReason(
@@ -1579,7 +1704,7 @@ public final class EngineClient {
 
     /**
      * The resolved engine to spawn: which artifact, the host JDK (JAR only), whether that JDK is a
-     * HotSpot/C2 JVM (AOT is only stable there), the AOT cache path, and whether a {@code .noaot}
+     * HotSpot/C2 JVM (AOT is only stable there), the AOT cache path, and whether a {@code.noaot}
      * marker already says AOT can't apply for this key.
      */
     record EngineTarget(EngineArtifact engine, Path javaHome, boolean hotspot, Path aotCache, boolean noAotMarker) {}
@@ -1615,8 +1740,8 @@ public final class EngineClient {
     }
 
     /**
-     * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code .noaot} marker uses
-     * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled()} is
+     * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code.noaot} marker uses
+     * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled} is
      * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache.
      */
     static AotMode chooseAotMode(EngineTarget t) {
@@ -1737,10 +1862,10 @@ public final class EngineClient {
 
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
-     * main()} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
+     * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
      * ~/.jk/versions/<v>/lib/jk-engine.jar}), launched as {@code <managed-jdk>/bin/java … -cp <path>
      * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
-     * no client-binary FALLBACK (ticket-1020): the slim client never hosts the engine.
+     * no client-binary FALLBACK: the slim client never hosts the engine.
      */
     record EngineArtifact(Kind kind, String path, String how) {
         enum Kind {
@@ -1779,7 +1904,7 @@ public final class EngineClient {
      * JDK identity (version + vendor). A mismatched cache is silently ignored by {@code
      * AOTMode=auto} and never retrained, so folding the JDK into the key means a jar upgrade, a JDK
      * build bump (Temurin 25.0.3→25.0.4), or a vendor swap all yield a fresh key that trains cleanly.
-     * Stale {@code .aot}/{@code .noaot} files from previous keys are deleted best-effort here.
+     * Stale {@code.aot}/{@code.noaot} files from previous keys are deleted best-effort here.
      */
     static Path aotCachePath(EnginePaths.Paths paths, Path engineJar, EngineJdk jdk) {
         return aotCachePath(paths, engineJar, jdk, cc.jumpkick.cli.Jk.VERSION);
@@ -1868,8 +1993,7 @@ public final class EngineClient {
         // in the engine role) — without that it stays in THIS client's process group, and a
         // Ctrl-C/SIGTERM aimed at the client (or its whole group) would take down the engine and
         // every other build it is hosting.
-        //
-        // Sizing the engine's heap (docs/architecture.md "Memory target") happens on the spawn line —
+        // Sizing the engine's heap (docs/architecture.md "Memory target") happens on the spawn line
         // the spawner is the only place that can, since a process can't shrink its own -Xmx, and
         // the -Xms pre-sizing matters for a long-lived process (no growth churn). How the numbers
         // ride along differs per artifact form below; user config max-heap-mb stays authoritative
@@ -1927,7 +2051,7 @@ public final class EngineClient {
                 command.add("cc.jumpkick.engine.EngineMain");
             }
             case EXE -> {
-                // A dedicated engine executable (JK_ENGINE_EXE): its main() IS the engine loop, no
+                // A dedicated engine executable (JK_ENGINE_EXE): its main IS the engine loop, no
                 // flag. The -Xm* args land as argv; EngineMain ignores argv, so a wrapper that
                 // doesn't consume them degrades to an unsized engine, never a dead one.
                 command.add(engine.path());
@@ -1938,7 +2062,7 @@ public final class EngineClient {
             }
         }
         ProcessBuilder pb = new ProcessBuilder(command);
-        // JK-1204: forward resolve budgets into the engine process. PubGrubSolver reads these from
+        // forward resolve budgets into the engine process. PubGrubSolver reads these from
         // its own env; client-only exports were previously ignored for resident engines.
         forwardResolveEnv(pb.environment());
         // Anchor the detached daemon's working directory to its own state dir (created just above),
@@ -1969,7 +2093,7 @@ public final class EngineClient {
      * Hand the spawned engine the environment it cannot otherwise see.
      *
      * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
-     * is invisible to it. That is why {@code JK_STORE_DIR} did nothing before JK-1289: the engine
+     * is invisible to it. That is why {@code JK_STORE_DIR} did nothing beforethe engine
      * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
      * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
      * engine and reaches it.
@@ -2061,7 +2185,7 @@ public final class EngineClient {
             if (h.isPresent()) return StartResult.up(h.get());
             if (spawned != null && !spawned.isAlive()) {
                 // The child died (setsid keeps the pid, so liveness is authoritative). One last
-                // handshake: a concurrent spawn may have won the election and be serving already —
+                // handshake: a concurrent spawn may have won the election and be serving already
                 // our child exiting is then the healthy loser, not a failure.
                 return handshake(EnginePaths.activeSocket(paths), clientVersion)
                         .map(StartResult::up)
@@ -2140,7 +2264,7 @@ public final class EngineClient {
      */
     /**
      * The client-side protocol reader: line-capped, and idle-timed so a dead engine surfaces as
-     * an error instead of a forever-blocked {@code readLine()}. Default 60 minutes between
+     * an error instead of a forever-blocked {@code readLine}. Default 60 minutes between
      * events. Tune with {@code JK_STREAM_IDLE_MS} (milliseconds, preferred) or {@code
      * JK_STREAM_IDLE_MINUTES} (0 disables).
      */
@@ -2188,7 +2312,7 @@ public final class EngineClient {
 
     /**
      * Send one line, read one reply line, over an already-connected channel. {@link SocketChannel}
-     * (a Unix-domain channel doesn't support the legacy {@code .socket()}/{@code setSoTimeout}
+     * (a Unix-domain channel doesn't support the legacy {@code.socket}/{@code setSoTimeout}
      * adapter) has no built-in read timeout, so a watchdog thread closes the channel if the engine
      * doesn't reply in time — an interruptible-channel read blocked on a closed channel throws
      * promptly, which this turns into a clear timeout error rather than hanging the CLI forever.
@@ -2206,7 +2330,7 @@ public final class EngineClient {
                         Thread.sleep(SOCKET_TIMEOUT_MILLIS);
                         ch.close();
                     } catch (InterruptedException ignored) {
-                        // exchange() finished in time — nothing to do
+                        // exchange finished in time — nothing to do
                     } catch (IOException ignored) {
                         // already closing
                     }

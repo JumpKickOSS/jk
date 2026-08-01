@@ -24,15 +24,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 /**
- * Host micro-benchmarks for {@link Calibration} (JK-1180 follow-ups).
+ * Host micro-benchmarks for {@link Calibration} follow-ups).
  *
- * <p>Core suite is offline. Optional:
+ * <p>Core suite is always offline (JVM fork, javac, disk, hash, synthetic worker). When {@code
+ * allowNetwork} (default for {@code ensure} / {@code jk engine calibrate}; false under global {@code
+ * --offline}):
  *
  * <ul>
- *   <li><b>JUnit Platform</b> — when Jupiter jars are in the local cache (or {@code allowNetwork}
- *       fetches them), compile + run one real {@code @Test} via the Platform Launcher API.
- *   <li><b>Resolve</b> — when {@code allowNetwork}, time an HTTP GET of a tiny known Maven Central
- *       artifact (local I/O/CPU already covered; this fills network RTT + TLS).
+ * <li><b>JUnit Platform</b> — when Jupiter jars are in the local cache (or network fetches them),
+ * compile + run one real {@code @Test} via the Platform Launcher API.
+ * <li><b>Resolve</b> — time an HTTP GET of a tiny known Maven Central artifact.
  * </ul>
  *
  * Samples aggregate <b>pessimistically</b> (max of warm samples after cold-cache discard).
@@ -42,6 +43,9 @@ final class HardwareProbe {
     static final int WARM_SAMPLES = 3;
     static final int JAVAC_SOURCES = 12;
     static final int WORKER_METHODS = 8;
+    /** Trivial empty {@code @Test} methods in the real JUnit Platform probe (startup vs method slope). */
+    static final int PLATFORM_METHODS = 8;
+
     static final int DISK_BYTES = 4 * 1024 * 1024;
     static final int HASH_BYTES = 8 * 1024 * 1024;
 
@@ -73,6 +77,7 @@ final class HardwareProbe {
             long junitForkMs,
             long junitRunMs,
             long junitPlatformMs,
+            int junitPlatformMethods,
             long resolveMs,
             boolean junitPlatformUsed,
             boolean resolveUsed,
@@ -94,7 +99,7 @@ final class HardwareProbe {
 
             long forkMs = maxWarm(sample(javaExe, "-version"));
             long javacMs = measureJavac(javacExe);
-            // Validity gate BEFORE the expensive probes (JK-1225): a broken javac used to pay
+            // Validity gate BEFORE the expensive probesa broken javac used to pay
             // disk I/O + hash CPU + the full worker-JVM suite just to discard the result.
             if (forkMs <= 0 || javacMs <= 0) return null;
             long diskMs = measureDiskIo();
@@ -106,6 +111,7 @@ final class HardwareProbe {
 
             JunitPlatformTimes junit = measureJunitPlatform(javaExe, javacExe, o);
             long junitPlatformMs = junit != null ? junit.wallMs : 0;
+            int junitPlatformMethods = junit != null ? junit.methodCount : 0;
             boolean junitUsed = junit != null;
 
             // Prefer real JUnit Platform wall for the test slot when available.
@@ -141,6 +147,7 @@ final class HardwareProbe {
                     synthFork,
                     synthRun,
                     junitPlatformMs,
+                    junitPlatformMethods,
                     resolveMs,
                     junitUsed,
                     resolveUsed,
@@ -224,17 +231,13 @@ final class HardwareProbe {
             cmd.add(out.toString());
             for (int i = 0; i < JAVAC_SOURCES; i++) {
                 Path src = dir.resolve("Probe" + i + ".java");
-                Files.writeString(
-                        src,
-                        """
+                Files.writeString(src, """
                         package probe;
                         final class Probe%d {
                           static int f(int x) { return x * %d + %d; }
                           static String s() { return "probe-%d"; }
                         }
-                        """
-                                .formatted(i, i + 1, i * 3, i),
-                        StandardCharsets.UTF_8);
+                        """.formatted(i, i + 1, i * 3, i), StandardCharsets.UTF_8);
                 cmd.add(src.toString());
             }
             List<Long> samples = new ArrayList<>();
@@ -251,18 +254,17 @@ final class HardwareProbe {
 
     private record WorkerTimes(long forkMs, long runMs) {}
 
-    private static WorkerTimes measureWorkerJvm(Path javaExe, Path javacExe)
-            throws IOException, InterruptedException {
+    private static WorkerTimes measureWorkerJvm(Path javaExe, Path javacExe) throws IOException, InterruptedException {
         Path dir = Files.createTempDirectory("jk-calib-worker");
         try {
             Path out = Files.createDirectory(dir.resolve("out"));
             Path empty = dir.resolve("EmptyMain.java");
             Files.writeString(
-                    empty, "public class EmptyMain { public static void main(String[] a) {} }\n", StandardCharsets.UTF_8);
+                    empty,
+                    "public class EmptyMain { public static void main(String[] a) {} }\n",
+                    StandardCharsets.UTF_8);
             Path work = dir.resolve("WorkMain.java");
-            Files.writeString(
-                    work,
-                    """
+            Files.writeString(work, """
                     public class WorkMain {
                       public static void main(String[] a) {
                         int n = %d;
@@ -273,9 +275,7 @@ final class HardwareProbe {
                         if (acc == 42) System.out.print("");
                       }
                     }
-                    """
-                            .formatted(WORKER_METHODS),
-                    StandardCharsets.UTF_8);
+                    """.formatted(WORKER_METHODS), StandardCharsets.UTF_8);
             if (timeProcess(new ProcessBuilder(
                             javacExe.toString(), "-d", out.toString(), empty.toString(), work.toString()))
                     < 0) return null;
@@ -294,11 +294,12 @@ final class HardwareProbe {
         }
     }
 
-    private record JunitPlatformTimes(long wallMs) {}
+    private record JunitPlatformTimes(long wallMs, int methodCount) {}
 
     /**
-     * Real JUnit Platform: one {@code @Test} method via LauncherFactory. Requires Jupiter jars
-     * locally or {@code allowNetwork} to pull them from Central.
+     * Real JUnit Platform: {@link #PLATFORM_METHODS} trivial {@code @Test} methods via
+     * LauncherFactory so cold ETA can separate suite startup from per-method cost. Requires Jupiter
+     * jars locally or {@code allowNetwork} to pull them from Central.
      */
     private static JunitPlatformTimes measureJunitPlatform(Path javaExe, Path javacExe, Options opts) {
         try {
@@ -310,23 +311,15 @@ final class HardwareProbe {
                 Path out = Files.createDirectory(dir.resolve("out"));
                 Path testSrc = dir.resolve("CalibTest.java");
                 Path mainSrc = dir.resolve("ProbeJunitMain.java");
-                Files.writeString(
-                        testSrc,
-                        """
-                        import org.junit.jupiter.api.Test;
-                        import static org.junit.jupiter.api.Assertions.*;
-                        public class CalibTest {
-                          @Test void known_method() {
-                            int s = 0;
-                            for (int i = 0; i < 10_000; i++) s += i;
-                            assertTrue(s > 0);
-                          }
-                        }
-                        """,
-                        StandardCharsets.UTF_8);
-                Files.writeString(
-                        mainSrc,
-                        """
+                StringBuilder tests = new StringBuilder();
+                tests.append("import org.junit.jupiter.api.Test;\n");
+                tests.append("public class CalibTest {\n");
+                for (int i = 0; i < PLATFORM_METHODS; i++) {
+                    tests.append("  @Test void m").append(i).append("() {}\n");
+                }
+                tests.append("}\n");
+                Files.writeString(testSrc, tests.toString(), StandardCharsets.UTF_8);
+                Files.writeString(mainSrc, """
                         import org.junit.platform.engine.discovery.DiscoverySelectors;
                         import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
                         import org.junit.platform.launcher.core.LauncherFactory;
@@ -340,14 +333,13 @@ final class HardwareProbe {
                             var summary = new SummaryGeneratingListener();
                             launcher.registerTestExecutionListeners(summary);
                             launcher.execute(req);
-                            if (summary.getSummary().getTestsFailedCount() > 0
-                                || summary.getSummary().getTestsSucceededCount() < 1) {
+                            long ok = summary.getSummary().getTestsSucceededCount();
+                            if (summary.getSummary().getTestsFailedCount() > 0 || ok < %d) {
                               System.exit(1);
                             }
                           }
                         }
-                        """,
-                        StandardCharsets.UTF_8);
+                        """.formatted(PLATFORM_METHODS), StandardCharsets.UTF_8);
 
                 String cp = joinCp(jars);
                 List<String> compile = new ArrayList<>();
@@ -367,7 +359,7 @@ final class HardwareProbe {
                     if (ms >= 0) samples.add(ms);
                 }
                 long wall = maxWarm(samples);
-                return wall > 0 ? new JunitPlatformTimes(wall) : null;
+                return wall > 0 ? new JunitPlatformTimes(wall, PLATFORM_METHODS) : null;
             } finally {
                 deleteTree(dir);
             }
@@ -438,9 +430,14 @@ final class HardwareProbe {
                         Path jar = verDir.resolve(artifact + "-" + verDir.getFileName() + ".jar");
                         if (Files.isRegularFile(jar)) {
                             // Prefer highest path name lexicographically (rough newest for dotted versions).
-                            if (best == null || jar.getParent().getFileName().toString()
-                                    .compareTo(best.getParent().getFileName().toString())
-                                    > 0) {
+                            if (best == null
+                                    || jar.getParent()
+                                                    .getFileName()
+                                                    .toString()
+                                                    .compareTo(best.getParent()
+                                                            .getFileName()
+                                                            .toString())
+                                            > 0) {
                                 best = jar;
                             }
                         }
@@ -458,8 +455,8 @@ final class HardwareProbe {
         try {
             byte[] body = httpGet(CENTRAL_BASE + relativeMavenPath);
             if (body == null || body.length == 0) return null;
-            // This lands in the SHARED repos mirror that later resolution trusts by presence —
-            // never persist unverified bytes (JK-1225). No .sha1, no cache entry.
+            // This lands in the SHARED repos mirror that later resolution trusts by presence
+            // never persist unverified bytes. No.sha1, no cache entry.
             byte[] sha1 = httpGet(CENTRAL_BASE + relativeMavenPath + ".sha1");
             if (sha1 == null || sha1.length == 0) return null;
             String expected = new String(sha1, java.nio.charset.StandardCharsets.US_ASCII)

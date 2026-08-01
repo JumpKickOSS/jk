@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.util.List;
 
 /**
- * {@code jk export gradle} — translate {@code jk.toml} (+ {@code jk.lock}) into a runnable Gradle
+ * {@code jk export gradle} — translate {@code jk.toml} (+ {@code jk-lock.toml}) into a runnable Gradle
  * Kotlin-DSL build ({@code settings.gradle.kts} + {@code build.gradle.kts} per project). Locked
  * versions reproduce what jk builds; {@code project.jdk} maps to a Gradle toolchain + the foojay
  * resolver.

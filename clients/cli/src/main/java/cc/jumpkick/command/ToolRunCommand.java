@@ -25,7 +25,7 @@ import java.util.List;
 /**
  * {@code jk run [<target>] [<args>…]} — universal runner, mounted as top-level {@code run} and
  * {@code jk tool run} ({@code jkx} is the argv[0] alias). No target runs the current project; first
- * positional is always the target ({@code jk run . <args>} to pass project args). Resolve/fetch is
+ * positional is always the target ({@code jk run. <args>} to pass project args). Resolve/fetch is
  * engine-hosted; exec stays client-side with inherited stdio.
  */
 public final class ToolRunCommand implements CliCommand {
@@ -96,6 +96,99 @@ public final class ToolRunCommand implements CliCommand {
     // java-options ride the normal coordinate flow (extra deps + exec JVM args).
     List<String> aliasDeps = List.of();
     List<String> aliasJavaOptions = List.of();
+
+    /**
+     * If {@code name} matches a workspace module (full relative path or trailing segment), return
+     * that module directory; otherwise {@code null}. Non-workspace dirs and names that look like
+     * files/coords/URLs are ignored.
+     */
+    // Package-visible for tests (leaf ambiguity + local-path precedence,.
+    static Path resolveWorkspaceModule(Path cwd, String name) {
+        if (name == null || name.isBlank() || ".".equals(name) || name.contains(":") || name.contains("@")) {
+            return null;
+        }
+        // Obvious non-module targets.
+        String lower = name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".java")
+                || lower.endsWith(".kt")
+                || lower.endsWith(".kts")
+                || lower.endsWith(".jar")
+                || lower.startsWith("http://")
+                || lower.startsWith("https://")
+                || lower.startsWith("git+")) {
+            return null;
+        }
+        try {
+            Path start = cwd.toAbsolutePath().normalize();
+            Path wsRoot = null;
+            if (Files.isRegularFile(start.resolve("jk.toml"))) {
+                var b = cc.jumpkick.config.JkBuildParser.parse(start.resolve("jk.toml"));
+                if (b.isWorkspaceRoot()) wsRoot = start;
+            }
+            if (wsRoot == null) {
+                wsRoot = cc.jumpkick.config.WorkspaceLocator.findRoot(start).orElse(null);
+            }
+            if (wsRoot == null) {
+                // Cwd is not in a workspace — still allow path-as-module if it has jk.toml
+                Path direct = start.resolve(name).normalize();
+                if (Files.isRegularFile(direct.resolve("jk.toml"))) return direct;
+                return null;
+            }
+            var rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            if (!rootBuild.isWorkspaceRoot()) return null;
+            String want = name.replace('\\', '/');
+            while (want.startsWith("./")) want = want.substring(2);
+            if (want.endsWith("/")) want = want.substring(0, want.length() - 1);
+            // A target naming an existing local path keeps its file/dir meaning: only an EXACT
+            // declared-path match may claim it — a leaf shortcut must not shadow `./web`.
+            boolean localExists = Files.exists(start.resolve(want));
+            List<Path> suffixHits = new ArrayList<>();
+            for (String mod : rootBuild.workspace().modules()) {
+                String m = mod.replace('\\', '/');
+                Path dir = wsRoot.resolve(mod).normalize();
+                if (!Files.isRegularFile(dir.resolve("jk.toml"))) continue;
+                if (m.equals(want)) return dir; // exact declared path — always unambiguous
+                // Trailing-segment shortcut: `jk run cli` → clients/cli.
+                if (m.endsWith("/" + want)) suffixHits.add(dir);
+            }
+            if (!suffixHits.isEmpty() && !localExists) {
+                if (suffixHits.size() > 1) {
+                    // Two modules share the leaf: picking whichever is declared first silently
+                    // runs the wrong one — name the candidates instead.
+                    String candidates = suffixHits.stream()
+                            .map(d -> wsRoot(d, start))
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    throw new AmbiguousModuleTarget("`" + want + "` matches several workspace modules (" + candidates
+                            + ") — use the full module path");
+                }
+                return suffixHits.get(0);
+            }
+            // Unlisted dirs under the workspace stay on the standalone/file classifiers.
+        } catch (AmbiguousModuleTarget e) {
+            throw e;
+        } catch (Exception ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    /** Render a module dir relative to its workspace for an error message. */
+    private static String wsRoot(Path moduleDir, Path start) {
+        try {
+            return cc.jumpkick.config.WorkspaceLocator.findRoot(start)
+                    .map(r -> r.relativize(moduleDir).toString())
+                    .orElse(moduleDir.toString());
+        } catch (Exception e) {
+            return moduleDir.toString();
+        }
+    }
+
+    /** {@code jk run <leaf>} matched more than one workspace module. */
+    static final class AmbiguousModuleTarget extends RuntimeException {
+        AmbiguousModuleTarget(String message) {
+            super(message);
+        }
+    }
 
     /**
      * Directory target: jk project builds (tests skipped) and execs; JBang-style {@code main.java};
@@ -260,6 +353,20 @@ public final class ToolRunCommand implements CliCommand {
         // --release / --variant parameterize project targets (current dir or a directory target):
         // the selection rides the ambient session into the delegate's build + deploy command.
         VariantSelection.install(in, global.workingDir());
+
+        // Workspace module selector: `jk run clients/cli` or `jk run cli` from the workspace root
+        // (or any cwd) resolves against workspace.modules before other target classifiers.
+        Path moduleHit;
+        try {
+            moduleHit = resolveWorkspaceModule(global.workingDir(), target);
+        } catch (AmbiguousModuleTarget e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", e.getMessage()));
+            return cc.jumpkick.model.command.Exit.USAGE;
+        }
+        if (moduleHit != null) {
+            return runDirectory(moduleHit, toolArgs);
+        }
+
         // A local file target (by extension) is compiled/run by ScriptRunner; the
         // extension is the signal even when the file is missing, so the user gets
         // a proper "not found" error from the matching mode handler. Routing goes

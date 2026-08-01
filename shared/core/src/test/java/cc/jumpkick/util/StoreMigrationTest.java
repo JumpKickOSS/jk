@@ -30,6 +30,8 @@ class StoreMigrationTest {
         seed(legacy, "metadata/deadbeef", "<metadata/>");
         seed(legacy, "git/somerepo/HEAD", "ref");
         seed(legacy, "jdks.json", "{}");
+        seed(legacy, "libs.global.toml", "libraries = {}");
+        seed(legacy, ".libs.global.toml.etag", "\"etag-1\"");
         // Build-derived state, which is what JK_CACHE_DIR is for isolating.
         seed(legacy, "actions/key-1", "outputs");
         seed(legacy, "runs/run-1.jsonl", "events");
@@ -37,11 +39,13 @@ class StoreMigrationTest {
 
         int moved = StoreMigration.migrate(store, legacy);
 
-        assertThat(moved).isEqualTo(5);
+        assertThat(moved).isEqualTo(7);
         assertThat(store.resolve("sha256/ab/cd/blob")).exists();
         assertThat(store.resolve("repos/central/org/foo/foo-1.0.jar")).exists();
         assertThat(store.resolve("metadata/deadbeef")).exists();
         assertThat(store.resolve("jdks.json")).exists();
+        assertThat(store.resolve("libs.global.toml")).exists();
+        assertThat(store.resolve(".libs.global.toml.etag")).exists();
         assertThat(legacy.resolve("sha256")).doesNotExist();
         // The action cache and run logs are not fetched from anywhere and must not move.
         assertThat(legacy.resolve("actions/key-1")).exists();
@@ -159,7 +163,16 @@ class StoreMigrationTest {
         // A guard on the list itself: adding build-derived state here would make JK_CACHE_DIR stop
         // isolating it, which is the whole point of the split.
         assertThat(StoreMigration.STORE_ENTRIES)
-                .containsExactly("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json", "tools")
+                .containsExactly(
+                        "sha256",
+                        "repos",
+                        "metadata",
+                        "git",
+                        "git-artifacts",
+                        "jdks.json",
+                        "tools",
+                        "libs.global.toml",
+                        ".libs.global.toml.etag")
                 .doesNotContain("actions", "runs", "hash-memo", "kotlin-cp-snapshots", "timings.toml");
     }
 }

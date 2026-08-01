@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1061: SPI anchor steps must be dependency-gated in the build DAG. */
+/**SPI anchor steps must be dependency-gated in the build DAG. */
 class BuildLogicAnchorGatingTest {
 
     @Test
@@ -93,7 +93,7 @@ class BuildLogicAnchorGatingTest {
                 project,
                 cache,
                 project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
+                project.resolve("jk-lock.toml"),
                 project,
                 1,
                 0,

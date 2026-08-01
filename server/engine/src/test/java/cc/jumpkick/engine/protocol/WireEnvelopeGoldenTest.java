@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
 
 /**
- * Guard the frozen wire field names (JK-1001 / JK-1063). Renames here break every client build.
+ * Guard the frozen wire field names. Renames here break every client build.
  */
 class WireEnvelopeGoldenTest {
 

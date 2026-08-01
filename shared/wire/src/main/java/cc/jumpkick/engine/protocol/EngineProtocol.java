@@ -17,7 +17,7 @@ public final class EngineProtocol {
     public static final String TYPE_FIELD = "type";
 
     /**
-     * Client → server first line on loopback TCP only: shared secret from {@code paths.token()}.
+     * Client → server first line on loopback TCP only: shared secret from {@code paths.token}.
      * Never used on the Unix-domain socket (filesystem perms gate access).
      */
     public static final String AUTH = "auth";
@@ -41,7 +41,7 @@ public final class EngineProtocol {
     public static final String STATUS_ACK = "status-ack";
 
     /**
-     * Client → server: run (or re-run) host hardware calibration (JK-1180). Optional {@code force},
+     * Client → server: run (or re-run) host hardware calibration. Optional {@code force},
      * {@code engineColdStartMs} (client-measured cold engine spawn).
      */
     public static final String CALIBRATE_REQUEST = "calibrate-request";
@@ -62,7 +62,22 @@ public final class EngineProtocol {
     public static final String BUILD_CANCEL = "build-cancel";
 
     /**
-     * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst —
+     * Client → server (any connection): cancel a live job by {@code jid} (or {@code requestId}
+     * alias). Terminal: {@link #CANCEL_ACK}.
+     */
+    public static final String CANCEL_REQUEST = "cancel-request";
+
+    /** Server → client: outcome of {@link #CANCEL_REQUEST}. */
+    public static final String CANCEL_ACK = "cancel-ack";
+
+    /**
+     * Server → client: job admitted; carries {@code jid} (and {@code requestId} alias), kind, dir,
+     * optional {@code buildNumber}. Clients track this for Ctrl-C / {@code jk cancel}.
+     */
+    public static final String JOB_START = "job-start";
+
+    /**
+     * Server → client: workspace preflight progress ({@code onPreflight}) before the plan burst
      * lock freshen, graph, prepare-module, etc.
      */
     public static final String PREFLIGHT = "preflight";
@@ -80,7 +95,7 @@ public final class EngineProtocol {
     public static final String ETA = "eta";
 
     /**
-     * Server → client: workspace-level aggregate progress (JK-1120). Filterable whole-job % —
+     * Server → client: workspace-level aggregate progress. Filterable whole-job %
      * preflight reservation + module weight slices. Fine-grained {@link #PROGRESS} remains
      * module-local.
      */
@@ -136,7 +151,7 @@ public final class EngineProtocol {
 
     /**
      * Server → client transport/control error envelope ({@code code} + {@code message}). Not the
-     * result-payload {@code errors[]} on finish messages (those are command output).
+     * result-payload {@code errors} on finish messages (those are command output).
      */
     public static final String ERROR = "error";
 
@@ -150,14 +165,14 @@ public final class EngineProtocol {
     /** Engine cancelled a job that exceeded {@code JK_ENGINE_JOB_DEADLINE_MS}. */
     public static final String ERR_DEADLINE = "deadline";
     /**
-     * A build/test with the same job fingerprint is already running (JK-1249). Message is human text
+     * A build/test with the same job fingerprint is already running. Message is human text
      * like {@code Build #27 is already running}; optional {@code buildNumber}/{@code requestId}
      * fields ride alongside when known.
      */
     public static final String ERR_ALREADY_RUNNING = "already-running";
 
     /**
-     * Server → client keep-alive while a long job runs (ticket-1051). Resets client stream idle
+     * Server → client keep-alive while a long job runs. Resets client stream idle
      * ({@code JK_STREAM_IDLE_MS}); clients ignore the payload. Interval: {@code JK_ENGINE_HEARTBEAT_MS}
      * (default 30s; {@code 0} disables).
      */
@@ -265,13 +280,13 @@ public final class EngineProtocol {
     /** Server → client, terminal: the explain burst is complete. */
     public static final String EXPLAIN_DONE = "explain-done";
 
-    /** Client → server: write {@code jk.lock} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
+    /** Client → server: write {@code jk-lock.toml} ({@code jk lock}). Terminal: {@link #LOCK_FINISH}. */
     public static final String LOCK_REQUEST = "lock-request";
 
-    /** Client → server: re-resolve {@code jk.lock} ({@code jk update}); same events as lock. */
+    /** Client → server: re-resolve {@code jk-lock.toml} ({@code jk update}); same events as lock. */
     public static final String UPDATE_REQUEST = "update-request";
 
-    /** Client → server: align CAS + toolchain with {@code jk.lock} ({@code jk sync}). */
+    /** Client → server: align CAS + toolchain with {@code jk-lock.toml} ({@code jk sync}). */
     public static final String SYNC_REQUEST = "sync-request";
 
     /** Server → client, repeated: opens one module's event scope in a lock/update cascade. */
@@ -336,7 +351,7 @@ public final class EngineProtocol {
 
     /**
      * Client → server: cache maintenance ({@code prune}/{@code purge}/{@code gc}) at an idle
-     * boundary under {@code .prune.lock}; may emit {@link #PRUNE_WAIT} first.
+     * boundary under {@code.prune.lock}; may emit {@link #PRUNE_WAIT} first.
      */
     public static final String CACHE_PRUNE_REQUEST = "cache-prune-request";
 
@@ -349,7 +364,7 @@ public final class EngineProtocol {
     /**
      * Server → client, before the plan burst of a {@link #CACHE_PRUNE_REQUEST}: the operation is
      * queued behind in-flight work — {@code pipelines} in-engine pipelines ({@code 0} with {@code
-     * external=true} means another process's prune holds {@code .prune.lock}).
+     * external=true} means another process's prune holds {@code.prune.lock}).
      */
     public static final String PRUNE_WAIT = "prune-wait";
 
@@ -464,11 +479,13 @@ public final class EngineProtocol {
     }
 
     /**
-     * JK-1180: run host hardware calibration. {@code engineColdStartMs} ≤0 means omit.
-     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing.
+     * run host hardware calibration. {@code engineColdStartMs} ≤0 means omit.
+     * {@code allowNetwork} enables resolve HTTP probe + JUnit jar fetch when missing (default
+     * true; false under global {@code --offline}).
      */
     public static String calibrateRequest(boolean force, long engineColdStartMs) {
-        return calibrateRequest(force, engineColdStartMs, false);
+        // Network on by default; pass allowNetwork=false under global --offline.
+        return calibrateRequest(force, engineColdStartMs, true);
     }
 
     public static String calibrateRequest(boolean force, long engineColdStartMs, boolean allowNetwork) {
@@ -485,7 +502,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * JK-1180: calibration result. Component ms fields are 0 when not measured; {@code summary} is
+     * calibration result. Component ms fields are 0 when not measured; {@code summary} is
      * human-readable multi-line text for the CLI.
      */
     public static String calibrateAck(
@@ -545,7 +562,7 @@ public final class EngineProtocol {
      * http fields describe the embedded HTTP server ({@code docs/http.md}): {@code httpUrl} is
      * non-null while it's serving, {@code httpError} when the {@code [http]} table is enabled but
      * the server failed to start; both null means disabled. {@code mcpUrl} is the HTTP base without a
-     * trailing slash plus {@code /mcp} when HTTP is up (JK-1095), else null. (Keys are always
+     * trailing slash plus {@code /mcp} when HTTP is up, else null. (Keys are always
      * emitted — the protocol has ONE null convention: key present, value null.) {@code
      * aotTrainingPid} is the engine's sidecar AOT trainer while one is running, {@code -1}
      * otherwise — the client never talks to that process, it only reports it
@@ -694,6 +711,41 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean freshenLock) {
+        return buildRequest(
+                dir,
+                cache,
+                jdksDir,
+                workers,
+                profile,
+                skipTests,
+                verbose,
+                maxModuleConcurrency,
+                parallelTests,
+                offline,
+                force,
+                freshenLock,
+                false);
+    }
+
+    /**
+     * As above with {@code ephemeralActions} ({@code jk verify} scratch rebuild: tasks must not
+     * persist action-cache records or incremental state). Emitted only when true so older engines
+     * see an unchanged request.
+     */
+    public static String buildRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            int workers,
+            String profile,
+            boolean skipTests,
+            boolean verbose,
+            int maxModuleConcurrency,
+            boolean parallelTests,
+            boolean offline,
+            boolean force,
+            boolean freshenLock,
+            boolean ephemeralActions) {
         // noTimeline rides the session envelope ({@link #withSession}) only when true — never emit
         // a false default here (Jsonl.bool takes the first key match).
         return "{\"type\":\""
@@ -722,6 +774,7 @@ public final class EngineProtocol {
                 + force
                 + ",\"freshenLock\":"
                 + freshenLock
+                + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
                 + "}";
     }
 
@@ -756,12 +809,11 @@ public final class EngineProtocol {
             boolean offline,
             boolean force,
             boolean parallelTests) {
-        return testRequest(
-                dir, cache, jdksDir, workers, profile, verbose, offline, force, parallelTests, null);
+        return testRequest(dir, cache, jdksDir, workers, profile, verbose, offline, force, parallelTests, null);
     }
 
     /**
-     * Start a single-project test run with suite/tag selection (JK-1134–1136). {@code selection}
+     * Start a single-project test run with suite/tag selection1136). {@code selection}
      * may be {@code null} (default suite only).
      */
     public static String testRequest(
@@ -802,8 +854,7 @@ public final class EngineProtocol {
 
     /** Encode suite/tag fields for {@link #TEST_REQUEST} (and siblings that carry the same shape). */
     public static String testSelectionFields(cc.jumpkick.config.TestSelection selection) {
-        cc.jumpkick.config.TestSelection s =
-                selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
+        cc.jumpkick.config.TestSelection s = selection == null ? cc.jumpkick.config.TestSelection.DEFAULT : selection;
         StringBuilder sb = new StringBuilder();
         sb.append(",\"allSuites\":").append(s.allSuites());
         sb.append(",\"suites\":").append(jsonStringArray(s.suites()));
@@ -910,7 +961,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Resolve + write {@code jk.lock} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
+     * Resolve + write {@code jk-lock.toml} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
      * null}. {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side
      * (the same fields {@link #buildRequest} carries).
      */
@@ -948,7 +999,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Re-resolve fresh and overwrite {@code jk.lock} (see {@link #UPDATE_REQUEST}). {@code gitTarget}
+     * Re-resolve fresh and overwrite {@code jk-lock.toml} (see {@link #UPDATE_REQUEST}). {@code gitTarget}
      * is the {@code --git <name>} argument ({@code null} = every git dep) and is only read when
      * {@code gitOnly} is set.
      */
@@ -969,7 +1020,7 @@ public final class EngineProtocol {
 
     /**
      * As {@link #updateRequest(String, String, List, boolean, String, boolean, String, boolean, boolean, boolean)}
-     * with optional {@code platform} ({@code enforced}|{@code floor}, JK-1206). Null/blank =
+     * with optional {@code platform} ({@code enforced}|{@code floor},. Null/blank =
      * project default.
      */
     public static String updateRequest(
@@ -1012,7 +1063,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Sync the CAS + toolchain with {@code jk.lock} (see {@link #SYNC_REQUEST}). {@code jdksDir}/
+     * Sync the CAS + toolchain with {@code jk-lock.toml} (see {@link #SYNC_REQUEST}). {@code jdksDir}/
      * {@code repoUrl} may be {@code null}. {@code refresh} rides separately from {@code force} for
      * the same reason {@code rerun} does on {@link #buildRequest}: it re-downloads locked artifacts
      * without implying the rest of {@code force}'s cache bypasses.
@@ -1413,13 +1464,12 @@ public final class EngineProtocol {
             boolean serial,
             boolean parallelTests,
             boolean verbose) {
-        return explainRequest(
-                dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
+        return explainRequest(dir, cache, workers, skipTests, profile, jdksDir, serial, parallelTests, verbose, false);
     }
 
     /**
      * As {@link #explainRequest(String, String, int, boolean, String, String, boolean, boolean, boolean)}
-     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild} (JK-1177).
+     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild}.
      */
     public static String explainRequest(
             String dir,
@@ -1700,7 +1750,7 @@ public final class EngineProtocol {
     }
 
     /**
-     * Workspace aggregate progress (JK-1120). {@code progress} is 0–100 (one decimal) from the
+     * Workspace aggregate progress. {@code progress} is 0–100 (one decimal) from the
      * engine tracker; {@code numerator}/{@code denominator} are the same abstract bar units.
      * {@code phase} is {@code preflight}, {@code execute}, or {@code done}.
      */
@@ -1911,8 +1961,20 @@ public final class EngineProtocol {
     }
 
     public static String pipelineFinish(String dir, boolean success) {
-        return "{\"type\":\"" + PIPELINE_FINISH + "\",\"kind\":\"build\",\"dir\":" + Jsonl.quote(dir) + ",\"success\":"
-                + success + "}";
+        return pipelineFinish(dir, success, false);
+    }
+
+    /** Single-pipeline terminal with optional cancel flag. */
+    public static String pipelineFinish(String dir, boolean success, boolean cancelled) {
+        return "{\"type\":\""
+                + PIPELINE_FINISH
+                + "\",\"kind\":\"build\",\"dir\":"
+                + Jsonl.quote(dir)
+                + ",\"success\":"
+                + success
+                + ",\"cancelled\":"
+                + cancelled
+                + "}";
     }
 
     /**
@@ -2009,7 +2071,7 @@ public final class EngineProtocol {
 
     /**
      * One resolved package (or a coalesced sample). {@code totalSeen} ≥ 0 is the cumulative package
-     * count at emit time (human-paced coalescing, JK-1202); {@code -1} means “one package, no total”.
+     * count at emit time (human-paced coalescing,; {@code -1} means “one package, no total”.
      */
     public static String lockPackage(String dir, String name, String version, int totalSeen) {
         StringBuilder sb = new StringBuilder(128);
@@ -2265,8 +2327,8 @@ public final class EngineProtocol {
     }
 
     /**
-     * @param didWork whether a productive step actually ran (false = pure cache check; JK-1296).
-     *     Additive field — older clients ignore it.
+     * @param didWork whether a productive step actually ran (false = pure cache check;.
+     * Additive field — older clients ignore it.
      */
     public static String moduleFinish(
             String dir, String coord, boolean success, int exitCode, long millis, boolean didWork) {
@@ -2288,6 +2350,14 @@ public final class EngineProtocol {
     }
 
     public static String workspaceFinish(boolean success, int exitCode, List<String> errors) {
+        return workspaceFinish(success, exitCode, errors, false);
+    }
+
+    /**
+     * Workspace terminal. {@code cancelled} is additive so clients can settle as
+     * "cancelled" rather than treating a user kill as a crash/disconnect.
+     */
+    public static String workspaceFinish(boolean success, int exitCode, List<String> errors, boolean cancelled) {
         return "{\"type\":\""
                 + WORKSPACE_FINISH
                 + "\",\"success\":"
@@ -2296,7 +2366,20 @@ public final class EngineProtocol {
                 + exitCode
                 + ",\"errors\":"
                 + quoteArray(errors)
+                + ",\"cancelled\":"
+                + cancelled
                 + "}";
+    }
+
+    /**
+     * Append {@code "cancelled":true|false} to a pipeline-finish (or similar) JSON object. Additive
+     * field for without churning every {@code pipelineFinish*} overload.
+     */
+    public static String withCancelled(String jsonLine, boolean cancelled) {
+        if (jsonLine == null || jsonLine.isEmpty()) return jsonLine;
+        int end = jsonLine.lastIndexOf('}');
+        if (end <= 0) return jsonLine;
+        return jsonLine.substring(0, end) + ",\"cancelled\":" + cancelled + "}";
     }
 
     /** The one error envelope; see {@link #ERROR} for the code vocabulary. */
@@ -2320,7 +2403,49 @@ public final class EngineProtocol {
                 + buildNumber
                 + ",\"requestId\":"
                 + holderRequestId
+                + ",\"jid\":"
+                + holderRequestId
                 + "}";
+    }
+
+    /** {@link #JOB_START}: job admitted — {@code jid} is the public cancel handle. */
+    public static String jobStart(long jid, String kind, String dir, long buildNumber) {
+        StringBuilder b = new StringBuilder("{\"type\":\"")
+                .append(JOB_START)
+                .append("\",\"jid\":")
+                .append(jid)
+                .append(",\"requestId\":")
+                .append(jid)
+                .append(",\"kind\":")
+                .append(Jsonl.quote(kind == null ? "" : kind))
+                .append(",\"dir\":")
+                .append(Jsonl.quote(dir == null ? "" : dir));
+        if (buildNumber > 0) b.append(",\"buildNumber\":").append(buildNumber);
+        return b.append('}').toString();
+    }
+
+    /** {@link #CANCEL_REQUEST}: cancel by {@code jid} (optional {@code dir} to cancel all for a project). */
+    public static String cancelRequest(long jid) {
+        return "{\"type\":\"" + CANCEL_REQUEST + "\",\"jid\":" + jid + ",\"requestId\":" + jid + "}";
+    }
+
+    /** {@link #CANCEL_REQUEST} with no jid: cancel every live job under {@code dir}. */
+    public static String cancelRequestForDir(String dir) {
+        return "{\"type\":\"" + CANCEL_REQUEST + "\",\"dir\":" + Jsonl.quote(dir == null ? "" : dir) + "}";
+    }
+
+    /** {@link #CANCEL_ACK}. */
+    public static String cancelAck(long jid, boolean cancelled, String note) {
+        StringBuilder b = new StringBuilder("{\"type\":\"")
+                .append(CANCEL_ACK)
+                .append("\",\"jid\":")
+                .append(jid)
+                .append(",\"requestId\":")
+                .append(jid)
+                .append(",\"cancelled\":")
+                .append(cancelled);
+        if (note != null && !note.isBlank()) b.append(",\"note\":").append(Jsonl.quote(note));
+        return b.append('}').toString();
     }
 
     /** {@code error} with {@link #ERR_REQUEST_FAILED} — the former build-error catch-all. */
@@ -2328,7 +2453,7 @@ public final class EngineProtocol {
         return error(ERR_REQUEST_FAILED, message);
     }
 
-    /** Keep-alive line during long jobs (ticket-1051). */
+    /** Keep-alive line during long jobs. */
     public static String heartbeat(long elapsedMillis) {
         return "{\"type\":\"" + HEARTBEAT + "\",\"elapsedMillis\":" + elapsedMillis + "}";
     }

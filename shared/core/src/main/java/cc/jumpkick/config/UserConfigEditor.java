@@ -9,7 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Minimal merge editor for {@code ~/.jk/config.toml} (JK-1080). Preserves unknown keys; only
+ * Minimal merge editor for {@code ~/.jk/config.toml}. Preserves unknown keys; only
  * touches {@code [global].nerdfont}.
  */
 public final class UserConfigEditor {

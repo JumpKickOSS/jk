@@ -28,12 +28,12 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
- * Quarkus build plugin (JK-1159/1160/1202): {@code quarkus-augment} step + {@code quarkus-fast-jar}
+ * Quarkus build plugin/1160/1202): {@code quarkus-augment} step + {@code quarkus-fast-jar}
  * packager.
  *
  * <p>Augmentation forks {@link QuarkusAugmentMain} on a BOM-aligned bootstrap tool classpath
  * (one step-dep {@code quarkus-bootstrap}: core + maven-resolver under {@code quarkus-bootstrap-bom}).
- * The packager consumes the augment output ({@code quarkus-run.jar} fast-jar layout or uber runner); augment failure fails the build (JK-1209).
+ * The packager consumes the augment output ({@code quarkus-run.jar} fast-jar layout or uber runner); augment failure fails the build.
  */
 public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExtension {
 
@@ -105,7 +105,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         exec.label("quarkus augment (" + baseName + ")");
 
         String quarkusVersion = exec.config().string("version");
-        String packageType = normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
+        String packageType =
+                normalizePackageType(exec.config().stringOpt("package").orElse("fast-jar"));
         StepExec.ToolRun.Result run = exec.java()
                 .classpath(cp)
                 .arg("-Djava.util.logging.manager=org.jboss.logmanager.LogManager")
@@ -124,9 +125,8 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
                 .run();
         if (run.exit() != 0) {
             // Fail loudly: a cached "success" with no quarkus-app would silently ship a
-            // non-production artifact on every later build (JK-1209).
-            throw new IOException(
-                    "quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
+            // non-production artifact on every later build.
+            throw new IOException("quarkus-augment failed (exit " + run.exit() + "):\n" + tail(run.output()));
         }
     }
 
@@ -138,8 +138,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         if ("uber-jar".equals(t) || "uberjar".equals(t) || "uber".equals(t) || "fat-jar".equals(t)) {
             return "uber-jar";
         }
-        throw new IOException(
-                "[quarkus] package must be \"fast-jar\" or \"uber-jar\" (got \"" + raw + "\")");
+        throw new IOException("[quarkus] package must be \"fast-jar\" or \"uber-jar\" (got \"" + raw + "\")");
     }
 
     private static List<Path> jarsIn(Path dir) throws IOException {
@@ -191,7 +190,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
         copyTree(layoutRoot, appDir);
         // The run jar's Class-Path needs these siblings — declare them so a packaging
-        // cache hit after `jk clean` restores a runnable layout, not a lone jar (JK-1210).
+        // cache hit after `jk clean` restores a runnable layout, not a lone jar.
         io.produced(appDir);
     }
 
@@ -228,9 +227,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         }
     }
 
-
-
-
     /**
      * Parse Maven-layout path {@code …/repos/…/group/path/artifact/version/artifact-version.jar}
      * → {@code g:a:v}. Workspace jars (no {@code /repos/}) return {@code null} so the caller can
@@ -260,7 +256,11 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
 
     private static Path pluginJar() throws IOException {
         try {
-            URI uri = QuarkusPlugin.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+            URI uri = QuarkusPlugin.class
+                    .getProtectionDomain()
+                    .getCodeSource()
+                    .getLocation()
+                    .toURI();
             Path p = Path.of(uri);
             if (!Files.isRegularFile(p)) {
                 throw new IOException("plugin code source is not a jar: " + p);
@@ -308,8 +308,6 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
             }
         });
     }
-
-
 
     private static String tail(String output) {
         if (output == null || output.isBlank()) return "";

@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1101/1104: force/rebuild must not pay for a full per-step forecast walk — dirty set is the
+ * /1104: force/rebuild must not pay for a full per-step forecast walk — dirty set is the
  * whole graph.
  */
 class BuildServiceForecastDirtyTest {

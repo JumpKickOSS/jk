@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
-/** JK-1120 — engine aggregate bar model (ported from former CLI AggregateContext tests). */
+/**engine aggregate bar model (ported from former CLI AggregateContext tests). */
 class WorkspaceProgressTrackerTest {
 
     private static final long PF = WorkspaceProgressTracker.PREFLIGHT_UNITS;
@@ -98,24 +98,45 @@ class WorkspaceProgressTrackerTest {
     @Test
     void preflight_advances_reserved_units_before_calibrate() {
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        long provisionalDen = PF + WorkspaceProgressTracker.PROVISIONAL_EXECUTE_UNITS;
         var s = t.preflight("plan", 0, 10);
-        assertThat(s.denominator()).isEqualTo(PF);
+        // Preflight uses a provisional execute band so the bar is never "almost full" then snap-back.
+        assertThat(s.denominator()).isEqualTo(provisionalDen);
         assertThat(s.numerator()).isGreaterThan(0);
         assertThat(s.phase()).isEqualTo("preflight");
+        assertThat(s.percent()).isLessThan(20.0);
         s = t.preflight("plan", 10, 10);
-        // Plan-complete stays below the full band: a 100% snapshot before calibrate would pin
-        // peak-holding riders at 100 for the whole execute phase (JK-1219).
+        // Plan-complete stays below the full band and well under half the provisional bar.
         assertThat(s.numerator()).isEqualTo(95);
-        assertThat(s.percent()).isLessThan(100.0);
+        assertThat(s.percent()).isLessThan(15.0);
+        double preflightPeak = s.percent();
         s = t.calibrate(200, 3);
-        assertThat(bar(t)).isEqualTo(PF + " of " + (PF + 200));
+        // Calibrate must not flash the bar backward (peak-hold across den growth).
+        assertThat(s.percent()).isGreaterThanOrEqualTo(preflightPeak);
+        assertThat(s.denominator()).isEqualTo(PF + 200);
         assertThat(s.phase()).isEqualTo("execute");
         assertThat(s.modulesTotal()).isEqualTo(3);
     }
 
     @Test
+    void preflight_never_fills_the_bar_before_calibrate() {
+        // First-build flash regression: lock/graph/plan against den=PREFLIGHT alone looked ~100%.
+        WorkspaceProgressTracker t = new WorkspaceProgressTracker();
+        for (String stage : new String[] {"checking", "lock", "graph", "plan"}) {
+            var s = t.preflight(stage, 1, 1);
+            assertThat(s.percent())
+                    .as("stage %s must stay a small early slice", stage)
+                    .isLessThan(20.0);
+        }
+        var before = t.snapshot();
+        t.calibrate(5_000, 12);
+        assertThat(t.snapshot().percent()).isGreaterThanOrEqualTo(before.percent());
+        assertThat(t.snapshot().percent()).isLessThan(25.0);
+    }
+
+    @Test
     void calibrate_zero_weight_floors_to_module_count_tokens() {
-        // JK-1153/1154: empty execute weight with N modules still calibrates so module
+        // /1154: empty execute weight with N modules still calibrates so module
         // boundaries cannot fall into uncalibrated "reset" math.
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(0, 3);
@@ -126,14 +147,15 @@ class WorkspaceProgressTrackerTest {
         var mid = t.snapshot();
         assertThat(mid.numerator()).isGreaterThan(0);
         t.moduleProgress("b", 1, 0, 1);
-        assertThat(t.snapshot().numerator()).isGreaterThanOrEqualTo(mid.numerator() - WorkspaceProgressTracker.PREFLIGHT_UNITS);
+        assertThat(t.snapshot().numerator())
+                .isGreaterThanOrEqualTo(mid.numerator() - WorkspaceProgressTracker.PREFLIGHT_UNITS);
         // Absolute: after A complete, base holds A's slice even when B starts at 0 frac.
         assertThat(bar(t)).isEqualTo((PF + 1) + " of " + (PF + 3));
     }
 
     @Test
     void module_a_to_b_never_zeros_numerator_after_progress() {
-        // JK-1154 regression: monorepo module swap must keep completed work on the bar.
+        // regression: monorepo module swap must keep completed work on the bar.
         WorkspaceProgressTracker t = new WorkspaceProgressTracker();
         t.calibrate(200, 2);
         t.moduleProgress("a", 100, 100, 100);

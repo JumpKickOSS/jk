@@ -58,12 +58,13 @@ class JdkResolverTest {
     }
 
     /**
-     * Realistic install dir: {@code bin/java} + a {@code release} file so probe-based discovery picks
-     * it up.
+     * Realistic install dir: {@code bin/java} + {@code bin/javac} + a {@code release} file so
+     * probe-based discovery picks it up.
      */
     private static void makeJdkInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }

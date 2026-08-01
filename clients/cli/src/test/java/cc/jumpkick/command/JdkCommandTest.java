@@ -62,6 +62,7 @@ class JdkCommandTest {
                 "jdk-21.0.5+11",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=21.0.5\n"));
         served.put("/archives/jdk.tar.gz", archive);
 
@@ -94,6 +95,7 @@ class JdkCommandTest {
                 "graalvm-jdk-25",
                 Map.of(
                         "bin/java", "#!/fake/java",
+                        "bin/javac", "#!/fake/java",
                         "release", "JAVA_VERSION=25\nIMPLEMENTOR=\"Oracle Corporation\"\nGRAALVM_VERSION=\"25\"\n"));
         served.put("/archives/graal.tar.gz", archive);
         served.put(
@@ -123,14 +125,26 @@ class JdkCommandTest {
         makeJdkInstall(jdks.resolve("temurin-21.0.5"));
         makeJdkInstall(jdks.resolve("temurin-23"));
 
-        String stdout = captureStdout(() -> run("jdk", "list", "--jdks-dir", jdks.toString()));
-        // Default is offline / installed-only. Grouped by major desc: 23 first, then 21.0.5.
+        // Point at a dead feed + empty cache so list stays offline (no outdated!
+        // from the developer's real JetBrains cache / network).
+        Path cache = tempDir.resolve("empty-feed.json");
+        String stdout = captureStdout(() -> run(
+                "jdk",
+                "list",
+                "--jdks-dir",
+                jdks.toString(),
+                "--feed-url",
+                "http://127.0.0.1:1/unreachable",
+                "--cache-file",
+                cache.toString()));
+        // Installed-only. Grouped by major desc: 23 first, then 21.0.5.
         int idx23 = stdout.indexOf("temurin-23");
         int idx21 = stdout.indexOf("temurin-21.0.5");
         assertThat(idx23).isGreaterThanOrEqualTo(0);
         assertThat(idx21).isGreaterThan(idx23);
         // Both are installed (no system default), so status column shows "installed".
         assertThat(stdout).contains("installed");
+        assertThat(stdout).doesNotContain("available");
     }
 
     @Test
@@ -164,13 +178,12 @@ class JdkCommandTest {
     }
 
     @Test
-    void list_without_all_skips_catalog_entirely(@TempDir Path tempDir) throws Exception {
+    void list_without_all_skips_available_rows_but_marks_outdated(@TempDir Path tempDir) throws Exception {
         Path jdks = tempDir.resolve("jdks");
         makeJdkInstall(jdks.resolve("temurin-21.0.5"));
 
-        // Even if a catalog is reachable, `jk jdk list` (no --all) must
-        // not show available-only rows from it — the network shouldn't
-        // even be hit. Serve a feed anyway to prove the command ignores it.
+        // Default list consults the feed for outdated! markers but never prints
+        // available-only download rows (those require --all).
         byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
         served.put(
                 "/feed/jdks.json",
@@ -187,6 +200,59 @@ class JdkCommandTest {
 
         assertThat(stdout).contains("temurin-21.0.5");
         assertThat(stdout).contains("installed");
+        assertThat(stdout).doesNotContain("temurin-99");
+    }
+
+    @Test
+    void list_all_shows_newer_patch_as_available_when_older_installed(@TempDir Path tempDir) throws Exception {
+        Path jdks = tempDir.resolve("jdks");
+        makeJdkInstall(jdks.resolve("temurin-21.0.4"));
+
+        byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
+        // Feed has 21.0.5 (newer) plus sentinel 99 for a never-installed major.
+        served.put(
+                "/feed/jdks.json",
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String stdout = captureStdout(() -> run(
+                "jdk",
+                "list",
+                "--all",
+                "--jdks-dir",
+                jdks.toString(),
+                "--feed-url",
+                base.resolve("/feed/jdks.json").toString()));
+
+        assertThat(stdout).contains("temurin-21.0.4");
+        assertThat(stdout).contains("temurin-21.0.5"); // newer patch as available
+        assertThat(stdout).contains("outdated!");
+        assertThat(stdout).contains("available");
+        assertThat(stdout).contains("temurin-99"); // still-uninstalled major
+    }
+
+    @Test
+    void list_without_all_shows_outdated_not_available_for_newer_patch(@TempDir Path tempDir) throws Exception {
+        Path jdks = tempDir.resolve("jdks");
+        makeJdkInstall(jdks.resolve("temurin-21.0.4"));
+
+        byte[] dummyArchive = "stub".getBytes(StandardCharsets.UTF_8);
+        served.put(
+                "/feed/jdks.json",
+                multiEntryFeedJson(dummyArchive.length, Hashing.sha256Hex(dummyArchive), base.toString())
+                        .getBytes(StandardCharsets.UTF_8));
+
+        String stdout = captureStdout(() -> run(
+                "jdk",
+                "list",
+                "--jdks-dir",
+                jdks.toString(),
+                "--feed-url",
+                base.resolve("/feed/jdks.json").toString()));
+
+        assertThat(stdout).contains("temurin-21.0.4");
+        assertThat(stdout).contains("outdated!");
+        assertThat(stdout).doesNotContain("temurin-21.0.5");
         assertThat(stdout).doesNotContain("temurin-99");
     }
 
@@ -455,6 +521,7 @@ class JdkCommandTest {
     private static void makeJdkInstall(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         // ProbeSupport.discoverJdk demands a release file — every modern
         // JDK ships one since 7u72, so the fixture follows suit.
         var m = Pattern.compile("(\\d+(?:\\.\\d+){0,2})")

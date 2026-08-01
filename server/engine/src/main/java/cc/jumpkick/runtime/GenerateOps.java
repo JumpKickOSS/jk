@@ -74,16 +74,16 @@ public final class GenerateOps {
     }
 
     /**
-     * JK-1207: freeze lockfile versions for a scope into a Maven BOM POM.
+     * freeze lockfile versions for a scope into a Maven BOM POM.
      *
      * <p>Params: {@code scope}=main|test|all (default main); {@code out}=optional relative path
      * (default {@code target/<name>-bom.pom}).
      */
     private static GeneratedFiles exportBom(Path dir, Map<String, String> params) throws IOException {
         Loaded loaded = load(dir);
-        Path lockPath = dir.resolve("jk.lock");
+        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockPath)) {
-            return GeneratedFiles.error("no jk.lock — run `jk lock` before `jk export bom`");
+            return GeneratedFiles.error("no jk-lock.toml — run `jk lock` before `jk export bom`");
         }
         Lockfile lock = LockfileReader.read(lockPath);
         String scopeName = params.getOrDefault("scope", "main");
@@ -149,7 +149,7 @@ public final class GenerateOps {
     }
 
     private static Map<String, String> lockedVersions(Path dir) {
-        Path lock = dir.resolve("jk.lock");
+        Path lock = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lock)) return Map.of();
         try {
             Lockfile lf = LockfileReader.read(lock);

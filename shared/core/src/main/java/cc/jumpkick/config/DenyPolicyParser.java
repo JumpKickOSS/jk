@@ -37,18 +37,17 @@ public final class DenyPolicyParser {
         List<String> sources = optionalStringList(deny.getTable("sources"), "deny");
         List<String> deniedLicenses = optionalStringList(deny.getTable("licenses"), "deny");
         List<String> allowedLicenses = optionalStringList(deny.getTable("licenses"), "allow");
-        // JK-1062: licenses/yanked were parsed but never enforced — reject so configs cannot lie.
+        // licenses/yanked were parsed but never enforced — reject so configs cannot lie.
         if (!deniedLicenses.isEmpty() || !allowedLicenses.isEmpty()) {
-            throw new JkBuildParseException(
-                    "[deny.licenses] is not enforced yet (JK-1062). Remove the block until lock/audit "
-                            + "enforcement ships — silent no-op is not allowed.");
+            throw new JkBuildParseException("[deny.licenses] is not enforced yet. Remove the block until lock/audit "
+                    + "enforcement ships — silent no-op is not allowed.");
         }
         String yankedRaw = deny.getString("yanked");
         DenyPolicy.YankedPolicy yanked;
         if (yankedRaw != null && !yankedRaw.isBlank()) {
             yanked = parseYanked(yankedRaw);
             if (yanked != DenyPolicy.YankedPolicy.ALLOW) {
-                throw new JkBuildParseException("deny.yanked is not enforced yet (JK-1062). Omit deny.yanked, or set "
+                throw new JkBuildParseException("deny.yanked is not enforced yet. Omit deny.yanked, or set "
                         + "`yanked = \"allow\"` until enforcement ships — silent no-op is not allowed.");
             }
         } else {

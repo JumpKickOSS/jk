@@ -41,7 +41,7 @@ public final class PipelineConsole {
     /**
      * Pick listeners + run the pipeline. Ctrl-C is handled by the app-level {@link
      * cc.jumpkick.cli.tui.GlobalCancel} handler. Returns the pipeline's {@link PipelineResult}; caller
-     * decides what exit code to surface based on {@code result.success()}.
+     * decides what exit code to surface based on {@code result.success}.
      */
     public static PipelineResult run(Pipeline pipeline, Mode mode, Path cacheRoot) {
         // Always log every run for post-hoc debug. Best-effort: a
@@ -140,7 +140,7 @@ public final class PipelineConsole {
      * As {@link #chooseConsoleListener(List, Mode, ConsoleSpec, String)}, for one member of a
      * multi-module workspace run: listeners never stamp their pipeline-local fraction into {@link
      * LiveProgress} — the aggregate {@code progress} rider belongs to the engine's {@code
-     * workspace-progress} snapshots alone (JK-1120/1121).
+     * workspace-progress} snapshots alone/1121).
      */
     public static PipelineListener chooseWorkspaceMemberListener(
             List<Step> steps, Mode mode, ConsoleSpec spec, String module) {
@@ -204,7 +204,7 @@ public final class PipelineConsole {
     }
 
     private static PipelineListener chooseConsoleListener(Pipeline pipeline, Mode mode) {
-        // Interactive pipelines (wizards) must NOT render a progress bar —
+        // Interactive pipelines (wizards) must NOT render a progress bar
         // the wizard owns the terminal. Same for JSON output (events
         // already go to stdout via JsonlListener) and explicit quiet.
         if (pipeline.interactive()) return new SilentListener(System.out, System.err, true);
@@ -292,7 +292,7 @@ public final class PipelineConsole {
 
     /**
      * True when stdout is an interactive terminal (not a pipe, dumb, or CI) — the output axis that
-     * gates live progress / animation. See {@link cc.jumpkick.cli.tui.Interactivity#stdoutIsTty()};
+     * gates live progress / animation. See {@link cc.jumpkick.cli.tui.Interactivity#stdoutIsTty};
      * deliberately stdout-only so {@code jk build | less} draws plain text.
      */
     public static boolean isInteractiveTerminal() {

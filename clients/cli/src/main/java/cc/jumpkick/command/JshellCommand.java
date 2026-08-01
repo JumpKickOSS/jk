@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 
 /**
  * {@code jk jshell} (alias {@code jk repl}) — open JDK jshell on the module's compile classpath
- * (JK-1036). Ensures a build unless {@code --no-build}.
+ * . Ensures a build unless {@code --no-build}.
  */
 public final class JshellCommand implements CliCommand {
 
@@ -108,7 +108,7 @@ public final class JshellCommand implements CliCommand {
         }
 
         if (!proj.isLocked()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", "no jk.lock — run `jk lock` first"));
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", "no jk-lock.toml — run `jk lock` first"));
             return Exit.CONFIG;
         }
 

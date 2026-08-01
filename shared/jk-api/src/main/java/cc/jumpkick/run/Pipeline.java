@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.LongAdder;
  * Named DAG of {@link Step}s for one invocation: readiness-level scheduling, progress, diagnostics,
  * and a terminal {@link PipelineResult}. Cancellation is cooperative at the step level: a flag is
  * set, futures are cancelled after a short grace ({@link #COOPERATIVE_CANCEL_GRACE}). OS-level
- * worker JVMs are shut down by the engine ({@code JobWorkers}, JK-1096): soft then force within
+ * worker JVMs are shut down by the engine ({@code JobWorkers},soft then force within
  * ~500 ms — never hang.
  */
 public final class Pipeline {
@@ -125,8 +125,8 @@ public final class Pipeline {
     }
 
     /**
-     * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions —
-     * step failures are folded into {@link PipelineResult#success()}.
+     * Run the pipeline. Blocks until every step reaches a terminal state. Throws no checked exceptions
+     * step failures are folded into {@link PipelineResult#success}.
      */
     public PipelineResult run() {
         Instant pipelineStart = Instant.now();
@@ -203,6 +203,12 @@ public final class Pipeline {
             reports.add(new PipelineResult.StepReport(p.name(), StepStatus.CANCELLED, Duration.ZERO, p.requires()));
         }
 
+        // Session cancel (Ctrl-C / BUILD_CANCEL) may never call requestCancel — fold it in so the
+        // result's userCancelled flag reaches the journal/metrics path.
+        if (SessionCancel.cancelled()) {
+            userRequestedCancel.set(true);
+            cancelled.set(true);
+        }
         boolean success = !cancelled.get()
                 && steps.stream().map(p -> statuses.get(p.name())).allMatch(Pipeline::isOk);
 
@@ -338,7 +344,7 @@ public final class Pipeline {
                 ctx.notifyProgress(gap);
             }
             // A step that reported no real work (outputs up-to-date / served from cache via
-            // ctx.cached()) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
+            // ctx.cached) terminates SKIPPED, not SUCCESS. SKIPPED counts as "ok" everywhere the
             // pipeline decides success (see isOk), so it never fails a build — it only feeds the
             // dashboard's per-project cache-hit ("steps skipped") ratio.
             StepStatus terminal = ctx.wasCached() ? StepStatus.SKIPPED : StepStatus.SUCCESS;
@@ -355,7 +361,11 @@ public final class Pipeline {
             // pile on a duplicate "exception" diagnostic — the step
             // told us exactly what went wrong. We only synthesise a
             // generic diagnostic when nothing else was reported.
-            boolean cancel = cancelled.get();
+            // Pipeline flag (sibling fail / requestCancel) OR session-level Ctrl-C (SessionCancel).
+            // Session cancel alone must still terminal-CANCELLED and set userCancelled on the result,
+            // otherwise force-killed builds journal as failed/success and poison ETA history.
+            boolean cancel = cancelled.get() || SessionCancel.cancelled();
+            if (SessionCancel.cancelled()) userRequestedCancel.set(true);
             boolean stepAlreadyReported =
                     !cancel && errors.stream().anyMatch(d -> step.name().equals(d.step()));
             if (!stepAlreadyReported) {
@@ -374,7 +384,7 @@ public final class Pipeline {
 
     /**
      * Human diagnostic for an unexpected step throwable. Bare messages like {@code closed} (pipe /
-     * stream closed mid-worker) are nearly useless alone — append the exception class (ticket-1053).
+     * stream closed mid-worker) are nearly useless alone — append the exception class.
      */
     static String diagnosticMessage(Throwable t) {
         String msg = t.getMessage();

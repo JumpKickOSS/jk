@@ -70,7 +70,7 @@ public final class OutdatedPipelines {
             Path moduleDir = scope.getKey();
             JkBuild build = scope.getValue();
             String moduleLabel = workspace ? LockPipelines.coordLabel(build, moduleDir) : "";
-            Map<String, String> locked = lockedVersions(moduleDir.resolve("jk.lock"));
+            Map<String, String> locked = lockedVersions(cc.jumpkick.lock.LockPaths.lockFile(moduleDir));
             Cas cas = JkStores.cas(cache);
             RepoGroup repos = RepoGroupBuilder.buildFor(build, repoUrl, cas);
             Set<String> seen = new LinkedHashSet<>();

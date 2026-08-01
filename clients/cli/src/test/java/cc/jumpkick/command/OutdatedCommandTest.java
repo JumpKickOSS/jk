@@ -87,7 +87,7 @@ class OutdatedCommandTest {
 
     @Test
     void exclude_up_to_date_hides_current_but_keeps_behind(@TempDir Path tempDir) throws Exception {
-        // upToDate: only 1.0 exists.  behind: 1.0 pinned but 2.0 exists.
+        // upToDate: only 1.0 exists. behind: 1.0 pinned but 2.0 exists.
         registerMetadata("com.foo", "upToDate", "1.0");
         registerPom("com.foo", "upToDate", "1.0", pom("com.foo", "upToDate", "1.0"));
         registerJar("com.foo", "upToDate", "1.0", "a".getBytes(StandardCharsets.UTF_8));
@@ -194,7 +194,7 @@ class OutdatedCommandTest {
         assertThat(out).contains("Dependency", "Compatible", "Latest");
         assertThat(out).contains("com.foo:leaf");
         assertThat(out).contains("2.0");
-        // ticket-1034: footer points at graph inspection + intentional update
+        // : footer points at graph inspection + intentional update
         assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
     }
 

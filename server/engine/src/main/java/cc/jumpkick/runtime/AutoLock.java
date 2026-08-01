@@ -4,8 +4,6 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
-import cc.jumpkick.config.WorkspaceLoader;
-import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -13,9 +11,7 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.Variants;
 import cc.jumpkick.model.VersionSelector;
-import cc.jumpkick.model.WorkspaceMerge;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
@@ -33,18 +29,18 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * Auto-lock: when {@code jk.toml} is newer than {@code jk.lock}, transparently re-locks with a
+ * Auto-lock: when {@code jk.toml} is newer than {@code jk-lock.toml}, transparently re-locks with a
  * conservative strategy before any command reads the lockfile.
  *
  * <h3>Conservative vs explicit lock</h3>
  *
  * <ul>
- *   <li><b>Auto (conservative)</b> — locked versions are used as soft preferences fed into
- *       PubGrub's candidate ordering. The solver selects the locked version first; only versions
- *       that conflict with a new or changed constraint are bumped. Deps removed from {@code
- *       jk.toml} are dropped from the lock. New deps are resolved normally.
- *   <li><b>Explicit {@code jk lock}</b> — full fresh resolution, no version preferences; always
- *       picks the latest compatible versions.
+ * <li><b>Auto (conservative)</b> — locked versions are used as soft preferences fed into
+ * PubGrub's candidate ordering. The solver selects the locked version first; only versions
+ * that conflict with a new or changed constraint are bumped. Deps removed from {@code
+ * jk.toml} are dropped from the lock. New deps are resolved normally.
+ * <li><b>Explicit {@code jk lock}</b> — full fresh resolution, no version preferences; always
+ * picks the latest compatible versions.
  * </ul>
  */
 public final class AutoLock {
@@ -52,7 +48,7 @@ public final class AutoLock {
     private AutoLock() {}
 
     /**
-     * Returns {@code true} when {@code jk.toml} has a newer modification time than {@code jk.lock}.
+     * Returns {@code true} when {@code jk.toml} has a newer modification time than {@code jk-lock.toml}.
      * Both files must exist; any I/O error returns {@code false} (fail-open: assume up-to-date).
      */
     public static boolean isStale(Path dir, Path lockFile) {
@@ -202,8 +198,8 @@ public final class AutoLock {
      * optionally surface a warning).
      *
      * @param dir project root (contains {@code jk.toml})
-     * @param existing current contents of {@code jk.lock}
-     * @param lockFile path to {@code jk.lock} (will be overwritten)
+     * @param existing current contents of {@code jk-lock.toml}
+     * @param lockFile path to {@code jk-lock.toml} (will be overwritten)
      * @param cache jk CAS directory
      * @param repoUrl optional single-URL override (tests / CI)
      * @param jkVersion version string stamped in the lockfile header
@@ -211,8 +207,8 @@ public final class AutoLock {
      * @param withDefaults whether to include the project's default features
      * @param observer resolver progress callbacks
      * @param warn sink for a soft-failure warning (one line per call); the engine must NOT write to
-     *     {@code System.out}/{@code System.err}, so callers route this to the view layer (e.g. {@code
-     *     ctx::output}). May be {@code null} to discard.
+     * {@code System.out}/{@code System.err}, so callers route this to the view layer (e.g. {@code
+     * ctx::output}). May be {@code null} to discard.
      */
     public static Lockfile maybeReLock(
             Path dir,
@@ -227,16 +223,20 @@ public final class AutoLock {
             Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
         try {
-            JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-            // Apply workspace context if this is a module (resolves workspace: deps)
-            JkBuild effective = applyWorkspaceContext(dir, build);
+            // One lock scope, shared with every other lock entry pointa workspace
+            // member (or root) resolves the merged union at the root — a module-scoped
+            // conservative relock must never overwrite the root jk-lock.toml with one module's
+            // closure.
+            LockPipelines.LockScope scope = LockPipelines.lockScope(dir);
+            JkBuild effective = scope.effective();
+            Path scopeDir = scope.lockDir();
 
             Cas cas = JkStores.cas(cache);
             cc.jumpkick.repo.RepoGroup repos =
-                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
+                    RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(scopeDir));
             LockOrchestrator orchestrator = new LockOrchestrator(repos)
-                    .withProjectDir(dir)
-                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, dir))
+                    .withProjectDir(scopeDir)
+                    .withJvmEnvironment(PluginContributions.jvmEnvironment(effective, scopeDir))
                     .withPlatformPolicy(effective.build().platformPolicy())
                     .withUnmappedPolicy(effective.build().unmappedPolicy());
 
@@ -273,25 +273,10 @@ public final class AutoLock {
             // is a server — route the warning through the caller's sink (the view layer
             // owns the terminal streams) instead of touching System.err.
             if (warn != null) {
-                warn.accept("‼ jk: auto-lock warning — could not update jk.lock: " + e.getMessage());
+                warn.accept("‼ jk: auto-lock warning — could not update jk-lock.toml: " + e.getMessage());
                 warn.accept("    Run `jk lock` to resolve manually.");
             }
             return null;
-        }
-    }
-
-    private static JkBuild applyWorkspaceContext(Path dir, JkBuild build) {
-        if (build.isWorkspaceRoot()) return build;
-        try {
-            var rootOpt = WorkspaceLocator.findRoot(dir);
-            if (rootOpt.isEmpty()) return Variants.unionDependencies(build);
-            Path wsRoot = rootOpt.get();
-            JkBuild wsRootBuild = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
-            if (!wsRootBuild.isWorkspaceRoot()) return Variants.unionDependencies(build);
-            var siblings = WorkspaceLoader.loadModules(wsRoot, wsRootBuild);
-            return WorkspaceMerge.applyToModule(wsRootBuild, build, siblings.values());
-        } catch (Exception e) {
-            return Variants.unionDependencies(build);
         }
     }
 }

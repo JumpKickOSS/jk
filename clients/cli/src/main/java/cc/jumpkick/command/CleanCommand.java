@@ -67,19 +67,7 @@ public final class CleanCommand implements CliCommand {
         long[] stats = {0L, 0L}; // [fileCount, totalBytes]
 
         try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Cleaning...")) {
-            for (Path projectDir : projectDirs) {
-                if (!keepArtifacts) {
-                    deleteRecursively(projectDir.resolve("target"), stats);
-                } else {
-                    // Keep final artifacts (jars, native binaries) in target/; remove
-                    // build intermediates by their known subdirectory names.
-                    Path target = projectDir.resolve("target");
-                    for (String sub :
-                            List.of("classes", "kotlin", "resources", "generated", "tmp", "test-results", "reports")) {
-                        deleteRecursively(target.resolve(sub), stats);
-                    }
-                }
-            }
+            cleanTargets(workspaceRoot, projectDirs, keepArtifacts, stats);
         }
 
         long elapsedMs = System.currentTimeMillis() - startMs;
@@ -149,6 +137,34 @@ public final class CleanCommand implements CliCommand {
         }
     }
 
+    /** Build-intermediate subdirs removed by {@code --keep-artifacts} (final jars stay). */
+    private static final List<String> INTERMEDIATE_SUBDIRS =
+            List.of("classes", "kotlin", "resources", "generated", "tmp", "test-results", "reports");
+
+    /**
+     * Delete each project's output tree (or, with {@code keepArtifacts}, only its intermediates).
+     * Outputs live at the layout-resolved target dir — {@code <workspace>/target/<rel>/} for a
+     * member, not {@code <member>/target/}. The member-local {@code target/} is still
+     * swept for trees built before the layout change.
+     */
+    static void cleanTargets(Path workspaceRoot, List<Path> projectDirs, boolean keepArtifacts, long[] stats)
+            throws IOException {
+        for (Path projectDir : projectDirs) {
+            Path layoutTarget = cc.jumpkick.layout.BuildLayout.moduleTargetDir(workspaceRoot, projectDir);
+            Path legacyTarget = projectDir.resolve("target");
+            boolean distinct = !layoutTarget.equals(legacyTarget);
+            if (!keepArtifacts) {
+                deleteRecursively(layoutTarget, stats);
+                if (distinct) deleteRecursively(legacyTarget, stats);
+            } else {
+                for (String sub : INTERMEDIATE_SUBDIRS) {
+                    deleteRecursively(layoutTarget.resolve(sub), stats);
+                    if (distinct) deleteRecursively(legacyTarget.resolve(sub), stats);
+                }
+            }
+        }
+    }
+
     /**
      * Returns the workspace root plus every declared module directory. Falls back to just {@code
      * [workspaceRoot]} when parsing fails or there are no modules (single-project).
@@ -169,7 +185,7 @@ public final class CleanCommand implements CliCommand {
 
     /**
      * Module entries resolved against the workspace root; entries that escape it (absolute paths,
-     * {@code ..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
+     * {@code..}) are skipped with a warning — a hostile {@code [workspace].modules} entry must
      * never point {@code jk clean} outside the workspace.
      */
     static List<Path> resolveModuleDirs(Path workspaceRoot, List<String> modules, List<String> warnings) {

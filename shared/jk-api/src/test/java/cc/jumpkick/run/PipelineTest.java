@@ -347,6 +347,31 @@ class PipelineTest {
         assertThat(pipeline.snapshot().cancelled()).isTrue();
     }
 
+    @Test
+    void session_cancel_marks_userCancelled_so_truncated_wall_is_not_success() {
+        // Engine Ctrl-C only flips SessionCancel (CancelToken) — it does not call requestCancel.
+        // The result must still report userCancelled so journal/metrics put the wall in cancelled,
+        // not ok (ETA prior).
+        SessionCancel.bind(() -> true);
+        try {
+            var pipeline = Pipeline.builder("session-cancel")
+                    .addStep(Step.builder("worker")
+                            .kind(StepKind.SYNC)
+                            .execute(ctx -> {
+                                if (ctx.cancelled()) throw new RuntimeException("cancelled");
+                            })
+                            .build())
+                    .build();
+            PipelineResult r = pipeline.run();
+            assertThat(r.success()).isFalse();
+            assertThat(r.userCancelled()).isTrue();
+            assertThat(r.cancelled()).isTrue();
+            assertThat(r.steps().getFirst().status()).isEqualTo(StepStatus.CANCELLED);
+        } finally {
+            SessionCancel.bind(null);
+        }
+    }
+
     /** Listener that records every event for assertion. */
     static final class RecordingListener implements PipelineListener {
         final List<Integer> scopeUpdates = new ArrayList<>();

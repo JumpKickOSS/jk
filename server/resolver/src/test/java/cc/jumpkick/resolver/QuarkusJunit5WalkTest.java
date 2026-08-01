@@ -32,7 +32,7 @@ class QuarkusJunit5WalkTest {
                 RepoGroup.of(new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas));
         EffectivePomBuilder b = new EffectivePomBuilder(repos);
         Map<String, String> bom = new LinkedHashMap<>();
-        for (var m : b.build(Coordinate.of("io.quarkus.platform", "quarkus-bom", "3.28.5"))
+        for (var m : b.build(Coordinate.of("io.quarkus.platform", "quarkus-bom", "3.38.0"))
                 .managedDependencies()) {
             if (m.version() != null && !m.version().isBlank()) bom.putIfAbsent(m.module(), m.version());
         }
@@ -40,7 +40,7 @@ class QuarkusJunit5WalkTest {
         Map<String, String> chosen = new HashMap<>();
         ArrayDeque<String> q = new ArrayDeque<>();
         String root = PackageId.ofGa("io.quarkus:quarkus-junit5").key();
-        chosen.put(root, "3.28.5");
+        chosen.put(root, "3.38.0");
         q.add(root);
         Set<String> seen = new HashSet<>();
         int opens = 0;

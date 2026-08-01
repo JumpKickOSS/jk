@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.plugin.manifest;
 
+import cc.jumpkick.config.BuildEnv;
 import cc.jumpkick.config.JkBuildParseException;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
@@ -88,7 +89,7 @@ public final class VariantApply {
         for (PluginDescriptor manifest : PluginTableRegistry.manifestsFor(moduleDir, build.plugins())) {
             PluginConfig config = out.pluginConfig(manifest.id()).orElse(null);
             if (config == null) continue;
-            out = out.withPluginConfig(effective(manifest, config, chosen, clientEnv, secrets));
+            out = out.withPluginConfig(effective(manifest, config, chosen, clientEnv, moduleDir, secrets));
         }
         return new Applied(out, secrets);
     }
@@ -136,6 +137,7 @@ public final class VariantApply {
             PluginConfig config,
             List<Chosen> chosen,
             Map<String, String> clientEnv,
+            Path moduleDir,
             Map<String, String> secrets) {
         Map<String, Object> values = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : config.values().entrySet()) {
@@ -168,7 +170,10 @@ public final class VariantApply {
                 Object value = e.getValue();
                 if (value instanceof String s) {
                     value = resolveEnv(
-                            s, clientEnv, manifest.table() + "." + group.table() + "." + name + "." + e.getKey());
+                            s,
+                            clientEnv,
+                            moduleDir,
+                            manifest.table() + "." + group.table() + "." + name + "." + e.getKey());
                 }
                 PluginDescriptor.SchemaKey schemaKey = subSchema.get(e.getKey());
                 String flatKey = group.table() + "." + e.getKey();
@@ -183,15 +188,19 @@ public final class VariantApply {
     }
 
     /**
-     * {@code env:NAME} indirection: the client-shipped environment wins (it is the user's shell —
-     * the engine's own env belongs to whichever invocation first spawned it), the engine env is
-     * the fallback (in-process and test paths). An unresolvable reference fails loudly — a signing
-     * config must never silently sign with an empty credential.
+     * {@code env:NAME} indirection via {@link BuildEnv} (request env + {@code.env},/1272).
+     * An unresolvable reference fails loudly — a signing config must never silently sign with an
+     * empty credential. Values that came from {@code.env} land on the secrets side channel when
+     * the schema marks them secret, and are redacted/hashed by.
      */
-    private static String resolveEnv(String raw, Map<String, String> clientEnv, String where) {
+    private static String resolveEnv(String raw, Map<String, String> clientEnv, Path moduleDir, String where) {
         if (!raw.startsWith("env:")) return raw;
         String name = raw.substring("env:".length()).trim();
-        String v = clientEnv.get(name);
+        // Prefer the client-shipped map (caller's shell) then BuildEnv (.env + session + process).
+        String v = clientEnv == null ? null : clientEnv.get(name);
+        if (v == null && moduleDir != null) {
+            v = BuildEnv.forModule(moduleDir).apply(name);
+        }
         if (v == null) v = System.getenv(name);
         if (v == null) {
             throw new JkBuildParseException("[" + where + "] references env:" + name + " but " + name + " is not set");

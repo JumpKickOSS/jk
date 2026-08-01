@@ -127,4 +127,21 @@ public final class Ansi {
 
     /** Clear any taskbar progress indicator. */
     public static final String TASKBAR_CLEAR = OSC + "9;4;0" + BEL;
+
+    // --- OSC 0 window title -------------------------------------------------
+
+    /**
+     * Set the terminal window/tab title via OSC&nbsp;0. Terminals that ignore OSC 0 no-op; empty
+     * {@code title} clears the title. Terminated with {@link #ST} ({@code ESC \}) per ECMA-48 /
+     * XTerm OSC, not legacy BEL. Control characters that would break the OSC string are stripped.
+     */
+    public static String windowTitle(String title) {
+        String t = title == null ? "" : title;
+        // OSC text must not contain BEL, ESC, or ST (would terminate / nest sequences).
+        t = t.replace("\007", "").replace("\033", "").replace('\n', ' ').replace('\r', ' ');
+        return OSC + "0;" + t + ST;
+    }
+
+    /** Clear the terminal window title (empty OSC 0 + ST). */
+    public static final String WINDOW_TITLE_CLEAR = OSC + "0;" + ST;
 }

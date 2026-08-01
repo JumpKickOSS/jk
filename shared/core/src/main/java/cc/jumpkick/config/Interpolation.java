@@ -11,14 +11,14 @@ import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;
 
 /**
- * Where {@code ${VAR}} may appear in a {@code jk.toml}, and what happens where it may not (JK-1271).
+ * Where {@code ${VAR}} may appear in a {@code jk.toml}, and what happens where it may not.
  *
  * <h2>The rule</h2>
  *
  * <b>The environment may influence where jk talks to, and what a spawned process sees — never what
  * gets compiled or how.</b>
  *
- * <p>That is not conservatism for its own sake. {@code jk.toml} plus {@code jk.lock} have to fully
+ * <p>That is not conservatism for its own sake. {@code jk.toml} plus {@code jk-lock.toml} have to fully
  * describe the artifact, and the action cache turns a leak into something worse than plain
  * non-determinism: an environment-sourced value inside a cache key means CI and a laptop never share
  * cache, and one that reaches a compiler flag <em>without</em> reaching the key produces silently
@@ -27,10 +27,10 @@ import org.tomlj.TomlTable;
  * <h2>Allowed</h2>
  *
  * <ul>
- *   <li>{@code [repositories.<name>]} credentials — {@code username}, {@code password}, {@code token}
- *   <li>{@code [repositories.<name>]} object-store keys — {@code region}, {@code endpoint},
- *       {@code access-key}, {@code secret-key}, {@code session-token}
- *   <li>{@code [test] env} values — what a forked test JVM sees
+ * <li>{@code [repositories.<name>]} credentials — {@code username}, {@code password}, {@code token}
+ * <li>{@code [repositories.<name>]} object-store keys — {@code region}, {@code endpoint},
+ * {@code access-key}, {@code secret-key}, {@code session-token}
+ * <li>{@code [test] env} values — what a forked test JVM sees
  * </ul>
  *
  * <h2>Not allowed, and why</h2>
@@ -155,8 +155,7 @@ public final class Interpolation {
         return RepositoryToml.interpolate(raw, var -> {
             String value = env.apply(var);
             if (value == null) {
-                throw new JkBuildParseException(
-                        describe + " references unset environment variable ${" + var + "}");
+                throw new JkBuildParseException(describe + " references unset environment variable ${" + var + "}");
             }
             return value;
         });

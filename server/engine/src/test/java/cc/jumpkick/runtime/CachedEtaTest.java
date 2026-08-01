@@ -8,7 +8,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 
 /**
- * JK-1260: a plan with nothing to rebuild must not be priced as a full build.
+ * a plan with nothing to rebuild must not be priced as a full build.
  *
  * <p>Two things conspired. {@link EffortWeights#costOf} charged every step its full estimated
  * weight regardless of the forecast sitting next to it, and {@link BuildService#applyHistoryPrior}
@@ -47,8 +47,7 @@ class CachedEtaTest {
     void a_cached_run_tests_step_drops_out_of_the_serial_test_bound() {
         var pipeline = pipelineOf("compile-kotlin", "run-tests");
 
-        assertThat(EffortWeights.costOf(A, Set.of(), pipeline).testWeight())
-                .isGreaterThan(0);
+        assertThat(EffortWeights.costOf(A, Set.of(), pipeline).testWeight()).isGreaterThan(0);
         assertThat(EffortWeights.costOf(A, Set.of(), pipeline, Set.of("run-tests"))
                         .testWeight())
                 .isZero();

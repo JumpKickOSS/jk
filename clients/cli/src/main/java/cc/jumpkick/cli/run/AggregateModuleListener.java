@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
- * CommandManager}. Aggregate bar math is engine-owned (JK-1120/1121) — this listener does not update
+ * CommandManager}. Aggregate bar math is engine-owned/1121) — this listener does not update
  * {@link LiveProgress} or workspace percent.
  */
 public final class AggregateModuleListener implements PipelineListener {
@@ -156,7 +156,11 @@ public final class AggregateModuleListener implements PipelineListener {
 
     @Override
     public void stepFinish(String step, Phase phase, StepStatus status, Duration duration) {
-        cm.stepDone(module, step, status == StepStatus.SUCCESS, phase == null ? "" : phase.wireName());
+        // SKIPPED = cache hit / up-to-date — still a green terminal (matches Pipeline.isOk).
+        // Treating it as failure painted the live tree red with "Failed" while the build
+        // succeeded.
+        boolean ok = status == StepStatus.SUCCESS || status == StepStatus.SKIPPED;
+        cm.stepDone(module, step, ok, phase == null ? "" : phase.wireName());
     }
 
     @Override

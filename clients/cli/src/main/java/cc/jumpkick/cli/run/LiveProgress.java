@@ -2,14 +2,14 @@
 package cc.jumpkick.cli.run;
 
 /**
- * Workspace/pipeline aggregate progress snapshot for JSONL riders (JK-1117 / JK-1121).
+ * Workspace/pipeline aggregate progress snapshot for JSONL riders.
  *
  * <p>For multi-module builds, updated only from engine {@code workspace-progress} (via {@link
  * AggregateContext#applySnapshot}). Single-pipeline paths still update from {@link
- * CommandManagerListener}. Machine output attaches a single {@code progress} percent (0–100) —
+ * CommandManagerListener}. Machine output attaches a single {@code progress} percent (0–100)
  * never raw numerator/denominator on the rider.
  *
- * <p>Materialize cadence constants (JK-1118) live here; the TTY frame interval is {@link
+ * <p>Materialize cadence constants live here; the TTY frame interval is {@link
  * cc.jumpkick.runtime.WorkspaceProgressTracker#TTY_FRAME_MS} (shared with the engine emit throttle).
  */
 public final class LiveProgress {
@@ -47,7 +47,7 @@ public final class LiveProgress {
 
     /**
      * Apply an engine workspace snapshot — the only aggregate truth for multi-module builds
-     * (JK-1120/1121). Percent-only snapshots (denominator 0) still land.
+     * /1121). Percent-only snapshots (denominator 0) still land.
      */
     public void apply(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-/** JK-1296: wedge wording for built vs checked vs fully up to date. */
+/**wedge wording for built vs checked vs fully up to date. */
 class BuildCommandSuccessTailTest {
 
     @Test

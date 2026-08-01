@@ -86,7 +86,7 @@ class BuildJournalTest {
     void snapshot_files_are_copied() throws Exception {
         Path md = dir.resolve("src-test-results.md");
         Files.writeString(md, "# Test Results\nall good");
-        Path lock = dir.resolve("src-jk.lock");
+        Path lock = dir.resolve("src-jk-lock.toml");
         Files.writeString(lock, "version = 1");
         BuildJournal j = new BuildJournal(dir);
         String id = j.append(record(1_700_000_000_000L, true, "g:a"), new BuildJournal.Snapshot(md, lock, "boom\n"));

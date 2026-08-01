@@ -19,7 +19,7 @@ import java.util.function.BiConsumer;
  * intern onto {@link VersionUniverse}/{@link AllowedSet} bitsets; budgets via {@code
  * JK_RESOLVE_MAX_DECISIONS} / {@code JK_RESOLVE_TIMEOUT_MS}.
  *
- * <p>JK-1088: when the positive constraint is an exact singleton, or the source has a soft-prefer
+ * <p>when the positive constraint is an exact singleton, or the source has a soft-prefer
  * pin that already satisfies the constraint, seed a singleton {@link VersionUniverse} without
  * calling {@link PackageSource#versions}. Expand to the full advertised list only when that seed
  * cannot produce a viable candidate.
@@ -45,7 +45,7 @@ public class PubGrubSolver {
      */
     private final Set<String> lazyUniverses = new HashSet<>();
 
-    /** Packages whose universe is the compact {@code versions()} list — widenable (JK-1216). */
+    /** Packages whose universe is the compact {@code versions()} list — widenable. */
     private final Set<String> cappedUniverses = new HashSet<>();
 
     protected final PartialSolution solution;
@@ -66,7 +66,7 @@ public class PubGrubSolver {
     private int loopCount;
 
     /**
-     * Optional progress hook (JK-1091): fired after each successful non-root {@link
+     * Optional progress hookfired after each successful non-root {@link
      * PartialSolution#decide}. Listener must be cheap/thread-safe if shared.
      */
     private BiConsumer<String, String> onDecision;
@@ -87,7 +87,7 @@ public class PubGrubSolver {
     }
 
     /**
-     * Wide mode (JK-1241/JK-1216): load full advertised histories up front instead of compact
+     * Wide modeload full advertised histories up front instead of compact
      * lists and lazy preferred-singleton seeds. Used for the one bounded retry after an unsat
      * verdict that involved potentially-incomplete universes — conflict resolution can derive
      * root-level unsat from capped candidate lists without ever revisiting a decision, so the
@@ -108,7 +108,7 @@ public class PubGrubSolver {
         return usedCompactUniverse;
     }
 
-    /** Progress hook for live graph ticks during solve (LockOrchestrator / JK-1091). */
+    /** Progress hook for live graph ticks during solve (LockOrchestrator /. */
     public PubGrubSolver withOnDecision(BiConsumer<String, String> onDecision) {
         this.onDecision = onDecision;
         return this;
@@ -313,7 +313,7 @@ public class PubGrubSolver {
     // --- decisions ---------------------------------------------------------
 
     protected String makeDecision() throws IOException, InterruptedException {
-        // JK-1202: iterate the assignment stack once without copying into a TreeMap decisions()
+        // iterate the assignment stack once without copying into a TreeMap decisions
         // each time — both were dominant alloc sources on large BOM graphs.
         Set<String> seen = new LinkedHashSet<>();
         for (PartialSolution.Assignment a : solution.assignments()) {
@@ -365,8 +365,7 @@ public class PubGrubSolver {
                     if (allowed.isEmpty()) allowed = VersionSet.ALL;
                     addIncompatibility(new Incompatibility(
                             List.of(Term.positive(pkg, allowed)),
-                            new Incompatibility.Cause.NoVersions(
-                                    pkg, allowed, unknownPackage, sampleAvailable(pkg))));
+                            new Incompatibility.Cause.NoVersions(pkg, allowed, unknownPackage, sampleAvailable(pkg))));
                     return pkg;
                 }
                 addIncompatibility(new Incompatibility(
@@ -428,7 +427,7 @@ public class PubGrubSolver {
                 } else {
                     List<String> versions = source.versions(pkg);
                     universes.put(pkg, VersionUniverse.of(pkg, versions));
-                    cappedUniverses.add(pkg); // compact list — widenable on exhaustion (JK-1216)
+                    cappedUniverses.add(pkg); // compact list — widenable on exhaustion
                     usedCompactUniverse = true;
                 }
             }
@@ -439,7 +438,7 @@ public class PubGrubSolver {
     /**
      * Replace a lazy singleton with the advertised list and re-project constraints.
      *
-     * <p>JK-1202: filter to versions that satisfy the package's positive constraint, and cap the
+     * <p>filter to versions that satisfy the package's positive constraint, and cap the
      * list. Full maven-metadata histories (hundreds of releases) made AllowedSet/BitSet work and
      * soft-prefer scans dominate CPU on large BOM graphs once any pin failed.
      */
@@ -447,11 +446,11 @@ public class PubGrubSolver {
         boolean wasLazy = lazyUniverses.remove(pkg);
         boolean wasCapped = cappedUniverses.remove(pkg);
         if (!wasLazy && !wasCapped) return;
-        // Widen from the FULL advertised history (JK-1216): versions() is compacted for the
+        // Widen from the FULL advertised historyversions is compacted for the
         // happy path, and re-reading it here left MAX_EXPANDED_VERSIONS dead — a range below
         // the compact candidates (or backtracking past them) hard-failed a satisfiable graph.
         List<String> versions = source.expandedVersions(pkg);
-        // Cap long metadata histories (JK-1202). Do not filter against the continuous positive set
+        // Cap long metadata histories. Do not filter against the continuous positive set
         // here: after a failed soft-prefer pin the discrete rebind must still see every advertised
         // candidate the pin was chosen from, or Unavailable(pin) can empty the domain incorrectly.
         if (versions.size() > MAX_EXPANDED_VERSIONS) {

@@ -84,7 +84,7 @@ public final class Cas {
     }
 
     /**
-     * As {@link #put(byte[])} with the content hash already computed by the caller (verified
+     * As {@link #put(byte)} with the content hash already computed by the caller (verified
      * downloads hash the payload anyway) — the CAS trusts it and skips a second full hash.
      */
     public Path put(byte[] data, String hex) throws IOException {
@@ -98,7 +98,7 @@ public final class Cas {
 
     /**
      * Stream {@code in} into the CAS, hashing as the bytes flow through a fixed buffer so the full
-     * payload is never resident in memory — the memory-safe counterpart to {@link #put(byte[])} for
+     * payload is never resident in memory — the memory-safe counterpart to {@link #put(byte)} for
      * large artifacts fetched off the network. The content's own SHA-256 becomes its key, so the hash
      * isn't known until the stream is drained: bytes land in a temp file first, then move atomically
      * into place. The caller owns closing {@code in}.
@@ -149,7 +149,7 @@ public final class Cas {
      * <p>Opt-in only, and never for anything jk writes: a link means the blob shares an inode with a
      * file jk does not own, so an in-place rewrite by another tool would mutate content the CAS believes
      * it has already hashed. The one sanctioned use is adopting an artifact out of {@code ~/.m2} after a
-     * remotely-fetched checksum has confirmed it (JK-1290), where the caller has explicitly chosen to
+     * remotely-fetched checksum has confirmed it, where the caller has explicitly chosen to
      * trade that risk for the disk saving.
      */
     public Path linkFile(Path source, String hex) throws IOException {

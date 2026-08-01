@@ -25,7 +25,7 @@ public final class CacheGc {
 
     public record Report(int purgedBlobs, long freedBytes, int repoLinksRemoved) {}
 
-    /** Collect against the store this cache root is paired with (JK-1289). */
+    /** Collect against the store this cache root is paired with. */
     public static Report run(Path cacheRoot, boolean dryRun) throws IOException {
         return run(cacheRoot, JkStores.storeRootFor(cacheRoot), dryRun);
     }
@@ -41,7 +41,8 @@ public final class CacheGc {
     public static Report run(Path cacheRoot, Path storeRoot, boolean dryRun) throws IOException {
         Cas cas = new Cas(storeRoot);
         Path shaRoot = storeRoot.resolve("sha256");
-        Set<String> reachable = CacheRoots.collect(cas, cacheRoot.resolve("actions"), JkStores.resolve(cacheRoot, "tools"));
+        Set<String> reachable =
+                CacheRoots.collect(cas, cacheRoot.resolve("actions"), JkStores.resolve(cacheRoot, "tools"));
 
         Path logFile = cacheRoot.resolve(AccessLedger.FILE_NAME);
         AccessLedger ledger = new AccessLedger(logFile);

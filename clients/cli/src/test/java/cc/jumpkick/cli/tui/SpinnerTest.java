@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
-import cc.jumpkick.cli.TestAnsi;
-
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.TestAnsi;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -93,6 +92,21 @@ class SpinnerTest {
         assertThat(colors[colors.length - 1].toAnsi()).isEqualTo("38;2;255;255;255");
         int mid = Spinner.PULSE_FRAMES / 2;
         assertThat(colors[mid].toAnsi()).isEqualTo("38;2;" + dim.r() + ";" + dim.g() + ";" + dim.b());
+    }
+
+    @Test
+    void fill_glyph_holds_each_phase_then_advances() {
+        // Phases ○ ◎ ◉ ◎, each held FILL_HOLD frames — not a repeated array.
+        assertThat(Spinner.FILL_PHASES).containsExactly("\u25CB", "\u25CE", "\u25C9", "\u25CE");
+        assertThat(Spinner.FILL_HOLD).isEqualTo(4);
+        assertThat(Spinner.FILL_FRAMES).isEqualTo(16);
+        assertThat(Spinner.fillGlyph(0)).isEqualTo("\u25CB");
+        assertThat(Spinner.fillGlyph(3)).isEqualTo("\u25CB"); // still holding
+        assertThat(Spinner.fillGlyph(4)).isEqualTo("\u25CE"); // phase advance
+        assertThat(Spinner.fillGlyph(8)).isEqualTo("\u25C9");
+        assertThat(Spinner.fillGlyph(12)).isEqualTo("\u25CE");
+        assertThat(Spinner.fillGlyph(16)).isEqualTo("\u25CB");
+        assertThat(Spinner.fillGlyph(-1)).isEqualTo("\u25CE"); // last frame of cycle
     }
 
     @Test

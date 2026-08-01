@@ -20,7 +20,7 @@ public final class Exit {
     /** General runtime failure (a build/operation ran but did not succeed). */
     public static final int FAILURE = 1;
 
-    /** Bad project/config input: no {@code jk.toml}/{@code jk.lock}, or an invalid argument value. */
+    /** Bad project/config input: no {@code jk.toml}/{@code jk-lock.toml}, or an invalid argument value. */
     public static final int CONFIG = 2;
 
     /** {@code EX_USAGE}: the command line itself was wrong (missing/unknown args). */

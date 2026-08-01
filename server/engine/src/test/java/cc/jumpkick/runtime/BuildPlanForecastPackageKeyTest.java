@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1176: package-jar forecast keys must match {@link BuildPipelines} packaging tokens
+ * package-jar forecast keys must match {@link BuildPipelines} packaging tokens
  * (including empty {@code sbom:} for libraries) so a warm jar is not permanently "repackage".
  */
 class BuildPlanForecastPackageKeyTest {
@@ -38,7 +38,7 @@ class BuildPlanForecastPackageKeyTest {
                 "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                 "manifest:" + manifest);
 
-        // Forecast tokens after JK-1176 fix (must stay in lockstep with the build).
+        // Forecast tokens after fix (must stay in lockstep with the build).
         List<String> forecastTokens = List.of(
                 "classes:" + ClasspathFingerprint.entry(classes),
                 "main:" + mainClass,
@@ -47,10 +47,8 @@ class BuildPlanForecastPackageKeyTest {
 
         assertThat(forecastTokens).isEqualTo(buildTokens);
         // Pre-fix tokens (missing sbom:) produce a different action key — the bug we fixed.
-        List<String> broken = List.of(
-                "classes:" + ClasspathFingerprint.entry(classes),
-                "main:" + mainClass,
-                "manifest:" + manifest);
+        List<String> broken =
+                List.of("classes:" + ClasspathFingerprint.entry(classes), "main:" + mainClass, "manifest:" + manifest);
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
         String good = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), buildTokens);
         String bad = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), broken);
@@ -59,7 +57,7 @@ class BuildPlanForecastPackageKeyTest {
 
     @Test
     void estimate_eta_is_zero_when_plan_is_fully_cached(@TempDir Path tmp) {
-        // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis (JK-1176).
+        // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis.
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
         long eta = BuildService.estimateEtaMillis(
                 empty, tmp, tmp.resolve("cache"), 1, null, null, false, false, true, false);

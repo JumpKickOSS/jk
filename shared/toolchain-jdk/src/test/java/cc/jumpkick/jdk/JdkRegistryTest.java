@@ -42,6 +42,7 @@ class JdkRegistryTest {
         Path macHome = bundle.resolve("Contents").resolve("Home");
         Files.createDirectories(macHome.resolve("bin"));
         Files.writeString(macHome.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(macHome.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(macHome.resolve("release"), "JAVA_VERSION=\"21\"\n");
 
         JdkRegistry registry = isolatedRegistry(tempDir);
@@ -292,6 +293,7 @@ class JdkRegistryTest {
     private static void makeJdkInstall(Path home, String version, String implementor) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
     }
@@ -299,6 +301,7 @@ class JdkRegistryTest {
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(home.resolve("bin").resolve("native-image"), "#!/fake");
         Files.writeString(
                 home.resolve("release"),

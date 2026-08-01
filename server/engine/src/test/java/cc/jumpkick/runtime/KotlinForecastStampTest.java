@@ -14,11 +14,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1259: {@code jk explain} must read the Kotlin freshness stamp from the directory the build
+ * {@code jk explain} must read the Kotlin freshness stamp from the directory the build
  * writes it to.
  *
- * <p>{@code BuildPipelines} writes {@code .kstamp} beside the merged classes ({@link
- * BuildLayout#classesDir()}); the forecast read {@link BuildLayout#kotlinClassesDir()} — kotlinc's
+ * <p>{@code BuildPipelines} writes {@code.kstamp} beside the merged classes ({@link
+ * BuildLayout#classesDir}); the forecast read {@link BuildLayout#kotlinClassesDir} — kotlinc's
  * incremental workspace — where no stamp is ever written. It therefore never found one, and every
  * Kotlin module forecast a full compile regardless of how cached the build actually was.
  *
@@ -84,9 +84,7 @@ class KotlinForecastStampTest {
 
     private static Path project(Path tmp) throws Exception {
         Path dir = Files.createDirectories(tmp.resolve("proj"));
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group   = "com.example"
                 name    = "proj"

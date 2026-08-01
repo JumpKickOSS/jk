@@ -24,6 +24,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -67,7 +69,7 @@ public final class BuildPlanForecast {
             long t0 = Perf.start();
             BuildPlan.Module m = forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache);
             Perf.end("forecast " + u.coord(), t0);
-            // A module's consumed output changes — and so seeds downstream dirtiness —
+            // A module's consumed output changes — and so seeds downstream dirtiness
             // when its compile does real work (classes change) OR its jar will be
             // (re)packaged, or a dependency already changed. Package matters on its own:
             // a consumer's run-tests/compile classpath hashes the *content* of sibling
@@ -137,14 +139,15 @@ public final class BuildPlanForecast {
             Set<Path> projectModules,
             boolean testOnly) {
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         // 0 = auto at run-tests (JUnitLauncher); forecast treats as 1 for cost estimates.
         int workerCount = workers > 0 ? workers : 1;
         // testOnly still runs tests (never skip).
         boolean skip = testOnly ? false : skipTests;
         boolean compactEst = false;
         try {
-            compactEst = CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
+            compactEst =
+                    CompileSupport.isSimpleLayout(JkBuildParser.parse(buildFile).project(), dir);
         } catch (Exception ignored) {
             compactEst = !Files.isDirectory(dir.resolve("src/main/java"));
         }
@@ -179,7 +182,7 @@ public final class BuildPlanForecast {
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<BuildPlan.Step> steps = new ArrayList<>();
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         if (!Files.isRegularFile(lockFile)) {
             steps.add(
                     new BuildPlan.Step("compile-main", BuildPlan.Status.RUN, "not locked yet (run `jk build`)", null));
@@ -207,7 +210,7 @@ public final class BuildPlanForecast {
                             project, dir, BuildPipelines.lockModules(lock)),
                     List.of());
             // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
-            // included (JK-1253) — or the forecast hashes a different -processorpath than the
+            // includedor the forecast hashes a different -processorpath than the
             // build and every KSP module forecasts a phantom rebuild.
             List<Path> processorCp = BuildPipelines.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
@@ -217,37 +220,77 @@ public final class BuildPlanForecast {
             // ---- compile-main (Java) ----
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
             List<Path> mainSrc = CompileSupport.collectJavaSources(mainSrcDir);
+            // Collected early: mixed-language modules fold the sibling compiler's outputs into the
+            // compile-main stamp inputs (shared recipe below); the kotlin/groovy forecast sections
+            // reuse these lists.
+            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
+            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
+            boolean mixedKotlin = !mainSrc.isEmpty() && !ktSrc.isEmpty();
+            boolean mixedGroovy = !mainSrc.isEmpty() && !gvSrc.isEmpty();
             if (!mainSrc.isEmpty()) {
                 WorkspaceClasspath.Result sib =
                         WorkspaceClasspath.resolve(dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
                 List<Path> cp = BuildPipelines.mainCompileClasspath(lock, resolver, sib);
                 Path out = layout.classesDir();
-                CompileRequest req = CompileRequest.builder()
-                        .sources(mainSrc)
-                        .classpath(cp)
-                        .outputDir(out)
-                        .release(release)
-                        .extraOptions(javacArgs)
-                        .processorPath(processorCp)
-                        .build();
-                String taskId = ActionKey.qualifiedTaskId("compile-main", out);
-                Path stateDir =
-                        cache.resolve("actions").resolve("incremental-java").resolve(taskId);
-                long tc = Perf.start();
-                var pred = JavaIncrementalCompile.predict(
-                        taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
-                Perf.end("  predict-compile-main", tc);
-                steps.add(compileStep("compile-main", pred, depDirty || force));
-                if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
+                // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
+                // fresh.jstamp is cached even when action-cache keys were not rewritten
+                // (historical --rebuild skipped store). The input recipe is SHARED with the live
+                // check and write-stampmixed modules previously hashed different
+                // inputs here and never stamp-matched.
+                Path groovyJar = null;
+                boolean groovyJarUnavailable = false;
+                if (mixedGroovy) {
+                    try {
+                        String groovyVersion = CompileToolchain.groovyVersionFor(lock, project);
+                        var repos = RepoGroupBuilder.buildFor(project, null, cas);
+                        groovyJar = GroovyPluginSetup.prepare(repos, cas, groovyVersion)
+                                .groovyJar();
+                    } catch (Exception e) {
+                        // Cannot reproduce the live stamp inputs without the jar — fall through to
+                        // the action-cache prediction rather than guessing.
+                        groovyJarUnavailable = true;
+                    }
+                }
+                List<Path> stampInputs =
+                        BuildPipelines.mainStampClasspath(cp, processorCp, mixedKotlin, mixedGroovy, layout, groovyJar);
+                boolean stampFresh = false;
+                if (!depDirty && !force && !groovyJarUnavailable) {
+                    try {
+                        stampFresh =
+                                FreshnessStamp.isFresh(out, FreshnessStamp.JAVA_STAMP, mainSrc, stampInputs, release);
+                    } catch (IOException ignored) {
+                        stampFresh = false;
+                    }
+                }
+                if (stampFresh) {
+                    steps.add(new BuildPlan.Step("compile-main", BuildPlan.Status.CACHED, "", null));
+                } else {
+                    CompileRequest req = CompileRequest.builder()
+                            .sources(mainSrc)
+                            .classpath(cp)
+                            .outputDir(out)
+                            .release(release)
+                            .extraOptions(javacArgs)
+                            .processorPath(processorCp)
+                            .build();
+                    String taskId = ActionKey.qualifiedTaskId("compile-main", out);
+                    Path stateDir =
+                            cache.resolve("actions").resolve("incremental-java").resolve(taskId);
+                    long tc = Perf.start();
+                    var pred = JavaIncrementalCompile.predict(
+                            taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
+                    Perf.end("  predict-compile-main", tc);
+                    steps.add(compileStep("compile-main", pred, depDirty || force));
+                    if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
+                }
             }
 
             // ---- compile-kotlin (best-effort: freshness stamp; no content key yet) ----
-            List<Path> ktSrc = CompileSupport.collectKotlinSources(dir, compact);
             if (!ktSrc.isEmpty()) {
                 // The stamp lives with the MERGED classes (BuildPipelines writes it to
                 // MAIN_CLASSES), not in kotlinc's incremental workspace under target/kotlin/main.
                 // Reading the wrong directory never found a stamp, so every Kotlin module
-                // forecast a full compile no matter how cached the build actually was (JK-1259).
+                // forecast a full compile no matter how cached the build actually was.
                 boolean fresh = !depDirty
                         && !force
                         && FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.KOTLIN_STAMP, ktSrc);
@@ -265,7 +308,6 @@ public final class BuildPlanForecast {
             // ---- compile-groovy (stamp-only, like Kotlin's — no content key yet) ----
             // The groovy stamp lives in the merged classes dir (where write-stamp-groovy
             // writes it), unlike Kotlin's forecast probe of kotlinClassesDir.
-            List<Path> gvSrc = CompileSupport.collectGroovySources(dir, compact);
             if (!gvSrc.isEmpty()) {
                 boolean fresh = !depDirty
                         && !force
@@ -288,7 +330,7 @@ public final class BuildPlanForecast {
             } catch (Exception ignored) {
             }
 
-            // ---- compile-test (all discovered suites — JK-1145) ----
+            // ---- compile-test (all discovered suites —---
             List<Path> allTestSrc = List.of();
             try {
                 allTestSrc = TestSupport.collectAllSuiteTestSources(dir, compact);
@@ -351,7 +393,7 @@ public final class BuildPlanForecast {
                 if (compileDirty || testDirty) {
                     steps.add(new BuildPlan.Step("run-tests", BuildPlan.Status.RUN, "run tests · " + tests, null));
                 } else {
-                    // Same factory as live run-tests (JK-1243/JK-1296): default selection sources +
+                    // Same factory as live run-testsdefault selection sources +
                     // worker/engine jar extras (nested-engine CLI included) so the key matches the
                     // stored green marker.
                     List<Path> testRt = testRuntimeClasspath(dir, project, lock, resolver);
@@ -370,8 +412,9 @@ public final class BuildPlanForecast {
 
             // ---- package-jar ----
             // Tokens MUST match BuildPipelines.packageJarStep (classes/main/sbom/manifest).
-            // Omitting sbom: caused perpetual "repackage" in explain while live build restored
-            // the jar — cascading false depDirty downstream (JK-1176).
+            // After jk clean the classes tree is gone: reconstruct the classes: token from the
+            // compile action record + resource roots (same merge the live build produces) so we
+            // still hit the packaging action cache instead of forecasting perpetual "repackage".
             if (mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty()) {
                 // Source-less aggregator module — nothing to package.
             } else if (compileDirty) {
@@ -388,8 +431,9 @@ public final class BuildPlanForecast {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
                 }
+                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache);
                 List<String> tokens = List.of(
-                        "classes:" + ClasspathFingerprint.entry(layout.classesDir()),
+                        "classes:" + classesTok,
                         "main:" + (mainClass == null ? "" : mainClass),
                         "sbom:" + (sbom == null ? "" : cc.jumpkick.util.Hashing.sha256Hex(sbom)),
                         "manifest:" + project.manifest());
@@ -404,35 +448,67 @@ public final class BuildPlanForecast {
             }
 
             // ---- package-assembly (fat jar) — only when configured ----
+            // Same action-key recipe as BuildPipelines.assemblyStep (not "jar exists on disk").
             if (project.assembly() && !(mainSrc.isEmpty() && ktSrc.isEmpty() && gvSrc.isEmpty())) {
-                boolean fresh = !compileDirty && Files.isRegularFile(layout.assemblyJar());
-                steps.add(
-                        fresh
-                                ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
-                                : new BuildPlan.Step("package-assembly", BuildPlan.Status.RUN, "repackage", null));
+                if (compileDirty) {
+                    steps.add(new BuildPlan.Step(
+                            "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
+                } else {
+                    boolean hit = assemblyActionCached(dir, project, layout, lock, lockFile, cas, actionCache, cache);
+                    steps.add(
+                            hit
+                                    ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
+                                    : new BuildPlan.Step("package-assembly", BuildPlan.Status.RUN, "repackage", null));
+                }
             }
 
             // ---- resource drift ----
             // The scheduled build re-copies resource trees unconditionally (main → classes, test →
             // test classes) and its package/test keys then see the fresh bytes; a clean-skipped
             // module never does. Any drift ⇒ dirty.
-            if (!compileDirty) {
+            // After jk clean the classes tree is gone — missing copies are not "drift", they are
+            // the restore path. Only compare when an output tree is present.
+            if (!compileDirty && Files.isDirectory(layout.classesDir())) {
                 if (resourcesOutOfSync(
                         cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact), layout.classesDir())) {
                     steps.add(new BuildPlan.Step("copy-resources", BuildPlan.Status.RUN, "resources changed", null));
                 } else if (extraResourcesOutOfSync(project, dir, layout.classesDir())) {
                     // extra-resources come from OUTSIDE the module, so the resource-root walk above
-                    // cannot see them (JK-1262). Editing a plugin's jk-plugin.toml must still rebuild
+                    // cannot see them. Editing a plugin's jk-plugin.toml must still rebuild
                     // whatever bakes it in.
                     steps.add(new BuildPlan.Step(
                             "copy-resources", BuildPlan.Status.RUN, "extra resources changed", null));
                 }
-                if (haveTests && !skipTests && !testDirty) {
+                if (haveTests && !skipTests && !testDirty && Files.isDirectory(layout.testClassesDir())) {
                     Path resTest = cc.jumpkick.layout.ModuleLayout.testResourcesDir(dir, compact);
                     if (resourcesOutOfSync(resTest, layout.testClassesDir())) {
                         steps.add(new BuildPlan.Step(
                                 "copy-resources", BuildPlan.Status.RUN, "test resources changed", null));
                     }
+                }
+            }
+
+            // ---- restore gate ----
+            // Right after jk clean every step can predict CACHED (action keys survive the wipe
+            // by design), but a clean-forecast module is never scheduled, so nothing restores
+            // target/ and workspace links dangle. When the promised outputs are absent, add a
+            // restore step: the module schedules and its steps resolve as cheap cache restores.
+            // The name is deliberately not compile-*/package-jar so it never seeds downstream
+            // dirtiness — restored outputs are byte-identical to what consumers hashed.
+            if (steps.stream().allMatch(BuildPlan.Step::cached)) {
+                boolean outputsAbsent = false;
+                if (producesJar) {
+                    outputsAbsent = !Files.isRegularFile(layout.mainJar())
+                            || !classesDirHasContent(layout.classesDir())
+                            || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
+                } else if (!packageResourceRoots(dir, compact, project).isEmpty()) {
+                    // Resources-only module: its classes tree (copied resources) is consumed
+                    // straight off sibling classpaths, so an empty tree is a missing output too.
+                    outputsAbsent = !classesDirHasContent(layout.classesDir());
+                }
+                if (outputsAbsent) {
+                    steps.add(new BuildPlan.Step(
+                            "restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
                 }
             }
         } catch (Exception e) {
@@ -444,6 +520,134 @@ public final class BuildPlanForecast {
                     null));
         }
         return new BuildPlan.Module(u.dir(), u.coord(), steps, sourceCount, testCount, producesJar, producesImage);
+    }
+
+    /**
+     * {@code classes:} fingerprint for package/assembly keys — live tree when present, else the
+     * compile action record merged with current resource roots (post-{@code jk clean} restore path).
+     */
+    static String classesTokenForPackage(
+            Path dir, boolean compact, BuildLayout layout, JkBuild project, ActionCache actionCache)
+            throws IOException {
+        Path classesDir = layout.classesDir();
+        if (classesDirHasContent(classesDir)) {
+            return ClasspathFingerprint.entry(classesDir);
+        }
+        String compileTask = ActionKey.qualifiedTaskId("compile-main", classesDir);
+        Optional<ActionCache.ActionRecord> compile = actionCache.lastFor(compileTask);
+        Map<String, String> compileOut =
+                compile.map(ActionCache.ActionRecord::outputs).orElse(Map.of());
+        List<Path> resRoots = packageResourceRoots(dir, compact, project);
+        if (compileOut.isEmpty() && resRoots.isEmpty()) {
+            return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
+        }
+        return ClasspathFingerprint.entryFromCompileAndResources(compileOut, resRoots);
+    }
+
+    /** Resource roots that {@code copy-resources} merges into {@code classes/} (main + plugin + extra). */
+    static List<Path> packageResourceRoots(Path dir, boolean compact, JkBuild project) {
+        List<Path> resDirs = new ArrayList<>();
+        Path resMain = cc.jumpkick.layout.ModuleLayout.mainResourcesDir(dir, compact);
+        if (Files.isDirectory(resMain)) resDirs.add(resMain);
+        for (var root : cc.jumpkick.layout.ModuleLayout.pluginContributedRoots(dir)) {
+            if (!root.resource()) continue;
+            Path r = dir.resolve(root.relative());
+            if (Files.isDirectory(r)) resDirs.add(r);
+        }
+        // extra-resources are individual files — fold via a synthetic walk is awkward; ExtraResources
+        // are checked separately when classes exist. After clean, compile+main-resources covers the
+        // common monorepo case; extras still re-copy on the live path when the module runs.
+        return resDirs;
+    }
+
+    static boolean classesDirHasContent(Path classesDir) throws IOException {
+        if (!Files.isDirectory(classesDir)) return false;
+        try (var walk = Files.walk(classesDir)) {
+            return walk.anyMatch(p -> {
+                if (!Files.isRegularFile(p)) return false;
+                return !FreshnessStamp.isStampFile(p.getFileName().toString());
+            });
+        }
+    }
+
+    /**
+     * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
+     * computes (classes + dep jar content + main + manifest). Sibling jars missing after clean are
+     * fingerprinted via their last {@code package-jar} CAS blobs when present.
+     */
+    static boolean assemblyActionCached(
+            Path dir,
+            JkBuild project,
+            BuildLayout layout,
+            Lockfile lock,
+            Path lockFile,
+            Cas cas,
+            ActionCache actionCache,
+            Path cache)
+            throws IOException {
+        Path assemblyJar = layout.assemblyJar();
+        String classesTok = classesTokenForPackage(
+                dir, CompileSupport.isSimpleLayout(project.project(), dir), layout, project, actionCache);
+        List<Path> depJars = new ArrayList<>();
+        if (Files.exists(lockFile)) {
+            ClasspathResolver resolver = new ClasspathResolver(cas);
+            depJars.addAll(resolver.classpathFor(lock, ClasspathResolver.RUNTIME));
+            WorkspaceClasspath.Result siblings =
+                    WorkspaceClasspath.resolve(layout.moduleRoot(), project, Set.of(Scope.EXPORT, Scope.MAIN));
+            for (Path j : siblings.jars()) {
+                if (!depJars.contains(j)) depJars.add(j);
+            }
+            for (Path sibLock : siblings.siblingLockfiles()) {
+                try {
+                    for (Path p : resolver.classpathFor(LockfileReader.read(sibLock), ClasspathResolver.RUNTIME)) {
+                        if (!depJars.contains(p)) depJars.add(p);
+                    }
+                } catch (Exception ignored) {
+                    /* best-effort */
+                }
+            }
+        }
+        String depsTok = fingerprintDepJars(depJars, cas, actionCache);
+        List<String> tokens = List.of(
+                "classes:" + classesTok,
+                "deps:" + depsTok,
+                "main:" + (project.mainClass() == null ? "" : project.mainClass()),
+                "manifest:" + project.manifest(),
+                "packaging:fat");
+        String shTask = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);
+        String shKey = ActionKey.forArtifact(shTask, BuildIdentity.cacheKeyVersion(), tokens);
+        return present(actionCache, shKey);
+    }
+
+    /**
+     * Content fingerprint of dep jars matching {@link ClasspathFingerprint#of}, recovering sibling
+     * jars wiped by {@code jk clean} from their last {@code package-jar} action record.
+     */
+    static String fingerprintDepJars(List<Path> depJars, Cas cas, ActionCache actionCache) throws IOException {
+        List<String> parts = new ArrayList<>(depJars.size());
+        for (Path jar : depJars) {
+            parts.add(fingerprintJarOrCached(jar, cas, actionCache));
+        }
+        parts.sort(java.util.Comparator.naturalOrder());
+        return cc.jumpkick.util.Hashing.sha256Hex(String.join("\n", parts));
+    }
+
+    static String fingerprintJarOrCached(Path jar, Cas cas, ActionCache actionCache) throws IOException {
+        if (Files.isRegularFile(jar)) {
+            return ClasspathFingerprint.entry(jar);
+        }
+        // After clean: sibling module jars live under target/ — recover content from last package.
+        String taskId = ActionKey.qualifiedTaskId("package-jar", jar);
+        Optional<ActionCache.ActionRecord> rec = actionCache.lastFor(taskId);
+        if (rec.isPresent()) {
+            for (var e : rec.get().outputs().entrySet()) {
+                Path blob = cas.pathFor(e.getValue());
+                if (Files.isRegularFile(blob)) {
+                    return ClasspathFingerprint.entry(blob);
+                }
+            }
+        }
+        return ClasspathFingerprint.entry(jar); // missing:…
     }
 
     /** True when any file under {@code resDir} is missing from or differs from its copy in {@code outDir}. */
@@ -498,7 +702,7 @@ public final class BuildPlanForecast {
                 yield new BuildPlan.Step(name, BuildPlan.Status.PARTIAL, "compile · " + detail, null);
             }
             case FULL -> {
-                // JK-1058: surface the concrete gate (classpath, options, first compile, …).
+                // surface the concrete gate (classpath, options, first compile, …).
                 String why = pred.reason() != null && !pred.reason().isBlank()
                         ? pred.reason()
                         : "sources / options / classpath";

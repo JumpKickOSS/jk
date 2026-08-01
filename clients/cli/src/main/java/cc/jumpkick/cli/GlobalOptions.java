@@ -80,9 +80,9 @@ public final class GlobalOptions {
                     .orElse(Path.of(""));
         }
         // Canonicalize symlinks (macOS /tmp → /private/tmp, symlinked checkouts): action-cache
-        // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir —
+        // task pointers hash this path's TEXT, and BuildCommand already realpaths its dir
         // a command that didn't (explain) queried a different identity than the build stored,
-        // reporting a full rebuild right after a green build (JK-1247).
+        // reporting a full rebuild right after a green build.
         Path abs = raw.toAbsolutePath().normalize();
         try {
             return abs.toRealPath();
@@ -98,9 +98,9 @@ public final class GlobalOptions {
     public Double maxRamPercent;
 
     /**
-     * {@code -j}/{@code --jobs}: concurrent module/worker budget (JK-1082). {@code null} = use
+     * {@code -j}/{@code --jobs}: concurrent module/worker budget. {@code null} = use
      * env/TOML/default; {@code 0} = all cores; {@code 1} = serial; {@code N} = cap. Resolved via
-     * {@link #jobsEffective()}.
+     * {@link #jobsEffective}.
      */
     public Integer jobs;
 
@@ -120,7 +120,7 @@ public final class GlobalOptions {
      * Populate a {@code GlobalOptions} from a parsed {@link Invocation} — the picocli-free
      * counterpart to the {@code @Mixin}. A ported command's {@code run(Invocation)} replaces its
      * {@code @Mixin GlobalOptions global} field with {@code GlobalOptions.from(in)}; the rest of the
-     * body ({@code global.workingDir()}, {@code global.offline}, …) is unchanged.
+     * body ({@code global.workingDir}, {@code global.offline}, …) is unchanged.
      */
     public static GlobalOptions from(Invocation in) {
         GlobalOptions g = new GlobalOptions();

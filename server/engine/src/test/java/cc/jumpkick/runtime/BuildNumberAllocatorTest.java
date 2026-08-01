@@ -28,9 +28,7 @@ class BuildNumberAllocatorTest {
         Path metrics = dir.resolve("metrics.json");
         BuildMetrics.clearMemo();
         BuildMetrics.record(
-                metrics,
-                new BuildMetrics.Outcome("build", "/proj", "g:n", true, false, 100, List.of()),
-                1_000L);
+                metrics, new BuildMetrics.Outcome("build", "/proj", "g:n", true, false, 100, List.of()), 1_000L);
         BuildMetrics.clearMemo();
         long n = BuildNumberAllocator.allocate(counters, metrics, "/proj");
         assertThat(n).isEqualTo(2);

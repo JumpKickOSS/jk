@@ -26,6 +26,7 @@ public final class JdkDownloadBar implements AutoCloseable, LiveRegion {
     private final boolean silent;
     /** Bare-terminal path (no nerd chip): blue↔dark-blue open pulse. */
     private final AttributedStyle[] frameColors = Spinner.buildOpenPulseStyles(Spinner.PULSE_FRAMES);
+
     private final AttributedStyle[] failColors;
     private final ProgressBar bar = new ProgressBar();
 

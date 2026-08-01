@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import cc.jumpkick.config.TestSelection;
 import org.junit.jupiter.api.Test;
 
-/** JK-1143: BSP data payload → TestSelection (no engine). */
+/**BSP data payload → TestSelection (no engine). */
 class BspTestSelectionParseTest {
 
     @Test
@@ -16,8 +16,7 @@ class BspTestSelectionParseTest {
 
     @Test
     void data_object_all_suites_and_tags() {
-        String json =
-                """
+        String json = """
                 {"params":{"targets":[{"uri":"file:///p#m"}],"data":{"allSuites":true,"excludeTags":["slow","bench"]}}}
                 """;
         TestSelection s = BspServer.parseTestSelectionData(json);

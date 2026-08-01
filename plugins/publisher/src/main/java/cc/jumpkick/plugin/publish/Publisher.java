@@ -101,7 +101,7 @@ public final class Publisher implements Plugin, PublishExtension {
 
         // Resolve workspace-sibling placeholders before rendering anything: a single-file parse
         // leaves `workspace:<name>`/`LATEST`, which would land in the POM and make the published
-        // artifact unconsumable (JK-1255).
+        // artifact unconsumable.
         JkBuild project = cc.jumpkick.config.WorkspaceResolve.applyWorkspace(
                 projectDir, JkBuildParser.parse(projectDir.resolve("jk.toml")));
 
@@ -160,7 +160,7 @@ public final class Publisher implements Plugin, PublishExtension {
         }
 
         if (c.bool("sbom", false)) {
-            Path lockPath = projectDir.resolve("jk.lock");
+            Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
             Lockfile lock = Files.exists(lockPath) ? LockfileReader.read(lockPath) : null;
             byte[] cdx = Sbom.cyclonedx(project, lock);
             byte[] spdxBytes = Sbom.spdx(project, lock);

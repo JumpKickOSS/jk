@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Cross-package feature selection (ticket-1006, design C + path): when a consumer selects
+ * Cross-package feature selection, design C + path): when a consumer selects
  * {@code features} / {@code default-features} on a path dependency whose target has {@code
  * jk.toml}, activate that library's optional deps into the consumer's resolve graph.
  */

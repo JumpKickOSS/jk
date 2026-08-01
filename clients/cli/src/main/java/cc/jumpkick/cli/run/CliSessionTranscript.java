@@ -20,8 +20,8 @@ import java.util.Optional;
 
 /**
  * Incremental CLI session transcript under {@code <project>/target/.jk-cli/<ts>/details.jsonl}
- * (JK-1116). Same event shape as {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema
- * 1), appended live so agents/CI can {@code tail -F} mid-run. Flush cadence: JK-1118.
+ * . Same event shape as {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema
+ * 1), appended live so agents/CI can {@code tail -F} mid-run. Flush cadence:.
  *
  * <p>Disk materialize is <strong>line-bounded</strong>: only complete newline-terminated records
  * leave the pending buffer on flush. Partial lines never hit the file mid-write — incomplete

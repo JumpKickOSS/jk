@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * ticket-1010: path-pinned private plugins with required sha256 (fail closed on missing /
+ * : path-pinned private plugins with required sha256 (fail closed on missing /
  * mismatch).
  */
 @Tag("integration")
@@ -87,7 +87,7 @@ class PrivatePluginPathTest {
                         null,
                         List.of(),
                         List.of(new Lockfile.PluginEntry("path:acme", "local", "sha256:" + hex))),
-                project.resolve("jk.lock"));
+                project.resolve("jk-lock.toml"));
         PluginDescriptorOps.materialize(project, hex, casJar);
         assertThat(PluginDescriptorOps.ensureMaterialized(project, tmp.resolve("cache")))
                 .isFalse();

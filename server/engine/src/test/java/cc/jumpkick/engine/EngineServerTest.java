@@ -48,7 +48,7 @@ class EngineServerTest {
 
     @AfterEach
     void cleanupTempDirs() {
-        // Every test that gets a real EngineServer to run() triggers planSharedWorkerMemoryOnce(),
+        // Every test that gets a real EngineServer to run triggers planSharedWorkerMemoryOnce,
         // which mutates JvmOptions' process-wide static heap plan — reset it so it doesn't leak into
         // unrelated tests (e.g. JvmOptionsTest) sharing this test JVM.
         cc.jumpkick.engine.plugin.JvmOptions.resetSharedPlanForTests();
@@ -298,7 +298,7 @@ class EngineServerTest {
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
 
         EngineServer second = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
-        assertThat(second.run()).isFalse(); // loses the tryLock() race immediately, does not block
+        assertThat(second.run()).isFalse(); // loses the tryLock race immediately, does not block
 
         first.close();
     }
@@ -321,7 +321,7 @@ class EngineServerTest {
     }
 
     /**
-     * There's no real Windows box in this test run, but {@link EngineTransport#useLoopbackTcp()}
+     * There's no real Windows box in this test run, but {@link EngineTransport#useLoopbackTcp}
      * only ever reads {@code os.name} — overriding that system property exercises the exact same
      * bind/auth/connect code path a real Windows host would take, without needing one.
      */
@@ -388,7 +388,7 @@ class EngineServerTest {
      * over the socket, a tiny fixture project, and a mock Maven repo standing in for every remote
      * (the request's {@code repoUrl} override). Asserts the full wire conversation — {@code
      * lock-module} → plan burst → {@code lock-package} stream → count-carrying {@code pipeline-finish}
-     * → {@code lock-finish} — and that the engine actually wrote {@code jk.lock}.
+     * → {@code lock-finish} — and that the engine actually wrote {@code jk-lock.toml}.
      */
     @Test
     void lock_request_resolves_and_writes_the_lockfile_over_the_socket() throws Exception {
@@ -452,7 +452,7 @@ class EngineServerTest {
                     switch (type) {
                         case EngineProtocol.LOCK_MODULE -> lockModule = line;
                         case EngineProtocol.LOCK_PACKAGE -> {
-                            // Coalesced stream (2f3522d): latest package + running total —
+                            // Coalesced stream (2f3522d): latest package + running total
                             // individual names are progress samples, not a per-package feed.
                             sawAnyPackage = true;
                             lastPackageTotal = Jsonl.intValue(line, "total", -1);
@@ -479,7 +479,9 @@ class EngineServerTest {
             assertThat(Jsonl.str(lockModule, "dir")).isEqualTo(project.toString());
             assertThat(Jsonl.str(lockModule, "coord")).isEqualTo("com.example:app");
             assertThat(types).contains(EngineProtocol.PLAN_STEP, EngineProtocol.PLAN_DONE);
-            assertThat(sawAnyPackage).as("at least one coalesced lock-package event").isTrue();
+            assertThat(sawAnyPackage)
+                    .as("at least one coalesced lock-package event")
+                    .isTrue();
             assertThat(lastPackageTotal)
                     .as("running total covers every locked package")
                     .isEqualTo(3); // leaf + 2 junit defaults
@@ -493,8 +495,8 @@ class EngineServerTest {
             assertThat(Jsonl.intValue(lockFinish, "exitCode", -1)).isEqualTo(0);
 
             // The engine (not the client) wrote the lockfile.
-            assertThat(Files.isRegularFile(project.resolve("jk.lock"))).isTrue();
-            var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk.lock"));
+            assertThat(Files.isRegularFile(project.resolve("jk-lock.toml"))).isTrue();
+            var lock = cc.jumpkick.lock.LockfileReader.read(project.resolve("jk-lock.toml"));
             assertThat(lock.artifacts().stream().anyMatch(a -> a.matchesModule("com.foo:leaf")))
                     .as("lock contains com.foo:leaf")
                     .isTrue();
@@ -538,7 +540,7 @@ class EngineServerTest {
             String base = "http://127.0.0.1:" + osv.getAddress().getPort();
 
             Path project = shortTempDir();
-            Files.writeString(project.resolve("jk.lock"), """
+            Files.writeString(project.resolve("jk-lock.toml"), """
                     version = 1
                     generated-by = "jk test"
                     resolution-algorithm = "pubgrub-v1"
@@ -610,7 +612,7 @@ class EngineServerTest {
      * Engine-hosted {@code jk compile} round-trip (Wave 3 of the slim-client migration — the
      * in-process {@code BuildPipelines} stragglers): a real server over the socket runs the shared
      * pipeline in compile-only mode against a tiny dependency-free fixture (a fresh empty {@code
-     * jk.lock}, so no network resolve). Asserts the single-pipeline wire conversation — plan burst →
+     * jk-lock.toml}, so no network resolve). Asserts the single-pipeline wire conversation — plan burst →
      * pipeline events → terminal {@code pipeline-finish} — and that the engine actually compiled the class.
      */
     /**
@@ -639,7 +641,7 @@ class EngineServerTest {
                     }
                 }
                 """);
-        Files.writeString(project.resolve("jk.lock"), """
+        Files.writeString(project.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
@@ -705,7 +707,7 @@ class EngineServerTest {
                 """);
         // A fresh empty lock (newer than jk.toml) stands in for "already locked" — the pipeline's
         // parse-build then uses it verbatim instead of resolving over the network.
-        Files.writeString(project.resolve("jk.lock"), """
+        Files.writeString(project.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
@@ -844,7 +846,7 @@ class EngineServerTest {
      * Engine-hosted {@code jk cache prune} round-trip (Wave 4 — the idle-boundary cache job): a
      * real server over the socket sweeps a fixture cache holding a stale action key and a leftover
      * CAS temp file. Asserts the single-pipeline wire conversation ends in a summary-carrying {@code
-     * pipeline-finish}, that the stale files are gone, and that the {@code .prune.lock} cross-process
+     * pipeline-finish}, that the stale files are gone, and that the {@code.prune.lock} cross-process
      * guard was created (the hosted path always takes it — the Wave-3 finding's fix).
      */
     @Test
@@ -857,7 +859,9 @@ class EngineServerTest {
                 staleKey,
                 java.nio.file.attribute.FileTime.fromMillis(
                         System.currentTimeMillis() - Duration.ofDays(90).toMillis()));
-        Path putTmp = cache.resolve("sha256/.put-1234");
+        // CAS blobs (and their.put-* temps) live in the store, not under the request's cache
+        // root, sincethe sweep resolves sha256/ through JkStores.
+        Path putTmp = cc.jumpkick.cache.JkStores.resolve(cache, "sha256").resolve(".put-1234");
         Files.createDirectories(putTmp.getParent());
         Files.writeString(putTmp, "partial");
 
@@ -897,7 +901,7 @@ class EngineServerTest {
         // The engine (not the client) swept the cache.
         assertThat(Files.exists(staleKey)).isFalse();
         assertThat(Files.exists(putTmp)).isFalse();
-        // The cross-process guard exists: hosted maintenance always takes .prune.lock.
+        // The cross-process guard exists: hosted maintenance always takes.prune.lock.
         assertThat(Files.exists(cache.resolve(".prune.lock"))).isTrue();
 
         server.close();
@@ -907,7 +911,7 @@ class EngineServerTest {
     /**
      * Engine-hosted {@code jk cache clear} round-trip: a real server over the socket invalidates the
      * action-cache entries for a fixture project, matching a record by its qualified-task tag while
-     * leaving an unrelated project's record untouched. Also asserts the {@code .prune.lock} guard.
+     * leaving an unrelated project's record untouched. Also asserts the {@code.prune.lock} guard.
      */
     @Test
     void cache_clear_request_invalidates_the_projects_entries_over_the_socket() throws Exception {

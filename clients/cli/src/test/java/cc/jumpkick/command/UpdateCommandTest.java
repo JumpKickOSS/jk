@@ -82,14 +82,14 @@ class UpdateCommandTest {
                         "--cache-dir",
                         cache.toString()))
                 .isEqualTo(0);
-        Files.delete(tempDir.resolve("jk.lock"));
+        Files.delete(tempDir.resolve("jk-lock.toml"));
 
         // Offline re-solve must come entirely from the journal.
         server.stop(0);
         int exit = run("update", "--offline", "-C", tempDir.toString(), "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile lock = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo:leaf");
     }
 
@@ -109,7 +109,7 @@ class UpdateCommandTest {
                 base.toString(),
                 "--cache-dir",
                 tempDir.resolve("cache").toString());
-        Lockfile initial = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile initial = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(initial)).isEmpty();
 
         // Add a dep, then update.
@@ -124,7 +124,7 @@ class UpdateCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        Lockfile updated = LockfileReader.read(tempDir.resolve("jk.lock"));
+        Lockfile updated = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(updated)).containsExactly("com.foo:leaf");
     }
 
@@ -175,7 +175,7 @@ class UpdateCommandTest {
                 version = "0.1.0"
                 """);
 
-        // Invoke from module — updates only that module's lock.
+        // Invoke from module — still writes the workspace root lock (full union).
         int exit = run(
                 "update",
                 "-C",
@@ -186,12 +186,10 @@ class UpdateCommandTest {
                 tempDir.resolve("cache").toString());
         assertThat(exit).isEqualTo(0);
 
-        // Module owns its own lock; sibling dep filtered out.
-        Lockfile lock = LockfileReader.read(app.resolve("jk.lock"));
+        assertThat(Files.exists(tempDir.resolve("jk-lock.toml"))).isTrue();
+        assertThat(Files.exists(app.resolve("jk-lock.toml"))).isFalse();
+        Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
         assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo:leaf");
-
-        // Workspace root lock NOT created by this invocation.
-        assertThat(Files.exists(tempDir.resolve("jk.lock"))).isFalse();
     }
 
     // --- helpers -----------------------------------------------------------

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * Aggregate-rider discipline (JK-1121): a single-pipeline listener owns the rider; a workspace
+ * Aggregate-rider disciplinea single-pipeline listener owns the rider; a workspace
  * member must never stamp its module-local fraction over the engine's workspace aggregate.
  */
 class JsonlListenerTest {

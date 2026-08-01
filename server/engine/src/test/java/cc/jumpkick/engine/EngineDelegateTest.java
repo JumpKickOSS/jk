@@ -65,7 +65,7 @@ class EngineDelegateTest {
     }
 
     private static void writeLockWithPin(Path dir, String version) throws IOException {
-        Files.writeString(dir.resolve("jk.lock"), """
+        Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk %s"
                 resolution-algorithm = "pubgrub-v1"

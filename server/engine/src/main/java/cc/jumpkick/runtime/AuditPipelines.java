@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.engine.plugin.PluginClient;
 import cc.jumpkick.engine.plugin.PluginJar;
@@ -20,7 +19,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * {@code jk audit} pipeline: scan {@code jk.lock} against OSV via {@code jk-auditor}. Findings
+ * {@code jk audit} pipeline: scan {@code jk-lock.toml} against OSV via {@code jk-auditor}. Findings
  * stream plain via {@link FindingObserver}; threshold/exit-code handling stays client-side.
  */
 public final class AuditPipelines {
@@ -51,7 +50,7 @@ public final class AuditPipelines {
         Step readLock = Step.builder(StepNames.READ_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label("read jk.lock");
+                    ctx.label("read jk-lock.toml");
                     // Validates the lockfile is readable; the plugin re-reads it.
                     LockfileReader.read(lockPath);
                     ctx.progress(1);

@@ -28,7 +28,7 @@ public final class CompileToolchain {
      * Resolve a Kotlin installation, auto-downloading via {@link ToolInstaller} if neither {@code
      * KOTLIN_HOME} nor {@code $JK_CACHE_DIR/tools/kotlin/} is populated.
      *
-     * @param cacheDir the {@link Cas} root (typically {@link JkDirs#cache()})
+     * @param cacheDir the {@link Cas} root (typically {@link JkDirs#cache})
      */
     public static Path resolveKotlinHome(Path cacheDir) {
         return resolveKotlinHome(cacheDir, null, NO_NOTICE);
@@ -38,8 +38,8 @@ public final class CompileToolchain {
     private static final Consumer<String> NO_NOTICE = s -> {};
 
     /**
-     * Pick the Kotlin compiler version to provision: the version pinned in {@code jk.lock} (resolved
-     * by {@code jk lock}) if present, else an exact {@code project.kotlin} pin, else {@code null} —
+     * Pick the Kotlin compiler version to provision: the version pinned in {@code jk-lock.toml} (resolved
+     * by {@code jk lock}) if present, else an exact {@code project.kotlin} pin, else {@code null}
      * which falls back to the bundled default distribution.
      */
     public static String kotlinVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {
@@ -55,7 +55,7 @@ public final class CompileToolchain {
     /**
      * Pick the Groovy compiler version to provision, mirroring {@link #kotlinVersionFor}:
      * the locked {@code org.apache.groovy:groovy} runtime first — the compiler must match what
-     * actually ships (caret/tilde pins and BOM-managed grails floats resolve here, JK-1223) —
+     * actually ships (caret/tilde pins and BOM-managed grails floats resolve here,
      * else an exact {@code project.groovy} pin, else {@code null} (bundled default).
      */
     public static String groovyVersionFor(cc.jumpkick.lock.Lockfile lock, JkBuild project) {

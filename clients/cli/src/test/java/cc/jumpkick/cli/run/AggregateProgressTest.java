@@ -11,7 +11,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * CLI is a dumb consumer of engine {@link WorkspaceProgressTracker.Snapshot} (JK-1121). Aggregate
+ * CLI is a dumb consumer of engine {@link WorkspaceProgressTracker.Snapshot}. Aggregate
  * math lives in {@link WorkspaceProgressTrackerTest}.
  */
 class AggregateProgressTest {

@@ -6,17 +6,17 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 
 /**
- * The one way a build-path caller obtains its environment (JK-1272).
+ * The one way a build-path caller obtains its environment.
  *
  * <p>Resolution, lowest wins to highest:
  *
  * <ol>
- *   <li>{@code .env} at the workspace root, then the module — see {@link EnvLookup}
- *   <li>the request's {@code clientEnv}, i.e. the shell that ran {@code jk}
- *   <li>the engine's own environment, as a last resort
+ * <li>{@code.env} at the workspace root, then the module — see {@link EnvLookup}
+ * <li>the request's {@code clientEnv}, i.e. the shell that ran {@code jk}
+ * <li>the engine's own environment, as a last resort
  * </ol>
  *
- * <p>Both halves used to be wrong in different places. {@code .env} was unreachable outside the few
+ * <p>Both halves used to be wrong in different places. {@code.env} was unreachable outside the few
  * sites that had been threaded an environment, and the caller's shell environment was invisible to
  * anything that called {@code System.getenv} inside the engine — a long-lived daemon started from
  * some earlier shell, so {@code FOO=x jk build} had no effect.
@@ -52,6 +52,16 @@ public final class BuildEnv {
             String fromClient = clientEnv.get(name);
             return fromClient != null ? fromClient : System.getenv(name);
         });
+    }
+
+    /**
+     * Redactor for {@code.env}-sourced values at {@code moduleDir}. Use before any
+     * free-form text (wire events, journal, errors) leaves the process, and before a value enters
+     * a cache key.
+     */
+    public static SecretRedactor secretsFor(Path moduleDir) {
+        if (moduleDir == null) return SecretRedactor.none();
+        return SecretRedactor.from(lookupFor(moduleDir));
     }
 
     private static Map<String, String> clientEnv() {

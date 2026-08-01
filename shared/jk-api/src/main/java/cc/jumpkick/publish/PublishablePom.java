@@ -146,7 +146,7 @@ public final class PublishablePom {
         for (Scope s : order) {
             String mavenScope = PomXml.mavenScope(s);
             for (Dependency d : jkBuild.dependencies().of(s)) {
-                // A branch-tracked git dep, even though it's locked in jk.lock, is still not a
+                // A branch-tracked git dep, even though it's locked in jk-lock.toml, is still not a
                 // stable reference for external consumers of the published artifact. `jk
                 // publish` rejects it up front; skip here as a safety net so a stray caller
                 // never emits a broken <version>=branch=...</version>.
@@ -167,7 +167,7 @@ public final class PublishablePom {
             case VersionSelector.Range r -> r.raw();
             case VersionSelector.Latest l -> "LATEST";
             // Maven's own word for "newest, snapshots included". jk's `latest` is really Maven's
-            // RELEASE now that it excludes pre-releases (JK-1287), but that mapping is left alone
+            // RELEASE now that it excludes pre-releases, but that mapping is left alone
             // here rather than silently changing bytes in already-published POMs.
             case VersionSelector.Snapshot s -> "LATEST";
         };

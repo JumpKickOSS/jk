@@ -32,6 +32,12 @@ public final class StepTimings {
     /** EWMA alpha — recent-weighted but smoothed against one-off outliers. */
     public static final double DEFAULT_ALPHA = 0.4;
 
+    /**
+     * Synthetic module key for host-wide absolute averages (ms per unit), not residual rates.
+     * Used for cold projects that have never timed a given step/method locally.
+     */
+    public static final String HOST_METHOD_MS_DIR = "__host__";
+
     private static final ConcurrentHashMap<Path, StepTimings> MEMO = new ConcurrentHashMap<>();
 
     /** A learned step rate plus when it was last refreshed (epoch millis; 0 = unknown/legacy). */
@@ -82,12 +88,23 @@ public final class StepTimings {
         String suffix = ' ' + step;
         double[] rates = entries.entrySet().stream()
                 .filter(e -> e.getKey().endsWith(suffix))
+                // Exclude absolute-ms host keys from residual-rate medians.
+                .filter(e -> !e.getKey().startsWith(HOST_METHOD_MS_DIR + ' '))
                 .mapToDouble(e -> e.getValue().perUnit())
                 .sorted()
                 .toArray();
         if (rates.length == 0) return OptionalDouble.empty();
         int n = rates.length;
         return OptionalDouble.of(n % 2 == 1 ? rates[n / 2] : (rates[n / 2 - 1] + rates[n / 2]) / 2.0);
+    }
+
+    /**
+     * Host-wide average milliseconds per successful test method (absolute, not residual weight).
+     * Used when a module has no local run-tests rate yet but peers have trained the host prior.
+     */
+    public OptionalDouble hostAvgTestMethodMs() {
+        Entry e = entries.get(key(HOST_METHOD_MS_DIR, "test-method-ms"));
+        return e == null || e.perUnit() <= 0 ? OptionalDouble.empty() : OptionalDouble.of(e.perUnit());
     }
 
     /** Project-local median per-unit rate for {@code step} across {@code dirs}. */
@@ -111,7 +128,7 @@ public final class StepTimings {
     /**
      * EWMA-fold samples into the ledger and persist (best-effort; advisory only).
      *
-     * <p>JK-1178: near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
+     * <p>near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
      * learned rates toward zero. Alpha defaults to {@link #DEFAULT_ALPHA}.
      */
     public static void record(Path cache, List<Sample> samples, double alpha, long nowMillis) {
@@ -128,7 +145,7 @@ public final class StepTimings {
         }
         try {
             write(cache.resolve("timings.toml"), m);
-            MEMO.remove(cache); // next load() in this process sees the update
+            MEMO.remove(cache); // next load in this process sees the update
         } catch (IOException | RuntimeException ignored) {
             // advisory cache — never fail the build over it
         }

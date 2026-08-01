@@ -50,7 +50,7 @@ public enum EventType {
     READY,
 
     /**
-     * A runner-side diagnostic the parent should surface at default verbosity (JK-1227) —
+     * A runner-side diagnostic the parent should surface at default verbosity
      * e.g. "discovery found 0 tests but N class files exist". Payload: {@code {code, message}}.
      */
     WARNING,

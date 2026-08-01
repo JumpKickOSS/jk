@@ -9,8 +9,8 @@ import java.util.Objects;
  * A subset of a {@link VersionUniverse}, stored as a bitset over the universe's version indices.
  * Immutable: every algebra op returns a new instance.
  *
- * <p>Index order matches {@link VersionUniverse#versions()} — highest-first with soft-prefer pins
- * at the front — so {@link #choosePreferred()} walks set bits in that order (same selection policy
+ * <p>Index order matches {@link VersionUniverse#versions} — highest-first with soft-prefer pins
+ * at the front — so {@link #choosePreferred} walks set bits in that order (same selection policy
  * as the pre-interning scan of {@code PackageSource.versions}).
  */
 public final class AllowedSet {
@@ -68,7 +68,7 @@ public final class AllowedSet {
     /** True iff every version allowed here is also allowed in {@code other}. */
     public boolean subsetOf(AllowedSet other) {
         requireSameUniverse(other);
-        // bits ⊆ other.bits  ⇔  bits & ~other.bits = ∅
+        // bits ⊆ other.bits ⇔ bits & ~other.bits = ∅
         BitSet leftover = (BitSet) bits.clone();
         leftover.andNot(other.bits);
         return leftover.isEmpty();
@@ -79,7 +79,7 @@ public final class AllowedSet {
      *
      * <p>Soft-prefer pins (lock/BOM) sit at universe index 0 even when lower than a later stable.
      * When that front slot is still allowed, take it <em>unconditionally</em> — including pre-release
-     * pins (JK-1072). Otherwise walk remaining candidates highest-first, preferring the first
+     * pins. Otherwise walk remaining candidates highest-first, preferring the first
      * <em>stable</em> version, then the first pre-release, else {@code null} when empty.
      */
     public String choosePreferred() {

@@ -5,7 +5,6 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
-import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JdkEnsure;
 import cc.jumpkick.lock.Lockfile;
@@ -23,12 +22,11 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 /**
- * {@code jk sync} pipeline: align the local JDK and dependency CAS with {@code jk.lock}. Engine
+ * {@code jk sync} pipeline: align the local JDK and dependency CAS with {@code jk-lock.toml}. Engine
  * builds pass {@code allowJdkInstall=false} so JDK downloads stay client-side; {@code coordLabel}
  * is null in the engine (plain {@code name:version}, no themed text on the wire).
  */
@@ -62,31 +60,16 @@ public final class SyncPipelines {
             AtomicInteger totalUpToDate,
             BiFunction<String, String, String> coordLabel,
             boolean allowJdkInstall) {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         BiFunction<String, String, String> label = coordLabel != null ? coordLabel : (n, v) -> n + ":" + v;
 
-        // Pre-scan: count artifacts across root + all workspace module lockfiles so
-        // sync-cas has an accurate denominator from the first bar frame. Falls back
-        // to 0 (dynamic ticks) when jk.lock doesn't exist yet.
+        // Pre-scan: count artifacts in the canonical lock (workspace root or standalone) so
+        // sync-cas has an accurate denominator from the first bar frame. Falls back to 0
+        // (dynamic ticks) when jk-lock.toml doesn't exist yet.
         int preScannedTotal = 0;
         if (Files.isRegularFile(lockFile)) {
             try {
-                Lockfile rootLock = LockfileReader.read(lockFile);
-                preScannedTotal += CacheSync.countArtifacts(rootLock);
-                JkBuild rootBuild = parseBuildIfPresent(dir);
-                if (rootBuild != null && rootBuild.isWorkspaceRoot()) {
-                    try {
-                        Map<Path, JkBuild> mods = WorkspaceLoader.loadModules(dir, rootBuild);
-                        for (Path modDir : mods.keySet()) {
-                            Path modLock = modDir.resolve("jk.lock");
-                            if (Files.isRegularFile(modLock)) {
-                                preScannedTotal += CacheSync.countArtifacts(LockfileReader.read(modLock));
-                            }
-                        }
-                    } catch (Exception ignored) {
-                        /* best-effort */
-                    }
-                }
+                preScannedTotal += CacheSync.countArtifacts(LockfileReader.read(lockFile));
             } catch (Exception ignored) {
                 /* lock unreadable — fall through to dynamic ticks */
             }
@@ -96,7 +79,7 @@ public final class SyncPipelines {
         Step parseLock = Step.builder(StepNames.PARSE_LOCK)
                 .ticks(1)
                 .execute(ctx -> {
-                    ctx.label("parse jk.lock");
+                    ctx.label("parse jk-lock.toml");
                     if (!Files.exists(lockFile)) {
                         ctx.label("resolve deps");
                         var result = LockFlow.run(dir, cache, List.of(), false, repoUrl);
@@ -343,74 +326,14 @@ public final class SyncPipelines {
                 })
                 .build();
 
+        // Workspace modules no longer own lockfiles — the root jk-lock.toml is the only pin set
+        // (synced above via SYNC_CAS). SYNC_MODULES remains a no-op step for wire/plan stability.
         Step syncModules = Step.builder(StepNames.SYNC_MODULES)
                 .kind(StepKind.IO)
                 .requires(StepNames.WRITE_SYNC_MANIFEST)
-                .ticks(0) // grown as modules are discovered
+                .ticks(0)
                 .execute(ctx -> {
-                    JkBuild root;
-                    try {
-                        root = JkBuildParser.parse(dir.resolve("jk.toml"));
-                    } catch (Exception ignored) {
-                        return;
-                    }
-                    if (!root.isWorkspaceRoot()) return;
-
-                    Map<Path, JkBuild> modules;
-                    try {
-                        modules = WorkspaceLoader.loadModules(dir, root);
-                    } catch (Exception e) {
-                        ctx.warn("modules", "skipping module sync — " + e.getMessage());
-                        return;
-                    }
-                    if (modules.isEmpty()) return;
-
-                    Cas cas = JkStores.cas(cache);
-                    Http http = new Http();
-                    boolean refresh = SessionContext.current().config().forceOr(false);
-
-                    for (Map.Entry<Path, JkBuild> entry : modules.entrySet()) {
-                        Path moduleDir = entry.getKey();
-                        Path moduleLock = moduleDir.resolve("jk.lock");
-                        if (!Files.isRegularFile(moduleLock)) continue;
-                        boolean moduleMirrorToM2 = entry.getValue().project().m2install();
-                        try {
-                            Lockfile lock = LockfileReader.read(moduleLock);
-                            int modArtifacts = CacheSync.countArtifacts(lock);
-                            if (preScanDenominator == 0 && modArtifacts > 0) ctx.updateTicks(modArtifacts);
-                            String modLabel = dir.relativize(moduleDir).toString();
-                            var observer = new CacheSync.ProgressObserver() {
-                                @Override
-                                public void fetched(Lockfile.Artifact pkg) {
-                                    ctx.label(modLabel + ": fetched " + label.apply(pkg.name(), pkg.version()));
-                                    totalFetched.incrementAndGet();
-                                    ctx.progress(1);
-                                }
-
-                                @Override
-                                public void upToDate(Lockfile.Artifact pkg) {
-                                    totalUpToDate.incrementAndGet();
-                                    ctx.progress(1);
-                                }
-
-                                @Override
-                                public void skipped(Lockfile.Artifact pkg) {
-                                    ctx.progress(1);
-                                }
-
-                                @Override
-                                public void failed(Lockfile.Artifact pkg, String error) {
-                                    ctx.warn(
-                                            "dep",
-                                            modLabel + ": " + label.apply(pkg.name(), pkg.version()) + " — " + error);
-                                    ctx.progress(1);
-                                }
-                            };
-                            new CacheSync(cas, http, moduleMirrorToM2).sync(lock, observer, refresh);
-                        } catch (Exception e) {
-                            ctx.warn("modules", dir.relativize(moduleDir) + ": " + e.getMessage());
-                        }
-                    }
+                    /* intentionally empty — single workspace lock covers all modules */
                 })
                 .build();
 

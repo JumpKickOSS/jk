@@ -208,7 +208,7 @@ public final class NativeCommand implements CliCommand {
         var paths = EnginePaths.current();
 
         // JSON / verbose: append-only per-module listeners. JSON must not print human banners and
-        // must not let module-local num/den clobber the engine aggregate rider (JK-1132).
+        // must not let module-local num/den clobber the engine aggregate rider.
         if (mode != PipelineConsole.Mode.AUTO && mode != PipelineConsole.Mode.QUIET) {
             int[] idx = {0};
             boolean json = mode == PipelineConsole.Mode.JSON;

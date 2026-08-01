@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
-# Assemble a versioned release directory from build/dist (JK-1066 layout for
+# Assemble a versioned release directory from build/dist layout for
 # jumpkick.build via GCS + Firebase CDN).
-#
 # Expects a prior `./gradlew clean dist` (native client + engine jar under build/dist).
-#
 # Usage:
-#   scripts/assemble-release-dir.sh [out-dir]
+# scripts/assemble-release-dir.sh [out-dir]
 # Env:
-#   JK_VERSION   override version (default: JkVersion / project version via git describe or file)
-#
+# JK_VERSION override version (default: JkVersion / project version via git describe or file)
 # Layout written to out-dir (default: build/release/<version>/):
-#   jk-linux-x86_64.xz | jk-macos-aarch64.xz | …   (whatever native binary is present)
-#   jk-engine-<version>.jar
-#   SHA256SUMS
-#   SHA256SUMS.sig   (if JK_RELEASE_SIGNING_KEY is set)
-#   ../latest/VERSION pointer is the caller's job (CI).
+# jk-linux-x86_64.xz | jk-macos-aarch64.xz | … (whatever native binary is present)
+# jk-engine-<version>.jar
+# SHA256SUMS
+# SHA256SUMS.sig (if JK_RELEASE_SIGNING_KEY is set)
+# ../latest/VERSION pointer is the caller's job (CI).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,12 +39,12 @@ case "$OS" in
   Linux)  os=linux ;;
   Darwin) os=macos ;;
   MINGW*|MSYS*|CYGWIN*|Windows_NT) os=windows ;;
-  *) os=unknown ;;
+  * ) os=unknown;;
 esac
 case "$ARCH" in
   x86_64|amd64) arch=x86_64 ;;
   aarch64|arm64) arch=aarch64 ;;
-  *) arch=unknown ;;
+  * ) arch=unknown;;
 esac
 
 if [[ -f "$DIST/jk" ]]; then

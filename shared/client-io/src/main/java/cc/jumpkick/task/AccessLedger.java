@@ -71,7 +71,7 @@ public final class AccessLedger {
 
     /**
      * Touch every checksummed sha named by {@code lock} — its package jars and any sources jars.
-     * Called whenever a {@code jk.lock} is read or written so the deps a project actually depends on
+     * Called whenever a {@code jk-lock.toml} is read or written so the deps a project actually depends on
      * stay fresh against the 90-day GC.
      */
     public void touchLock(Lockfile lock) {

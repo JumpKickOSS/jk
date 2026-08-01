@@ -119,7 +119,7 @@ Use the `[quarkus]` first-party plugin (JK-1160/1202). Packaging is **augmented*
 
 ```toml
 [quarkus]
-version = "3.28.5"
+version = "3.38.0"
 # package = "uber-jar"   # optional; default is fast-jar
 ```
 

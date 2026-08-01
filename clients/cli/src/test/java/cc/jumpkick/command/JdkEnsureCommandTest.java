@@ -246,7 +246,10 @@ class JdkEnsureCommandTest {
             byte[] archive = buildTarGz(
                     tempDir,
                     s.installFolder(),
-                    Map.of("bin/java", "#!/fake/java", "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
+                    Map.of(
+                            "bin/java", "#!/fake/java",
+                            "bin/javac", "#!/fake/java",
+                            "release", "JAVA_VERSION=\"" + s.version() + "\"\n"));
             String archivePath = "/archives/" + s.installFolder() + ".tar.gz";
             served.put(archivePath, archive);
             entries.add(entryJson(
@@ -340,6 +343,7 @@ class JdkEnsureCommandTest {
     private static void makeJdkInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
     }
@@ -348,6 +352,7 @@ class JdkEnsureCommandTest {
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"),
                 "JAVA_VERSION=\""

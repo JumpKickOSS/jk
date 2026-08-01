@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1290: repos built for a real resolve must carry the HTTP client.
+ * repos built for a real resolve must carry the HTTP client.
  *
  * <p>They did not. {@code RepoGroupBuilder} constructed every declared repository through the
  * transport-only constructor, which passes {@code null} for the client, and two HTTP-only features
@@ -24,9 +24,7 @@ class RepoGroupBuilderHttpTest {
 
     @Test
     void every_http_repo_in_a_real_resolve_gets_a_metadata_cache(@TempDir Path tmp) throws Exception {
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 group = "demo"
                 name = "demo"
@@ -38,9 +36,8 @@ class RepoGroupBuilderHttpTest {
         var group = RepoGroupBuilder.buildFor(project, null, new Cas(tmp.resolve("store")));
 
         assertThat(group.repos()).isNotEmpty();
-        assertThat(group.repos())
-                .allSatisfy(repo -> assertThat(repo.hasMetadataCache())
-                        .as("%s must carry the HTTP client, or its metadata cache and ~/.m2 probe are dead", repo.name())
-                        .isTrue());
+        assertThat(group.repos()).allSatisfy(repo -> assertThat(repo.hasMetadataCache())
+                .as("%s must carry the HTTP client, or its metadata cache and ~/.m2 probe are dead", repo.name())
+                .isTrue());
     }
 }

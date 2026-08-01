@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 /**
  * Suite fixture for wire-only CLI tests: materialize {@code jk-engine} into the test {@code JK_HOME}
  * and stop the resident engine so {@code @TempDir} can delete project trees that held open CAS
- * links (ticket-1021).
+ * links.
  */
 public final class EngineTestSupport {
 
@@ -50,9 +50,9 @@ public final class EngineTestSupport {
                 }
                 VersionStore store = VersionStore.current();
                 // ALWAYS materialize — VersionStore is content-aware (same bytes return
-                // immediately; same version + different bytes replaces the tree, JK-1059).
+                // immediately; same version + different bytes replaces the tree,.
                 // The old presence-check skipped the refresh, so a persistent test JK_HOME
-                // kept serving a STALE engine across rebuilds (JK-1246: every
+                // kept serving a STALE engine across rebuildsevery
                 // :cli:integrationTest run tonight resolved with last week's resolver).
                 Path cacheRoot = JkDirs.cache();
                 Files.createDirectories(cacheRoot);
@@ -88,7 +88,7 @@ public final class EngineTestSupport {
         try {
             EnginePaths.Paths paths = EnginePaths.current();
             Path socket = EnginePaths.activeSocket(paths);
-            // forceStop waits for pid death when the pid file is present (ticket-1043).
+            // forceStop waits for pid death when the pid file is present.
             long pid = EngineClient.readPidForSocket(socket);
             if (pid <= 0) {
                 var status = EngineClient.status(socket);

@@ -9,7 +9,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1290: {@code [m2]} policy. Copy is the default; linking is opt-in. */
+/**{@code [m2]} policy. Copy is the default; linking is opt-in. */
 class JkM2ConfigTest {
 
     private static Path toml(Path dir, String body) throws Exception {

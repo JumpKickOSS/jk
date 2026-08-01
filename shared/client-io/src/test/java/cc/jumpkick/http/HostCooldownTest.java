@@ -16,7 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1276: a 429 must cost one request, not one per permit per attempt.
+ * a 429 must cost one request, not one per permit per attempt.
  *
  * <p>The failure being fixed is not "jk gave up" but "jk kept asking". Retrying a rate limit six concurrent
  * permits deep, five attempts each, turns one refusal into thirty more requests at a host that already said
@@ -115,7 +115,8 @@ class HostCooldownTest {
         assertThat(HostCooldown.parseRetryAfter("Thu, 30 Jul 2026 10:02:00 GMT", now))
                 .contains(Duration.ofMinutes(2));
         // A date already past means nothing to wait for.
-        assertThat(HostCooldown.parseRetryAfter("Thu, 30 Jul 2026 09:00:00 GMT", now)).isEmpty();
+        assertThat(HostCooldown.parseRetryAfter("Thu, 30 Jul 2026 09:00:00 GMT", now))
+                .isEmpty();
         assertThat(HostCooldown.parseRetryAfter("soon", now)).isEmpty();
         assertThat(HostCooldown.parseRetryAfter(null, now)).isEmpty();
         assertThat(HostCooldown.parseRetryAfter("", now)).isEmpty();
@@ -134,7 +135,8 @@ class HostCooldownTest {
                         .connectTimeout(Duration.ofSeconds(2))
                         .build(),
                 new Duration[] {Duration.ofMillis(1)},
-                new CentralMirror(tmp.resolve("m"), Duration.ofHours(4), true, "unused.example", "http://unused.example"),
+                new CentralMirror(
+                        tmp.resolve("m"), Duration.ofHours(4), true, "unused.example", "http://unused.example"),
                 cooldown);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(
@@ -165,7 +167,8 @@ class HostCooldownTest {
                             .connectTimeout(Duration.ofSeconds(5))
                             .build(),
                     new Duration[] {Duration.ofMillis(1)},
-                    new CentralMirror(tmp.resolve("m"), Duration.ofHours(4), true, "unused.example", "http://unused.example"),
+                    new CentralMirror(
+                            tmp.resolve("m"), Duration.ofHours(4), true, "unused.example", "http://unused.example"),
                     cooldown);
 
             assertThat(http.get(uri, Map.of()).statusCode()).isEqualTo(429);

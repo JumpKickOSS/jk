@@ -6,19 +6,19 @@ import java.util.function.Function;
 import java.util.function.IntSupplier;
 
 /**
- * Mill-shaped concurrent-work budget (JK-1082): how many module/worker units may run at once.
+ * Mill-shaped concurrent-work budgethow many module/worker units may run at once.
  *
  * <p>Semantics (same for CLI {@code -j}/{@code --jobs}, {@code [engine] jobs}, {@code JK_JOBS}):
  *
  * <ul>
- *   <li><b>absent / default</b> — all effective cores ({@link AvailableCpus#count()})
- *   <li><b>0</b> — all effective cores (explicit)
- *   <li><b>1</b> — serial
- *   <li><b>N &gt; 1</b> — cap at N
+ * <li><b>absent / default</b> — all effective cores ({@link AvailableCpus#count})
+ * <li><b>0</b> — all effective cores (explicit)
+ * <li><b>1</b> — serial
+ * <li><b>N &gt; 1</b> — cap at N
  * </ul>
  *
  * <p>{@link AvailableCpus} prefers cgroup CPU quota (containers) over a bare host
- * {@link Runtime#availableProcessors()} when the quota is readable (JK-1084).
+ * {@link Runtime#availableProcessors} when the quota is readable.
  *
  * <p>Always resolves to a positive concurrency. Free-RAM may still reduce live worker JVMs via
  * {@code HeapPlan}/{@code PluginSlots}; this value is the <em>requested</em> ceiling.

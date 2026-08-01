@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Resolved project dir + {@code jk.toml}/{@code jk.lock} for leaf commands that require a
+ * Resolved project dir + {@code jk.toml}/{@code jk-lock.toml} for leaf commands that require a
  * project. On a missing manifest, {@link #require} prints the standard error and returns empty
  * ({@link Exit#CONFIG}). Workspace-ascent commands resolve their own root.
  */
@@ -25,10 +25,10 @@ public record ProjectContext(Path dir, Path buildFile, Path lockFile) {
                     cc.jumpkick.cli.tui.CommandWedge.fail(command, "no jk.toml in " + PathDisplay.styledRaw(dir)));
             return Optional.empty();
         }
-        return Optional.of(new ProjectContext(dir, buildFile, dir.resolve("jk.lock")));
+        return Optional.of(new ProjectContext(dir, buildFile, cc.jumpkick.lock.LockPaths.lockFile(dir)));
     }
 
-    /** True when the project has been locked ({@code jk.lock} exists). */
+    /** True when the project has been locked ({@code jk-lock.toml} exists). */
     public boolean isLocked() {
         return Files.exists(lockFile);
     }

@@ -51,7 +51,7 @@ class DiagnosticsTest {
             // R6a: near-miss sample of advertised versions.
             assertThat(rendered).contains("available:");
             assertThat(rendered).contains("1.0");
-            // ticket-1005: actionable suggestions from available samples
+            // : actionable suggestions from available samples
             assertThat(rendered).contains("Suggestions:");
             assertThat(rendered).contains("Pin widget to 1.0");
         } catch (Exception e) {

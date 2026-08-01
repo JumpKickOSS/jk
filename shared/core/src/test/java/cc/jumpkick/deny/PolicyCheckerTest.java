@@ -54,7 +54,7 @@ class PolicyCheckerTest {
 
     @Test
     void host_match_does_not_flag_unrelated_suffix_hosts() {
-        // deny evil.com must not match notevil.com (JK-1062)
+        // deny evil.com must not match notevil.com
         assertThat(PolicyChecker.hostMatches("notevil.com", "evil.com")).isFalse();
         assertThat(PolicyChecker.hostMatches("evil.com", "evil.com")).isTrue();
         assertThat(PolicyChecker.hostMatches("repo.evil.com", "evil.com")).isTrue();

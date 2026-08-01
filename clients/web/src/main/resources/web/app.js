@@ -683,12 +683,25 @@ Vue.createApp({
       return outcomeOf(card);
     },
 
-    // Badge label for a finished Activity card — optional #buildNumber + capitalized outcome, e.g.
-    // "#11 Failed" or "Success". The leading state icon is a <jk-icon> in the template (see stateIcon).
+    // Badge label for a job card — optional jid (running) + #buildNumber + capitalized outcome.
     activityBadge(card) {
       const o = this.outcome(card);
+      const jid = card.id != null && o === 'running' ? 'jid=' + card.id + ' ' : '';
       const num = card.buildNumber ? '#' + card.buildNumber + ' ' : '';
-      return num + o.charAt(0).toUpperCase() + o.slice(1);
+      return jid + num + o.charAt(0).toUpperCase() + o.slice(1);
+    },
+
+    // Cancel a running job by jid (card.id === requestId/jid from request-start).
+    async cancelCard(card) {
+      if (card.id == null) return;
+      try {
+        await post('/api/cancel', { jid: card.id });
+      } catch (e) {
+        this.buildError =
+          e.status === 401
+            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
+            : e.error || 'Cancel failed';
+      }
     },
 
     summary(card) {
@@ -746,11 +759,19 @@ Vue.createApp({
       try {
         this.status = await get('/api/status');
         if (this.connection === 'unauthorized') this.connection = 'live';
-        if (this.view === 'status') {
-          this.engineLog = await getText('/api/log?lines=100');
-        }
       } catch (e) {
         if (e.status === 401) this.connection = 'unauthorized';
+      }
+      // Separate try: the log tail is a sensitive read (token-required even on loopback,
+      // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
+      if (this.view === 'status') {
+        try {
+          this.engineLog = await getText('/api/log?lines=100');
+        } catch (e) {
+          if (e.status === 401) {
+            this.engineLog = '(engine log requires the tokened dashboard URL — reopen via `jk web`)';
+          }
+        }
       }
       // Separate try: a metrics hiccup must not blank the status vitals.
       try {

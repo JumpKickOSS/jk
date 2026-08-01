@@ -3,13 +3,16 @@ package cc.jumpkick.resolver;
 
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.model.JkBuild;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -17,6 +20,9 @@ import java.util.stream.Collectors;
 /**
  * Inverse dependency paths from declared roots to a target module ({@code jk why}). Each
  * {@link Path} starts at a root and ends at the target.
+ *
+ * <p>To keep output readable, returns <strong>one shortest path per distinct root</strong> (declared
+ * dependency, or lockfile top when undeclared). Diamond fan-in is not expanded into every route.
  */
 public final class Provenance {
 
@@ -24,9 +30,27 @@ public final class Provenance {
 
     /**
      * @return list of paths from declared roots to {@code targetModule}. Empty if the target isn't in
-     *     the lockfile or is unreachable.
+     * the lockfile or is unreachable. For workspace roots prefer
+     * {@link #pathsTo(JkBuild, Lockfile, String, java.nio.file.Path)} so module tomls are
+     * included as roots.
      */
     public static List<Path> pathsTo(JkBuild project, Lockfile lock, String targetModule) {
+        return pathsTo(project, lock, targetModule, null);
+    }
+
+    /**
+     * Workspace-aware provenance: when {@code projectDir} is set and {@code project} is a workspace
+     * root, declared roots are the union of every workspace module's dependencies (not only the
+     * root {@code jk.toml}, which is often empty).
+     *
+     * <p>Uses {@code java.nio.file.Path} (not {@link Path}) for the project directory — this type
+     * nests a {@code Path} record for reverse-graph steps.
+     *
+     * @return shortest path per root from declared roots (or lock tops) to {@code targetModule}.
+     * Empty if the target isn't in the lockfile or is unreachable.
+     */
+    public static List<Path> pathsTo(
+            JkBuild project, Lockfile lock, String targetModule, java.nio.file.Path projectDir) {
         Objects.requireNonNull(targetModule, "targetModule");
 
         Map<String, Lockfile.Artifact> byModule = DependencyTree.indexByModule(lock);
@@ -39,7 +63,13 @@ public final class Provenance {
             }
         }
 
-        // Reverse adjacency: dep → list of (parent, parent-version)
+        Map<String, Set<String>> reverseDeps = reverseAdjacency(lock);
+        Set<String> declaredRoots = new LinkedHashSet<>(DependencyTree.collectRoots(project, projectDir));
+        return shortestPathsPerRoot(resolvedTarget, byModule, reverseDeps, declaredRoots);
+    }
+
+    /** Reverse adjacency: dep module key (package key and GA) → parent package names. */
+    private static Map<String, Set<String>> reverseAdjacency(Lockfile lock) {
         Map<String, Set<String>> reverseDeps = new HashMap<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             for (String depRef : pkg.deps()) {
@@ -52,49 +82,93 @@ public final class Provenance {
                 }
             }
         }
-
-        Set<String> declaredRoots = new LinkedHashSet<>(DependencyTree.collectRoots(project));
-
-        List<Path> paths = new ArrayList<>();
-        walkUp(resolvedTarget, byModule, reverseDeps, declaredRoots, new ArrayList<>(), paths);
-        return paths;
+        return reverseDeps;
     }
 
-    private static void walkUp(
-            String current,
+    /**
+     * Reverse BFS from {@code target}: first time each root is reached is a shortest path to that
+     * root. Nodes are visited once, so diamond graphs do not explode into combinatorial paths.
+     */
+    private static List<Path> shortestPathsPerRoot(
+            String target,
             Map<String, Lockfile.Artifact> byModule,
             Map<String, Set<String>> reverseDeps,
-            Set<String> declaredRoots,
-            List<Step> stack,
-            List<Path> out) {
+            Set<String> declaredRoots) {
 
-        Lockfile.Artifact pkg = byModule.get(current);
-        String version = pkg != null ? pkg.version() : "?";
-        stack.addLast(new Step(current, version));
-
-        try {
-            if (isDeclaredRoot(current, declaredRoots)) {
-                // Reverse for display: declared root first, target last.
-                List<Step> path = new ArrayList<>(stack);
-                Collections.reverse(path);
-                out.add(new Path(List.copyOf(path)));
-                return;
-            }
-            Set<String> parents = reverseDeps.get(current);
-            if (parents == null || parents.isEmpty()) {
-                // also try GA form of package key
-                parents = reverseDeps.get(ga(current));
-            }
-            if (parents == null || parents.isEmpty()) return;
-            for (String parent : parents) {
-                // Avoid cycles in the lockfile.
-                boolean alreadyOnStack = stack.stream().anyMatch(s -> s.module().equals(parent));
-                if (alreadyOnStack) continue;
-                walkUp(parent, byModule, reverseDeps, declaredRoots, stack, out);
-            }
-        } finally {
-            stack.removeLast();
+        if (isDeclaredRoot(target, declaredRoots)) {
+            return List.of(singleStep(target, byModule));
         }
+
+        // cameFrom[parent] = child (closer to target) — reconstruct root → … → target.
+        Map<String, String> cameFrom = new HashMap<>();
+        Set<String> visited = new HashSet<>();
+        Queue<String> queue = new ArrayDeque<>();
+        visited.add(target);
+        queue.add(target);
+
+        // rootGa → path; LinkedHashMap keeps BFS discovery order before final sort.
+        Map<String, Path> byRoot = new HashMap<>();
+
+        while (!queue.isEmpty()) {
+            String current = queue.poll();
+            Set<String> parents = parentsOf(current, reverseDeps);
+            boolean declared = isDeclaredRoot(current, declaredRoots);
+            boolean lockTop = parents.isEmpty() && !current.equals(target);
+
+            if (declared || lockTop) {
+                String rootKey = ga(current);
+                byRoot.putIfAbsent(rootKey, reconstruct(current, target, cameFrom, byModule));
+                // Keep walking past a declared root: when declared root A depends on declared
+                // root B which depends on the target, A's path must still be reported — one
+                // shortest path per DISTINCT root, as the class contract says. The
+                // visited set keeps diamonds from exploding.
+            }
+
+            for (String parent : parents) {
+                if (!visited.add(parent)) continue;
+                cameFrom.put(parent, current);
+                queue.add(parent);
+            }
+        }
+
+        List<Path> out = new ArrayList<>(byRoot.values());
+        out.sort(Comparator.comparingInt((Path p) -> p.steps().size())
+                .thenComparing(p -> ga(p.steps().getFirst().module()))
+                .thenComparing(Path::render));
+        return out;
+    }
+
+    private static Set<String> parentsOf(String module, Map<String, Set<String>> reverseDeps) {
+        Set<String> parents = reverseDeps.get(module);
+        if (parents == null || parents.isEmpty()) {
+            parents = reverseDeps.get(ga(module));
+        }
+        return parents == null ? Set.of() : parents;
+    }
+
+    private static Path singleStep(String module, Map<String, Lockfile.Artifact> byModule) {
+        return new Path(List.of(stepOf(module, byModule)));
+    }
+
+    private static Path reconstruct(
+            String root, String target, Map<String, String> cameFrom, Map<String, Lockfile.Artifact> byModule) {
+        List<Step> steps = new ArrayList<>();
+        String cur = root;
+        steps.add(stepOf(cur, byModule));
+        while (!cur.equals(target)) {
+            String next = cameFrom.get(cur);
+            if (next == null) break; // defensive
+            cur = next;
+            steps.add(stepOf(cur, byModule));
+        }
+        return new Path(steps);
+    }
+
+    private static Step stepOf(String module, Map<String, Lockfile.Artifact> byModule) {
+        Lockfile.Artifact pkg = byModule.get(module);
+        if (pkg == null) pkg = byModule.get(ga(module));
+        String version = pkg != null ? pkg.version() : "?";
+        return new Step(module, version);
     }
 
     /** True when {@code module} is a declared root, matching either package key or GA form. */

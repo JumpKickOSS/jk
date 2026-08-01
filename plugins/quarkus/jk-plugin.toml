@@ -1,4 +1,4 @@
-# Built-in Quarkus build plugin — declarative layer (JK-1158/1159/1160/1202).
+# Built-in Quarkus build plugin — declarative layer/1159/1160/1202).
 # Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
 
 [plugin]
@@ -19,7 +19,7 @@ classes-run    = false
 main-scan      = true
 
 [schema]
-version = { type = "string", required = true, example = "3.28.5", hint = "pins io.quarkus.platform:quarkus-bom" }
+version = { type = "string", required = true, example = "3.38.0", hint = "pins io.quarkus.platform:quarkus-bom" }
 # fast-jar (default): quarkus-run.jar + lib/ layout. uber-jar: single fat runner jar.
 package = { type = "string", example = "fast-jar", hint = "fast-jar (default) or uber-jar" }
 
@@ -83,7 +83,7 @@ template = "scaffold/GreetingResource.kt.tmpl"
 when     = { lang = "kotlin" }
 
 # Kotlin gets the same example test the java scaffold ships — the [test-dependencies]
-# fragment already added quarkus-junit5 + rest-assured for both languages (JK-1234).
+# fragment already added quarkus-junit5 + rest-assured for both languages.
 [[scaffold.file]]
 path     = "${test-root}/${package-path}/GreetingResourceTest.kt"
 template = "scaffold/GreetingResourceTest.kt.tmpl"
@@ -95,7 +95,7 @@ template      = "scaffold/application.properties.tmpl"
 keep-existing = true
 
 # Quarkus @QuarkusTest / BootstrapAppModelFactory need Maven project roots.
-# JK still owns resolve via jk.lock; this POM is coordinates for tooling only.
+# JK still owns resolve via jk-lock.toml; this POM is coordinates for tooling only.
 [[scaffold.file]]
 path          = "pom.xml"
 template      = "scaffold/pom.xml.tmpl"

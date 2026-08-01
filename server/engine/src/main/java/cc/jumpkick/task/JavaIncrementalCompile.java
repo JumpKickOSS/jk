@@ -106,7 +106,7 @@ public final class JavaIncrementalCompile {
             ActionCache actionCache,
             Path stateDir)
             throws IOException {
-        return run(taskId, request, jkVersion, useCache, cas, actionCache, stateDir, null);
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, null);
     }
 
     public static Result run(
@@ -119,11 +119,31 @@ public final class JavaIncrementalCompile {
             Path stateDir,
             ApSetup ap)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, ap);
+    }
+
+    /**
+     * As above with {@code persist}: false for ephemeral builds ({@code jk verify}'s scratch
+     * rebuild) whose scratch-salted action keys can never recur — no action record or incremental
+     * state may be written.
+     */
+    public static Result run(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            ApSetup ap)
+            throws IOException {
         return run(
                 taskId,
                 request,
                 jkVersion,
                 useCache,
+                persist,
                 cas,
                 actionCache,
                 stateDir,
@@ -143,6 +163,22 @@ public final class JavaIncrementalCompile {
             Compiler javacBackend,
             ApSetup ap)
             throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache, stateDir, javacBackend, ap);
+    }
+
+    /** Test seam: inject the full-compile ({@code javac}) backend. */
+    static Result run(
+            String taskId,
+            CompileRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache,
+            Path stateDir,
+            Compiler javacBackend,
+            ApSetup ap)
+            throws IOException {
         Path out = request.outputDir();
         Files.createDirectories(out);
         if (request.sources().isEmpty()) {
@@ -151,6 +187,11 @@ public final class JavaIncrementalCompile {
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
 
+        // useCache=false means "do not restore / skip work" (--rebuild / --force), NOT "do not
+        // write" — rebuilds store successful results so the next `jk explain` / incremental build
+        // sees CACHE_HIT instead of a phantom full recompile. persist=false (jk verify's scratch
+        // rebuild) is the one mode that skips writes: its scratch-salted keys can never recur, so
+        // stored records/state would be orphans.
         if (useCache) {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent()) {
@@ -159,14 +200,16 @@ public final class JavaIncrementalCompile {
             }
         }
 
-        Optional<ActionCache.ActionRecord> prior = useCache ? actionCache.lastFor(taskId) : Optional.empty();
-        Map<String, ClassFacts> abi = useCache ? loadState(stateDir) : new HashMap<>();
+        // Incremental ABI/prior still require a readable prior; on rebuild we skip restore but
+        // still load state so a follow-up can go incremental once we store this run.
+        Optional<ActionCache.ActionRecord> prior = actionCache.lastFor(taskId);
+        Map<String, ClassFacts> abi = loadState(stateDir);
 
         // A project only routes through the worker once a prior build has *proven* it
         // runs source-generating processors (the "orphan" signal). Until then — and
-        // for Lombok-style in-bytecode processors that emit no .java — the plain
+        // for Lombok-style in-bytecode processors that emit no.java — the plain
         // javac path is used and no worker need be present.
-        ApFlags flags = useCache ? loadApFlags(stateDir) : ApFlags.NONE;
+        ApFlags flags = loadApFlags(stateDir);
         // Resolve the worker lazily and only when this project has proven it runs
         // source-generating processors — so Lombok-style bytecode-only processors
         // and first builds never trigger the worker lookup (which would fail on a
@@ -181,13 +224,15 @@ public final class JavaIncrementalCompile {
         // Worker mode only goes incremental when the prior build was isolating (every
         // generated file had exactly one originating source); an aggregating processor
         // reads the whole source set, so a subset recompile would produce a stale
-        // aggregate → stay full.
-        boolean canInc = canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
+        // aggregate → stay full. Rebuild/force still does a full compile (no incremental).
+        boolean canInc = useCache && persist && canIncrement(request, prior, abi) && (!useWorker || flags.isolating());
         if (canInc) {
             return incremental(
                     taskId, request, key, cas, actionCache, stateDir, out, prior.get(), abi, compiler, flags);
         }
-        return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, useCache);
+        // Persist after a successful full compile so explain/next-build cache keys match
+        // except ephemeral (verify-scratch) builds, which must leave no residue.
+        return full(taskId, request, key, cas, actionCache, stateDir, out, compiler, flags, persist);
     }
 
     /**
@@ -224,7 +269,7 @@ public final class JavaIncrementalCompile {
     }
 
     /**
-     * {@code null} if incremental is allowed; otherwise a short reason for FULL (JK-1058 explain).
+     * {@code null} if incremental is allowed; otherwise a short reason for FULL explain).
      * When {@code flags} is {@link ApFlags#NONE}, AP isolation is not considered (run-path gate
      * still applies AP separately).
      */
@@ -292,20 +337,24 @@ public final class JavaIncrementalCompile {
         }
         Analysis a = analyze(out, request.sources(), co.generated(), Set.of());
         Map<String, List<String>> units = unitsOf(a, out);
-        // Bypassing runs neither read nor write the action cache (see KotlinCompile.run).
-        if (storeResult) store(taskId, key, request, out, cas, actionCache, units);
-        // Remodule whether this project source-generates (so the next build routes
-        // through the worker) and whether those processors are isolating.
-        boolean sgap = flags.sourceGenAps() || a.hasGenerated() || a.orphans();
-        saveApFlags(stateDir, new ApFlags(sgap, !a.orphans() && a.isolatingSafe()));
-        if (a.orphans()) {
-            // Generated sources present but no provenance (compiled without the worker):
-            // we can't attribute them, so drop state → this build is correct (full) and
-            // the now-set sourceGenAps flag routes the next build through the worker,
-            // which DOES capture provenance and can track incrementally.
-            Files.deleteIfExists(stateFile(stateDir));
-        } else {
-            saveState(stateDir, factsOf(a));
+        // storeResult=false is jk verify's ephemeral scratch rebuild: its scratch-salted keys and
+        // state dirs can never recur, so neither the action record nor incremental state may be
+        // written. Rebuild/force runs store like any other success.
+        if (storeResult) {
+            store(taskId, key, request, out, cas, actionCache, units);
+            // Remodule whether this project source-generates (so the next build routes
+            // through the worker) and whether those processors are isolating.
+            boolean sgap = flags.sourceGenAps() || a.hasGenerated() || a.orphans();
+            saveApFlags(stateDir, new ApFlags(sgap, !a.orphans() && a.isolatingSafe()));
+            if (a.orphans()) {
+                // Generated sources present but no provenance (compiled without the worker):
+                // we can't attribute them, so drop state → this build is correct (full) and
+                // the now-set sourceGenAps flag routes the next build through the worker,
+                // which DOES capture provenance and can track incrementally.
+                Files.deleteIfExists(stateFile(stateDir));
+            } else {
+                saveState(stateDir, factsOf(a));
+            }
         }
         return new Result(true, "compiled", key, co.result().diagnostics());
     }
@@ -332,7 +381,7 @@ public final class JavaIncrementalCompile {
         Map<String, List<String>> units = new HashMap<>();
         prior.units().forEach((s, rels) -> units.put(s, new ArrayList<>(rels)));
 
-        // Carried-over class outputs (incl. prior-build generated classes). A .class
+        // Carried-over class outputs (incl. prior-build generated classes). A.class
         // under one of these rel-paths that this build neither owns (input source) nor
         // regenerated (provenance) is a carry-over, not an untrackable orphan.
         Set<String> knownRelPaths = new HashSet<>();
@@ -493,15 +542,15 @@ public final class JavaIncrementalCompile {
             Map<Path, List<ClassInfo>> bySource, boolean orphans, boolean isolatingSafe, boolean hasGenerated) {}
 
     /**
-     * Read every {@code .class} under {@code out}, hash its ABI + deps, attribute it to a source.
+     * Read every {@code.class} under {@code out}, hash its ABI + deps, attribute it to a source.
      * Input sources match by SourceFile-attr suffix; annotation-processor <em>generated</em> classes
      * (whose SourceFile names a non-input file) are attributed to their originating input source via
-     * {@code provenance} (generated {@code .java} → originating {@code .java}), so they fold into the
+     * {@code provenance} (generated {@code.java} → originating {@code.java}), so they fold into the
      * same dirty-set/ABI graph.
      *
      * @param provenance generated source → originating source(s), this build's waves
      * @param knownRelPaths class outputs carried over from the prior build (so a carried-over
-     *     generated class isn't mistaken for an orphan)
+     * generated class isn't mistaken for an orphan)
      */
     private static Analysis analyze(
             Path out, List<Path> sources, Map<Path, Set<Path>> provenance, Set<String> knownRelPaths)

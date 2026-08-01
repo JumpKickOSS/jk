@@ -5,17 +5,25 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Engine-owned workspace aggregate progress (JK-1120). Preflight reservation + calibrated module
+ * Engine-owned workspace aggregate progress. Preflight reservation + calibrated module
  * weight slices + concurrent in-flight sum + monotonic peak.
  *
  * <p><b>Smart engine / dumb clients:</b> all aggregate tuning lives here (or in call sites that only
- * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values —
+ * feed this tracker). Wire, SSE, MCP, CLI, and session JSONL must render {@link Snapshot} values
  * never re-derive workspace % from per-module pipeline ticks.
  */
 public final class WorkspaceProgressTracker {
 
     /** Reserved progress units for all preflight work (before module pipelines run). */
     public static final long PREFLIGHT_UNITS = 100;
+
+    /**
+     * Provisional execute-band weight used <em>before</em> {@link #calibrate}. Without this, the
+     * preflight-only denominator is {@link #PREFLIGHT_UNITS} alone, so lock/graph/plan paint the bar
+     * nearly full and then snap back when real execute weight is pinned — a first-build flash.
+     * Sized so a completed preflight band is ~10% of the bar until we know better.
+     */
+    public static final long PROVISIONAL_EXECUTE_UNITS = PREFLIGHT_UNITS * 9;
 
     /** TTY frame cadence (ms): engine progress-emit throttle and CLI live-region share it. */
     public static final long TTY_FRAME_MS = 80;
@@ -76,7 +84,7 @@ public final class WorkspaceProgressTracker {
      * Pin execute weight after plan. {@code executeWeight} is Σ module pipeline weights (ticks).
      * {@code modulesTotal} is the planned module count (0 if unknown).
      *
-     * <p>JK-1153/1154: when modules are planned but execute weight is still 0 (every step token
+     * <p>/1154: when modules are planned but execute weight is still 0 (every step token
      * not yet applied, or a bug), floor the total at {@code modulesTotal} so calibrate never
      * leaves an empty execute band that falls into per-module uncalibrated math (which looks
      * like a count reset when modules swap).
@@ -182,8 +190,10 @@ public final class WorkspaceProgressTracker {
             den = PREFLIGHT_UNITS + total;
             if (den <= 0) den = PREFLIGHT_UNITS;
         } else {
+            // Preflight is a small early slice of a provisional full bar — never 0–100% of
+            // PREFLIGHT_UNITS alone (that is the flash: full bar, then snap-back at calibrate).
             num = preflightNum;
-            den = PREFLIGHT_UNITS;
+            den = PREFLIGHT_UNITS + PROVISIONAL_EXECUTE_UNITS;
         }
         return storeRaw(num, den, phaseName());
     }
@@ -191,10 +201,16 @@ public final class WorkspaceProgressTracker {
     private Snapshot storeRaw(long numerator, long denominator, String phase) {
         long num = numerator;
         long den = denominator;
-        // Monotonic peak at a stable total; rebase when the total grows.
+        // Monotonic peak: at a stable total, never slide backward. When the total grows
+        // (provisional → calibrated execute weight), keep the displayed *fraction* from dropping
+        // so preflight→calibrate does not flash the bar back toward zero.
         double f = den > 0 ? (double) num / (double) den : 0.0;
         if (den > peakDenominator) {
-            peakFraction = f;
+            if (peakDenominator > 0 && f < peakFraction) {
+                num = Math.round(peakFraction * den);
+            } else {
+                peakFraction = f;
+            }
             peakDenominator = den;
         } else if (den > 0 && f < peakFraction) {
             num = Math.round(peakFraction * den);
@@ -208,7 +224,7 @@ public final class WorkspaceProgressTracker {
     }
 
     private String phaseName() {
-        // "done" is finish()'s alone — everything after calibrate is "execute".
+        // "done" is finish's alone — everything after calibrate is "execute".
         return executeCalibrated ? "execute" : "preflight";
     }
 
@@ -222,9 +238,9 @@ public final class WorkspaceProgressTracker {
             case "plan" -> {
                 if (total <= 0) yield 0.45;
                 double within = Math.min(1.0, Math.max(0.0, (double) done / (double) total));
-                // Cap below 1.0: before calibrate() the denominator is the preflight band
+                // Cap below 1.0: before calibrate the denominator is the preflight band
                 // alone, and a plan-complete 100/100 snapshot pins every peak-holding
-                // consumer at 100% for the whole execute phase (JK-1219).
+                // consumer at 100% for the whole execute phase.
                 yield 0.40 + 0.55 * within;
             }
             default -> 0.10;

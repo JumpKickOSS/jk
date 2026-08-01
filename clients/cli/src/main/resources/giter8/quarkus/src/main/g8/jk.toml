@@ -16,7 +16,7 @@ version = "$quarkus_version$"
 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
 quarkus-arc  = { group = "io.quarkus", name = "quarkus-arc" }
 
-# Stay on [test-dependencies] only — MAIN/DEV must not pull maven-embedder (JK-1202).
+# Stay on [test-dependencies] only — MAIN/DEV must not pull maven-embedder.
 [test-dependencies]
 quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
 rest-assured   = { group = "io.rest-assured", name = "rest-assured" }

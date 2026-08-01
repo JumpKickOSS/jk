@@ -1,19 +1,15 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-shrink"
-version     = "0.10.1"
 description = "jk-shrink: R8 classfile shrink worker (PluginMain)."
-jdk         = 25
-java        = 25
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
+jk-plugin-sdk.workspace = true
 
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

@@ -11,7 +11,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
- * Thin MCP (Model Context Protocol) JSON-RPC surface for agents (JK-1095). Hosted on the engine
+ * Thin MCP (Model Context Protocol) JSON-RPC surface for agents. Hosted on the engine
  * HTTP server next to the web dashboard — not a second build engine.
  *
  * <p>Transport: {@code POST /mcp} with a JSON-RPC 2.0 body (single object or batch array). Responses
@@ -192,15 +192,21 @@ public final class McpHandler {
                                 "Absolute path to project or workspace root (jk.toml)")))));
         tools.add(tool(
                 "jk_lock",
-                "Resolve dependencies and write jk.lock for dir (async). Progress: GET /mcp?requestId=N.",
+                "Resolve dependencies and write jk-lock.toml for dir (async). Progress: GET /mcp?requestId=N.",
                 objectSchema(
                         Map.of("dir", Map.of("type", "string", "description", "Absolute path containing jk.toml")))));
         tools.add(tool(
                 "jk_cancel",
-                "Cancel an in-flight HTTP/MCP job by requestId (grace then force workers; JK-1096).",
+                "Cancel an in-flight job by jid (or requestId alias). Grace then force workers.",
                 objectSchema(Map.of(
+                        "jid",
+                        Map.of(
+                                "type",
+                                "integer",
+                                "description",
+                                "Job id from jk_build / jk_test / jk_lock / job-start (preferred)"),
                         "requestId",
-                        Map.of("type", "integer", "description", "Id returned by jk_build / jk_test / jk_lock")))));
+                        Map.of("type", "integer", "description", "Alias for jid (kept for one release cycle)")))));
         tools.add(tool(
                 "jk_project",
                 "Parse project metadata from dir/jk.toml (coord, description).",
@@ -279,6 +285,7 @@ public final class McpHandler {
             m.put("type", kind + "-accepted");
             m.put("kind", kind);
             m.put("requestId", requestId);
+            m.put("jid", requestId);
             m.put("dir", dir);
             m.put("events", "/api/events");
             m.put("mcpEvents", "GET /mcp?requestId=" + requestId);
@@ -300,16 +307,20 @@ public final class McpHandler {
     }
 
     private Map<String, Object> cancelPayload(Map<String, Object> args) {
-        Object raw = args.get("requestId");
-        if (!(raw instanceof Number n)) throw new McpError(-32602, "jk_cancel requires arguments.requestId");
+        Object raw = args.get("jid");
+        if (!(raw instanceof Number)) raw = args.get("requestId");
+        if (!(raw instanceof Number n)) {
+            throw new McpError(-32602, "jk_cancel requires arguments.jid (or requestId)");
+        }
         long id = n.longValue();
         boolean ok = jobs.cancel(id);
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("schema", 1);
         m.put("type", "cancel");
         m.put("requestId", id);
+        m.put("jid", id);
         m.put("cancelled", ok);
-        if (!ok) m.put("note", "unknown or already finished requestId");
+        if (!ok) m.put("note", "unknown or already finished jid");
         return m;
     }
 

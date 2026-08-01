@@ -130,7 +130,7 @@ public final class KeyReader {
         }
         if (peek != '[') {
             // Not a CSI; report bare ESC. The peeked byte stays in the stream — consuming
-            // it here ate the first real keystroke after a bare ESC (JK-1242).
+            // it here ate the first real keystroke after a bare ESC.
             return Key.Escape.INSTANCE;
         }
         reader.read(); // the '['
@@ -156,7 +156,7 @@ public final class KeyReader {
         while (true) {
             // Peek, never blind-read: the old read(1L) consumed whatever came next and
             // DROPPED it when it wasn't sequence tail — a fast keystroke right after an
-            // arrow key vanished (JK-1242; the WizardTest flake was this race).
+            // arrow key vanished; the WizardTest flake was this race).
             var p = reader.peek(1L);
             if (p == NonBlockingReader.READ_EXPIRED || p < 0) {
                 return;

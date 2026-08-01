@@ -4,7 +4,7 @@ package cc.jumpkick.model;
 import java.util.Objects;
 
 /**
- * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code :} form);
+ * Version selector. {@link #parse} treats bare versions as {@link Exact} ({@code:} form);
  * {@link #parseFloating} as {@link Caret} ({@code @} form). Decorations: {@code ^}/{@code ~}/
  * {@code =}/range/{@code latest}/{@code snapshot}.
  */
@@ -27,7 +27,7 @@ public sealed interface VersionSelector {
      * {@code snapshot} — the newest advertised version, pre-releases included.
      *
      * <p>The deliberate opt-in counterpart to every other floating selector, which resolve to stable
-     * releases only (JK-1287). Before this existed, reaching an RC was something that happened *to*
+     * releases only. Before this existed, reaching an RC was something that happened *to*
      * you: a caret admitted the next major's pre-releases because {@code 3.0-rc5} sorts below
      * {@code 3.0}. Now wanting a bleeding edge is something you say.
      */

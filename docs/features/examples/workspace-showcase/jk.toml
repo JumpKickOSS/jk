@@ -1,4 +1,4 @@
-# Multi-module showcase for CI dogfood (ticket-1038).
+# Multi-module showcase for CI dogfood.
 # After installing a local jk: jk lock && jk build && jk test
 
 [project]

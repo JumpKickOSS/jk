@@ -27,12 +27,28 @@ public final class GroovyCompile {
     }
 
     /**
-     * @param useCache when false ({@code --force} / {@code jk verify}), skip the lookup AND the
-     *     final store — a bypassing run neither reads nor writes the action cache; the
-     *     result is still recorded.
+     * @param useCache when false ({@code --rebuild}/{@code --force}), skip restore/skip — still
+     * write the action cache after a successful compile so the next explain/build can CACHE_HIT.
      */
     public static Result run(
             String taskId, GroovycRequest request, String jkVersion, boolean useCache, Cas cas, ActionCache actionCache)
+            throws IOException {
+        return run(taskId, request, jkVersion, useCache, true, cas, actionCache);
+    }
+
+    /**
+     * As above with {@code persist}: false for {@code jk verify}'s scratch rebuild, whose
+     * scratch-salted keys can never recur — a successful compile must not leave an orphan action
+     * record behind.
+     */
+    public static Result run(
+            String taskId,
+            GroovycRequest request,
+            String jkVersion,
+            boolean useCache,
+            boolean persist,
+            Cas cas,
+            ActionCache actionCache)
             throws IOException {
         String key = ActionKey.forGroovyc(taskId, request, jkVersion);
 
@@ -40,8 +56,8 @@ public final class GroovyCompile {
             Optional<ActionCache.ActionRecord> hit = actionCache.lookup(key);
             if (hit.isPresent()) {
                 // Restore into a CLEAN dir: the worker is a full compile, so anything already
-                // here is a previous source set — a deleted .groovy's class would resurrect
-                // through the assemble merge and poison later records (JK-1217).
+                // here is a previous source set — a deleted.groovy's class would resurrect
+                // through the assemble merge and poison later records.
                 wipe(request);
                 actionCache.restore(hit.get(), request.outputDir());
                 return new Result(true, "cache-hit:" + key.substring(0, 8), key, "");
@@ -68,17 +84,16 @@ public final class GroovyCompile {
         if (outputs.isEmpty() && !request.sources().isEmpty()) {
             return new Result(true, "compiled-no-outputs", key, gr.output());
         }
-        // Bypassing runs neither read NOR write: --force must not churn entries under keys
-        // the normal path already owns, and jk verify's scratch build (path-salted keys that
-        // can never recur) must not leave orphan records behind.
-        if (useCache) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
+        // Store on rebuild/force too so the next explain sees CACHE_HIT; only ephemeral
+        // (verify-scratch) runs skip the write — their keys never recur.
+        if (persist) actionCache.storeWithOutputs(taskId, key, Map.of(), outputs);
         return new Result(true, "compiled", key, gr.output());
     }
 
     /**
      * Full-recompile lane: the output and stub dirs hold exactly one compile's results. Stale
      * stubs are the worse half — javac resolves deleted Groovy types from {@code --source-path}
-     * stubs and ships stub-bodied phantom classes instead of erroring (JK-1217).
+     * stubs and ships stub-bodied phantom classes instead of erroring.
      */
     private static void wipe(GroovycRequest request) throws IOException {
         cc.jumpkick.util.PathUtil.deleteRecursively(request.outputDir());

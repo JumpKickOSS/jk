@@ -61,7 +61,7 @@ class VersionUniverseTest {
 
     @Test
     void soft_prefer_prerelease_pin_wins_over_later_stable() {
-        // Lock/BOM soft-prefer fronts a pre-release even though a stable is higher (JK-1072).
+        // Lock/BOM soft-prefer fronts a pre-release even though a stable is higher.
         VersionUniverse u = VersionUniverse.of("widget", List.of("7.0.0-RC1", "7.0.0", "6.0.0"));
         AllowedSet a = u.all();
         assertThat(a.choosePreferred()).isEqualTo("7.0.0-RC1");

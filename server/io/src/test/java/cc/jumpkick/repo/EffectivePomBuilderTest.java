@@ -199,7 +199,7 @@ class EffectivePomBuilderTest {
                   </dependencyManagement>
                 </project>
                 """);
-        // packaging=pom: managed lists are retained (JK-1202 drops them on jar packaging).
+        // packaging=pom: managed lists are retained drops them on jar packaging).
         registerPom("org.example", "child", "1.0", """
                 <project>
                   <groupId>org.example</groupId>
@@ -253,7 +253,7 @@ class EffectivePomBuilderTest {
 
         EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "child", "1.0"));
         assertThat(pom.properties()).containsEntry("jdk", "${java.target}");
-        // Substitution applies to dep fields, not the properties map itself —
+        // Substitution applies to dep fields, not the properties map itself
         // the resolver only ever reads substituted dep coordinates.
     }
 
@@ -349,9 +349,8 @@ class EffectivePomBuilderTest {
                 """);
         EffectivePom pom = newBuilder(tempDir).build(Coordinate.of("org.example", "app", "1.0"));
         assertThat(pom.managedDependencies()).isEmpty();
-        assertThat(pom.dependencies())
-                .singleElement()
-                .satisfies(d -> assertThat(d.version()).isEqualTo("1.5"));
+        assertThat(pom.dependencies()).singleElement().satisfies(d -> assertThat(d.version())
+                .isEqualTo("1.5"));
     }
 
     @Test

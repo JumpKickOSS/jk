@@ -14,12 +14,12 @@ import java.util.List;
 /**
  * Release authenticity: Ed25519 signature over {@code SHA256SUMS}, then hash check, before
  * materialization. Built-in key may rotate via {@code NEXT_RELEASE_KEY}; hosts can override
- * {@code [release] trusted-keys}. After pin in {@code jk.lock}, fetches verify against the pin.
+ * {@code [release] trusted-keys}. After pin in {@code jk-lock.toml}, fetches verify against the pin.
  */
 public final class ReleaseVerifier {
 
     /**
-     * Baked-in JumpKick release public key (base64 X.509/SPKI Ed25519, JK-1066). The matching
+     * Baked-in JumpKick release public key (base64 X.509/SPKI Ed25519,. The matching
      * private key is held only as the GitHub Actions secret {@code JK_RELEASE_SIGNING_KEY}
      * (PKCS#8 base64) and used by {@code scripts/sign-release.sh} on tag builds. Empty string
      * would mean "verification unavailable" — do not clear without rotating to a replacement.

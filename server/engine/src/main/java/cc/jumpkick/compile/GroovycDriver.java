@@ -33,7 +33,7 @@ public final class GroovycDriver {
         try {
             return run(request);
         } catch (IOException e) {
-            // One retry when the worker pipe closes mid-compile (ticket-1053 flake).
+            // One retry when the worker pipe closes mid-compile flake).
             if (cc.jumpkick.engine.plugin.PluginProcess.isPipeClosed(e)) {
                 try {
                     return run(request);

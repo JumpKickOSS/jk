@@ -90,7 +90,7 @@ class PubGrubResolverTest {
 
     @Test
     void platform_active_unmapped_bare_transitive_mediates_by_default(@TempDir Path tempDir) throws Exception {
-        // JK-1241: platform map has an unrelated pin (project still "has a BOM"). middle →
+        // platform map has an unrelated pin (project still "has a BOM"). middle →
         // leaf@1.0 bare; metadata offers 2.0. Default mediates highest-wins → leaf=2.0
         // (Maven/Gradle parity); [resolve] unmapped = "strict" restores the exact fill.
         serveMetadata("/com/foo/middle/maven-metadata.xml", "com.foo", "middle", List.of("1.0"));

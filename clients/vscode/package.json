@@ -48,7 +48,7 @@
         "title": "JumpKick: Test"
       },
       {
-        "command": "jk.lock",
+        "command": "jk-lock.toml",
         "title": "JumpKick: Lock"
       },
       {

@@ -16,7 +16,7 @@ import java.util.Map;
  * settings.gradle.kts} plus a {@code build.gradle.kts} per project. The export-direction companion
  * to {@link GradleImporter}.
  *
- * <p>Versions come from {@code jk.lock} when present ({@code locked} maps {@code group:artifact} →
+ * <p>Versions come from {@code jk-lock.toml} when present ({@code locked} maps {@code group:artifact} →
  * exact version), so the generated build reproduces what jk builds; otherwise the declared selector
  * collapses with a warning. {@code project.jdk} maps to a Gradle Java toolchain, with the {@code
  * foojay-resolver-convention} settings plugin enabling auto-download.
@@ -278,7 +278,7 @@ public final class GradleExporter {
                         + c.version()
                         + "`; pinned to `"
                         + c.version()
-                        + "` (no jk.lock to resolve against).");
+                        + "` (no jk-lock.toml to resolve against).");
                 yield c.version();
             }
             case VersionSelector.Tilde t -> {

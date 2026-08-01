@@ -30,7 +30,7 @@ support” means for 1.0-quality adoption.
 3. **Layered short names** — project → host-local → admin-global → bundled, all **name → GA only**.
 4. **Import alignment** — Gradle version catalogs feed coords/versions; short names normalize
    through the existing catalog stack when possible.
-5. **Lockfile-first** — versions and reproducibility live in deps / platform pins / `jk.lock`,
+5. **Lockfile-first** — versions and reproducibility live in deps / platform pins / `jk-lock.toml`,
    never in the global name index.
 
 ## 3. Anti-goals
@@ -74,7 +74,7 @@ Precedence **high → low** (first hit wins on lookup):
 |---|---|---|---|
 | **project** | `jk.toml` `[libraries]` | Repo | One project / workspace |
 | **local** | `~/.jk/libs.toml` (layer name `"local"`) | Human / host | All projects on this machine |
-| **global** | `~/.jk/cache/libs.global.toml` | jk admins via `jk library update` | Downloaded registry |
+| **global** | `~/.jk/store/libs.global.toml` | engine (quiet 12 h revalidation) + `jk library update` | Downloaded registry |
 | **bundled** | classpath `libraries.toml` | Ship with the binary | Offline cold start |
 
 ### 5.1 Schema (all layers)

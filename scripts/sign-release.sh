@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Sign a release SHA256SUMS with the JumpKick Ed25519 release key (JK-1066).
-#
+# Sign a release SHA256SUMS with the JumpKick Ed25519 release key.
 # Usage:
-#   JK_RELEASE_SIGNING_KEY=<pkcs8-base64> scripts/sign-release.sh path/to/SHA256SUMS
-#
+# JK_RELEASE_SIGNING_KEY=<pkcs8-base64> scripts/sign-release.sh path/to/SHA256SUMS
 # Writes path/to/SHA256SUMS.sig (raw Ed25519 signature bytes, base64, one line).
 # The public half is baked into ReleaseVerifier.BUILT_IN_KEY.
 set -euo pipefail

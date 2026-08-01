@@ -45,7 +45,7 @@ public final class SelfCommand extends GroupCommand {
 
     /**
      * {@code jk self setup-terminal} — detect Nerd Font capability and persist {@code
-     * [global].nerdfont} in {@code ~/.jk/config.toml} (JK-1080). Also invoked from install.sh.
+     * [global].nerdfont} in {@code ~/.jk/config.toml}. Also invoked from install.sh.
      */
     static final class SetupTerminalSub implements CliCommand {
 
@@ -138,7 +138,7 @@ public final class SelfCommand extends GroupCommand {
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
             CliOutput.out("materialized " + m.root());
-            // Best-effort install-time terminal probe (JK-1080); never fail materialize.
+            // Best-effort install-time terminal probe; never fail materialize.
             try {
                 new SetupTerminalSub().run(Invocation.builder().build());
             } catch (Exception ignored) {

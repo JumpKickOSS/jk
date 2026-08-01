@@ -17,7 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** JK-1100/1108/1109/1112/1113: local dirty-set, graph rebuild, pipeline shape memos. */
+/** Local dirty-set, graph rebuild, and pipeline shape memos. */
 class PreflightMemoTest {
 
     @AfterEach
@@ -106,7 +106,7 @@ class PreflightMemoTest {
         storeDirty(tmp, graph, Set.of());
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isPresent();
 
-        deleteRecursively(tmp.resolve("a").resolve("target"));
+        deleteRecursively(tmp.resolve("target").resolve("a"));
         assertThat(PreflightMemo.tryLoadDirty(tmp, graph, false)).isEmpty();
     }
 
@@ -294,7 +294,7 @@ class PreflightMemoTest {
 
     @Test
     void shape_memo_skip_tests_variants_coexist(@TempDir Path tmp) throws Exception {
-        // JK-1124: fingerprint embeds skipTests — both rows must persist.
+        // fingerprint embeds skipTests — both rows must persist.
         writeProject(tmp);
         Path mod = tmp.toAbsolutePath().normalize();
         PreflightMemo.storeShape(
@@ -313,7 +313,7 @@ class PreflightMemoTest {
 
     @Test
     void shape_memo_concurrent_upserts_retain_all_modules(@TempDir Path tmp) throws Exception {
-        // JK-1124: parallel prepare must not drop peer rows.
+        // parallel prepare must not drop peer rows.
         writeProject(tmp);
         Path a = tmp.resolve("a");
         Path b = tmp.resolve("b");
@@ -359,7 +359,7 @@ class PreflightMemoTest {
 
     @Test
     void costOf_from_shape_weights_matches_schedule_inputs(@TempDir Path tmp) {
-        // JK-1114: ETA path builds ModuleCost without assembling a pipeline.
+        // ETA path builds ModuleCost without assembling a pipeline.
         var cost = EffortWeights.costOf(tmp, Set.of(), 100, 15);
         assertThat(cost.weight()).isEqualTo(100);
         assertThat(cost.testWeight()).isEqualTo(15);
@@ -368,7 +368,7 @@ class PreflightMemoTest {
 
     @Test
     void provisionalModulePlan_carries_shape_weight_and_step_names(@TempDir Path tmp) throws Exception {
-        // JK-1115: early onPlan uses wire-only pipelines (no-op steps) + memo weight.
+        // early onPlan uses wire-only pipelines (no-op steps) + memo weight.
         writeProject(tmp);
         var entry = JkBuildParser.parse(Files.readString(tmp.resolve("jk.toml")));
         BuildGraph.Result graph = BuildGraph.resolve(tmp, entry);
@@ -440,7 +440,7 @@ class PreflightMemoTest {
                 layout = "simple"
                 """);
         Files.writeString(
-                dir.resolve("jk.lock"),
+                dir.resolve("jk-lock.toml"),
                 """
                 version = 1
                 generated-by = "test"
@@ -475,7 +475,7 @@ class PreflightMemoTest {
         Path src = dir.resolve("src/main/java");
         Files.createDirectories(src);
         Files.writeString(src.resolve("App.java"), "class App {}\n");
-        Files.writeString(dir.resolve("jk.lock"), """
+        Files.writeString(dir.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
@@ -497,7 +497,9 @@ class PreflightMemoTest {
         Files.createDirectories(dir.resolve("target"));
         for (String m : new String[] {"a", "b"}) {
             Path md = dir.resolve(m);
-            Files.createDirectories(md.resolve("target"));
+            // The real layout: member outputs live under <workspace>/target/<rel>/, and
+            // <member>/target is never created — the fixture must match production.
+            Files.createDirectories(dir.resolve("target").resolve(m));
             Files.createDirectories(md.resolve("src/main/java"));
             Files.writeString(md.resolve("jk.toml"), """
                     [project]
@@ -508,7 +510,7 @@ class PreflightMemoTest {
                     java = 21
                     """.formatted(m));
             Files.writeString(md.resolve("src/main/java/M.java"), "class M {}\n");
-            Files.writeString(md.resolve("jk.lock"), """
+            Files.writeString(md.resolve("jk-lock.toml"), """
                     version = 1
                     generated-by = "test"
                     resolution-algorithm = "pubgrub-v1"

@@ -99,10 +99,10 @@ public final class LockOrchestrator {
 
     private cc.jumpkick.resolver.pubgrub.Diagnostics.Palette diagnosticPalette;
 
-    /** BOM pin policy (JK-1206); default {@link PlatformPolicy#ENFORCED}. */
+    /** BOM pin policy; default {@link PlatformPolicy#ENFORCED}. */
     private PlatformPolicy platformPolicy = PlatformPolicy.ENFORCED;
 
-    /** Unmapped-fill policy (JK-1241); default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
+    /** Unmapped-fill policy; default {@link cc.jumpkick.model.UnmappedPolicy#MEDIATE}. */
     private cc.jumpkick.model.UnmappedPolicy unmappedPolicy = cc.jumpkick.model.UnmappedPolicy.MEDIATE;
 
     /** Directory of the consuming {@code jk.toml} (path= feature expansion). */
@@ -171,7 +171,7 @@ public final class LockOrchestrator {
 
     /**
      * Lock and additionally attempt to resolve the {@code -sources.jar} for every Maven package,
-     * populating {@link Lockfile.Artifact#sourcesChecksum()} when found. Sources that return 404 are
+     * populating {@link Lockfile.Artifact#sourcesChecksum} when found. Sources that return 404 are
      * silently skipped — not all packages publish sources.
      */
     public Lockfile lockWithSources(
@@ -209,7 +209,7 @@ public final class LockOrchestrator {
      * Conservative re-lock: same as {@link #lock} but seeds the solver with the exact versions from
      * {@code existing} as <em>soft preferences</em>. The solver selects each locked version first; if
      * a new or changed dep's constraint rules it out, the solver backtracks to the next candidate
-     * automatically. Only versions that genuinely conflict with new constraints are bumped —
+     * automatically. Only versions that genuinely conflict with new constraints are bumped
      * everything else stays pinned.
      */
     public Lockfile lockConservative(
@@ -288,7 +288,7 @@ public final class LockOrchestrator {
                 case MAIN -> mainDeduped.putIfAbsent(opt.module(), opt);
             }
         }
-        // Cross-package features on path= libraries (ticket-1006): pull their optional deps.
+        // Cross-package features on path= libraries: pull their optional deps.
         CrossPackageFeatures.Result cross = CrossPackageFeatures.expand(projectDir, mainDeduped.values());
         this.crossPackageActivatedFeatures = cross.activatedFeaturesByModule();
         for (Dependency extra : cross.extrasList()) {
@@ -301,14 +301,14 @@ public final class LockOrchestrator {
         }
         Map<String, String> bomConstraints = new LinkedHashMap<>();
         Map<String, String> constraintProvenance = new LinkedHashMap<>();
-        // JK-1088: one POM builder for BOM load + all scope solves + toArtifact packaging probes.
+        // one POM builder for BOM load + all scope solves + toArtifact packaging probes.
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         collectBomConstraints(project, pomBuilder, bomConstraints, constraintProvenance);
 
-        // Language runtimes must be lock deps so package-jar / boot-jar nest them (JK-1173).
+        // Language runtimes must be lock deps so package-jar / boot-jar nest them.
         // Engine classpath injection alone is not enough for standalone `java -jar`.
         // Runs AFTER BOM collection: a platform that manages the runtime (grails-bom's groovy)
-        // owns its version — the inject must not smuggle the scaffold default past it (JK-1223).
+        // owns its version — the inject must not smuggle the scaffold default past it.
         Set<String> injected = injectLanguageRuntimes(project, projectDir, bomConstraints, mainDeduped);
 
         List<Dependency> fileDeps = new ArrayList<>();
@@ -337,7 +337,7 @@ public final class LockOrchestrator {
         observer.onTotal(estimate * 2);
         observer.onPhase("Resolving dependency graph…");
 
-        // JK-1091: live graph ticks during PubGrub decisions (not only post-scope).
+        // live graph ticks during PubGrub decisions (not only post-scope).
         Set<String> graphSeen = new LinkedHashSet<>();
         Resolution mainResolution = resolveGroup(
                 mainRoots,
@@ -391,11 +391,10 @@ public final class LockOrchestrator {
         mergeGraph(testResolution, testTags, Scope.TEST, tagsByKey, modByKey);
         mergeGraph(processorResolution, processorTags, Scope.PROCESSOR, tagsByKey, modByKey);
 
-        // Parallel jar materialize (io pool). Progress ticks on *completion* order (JK-1091)
+        // Parallel jar materialize (io pool). Progress ticks on *completion* order
         // via a queue drained on this thread so wedge/UI stays single-threaded; lock rows are
         // still assembled in declaration order.
-        //
-        // JK-1202/JK-1221: no HostRateLimiter around toArtifact itself — warm re-locks serve
+        // no HostRateLimiter around toArtifact itself — warm re-locks serve
         // immutable GAVs from the local mirror (no HTTP), and capping those to 6 concurrent
         // turned a ~1s CAS walk into multi-minute wall time. The per-host cap lives inside
         // MavenRepo.fetch around the network leg only, so cold-lock fan-out stays polite.
@@ -404,7 +403,7 @@ public final class LockOrchestrator {
         Lockfile.Artifact[] arts = new Lockfile.Artifact[n];
         BlockingQueue<MaterializeDone> doneQ = new LinkedBlockingQueue<>();
         // First failure wins: tasks still waiting on a permit/queue skip their download instead
-        // of hammering the host for a lock that is already dead (JK-1221).
+        // of hammering the host for a lock that is already dead.
         java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
         for (int i = 0; i < n; i++) {
             final int idx = i;
@@ -414,8 +413,7 @@ public final class LockOrchestrator {
                             () -> {
                                 try {
                                     if (failed.get()) {
-                                        throw new CompletionException(
-                                                new IOException("lock already failed — skipped"));
+                                        throw new CompletionException(new IOException("lock already failed — skipped"));
                                     }
                                     return toArtifact(
                                             e.getValue(),
@@ -521,8 +519,8 @@ public final class LockOrchestrator {
     }
 
     /**
-     * Catch-up graph progress for any packages not already ticked live during the solve (JK-1088 /
-     * JK-1091). {@code seen} keys are display modules (same as live decision ticks).
+     * Catch-up graph progress for any packages not already ticked live during the solve /
+     * . {@code seen} keys are display modules (same as live decision ticks).
      */
     private static void noteGraph(ResolveObserver observer, Resolution resolution, Set<String> seen, int estimate) {
         for (Resolution.ResolvedModule mod : resolution.modules().values()) {
@@ -713,7 +711,7 @@ public final class LockOrchestrator {
             // An INJECTED runtime root is jk's own bookkeeping, not a user override — it
             // already carries the BOM's managed version, and stripping the BOM here would
             // flip every other edge of the GA to raw POM fills (grails-core declares a
-            // groovy NEWER than grails-bom manages → unsat, JK-1223).
+            // groovy NEWER than grails-bom manages → unsat,.
             if (injectedRuntimes.contains(d.module())) continue;
             if (bomConstraints.containsKey(d.module())) {
                 bomConstraints.remove(d.module());
@@ -786,7 +784,7 @@ public final class LockOrchestrator {
 
         String packageName = mod.module();
         String artifactFile = null;
-        // JK-1202: only probe packaging when the solver package type is not already a plain jar.
+        // only probe packaging when the solver package type is not already a plain jar.
         // Building EffectivePom for every package on materialize dominated warm re-lock wall time
         // (hundreds of POM expansions for Quarkus-sized graphs).
         try {
@@ -810,8 +808,8 @@ public final class LockOrchestrator {
                 && !kmpAlias
                 && (coord.type() == null || "jar".equals(coord.type()))
                 && (coord.classifier() == null || coord.classifier().isEmpty())) {
-            // Jar miss for a bare-GA dep whose POM packaging is aar (JK-1222): probe packaging
-            // only on miss — the JK-1202 warm path stays probe-free — and rewrite to .aar
+            // Jar miss for a bare-GA dep whose POM packaging is aarprobe packaging
+            // only on miss — the warm path stays probe-free — and rewrite to.aar
             // instead of silently writing a checksum-less row.
             try {
                 if ("aar".equals(pomBuilder.build(coord).packaging())) {
@@ -884,7 +882,7 @@ public final class LockOrchestrator {
      */
     /**
      * The {@code group:artifact} keys among {@code roots} that were declared {@code snapshot} — the
-     * only selector that opts into pre-releases (JK-1287).
+     * only selector that opts into pre-releases.
      */
     private static Set<String> snapshotModules(List<Dependency> roots) {
         Set<String> out = new java.util.LinkedHashSet<>();
@@ -907,7 +905,7 @@ public final class LockOrchestrator {
 
     /**
      * When the project is Groovy/Kotlin, ensure the language runtime lands in the <em>main</em>
-     * lock graph (JK-1173). Engine-side classpath injection covers {@code jk run}/tests but not
+     * lock graph. Engine-side classpath injection covers {@code jk run}/tests but not
      * boot-jar nesting — packaging only sees lock artifacts.
      *
      * <p>{@code putIfAbsent}: an explicit user/Grails BOM dep wins. Version follows the project's
@@ -922,8 +920,8 @@ public final class LockOrchestrator {
             LinkedHashMap<String, Dependency> mainDeduped) {
         Set<String> added = new LinkedHashSet<>();
         JkBuild.Project p = project.project();
-        // Same inference the engine uses to enable lanes (JK-1218): an unpinned project with
-        // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too —
+        // Same inference the engine uses to enable lanesan unpinned project with
+        // src/main/groovy compiles the groovy lane, so its runtime must land in the lock too
         // jk run and packaging read the lock only. Pin-only keying shipped jars that died with
         // NoClassDefFoundError: groovy/lang/GroovyObject.
         cc.jumpkick.layout.Languages langs = projectDir != null
@@ -932,7 +930,7 @@ public final class LockOrchestrator {
         // Only when the language has actual sources (src/ or plugin-contributed roots like
         // grails-app/): a bare `kotlin = "2.1.0"` pin on a sourceless module pins the COMPILER
         // (lock.kotlin) but produces no classes — injecting its runtime made such locks fail
-        // against repos that don't host the stdlib (JK-1246).
+        // against repos that don't host the stdlib.
         if (langs.groovy() && hasLangSources(projectDir, ".groovy")) {
             addRuntime(bomConstraints, mainDeduped, added, "org.apache.groovy:groovy", p.groovy(), "5");
         }
@@ -975,7 +973,7 @@ public final class LockOrchestrator {
      * choice; it strips the BOM entry via the normal exact-root rule, which Grails needs: its
      * M4 bom manages a groovy OLDER than grails-core requires). Without a literal, a platform
      * that manages the GA owns the version (Maven parity — the inject then skips the strip so
-     * every edge agrees); else floating major (JK-1223).
+     * every edge agrees); else floating major.
      */
     private static VersionSelector runtimeSelector(
             Map<String, String> bomConstraints, String module, VersionSelector declared, String fallbackMajor) {
@@ -1005,7 +1003,7 @@ public final class LockOrchestrator {
 
     /**
      * Try to fetch {@code -sources.jar} for every Maven package in {@code lock} and return a copy
-     * with {@link Lockfile.Artifact#sourcesChecksum()} populated where sources exist. Packages that
+     * with {@link Lockfile.Artifact#sourcesChecksum} populated where sources exist. Packages that
      * return 404, have a non-maven source, or already have a sources checksum are left unchanged.
      */
     public Lockfile attachSources(Lockfile lock) throws InterruptedException {
@@ -1050,7 +1048,10 @@ public final class LockOrchestrator {
                 lock.jdk(),
                 lock.kotlin(),
                 updated,
-                lock.plugins());
+                lock.plugins(),
+                lock.sdk(),
+                lock.modules(),
+                lock.jk());
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

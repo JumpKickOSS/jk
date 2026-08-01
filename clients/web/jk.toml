@@ -1,14 +1,11 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-web"
-version     = "0.10.1"
 description = "jk web dashboard SPA (static assets under classpath /web/)."
-jdk         = 25
-java        = 25
-# Resources-only module: traditional tree keeps src/main/resources/web/* on the jar.
+# Resources-only module: traditional tree keeps src/main/resources/web/* on the jar
+# and src/test/java off the main compile classpath (AUTO would otherwise pick SIMPLE).
 layout      = "traditional"
 
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

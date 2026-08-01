@@ -9,11 +9,11 @@ import java.util.stream.Stream;
 
 /**
  * Which languages a module compiles — one shared answer for the engine's lane wiring and the
- * resolver's runtime inject (JK-1218). Explicit {@code jk.toml} opt-ins win: {@code java = <int>}
+ * resolver's runtime inject. Explicit {@code jk.toml} opt-ins win: {@code java = <int>}
  * enables Java, {@code kotlin = "<ver>"} Kotlin, {@code groovy = "<ver>"} Groovy (any
  * combination). When <em>none</em> is declared, infer from the tree — a {@code src/main/java}
- * dir or any {@code .java} under {@code src/} enables Java (at the jdk release); likewise
- * {@code src/main/kotlin}/{@code .kt} and {@code src/main/groovy}/{@code .groovy}. A project
+ * dir or any {@code.java} under {@code src/} enables Java (at the jdk release); likewise
+ * {@code src/main/kotlin}/{@code.kt} and {@code src/main/groovy}/{@code.groovy}. A project
  * with nothing to go on defaults to Java (a bare {@code jdk = N} project).
  */
 public record Languages(boolean java, boolean kotlin, boolean groovy) {
@@ -39,7 +39,8 @@ public record Languages(boolean java, boolean kotlin, boolean groovy) {
     public static boolean anySourceUnder(Path root, String ext) {
         if (!Files.isDirectory(root)) return false;
         try (Stream<Path> stream = Files.walk(root)) {
-            return stream.anyMatch(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(ext));
+            return stream.anyMatch(
+                    p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(ext));
         } catch (IOException e) {
             return false; // unreadable tree — treat as absent
         }

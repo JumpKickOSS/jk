@@ -29,7 +29,7 @@ public final class BuildJournal {
     /** Snapshot files a caller may fetch by name; also the traversal whitelist for {@link #artifact}. */
     public static final String TEST_RESULTS_MD = "test-results.md";
 
-    public static final String LOCKFILE = "jk.lock";
+    public static final String LOCKFILE = "jk-lock.toml";
 
     public static final String DIAGNOSTICS_TXT = "diagnostics.txt";
 
@@ -97,7 +97,7 @@ public final class BuildJournal {
     }
 
     /**
-     * Open an in-flight journal entry at request-start (JK-1251). Returns the assigned id, or
+     * Open an in-flight journal entry at request-start. Returns the assigned id, or
      * {@code null} on failure.
      */
     public String begin(BuildRecord running) {

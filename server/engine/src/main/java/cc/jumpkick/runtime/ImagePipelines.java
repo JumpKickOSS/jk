@@ -81,7 +81,7 @@ public final class ImagePipelines {
             String tarballArg,
             String dockerExecutableArg) {
         Path jkBuildPath = projectDir.resolve("jk.toml");
-        Path lockFile = projectDir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(projectDir);
         int estimatedTestCount = TestSupport.estimateAllSuiteTestCount(projectDir, compact);
         BuildPipelines.Inputs inputs = new BuildPipelines.Inputs(
@@ -541,7 +541,7 @@ public final class ImagePipelines {
      */
     private static void splitBootDependencyJars(Path projectDir, Path cache, List<Path> releases, List<Path> snapshots)
             throws IOException {
-        Path lockPath = projectDir.resolve("jk.lock");
+        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return;
         Lockfile lock = LockfileReader.read(lockPath);
         ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
@@ -552,7 +552,7 @@ public final class ImagePipelines {
     }
 
     private static List<Path> loadDependencyJars(Path projectDir, Path cache) throws IOException {
-        Path lockPath = projectDir.resolve("jk.lock");
+        Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) return List.of();
         Lockfile lock = LockfileReader.read(lockPath);
         List<Path> result = new ArrayList<>();

@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk inspect &lt;step&gt;} — describe a pipeline step (JK-1047). Equivalent to {@code jk
+ * {@code jk inspect &lt;step&gt;} — describe a pipeline step. Equivalent to {@code jk
  * tasks inspect &lt;step&gt;}.
  */
 public final class InspectCommand implements CliCommand {

@@ -16,7 +16,7 @@ import java.nio.file.Path;
  *
  * <p>The artifact store ({@code JK_STORE_DIR}) is part of the identity for the same reason. Without it,
  * an invocation asking for a different store silently reused an engine already bound to another one and
- * the setting did nothing — measured before JK-1289 closed this: {@code /proc/<engine>/environ} carried
+ * the setting did nothing — measured before closed this: {@code /proc/<engine>/environ} carried
  * no {@code JK_STORE_DIR} at all. The state dir alone is not enough, because two invocations can share
  * a state dir while disagreeing about where downloads belong.
  */
@@ -29,7 +29,7 @@ public final class EnginePaths {
 
     /**
      * The socket/lock/pid/log paths for one engine identity, all siblings under {@code engine/}.
-     * {@code token} is only ever written/read on the {@link EngineTransport#useLoopbackTcp()} path
+     * {@code token} is only ever written/read on the {@link EngineTransport#useLoopbackTcp} path
      * (Windows) — on the Unix-domain-socket path it's simply never created. {@code http} holds the
      * embedded HTTP server's actual bound URL and {@code httpToken} its bearer token (owner-only
      * permissions); both exist only while an engine with an enabled {@code [http]} table is serving
@@ -73,9 +73,9 @@ public final class EnginePaths {
     /**
      * Every engine identity with an endpoint pointer under {@code stateDir}, newest file first.
      *
-     * <p>Needed because the identity key is a hash: once the store became part of it (JK-1289), a machine
-     * can hold several resident engines and {@link #current()} names only the one this invocation would
-     * talk to. Without a way to enumerate them, clearing the rest meant {@code pkill} (JK-1293).
+     * <p>Needed because the identity key is a hash: once the store became part of it, a machine
+     * can hold several resident engines and {@link #current} names only the one this invocation would
+     * talk to. Without a way to enumerate them, clearing the rest meant {@code pkill}.
      *
      * <p>Discovered from {@code <key>.endpoint} files rather than from any registry, so it stays true even
      * for an engine started by a jk that predates this method.
@@ -85,7 +85,8 @@ public final class EnginePaths {
         if (!java.nio.file.Files.isDirectory(dir)) return java.util.List.of();
         java.util.List<Paths> out = new java.util.ArrayList<>();
         try (var listing = java.nio.file.Files.list(dir)) {
-            java.util.List<Path> pointers = listing.filter(f -> f.getFileName().toString().endsWith(".endpoint"))
+            java.util.List<Path> pointers = listing.filter(
+                            f -> f.getFileName().toString().endsWith(".endpoint"))
                     .sorted(java.util.Comparator.comparingLong(EnginePaths::lastModifiedOrZero)
                             .reversed())
                     .toList();
@@ -174,8 +175,8 @@ public final class EnginePaths {
     }
 
     /**
-     * The token-file sibling of a {@code .sock} path, derived by naming convention alone — so the
-     * CLI-side client's {@code connect(Path)} (which only ever receives {@code paths.socket()}, not
+     * The token-file sibling of a {@code.sock} path, derived by naming convention alone — so the
+     * CLI-side client's {@code connect(Path)} (which only ever receives {@code paths.socket}, not
      * the full {@link Paths} record, across its several call sites) can find it without threading the
      * whole record through every method.
      */
@@ -184,9 +185,9 @@ public final class EnginePaths {
     }
 
     /**
-     * The pid-file sibling of a {@code .sock} path ({@code <stem>.pid}), same naming convention as
+     * The pid-file sibling of a {@code.sock} path ({@code <stem>.pid}), same naming convention as
      * {@link #tokenFor} — used by the client to wait for process death after force-stop and to
-     * displace a silent peer (ticket-1043).
+     * displace a silent peer.
      */
     public static Path pidFor(Path socket) {
         return siblingStem(socket, ".pid");

@@ -47,7 +47,7 @@ class AndroidRemoteAarTest {
         assertThat(lockResult.errors()).isEmpty();
         assertThat(lockResult.success()).isTrue();
 
-        var lockfile = LockfileReader.read(project.resolve("jk.lock"));
+        var lockfile = LockfileReader.read(project.resolve("jk-lock.toml"));
         var annotationAar = lockfile.artifacts().stream()
                 .filter(a -> a.matchesModule("androidx.core:core"))
                 .findFirst()
@@ -67,7 +67,7 @@ class AndroidRemoteAarTest {
                 project,
                 cache,
                 project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
+                project.resolve("jk-lock.toml"),
                 project,
                 1,
                 0,

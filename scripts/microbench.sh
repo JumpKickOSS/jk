@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ticket-1024 — microbench harness (clean / incremental / no-op)
-# Usage: ./scripts/microbench.sh [project-dir]
+# — microbench harness (clean / incremental / no-op)
+# Usage:./scripts/microbench.sh [project-dir]
 # Requires: jk on PATH (or JK_BIN). Deps should already be cached for fair timings.
 set -euo pipefail
 
@@ -40,7 +40,7 @@ echo "runs: $RUNS (median)"
 echo
 
 median() {
-  # stdin: one number per line → median
+ # stdin: one number per line → median
   sort -n | awk '{a[NR]=$1} END{ if(NR==0) print 0; else if(NR%2) print a[(NR+1)/2]; else print (a[NR/2]+a[NR/2+1])/2 }'
 }
 
@@ -95,4 +95,4 @@ unset JK_WORKER_AOT
 
 echo
 echo "Note: wall times include engine handshake; use warm engine (status above)."
-echo "Timeline: out/jk-chrome-profile.json after builds (ticket-1023)."
+echo "Timeline: out/jk-chrome-profile.json after builds."

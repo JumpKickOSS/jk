@@ -26,7 +26,7 @@ class JkBuildParserTest {
 
     @Test
     void platform_policy_survives_kotlin_plugins_rebuild() {
-        // JK-1213: the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
+        // the kotlin-plugins fold used a ctor that hard-reset platformPolicy to ENFORCED.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 kotlin = "2.1.0"
 
@@ -52,7 +52,7 @@ class JkBuildParserTest {
                 coordinate = "org.jetbrains.kotlin:kotlin-serialization"
                 """);
         assertThat(parsed.build().unmappedPolicy()).isEqualTo(cc.jumpkick.model.UnmappedPolicy.STRICT);
-        // Default is mediate (JK-1241).
+        // Default is mediate.
         assertThat(JkBuildParser.parse(PROJECT).build().unmappedPolicy())
                 .isEqualTo(cc.jumpkick.model.UnmappedPolicy.MEDIATE);
     }
@@ -89,7 +89,8 @@ class JkBuildParserTest {
         assertThat(parsed.project().isGroovy()).isTrue();
         assertThat(parsed.project().languageName()).isEqualTo("groovy");
         assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Exact.class);
-        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version()).isEqualTo("5.0.4");
+        assertThat(((VersionSelector.Exact) parsed.project().groovy()).version())
+                .isEqualTo("5.0.4");
     }
 
     @Test
@@ -402,14 +403,130 @@ class JkBuildParserTest {
     }
 
     @Test
-    void missing_required_key_rejected() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
+    void missing_version_on_standalone_marks_workspace_inherit() {
+        // Non-root omit of version is inheritance (member-shaped); not a hard parse error.
+        JkBuild parsed = JkBuildParser.parse("""
                 [project]
                 group    = "com.example"
                 name     = "widget"
+                """);
+        assertThat(parsed.project().inheritsVersionFromWorkspace()).isTrue();
+        assertThat(parsed.project().requiresWorkspaceRoot()).isTrue();
+    }
+
+    @Test
+    void workspace_root_still_requires_concrete_version() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group    = "com.example"
+                name     = "root"
+
+                [workspace]
+                modules = ["lib"]
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("project.version");
+    }
+
+    @Test
+    void module_shaped_only_name_is_valid_parse() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                name = "foo"
+                """);
+        assertThat(parsed.project().name()).isEqualTo("foo");
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.GROUP)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.VERSION)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.JAVA)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.DESCRIPTION)).isFalse();
+        assertThat(parsed.project().description()).isNull();
+    }
+
+    @Test
+    void version_workspace_true_parses_as_inheritance_sentinel() {
+        // Dotted key form (Cargo-style).
+        JkBuild dotted = JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version.workspace = true
+                jdk     = 21
+                java    = 21
+                """);
+        assertThat(dotted.project().inheritsVersionFromWorkspace()).isTrue();
+        assertThat(dotted.project().version()).isEqualTo(JkBuild.VERSION_FROM_WORKSPACE);
+
+        // Inline table form.
+        JkBuild inline = JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version = { workspace = true }
+                jdk     = 21
+                java    = 21
+                """);
+        assertThat(inline.project().inheritsVersionFromWorkspace()).isTrue();
+    }
+
+    @Test
+    void project_field_workspace_inheritance_parses_multiple_fields() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                group.workspace = true
+                name    = "mod"
+                version.workspace = true
+                java.workspace = true
+                jdk.workspace = true
+                description.workspace = true
+                """);
+        var p = parsed.project();
+        assertThat(p.inheritsFromWorkspace()).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.GROUP)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.VERSION)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.JAVA)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.JDK)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.DESCRIPTION)).isTrue();
+        assertThat(p.name()).isEqualTo("mod");
+    }
+
+    @Test
+    void name_workspace_inheritance_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name.workspace = true
+                version = "1.0.0"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("project.name")
+                .hasMessageContaining("workspace");
+    }
+
+    @Test
+    void version_workspace_true_rejected_on_workspace_root() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version.workspace = true
+
+                [workspace]
+                modules = ["lib"]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace root");
+    }
+
+    @Test
+    void version_workspace_must_be_true() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version = { workspace = false }
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace");
     }
 
     @Test
@@ -615,7 +732,7 @@ class JkBuildParserTest {
     @Test
     void git_source_rejects_fetch_field() {
         // `fetch` (the branch-tip freshness window) is gone — every git dep is pinned
-        // in jk.lock and only moves on an explicit `jk update --git` / `jk fetch`.
+        // in jk-lock.toml and only moves on an explicit `jk update --git` / `jk fetch`.
         assertThatThrownBy(() -> JkBuildParser.parse(PROJECT + """
                 [dependencies]
                 fork = { git = "https://github.com/me/widgets", branch = "main", fetch = "48h" }
@@ -1040,7 +1157,7 @@ class JkBuildParserTest {
 
     @Test
     void object_store_keys_keep_their_raw_env_references() {
-        // Same contract as credentials (JK-1272): raw out of the parse, expanded by RepoGroupBuilder
+        // Same contract as credentialsraw out of the parse, expanded by RepoGroupBuilder
         // where the request's environment is in scope. Object-store keys are secrets, so they must
         // not be committed literally — but the parse is not the place to resolve them.
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
@@ -1057,7 +1174,7 @@ class JkBuildParserTest {
 
     @Test
     void an_inline_credential_keeps_its_raw_env_reference() {
-        // The parse deliberately does NOT interpolate (JK-1272): it stays a pure function of the
+        // The parse deliberately does NOT interpolateit stays a pure function of the
         // file's bytes, so the memo needs no environment in its key and the engine cannot
         // accidentally resolve against the daemon's environment instead of the caller's.
         // Expansion — and its strictness — is RepoCredentialResolver's job; see
@@ -1110,7 +1227,7 @@ class JkBuildParserTest {
     }
 
     // ───────────────────────────────────────────────────────────────
-    //  Library-catalog shorthand
+    // Library-catalog shorthand
     // ───────────────────────────────────────────────────────────────
 
     /** Synthetic catalog used so the tests don't drift with the bundled set. */
@@ -1765,7 +1882,7 @@ class JkBuildParserTest {
 
     @Test
     void spring_boot_bom_is_not_duplicated_when_user_declares_it() {
-        // A deliberate [platform-dependencies] spring-boot-dependencies entry wins —
+        // A deliberate [platform-dependencies] spring-boot-dependencies entry wins
         // the auto-import must not add a second (conflicting) BOM row.
         JkBuild b = JkBuildParser.parse(PROJECT + """
 

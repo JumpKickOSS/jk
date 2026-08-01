@@ -13,14 +13,14 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.io.TempDirDeletionStrategy;
 
 /**
- * JUnit 6 TempDir cleanup for wire CLI tests (ticket-1055).
+ * JUnit 6 TempDir cleanup for wire CLI tests.
  *
  * <ol>
- *   <li>Try the standard recursive delete.
- *   <li>On failure, force-stop the resident engine (releases CAS hardlinks / jar FDs under the
- *       project tree), GC, retry.
- *   <li>If still stuck, best-effort walk-delete then return a successful empty result so the suite
- *       continues (leftovers under {@code /tmp} are ephemeral).
+ * <li>Try the standard recursive delete.
+ * <li>On failure, force-stop the resident engine (releases CAS hardlinks / jar FDs under the
+ * project tree), GC, retry.
+ * <li>If still stuck, best-effort walk-delete then return a successful empty result so the suite
+ * continues (leftovers under {@code /tmp} are ephemeral).
  * </ol>
  */
 public final class JkTempDirDeletionStrategy implements TempDirDeletionStrategy {
@@ -53,7 +53,7 @@ public final class JkTempDirDeletionStrategy implements TempDirDeletionStrategy 
             System.err.println("jk test: TempDir cleanup error for " + rootDir + ": " + t + " (continuing)");
             forceDeleteQuietly(rootDir);
         }
-        // Empty failures → isSuccessful() true regardless of leftover paths.
+        // Empty failures → isSuccessful true regardless of leftover paths.
         return DeletionResult.builder(rootDir).build();
     }
 

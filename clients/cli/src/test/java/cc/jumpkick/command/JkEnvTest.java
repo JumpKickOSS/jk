@@ -30,7 +30,7 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk.lock"));
+        LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
@@ -38,18 +38,19 @@ class JkEnvTest {
 
     @Test
     void resolves_jdk_home_from_registry(@TempDir Path tempDir) throws IOException {
-        // Stand up a fake jk-managed JDK install + a project with jk.lock
+        // Stand up a fake jk-managed JDK install + a project with jk-lock.toml
         // pointing at it.
         var jdksRoot = tempDir.resolve("jdks");
         var jdkHome = jdksRoot.resolve("temurin-25.0.3");
         Files.createDirectories(jdkHome.resolve("bin"));
         Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(jdkHome.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "temurin-25.0.3"), project.resolve("jk.lock"));
+        LockfileWriter.write(Lockfile.empty("0.1", "temurin-25.0.3"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin:/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
@@ -72,6 +73,7 @@ class JkEnvTest {
         var jdkHome = jdksRoot.resolve("graalvm-jdk-25");
         Files.createDirectories(jdkHome.resolve("bin"));
         Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(
                 jdkHome.resolve("release"),
                 "JAVA_VERSION=\"25.0.0\"\nIMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\n");
@@ -79,7 +81,7 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "graalvm-jdk-25"), project.resolve("jk.lock"));
+        LockfileWriter.write(Lockfile.empty("0.1", "graalvm-jdk-25"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", noGlobalDefault(tempDir));
         var target = env.resolve(project);
@@ -108,7 +110,7 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1", "nonexistent-jdk-999"), project.resolve("jk.lock"));
+        LockfileWriter.write(Lockfile.empty("0.1", "nonexistent-jdk-999"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(tempDir.resolve("jdks")), "/usr/bin", noGlobalDefault(tempDir));
         assertThat(env.resolve(project).isActive()).isFalse();
@@ -141,7 +143,7 @@ class JkEnvTest {
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
         Files.writeString(project.resolve("jk.toml"), "[project]\ngroup=\"x\"\nname=\"y\"\nversion=\"1.0\"\n");
-        LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk.lock"));
+        LockfileWriter.write(Lockfile.empty("0.1"), project.resolve("jk-lock.toml"));
 
         var env = new JkEnv(new JdkRegistry(jdksRoot), "/usr/bin", defaults);
         var target = env.resolve(project);
@@ -192,6 +194,7 @@ class JkEnvTest {
     private static Path fakeJdk(Path home) throws IOException {
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
         return home;
     }

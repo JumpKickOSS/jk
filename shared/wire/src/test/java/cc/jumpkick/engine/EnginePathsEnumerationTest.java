@@ -9,10 +9,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1293: enumerating engine identities.
+ * enumerating engine identities.
  *
- * <p>The identity key is a hash, and since the store became part of it (JK-1289) a machine can hold
- * several resident engines at once — one per distinct store. {@code current()} names only the one this
+ * <p>The identity key is a hash, and since the store became part of it a machine can hold
+ * several resident engines at once — one per distinct store. {@code current} names only the one this
  * invocation would talk to, so without enumeration the only way to clear the rest was {@code pkill}.
  */
 class EnginePathsEnumerationTest {
@@ -36,7 +36,7 @@ class EnginePathsEnumerationTest {
     @Test
     void an_identity_resolves_the_same_paths_as_a_hashed_one(@TempDir Path tmp) throws Exception {
         // Enumeration recovers a key from a filename rather than by hashing, so its paths have to agree
-        // with what resolve() produces or `stop --all` would probe files nothing writes.
+        // with what resolve produces or `stop --all` would probe files nothing writes.
         Path dir = engineDir(tmp);
         EnginePaths.Paths hashed = EnginePaths.resolve(tmp, tmp.resolve("store"));
         Files.writeString(dir.resolve(hashed.key() + ".endpoint"), hashed.key() + ".gen1.sock\n");
@@ -88,6 +88,8 @@ class EnginePathsEnumerationTest {
         Files.setLastModifiedTime(older, java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L));
         Files.setLastModifiedTime(newer, java.nio.file.attribute.FileTime.fromMillis(1_700_000_000_000L));
 
-        assertThat(EnginePaths.identitiesIn(tmp)).extracting(EnginePaths.Paths::key).containsExactly("new00000", "old00000");
+        assertThat(EnginePaths.identitiesIn(tmp))
+                .extracting(EnginePaths.Paths::key)
+                .containsExactly("new00000", "old00000");
     }
 }

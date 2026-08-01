@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1289: the artifact store is part of the engine's identity.
+ * the artifact store is part of the engine's identity.
  *
  * <p>It has to be. A daemon does not inherit the client's environment, so an invocation asking for a
  * different {@code JK_STORE_DIR} used to reuse an engine already bound to another store and the setting

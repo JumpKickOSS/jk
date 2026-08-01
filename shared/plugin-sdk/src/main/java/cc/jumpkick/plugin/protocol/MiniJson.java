@@ -12,7 +12,7 @@ import java.util.Map;
  * {@link Jsonl#quote}); this is the single tree codec — never reimplement escaping here.
  *
  * <p>Lives in plugin-sdk at the SPI language floor ({@code --release 17}); written without
- * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes (JK-1133).
+ * pattern-switch (Java 21+) so worker JVMs on project JDK 17+ can load the same classes.
  */
 public final class MiniJson {
 
@@ -72,7 +72,8 @@ public final class MiniJson {
             writeArray(sb, (List<?>) value, indent);
             return;
         }
-        throw new IllegalArgumentException("not JSON-representable: " + value.getClass().getName());
+        throw new IllegalArgumentException(
+                "not JSON-representable: " + value.getClass().getName());
     }
 
     private static void writeObject(StringBuilder sb, Map<?, ?> map, int indent) {

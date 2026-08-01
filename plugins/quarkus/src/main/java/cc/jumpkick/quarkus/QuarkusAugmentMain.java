@@ -32,14 +32,14 @@ import java.util.jar.JarOutputStream;
 import java.util.jar.Manifest;
 
 /**
- * Forked entry point for Quarkus production packaging (JK-1160/1202).
+ * Forked entry point for Quarkus production packaging/1202).
  *
  * <p>Args: {@code projectRoot classesDir targetDir baseName group artifact version runtimeListFile
  * quarkusVersion}
  *
  * <p>Pure bootstrap — no {@code mvn} CLI. Builds an {@code ApplicationModel} via Quarkus's
  * embedded Maven resolver (BootstrapAppModelResolver), injects platform properties/descriptor,
- * then runs {@code createProductionApplication()} to produce {@code quarkus-app/}.
+ * then runs {@code createProductionApplication} to produce {@code quarkus-app/}.
  */
 public final class QuarkusAugmentMain {
 
@@ -71,7 +71,8 @@ public final class QuarkusAugmentMain {
         jarDir(classesDir, appJar);
 
         // Prefer jk CAS + user m2 as tails so already-fetched jars are reused.
-        String jkCentral = Path.of(System.getProperty("user.home"), ".jk/cache/repos/central").toString();
+        String jkCentral = Path.of(System.getProperty("user.home"), ".jk/cache/repos/central")
+                .toString();
         String m2 = Path.of(System.getProperty("user.home"), ".m2/repository").toString();
 
         var cfg = BootstrapMavenContext.config()
@@ -91,8 +92,7 @@ public final class QuarkusAugmentMain {
         for (RuntimeCoord e : extensions) {
             String key = e.group() + ":" + e.artifact();
             if (directKeys.add(key)) {
-                direct.add(new ArtifactDependency(
-                        e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
+                direct.add(new ArtifactDependency(e.group(), e.artifact(), "", "jar", e.version(), "compile", false));
             }
         }
         // Workspace / path jars (jk path deps) have no Maven layout GAV — install them into the
@@ -116,17 +116,20 @@ public final class QuarkusAugmentMain {
                 if (r.group().startsWith("unknown")) continue;
                 String key = r.group() + ":" + r.artifact();
                 if (directKeys.add(key)) {
-                    direct.add(new ArtifactDependency(
-                            r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
+                    direct.add(
+                            new ArtifactDependency(r.group(), r.artifact(), "", "jar", r.version(), "compile", false));
                 }
             }
         }
         ArtifactCoords managing = ArtifactCoords.pom("io.quarkus.platform", "quarkus-bom", quarkusVersion);
 
-        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size()
-                + " pathDeps=" + pathDeps + ")…");
-        var model = modelResolver.resolveManagedModel(appCoords, direct, managing, Set.of(appCoords.getKey()));
-        System.err.println("jk-quarkus-augment: model deps=" + model.getDependencies().size());
+        System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " pathDeps="
+                + pathDeps + ")…");
+        // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
+        var model = modelResolver.resolveManagedModel(
+                appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
+        System.err.println(
+                "jk-quarkus-augment: model deps=" + model.getDependencies().size());
 
         // Platform properties + descriptor (required for config expansion + alignment checks).
         injectPlatform(model, quarkusVersion, jkCentral, m2, maven);
@@ -151,8 +154,8 @@ public final class QuarkusAugmentMain {
                 .setRebuild(false)
                 .build();
 
-        System.err.println("jk-quarkus-augment: bootstrap + createProductionApplication (package="
-                + packageType + ")…");
+        System.err.println(
+                "jk-quarkus-augment: bootstrap + createProductionApplication (package=" + packageType + ")…");
         Path producedJar = null;
         try (CuratedApplication curated = bs.bootstrap()) {
             AugmentResult result = curated.createAugmentor().createProductionApplication();
@@ -231,7 +234,9 @@ public final class QuarkusAugmentMain {
             throws Exception {
         if (!(model.getPlatforms() instanceof PlatformImportsImpl platforms)) {
             System.err.println("jk-quarkus-augment: warning: cannot inject platform props (platforms type "
-                    + (model.getPlatforms() == null ? "null" : model.getPlatforms().getClass().getName()) + ")");
+                    + (model.getPlatforms() == null
+                            ? "null"
+                            : model.getPlatforms().getClass().getName()) + ")");
             return;
         }
         Path propsPath = Path.of(
@@ -248,12 +253,8 @@ public final class QuarkusAugmentMain {
         }
         if (!Files.isRegularFile(propsPath)) {
             var art = new org.eclipse.aether.artifact.DefaultArtifact(
-                    "io.quarkus.platform",
-                    "quarkus-bom-quarkus-platform-properties",
-                    "",
-                    "properties",
-                    quarkusVersion);
-            propsPath = maven.resolve(art).getArtifact().getFile().toPath();
+                    "io.quarkus.platform", "quarkus-bom-quarkus-platform-properties", "", "properties", quarkusVersion);
+            propsPath = resolvedArtifactPath(maven.resolve(art).getArtifact());
         }
         platforms.addPlatformProperties(
                 "io.quarkus.platform",
@@ -265,11 +266,34 @@ public final class QuarkusAugmentMain {
         // Marks the BOM import as having a platform descriptor (alignment check).
         platforms.addPlatformDescriptor(
                 "io.quarkus.platform", "quarkus-bom-quarkus-platform-descriptor", "", "json", quarkusVersion);
-        System.err.println("jk-quarkus-augment: platform props=" + model.getPlatformProperties().size()
-                + " boms=" + platforms.getImportedPlatformBoms());
+        System.err.println("jk-quarkus-augment: platform props="
+                + model.getPlatformProperties().size() + " boms=" + platforms.getImportedPlatformBoms());
     }
 
     private record RuntimeCoord(String group, String artifact, String version, Path jar) {}
+
+    /**
+     * Path of a resolved Aether artifact. Prefer {@code getPath} (maven-resolver 1.9.20+ / 2.x);
+     * fall back to {@code getFile} for the older resolver pinned by quarkus-bootstrap. Looked up
+     * reflectively so compile against either surface stays free of deprecation noise and missing
+     * symbols.
+     */
+    static Path resolvedArtifactPath(org.eclipse.aether.artifact.Artifact art) {
+        if (art == null) throw new IllegalStateException("resolved artifact is null");
+        try {
+            Object path = art.getClass().getMethod("getPath").invoke(art);
+            if (path instanceof Path p) return p;
+        } catch (ReflectiveOperationException ignored) {
+            // Older Artifact interface — only getFile.
+        }
+        try {
+            Object file = art.getClass().getMethod("getFile").invoke(art);
+            if (file instanceof java.io.File f) return f.toPath();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("cannot resolve path for " + art, e);
+        }
+        throw new IllegalStateException("resolved artifact has no path: " + art);
+    }
 
     /** Path/workspace jars written as {@code unknown:unknown:0} by the packager, or non-Maven paths. */
     private static boolean isPathOrUnknown(RuntimeCoord r) {

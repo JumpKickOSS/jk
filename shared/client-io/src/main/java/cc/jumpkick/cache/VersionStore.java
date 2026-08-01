@@ -128,8 +128,8 @@ public final class VersionStore {
      * client binary) into a temp sibling, write the manifest, atomically rename into place.
      * Already-complete versions return immediately (immutable once materialized).
      *
-     * @param clientBinSha CAS sha of this host's native client, or {@code null} (engine-only —
-     *     the self-fetch path, where the running client IS this version's client)
+     * @param clientBinSha CAS sha of this host's native client, or {@code null} (engine-only
+     * the self-fetch path, where the running client IS this version's client)
      */
     public Materialized materialize(String version, Cas cas, String engineJarSha, String clientBinSha)
             throws IOException {
@@ -141,7 +141,7 @@ public final class VersionStore {
         // Per-version lock: two racing materializers could otherwise both see "aborted dir"
         // and delete the one the other just atomically moved into place (self-healing but
         // nondeterministic). The lock file lives beside the version dirs; content addressing
-        // makes the serialized loser's resolve() below hit the winner's identical tree.
+        // makes the serialized loser's resolve below hit the winner's identical tree.
         Path lockPath = versionsDir().resolve("." + version + ".lock");
         try (java.nio.channels.FileChannel lockCh = java.nio.channels.FileChannel.open(
                         lockPath, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
@@ -151,7 +151,7 @@ public final class VersionStore {
             if (raced.isPresent()) {
                 // Same version, DIFFERENT bytes: a dev -SNAPSHOT re-install. Replace the stale
                 // tree — short-circuiting on engine-only match once left a new client binary
-                // unused while versions/<v>/bin/jk stayed old (JK-1059).
+                // unused while versions/<v>/bin/jk stayed old.
                 deleteRecursively(finalRoot);
             }
             return materializeLocked(version, cas, engineJarSha, clientBinSha, finalRoot);
@@ -183,7 +183,7 @@ public final class VersionStore {
     /**
      * True when the materialized tree's manifest records this engine jar, and — when a client
      * binary was supplied — the same client content. Engine-only checks left SNAPSHOT client
-     * binaries stale when the engine jar was unchanged (JK-1059).
+     * binaries stale when the engine jar was unchanged.
      */
     private static boolean hasContent(Materialized m, String engineJarSha, String clientBinSha) {
         try {
@@ -219,7 +219,7 @@ public final class VersionStore {
                             + "engine-sha256 = \"" + engineJarSha + "\"\n"
                             + clientLine
                             + "protocol = 1\n");
-            // An aborted earlier materialization (dir without manifest) blocks the rename —
+            // An aborted earlier materialization (dir without manifest) blocks the rename
             // clear it; a COMPLETE dir was returned above and never reaches this point.
             if (Files.isDirectory(finalRoot) && !Files.isRegularFile(finalRoot.resolve(MANIFEST))) {
                 deleteRecursively(finalRoot);

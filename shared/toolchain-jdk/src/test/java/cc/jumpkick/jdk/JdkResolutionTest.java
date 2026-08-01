@@ -121,6 +121,24 @@ class JdkResolutionTest {
         assertThat(r.jdk().get().home()).isEqualTo(j26);
     }
 
+    @Test
+    void jre_only_home_is_not_accepted_as_current_or_java_home(@TempDir Path tmp) throws IOException {
+        Path jdks = jdks(tmp);
+        Path real = makeJdk(jdks, "temurin-25.0.3");
+        // System package layout: java + release, no javac (Fedora/RHEL headless JRE).
+        Path jre = tmp.resolve("java-25-openjdk");
+        Files.createDirectories(jre.resolve("bin"));
+        Files.writeString(jre.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(jre.resolve("release"), "JAVA_VERSION=\"25.0.4\"\nIMPLEMENTOR=\"Red Hat, Inc.\"\n");
+
+        GlobalDefaultJdk gdj = gdj(tmp);
+        gdj.setCurrent(new InstalledJdk("java-25-openjdk", jre));
+        // current points at a JRE → skipped; de-facto default should pick the real JDK.
+        var r = JdkResolution.resolve(req(tmp).build(), reg(jdks), gdj, LATEST_LTS);
+        assertThat(r.jdk().get().home()).isEqualTo(real);
+        assertThat(r.tier()).isEqualTo(JdkResolution.Tier.DEFAULT);
+    }
+
     // -- helpers -------------------------------------------------------------
 
     private static Path jdks(Path tmp) throws IOException {
@@ -142,6 +160,7 @@ class JdkResolutionTest {
         Path home = jdksRoot.resolve(dirName);
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         String version = dirName.substring(dirName.indexOf('-') + 1);
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");

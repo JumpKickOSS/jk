@@ -41,7 +41,7 @@ class NewModuleTest {
 
         // Module scaffolded, no per-module lock (the root owns resolution).
         assertThat(module.resolve("jk.toml")).exists();
-        assertThat(module.resolve("jk.lock")).doesNotExist();
+        assertThat(module.resolve("jk-lock.toml")).doesNotExist();
 
         // Group + JDK/java release inherited from the parent.
         JkBuild m = JkBuildParser.parse(module.resolve("jk.toml"));
@@ -105,7 +105,7 @@ class NewModuleTest {
 
         // Standalone: its own group, parent untouched. No lock at scaffold —
         // it's generated on the first build/run.
-        assertThat(sub.resolve("jk.lock")).doesNotExist();
+        assertThat(sub.resolve("jk-lock.toml")).doesNotExist();
         assertThat(JkBuildParser.parse(sub.resolve("jk.toml")).project().group())
                 .isEqualTo("com.solo");
         assertThat(JkBuildParser.parse(tempDir.resolve("jk.toml")).isWorkspaceRoot())

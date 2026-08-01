@@ -17,7 +17,7 @@ public interface ResolveObserver {
 
     /**
      * Cheap phase label during long lock (BOM load, graph solve, download) so the CLI/web bar is not
-     * silent before materialization ticks fire (JK-1088).
+     * silent before materialization ticks fire.
      */
     default void onPhase(String label) {}
 

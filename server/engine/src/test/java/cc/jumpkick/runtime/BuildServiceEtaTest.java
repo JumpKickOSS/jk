@@ -4,7 +4,7 @@ package cc.jumpkick.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
-
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The whole-build history prior: a sanity anchor for the seeded ETA, one-sided by design. */
@@ -47,7 +47,7 @@ class BuildServiceEtaTest {
 
     @Test
     void host_history_fills_count_up_when_project_path_is_unknown() {
-        // JK-1151: applyHistoryPrior with host-tier stats must turn base=0 into a countdown seed.
+        // applyHistoryPrior with host-tier stats must turn base=0 into a countdown seed.
         BuildMetrics.Stats host = ok(10, 4500, 1000, 12_000);
         assertThat(BuildService.applyHistoryPrior(0, host)).isEqualTo(4500);
         assertThat(BuildService.applyHistoryPrior(3000, host)).isEqualTo(3000);
@@ -61,19 +61,41 @@ class BuildServiceEtaTest {
         assertThat(reb.kind()).isEqualTo("build:rebuild");
         assertThat(inc.dirKey(Path.of("/ws"))).isEqualTo("/ws#d4");
         assertThat(reb.dirKey(Path.of("/ws"))).isEqualTo("/ws#d200");
-        assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws"))).isEqualTo("/ws");
+        assertThat(new BuildService.HistoryShape(false, -1).dirKey(Path.of("/ws")))
+                .isEqualTo("/ws");
     }
 
     @Test
-    void rebuild_shape_blends_cold_schedule_toward_history() {
-        // Schedule base 60s, trained rebuild avg 3s → pull toward history (not leave 60s).
-        long blended = BuildService.applyHistoryPrior(60_000, ok(2, 3000, 2800, 3200), true);
-        assertThat(blended).isLessThan(60_000);
-        assertThat(blended).isGreaterThan(3000);
-        // 0.3*60000 + 0.7*3000 = 20100
-        assertThat(blended).isEqualTo(20_100);
-        // Incremental shape keeps the old one-sided clamp rules (no blend).
-        assertThat(BuildService.applyHistoryPrior(60_000, ok(2, 3000, 2800, 3200), false))
-                .isEqualTo(60_000);
+    void history_prior_never_pulls_step_sum_toward_whole_build_average() {
+        // ETA is Σ dirty step walls — whole-build history must not inflate a partial schedule.
+        assertThat(BuildService.applyHistoryPrior(20_000, ok(3, 150_000, 140_000, 160_000), true))
+                .isEqualTo(20_000);
+        assertThat(BuildService.applyHistoryPrior(20_000, ok(3, 150_000, 140_000, 160_000), false, 27))
+                .isEqualTo(20_000);
+        // Cold seed (base=0) may still use history when nothing is modeled yet.
+        assertThat(BuildService.applyHistoryPrior(0, ok(3, 150_000, 140_000, 160_000), true))
+                .isEqualTo(150_000);
+        // One-sided clamp still applies for absurd over-estimates with settled history.
+        assertThat(BuildService.applyHistoryPrior(60_000, ok(5, 2000, 800, 6000), false))
+                .isEqualTo(12_000);
+    }
+
+    @Test
+    void cancelled_invocation_stats_do_not_seed_eta_priors(@org.junit.jupiter.api.io.TempDir Path dir)
+            throws Exception {
+        // Full success then a short cancelled (Ctrl-C) wall — okAcrossShapes / applyHistoryPrior
+        // must keep the full-build average, not blend the truncated cancel.
+        Path metrics = dir.resolve("metrics.json");
+        BuildMetrics.record(
+                metrics, new BuildMetrics.Outcome("build", "/proj#d1", "g:n", true, false, 12_000, List.of()), 1_000L);
+        BuildMetrics.record(
+                metrics, new BuildMetrics.Outcome("build", "/proj#d1", "g:n", false, true, 350, List.of()), 2_000L);
+        BuildMetrics m = BuildMetrics.load(metrics);
+        BuildMetrics.Stats okOnly = m.okAcrossShapes("build", "/proj");
+        assertThat(okOnly.count()).isEqualTo(1);
+        assertThat(okOnly.avgMillis()).isEqualTo(12_000);
+        // History prior for a cold schedule (base=0) uses the ok average, not the cancel wall.
+        assertThat(BuildService.applyHistoryPrior(0, okOnly)).isEqualTo(12_000);
+        assertThat(BuildService.applyHistoryPrior(15_000, okOnly)).isEqualTo(15_000);
     }
 }

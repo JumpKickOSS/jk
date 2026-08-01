@@ -321,8 +321,7 @@ public final class PluginBuild {
      * <p>When {@code managed-by} and/or {@code with} are set, roots resolve as <em>one</em> graph
      * under BOM pins (PubGrub) — Maven-like tool classpath alignment, not freestyle dual trees.
      */
-    private static Path toolClosureDir(
-            PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
+    private static Path toolClosureDir(PluginContributions.StepDep dep, cc.jumpkick.repo.RepoGroup repos, Cas cas)
             throws IOException, InterruptedException {
         String cacheKey = toolClosureCacheKey(dep);
         Path dir = cas.root().resolve("plugin-tools").resolve(cacheKey);
@@ -412,9 +411,7 @@ public final class PluginBuild {
         // Keep path components reasonable on case-sensitive FS / path length limits.
         String key = sb.toString();
         if (key.length() > 180) {
-            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40)
-                    + "_"
-                    + dep.artifact();
+            return Hashing.sha256Hex(key.getBytes(StandardCharsets.UTF_8)).substring(0, 40) + "_" + dep.artifact();
         }
         return key;
     }

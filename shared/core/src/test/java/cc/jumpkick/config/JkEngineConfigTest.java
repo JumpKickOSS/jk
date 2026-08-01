@@ -19,8 +19,8 @@ class JkEngineConfigTest {
     }
 
     /**
-     * JK-1075: default engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module
-     * build — see docs/perf/engine-heap-monorepo.md). Do not raise without ticket JK-1085 evidence.
+     * default engine coordinator heap stays 256 MiB (measured ~36 MiB peak on a 200-module
+     * build — see docs/perf/engine-heap-monorepo.md). Do not raise without ticket evidence.
      */
     @Test
     void default_max_heap_stays_256_mib_good_neighbor() {

@@ -184,7 +184,7 @@ public final class FreshnessStamp {
     private static boolean newerThan(Path file, long stampMillis) throws IOException {
         if (!Files.exists(file)) return true; // disappearing input → treat as changed
         // A directory input (sibling lane's classes dir): its ROOT mtime does not change when
-        // nested files are rewritten — walk for the newest nested mtime (JK-1224). Deletions
+        // nested files are rewritten — walk for the newest nested mtime. Deletions
         // bump the parent dir's mtime, which the walk also sees.
         if (Files.isDirectory(file)) {
             try (java.util.stream.Stream<Path> walk = Files.walk(file)) {
@@ -194,12 +194,12 @@ public final class FreshnessStamp {
             }
             return false;
         }
-        // Use >= , not > : filesystem mtimes are millisecond-truncated, and a
+        // Use >=, not >: filesystem mtimes are millisecond-truncated, and a
         // build can finish writing its stamp in the same millisecond a source
         // is edited (fast disks, tiny projects). Treating "mtime == stampMillis"
         // as potentially-changed means we distrust the cheap stat at that
         // boundary and fall through to the content-hashing action cache, which
-        // decides correctly. With strict > , a same-millisecond edit is silently
+        // decides correctly. With strict >, a same-millisecond edit is silently
         // skipped — a stale-build bug, not just a test flake.
         return Files.getLastModifiedTime(file).toMillis() >= stampMillis;
     }

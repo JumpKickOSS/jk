@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1296: nested-engine CLI modules must fingerprint worker/engine jars in the TestStamp extras
+ * nested-engine CLI modules must fingerprint worker/engine jars in the TestStamp extras
  * that both forecast and live run-tests use.
  */
 class TestStampWorkerJarsParityTest {
@@ -24,9 +24,7 @@ class TestStampWorkerJarsParityTest {
     void cli_module_enriches_worker_jars_into_stamp_extras() throws Exception {
         Path cli = tmp.resolve("clients/cli");
         Files.createDirectories(cli);
-        Files.writeString(
-                cli.resolve("jk.toml"),
-                """
+        Files.writeString(cli.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-cli"
@@ -46,18 +44,14 @@ class TestStampWorkerJarsParityTest {
             zos.write("Manifest-Version: 1.0\n".getBytes());
             zos.closeEntry();
         }
-        Files.writeString(
-                engine.resolve("jk.toml"),
-                """
+        Files.writeString(engine.resolve("jk.toml"), """
                 [project]
                 group = "cc.jumpkick"
                 name = "jk-engine"
                 version = "0.0.1"
                 java = 25
                 """);
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [workspace]
                 members = ["clients/cli", "server/engine"]
                 """);
@@ -81,9 +75,7 @@ class TestStampWorkerJarsParityTest {
     void library_module_without_test_plugin_jars_has_no_workers() throws Exception {
         Path lib = tmp.resolve("lib");
         Files.createDirectories(lib);
-        Files.writeString(
-                lib.resolve("jk.toml"),
-                """
+        Files.writeString(lib.resolve("jk.toml"), """
                 [project]
                 group = "ex"
                 name = "lib"

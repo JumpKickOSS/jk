@@ -74,7 +74,7 @@ class JdkCatalogClientTest {
     @Test
     void cache_hit_within_ttl_skips_network(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("jdks.json");
-        JdkCatalogClient client = new JdkCatalogClient(new Http(), feed, cache, Duration.ofHours(24));
+        JdkCatalogClient client = new JdkCatalogClient(new Http(), feed, cache, Duration.ofHours(12));
         client.fetch();
         int after1 = hits.get();
         client.fetch();

@@ -26,13 +26,13 @@ import org.jline.utils.AttributedStyle;
  * plus <b>vscjava.vscode-java-debug</b>.
  *
  * <p>Rather than the fragile "invisible project" {@code java.project.*} settings (single output
- * path, no live cross-module source deps), it generates native <b>Eclipse project metadata</b> —
- * {@code .project} / {@code .classpath} / {@code .settings/org.eclipse.jdt.core.prefs} per module —
+ * path, no live cross-module source deps), it generates native <b>Eclipse project metadata</b>
+ * {@code.project} / {@code.classpath} / {@code.settings/org.eclipse.jdt.core.prefs} per module
  * which JDT-LS consumes directly and which supports per-module output dirs, live sibling <i>source</i>
  * references, test/main split, and per-module JDK levels. Workspace-wide bits (JDK runtimes, LS
- * vmargs, disabling the Maven/Gradle importers) go in {@code .vscode/settings.json}.
+ * vmargs, disabling the Maven/Gradle importers) go in {@code.vscode/settings.json}.
  *
- * <p>JDT-LS compiles into {@code target/jdt/classes/{main,test}} (see {@link BuildLayout#jdtClassesDir()})
+ * <p>JDT-LS compiles into {@code target/jdt/classes/{main,test}} (see {@link BuildLayout#jdtClassesDir})
  * — isolated from jk's own {@code target/classes} so the two incremental compilers never fight.
  */
 public final class VscodeIdeGenerator implements IdeGenerator {
@@ -52,7 +52,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
 
     @Override
     public List<String> generate(IdeModel model) throws IOException {
-        // Eclipse project names are workspace-global and cross-module deps reference them by name —
+        // Eclipse project names are workspace-global and cross-module deps reference them by name
         // reject duplicates rather than emit a silently-broken classpath.
         assertUniqueNames(model);
 
@@ -72,7 +72,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         }
         write(vscodeDir.resolve("extensions.json"), extensionsJson());
         files++;
-        // JK-1141: tasks for jk test / --all / per-suite
+        // tasks for jk test / --all / per-suite
         write(vscodeDir.resolve("tasks.json"), tasksJson(model));
         files++;
 
@@ -147,7 +147,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
         StringBuilder sb = xmlHeader();
         sb.append("<classpath>\n");
 
-        // JK-1139: all TestSuites roots as test sources (shared with IntelliJ generator).
+        // all TestSuites roots as test sources (shared with IntelliJ generator).
         for (IdeSourceRoots.Root root : IdeSourceRoots.of(moduleDir)) {
             String out = root.test() ? outTest : outMain;
             srcEntry(sb, moduleDir, root.relative(), root.test(), out);
@@ -324,7 +324,7 @@ public final class VscodeIdeGenerator implements IdeGenerator {
                 + "  ]\n}\n";
     }
 
-    /** JK-1141: shell tasks for default suite, --all, and each extra suite. */
+    /**shell tasks for default suite, --all, and each extra suite. */
     static String tasksJson(IdeModel model) {
         List<String> tasks = new ArrayList<>();
         tasks.add(taskEntry("jk: test", "jk test"));

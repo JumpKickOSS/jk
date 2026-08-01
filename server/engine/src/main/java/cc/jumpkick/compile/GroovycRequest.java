@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.jdk.SupportedJdk;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
 /**
  * Input to {@link GroovycDriver} (forks {@code jk-groovy-compiler}). {@code workerClasspath} is
- * the plugin jar + Groovy runtime closure. {@code sources} may mix {@code .groovy} and {@code
+ * the plugin jar + Groovy runtime closure. {@code sources} may mix {@code.groovy} and {@code
  * .java} — any Java presence (also via {@code javaSourceRoots}) selects joint mode, where the Java
  * sources serve resolution only: stubs land in {@code stubsOut} (null ⇒ not retained) and javac's
  * class output is discarded under {@code workDir} (null ⇒ worker temp) — jk's javac step owns the
@@ -36,8 +37,9 @@ public record GroovycRequest(
         processorPath = processorPath == null ? List.of() : List.copyOf(processorPath);
         workerClasspath = List.copyOf(workerClasspath);
         extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
-        if (jvmTarget < 8) {
-            throw new IllegalArgumentException("jvmTarget must be >= 8, got: " + jvmTarget);
+        if (jvmTarget < SupportedJdk.MIN_MAJOR) {
+            throw new IllegalArgumentException(
+                    "jvmTarget must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + jvmTarget);
         }
         if (workerClasspath.isEmpty()) {
             throw new IllegalArgumentException("workerClasspath must include the worker jar + Groovy closure");
@@ -75,7 +77,7 @@ public record GroovycRequest(
             return this;
         }
 
-        /** Annotation-processor classpath for the joint-mode javac sweep (JK-1232). */
+        /** Annotation-processor classpath for the joint-mode javac sweep. */
         public Builder processorPath(List<Path> v) {
             this.processorPath = v;
             return this;
@@ -113,7 +115,15 @@ public record GroovycRequest(
 
         public GroovycRequest build() {
             return new GroovycRequest(
-                    sources, javaSourceRoots, classpath, processorPath, outputDir, stubsOut, jvmTarget, workerClasspath, workDir,
+                    sources,
+                    javaSourceRoots,
+                    classpath,
+                    processorPath,
+                    outputDir,
+                    stubsOut,
+                    jvmTarget,
+                    workerClasspath,
+                    workDir,
                     extraArgs);
         }
     }

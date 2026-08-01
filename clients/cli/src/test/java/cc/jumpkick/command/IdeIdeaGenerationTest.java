@@ -80,6 +80,7 @@ class IdeIdeaGenerationTest {
         Path home = jdksRoot.resolve(name);
         Files.createDirectories(home.resolve("bin"));
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake");
+        Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"" + version + "\"\n");
     }
@@ -256,7 +257,7 @@ class IdeIdeaGenerationTest {
 
         // A lock with a single processor-scoped dependency.
         String hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-        Files.writeString(ws.resolve("jk.lock"), """
+        Files.writeString(ws.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"

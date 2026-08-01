@@ -8,20 +8,20 @@ import java.util.Optional;
 import java.util.function.UnaryOperator;
 
 /**
- * The environment a build sees: {@code .env} files layered under the real environment (JK-1270).
+ * The environment a build sees: {@code.env} files layered under the real environment.
  *
  * <h2>Precedence</h2>
  *
  * Lowest wins to highest:
  *
  * <ol>
- *   <li>{@code .env} at the workspace root
- *   <li>{@code .env} in the module
- *   <li>the real environment (the caller's, per JK-1269 — not the engine's)
+ * <li>{@code.env} at the workspace root
+ * <li>{@code.env} in the module
+ * <li>the real environment (the caller's, pernot the engine's)
  * </ol>
  *
- * <p><b>The real environment beats {@code .env}</b>, which is what Node's dotenv and Docker Compose
- * both do: {@code .env} supplies defaults, so {@code FOO=x jk build} and a CI variable override the
+ * <p><b>The real environment beats {@code.env}</b>, which is what Node's dotenv and Docker Compose
+ * both do: {@code.env} supplies defaults, so {@code FOO=x jk build} and a CI variable override the
  * file without anyone editing it. The reverse would make CI overrides impossible to express.
  *
  * <h2>Search roots</h2>
@@ -33,8 +33,9 @@ import java.util.function.UnaryOperator;
  *
  * <h2>Secrets</h2>
  *
- * A {@code .env} is where tokens live, so {@link #isFromFile} lets callers treat file-sourced values
- * as secret — redacted in output, and never written into a cache key verbatim.
+ * A {@code.env} is where tokens live, so {@link #isFromFile} / {@link #secretValues} identify
+ * file-sourced values. {@link SecretRedactor#from(EnvLookup)} masks them in free-form text (JSONL,
+ * journal, errors) and hashes them for cache keys.
  */
 public final class EnvLookup {
 
@@ -50,19 +51,47 @@ public final class EnvLookup {
     }
 
     /**
-     * Resolve for {@code moduleDir}, layering the workspace root's {@code .env} then the module's
+     * Resolve for {@code moduleDir}, layering the workspace root's {@code.env} then the module's
      * under {@code realEnv}.
      *
-     * @param realEnv the caller's environment — {@code Inputs.env()} on the build path, never
-     *     {@code System::getenv} directly from the engine (JK-1269)
+     * @param realEnv the caller's environment — {@code Inputs.env} on the build path, never
+     * {@code System::getenv} directly from the engine
      */
     public static EnvLookup forModule(Path moduleDir, UnaryOperator<String> realEnv) {
         Map<String, String> layered = new LinkedHashMap<>();
         workspaceRoot(moduleDir).ifPresent(root -> {
-            if (!root.equals(moduleDir)) layered.putAll(DotEnv.read(root.resolve(FILE_NAME)));
+            if (!root.equals(moduleDir)) layered.putAll(readCached(root.resolve(FILE_NAME)));
         });
-        layered.putAll(DotEnv.read(moduleDir.resolve(FILE_NAME))); // module wins over workspace
+        layered.putAll(readCached(moduleDir.resolve(FILE_NAME))); // module wins over workspace
         return new EnvLookup(layered, realEnv);
+    }
+
+    /** One cached {@code .env} parse, invalidated by (size, mtime). */
+    private record CachedEnv(long size, long mtime, Map<String, String> values) {}
+
+    private static final java.util.concurrent.ConcurrentHashMap<Path, CachedEnv> READ_MEMO =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * {@link DotEnv#read} behind a freshness memo. Redaction resolves the lookup for every output
+     * line that leaves the engine, so an uncached read here is two file reads per line of
+     * build output. A missing file costs one stat and is never cached.
+     */
+    private static Map<String, String> readCached(Path file) {
+        Path key = file.toAbsolutePath().normalize();
+        try {
+            var attrs = java.nio.file.Files.readAttributes(key, java.nio.file.attribute.BasicFileAttributes.class);
+            long size = attrs.size();
+            long mtime = attrs.lastModifiedTime().toMillis();
+            CachedEnv hit = READ_MEMO.get(key);
+            if (hit != null && hit.size() == size && hit.mtime() == mtime) return hit.values();
+            Map<String, String> parsed = DotEnv.read(key);
+            if (READ_MEMO.size() > 256) READ_MEMO.clear(); // tiny working set; crude bound is fine
+            READ_MEMO.put(key, new CachedEnv(size, mtime, parsed));
+            return parsed;
+        } catch (java.io.IOException e) {
+            return Map.of(); // missing/unreadable → empty, exactly like DotEnv.read
+        }
     }
 
     /** A lookup over {@code .env} values only — for tests and for callers with no real environment. */
@@ -82,7 +111,7 @@ public final class EnvLookup {
     }
 
     /**
-     * True when {@code name}'s effective value came from a {@code .env} file rather than the real
+     * True when {@code name}'s effective value came from a {@code.env} file rather than the real
      * environment — i.e. it should be treated as a secret.
      */
     public boolean isFromFile(String name) {

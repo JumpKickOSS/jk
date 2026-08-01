@@ -11,12 +11,14 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -124,7 +126,7 @@ class GroovyCompilerTest {
         assertThat(run.exit).as("diagnostics: %s", run.protocol).isZero();
 
         try (URLClassLoader loader =
-                new URLClassLoader(new java.net.URL[] {out.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
+                new URLClassLoader(new URL[] {out.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
             Method add = loader.loadClass("Adder").getDeclaredMethod("add", int.class, int.class);
             Parameter[] params = add.getParameters();
             assertThat(params[0].isNamePresent()).isTrue();
@@ -147,7 +149,7 @@ class GroovyCompilerTest {
         assertThat(run.exit).isZero();
 
         try (URLClassLoader loader =
-                new URLClassLoader(new java.net.URL[] {out.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
+                new URLClassLoader(new URL[] {out.toUri().toURL()}, GroovyCompilerTest.class.getClassLoader())) {
             Method add = loader.loadClass("Adder").getDeclaredMethod("add", int.class, int.class);
             assertThat(add.getParameters()[0].isNamePresent()).isFalse();
         }
@@ -175,15 +177,14 @@ class GroovyCompilerTest {
 
     private record Run(int exit, String protocol) {}
 
-    private static Run compile(Path dir, java.util.function.Consumer<SpecWriter> customize) throws Exception {
+    private static Run compile(Path dir, Consumer<SpecWriter> customize) throws Exception {
         SpecWriter sw = new SpecWriter().op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler");
         customize.accept(sw);
         Path spec = dir.resolve("spec-" + System.nanoTime() + ".spec");
         Files.write(spec, sw.lines());
 
         ByteArrayOutputStream captured = new ByteArrayOutputStream();
-        ProtocolWriter writer =
-                new ProtocolWriter(new PrintStream(captured, true, StandardCharsets.UTF_8), "##JKGC:");
+        ProtocolWriter writer = new ProtocolWriter(new PrintStream(captured, true, StandardCharsets.UTF_8), "##JKGC:");
         int exit = new GroovyCompiler().run(List.of("@" + spec), writer);
         return new Run(exit, captured.toString(StandardCharsets.UTF_8));
     }

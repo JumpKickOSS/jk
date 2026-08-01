@@ -19,7 +19,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * {@code jk sync} — align local toolchain + dependency cache with {@code jk.lock}. CAS/auto-lock
+ * {@code jk sync} — align local toolchain + dependency cache with {@code jk-lock.toml}. CAS/auto-lock
  * are engine-hosted; JDK installs stay client-side (engine only resolves installed JDKs).
  */
 public final class SyncCommand implements CliCommand {

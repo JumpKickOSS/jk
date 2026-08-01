@@ -34,7 +34,7 @@ public final class KotlincDriver {
         try {
             return run(request);
         } catch (IOException e) {
-            // One retry when the worker pipe closes mid-compile (ticket-1053 flake).
+            // One retry when the worker pipe closes mid-compile flake).
             if (cc.jumpkick.engine.plugin.PluginProcess.isPipeClosed(e)) {
                 try {
                     return run(request);
@@ -114,7 +114,7 @@ public final class KotlincDriver {
      * {@code -XX:AOTCacheOutput} while compiling a synthetic hello.kt against the triggering
      * request's own compile classpath (CAS entries are content-named, so there is no jar to hunt
      * for by name — but every real Kotlin compile already carries the version-matched
-     * kotlin-stdlib the request pairs with {@code -no-stdlib}). Full startup + compile fidelity —
+     * kotlin-stdlib the request pairs with {@code -no-stdlib}). Full startup + compile fidelity
      * exactly the warmup the cache exists to skip.
      */
     private static List<String> trainerCommand(

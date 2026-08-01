@@ -70,7 +70,7 @@ public final class PluginCommands {
                             project,
                             dir,
                             cc.jumpkick.cache.JkStores.cas(cache),
-                            PluginBuild.sdkPins(dir.resolve("jk.lock")),
+                            PluginBuild.sdkPins(cc.jumpkick.lock.LockPaths.lockFile(dir)),
                             true)
                     .entrySet()) {
                 specWriter.extra(tool.getKey(), tool.getValue());

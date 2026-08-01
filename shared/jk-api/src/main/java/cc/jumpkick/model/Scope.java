@@ -38,7 +38,7 @@ public enum Scope {
     }
 
     /**
-     * Resolve a scope from its {@link #canonical()} name — the form persisted in {@code jk.lock}.
+     * Resolve a scope from its {@link #canonical()} name — the form persisted in {@code jk-lock.toml}.
      * {@code valueOf(name.toUpperCase())} breaks on hyphenated canonicals ({@code "test-dev"} is
      * {@code TEST_DEV}); this is the single reverse mapping.
      */

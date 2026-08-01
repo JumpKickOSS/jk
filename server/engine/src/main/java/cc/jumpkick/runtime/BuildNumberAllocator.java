@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
+import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Durable monotonic per-project build numbers allocated at <em>request-start</em> (JK-1250).
+ * Durable monotonic per-project build numbers allocated at <em>request-start</em>.
  *
  * <p>Finish-time {@link BuildMetrics#record} still trains stats; it must <strong>not</strong> mint
  * a second number. Numbers live in {@code ~/.jk/state/builds/run-numbers.json} keyed by canonical

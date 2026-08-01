@@ -23,9 +23,9 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Client for the JetBrains JDK feed ({@value #DEFAULT_FEED_URL}). Fetches the xz-compressed JSON
- * catalog, caches it on disk with a 24 h TTL, revalidates with conditional GET, and falls back to
- * the cached copy when offline.
+ * Client for the JetBrains JDK feed ({@value #DEFAULT_FEED_URL}). Fetches the JSON catalog, caches
+ * it on disk under {@code ~/.jk/store/jdks.json} with a 12 h TTL, revalidates with conditional GET,
+ * and falls back to the cached copy when offline.
  *
  * <p>The feed is the same source IntelliJ uses, so any JDK jk downloads lands in IntelliJ's
  * expected directory and vice versa.
@@ -34,8 +34,11 @@ public final class JdkCatalogClient {
 
     public static final String DEFAULT_FEED_URL = "https://download.jetbrains.com/jdk/feed/v1/jdks.json";
 
-    /** 24 h — the feed publishes new GA releases at most a few times a month. */
-    public static final Duration DEFAULT_TTL = Duration.ofHours(24);
+    /**
+     * 12 h — matches the resident engine's quiet revalidation cadence for store feeds
+     * ({@code libs.global.toml} + this file).
+     */
+    public static final Duration DEFAULT_TTL = Duration.ofHours(12);
 
     private static final DateTimeFormatter HTTP_DATE =
             DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss 'GMT'").withZone(ZoneId.of("GMT"));
@@ -69,7 +72,7 @@ public final class JdkCatalogClient {
         return this;
     }
 
-    /** Default cache location: {@code $JK_CACHE_DIR/jdks.json}. */
+    /** Default cache location: {@code $JK_STORE_DIR/jdks.json} (default {@code ~/.jk/store/jdks.json}). */
     public static Path defaultCachePath() {
         return JkDirs.store().resolve("jdks.json");
     }

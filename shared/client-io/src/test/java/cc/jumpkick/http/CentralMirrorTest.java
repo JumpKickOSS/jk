@@ -18,12 +18,11 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1277: Maven Central's per-IP quota is sticky, and jk's own request rate is not what trips it — a
+ * Maven Central's per-IP quota is sticky, and jk's own request rate is not what trips it — a
  * single-dependency project is refused as readily as a large one. The only recovery is to ask
  * elsewhere, wholesale, for a window.
  */
 class CentralMirrorTest {
-
 
     private static CentralMirror mirror(Path dir) {
         return new CentralMirror(dir, Duration.ofHours(4), true);
@@ -156,7 +155,9 @@ class CentralMirrorTest {
             CentralMirror m = new CentralMirror(
                     dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
             Http http = new Http(
-                    HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
                     new Duration[] {Duration.ofMillis(1)},
                     m);
 
@@ -198,7 +199,9 @@ class CentralMirrorTest {
                     dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
             m.noteRateLimited(); // window already open, e.g. from an earlier build
             Http http = new Http(
-                    HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
                     new Duration[] {Duration.ofMillis(1)},
                     m);
 
@@ -225,7 +228,9 @@ class CentralMirrorTest {
             CentralMirror m = new CentralMirror(
                     dir, Duration.ofHours(4), true, "127.0.0.1", "http://127.0.0.1:" + port + "/mirror");
             Http http = new Http(
-                    HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build(),
+                    HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(5))
+                            .build(),
                     new Duration[] {Duration.ofMillis(1)},
                     m);
 

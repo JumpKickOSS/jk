@@ -118,7 +118,7 @@ public final class AssemblyPackager {
     }
 
     /**
-     * Paths concatenated across project + dependency jars (ticket-1032). SPI files plus common
+     * Paths concatenated across project + dependency jars. SPI files plus common
      * Spring multi-value META-INF entries that break when first-wins.
      */
     static boolean isMergeFile(String name) {

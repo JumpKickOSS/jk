@@ -15,6 +15,7 @@ import cc.jumpkick.command.AuthCommand;
 import cc.jumpkick.command.BspCommand;
 import cc.jumpkick.command.BuildCommand;
 import cc.jumpkick.command.CacheCommand;
+import cc.jumpkick.command.CancelCommand;
 import cc.jumpkick.command.CleanCommand;
 import cc.jumpkick.command.CompileCommand;
 import cc.jumpkick.command.DeactivateCommand;
@@ -96,7 +97,8 @@ public final class CommandDispatch {
             new SelfCommand(),
             new WrapperCommand(),
             new HistoryCommand(),
-            new ActivityCommand(),
+            new ActivityCommand(), // name() = jobs; activity/act aliases
+            new CancelCommand(),
             new StatusCommand(),
             new TreeCommand(),
             new WhyCommand(),

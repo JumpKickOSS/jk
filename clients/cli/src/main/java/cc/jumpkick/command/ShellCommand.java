@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * {@code jk shell} — spawn a subshell with the env the project would have under {@code jk
- * activate}. Resolves the JDK via {@link JkEnv} (the {@code jk.toml} + {@code jk.lock} flow), so
+ * activate}. Resolves the JDK via {@link JkEnv} (the {@code jk.toml} + {@code jk-lock.toml} flow), so
  * {@code jk shell} and {@code jk activate} can never disagree on which JDK is "current".
  *
  * <p>POSIX shells only for this iteration — picks {@code $SHELL} (or {@code /bin/sh}) and inherits
@@ -61,7 +61,7 @@ public final class ShellCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Shell",
                     "no pinned JDK for " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
-                            + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk.lock)"));
+                            + " (run `jk new` to scaffold, or stamp `jdk = \"<id>\"` in jk-lock.toml)"));
             return Exit.CONFIG;
         }
         String shell = System.getenv().getOrDefault("SHELL", "/bin/sh");

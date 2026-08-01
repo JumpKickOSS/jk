@@ -40,7 +40,7 @@ public record CacheSnapshot(
      * section counts as empty.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
-        // sha256/ and repos/ moved to the store (JK-1289); reading them off the cache root would report
+        // sha256/ and repos/ moved to the store; reading them off the cache root would report
         // an empty CAS on the dashboard while the real one sits elsewhere.
         long[] cas = statsOf(cc.jumpkick.cache.JkStores.resolve(cacheRoot, "sha256"));
         long[] actions = statsOf(cacheRoot.resolve("actions"));

@@ -46,7 +46,7 @@ class MavenPackageSourceConstraintTest {
 
     @Test
     void platform_present_unmapped_bare_mediates_by_default(@TempDir Path tmp) {
-        // JK-1241: unmapped GAs go back to highest-wins mediation (Maven/Gradle parity) — the
+        // unmapped GAs go back to highest-wins mediation (Maven/Gradle parity) — the
         // named-locks hazard class is covered by family-align MAPPING those GAs into the BOM.
         MavenPackageSource src = source(tmp, Map.of("com.foo:other", "9.0.0"));
         VersionSet vs = src.constraintForManagedEdge("org.example:unmanaged:jar:", "1.9.24");
@@ -84,10 +84,9 @@ class MavenPackageSourceConstraintTest {
 
     @Test
     void classified_artifact_pins_exact_declared_or_bom(@TempDir Path tmp) {
-        // guice:jar:classes — highest-wins on the GA list misses classifier jars (JK-1202).
+        // guice:jar:classes — highest-wins on the GA list misses classifier jars.
         MavenPackageSource withBom = source(tmp, Map.of("com.google.inject:guice", "5.1.0"));
-        assertThat(withBom
-                        .constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
+        assertThat(withBom.constraintForManagedEdge("com.google.inject:guice:jar:classes", "5.1.0")
                         .asExactSingleton())
                 .contains("5.1.0");
         MavenPackageSource noBom = source(tmp, Map.of());
@@ -107,7 +106,7 @@ class MavenPackageSourceConstraintTest {
 
     @Test
     void floor_never_clamps_below_the_edges_declared_version(@TempDir Path tmp) {
-        // JK-1212: platform pins 1.0.0 as a floor, but this edge's POM requires 2.17.1 —
+        // platform pins 1.0.0 as a floor, but this edge's POM requires 2.17.1
         // the constraint must be atLeast(2.17.1), not atLeast(1.0.0).
         MavenPackageSource src = source(tmp, Map.of("com.foo:widget", "1.0.0"), PlatformPolicy.FLOOR);
         VersionSet vs = src.constraintForManagedEdge("com.foo:widget:jar:", "2.17.1");
@@ -142,14 +141,16 @@ class MavenPackageSourceConstraintTest {
     }
 
     private static MavenPackageSource source(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
-        MavenRepo repo = new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
+        MavenRepo repo =
+                new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(
                 group, new EffectivePomBuilder(group), bom, Map.of(), cc.jumpkick.resolver.KmpRedirects.NONE, policy);
     }
 
     private static MavenPackageSource strictSource(Path tmp, Map<String, String> bom, PlatformPolicy policy) {
-        MavenRepo repo = new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
+        MavenRepo repo =
+                new MavenRepo("local", URI.create("http://127.0.0.1:1"), new Http(), new Cas(tmp.resolve("c")));
         RepoGroup group = RepoGroup.of(repo);
         return new MavenPackageSource(
                 group,

@@ -1,37 +1,26 @@
 [project]
-group   = "cc.jumpkick"
 name    = "jk-quarkus"
-version = "0.10.1"
-jdk     = 25
-java    = 25
-layout  = "traditional"
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
+jk-plugin-sdk.workspace = true
 
 # Compile against the bootstrap APIs only; at runtime the engine supplies these on the forked
 # worker CP as step-dependency jars (quarkus-bootstrap + maven-resolver + aligned smallrye-common),
 # so they must not be shaded into the assembly.
-# Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION (JK-1235).
-#
-# Pinned exact (`=`), deliberately against jk's usual floating default. These are not ordinary
-# libraries we want point-release upgrades of: the engine hands the forked worker *these* jars at
-# QUARKUS_PLATFORM_VERSION, so compiling against anything else builds a worker that fails at
-# runtime. Left floating, `3.28.5` resolved as a caret to 3.38.0, where BootstrapAppModelResolver
-# .resolveManagedModel took two more parameters and the compile failed outright — which is the
-# benign outcome; a signature that still linked would have failed in the forked JVM instead.
+# Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION.
+# Exact pin: bootstrap SPI must match the jars the engine puts on the forked worker CP.
 [provided-dependencies]
-quarkus-bootstrap-core           = { group = "io.quarkus", name = "quarkus-bootstrap-core",           version = "=3.28.5" }
-quarkus-bootstrap-maven-resolver = { group = "io.quarkus", name = "quarkus-bootstrap-maven-resolver", version = "=3.28.5" }
-quarkus-bootstrap-app-model      = { group = "io.quarkus", name = "quarkus-bootstrap-app-model",      version = "=3.28.5" }
+quarkus-bootstrap-core           = { group = "io.quarkus", name = "quarkus-bootstrap-core",           version = "=3.38.0" }
+quarkus-bootstrap-maven-resolver = { group = "io.quarkus", name = "quarkus-bootstrap-maven-resolver", version = "=3.38.0" }
+quarkus-bootstrap-app-model      = { group = "io.quarkus", name = "quarkus-bootstrap-app-model",      version = "=3.38.0" }
 
 # Gradle's jk.java-conventions injects these into every module's test scope; jk.toml has no such
 # implicit convention, so each manifest states them.
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

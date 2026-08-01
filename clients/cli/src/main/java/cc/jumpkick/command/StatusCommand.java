@@ -3,34 +3,51 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.config.WorkspaceResolve;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.engine.protocol.EngineProtocol;
+import cc.jumpkick.lock.LockPaths;
+import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.lock.LockfileReader;
+import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.plugin.protocol.Jsonl;
+import cc.jumpkick.runtime.BuildPlan;
+import cc.jumpkick.runtime.ExplainPlan;
+import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Comparator;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * {@code jk status} — the running build statistics the engine aggregates at every build/test
- * finish: invocation counts, total time, and min/avg/max durations, for the current project and
- * for this machine as a whole, with a per-step breakdown (a plugin's command runs as its own step,
- * so the step table is also the per-worker/per-plugin view). Engine vitals live under {@code jk
- * engine status}; this command is about the builds, not the process. A thin RPC over the engine's
- * metrics store ({@code ~/.jk/state/builds/metrics.json}), spawning the engine if needed.
+ * {@code jk status} — project + machine build dashboard: engine vitals, project identity,
+ * recent/forecast build timing, global aggregates, and cache footprint. Engine process details
+ * live under {@code jk engine status}; this command is about the builds and the workspace.
  */
 public final class StatusCommand implements CliCommand {
 
-    /** Steps shown per table by default (the rest need {@code --steps}). */
-    private static final int DEFAULT_STEP_LIMIT = 8;
+    /** Right-aligned label column width (widest label is {@code Total Build Count:}). */
+    private static final int LABEL_W = 18;
 
     @Override
     public String name() {
@@ -39,137 +56,608 @@ public final class StatusCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Show running build stats for this project and this machine";
+        return "Show project, build, and cache status";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Show only the machine-wide totals (skip the current project).", "--global"),
-                Opt.flag("Show every step instead of the top " + DEFAULT_STEP_LIMIT + " by total time.", "--steps"));
+                Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
     }
 
     @Override
     public int run(Invocation in) throws Exception {
         GlobalOptions global = GlobalOptions.from(in);
         boolean globalOnly = in.has("global");
-        boolean allSteps = in.has("steps");
-        String dir = Path.of("").toAbsolutePath().normalize().toString();
-
+        Path cwd = Path.of("").toAbsolutePath().normalize();
         EnginePaths.Paths paths = EnginePaths.current();
-        List<String> rows = EngineClient.metrics(paths, globalOnly ? null : dir).stream()
+
+        List<String> rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
                 .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
                 .toList();
 
         if (global.outputIsJson()) {
-            // Each reply line is already one flat JSON object — emit them as an array verbatim.
             CliOutput.out("[" + String.join(",", rows) + "]");
             return 0;
         }
 
-        if (rows.isEmpty()) {
-            CliOutput.out("No build metrics yet — run a build and they will appear here.");
-            return 0;
-        }
+        // ── Header: ≡ Status  vX.Y.Z Engine is running (pid N) ───────────────
+        Optional<EngineClient.Status> engine = EngineClient.status(EnginePaths.activeSocket(paths));
+        String engineMsg = engine
+                .map(s -> "v" + Jk.VERSION + " Engine is running (pid " + s.pid() + ")")
+                .orElse("v" + Jk.VERSION + " Engine is not running");
+        CliOutput.out(PipelineWedge.chipLine(Glyphs.MENU, "Status", GlobalConfig.nerdfont(), engineMsg));
+        CliOutput.out("");
 
-        Optional<EngineClient.Status> engine = EngineClient.status(cc.jumpkick.engine.EnginePaths.activeSocket(paths));
-        engine.ifPresent(s -> CliOutput.out(PipelineWedge.chipLine(
-                Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + s.pid() + ")")));
+        ProjectSnapshot project = globalOnly ? null : loadProject(cwd);
+        Forecast forecast = null;
+        String lastHistory = null;
+        if (!globalOnly && project != null) {
+            lastHistory = findLastHistory(paths, cwd);
+            forecast = tryForecast(paths, cwd);
+        }
 
         if (!globalOnly) {
-            List<String> project = scoped(rows, "project");
-            List<String> projectSteps = scoped(rows, "project/step");
+            printProjectSection(project, forecast, lastHistory);
             CliOutput.out("");
-            if (project.isEmpty() && projectSteps.isEmpty()) {
-                CliOutput.out(header("Project", dir));
-                CliOutput.out("  no builds recorded for this project yet");
-            } else {
-                String coord = project.stream()
-                        .map(r -> Jsonl.str(r, "coord"))
-                        .filter(c -> c != null && !c.isBlank())
-                        .findFirst()
-                        .orElse(null);
-                CliOutput.out(header("Project " + HistoryCommand.label(coord, dir), dir));
-                printInvocations(project);
-                printSteps(projectSteps, allSteps);
-            }
+            printProjectBuildSection(project, rows, cwd, lastHistory, forecast);
+            CliOutput.out("");
         }
 
+        printGlobalBuildSection(rows);
         CliOutput.out("");
-        CliOutput.out(header("Global", "this machine"));
-        printInvocations(scoped(rows, "global"));
-        if (globalOnly || allSteps) printSteps(scoped(rows, "step"), allSteps);
+        printCacheSection();
         return 0;
     }
 
-    private static List<String> scoped(List<String> rows, String scope) {
-        return rows.stream().filter(r -> scope.equals(Jsonl.str(r, "scope"))).toList();
+    // ── sections ─────────────────────────────────────────────────────────────
+
+    private static void printProjectSection(ProjectSnapshot project, Forecast forecast, String lastHistory) {
+        if (project == null) {
+            sectionHeader("Project", "(no jk.toml in this directory)");
+            return;
+        }
+        sectionHeader("Project", project.coord);
+        kv("Language", project.languageLine);
+        kv("JDK", project.jdk);
+        int modules = forecast != null ? forecast.moduleTotal : project.moduleCount;
+        kv("Modules", Integer.toString(modules));
+        int sources = forecast != null ? forecast.sourceCount : project.sourceCount;
+        int tests = forecast != null ? forecast.testCount : project.testCount;
+        // Prefer last history test totals when the journal recorded them.
+        if (lastHistory != null) {
+            long ht = Jsonl.longValue(lastHistory, "testsTotal", -1);
+            if (ht >= 0) tests = (int) ht;
+        }
+        kv("Sources", formatCount(sources));
+        kv("Tests", formatCount(tests));
     }
 
-    private static String header(String title, String detail) {
-        return title + " " + Theme.colorize("(" + detail + ")", Theme.active().dim());
+    private static void printProjectBuildSection(
+            ProjectSnapshot project, List<String> rows, Path cwd, String lastHistory, Forecast forecast) {
+        String titleCoord = project != null ? project.coord : "—";
+        sectionHeader("Project Build", titleCoord);
+
+        InvAgg agg = aggregateProjectBuilds(rows, cwd.toString());
+        long fullMs = -1;
+        long lastMs = -1;
+        long nextMs = -1;
+        String modulesCached = "—";
+        String artifactsCached = "—";
+
+        if (lastHistory != null) {
+            lastMs = Jsonl.longValue(lastHistory, "millis", -1);
+            long est = Jsonl.longValue(lastHistory, "estimatedUncachedMillis", -1);
+            if (est > 0) fullMs = est;
+            long covered = Jsonl.longValue(lastHistory, "savedMillis", -1);
+            // coveredSkips rides history-show only; list has saved + estimated.
+            long skips = Jsonl.longValue(lastHistory, "coveredSkips", -1);
+            if (skips < 0) {
+                // Approximate artifact-level cache hits from the last run's skip coverage when
+                // the list payload only has benefit totals (show has coveredSkips).
+                skips = -1;
+            }
+            int modCount = (int) Jsonl.longValue(lastHistory, "moduleCount", -1);
+            int failedMods = (int) Jsonl.longValue(lastHistory, "failedModules", -1);
+            if (modCount > 0 && failedMods >= 0) {
+                // History list lacks per-module cache flags; use forecast when available.
+            }
+        }
+        if (fullMs < 0 && agg.okCount > 0) fullMs = agg.okMaxMillis;
+        if (lastMs < 0 && agg.okCount > 0) lastMs = agg.okAvgMillis; // fallback
+
+        if (forecast != null) {
+            nextMs = forecast.etaMillis;
+            if (forecast.moduleTotal > 0) {
+                modulesCached = forecast.modulesCached
+                        + "/"
+                        + forecast.moduleTotal
+                        + " ("
+                        + pct(forecast.modulesCached, forecast.moduleTotal)
+                        + "%)";
+            }
+            if (forecast.artifactsCached >= 0) {
+                artifactsCached = formatCount(forecast.artifactsCached);
+            }
+        } else if (lastHistory != null) {
+            int modCount = (int) Jsonl.longValue(lastHistory, "moduleCount", 0);
+            if (modCount > 0) {
+                // Without a forecast, we only know module count — not the cached fraction.
+                modulesCached = "?/" + modCount;
+            }
+            long saved = Jsonl.longValue(lastHistory, "savedMillis", -1);
+            long est = Jsonl.longValue(lastHistory, "estimatedUncachedMillis", -1);
+            if (saved >= 0 && est > 0) {
+                // Rough next estimate when we lack a live forecast: last residual work fraction.
+                long residual = Math.max(0, est - saved);
+                // Prefer residual over zero when the last run was fully cached.
+                nextMs = residual;
+            }
+        }
+
+        kv("Full Build Time", dashDuration(fullMs));
+        kv("Last Build Time", dashDuration(lastMs));
+        kv("Next Build Time", nextMs >= 0 ? "~" + formatDuration(nextMs) : "—");
+        kv("Modules Cached", modulesCached);
+        kv("Artifacts Cached", artifactsCached);
     }
 
-    /** One line per invocation kind: {@code builds:  42 ok · 3 failed   avg … min … max … total …}. */
-    private static void printInvocations(List<String> rows) {
-        rows.stream()
-                .sorted(Comparator.comparing(r -> String.valueOf(Jsonl.str(r, "kind"))))
-                .forEach(r -> {
-                    String kind = Jsonl.str(r, "kind");
-                    CliOutput.out(String.format(
-                            "  %-8s %-28s %s", (kind == null ? "?" : kind) + "s:", outcomes(r), spread(r, "ok")));
+    private static void printGlobalBuildSection(List<String> rows) {
+        sectionHeader("Global Build", null);
+        InvAgg g = aggregateGlobalBuilds(rows);
+        if (g.okCount + g.failCount + g.cancelCount == 0) {
+            kv("Avg Build Time", "—");
+            kv("Min Build Time", "—");
+            kv("Max Build Time", "—");
+            kv("Total Build Count", "0");
+            kv("Total Build Time", "—");
+            return;
+        }
+        kv("Avg Build Time", dashDuration(g.okCount > 0 ? g.okAvgMillis : -1));
+        kv("Min Build Time", dashDuration(g.okCount > 0 ? g.okMinMillis : -1));
+        kv("Max Build Time", dashDuration(g.okCount > 0 ? g.okMaxMillis : -1));
+        long total = g.okCount + g.failCount + g.cancelCount;
+        StringBuilder outcomes = new StringBuilder(formatCount(total));
+        outcomes.append(" (");
+        outcomes.append(formatCount(g.okCount)).append(" ok");
+        if (g.failCount > 0) outcomes.append(", ").append(formatCount(g.failCount)).append(" failed");
+        if (g.cancelCount > 0) outcomes.append(", ").append(formatCount(g.cancelCount)).append(" cancelled");
+        outcomes.append(")");
+        kv("Total Build Count", outcomes.toString());
+        long wall = g.okTotalMillis + g.failTotalMillis + g.cancelTotalMillis;
+        kv("Total Build Time", wall > 0 ? formatDuration(wall) : "—");
+    }
+
+    private static void printCacheSection() {
+        sectionHeader("Cache", null);
+        Path root = JkDirs.cache();
+        try {
+            if (!Files.isDirectory(root)) {
+                kv("Size on Disk", "—");
+                kv("CAS Entries", "0");
+                kv("Actions Cached", "0");
+                return;
+            }
+            CacheCommand.Stats sha = CacheCommand.statsOf(root.resolve("sha256"));
+            CacheCommand.Stats actions = CacheCommand.statsOf(root.resolve("actions"));
+            CacheCommand.Stats repos = CacheCommand.statsOf(root.resolve("repos"));
+            CacheCommand.Stats runs = CacheCommand.statsOf(root.resolve("runs"));
+            CacheCommand.Stats stamps = CacheCommand.statsOf(root.resolve("format-stamps"));
+            long totalBytes = sha.bytes() + actions.bytes() + repos.bytes() + runs.bytes() + stamps.bytes();
+            kv("Size on Disk", CacheCommand.fmtBytes(totalBytes));
+            kv("CAS Entries", formatCount(sha.files()));
+            kv("Actions Cached", formatCount(actions.files()));
+        } catch (IOException e) {
+            kv("Size on Disk", "—");
+            kv("CAS Entries", "—");
+            kv("Actions Cached", "—");
+        }
+    }
+
+    // ── rendering helpers ────────────────────────────────────────────────────
+
+    private static void sectionHeader(String title, String suffix) {
+        Theme t = Theme.active();
+        String bullet = Theme.colorize("●", t.darkGray());
+        String head = Theme.colorize(title, t.brightWhite());
+        if (suffix == null || suffix.isBlank()) {
+            CliOutput.out(bullet + " " + head);
+            return;
+        }
+        // "Project: coord" / "Project Build: coord" — suffix in coord colors when G:A[:V].
+        CliOutput.out(bullet + " " + head + Theme.colorize(":", t.darkGray()) + " " + styleCoord(suffix));
+    }
+
+    private static String styleCoord(String coord) {
+        if (coord == null || coord.isBlank() || "—".equals(coord) || coord.startsWith("(")) {
+            return Theme.colorize(coord == null ? "—" : coord, Theme.active().normalGray());
+        }
+        Theme t = Theme.active();
+        String[] parts = coord.split(":", 3);
+        if (parts.length == 1) return Theme.colorize(coord, t.coordName());
+        StringBuilder sb = new StringBuilder();
+        sb.append(Theme.colorize(parts[0], t.coordGroup()));
+        sb.append(Theme.colorize(":", t.darkGray()));
+        sb.append(Theme.colorize(parts[1], t.coordName()));
+        if (parts.length > 2) {
+            sb.append(Theme.colorize(":", t.darkGray()));
+            sb.append(Theme.colorize(parts[2], t.warning()));
+        }
+        return sb.toString();
+    }
+
+    private static void kv(String label, String value) {
+        Theme t = Theme.active();
+        String padded = padLeft(label + ":", LABEL_W);
+        CliOutput.out(
+                Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
+    }
+
+    static String padLeft(String s, int width) {
+        if (s.length() >= width) return s;
+        return " ".repeat(width - s.length()) + s;
+    }
+
+    // ── metrics aggregation ──────────────────────────────────────────────────
+
+    /** Folded invocation stats for one kind across one or more metrics-entry rows. */
+    static final class InvAgg {
+        long okCount, failCount, cancelCount;
+        long okTotalMillis, failTotalMillis, cancelTotalMillis;
+        long okMinMillis = Long.MAX_VALUE, okMaxMillis;
+        long okAvgMillis;
+    }
+
+    private static InvAgg aggregateGlobalBuilds(List<String> rows) {
+        InvAgg a = new InvAgg();
+        for (String r : rows) {
+            if (!"global".equals(Jsonl.str(r, "scope"))) continue;
+            if (!"build".equals(Jsonl.str(r, "kind"))) continue;
+            fold(a, r);
+        }
+        finalizeAvg(a);
+        return a;
+    }
+
+    private static InvAgg aggregateProjectBuilds(List<String> rows, String dir) {
+        InvAgg a = new InvAgg();
+        for (String r : rows) {
+            if (!"project".equals(Jsonl.str(r, "scope"))) continue;
+            if (!"build".equals(Jsonl.str(r, "kind"))) continue;
+            String d = Jsonl.str(r, "dir");
+            if (d == null || !sameBaseDir(dir, d)) continue;
+            fold(a, r);
+        }
+        finalizeAvg(a);
+        return a;
+    }
+
+    private static void fold(InvAgg a, String r) {
+        long ok = Jsonl.longValue(r, "okCount", 0);
+        long fail = Jsonl.longValue(r, "failCount", 0);
+        long cancel = Jsonl.longValue(r, "cancelledCount", 0);
+        a.okCount += ok;
+        a.failCount += fail;
+        a.cancelCount += cancel;
+        a.okTotalMillis += Jsonl.longValue(r, "okTotalMillis", 0);
+        a.failTotalMillis += Jsonl.longValue(r, "failTotalMillis", 0);
+        a.cancelTotalMillis += Jsonl.longValue(r, "cancelledTotalMillis", 0);
+        if (ok > 0) {
+            long min = Jsonl.longValue(r, "okMinMillis", -1);
+            long max = Jsonl.longValue(r, "okMaxMillis", -1);
+            if (min >= 0) a.okMinMillis = Math.min(a.okMinMillis, min);
+            if (max >= 0) a.okMaxMillis = Math.max(a.okMaxMillis, max);
+        }
+    }
+
+    private static void finalizeAvg(InvAgg a) {
+        if (a.okMinMillis == Long.MAX_VALUE) a.okMinMillis = 0;
+        a.okAvgMillis = a.okCount == 0 ? 0 : a.okTotalMillis / a.okCount;
+    }
+
+    /** Match {@link cc.jumpkick.runtime.BuildMetrics#sameBaseDir} without depending on engine. */
+    static boolean sameBaseDir(String dir, String candidate) {
+        if (dir == null || candidate == null) return false;
+        if (dir.equals(candidate)) return true;
+        return dir.equals(baseDir(candidate));
+    }
+
+    static String baseDir(String dir) {
+        if (dir == null) return "";
+        int i = dir.lastIndexOf("#d");
+        if (i <= 0) return dir;
+        for (int j = i + 2; j < dir.length(); j++) {
+            if (!Character.isDigit(dir.charAt(j))) return dir;
+        }
+        return i + 2 == dir.length() ? dir : dir.substring(0, i);
+    }
+
+    // ── project / forecast loading ───────────────────────────────────────────
+
+    record ProjectSnapshot(
+            String coord, String languageLine, String jdk, int moduleCount, int sourceCount, int testCount) {}
+
+    record Forecast(long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
+
+    private static ProjectSnapshot loadProject(Path cwd) {
+        Path buildFile = cwd.resolve("jk.toml");
+        if (!Files.isRegularFile(buildFile)) return null;
+        try {
+            JkBuild build = JkBuildParser.parse(buildFile);
+            // Resolve project.*.workspace / omitted-field inheritance from the workspace root.
+            build = WorkspaceResolve.applyWorkspace(cwd, build);
+            // Prefer concrete pins from jk-lock.toml [[module]] when still unresolved or as a check.
+            build = applyLockModulePin(cwd, build);
+
+            var p = build.project();
+            String group = sanitizeIdentity(p.group());
+            String name = p.name() == null || p.name().isBlank()
+                    ? cwd.getFileName().toString()
+                    : p.name();
+            String version = sanitizeIdentity(p.version());
+            String coord = group.isEmpty()
+                    ? name + (version.isEmpty() ? "" : ":" + version)
+                    : group + ":" + name + (version.isEmpty() ? "" : ":" + version);
+
+            List<String> langs = new ArrayList<>();
+            int java = p.javaRelease();
+            if (java > 0) langs.add("Java " + java);
+            if (p.kotlin() != null) langs.add("Kotlin " + versionLabel(p.kotlin()));
+            if (p.groovy() != null) langs.add("Groovy " + versionLabel(p.groovy()));
+            if (langs.isEmpty()) langs.add("Java");
+
+            String jdk = p.jdk();
+            if (jdk == null || jdk.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(jdk)) jdk = "—";
+
+            // Workspace-wide module list when we're inside a monorepo (root or member).
+            List<Path> modules = workspaceModuleDirs(cwd, build);
+            int sources = 0, tests = 0;
+            for (Path mod : modules) {
+                sources += countSources(mod, true);
+                tests += countSources(mod, false);
+            }
+            return new ProjectSnapshot(coord, String.join(", ", langs), jdk, modules.size(), sources, tests);
+        } catch (Exception e) {
+            return new ProjectSnapshot(cwd.getFileName().toString(), "—", "—", 0, 0, 0);
+        }
+    }
+
+    /** Strip unresolved workspace sentinels so the UI never shows {@code __jk.workspace__}. */
+    private static String sanitizeIdentity(String value) {
+        if (value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value)) return "";
+        return value;
+    }
+
+    /**
+     * Apply a matching {@code [[module]]} pin from the workspace (or project) lockfile — concrete
+     * group/version/jdk/java after inheritance was frozen at lock time.
+     */
+    private static JkBuild applyLockModulePin(Path cwd, JkBuild build) {
+        try {
+            Path lockFile = LockPaths.lockFile(cwd);
+            if (!Files.isRegularFile(lockFile)) return build;
+            Lockfile lock = LockfileReader.read(lockFile);
+            if (lock.modules().isEmpty()) return build;
+            Path owner = LockPaths.lockOwnerDir(cwd).toAbsolutePath().normalize();
+            String rel = owner.relativize(cwd.toAbsolutePath().normalize()).toString().replace('\\', '/');
+            if (rel.isEmpty()) rel = ".";
+            final String pathKey = rel;
+            Lockfile.ModuleEntry pin = lock.modules().stream()
+                    .filter(m -> pathKey.equals(m.path()) || build.project().name().equals(m.name()))
+                    .findFirst()
+                    .orElse(null);
+            if (pin == null) return build;
+            var p = build.project();
+            String group = blankOrSentinel(p.group()) ? pin.group() : p.group();
+            String version = blankOrSentinel(p.version()) ? pin.version() : p.version();
+            String jdk = blankOrSentinel(p.jdk()) && pin.jdk() != null ? pin.jdk() : p.jdk();
+            int javaRelease = p.java() > 0 ? p.java() : (pin.java() != null ? pin.java() : 0);
+            if (group.equals(p.group())
+                    && version.equals(p.version())
+                    && Objects.equals(jdk, p.jdk())
+                    && javaRelease == p.java()
+                    && !p.inheritsFromWorkspace()) {
+                return build;
+            }
+            var resolved = new JkBuild.Project(
+                    group,
+                    p.name(),
+                    version,
+                    jdk,
+                    javaRelease,
+                    p.kotlin(),
+                    p.groovy(),
+                    p.sourcesMode(),
+                    p.description(),
+                    p.m2install(),
+                    p.layout(),
+                    java.util.Set.of());
+            return build.withProject(resolved);
+        } catch (Exception e) {
+            return build;
+        }
+    }
+
+    private static boolean blankOrSentinel(String value) {
+        return value == null || value.isBlank() || JkBuild.VERSION_FROM_WORKSPACE.equals(value);
+    }
+
+    /**
+     * Module directories for source counts: workspace members when inside a monorepo, else this
+     * project only.
+     */
+    private static List<Path> workspaceModuleDirs(Path cwd, JkBuild build) {
+        List<Path> out = new ArrayList<>();
+        try {
+            Path rootDir = build.isWorkspaceRoot()
+                    ? cwd
+                    : WorkspaceLocator.findRoot(cwd).orElse(null);
+            if (rootDir != null) {
+                JkBuild root = build.isWorkspaceRoot()
+                        ? build
+                        : JkBuildParser.parse(rootDir.resolve("jk.toml"));
+                if (root.isWorkspaceRoot()) {
+                    for (var e : WorkspaceLoader.loadModules(rootDir, root).entrySet()) {
+                        out.add(e.getKey());
+                    }
+                    // Include a buildable root itself.
+                    if (Files.isDirectory(rootDir.resolve("src")) || Files.isDirectory(rootDir.resolve("src/main"))) {
+                        out.add(rootDir);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // fall through to single-module
+        }
+        if (out.isEmpty()) {
+            if (build.isWorkspaceRoot() && build.workspaceOpt().isPresent()) {
+                for (String rel : build.workspaceOpt().get().modules()) {
+                    if (rel == null || rel.isBlank()) continue;
+                    Path m = cwd.resolve(rel).normalize();
+                    if (Files.isDirectory(m)) out.add(m);
+                }
+            }
+        }
+        if (out.isEmpty()) out.add(cwd);
+        return out;
+    }
+
+    /** Count Java/Kotlin/Groovy sources under main (or test) trees. */
+    static int countSources(Path module, boolean main) {
+        AtomicInteger n = new AtomicInteger();
+        List<Path> roots = new ArrayList<>();
+        if (main) {
+            roots.add(module.resolve("src/main/java"));
+            roots.add(module.resolve("src/main/kotlin"));
+            roots.add(module.resolve("src/main/groovy"));
+        } else {
+            roots.add(module.resolve("src/test/java"));
+            roots.add(module.resolve("src/test/kotlin"));
+            roots.add(module.resolve("src/test/groovy"));
+            roots.add(module.resolve("test/src"));
+        }
+        // Dedup when layouts collapse (e.g. only one of the roots exists).
+        for (Path root : roots.stream().distinct().toList()) {
+            if (!Files.isDirectory(root)) continue;
+            try {
+                Files.walkFileTree(root, new SimpleFileVisitor<>() {
+                    @Override
+                    public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+                        String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
+                        if (name.endsWith(".java")
+                                || name.endsWith(".kt")
+                                || name.endsWith(".kts")
+                                || name.endsWith(".groovy")) {
+                            n.incrementAndGet();
+                        }
+                        return FileVisitResult.CONTINUE;
+                    }
+
+                    @Override
+                    public FileVisitResult visitFileFailed(Path file, IOException exc) {
+                        return FileVisitResult.CONTINUE;
+                    }
                 });
-    }
-
-    /** {@code 42 ok · 3 failed · 1 cancelled} — zero buckets are dropped. */
-    private static String outcomes(String r) {
-        StringBuilder b = new StringBuilder();
-        appendCount(b, Jsonl.longValue(r, "okCount", 0), "ok");
-        appendCount(b, Jsonl.longValue(r, "failCount", 0), "failed");
-        appendCount(b, Jsonl.longValue(r, "cancelledCount", 0), "cancelled");
-        return b.length() == 0 ? "0 runs" : b.toString();
-    }
-
-    private static void appendCount(StringBuilder b, long count, String label) {
-        if (count == 0) return;
-        if (b.length() > 0) b.append(" · ");
-        b.append(count).append(' ').append(label);
-    }
-
-    /** {@code avg 2.1s  min 0.8s  max 14.0s  total 1m31s} for one stats prefix, or "" when empty. */
-    private static String spread(String r, String prefix) {
-        if (Jsonl.longValue(r, prefix + "Count", 0) == 0) return "";
-        long avg = prefix.equals("ok")
-                ? Jsonl.longValue(r, "okAvgMillis", 0)
-                : Jsonl.longValue(r, prefix + "TotalMillis", 0) / Math.max(1, Jsonl.longValue(r, prefix + "Count", 1));
-        return "avg " + HistoryCommand.duration(avg)
-                + "  min " + HistoryCommand.duration(Jsonl.longValue(r, prefix + "MinMillis", -1))
-                + "  max " + HistoryCommand.duration(Jsonl.longValue(r, prefix + "MaxMillis", -1))
-                + "  total " + HistoryCommand.duration(Jsonl.longValue(r, prefix + "TotalMillis", -1));
-    }
-
-    /** The per-step table, biggest ok-total first; capped unless {@code --steps}. */
-    private static void printSteps(List<String> rows, boolean all) {
-        if (rows.isEmpty()) return;
-        List<String> sorted = rows.stream()
-                .sorted(Comparator.comparingLong((String r) -> Jsonl.longValue(r, "okTotalMillis", 0))
-                        .reversed())
-                .toList();
-        int shown = all ? sorted.size() : Math.min(sorted.size(), DEFAULT_STEP_LIMIT);
-        CliOutput.out("  steps (by total time):");
-        for (int i = 0; i < shown; i++) {
-            String r = sorted.get(i);
-            long ok = Jsonl.longValue(r, "okCount", 0);
-            long failed = Jsonl.longValue(r, "failCount", 0);
-            String note = failed > 0 ? "  (" + failed + " failed)" : "";
-            CliOutput.out(String.format(
-                    "    %-18s %4d ok  %s%s",
-                    HistoryCommand.truncate(String.valueOf(Jsonl.str(r, "step")), 18), ok, spread(r, "ok"), note));
+            } catch (IOException ignored) {
+                // best-effort counts
+            }
         }
-        if (shown < sorted.size()) {
-            CliOutput.out(Theme.colorize(
-                    "    … " + (sorted.size() - shown) + " more (use --steps)",
-                    Theme.active().dim()));
+        return n.get();
+    }
+
+    private static String versionLabel(cc.jumpkick.model.VersionSelector v) {
+        if (v == null) return "";
+        if (v instanceof cc.jumpkick.model.VersionSelector.Exact e) return e.version();
+        if (v instanceof cc.jumpkick.model.VersionSelector.Caret c) return c.version();
+        if (v instanceof cc.jumpkick.model.VersionSelector.Tilde t) return t.version();
+        return v.raw();
+    }
+
+    private static String findLastHistory(EnginePaths.Paths paths, Path cwd) {
+        try {
+            String base = cwd.toString();
+            List<String> lines = EngineClient.historyList(paths, 50);
+            for (String line : lines) {
+                if (!EngineProtocol.HISTORY_ENTRY.equals(EngineProtocol.typeOf(line))) continue;
+                if (Jsonl.bool(line, "running", false)) continue;
+                String dir = Jsonl.str(line, "dir");
+                if (dir == null || !sameBaseDir(base, dir)) continue;
+                if (!"build".equals(Jsonl.str(line, "kind"))) continue;
+                return line;
+            }
+        } catch (Exception ignored) {
+            // history is advisory
         }
+        return null;
+    }
+
+    private static Forecast tryForecast(EnginePaths.Paths paths, Path cwd) {
+        try {
+            long[] etaOut = new long[1];
+            ExplainPlan plan = EngineClient.explain(
+                    paths,
+                    new EngineClient.ExplainRequest(
+                            cwd,
+                            JkDirs.cache(),
+                            1,
+                            false,
+                            null,
+                            null,
+                            true,
+                            false,
+                            false,
+                            false),
+                    etaOut);
+            if (plan == null || plan.modules() == null) return null;
+            int total = plan.modules().size();
+            int cached = 0;
+            int sources = 0, tests = 0, artifacts = 0;
+            for (BuildPlan.Module m : plan.modules()) {
+                sources += m.sourceCount();
+                tests += m.testCount();
+                boolean allCached = !m.steps().isEmpty()
+                        && m.steps().stream().allMatch(BuildPlan.Step::cached);
+                if (allCached) cached++;
+                for (BuildPlan.Step s : m.steps()) {
+                    if (s.cached()) artifacts++;
+                }
+            }
+            return new Forecast(etaOut[0], total, cached, sources, tests, artifacts);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ── formatting ───────────────────────────────────────────────────────────
+
+    static String formatDuration(long millis) {
+        if (millis < 0) return "—";
+        if (millis < 1000) return millis + "ms";
+        long totalSec = millis / 1000;
+        long days = totalSec / 86_400;
+        totalSec %= 86_400;
+        long hours = totalSec / 3_600;
+        totalSec %= 3_600;
+        long mins = totalSec / 60;
+        long secs = totalSec % 60;
+        // Omit zero components: "1d 4h 12s", "3m 12s", "22s".
+        java.util.ArrayList<String> parts = new java.util.ArrayList<>(4);
+        if (days > 0) parts.add(days + "d");
+        if (hours > 0) parts.add(hours + "h");
+        if (mins > 0) parts.add(mins + "m");
+        if (secs > 0 || parts.isEmpty()) parts.add(secs + "s");
+        return String.join(" ", parts);
+    }
+
+    private static String dashDuration(long millis) {
+        return millis < 0 ? "—" : formatDuration(millis);
+    }
+
+    private static String formatCount(long n) {
+        return String.format(Locale.ROOT, "%,d", n);
+    }
+
+    private static int pct(int part, int whole) {
+        return whole <= 0 ? 0 : (int) Math.round(100.0 * part / whole);
     }
 }

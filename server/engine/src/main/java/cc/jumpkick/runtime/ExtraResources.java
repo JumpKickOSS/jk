@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Resolves {@code [build] extra-resources} into concrete source→destination copies (JK-1262).
+ * Resolves {@code [build] extra-resources} into concrete source→destination copies.
  *
  * <p>jk-core bakes {@code plugins/*}{@code /jk-plugin.toml} in as the built-in plugin registry. Those
  * blueprint files are the single source of truth third parties copy, so duplicating them into the
@@ -19,8 +19,8 @@ import java.util.Map;
  * "include that file from over there", which is what stopped the repo self-hosting.
  *
  * <p>Destination shape: a match keeps its path relative to the pattern's literal prefix, placed
- * under {@code into}. So {@code ../../plugins/spring-boot/scaffold/**} preserves the scaffold tree,
- * while {@code ../../plugins/&#42;/jk-plugin.toml} with {@code rename = "{1}.jk-plugin.toml"} flattens
+ * under {@code into}. So {@code../../plugins/spring-boot/scaffold/**} preserves the scaffold tree,
+ * while {@code../../plugins/&#42;/jk-plugin.toml} with {@code rename = "{1}.jk-plugin.toml"} flattens
  * four same-named files into four distinct ones.
  */
 final class ExtraResources {
@@ -45,8 +45,8 @@ final class ExtraResources {
         // narrower entry after a broad glob can deliberately override one file.
         Map<String, Copy> byDestination = new LinkedHashMap<>();
         for (JkBuild.ExtraResource entry : declared) {
-            for (GlobSet.Match match : GlobSet.resolve(
-                    moduleDir, clamp, entry.from(), entry.exclude(), entry.optional())) {
+            for (GlobSet.Match match :
+                    GlobSet.resolve(moduleDir, clamp, entry.from(), entry.exclude(), entry.optional())) {
                 String name = entry.rename() == null || entry.rename().isBlank()
                         ? match.relative()
                         : GlobSet.applyCaptures(entry.rename(), match.captures());

@@ -6,7 +6,7 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * A host is refusing requests until {@link #until()} (JK-1276).
+ * A host is refusing requests until {@link #until}.
  *
  * <p>Distinct from a generic {@code HTTP 429 fetching <url>} because the two call for opposite responses.
  * A plain failure invites the user to re-run, and re-running is precisely what keeps a quota window open.

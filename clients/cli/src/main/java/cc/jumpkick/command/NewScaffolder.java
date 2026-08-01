@@ -12,12 +12,12 @@ import java.util.Map;
  * Writes the generated project tree from {@link NewInputs}:
  *
  * <ul>
- *   <li>{@code jk.toml} via {@link NewJkBuildRenderer}
- *   <li>the production + test source roots (see {@link #createSourceTree})
- *   <li>optional sample source tree (Java or Kotlin)
+ * <li>{@code jk.toml} via {@link NewJkBuildRenderer}
+ * <li>the production + test source roots (see {@link #createSourceTree})
+ * <li>optional sample source tree (Java or Kotlin)
  * </ul>
  *
- * <p>No {@code jk.lock} — that's generated on the first build/run.
+ * <p>No {@code jk-lock.toml} — that's generated on the first build/run.
  *
  * <p>The curated dependency map is the single source of truth for which "short id" maps to which
  * Maven coordinate + version + scope; both the renderer and the wizard's MultiSelect step pull from
@@ -59,7 +59,7 @@ public final class NewScaffolder {
      * .gitignore} is owned by the workspace root and so is skipped here (Cargo/uv: modules never
      * carry their own gitignore).
      *
-     * <p>No {@code jk.lock} is written — it's generated on the first build or run, so a
+     * <p>No {@code jk-lock.toml} is written — it's generated on the first build or run, so a
      * freshly-scaffolded project carries only its manifest + sources.
      *
      * <p>A plugin scaffold ({@code --spring}) fetches its payloads BEFORE anything touches disk:
@@ -73,8 +73,7 @@ public final class NewScaffolder {
             return;
         }
         var dir = inputs.directory();
-        cc.jumpkick.engine.protocol.GeneratedFiles plugin =
-                inputs.frameworkScaffold() ? pluginScaffold(inputs) : null;
+        cc.jumpkick.engine.protocol.GeneratedFiles plugin = inputs.frameworkScaffold() ? pluginScaffold(inputs) : null;
 
         Files.createDirectories(dir);
         if (plugin != null) {
@@ -88,7 +87,7 @@ public final class NewScaffolder {
         }
 
         if (standalone) {
-            writeGitignore(dir); // modules inherit the workspace root's .gitignore
+            writeGitignore(dir); // modules inherit the workspace root's.gitignore
         }
 
         createSourceTree(inputs);
@@ -129,11 +128,9 @@ public final class NewScaffolder {
         return files;
     }
 
-    // -----------------------------------------------------------------------------------------
     // jk new --plugin: a build-plugin AUTHORING project (a fat jar carrying jk-plugin.toml at its
     // root, whose Main-Class is the SDK's PluginMain). Fully client-side and framework-free — the
     // opposite direction from pluginScaffold above (a plugin CONTRIBUTING a `jk new --<flag>`).
-    // -----------------------------------------------------------------------------------------
 
     private static void writePluginProject(NewInputs inputs, boolean standalone) throws IOException {
         Path dir = inputs.directory();
@@ -221,7 +218,7 @@ public final class NewScaffolder {
                 greeting = { type = "string", default = "hello", hint = "text the `%1$s` command prints" }
 
                 # The code layer runs in a forked worker JVM. This prefix MUST equal the one in
-                # %1$s's manifest() — they demux the worker's protocol lines from its stdout.
+                # %1$s's manifest — they demux the worker's protocol lines from its stdout.
                 [code]
                 protocol-prefix = "%2$s"
                 """.formatted(id, prefix);
@@ -324,7 +321,7 @@ public final class NewScaffolder {
                 (here `[%1$s]`) and shapes the standard commands around it. Full guide:
                 docs/authoring-plugins.md.
 
-                ## Layout
+                # # Layout
                 - `jk-plugin.toml` (under `src/main/resources/`, so it lands at the **jar root**) —
                   the declarative manifest jk reads: the `[%1$s]` schema and the code hook.
                 - `%2$s` — the code layer: implements the SDK's `Plugin` + `BuildPlugin`, registered
@@ -333,13 +330,13 @@ public final class NewScaffolder {
                   (`assembly = true`) whose `Main-Class` is the SDK's `PluginMain`. The SDK must be
                   shaded IN (the worker forks as `java -jar`), so the dep is a normal `main` dep.
 
-                ## Build
+                # # Build
                 ```
                 jk build
                 ```
                 Produces `target/%1$s-0.1.0-all.jar` — the fat jar with `jk-plugin.toml` at its root.
 
-                ## Publish, declare, trust
+                # # Publish, declare, trust
                 ```
                 jk publish                 # ships the fat jar as the coordinate
                 ```
@@ -359,7 +356,7 @@ public final class NewScaffolder {
     /**
      * Ensure production/test/resource roots exist: SIMPLE Mill-like ({@code src/},
      * {@code resources/}, {@code test/src/}, {@code test/resources/}) or traditional Maven tree
-     * (JK-1198).
+     *
      */
     private static void createSourceTree(NewInputs inputs) throws IOException {
         var dir = inputs.directory();
@@ -378,7 +375,7 @@ public final class NewScaffolder {
     }
 
     /**
-     * Seed a {@code .gitignore} covering jk's outputs. Don't clobber an existing file — the user (or
+     * Seed a {@code.gitignore} covering jk's outputs. Don't clobber an existing file — the user (or
      * their template) may have customised it. We only create one on first scaffold.
      */
     private static void writeGitignore(Path dir) throws IOException {
@@ -391,14 +388,14 @@ public final class NewScaffolder {
 
                 # IntelliJ IDEA
                 .idea/
-                *.iml
-                *.ipr
-                *.iws
+                * .iml
+                * .ipr
+                * .iws
                 out/
 
                 # VS Code
                 .vscode/
-                *.code-workspace
+                * .code-workspace
                 .history/
 
                 # Eclipse compiler (used by VS Code Java plugins)
@@ -450,7 +447,7 @@ public final class NewScaffolder {
 
     private static void writeKotlinSample(NewInputs inputs) throws IOException {
         // Kotlin keeps its compact convention: the simple layout is package-less
-        // (files at ./src and ./test/src); the traditional layout nests by package.
+        // (files at./src and./test/src); the traditional layout nests by package.
         boolean simple = inputs.isSimpleLayout();
         String pkg = simple ? "" : inputs.group();
         String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
@@ -468,7 +465,7 @@ public final class NewScaffolder {
 
     private static void writeGroovySample(NewInputs inputs) throws IOException {
         // Groovy mirrors Kotlin's compact convention: the simple layout is package-less
-        // (files at ./src and ./test/src); the traditional layout nests by package.
+        // (files at./src and./test/src); the traditional layout nests by package.
         boolean simple = inputs.isSimpleLayout();
         String pkg = simple ? "" : inputs.group();
         String pkgPath = pkg.isEmpty() ? "" : "/" + pkg.replace('.', '/');
@@ -491,7 +488,9 @@ public final class NewScaffolder {
 
     /** Test source root: {@code test/src} (simple Mill-like) or {@code src/test/<lang>} (traditional). */
     private static String testSourceRoot(NewInputs inputs) {
-        return inputs.isSimpleLayout() ? "test/src" : "src/test/" + inputs.lang().sourceDir();
+        return inputs.isSimpleLayout()
+                ? "test/src"
+                : "src/test/" + inputs.lang().sourceDir();
     }
 
     /**

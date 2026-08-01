@@ -25,7 +25,7 @@ import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1202: wall-time breakdown of warm Quarkus locks (graph vs materialize). Uses the developer's
+ * wall-time breakdown of warm Quarkus locks (graph vs materialize). Uses the developer's
  * {@code ~/.jk/cache} so re-runs measure CAS-local materialize, not cold downloads.
  */
 @Tag("integration")
@@ -35,9 +35,7 @@ class QuarkusLockPhaseTimingTest {
     @Timeout(value = 120, unit = TimeUnit.SECONDS)
     void warm_quarkus_lock_phases(@TempDir Path tmp) throws Exception {
         assumeTrue(Files.isDirectory(Path.of(System.getProperty("user.home"), ".jk/cache")));
-        Files.writeString(
-                tmp.resolve("jk.toml"),
-                """
+        Files.writeString(tmp.resolve("jk.toml"), """
                 [project]
                 name = "q-phase"
                 group = "demo"
@@ -46,7 +44,7 @@ class QuarkusLockPhaseTimingTest {
                 java = 25
 
                 [quarkus]
-                version = "3.28.5"
+                version = "3.38.0"
 
                 [dependencies]
                 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
@@ -67,12 +65,12 @@ class QuarkusLockPhaseTimingTest {
 
         TimingObserver obs = new TimingObserver();
         long t0 = System.nanoTime();
-        Lockfile lock = new LockOrchestrator(repos)
-                .withProjectDir(tmp)
-                .lock(project, "phase-measure", List.of(), true, obs);
+        Lockfile lock =
+                new LockOrchestrator(repos).withProjectDir(tmp).lock(project, "phase-measure", List.of(), true, obs);
         long totalMs = (System.nanoTime() - t0) / 1_000_000L;
 
-        System.out.println("TOTAL_MS=" + totalMs + " packages=" + lock.artifacts().size());
+        System.out.println(
+                "TOTAL_MS=" + totalMs + " packages=" + lock.artifacts().size());
         System.out.println("PHASES=" + obs.phases);
         System.out.println(
                 "graphPackages=" + obs.graphPackages.get() + " materializePackages=" + obs.materializePackages.get());

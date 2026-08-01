@@ -114,7 +114,7 @@ public final class WorkspaceMerge {
      * externals into MAIN. That is right for locking and wrong for anything describing the module to
      * the outside world: a published POM must still declare the sibling, just by its real
      * coordinate. Emitting the raw placeholder produced {@code <groupId>workspace</groupId>} /
-     * {@code <version>LATEST</version>} POMs (JK-1255); dropping the edge instead would silently
+     * {@code <version>LATEST</version>} POMs; dropping the edge instead would silently
      * lose a real dependency, which is worse.
      *
      * <p>Unresolvable placeholders are left untouched rather than throwing — the caller is usually

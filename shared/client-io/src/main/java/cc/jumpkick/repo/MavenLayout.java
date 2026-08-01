@@ -22,7 +22,7 @@ public final class MavenLayout {
      * Relative path to the POM. Maven POMs are never classified — secondary artifacts (e.g.
      * {@code guice:jar:classes}) share the main GAV's {@code artifact-version.pom}. Including a
      * classifier here produced missing paths like {@code guice-5.1.0-classes.pom} and made PubGrub
-     * treat valid classifier packages as unavailable (JK-1202).
+     * treat valid classifier packages as unavailable.
      */
     public static String pomPath(Coordinate coord) {
         return basePath(coord) + filename(coord, "pom", false);
@@ -38,8 +38,7 @@ public final class MavenLayout {
     }
 
     private static String filename(Coordinate coord, String extension, boolean includeClassifier) {
-        String classifier =
-                includeClassifier && coord.classifier() != null ? "-" + coord.classifier() : "";
+        String classifier = includeClassifier && coord.classifier() != null ? "-" + coord.classifier() : "";
         return coord.artifact() + "-" + coord.version() + classifier + "." + extension;
     }
 }

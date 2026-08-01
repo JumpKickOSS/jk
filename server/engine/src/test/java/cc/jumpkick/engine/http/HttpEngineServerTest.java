@@ -24,7 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * Drives a real {@link HttpEngineServer} bound to an OS-assigned loopback port with the JDK's
  * {@link HttpClient} — plus a raw socket where the client won't cooperate (forged {@code Host}
- * headers, literal {@code ..} request targets).
+ * headers, literal {@code..} request targets).
  */
 @Tag("integration")
 class HttpEngineServerTest {
@@ -494,22 +494,31 @@ class HttpEngineServerTest {
 
     @Test
     void api_log_tails_the_engine_log() throws Exception {
-        HttpResponse<String> resp = get("/api/log");
+        HttpResponse<String> resp = get("/api/log", "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("text/plain; charset=utf-8");
         assertThat(resp.body()).contains("jk engine: listening").contains("line three");
     }
 
     @Test
+    void api_log_requires_the_token_even_on_loopback() throws Exception {
+        // The log can carry build diagnostics — another local user must not read it.
+        assertThat(get("/api/log").statusCode()).isEqualTo(401);
+    }
+
+    @Test
     void api_log_respects_the_lines_parameter() throws Exception {
-        assertThat(get("/api/log?lines=1").body()).isEqualTo("line three");
-        assertThat(get("/api/log?lines=garbage").statusCode()).isEqualTo(200); // default kicks in
+        assertThat(get("/api/log?lines=1", "Authorization", "Bearer " + token()).body())
+                .isEqualTo("line three");
+        assertThat(get("/api/log?lines=garbage", "Authorization", "Bearer " + token())
+                        .statusCode())
+                .isEqualTo(200); // default kicks in
     }
 
     @Test
     void api_log_of_a_missing_file_is_empty_200() throws Exception {
         Files.delete(logFile);
-        HttpResponse<String> resp = get("/api/log");
+        HttpResponse<String> resp = get("/api/log", "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.body()).isEmpty();
     }
@@ -962,7 +971,7 @@ class HttpEngineServerTest {
         assertThat(resp.body()).contains("no jk.toml in /reject/me");
     }
 
-    // ---- live stream count: the veto on an orphaned engine exiting (JK-1293) -------------------
+    // ---- live stream count: the veto on an orphaned engine exiting------------------
 
     @Test
     void no_attached_streams_means_none_are_counted() {

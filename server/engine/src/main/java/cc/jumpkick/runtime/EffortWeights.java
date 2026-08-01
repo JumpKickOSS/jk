@@ -8,6 +8,7 @@ import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.task.FreshnessStamp;
+import cc.jumpkick.test.TestWorkers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +20,7 @@ import java.util.Set;
  * Predicts each build step's progress-bar weight from on-disk state at pipeline start. Skip
  * detection uses {@link FreshnessStamp#looksFresh}; compile→test→package are correlated (if compile
  * will run, consumers are reserved too). Fresh/cached steps reserve {@link #TOKEN} (not zero) so
- * the aggregate bar keeps a denominator (JK-1153). Mispredictions only mis-size a slice — closed
+ * the aggregate bar keeps a denominator. Mispredictions only mis-size a slice — closed
  * by step-end auto-fill. See {@code docs/perf/progress-contract.md}.
  */
 public final class EffortWeights {
@@ -28,7 +29,7 @@ public final class EffortWeights {
 
     /**
      * Plan/runtime weight when a step is known skip/cache-hit but still appears in the pipeline
-     * (JK-1153). Keeps a non-zero phase tick so the aggregate bar has a denominator without
+     * . Keeps a non-zero phase tick so the aggregate bar has a denominator without
      * inventing full compile/test cost.
      */
     public static final int TOKEN = 1;
@@ -85,7 +86,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Hierarchical test weight (JK-1152 MVP): prefer learned module rate × method count; else
+     * Hierarchical test weight MVP): prefer learned module rate × method count; else
      * class-count × derived class rate; else method static floor. Does not replace
      * {@link #learned} — callers compose: {@code learned(..., runTestsHierarchical(...))}.
      */
@@ -130,8 +131,53 @@ public final class EffortWeights {
         };
     }
 
-    /** Minimum successful runs before a metrics average outranks a static constant. */
+    /** Minimum successful runs before a metrics average outranks a static constant (bar weights). */
     static final int MIN_METRICS_SAMPLES = 3;
+
+    /**
+     * Forecast/plan step names → {@link BuildMetrics} / pipeline step names. Explain uses
+     * {@code compile-main}; the live pipeline and metrics store {@code compile-java}.
+     */
+    public static String metricsStepName(String step) {
+        if (step == null || step.isBlank()) return "";
+        return switch (step) {
+            case "compile-main" -> "compile-java";
+            default -> step;
+        };
+    }
+
+    /**
+     * Success-only average wall for one module step (ms), or 0 when never recorded. Count ≥ 1 is
+     * enough — ETA composes dirty steps from measured pieces, not whole-build priors.
+     */
+    public static long stepOkAvgMillis(BuildMetrics metrics, String dir, String step) {
+        long own = stepOkAvgMillisOwn(metrics, dir, step);
+        return own > 0 ? own : stepOkAvgMillisHost(metrics, step);
+    }
+
+    /** Module-own tier of {@link #stepOkAvgMillis} — 0 when this module never ran the step here. */
+    static long stepOkAvgMillisOwn(BuildMetrics metrics, String dir, String step) {
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        String key = metricsStepName(step);
+        if (key.isEmpty()) return 0;
+        var own = metrics.step(dir == null ? "" : dir, key);
+        if (own.isPresent() && own.get().ok().count() >= 1 && own.get().ok().avgMillis() > 0) {
+            return own.get().ok().avgMillis();
+        }
+        return 0;
+    }
+
+    /** Host tier of {@link #stepOkAvgMillis}: the cross-module average wall for {@code step}. */
+    static long stepOkAvgMillisHost(BuildMetrics metrics, String step) {
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        String key = metricsStepName(step);
+        if (key.isEmpty()) return 0;
+        var host = metrics.step("", key);
+        if (host.isPresent() && host.get().ok().count() >= 1 && host.get().ok().avgMillis() > 0) {
+            return host.get().ok().avgMillis();
+        }
+        return 0;
+    }
 
     /**
      * Metrics-learned flat weight for fixed-cost steps: module avg → host avg → {@code
@@ -142,11 +188,11 @@ public final class EffortWeights {
     }
 
     static int learnedFixedWeight(BuildMetrics metrics, String dir, String step, int staticWeight) {
-        var own = metrics.step(dir, step);
+        var own = metrics.step(dir, metricsStepName(step));
         if (own.isPresent() && own.get().ok().count() >= MIN_METRICS_SAMPLES) {
             return flatWeight(own.get().ok().avgMillis());
         }
-        var host = metrics.step("", step);
+        var host = metrics.step("", metricsStepName(step));
         if (host.isPresent() && host.get().ok().count() >= MIN_METRICS_SAMPLES) {
             return flatWeight(host.get().ok().avgMillis());
         }
@@ -154,7 +200,7 @@ public final class EffortWeights {
     }
 
     /** A whole-step historical average (ms) as a flat bar weight. */
-    private static int flatWeight(long avgMillis) {
+    public static int flatWeight(long avgMillis) {
         return Math.max(1, (int) Math.round(avgMillis / (double) MS_PER_WEIGHT));
     }
 
@@ -164,9 +210,12 @@ public final class EffortWeights {
     }
 
     /**
-     * Learned weight {@code floor + rate × count}. Rate preference: this module → project median →
-     * host median → {@link BuildMetrics} flat avg (survives {@code jk clean}) → {@code
-     * staticWeight}.
+     * Learned weight for a step. Preference: <strong>absolute step wall from {@link BuildMetrics}</strong>
+     * (module then host) → residual {@link StepTimings} rate × count → host ms/method → static.
+     *
+     * <p>Absolute step averages compose correctly for ETA: dirty modules sum their dirty steps; a
+     * full rebuild is the same sum over every module. Residual rates scale with count but drift
+     * when the trained unit count and the forecast count disagree.
      */
     static int learned(
             StepTimings timings,
@@ -187,25 +236,232 @@ public final class EffortWeights {
             int count,
             int staticWeight,
             java.util.Collection<String> projectDirs) {
+        String key = metricsStepName(step);
+        // Prefer this module's own measured whole-step wall (even a single success).
+        long ownMs = stepOkAvgMillisOwn(metrics, dir, key);
+        if (ownMs > 0) return flatWeight(ownMs);
+        // Cold module with a known planned method count: the count-scaled host prior beats the
+        // host suite-wall average, which prices a 2000-method suite like the host's ~average
+        // suite. The host wall stays the fallback when no count is known.
+        if ("run-tests".equals(key) && count > 0) {
+            var msPer = timings.hostAvgTestMethodMs();
+            if (msPer.isPresent()) {
+                return Math.max(1, (int) Math.round(floor(key) + count * msPer.getAsDouble() / (double) MS_PER_WEIGHT));
+            }
+        }
+        long hostMs = stepOkAvgMillisHost(metrics, key);
+        if (hostMs > 0) return flatWeight(hostMs);
+
         double rate;
-        var own = timings.perUnit(dir, step);
+        var own = timings.perUnit(dir, key);
         if (own.isPresent()) {
             rate = own.getAsDouble();
         } else {
-            var project = timings.medianPerUnit(step, projectDirs);
+            var project = timings.medianPerUnit(key, projectDirs);
             if (project.isPresent()) {
                 rate = project.getAsDouble();
             } else {
-                var host = timings.medianPerUnit(step);
+                var host = timings.medianPerUnit(key);
                 if (host.isEmpty()) {
                     // No rate anywhere (cold ledger, e.g. right after `jk clean`) — fall back to the
-                    // surviving metrics history before conceding to the Step-1 static guess.
-                    return learnedFixedWeight(metrics, dir, step, staticWeight);
+                    // surviving metrics history before conceding to the Step-1 static (which already
+                    // embeds Calibration priors when produced by coldStaticWeight).
+                    return learnedFixedWeight(metrics, dir, key, staticWeight);
                 }
                 rate = host.getAsDouble();
             }
         }
-        return Math.max(1, (int) Math.round(floor(step) + rate * Math.max(0, count)));
+        return Math.max(1, (int) Math.round(floor(key) + rate * Math.max(0, count)));
+    }
+
+    /**
+     * Unit counts for cold/residual pricing from a prepared pipeline's declared ticks. Matches what
+     * {@code jk explain} gets from the forecast ({@code sourceCount}/{@code testCount}): compile
+     * steps expose source counts as ticks; {@code run-tests} exposes the method estimate. Used by
+     * the build countdown so it shares {@link #costFromRunningSteps} with explain rather than
+     * re-pricing with empty counts (which collapses cold test ETA to suite-startup only).
+     */
+    public static java.util.Map<String, Integer> stepCountsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        if (pipeline == null) return counts;
+        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+            String key = metricsStepName(s.name());
+            if (key.isEmpty()) continue;
+            int ticks;
+            try {
+                ticks = s.estimateTicks();
+            } catch (RuntimeException e) {
+                continue;
+            }
+            if (ticks > 0) counts.put(key, ticks);
+        }
+        return counts;
+    }
+
+    /**
+     * Steps that will do real work in a prepared pipeline (weight &gt; {@link #TOKEN}). Cached/skip
+     * checks stay as tokens and are omitted — same idea as forecast {@code !step.cached}.
+     */
+    public static java.util.List<String> runningStepsFromPipeline(cc.jumpkick.run.Pipeline pipeline) {
+        java.util.List<String> running = new java.util.ArrayList<>();
+        if (pipeline == null) return running;
+        for (cc.jumpkick.run.Step s : pipeline.steps()) {
+            try {
+                if (s.estimateWeight() > TOKEN) running.add(s.name());
+            } catch (RuntimeException e) {
+                running.add(s.name());
+            }
+        }
+        return running;
+    }
+
+    /**
+     * Module cost from the steps that will actually run (forecast non-cached / rebuild-all). Each
+     * step is priced from {@link BuildMetrics} ok averages when available so ETA is Σ dirty step
+     * walls — not a whole-build {@code build}/{@code build:rebuild} prior.
+     *
+     * @param stepCounts optional unit counts for cold residual fallback (e.g. {@code run-tests} →
+     * method count); may be empty
+     */
+    public static ModuleCost costFromRunningSteps(
+            Path dir,
+            Set<Path> prereqs,
+            java.util.Collection<String> runningSteps,
+            BuildMetrics metrics,
+            StepTimings timings,
+            java.util.Collection<String> projectDirs,
+            java.util.Map<String, Integer> stepCounts) {
+        return costFromRunningSteps(dir, prereqs, runningSteps, metrics, timings, projectDirs, stepCounts, 1);
+    }
+
+    /**
+     * @param testWorkers within-module test JVM count for cold {@code run-tests} walls (1 = serial
+     * methods; Mill-shaped {@code -w})
+     */
+    public static ModuleCost costFromRunningSteps(
+            Path dir,
+            Set<Path> prereqs,
+            java.util.Collection<String> runningSteps,
+            BuildMetrics metrics,
+            StepTimings timings,
+            java.util.Collection<String> projectDirs,
+            java.util.Map<String, Integer> stepCounts,
+            int testWorkers) {
+        if (runningSteps == null || runningSteps.isEmpty()) {
+            return new ModuleCost(dir, prereqs, 0, 0);
+        }
+        if (metrics == null) metrics = BuildMetrics.load(BuildMetrics.defaultFile());
+        if (projectDirs == null) projectDirs = java.util.List.of();
+        if (stepCounts == null) stepCounts = java.util.Map.of();
+        int weight = 0;
+        int testWeight = 0;
+        String mod = dir == null ? "" : dir.toString();
+        int wWorkers = Math.max(1, testWorkers);
+        for (String raw : runningSteps) {
+            String step = metricsStepName(raw);
+            if (step.isEmpty()) continue;
+            // Prefer this module's own measured whole-step wall; count-scaled/host/static tiers
+            // (via learned) only when the module is cold here.
+            long ownMs = stepOkAvgMillisOwn(metrics, mod, step);
+            int w;
+            if (ownMs > 0) {
+                w = flatWeight(ownMs);
+            } else {
+                // run-tests defaults to 0 (unknown count) so the ms/method prior never fires on a
+                // fake count of 1; other steps keep the old floor of one unit.
+                int defaultCount = "run-tests".equals(step) ? 0 : 1;
+                int count = stepCounts.getOrDefault(step, stepCounts.getOrDefault(raw, defaultCount));
+                int staticW = coldStaticWeight(step, count, wWorkers);
+                if (staticW <= 0) continue; // unknown tiny step with no history
+                if (timings != null) {
+                    w = learned(timings, metrics, mod, step, count, staticW, projectDirs);
+                } else {
+                    long hostMs = stepOkAvgMillisHost(metrics, step);
+                    w = hostMs > 0 ? flatWeight(hostMs) : staticW;
+                }
+            }
+            weight += w;
+            if ("run-tests".equals(step)) testWeight += w;
+        }
+        return new ModuleCost(dir, prereqs, weight, testWeight);
+    }
+
+    /**
+     * Cold reservation when a running step has no metrics and no residual rate. Prefers host
+     * {@link Calibration} continuous/probe priors (absolute ms → flatWeight); falls back to tight
+     * static floors — never the legacy ~1.2s/method {@link #runTestsWeight} for ETA.
+     */
+    private static int coldStaticWeight(String step, int count) {
+        return coldStaticWeight(step, count, 1);
+    }
+
+    private static int coldStaticWeight(String step, int count, int testWorkers) {
+        int fromCal = coldFromCalibration(step, count, testWorkers);
+        if (fromCal > 0) return fromCal;
+        // Uncalibrated host: product baselines with scale=1 (same formula as Calibration.scaleBaseline
+        // at identity), and the same cold test-worker cap so ETA does not invent linear -w speedup.
+        return switch (step) {
+            case "compile-java", "compile-kotlin", "compile-groovy", "compile-test" ->
+                flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_COMPILE_PER_SOURCE_MS, 1.0)
+                        * Math.max(1, count));
+            case "run-tests" -> {
+                int w = Calibration.coldTestParallel(testWorkers);
+                long method = Calibration.scaleBaseline(Calibration.BASELINE_METHOD_MS, 1.0);
+                long startup = Calibration.scaleBaseline(Calibration.BASELINE_SUITE_STARTUP_MS, 1.0);
+                long body = (long) Math.max(0, count) * method;
+                yield flatWeight(startup + (body + w - 1) / w);
+            }
+            case "package-jar" -> flatWeight(Calibration.scaleBaseline(Calibration.BASELINE_PACKAGE_JAR_MS, 1.0));
+            case "package-assembly" -> ASSEMBLY_RUN;
+            case "native-image" -> NATIVE_RUN;
+            case "write-image" -> OCI_RUN;
+            case "resolve-deps",
+                    "parse-build",
+                    "ensure-jdk",
+                    "copy-resources",
+                    "write-stamp",
+                    "write-stamp-kotlin",
+                    "write-stamp-groovy",
+                    "build-logic-after-compile",
+                    "build-logic-before-package" -> TOKEN;
+            default -> 0;
+        };
+    }
+
+    /**
+     * Weight units from {@link Calibration#coldStepWallMs} when the host has probe or continuous
+     * learned priors; 0 so callers can fall through to tight static floors.
+     */
+    private static int coldFromCalibration(String step, int count, int testWorkers) {
+        try {
+            Calibration cal = Calibration.load();
+            if (!cal.hasColdPriors()) return 0;
+            long wall = cal.coldStepWallMs(step, count, testWorkers);
+            return wall > 0 ? flatWeight(wall) : 0;
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Cold progress-bar / ETA weight for a step using the same host priors as
+     * {@link #costFromRunningSteps} (calibration → tight static). Prefer this over
+     * {@link #runTestsWeight} / {@link #compileWeight} for real-work forecasts.
+     */
+    public static int coldWorkWeight(String step, int count) {
+        return coldWorkWeight(step, count, 1);
+    }
+
+    public static int coldWorkWeight(String step, int count, int testWorkers) {
+        int w = coldStaticWeight(metricsStepName(step), count, testWorkers);
+        return w > 0 ? w : TOKEN;
+    }
+
+    /** Within-module workers for plan-time test weights (matches runtime {@link TestWorkers}). */
+    private static int resolveTestWorkersForPredict(BuildPipelines.Inputs in, int classCount) {
+        int requested = in != null ? in.workerCount() : 0;
+        int jobs = TestWorkers.effectiveJobs();
+        return TestWorkers.resolve(requested, classCount, jobs);
     }
 
     /**
@@ -232,7 +488,7 @@ public final class EffortWeights {
             boolean useGroovy,
             boolean forceRebuild) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
-        // If jk.toml is newer than jk.lock AND the lock no longer satisfies all declared
+        // If jk.toml is newer than jk-lock.toml AND the lock no longer satisfies all declared
         // deps, treat the module as dirty so parse-lock runs and updates the lock.
         boolean lockStale = !rerun && AutoLock.needsRelocking(in.dir(), in.lockFile());
         if (lockStale) rerun = true;
@@ -259,7 +515,13 @@ public final class EffortWeights {
                         compact ? in.dir().resolve("src") : in.dir().resolve("src/main/java"));
                 javaRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.JAVA_STAMP, src);
                 compileJava = javaRun
-                        ? learned(timings, mod, "compile-java", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-java",
+                                src.size(),
+                                coldWorkWeight("compile-java", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean ktRun = false;
@@ -268,7 +530,13 @@ public final class EffortWeights {
                 ktRun = rerun
                         || !FreshnessStamp.looksFresh(layout.kotlinClassesDir(), FreshnessStamp.KOTLIN_STAMP, src);
                 compileKotlin = ktRun
-                        ? learned(timings, mod, "compile-kotlin", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-kotlin",
+                                src.size(),
+                                coldWorkWeight("compile-kotlin", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean gvRun = false;
@@ -278,7 +546,13 @@ public final class EffortWeights {
                 List<Path> src = CompileSupport.collectGroovySources(in.dir(), compact);
                 gvRun = rerun || !FreshnessStamp.looksFresh(layout.classesDir(), FreshnessStamp.GROOVY_STAMP, src);
                 compileGroovy = gvRun
-                        ? learned(timings, mod, "compile-groovy", src.size(), compileWeight(src.size()), projectDirs)
+                        ? learned(
+                                timings,
+                                mod,
+                                "compile-groovy",
+                                src.size(),
+                                coldWorkWeight("compile-groovy", src.size()),
+                                projectDirs)
                         : SKIP;
             }
             boolean compileRun = javaRun || ktRun || gvRun;
@@ -286,7 +560,7 @@ public final class EffortWeights {
             // Tests + packaging consume the compiled output: if a compile ran (or
             // --force), they run. The precise test skip is decided at run-tests via
             // the CAS marker (which survives `jk clean`); that step reweights down
-            // to TOKEN there (JK-1153).
+            // to TOKEN there.
             try {
                 testSrc.addAll(TestSupport.collectAllSuiteTestSources(in.dir(), compact));
             } catch (IOException e) {
@@ -305,16 +579,25 @@ public final class EffortWeights {
             // with count=1 to match (a flat per-step cost). Multiplying it by the test
             // file count here was the bug that ballooned the estimate (e.g. ×46 → ~40s
             // of pure fiction for a ~1.2s compile). The static cold fallback stays a
-            // file-count guess. (compile-java is consistent: its .ticks is the source
+            // file-count guess. (compile-java is consistent: its.ticks is the source
             // count, the same count predict multiplies, so it stays per-source.)
             compileTest = testWillRun
-                    ? learned(timings, mod, "compile-test", 1, compileWeight(testSrc.size()), projectDirs)
+                    ? learned(
+                            timings,
+                            mod,
+                            "compile-test",
+                            1,
+                            coldWorkWeight("compile-test", Math.max(1, testSrc.size())),
+                            projectDirs)
                     : SKIP;
 
             int methods = in.estimatedTestCount();
             int classes = TestSupport.estimateAllSuiteTestClassCount(in.dir(), compact);
-            int staticTests = runTestsHierarchical(methods, classes);
-            // JK-1155: prefer method-count × run-tests rate; fall back to class-count ×
+            // Cold bar weight uses the same host priors as ETA (not legacy TEST_METHOD×8).
+            int testWorkers = resolveTestWorkersForPredict(in, classes);
+            int staticTests =
+                    coldWorkWeight("run-tests", methods > 0 ? methods : Math.max(1, classes * 3), testWorkers);
+            // prefer method-count × run-tests rate; fall back to class-count ×
             // run-tests-class rate when method annotations are not found.
             if (testWillRun) {
                 if (methods > 0) {
@@ -329,13 +612,14 @@ public final class EffortWeights {
             }
 
             boolean jarFresh = !rerun && !compileRun && Files.isRegularFile(layout.mainJar());
-            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", PACKAGE_JAR);
+            int staticPkg = coldWorkWeight("package-jar", 1);
+            pkg = jarFresh ? SKIP : learnedFixedWeight(mod, "package-jar", staticPkg);
         } catch (Exception ignored) {
             // Unparseable project / layout — parse-build will surface the real
             // error; skip-ish weights + auto-fill keep the bar honest meanwhile.
         }
         // Fresh steps still sit in the pipeline for a stamp check — reserve a token so the
-        // workspace bar never calibrates to a pure-zero execute band (JK-1153).
+        // workspace bar never calibrates to a pure-zero execute band.
         if (useJava && compileJava == SKIP) compileJava = TOKEN;
         if (useKotlin && compileKotlin == SKIP) compileKotlin = TOKEN;
         if (useGroovy && compileGroovy == SKIP) compileGroovy = TOKEN;
@@ -370,7 +654,8 @@ public final class EffortWeights {
     public static int jdkWeight(Path dir, Path jdksDir) {
         try {
             JkBuild project = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Lockfile lock = Files.exists(dir.resolve("jk.lock")) ? LockfileReader.read(dir.resolve("jk.lock")) : null;
+            Path lf = cc.jumpkick.lock.LockPaths.lockFile(dir);
+            Lockfile lock = Files.exists(lf) ? LockfileReader.read(lf) : null;
             cc.jumpkick.jdk.JdkRegistry registry =
                     jdksDir != null ? new cc.jumpkick.jdk.JdkRegistry(jdksDir) : new cc.jumpkick.jdk.JdkRegistry();
             var req = new cc.jumpkick.jdk.JdkResolution.Request(
@@ -439,7 +724,8 @@ public final class EffortWeights {
     /** Fetch weight: 8 per artifact not already in the CAS (all of them under {@code  --force}). */
     private static int predictSync(BuildPipelines.Inputs in, Cas cas) {
         try {
-            if (!Files.exists(in.lockFile())) return ARTIFACT_FETCH; // first run resolves+fetches
+            int perFetch = artifactFetchWeight();
+            if (!Files.exists(in.lockFile())) return perFetch; // first run resolves+fetches
             Lockfile lock = LockfileReader.read(in.lockFile());
             int fetches = 0;
             for (Lockfile.Artifact a : lock.artifacts()) {
@@ -447,16 +733,24 @@ public final class EffortWeights {
                 if (checksum == null) continue; // pom-only / path / git — nothing to fetch
                 // Only artifacts missing from the CAS cost anything to sync. --force/--refresh does
                 // NOT re-download blobs already present: the CAS is content-addressed (a stored
-                // sha256 is byte-identical), so a forced build resolves entirely from local disk —
+                // sha256 is byte-identical), so a forced build resolves entirely from local disk
                 // it even succeeds offline. Reserving a per-artifact download here for cached deps
                 // was the bug that made `jk explain --force` predict tens of seconds of phantom fetch.
                 String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
                 if (!cas.contains(hex)) fetches++;
             }
-            return fetches == 0 ? SKIP : fetches * ARTIFACT_FETCH;
+            return fetches == 0 ? SKIP : fetches * perFetch;
         } catch (Exception e) {
             return SKIP;
         }
+    }
+
+    /**
+     * Per-artifact fetch weight: trimmed-mean remote download duration when learned, else static
+     * {@link #ARTIFACT_FETCH}.
+     */
+    static int artifactFetchWeight() {
+        return cc.jumpkick.cache.FetchTimings.weightUnits(ARTIFACT_FETCH, MS_PER_WEIGHT);
     }
 
     // --- parallel-aware wall-clock estimate ----------------------------------
@@ -479,7 +773,7 @@ public final class EffortWeights {
 
     /**
      * As {@link #costOf(Path, Set, cc.jumpkick.run.Pipeline)}, but charging {@link #SKIP} for steps
-     * the forecast already determined are cached (JK-1260).
+     * the forecast already determined are cached.
      *
      * <p>A pipeline's estimated weight is what the steps would cost if they all ran. Estimating a
      * build from that alone ignores the plan sitting right next to it: a workspace whose every
@@ -509,7 +803,7 @@ public final class EffortWeights {
     }
 
     /**
-     * Module cost from pre-computed weights (JK-1114 shape memo / ETA-only path) — no pipeline
+     * Module cost from pre-computed weights shape memo / ETA-only path) — no pipeline
      * assembly. {@code testWeight} is the serial {@code run-tests} slice; 0 when unknown.
      */
     public static ModuleCost costOf(Path dir, Set<Path> prereqs, int weight, int testWeight) {
@@ -517,15 +811,13 @@ public final class EffortWeights {
     }
 
     /**
-     * Estimate a build's wall-clock (ms) from per-module weights, honoring how {@code jk build}
-     * actually schedules. Serial ({@code -j1}) sums every module's weight. The parallel
-     * graph build overlaps independent modules, so the estimate is the largest of three lower bounds
-     * — the dependency <b>critical path</b> (longest weighted chain, since a module can't start
-     * before its prereqs finish), the <b>throughput</b> ceiling (Σweight ÷ concurrency, when work
-     * saturates the worker JVMs), and — when tests are serialized across modules (the default, no
-     * {@code --parallel-tests}) — the <b>serial test-step total</b>, since those steps share one
-     * test JVM and cannot overlap. Summing everything (the old estimate) over-counts the
-     * compile/package work that overlaps the long serial test tail.
+     * Estimate a build's wall-clock (ms) from per-module costs (Σ dirty step weights preferred).
+     *
+     * <p>Mirrors {@link WorkspaceScheduler}: a module may start only after every dirty prereq has
+     * <em>fully</em> finished (compile + test + package), and at most {@code concurrency} modules
+     * run at once. Serial ({@code -j1}) is the sum of module weights. When tests are serialized
+     * across modules ({@code parallelTests == false}), the serial test-step sum is also a lower
+     * bound (same as the live cross-module test gate).
      */
     public static long scheduleMillis(List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests) {
         return scheduleMillis(mods, concurrency, serial, parallelTests, MS_PER_WEIGHT);
@@ -533,13 +825,12 @@ public final class EffortWeights {
 
     /**
      * As {@link #scheduleMillis(List, int, boolean, boolean)} but with an explicit weight→ms
-     * conversion. Pass {@link #MS_PER_WEIGHT} on a warm machine (learned rates already encode this
-     * host, so the constant round-trips exactly); pass a {@link Calibration}-measured or live
-     * re-projected rate on a cold machine, where the constant is a blind guess. Applying a measured
-     * rate only when the learned ledger is cold keeps it from stacking on top of learned rates.
+     * conversion. Costs from measured step walls use {@link #flatWeight} so × {@link #MS_PER_WEIGHT}
+     * round-trips to milliseconds.
      */
     public static long scheduleMillis(
             List<ModuleCost> mods, int concurrency, boolean serial, boolean parallelTests, long msPerWeight) {
+        if (mods == null || mods.isEmpty()) return 0;
         long serialSum = 0;
         long testSum = 0;
         for (ModuleCost m : mods) {
@@ -547,10 +838,12 @@ public final class EffortWeights {
             testSum += m.testWeight();
         }
         if (serial || concurrency <= 1) return serialSum * msPerWeight;
-        long critical = criticalPath(mods);
-        long throughput = (serialSum + concurrency - 1) / concurrency;
+        // List-schedule with the same dep rule as WorkspaceScheduler (full prereq completion) and
+        // a rolling concurrency window. Pure DAG critical-path alone under-estimates monorepo
+        // rebuilds (many heavy independent modules share a finite worker pool).
+        long scheduled = listSchedule(mods, Math.max(1, concurrency));
         long testFloor = parallelTests ? 0 : testSum;
-        return Math.max(critical, Math.max(throughput, testFloor)) * msPerWeight;
+        return Math.max(scheduled, testFloor) * msPerWeight;
     }
 
     /**
@@ -588,33 +881,71 @@ public final class EffortWeights {
     }
 
     /**
-     * Longest <em>blocking</em>-weighted path through the module DAG: {@code finish(m) = blocking(m)
-     * + max prereq finish}. Only a module's blocking work (compile + package — what produces the jar
-     * dependents wait on) sits on the path; its test step doesn't block dependents and is accounted
-     * for separately by the serial test floor, so counting it here would double the tail.
+     * Rolling-window list schedule matching {@link WorkspaceScheduler} (bounded path):
+     *
+     * <ul>
+     * <li>A module is ready only when every dirty prereq has fully finished (entire weight).
+     * <li>At most {@code concurrency} modules run at once.
+     * <li>Ready modules are admitted longest-first (stable heuristic).
+     * </ul>
+     *
+     * @return scheduled duration in the same units as {@link ModuleCost#weight}
      */
-    private static long criticalPath(List<ModuleCost> mods) {
+    static long listSchedule(List<ModuleCost> mods, int concurrency) {
+        if (mods == null || mods.isEmpty()) return 0;
+        int slots = Math.max(1, concurrency);
         java.util.Map<Path, ModuleCost> byDir = new java.util.HashMap<>();
-        for (ModuleCost m : mods) byDir.put(m.dir(), m);
-        java.util.Map<Path, Long> finish = new java.util.HashMap<>();
-        long best = 0;
-        for (ModuleCost m : mods) best = Math.max(best, pathFinish(m, byDir, finish));
-        return best;
+        for (ModuleCost m : mods) {
+            if (m != null && m.dir() != null) byDir.put(m.dir(), m);
+        }
+        if (byDir.isEmpty()) return 0;
+
+        java.util.Set<Path> remaining = new java.util.LinkedHashSet<>(byDir.keySet());
+        java.util.Map<Path, Long> doneAt = new java.util.HashMap<>();
+        record Flight(long finish, Path dir) {}
+        java.util.PriorityQueue<Flight> inFlight =
+                new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Flight::finish));
+        long t = 0;
+        int free = slots;
+
+        while (!remaining.isEmpty() || !inFlight.isEmpty()) {
+            while (free > 0 && !remaining.isEmpty()) {
+                Path next = null;
+                int bestW = -1;
+                for (Path d : remaining) {
+                    ModuleCost m = byDir.get(d);
+                    if (!prereqsDone(m, byDir.keySet(), doneAt)) continue;
+                    if (m.weight() > bestW) {
+                        bestW = m.weight();
+                        next = d;
+                    }
+                }
+                if (next == null) break;
+                remaining.remove(next);
+                long fin = t + Math.max(0, byDir.get(next).weight());
+                inFlight.add(new Flight(fin, next));
+                free--;
+            }
+            if (inFlight.isEmpty()) {
+                // Deadlock / missing edge: fall back to serial remainder.
+                long extra = 0;
+                for (Path d : remaining) extra += Math.max(0, byDir.get(d).weight());
+                return t + extra;
+            }
+            Flight done = inFlight.poll();
+            t = done.finish();
+            doneAt.put(done.dir(), t);
+            free++;
+        }
+        return t;
     }
 
-    private static long pathFinish(
-            ModuleCost m, java.util.Map<Path, ModuleCost> byDir, java.util.Map<Path, Long> memo) {
-        Long cached = memo.get(m.dir());
-        if (cached != null) return cached;
-        long blocking = Math.max(0, m.weight() - m.testWeight());
-        memo.put(m.dir(), blocking); // cycle guard
-        long upstream = 0;
+    private static boolean prereqsDone(ModuleCost m, java.util.Set<Path> dirtyDirs, java.util.Map<Path, Long> doneAt) {
+        if (m.prereqs() == null) return true;
         for (Path p : m.prereqs()) {
-            ModuleCost pm = byDir.get(p);
-            if (pm != null) upstream = Math.max(upstream, pathFinish(pm, byDir, memo));
+            if (!dirtyDirs.contains(p)) continue; // clean prereq — already built
+            if (!doneAt.containsKey(p)) return false;
         }
-        long f = blocking + upstream;
-        memo.put(m.dir(), f);
-        return f;
+        return true;
     }
 }

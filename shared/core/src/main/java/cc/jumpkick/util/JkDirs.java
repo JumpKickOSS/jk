@@ -114,15 +114,16 @@ public final class JkDirs {
 
     /**
      * Everything jk fetched from somewhere else: the CAS ({@code sha256/}), the per-repo views
-     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, and the JDK catalog. Defaults
-     * to {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
+     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, the JDK catalog
+     * ({@code jdks.json}), and the library registry ({@code libs.global.toml}). Defaults to
+     * {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
      *
      * <h2>Why this is not under {@code cache/}</h2>
      *
      * Both are caches in the sense that both can be re-created, but they differ in what re-creating
      * them costs and who it affects. Rebuilding {@code actions/} costs local CPU. Rebuilding {@code
      * store/} means re-downloading from Maven Central — and Sonatype enforces a sticky per-IP quota,
-     * so it costs a 429 that outlives the build (JK-1277).
+     * so it costs a 429 that outlives the build.
      *
      * <p>That distinction matters because {@code JK_CACHE_DIR} is how jk's own tests isolate
      * themselves. Pointed at a fresh directory, every one of them re-fetched every artifact and every
@@ -132,7 +133,7 @@ public final class JkDirs {
      * <p>Sharing the CAS across runs is safe by construction rather than by convention: a sha either
      * matches the requested content or it does not, so one run cannot corrupt another's view of a
      * blob. The mapping that genuinely needs isolating is the action cache — key to outputs — and that
-     * stays under {@link #cacheDir()}.
+     * stays under {@link #cacheDir}.
      *
      * <p>{@code JK_HOME} still relocates this along with everything else, which is the way to get a
      * genuinely cold start.
@@ -143,7 +144,7 @@ public final class JkDirs {
 
     /**
      * The pre-split location of the fetched set: {@code ~/.jk/cache/}. Read-only fallback, so an
-     * install that predates {@link #storeDir()} keeps its downloads instead of silently re-fetching
+     * install that predates {@link #storeDir} keeps its downloads instead of silently re-fetching
      * ~1.6 GB the first time it runs a new jk.
      */
     public Path legacyStoreDir() {
@@ -188,7 +189,7 @@ public final class JkDirs {
      * Where jk keeps the jars its binaries need: the engine's {@code jk-engine-<version>.jar} and
      * the jar(s) {@code jk install} places for an application — the app jar and its hard-linked
      * runtime dependencies, or a single fat jar. Defaults to {@code ~/.jk/lib/}. Override via
-     * {@code JK_LIB_DIR}. Launchers in {@link #binDirectory()} reference jars here by absolute
+     * {@code JK_LIB_DIR}. Launchers in {@link #binDirectory} reference jars here by absolute
      * path.
      */
     public Path libDir() {

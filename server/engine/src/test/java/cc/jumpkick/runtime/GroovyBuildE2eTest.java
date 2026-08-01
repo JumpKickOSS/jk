@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1165 wave 2 acceptance: the engine compile lane drives the groovy-compiler worker end to
+ * wave 2 acceptance: the engine compile lane drives the groovy-compiler worker end to
  * end — a groovy-only module compiles and packages, and a mixed Groovy+Java module resolves
  * references in <em>both</em> directions (Groovy→Java via the joint sweep, Java→Groovy via the
  * emitted Groovy classes + retained stubs) before assemble-classes merges the outputs.
@@ -144,7 +144,7 @@ class GroovyBuildE2eTest {
                 project,
                 cache,
                 project.resolve("jk.toml"),
-                project.resolve("jk.lock"),
+                project.resolve("jk-lock.toml"),
                 project,
                 1,
                 0,

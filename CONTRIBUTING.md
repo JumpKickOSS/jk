@@ -147,7 +147,7 @@ integration) before merge to `main`. Tier model:
 Prefer `jk build --skip-tests` plus `jk test --modules 'shared/*,server/…,plugins/*'`
 for dogfood; keep `./gradlew :cli:integrationTest` for the CLI integration suite (nested engines).
 
-Refresh locks after dependency changes: `jk lock` (commit the per-module `jk.lock` files).
+Refresh locks after dependency changes: `jk lock` (commit the workspace-root `jk-lock.toml`).
 
 ### Showcase monorepo smoke (ticket-1038)
 

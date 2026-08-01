@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.compile;
 
+import cc.jumpkick.jdk.SupportedJdk;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -30,8 +31,10 @@ public record CompileRequest(
         classpath = List.copyOf(classpath);
         extraOptions = List.copyOf(extraOptions);
         processorPath = List.copyOf(processorPath);
-        if (release < 8) {
-            throw new IllegalArgumentException("release must be >= 8, got: " + release);
+        // jk's support floor is JDK 17 (SupportedJdk.MIN_MAJOR) — 8/11 are not valid targets.
+        if (release < SupportedJdk.MIN_MAJOR) {
+            throw new IllegalArgumentException(
+                    "release must be >= " + SupportedJdk.MIN_MAJOR + ", got: " + release);
         }
         // javaHome nullable: the subprocess strategy falls back to
         // System.getProperty("java.home") when null.

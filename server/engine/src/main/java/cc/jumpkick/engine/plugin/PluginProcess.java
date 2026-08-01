@@ -65,7 +65,7 @@ public final class PluginProcess {
      * stdin.
      *
      * <p>Reading stdout and writing stdin both happen on the calling thread, so the plugin must
-     * alternate (await input → emit → await input) rather than flood stdout while blocked on stdin —
+     * alternate (await input → emit → await input) rather than flood stdout while blocked on stdin
      * which the pull protocol does (it emits {@code ready}, then waits for the next command). Run one
      * {@code converse} per worker on its own thread for parallel pull queues.
      *
@@ -159,7 +159,7 @@ public final class PluginProcess {
                     }
                 }
             } catch (IOException e) {
-                // Worker died or pipe closed mid-stream (ticket-1053: bare "closed"). Prefer a
+                // Worker died or pipe closed mid-stream: bare "closed"). Prefer a
                 // waitFor exit code over an opaque IOException when the process is already gone.
                 if (isPipeClosed(e) && !process.isAlive()) {
                     return process.waitFor();

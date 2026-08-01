@@ -26,8 +26,8 @@ class NewCommandTest {
 
         Path buildFile = tempDir.resolve("jk.toml");
         assertThat(buildFile).exists();
-        // No jk.lock at scaffold time — it's generated on the first build/run.
-        assertThat(tempDir.resolve("jk.lock")).doesNotExist();
+        // No jk-lock.toml at scaffold time — it's generated on the first build/run.
+        assertThat(tempDir.resolve("jk-lock.toml")).doesNotExist();
         // Simple layout: both source roots exist from the start.
         assertThat(tempDir.resolve("src")).isDirectory();
         assertThat(tempDir.resolve("test/src")).isDirectory();
@@ -74,7 +74,7 @@ class NewCommandTest {
     @Test
     void native_project_keeps_a_normal_jdk_and_writes_no_graal(@TempDir Path tempDir) throws IOException {
         // A native project's build JDK follows the normal rules (here an explicit
-        // bare major); the GraalVM is never chosen here — it's resolved into jk.lock
+        // bare major); the GraalVM is never chosen here — it's resolved into jk-lock.toml
         // when [native] is declared — so no `graal` key lands in jk.toml (it's
         // defaulted to the "graalvm" spec at parse time instead).
         int exit = Jk.execute(
@@ -341,7 +341,7 @@ class NewCommandTest {
 
         // Module project scaffolded, but with NO per-module lock (root owns it).
         assertThat(app.resolve("jk.toml")).exists();
-        assertThat(app.resolve("jk.lock")).doesNotExist();
+        assertThat(app.resolve("jk-lock.toml")).doesNotExist();
 
         // Group inherited from the workspace root.
         JkBuild module = JkBuildParser.parse(app.resolve("jk.toml"));

@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * JK-1289: the store must not follow the cache root, or isolating a cache keeps discarding downloads.
+ * the store must not follow the cache root, or isolating a cache keeps discarding downloads.
  *
  * <p>A cleverer rule was tried first — redirect only when the cache root looks like the ambient one, so
  * a caller supplying its own directory keeps isolation — and it was measured failing. The client

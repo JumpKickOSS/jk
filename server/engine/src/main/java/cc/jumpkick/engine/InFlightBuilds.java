@@ -7,11 +7,11 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Engine-local exclusive slots for same-fingerprint build-like jobs (JK-1249) plus a view of every
- * in-flight hold for durable history / dashboard (JK-1251).
+ * Engine-local exclusive slots for same-fingerprint build-like jobs plus a view of every
+ * in-flight hold for durable history / dashboard.
  *
  * <p>Not a distributed lock: one resident engine process. Different engines on the same host are
- * out of scope for MVP (see JK-1248).
+ * out of scope for MVP (see.
  */
 public final class InFlightBuilds {
 
@@ -41,7 +41,9 @@ public final class InFlightBuilds {
      * is the existing holder.
      */
     public Optional<Hold> tryAcquire(Hold candidate) {
-        if (candidate == null || candidate.fingerprint() == null || candidate.fingerprint().isEmpty()) {
+        if (candidate == null
+                || candidate.fingerprint() == null
+                || candidate.fingerprint().isEmpty()) {
             // Non-exclusive path: track by request only for list/running UI if needed.
             byRequestId.put(candidate.requestId(), candidate);
             return Optional.empty();
@@ -78,18 +80,22 @@ public final class InFlightBuilds {
 
     /** Update journal id after begin() persists an entry. */
     public void bindJournalId(long requestId, String journalId) {
-        byRequestId.computeIfPresent(requestId, (id, h) -> new Hold(
-                h.requestId(),
-                h.buildNumber(),
-                h.fingerprint(),
-                h.kind(),
-                h.dir(),
-                h.coord(),
-                h.startedAt(),
-                journalId,
-                h.trigger()));
+        byRequestId.computeIfPresent(
+                requestId,
+                (id, h) -> new Hold(
+                        h.requestId(),
+                        h.buildNumber(),
+                        h.fingerprint(),
+                        h.kind(),
+                        h.dir(),
+                        h.coord(),
+                        h.startedAt(),
+                        journalId,
+                        h.trigger()));
         Hold updated = byRequestId.get(requestId);
-        if (updated != null && updated.fingerprint() != null && !updated.fingerprint().isEmpty()) {
+        if (updated != null
+                && updated.fingerprint() != null
+                && !updated.fingerprint().isEmpty()) {
             byFingerprint.put(updated.fingerprint(), updated);
         }
     }

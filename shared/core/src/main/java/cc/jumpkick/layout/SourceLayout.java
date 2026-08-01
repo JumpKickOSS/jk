@@ -14,17 +14,33 @@ public final class SourceLayout {
 
     /**
      * True for simple Mill-like layout ({@code src/} + {@code test/src/}): always for SIMPLE, never
-     * TRADITIONAL, AUTO when Maven source roots are empty/absent.
+     * TRADITIONAL, AUTO when no traditional Maven markers are present.
      */
     public static boolean isSimpleLayout(JkBuild.Project project, Path projectDir) {
         return switch (project.layout()) {
             case SIMPLE -> true;
             case TRADITIONAL -> false;
-            case AUTO ->
-                !anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java", ".groovy")
-                        && !anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java", ".groovy")
-                        && !anySourceUnder(projectDir.resolve("src/main/groovy"), ".kt", ".java", ".groovy");
+            case AUTO -> !looksTraditional(projectDir);
         };
+    }
+
+    /**
+     * True when the tree has Maven-style roots. Without this, AUTO mis-classifies resources-only
+     * modules ({@code src/main/resources} + {@code src/test/java}) as SIMPLE: main compile walks all
+     * of {@code src/} (including tests) without the test classpath, and resources are expected at
+     * top-level {@code resources/} instead of {@code src/main/resources}.
+     */
+    static boolean looksTraditional(Path projectDir) {
+        if (anySourceUnder(projectDir.resolve("src/main/kotlin"), ".kt", ".java", ".groovy")
+                || anySourceUnder(projectDir.resolve("src/main/java"), ".kt", ".java", ".groovy")
+                || anySourceUnder(projectDir.resolve("src/main/groovy"), ".kt", ".java", ".groovy")) {
+            return true;
+        }
+        return Files.isDirectory(projectDir.resolve("src/main/resources"))
+                || Files.isDirectory(projectDir.resolve("src/test/java"))
+                || Files.isDirectory(projectDir.resolve("src/test/kotlin"))
+                || Files.isDirectory(projectDir.resolve("src/test/groovy"))
+                || Files.isDirectory(projectDir.resolve("src/test/resources"));
     }
 
     private static boolean anySourceUnder(Path root, String... extensions) {

@@ -26,10 +26,13 @@ class WrapperTemplateTest {
     void posix_wrapper_touches_only_the_frozen_surfaces() throws Exception {
         String sh = template("jk.sh");
         // The two frozen dependencies…
-        assertThat(sh).contains("jk.lock").contains("\"jk = \"*").contains("latest/VERSION");
+        assertThat(sh).contains("jk-lock.toml").contains("\"jk = \"*").contains("latest/VERSION");
         assertThat(sh).contains("versions/$VERSION/bin/jk");
         // …and the sha pin gates the download.
         assertThat(sh).contains("sha256");
+        // Workspace member wrappers walk up to the root lock, and a pinless
+        // bootstrap warns instead of silently trusting the download.
+        assertThat(sh).contains("$SEARCH/jk-lock.toml").contains("WARNING");
         // Nothing daemon-shaped: the wrapper needs zero engine/endpoint awareness. (The word
         // "engine" itself appears in the doc-reference comment — assert on the mechanisms.)
         assertThat(sh).doesNotContain(".sock").doesNotContain("endpoint").doesNotContain("gen1");
@@ -38,7 +41,7 @@ class WrapperTemplateTest {
     @Test
     void windows_wrapper_touches_only_the_frozen_surfaces() throws Exception {
         String bat = template("jk.bat");
-        assertThat(bat).contains("jk.lock").contains("latest/VERSION");
+        assertThat(bat).contains("jk-lock.toml").contains("latest/VERSION");
         assertThat(bat).contains("versions\\%VERSION%\\bin");
         assertThat(bat).contains("SHA256");
         assertThat(bat).doesNotContain(".sock").doesNotContain("endpoint");

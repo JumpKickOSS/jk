@@ -29,7 +29,7 @@ class TestStampTest {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         write(mainClasses.resolve("Foo.class"), "AAAA");
-        Path lock = write(dir.resolve("jk.lock"), "version = 1");
+        Path lock = write(dir.resolve("jk-lock.toml"), "version = 1");
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEPBYTES");
 
         String k1 = TestStamp.computeKey(
@@ -44,7 +44,7 @@ class TestStampTest {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
         Path mainClass = write(mainClasses.resolve("Foo.class"), "AAAA");
-        Path lock = write(dir.resolve("jk.lock"), "v=1");
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
         String before = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of());
         Files.writeString(mainClass, "BBBB"); // main code changed; test source untouched
@@ -57,7 +57,7 @@ class TestStampTest {
     void dependency_content_change_busts_but_identical_rebuild_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk.lock"), "v=1");
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         Path sibJar = write(dir.resolve("dep/target/dep.jar"), "DEP-V1");
 
         String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(sibJar), List.of());
@@ -80,9 +80,10 @@ class TestStampTest {
     void test_source_lock_and_extras_changes_bust_the_key(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk.lock"), "v=1");
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
 
-        String base = TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
+        String base =
+                TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0"));
 
         Files.writeString(testSrc, "class FooTest { void t() {} }");
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(), lock, List.of(), List.of("jk:1.0")))
@@ -103,7 +104,7 @@ class TestStampTest {
     void resource_fixture_change_busts_but_identical_rewrite_does_not(@TempDir Path dir) throws IOException {
         Path testSrc = write(dir.resolve("FooTest.java"), "class FooTest {}");
         Path mainClasses = Files.createDirectories(dir.resolve("classes/main"));
-        Path lock = write(dir.resolve("jk.lock"), "v=1");
+        Path lock = write(dir.resolve("jk-lock.toml"), "v=1");
         Path resDir = dir.resolve("test/resources");
         Path fixture = write(resDir.resolve("fixture.json"), "{\"v\":1}");
 
@@ -115,7 +116,7 @@ class TestStampTest {
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
                 .isEqualTo(base);
 
-        // A fixture-only edit must retest (JK-1208: false green).
+        // A fixture-only edit must retestfalse green).
         Files.writeString(fixture, "{\"v\":2}");
         assertThat(TestStamp.computeKey(List.of(testSrc), mainClasses, List.of(resDir), lock, List.of(), List.of()))
                 .as("resource-only edit busts the key")
@@ -130,7 +131,12 @@ class TestStampTest {
 
         // Missing resource dir behaves like empty (no I/O failure, key stable).
         assertThat(TestStamp.computeKey(
-                        List.of(testSrc), mainClasses, List.of(dir.resolve("integration/resources")), lock, List.of(), List.of()))
+                        List.of(testSrc),
+                        mainClasses,
+                        List.of(dir.resolve("integration/resources")),
+                        lock,
+                        List.of(),
+                        List.of()))
                 .isNotNull();
     }
 }

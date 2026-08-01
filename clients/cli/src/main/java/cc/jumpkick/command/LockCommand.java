@@ -12,20 +12,18 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.Step;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -35,9 +33,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * {@code jk lock} — resolve declared dependencies and write {@code jk.lock}. Features use Cargo
- * semantics ({@code --features}/{@code --no-default-features}); workspace roots cascade to each
- * module. Engine-hosted; this command renders progress.
+ * {@code jk lock} — resolve declared dependencies and write {@code jk-lock.toml}. Features use Cargo
+ * semantics ({@code --features}/{@code --no-default-features}). Workspace roots (and members) write
+ * a single root lock for the whole monorepo. Engine-hosted; this command renders progress.
  */
 public final class LockCommand implements CliCommand {
 
@@ -55,7 +53,7 @@ public final class LockCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Resolve versions for dependencies and write jk.lock";
+        return "Resolve versions for dependencies and write jk-lock.toml";
     }
 
     @Override
@@ -97,10 +95,10 @@ public final class LockCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
 
-        // Client-side pre-flight: revalidate the downloaded library catalog before anything parses
-        // jk.toml — the engine reads the same on-disk cache file, so refreshing it here lands for
-        // both the hosted and the in-process path.
-        refreshLibraryRegistry(
+        // Client-side pre-flight: ensure libs.global.toml exists (first-time download) and
+        // revalidate when present — before anything parses jk.toml short names. The engine reads
+        // the same on-disk file; this closes the race with background StoreFeedRefresh.
+        LibraryRegistrySync.ensurePresent(
                 global.offline,
                 libraryRegistryUrl != null ? libraryRegistryUrl : LibraryRegistryClient.DEFAULT_SOURCE,
                 libraryCacheFile != null ? libraryCacheFile : LibraryCatalog.downloadedFile());
@@ -143,7 +141,7 @@ public final class LockCommand implements CliCommand {
         AtomicInteger globalLocked = new AtomicInteger(0);
         // Per-module package counts (cumulative wire samples, then the authoritative lockfile
         // count). The engine restarts totalSeen per module, so the workspace total is the SUM
-        // of per-module counts — folding with max reported only the largest module (JK-1233).
+        // of per-module counts — folding with max reported only the largest module.
         Map<String, Integer> lockedByDir = new java.util.concurrent.ConcurrentHashMap<>();
         List<String> errorLines = new ArrayList<>();
         Map<String, String> coordByDir = new java.util.HashMap<>();
@@ -171,7 +169,9 @@ public final class LockCommand implements CliCommand {
                 int n;
                 if (totalSeen >= 0) {
                     lockedByDir.merge(moduleDir, totalSeen, Math::max);
-                    n = lockedByDir.values().stream().mapToInt(Integer::intValue).sum();
+                    n = lockedByDir.values().stream()
+                            .mapToInt(Integer::intValue)
+                            .sum();
                     globalLocked.set(Math.max(globalLocked.get(), n));
                 } else {
                     n = globalLocked.incrementAndGet();
@@ -220,7 +220,7 @@ public final class LockCommand implements CliCommand {
             view.finishPipelineFailure(lockFailTail(), errorLines);
             return outcome.exitCode();
         }
-        view.finishPipelineSuccess(lockSuccessTail(globalLocked.get(), start));
+        view.finishPipelineSuccess(lockSuccessTail(globalLocked.get(), start, dir));
         return 0;
     }
 
@@ -263,50 +263,24 @@ public final class LockCommand implements CliCommand {
         return "dependencies";
     }
 
-    /** Success chip tail: {@code Lock successful. Resolved N dependencies took T}. */
-    static String lockSuccessTail(int pkgs, long startNanos) {
-        return Theme.colorize("Lock successful", Theme.active().success())
+    /**
+     * Success chip tail: {@code Lock successful. Resolved N dependencies took T}, or {@code Workspace
+     * lock successful.…} when the project is a workspace root or member.
+     */
+    static String lockSuccessTail(int pkgs, long startNanos, Path projectDir) {
+        boolean workspace = cc.jumpkick.lock.LockPaths.isWorkspaceLock(projectDir);
+        String title = workspace ? "Workspace lock successful" : "Lock successful";
+        return Theme.colorize(title, Theme.active().success())
                 + ". Resolved "
                 + Theme.colorize(String.valueOf(pkgs), Theme.active().focused())
                 + " dependenc" + (pkgs == 1 ? "y" : "ies") + " "
                 + ConsoleSpec.took(Duration.ofMillis((System.nanoTime() - startNanos) / 1_000_000));
     }
 
-    /**
-     * Best-effort revalidation of the downloaded library catalog layer ({@link
-     * LibraryCatalog#downloadedFile()}) before {@code jk.toml} is parsed — parsing is what expands
-     * short library names against the catalog, so this needs to land before resolution sees the
-     * effective dependency list.
-     *
-     * <p>Only revalidates a catalog that's already been downloaded; a project that has never run
-     * {@code jk library update} keeps resolving against the bundled floor rather than jk silently
-     * reaching out to GitHub on its behalf. A conditional GET means the common case (nothing changed
-     * upstream) costs one round trip of headers — a 304 — and any failure (offline, unreachable,
-     * malformed payload) is swallowed: the existing cache, or the bundled floor if there's none, is
-     * good enough to proceed with.
-     */
-    private static void refreshLibraryRegistry(boolean offline, URI source, Path cacheFile) {
-        if (offline) return;
-        if (!Files.isRegularFile(cacheFile)) return;
-        Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
-        try {
-            var result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
-            if (result instanceof LibraryRegistryClient.Result.Updated updated) {
-                LibraryCatalog.parse(new String(updated.body(), StandardCharsets.UTF_8)); // validate before writing
-                writeAtomic(cacheFile, updated.body());
-                if (updated.etag() != null) {
-                    writeAtomic(etagFile, updated.etag().getBytes(StandardCharsets.UTF_8));
-                } else {
-                    Files.deleteIfExists(etagFile);
-                }
-            }
-        } catch (Exception ignored) {
-            // Fail soft: a stale or bundled catalog is still usable, and `jk lock` shouldn't fail
-            // because the library registry is unreachable or handed back something malformed.
-        }
+    /** @deprecated tests may call the 2-arg form */
+    @Deprecated
+    static String lockSuccessTail(int pkgs, long startNanos) {
+        return lockSuccessTail(pkgs, startNanos, Path.of("."));
     }
 
-    private static void writeAtomic(Path target, byte[] data) throws java.io.IOException {
-        AtomicWrites.replace(target, data);
-    }
 }

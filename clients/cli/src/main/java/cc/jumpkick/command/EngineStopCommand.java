@@ -120,8 +120,7 @@ public final class EngineStopCommand implements CliCommand {
             CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "not a pid: " + raw));
             return Exit.FAILURE;
         }
-        Optional<EngineFleet.StopResult> result =
-                EngineFleet.stopByPid(pid, now);
+        Optional<EngineFleet.StopResult> result = EngineFleet.stopByPid(pid, now);
         if (result.isEmpty()) {
             CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", "no running engine with pid " + pid));
             return Exit.FAILURE;
@@ -161,7 +160,10 @@ public final class EngineStopCommand implements CliCommand {
             msg.append(", ").append(draining).append(" draining (will exit once in-flight jobs finish)");
         }
         if (!survived.isEmpty()) {
-            msg.append(", ").append(survived.size()).append(" did NOT exit: pid ").append(survived);
+            msg.append(", ")
+                    .append(survived.size())
+                    .append(" did NOT exit: pid ")
+                    .append(survived);
         }
         CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Engine", msg.toString()));
         return survived.isEmpty() ? Exit.SUCCESS : Exit.FAILURE;

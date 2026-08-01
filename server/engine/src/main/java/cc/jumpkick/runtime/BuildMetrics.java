@@ -3,9 +3,9 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
+import cc.jumpkick.plugin.protocol.MiniJson;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
-import cc.jumpkick.plugin.protocol.MiniJson;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,7 +24,7 @@ import java.util.function.Function;
 
 /**
  * Best-effort machine build history (engine/project/step tiers) at {@code ~/.jk/state/builds/metrics.json}.
- * Outcome buckets stay separate so estimators only learn from {@link Entry#ok()}; {@link #record} is
+ * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
  * locked atomic replace.
  */
 public final class BuildMetrics {
@@ -43,7 +43,7 @@ public final class BuildMetrics {
     /**
      * Running aggregate of one outcome bucket: count, total, and the observed extremes.
      *
-     * <p>JK-1178 recency: {@link #plus} blends the new sample into a recent-biased average (EWMA
+     * <p> recency: {@link #plus} blends the new sample into a recent-biased average (EWMA
      * alpha {@value #RECENCY_ALPHA}) so multi-year history does not dominate. {@link #avgMillis}
      * returns that blended mean; min/max still track absolute extremes for clamp logic.
      */
@@ -139,8 +139,8 @@ public final class BuildMetrics {
 
     /**
      * Merged OK stats for {@code kind} across every dirty-count shape of {@code dir}
-     * ({@code dir} itself plus {@code dir#dN} rows). JK-1156 shaped the write side, which made
-     * exact bare-path lookups read a key that is never written (JK-1226).
+     * ({@code dir} itself plus {@code dir#dN} rows). shaped the write side, which made
+     * exact bare-path lookups read a key that is never written.
      */
     public Stats okAcrossShapes(String kind, String dir) {
         long count = 0, total = 0, min = Long.MAX_VALUE, max = 0;
@@ -157,11 +157,11 @@ public final class BuildMetrics {
     }
 
     /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
-    static boolean sameBaseDir(String dir, String candidate) {
+    public static boolean sameBaseDir(String dir, String candidate) {
         return dir.equals(candidate) || dir.equals(baseDir(candidate));
     }
 
-    /** Strip a trailing {@code #dN} shape suffix (JK-1156) — {@code path#d3} → {@code path}. */
+    /** Strip a trailing {@code #dN} shape suffix{@code path#d3} → {@code path}. */
     public static String baseDir(String dir) {
         if (dir == null) return "";
         int i = dir.lastIndexOf("#d");
@@ -205,7 +205,7 @@ public final class BuildMetrics {
      *
      * <p>When {@code assignedBuildNumber} is positive (allocated at request-start by
      * {@link BuildNumberAllocator}), that value is returned for the journal — finish must not mint a
-     * second number (JK-1250). Otherwise falls back to the post-fold project run count (legacy).
+     * second number. Otherwise falls back to the post-fold project run count (legacy).
      *
      * @return this run's <strong>build number</strong>, or {@code 0} when nothing was recorded.
      */
@@ -224,16 +224,25 @@ public final class BuildMetrics {
 
             foldInvocation(inv, o.kind(), o.dir(), o.coord(), o, nowMillis);
             foldInvocation(inv, o.kind(), "", null, o, nowMillis);
-            for (StepSample s : o.steps()) {
-                if (s.step() == null || s.step().isEmpty()) continue;
-                String bucket = bucketOf(s.status());
-                if (bucket == null) continue;
-                foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
-                foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+            // Cancelled workspaces must not train step/module averages: a mid-run kill leaves
+            // SUCCESS steps with truncated walls that poison ETA / estimator hygiene).
+            // Only fully-successful workspaces teach per-step `ok` stats (the guard two lines
+            // down); failed-but-complete runs teach only their failure buckets, for diagnostics
+            // ; see docs/perf/progress-contract.md "Success-only teaching").
+            if (!o.cancelled()) {
+                for (StepSample s : o.steps()) {
+                    if (s.step() == null || s.step().isEmpty()) continue;
+                    String bucket = bucketOf(s.status());
+                    if (bucket == null) continue;
+                    // Success-only teaching for ok; failures stay in their bucket for diagnostics.
+                    if ("ok".equals(bucket) && !o.success()) continue;
+                    foldStep(ph, s.dir() == null ? o.dir() : s.dir(), s.step(), bucket, s.millis(), nowMillis);
+                    foldStep(ph, "", s.step(), bucket, s.millis(), nowMillis);
+                }
             }
 
             write(file, inv, ph);
-            MEMO.remove(file); // next load() in this process sees the update
+            MEMO.remove(file); // next load in this process sees the update
             if (assignedBuildNumber > 0) return assignedBuildNumber;
             return projectRunCount(inv, o.dir());
         } catch (IOException | RuntimeException ignored) {
@@ -251,7 +260,7 @@ public final class BuildMetrics {
      */
     private static long projectRunCount(Map<String, Entry> inv, String dir) {
         // Shaped keys (path#dN) all belong to ONE project: fold them together or the
-        // documented monotonic per-project sequence forks per dirty-count (JK-1226).
+        // documented monotonic per-project sequence forks per dirty-count.
         String base = baseDir(dir);
         long n = 0;
         for (Entry e : inv.values()) {
@@ -267,8 +276,10 @@ public final class BuildMetrics {
         Entry e = inv.getOrDefault(
                 k, new Entry(kind, dir, coord, null, Stats.EMPTY, Stats.EMPTY, Stats.EMPTY, nowMillis));
         Stats ok = e.ok(), failed = e.failed(), cancelled = e.cancelled();
-        if (o.success()) ok = ok.plus(o.millis());
-        else if (o.cancelled()) cancelled = cancelled.plus(o.millis());
+        // Cancelled wins over success: a truncated Ctrl-C wall must never train the ok bucket that
+        // ETA priors read (even if a racy outcome reported success). Failed stays separate.
+        if (o.cancelled()) cancelled = cancelled.plus(o.millis());
+        else if (o.success()) ok = ok.plus(o.millis());
         else failed = failed.plus(o.millis());
         // A freshly-learned coord upgrades a row that predates one (label only, never a key).
         String label = coord != null ? coord : e.coord();

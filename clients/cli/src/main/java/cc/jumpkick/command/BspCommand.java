@@ -19,11 +19,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * ticket-1028 — Build Server Protocol host (wire-only via {@link IdeEngineClient}).
+ * — Build Server Protocol host (wire-only via {@link IdeEngineClient}).
  *
  * <pre>
- *   jk bsp install   # write .bsp/jk.json
- *   jk bsp           # serve JSON-RPC on stdio (IDE launches this)
+ * jk bsp install # write.bsp/jk.json
+ * jk bsp # serve JSON-RPC on stdio (IDE launches this)
  * </pre>
  */
 public final class BspCommand implements CliCommand {

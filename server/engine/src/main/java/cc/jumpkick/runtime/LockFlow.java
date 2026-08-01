@@ -21,10 +21,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Shared "resolve jk.toml → write jk.lock" pipeline used by both {@code jk lock} and {@code jk
- * sync} (the latter delegating here when no lockfile exists yet). This is pure logic: failures are
- * returned in {@link Result#error} for the caller to surface — nothing is written to {@code stderr}
- * here, so only the CLI view layer touches the streams.
+ * Shared "resolve jk.toml → write jk-lock.toml" pipeline used by both {@code jk lock} and {@code
+ * jk sync} (the latter delegating here when no lockfile exists yet). This is pure logic: failures
+ * are returned in {@link Result#error} for the caller to surface — nothing is written to {@code
+ * stderr} here, so only the CLI view layer touches the streams.
+ *
+ * <p>One lock per workspace: members redirect to the workspace root and lock the full merged
+ * graph. Standalone projects (not listed in any ancestor workspace) lock themselves.
  */
 public final class LockFlow {
 
@@ -34,14 +37,28 @@ public final class LockFlow {
      * Outcome of one lock pass. {@code status == 0} means success, {@link #error} is {@code null},
      * and {@link #lockfile} / {@link #build} are populated. Non-zero means the caller should return
      * that exit code and surface {@link #error} (a bare message, no command prefix).
+     *
+     * @param workspaceLock true when the written lock is the workspace-wide root lock (member or
+     *     root entry), so the CLI can announce that clearly
+     * @param lockDir directory that owns the written {@code jk-lock.toml}
      */
-    public record Result(int status, String error, Lockfile lockfile, JkBuild build, int workspaceModuleCount) {}
+    public record Result(
+            int status,
+            String error,
+            Lockfile lockfile,
+            JkBuild build,
+            int workspaceModuleCount,
+            boolean workspaceLock,
+            Path lockDir) {
+        public Result(int status, String error, Lockfile lockfile, JkBuild build, int workspaceModuleCount) {
+            this(status, error, lockfile, build, workspaceModuleCount, false, null);
+        }
+    }
 
     /** Run the lock pipeline against {@code dir}. */
     public static Result run(Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl)
             throws Exception {
         Path buildFile = dir.resolve("jk.toml");
-        Path lockFile = dir.resolve("jk.lock");
         if (!Files.exists(buildFile)) {
             return new Result(2, "no jk.toml in " + dir, null, null, 0);
         }
@@ -54,17 +71,12 @@ public final class LockFlow {
             return new Result(2, e.getMessage(), null, null, 0);
         }
 
-        // Workspace context: two cases.
-        //
-        //   1. parsed IS the workspace root → merge every module's deps
-        //      into the root and lock the whole thing as one.
-        //   2. parsed is a module of an enclosing workspace → resolve any
-        //      `workspace:*` placeholders and filter out coords that
-        //      match a sibling. WorkspaceClasspath at compile time will
-        //      inject sibling jars from the shared target/.
-        //
-        // Both paths run before RepoGroupBuilder so the dep list reaching
-        // the resolver contains only external Maven coords.
+        // Resolve where the lock lives and what to resolve:
+        //   • workspace root  → merge all modules, write root/jk-lock.toml
+        //   • workspace member → same as root (full union); never a module-local lock
+        //   • standalone       → this project's deps only, write dir/jk-lock.toml
+        Path lockDir = dir;
+        boolean workspaceLock = false;
         JkBuild effective = parsed;
         int moduleCount = 0;
         try {
@@ -72,18 +84,25 @@ public final class LockFlow {
                 var modules = WorkspaceLoader.loadModules(dir, parsed);
                 effective = WorkspaceMerge.merge(parsed, modules.values());
                 moduleCount = modules.size();
+                workspaceLock = true;
+                lockDir = dir;
             } else {
                 var rootOpt = WorkspaceLocator.findRoot(dir);
                 if (rootOpt.isPresent()) {
-                    JkBuild rootManifest = JkBuildParser.parse(rootOpt.get().resolve("jk.toml"));
-                    var modules = WorkspaceLoader.loadModules(rootOpt.get(), rootManifest);
-                    effective = WorkspaceMerge.applyToModule(rootManifest, parsed, modules.values());
+                    Path root = rootOpt.get();
+                    JkBuild rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+                    var modules = WorkspaceLoader.loadModules(root, rootManifest);
+                    // Full workspace union (not applyToModule): one lock for the monorepo.
+                    effective = WorkspaceMerge.merge(rootManifest, modules.values());
                     moduleCount = modules.size();
+                    workspaceLock = true;
+                    lockDir = root;
                 }
             }
         } catch (RuntimeException e) {
             return new Result(2, e.getMessage(), null, null, 0);
         }
+        Path lockFile = lockDir.resolve(cc.jumpkick.lock.LockPaths.FILE_NAME);
         // Standalone projects union variant dep overlays here; workspace scopes were unioned
         // inside WorkspaceMerge (idempotent either way).
         effective = Variants.unionDependencies(effective);
@@ -116,12 +135,21 @@ public final class LockFlow {
             lock = orchestrator.lock(
                     pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
         } catch (IOException e) {
-            return new Result(6, e.getMessage() + variantUnionHint(dir, parsed), null, effective, moduleCount);
+            return new Result(
+                    6,
+                    e.getMessage() + variantUnionHint(lockDir, parsed),
+                    null,
+                    effective,
+                    moduleCount,
+                    workspaceLock,
+                    lockDir);
         }
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
+        // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).
+        lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
         LockfileWriter.write(lock, lockFile);
         cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
-        return new Result(0, null, lock, effective, moduleCount);
+        return new Result(0, null, lock, effective, moduleCount, workspaceLock, lockDir);
     }
 
     /**
@@ -143,9 +171,10 @@ public final class LockFlow {
             // hint construction must never mask the real resolve error
         }
         if (lines.isEmpty()) return "";
-        StringBuilder b = new StringBuilder("\nnote: jk.lock resolves the UNION of every variant value's dependencies,"
-                + "\nso this conflict may be between values that never build together — align their"
-                + "\nversions across values (docs/variants.md → Locking). Overlays in play:");
+        StringBuilder b =
+                new StringBuilder("\nnote: jk-lock.toml resolves the UNION of every variant value's dependencies,"
+                        + "\nso this conflict may be between values that never build together — align their"
+                        + "\nversions across values (docs/variants.md → Locking). Overlays in play:");
         for (String line : lines) b.append("\n  ").append(line);
         return b.toString();
     }

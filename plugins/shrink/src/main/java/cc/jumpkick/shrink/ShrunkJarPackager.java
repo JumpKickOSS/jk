@@ -150,7 +150,7 @@ final class ShrunkJarPackager {
     /**
      * True when {@code relClassPath} is a javac nested type ({@code Outer$Inner.class}) whose
      * outer {@code Outer.class} is also present. Top-level names that merely contain {@code $}
-     * (legal on the JVM) have no outer peer and must still get a keep rule (JK-1126).
+     * (legal on the JVM) have no outer peer and must still get a keep rule.
      */
     static boolean isNestedClassFile(String relClassPath, Set<String> classPaths) {
         String fileName = relClassPath;

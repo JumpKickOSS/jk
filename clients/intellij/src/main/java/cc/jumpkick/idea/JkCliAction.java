@@ -24,7 +24,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Wire-only JumpKick actions: spawn {@code jk} on PATH (ticket-1054). Never loads engine jars into
+ * Wire-only JumpKick actions: spawn {@code jk} on PATH. Never loads engine jars into
  * the IDE process.
  */
 public abstract class JkCliAction extends AnAction implements DumbAware {
@@ -95,7 +95,7 @@ public abstract class JkCliAction extends AnAction implements DumbAware {
                     return 130;
                 }
                 try {
-                    //noinspection BusyWait
+                    // noinspection BusyWait
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();

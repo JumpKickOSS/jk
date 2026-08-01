@@ -7,14 +7,14 @@ import java.util.List;
  * The structured outcome of one build run, frozen at request-finish and persisted as {@code
  * record.json} inside a {@link BuildJournal} entry. This is the source of truth for the dashboard's
  * backfilled activity feed and the {@code jk history} CLI; the heavier per-run artifacts
- * (test-results markdown, a {@code jk.lock} snapshot, flattened diagnostics) sit beside it in the
+ * (test-results markdown, a {@code jk-lock.toml} snapshot, flattened diagnostics) sit beside it in the
  * same entry directory.
  *
  * <p>Deliberately a plain value object with no engine dependencies so it round-trips cleanly through
  * {@link Json}. {@code schema} lets a future reader detect and reject/upgrade an older layout.
  *
  * <p>{@code running=true} marks an in-flight admission written at request-start so the web UI can
- * rehydrate active builds after refresh (JK-1251). Finished records keep {@code running=false}.
+ * rehydrate active builds after refresh. Finished records keep {@code running=false}.
  */
 public record BuildRecord(
         String id,
@@ -42,7 +42,7 @@ public record BuildRecord(
 
     /**
      * The current on-disk schema version. Bumped to 2 when {@code buildNumber} — the durable,
-     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics}) —
+     * monotonic per-project run counter (assigned from {@link cc.jumpkick.runtime.BuildMetrics})
      * was added. {@code trigger}, {@code commit}, {@code benefit}, {@code running}, and {@code io}
      * (the run's byte counts) were added without a bump — pre-1.0 additive fields simply read back as
      * defaults on older records.
@@ -109,15 +109,9 @@ public record BuildRecord(
                 io);
     }
 
-    /** In-flight stub at admission (JK-1250 / JK-1251). */
+    /** In-flight stub at admission. */
     public static BuildRecord running(
-            long buildNumber,
-            String kind,
-            String dir,
-            String coord,
-            long startedAt,
-            String jkVersion,
-            String trigger) {
+            long buildNumber, String kind, String dir, String coord, long startedAt, String jkVersion, String trigger) {
         return new BuildRecord(
                 null,
                 buildNumber,

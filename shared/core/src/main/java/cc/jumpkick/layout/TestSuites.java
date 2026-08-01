@@ -12,23 +12,23 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 /**
- * Mill-shaped test suite roots for a module (JK-1198).
+ * Mill-shaped test suite roots for a module.
  *
  * <p>Default suite is always {@code test}:
  *
  * <ul>
- *   <li>Simple layout: {@code test/src/} (sources by extension)
- *   <li>Traditional: {@code src/test/java} + {@code src/test/kotlin} + {@code src/test/groovy}
+ * <li>Simple layout: {@code test/src/} (sources by extension)
+ * <li>Traditional: {@code src/test/java} + {@code src/test/kotlin} + {@code src/test/groovy}
  * </ul>
  *
  * <p>Additional suites are sibling module dirs (e.g. {@code integration}):
  *
  * <ul>
- *   <li>Simple: {@code <name>/src/}
- *   <li>Traditional: {@code src/<name>/java} + {@code src/<name>/kotlin}
+ * <li>Simple: {@code <name>/src/}
+ * <li>Traditional: {@code src/<name>/java} + {@code src/<name>/kotlin}
  * </ul>
  *
- * <p>A suite is "present" when at least one {@code .java}/{@code .kt}/{@code .groovy} file exists
+ * <p>A suite is "present" when at least one {@code.java}/{@code.kt}/{@code.groovy} file exists
  * under its roots.
  */
 public final class TestSuites {
@@ -124,7 +124,7 @@ public final class TestSuites {
     /** True if {@code name} is a legal suite identifier ({@code [a-z][a-z0-9_-]*}). */
     public static boolean isSuiteName(String name) {
         if (name == null || name.isEmpty()) return false;
-        // Enforce the documented grammar (JK-1238): the permissive isLetter start turned any
+        // Enforce the documented grammarthe permissive isLetter start turned any
         // capitalized/Unicode sibling dir with sources (Demo/, Beispiele/) into a test suite.
         char first = name.charAt(0);
         if (first < 'a' || first > 'z') return false;
@@ -158,7 +158,7 @@ public final class TestSuites {
     public static List<Path> kotlinRoots(Path projectDir, boolean compact, String suite) {
         String s = suite == null || suite.isBlank() ? DEFAULT : suite;
         if (compact) {
-            // Simple layout: .kt lives alongside .java under test/src or <suite>/src
+            // Simple layout:.kt lives alongside.java under test/src or <suite>/src
             return List.of(simpleSuiteSrc(projectDir, s));
         }
         Path base = projectDir.resolve("src").resolve(s);

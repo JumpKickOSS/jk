@@ -79,7 +79,8 @@ public final class TestCommand implements CliCommand {
                         "JUnit tag to include (repeatable). Empty include list = all tags not excluded.",
                         "--include-tag")
                 .repeat());
-        opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag").repeat());
+        opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag")
+                .repeat());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -124,7 +125,7 @@ public final class TestCommand implements CliCommand {
         Path buildFile = proj.buildFile();
         this.session = CliSessionTranscript.open(dir, "test", testArgv(in));
         if (session != null) session.announceIf(global != null && global.verbose);
-        // No jk.lock guard: the pipeline's parse-build step resolves the lock on
+        // No jk-lock.toml guard: the pipeline's parse-build step resolves the lock on
         // first run and re-locks when jk.toml changed — same as `jk build`/`run`.
 
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
@@ -167,7 +168,7 @@ public final class TestCommand implements CliCommand {
         PipelineResult result;
         TestSummary testResult;
         // Engine-hosted (Step 3): the wire has no real Pipeline to attach a console listener to
-        // ahead of time, so the listener is chosen once the step list arrives over the socket —
+        // ahead of time, so the listener is chosen once the step list arrives over the socket
         // see EngineBuildListenerAdapter.runTest. testResultHolder is populated (if the run-tests
         // step actually ran) before the terminal pipeline-finish reaches that listener, exactly
         // mirroring how pipeline.get(TEST_RESULT) is already populated by the in-process path above.
@@ -186,7 +187,7 @@ public final class TestCommand implements CliCommand {
                             workerCount,
                             profileName,
                             global.verbose,
-                            // Global flags are consumed into the session before dispatch —
+                            // Global flags are consumed into the session before dispatch
                             // the session (not the Invocation) is their authority, exactly as
                             // BuildCommand's request wiring reads them.
                             cc.jumpkick.config.SessionContext.current().offline(),
@@ -245,7 +246,7 @@ public final class TestCommand implements CliCommand {
     }
 
     /**
-     * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs —
+     * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs
      * not the whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code
      * --serial-tests} runs modules one at a time.
      *
@@ -390,14 +391,14 @@ public final class TestCommand implements CliCommand {
         }
         Path wd = GlobalOptions.from(in).workingDir();
         Path toml = wd.resolve("jk.toml");
-        // [test] default-exclude-tags when CLI did not set excludes (JK-1137).
+        // [test] default-exclude-tags when CLI did not set excludes.
         if (exclude.isEmpty()) {
             exclude.addAll(cc.jumpkick.config.JkBuildParser.parseDefaultExcludeTags(toml));
         }
         // Profile exclude/include tags when a profile is selected / auto. --no-profile skips
         // entirely, and an AUTO-selected profile defers to explicit CLI tags — on CI,
         // `jk test --include-tag slow` used to silently run nothing because the ci profile's
-        // exclude beat the explicit include with no escape hatch (JK-1238).
+        // exclude beat the explicit include with no escape hatch.
         boolean cliTags = !include.isEmpty() || !exclude.isEmpty();
         try {
             if (!in.isSet("no-profile") && java.nio.file.Files.isRegularFile(toml)) {

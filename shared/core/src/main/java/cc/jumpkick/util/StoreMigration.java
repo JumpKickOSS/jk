@@ -31,8 +31,17 @@ public final class StoreMigration {
      * repos} move together because {@code repos/} entries are hard links into the CAS — separating
      * them across filesystems would turn every link into a copy.
      */
-    static final List<String> STORE_ENTRIES =
-            List.of("sha256", "repos", "metadata", "git", "git-artifacts", "jdks.json", "tools");
+    static final List<String> STORE_ENTRIES = List.of(
+            "sha256",
+            "repos",
+            "metadata",
+            "git",
+            "git-artifacts",
+            "jdks.json",
+            "tools",
+            // Library short-name registry + ETag sidecar (were under cache/ before the store split).
+            "libs.global.toml",
+            ".libs.global.toml.etag");
 
     /** Marker recording that the move already ran, so a warm start does no filesystem probing. */
     private static final String DONE_MARKER = ".migrated-from-cache";

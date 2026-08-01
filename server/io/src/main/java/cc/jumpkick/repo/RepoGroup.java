@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Ordered {@link MavenRepo}s with try-each / first-hit-wins semantics, plus optional exclusive
- * group bindings (JK-1064): when a coordinate's group is claimed by one or more repos, only those
+ * group bindingswhen a coordinate's group is claimed by one or more repos, only those
  * repos participate in version discovery and fetch.
  */
 public final class RepoGroup {
@@ -21,7 +21,7 @@ public final class RepoGroup {
     /**
      * The first {@code priorityCount} repos are workspace-local materializations (path/git):
      * always eligible and always consulted first, even for exclusively-claimed groups — a
-     * locally-built artifact outranks any remote binding (JK-1214).
+     * locally-built artifact outranks any remote binding.
      */
     private final int priorityCount;
 
@@ -31,7 +31,7 @@ public final class RepoGroup {
 
     /**
      * @param exclusiveGroups parallel list of exclusive group patterns per repo; {@code null} or
-     *     shorter lists are treated as no bindings for those entries
+     * shorter lists are treated as no bindings for those entries
      */
     public RepoGroup(List<MavenRepo> repos, List<List<String>> exclusiveGroups) {
         this(repos, exclusiveGroups, 0);
@@ -54,7 +54,7 @@ public final class RepoGroup {
     /**
      * Prepend {@code leading} repos ahead of this group, keeping this group's exclusive bindings
      * aligned with the trailing repos. Used for path/git materialize repos: they answer before
-     * remotes — including for exclusively-claimed groups (JK-1214) — without stripping JumpKick
+     * remotes — including for exclusively-claimed groupswithout stripping JumpKick
      * exclusive groups (which would make every Central GAV HTTP-404 on jumpkick first).
      */
     public RepoGroup withReposPrepended(List<MavenRepo> leading) {
@@ -109,15 +109,15 @@ public final class RepoGroup {
      * Repos that may discover/fetch {@code coord}:
      *
      * <ul>
-     *   <li>When the group is exclusively claimed — only the claiming repos (dependency-confusion
-     *       defense).
-     *   <li>Otherwise — general (no exclusive binding) repos only. Exclusive-bound specialists
-     *       (e.g. JumpKick first-party) are skipped so warm multi-repo re-locks do not HTTP-404
-     *       every Maven Central GAV against them (JK-1202).
+     * <li>When the group is exclusively claimed — only the claiming repos (dependency-confusion
+     * defense).
+     * <li>Otherwise — general (no exclusive binding) repos only. Exclusive-bound specialists
+     * (e.g. JumpKick first-party) are skipped so warm multi-repo re-locks do not HTTP-404
+     * every Maven Central GAV against them.
      * </ul>
      */
     List<MavenRepo> eligibleRepos(Coordinate coord) {
-        // Priority (path/git) repos always answer first — even for claimed groups (JK-1214):
+        // Priority (path/git) repos always answer first — even for claimed groups
         // the workspace build outranks whatever an exclusive remote binding would serve.
         List<MavenRepo> out = new ArrayList<>(repos.subList(0, priorityCount));
         List<Integer> claimants = ExclusiveGroups.claimantIndices(exclusiveGroups, coord.group());
@@ -142,9 +142,9 @@ public final class RepoGroup {
     }
 
     /**
-     * Per-repo local-then-remote, in repo order (JK-1215): each eligible repo's warm mirror is
+     * Per-repo local-then-remote, in repo ordereach eligible repo's warm mirror is
      * probed before its remote leg, but a LATER repo's warm mirror can never shadow an EARLIER
-     * repo — order is the precedence contract. (The JK-1202 no-HTTP-404 property still holds:
+     * repo — order is the precedence contract. (The no-HTTP-404 property still holds:
      * exclusive specialists are already skipped by {@link #eligibleRepos}, and the first
      * eligible repo's warm mirror short-circuits without network.)
      */

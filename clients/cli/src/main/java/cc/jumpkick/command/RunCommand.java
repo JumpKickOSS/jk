@@ -25,7 +25,7 @@ import java.util.List;
  *
  * <p>Flow: engine-hosted build phase-chain (compile / test when not skipped / package as needed),
  * then a client-side detached {@code java …} (or native binary) with inherited stdio. The settled
- * chrome is a play {@link CommandWedge}: {@code ▶ Run  Executing `java -cp … Main`} (or
+ * chrome is a play {@link CommandWedge}: {@code ▶ Run Executing `java -cp … Main`} (or
  * {@code java -jar …}).
  */
 public final class RunCommand {
@@ -80,7 +80,8 @@ public final class RunCommand {
         try {
             boolean workspace = false;
             try {
-                workspace = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml")).isWorkspaceRoot();
+                workspace = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"))
+                        .isWorkspaceRoot();
             } catch (Exception ignored) {
                 // fall through to single-module path
             }
@@ -88,9 +89,9 @@ public final class RunCommand {
                 // Build every module (path deps, sibling jars), then execPlan picks the app module.
                 var rootBuild = cc.jumpkick.config.JkBuildParser.parse(projectDir.resolve("jk.toml"));
                 int jobs = global.jobsEffective();
-                // Session variant/clientEnv ride the request like `jk build` at a root does —
+                // Session variant/clientEnv ride the request like `jk build` at a root does
                 // `jk run --release` used to build debug and then exec release artifacts that
-                // were never produced (JK-1231).
+                // were never produced.
                 var request = new cc.jumpkick.runtime.WorkspaceRequest(
                                 projectDir,
                                 rootBuild,
@@ -116,11 +117,10 @@ public final class RunCommand {
 
                     @Override
                     public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                        String glyph = o.success()
-                                ? cc.jumpkick.cli.tui.Glyphs.CHECK
-                                : cc.jumpkick.cli.tui.Glyphs.CROSS;
-                        CliOutput.out(glyph + " [" + done.incrementAndGet() + "/"
-                                + Math.max(total[0], 1) + "] " + o.coord());
+                        String glyph =
+                                o.success() ? cc.jumpkick.cli.tui.Glyphs.CHECK : cc.jumpkick.cli.tui.Glyphs.CROSS;
+                        CliOutput.out(
+                                glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] " + o.coord());
                     }
                 };
                 var wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
@@ -259,7 +259,7 @@ public final class RunCommand {
     /**
      * The build succeeded but the engine's main-class scan couldn't name an entry point — {@code
      * issue} is {@code "missing"} (nothing found) or {@code "ambiguous"} (several found), per
-     * {@link cc.jumpkick.engine.protocol.ExecPlan#mainIssue()}.
+     * {@link cc.jumpkick.engine.protocol.ExecPlan#mainIssue}.
      */
     private static final class EntryPointUnresolvedException extends IOException {
         private final String issue;
@@ -292,7 +292,7 @@ public final class RunCommand {
     /**
      * Tail of the settled Run CommandWedge: {@code Executing [yellow]`java -cp … Main`[/]} or
      * {@code Executing [yellow]`java -jar path`[/]} (from {@link
-     * cc.jumpkick.engine.protocol.ExecPlan#display()}), or a native binary path in the same shape.
+     * cc.jumpkick.engine.protocol.ExecPlan#display}), or a native binary path in the same shape.
      */
     private static String execTail(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
         Theme t = Theme.active();
@@ -313,7 +313,7 @@ public final class RunCommand {
 
     /**
      * Prints the play {@link CommandWedge} to stderr (verbose/JSON modes, where no pipeline chip is
-     * rendered). Same shape as the chip-mode settle: {@code ▶ Run  Executing `java …`}.
+     * rendered). Same shape as the chip-mode settle: {@code ▶ Run Executing `java …`}.
      */
     private static void printExecBanner(Path projectDir, cc.jumpkick.engine.protocol.ExecPlan plan) {
         CliOutput.err(CommandWedge.working("Run", execTail(projectDir, plan)));

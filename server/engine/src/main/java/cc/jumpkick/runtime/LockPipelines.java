@@ -46,7 +46,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 
 /**
- * Resolve → write {@code jk.lock} for {@code jk lock}/{@code jk update}. Progress via pipeline
+ * Resolve → write {@code jk-lock.toml} for {@code jk lock}/{@code jk update}. Progress via pipeline
  * listeners and {@link ResolveObserver}; diagnostics are plain (client themes). Engine passes
  * {@code coordLabel=null} and streams structured package events.
  */
@@ -68,10 +68,10 @@ public final class LockPipelines {
      * global flags) and the engine (which reconstructs it from the wire request) behave alike.
      *
      * @param observer per-package resolution events (never {@code null}; use {@link
-     *     ResolveObserver#NOOP})
+     * ResolveObserver#NOOP})
      * @param coordLabel formats a {@code module, version} pair for progress labels, or {@code null}
-     *     to emit no per-package labels (the engine-hosted path — the client synthesizes them from
-     *     {@code lock-package} events so coloring stays client-side)
+     * to emit no per-package labels (the engine-hosted path — the client synthesizes them from
+     * {@code lock-package} events so coloring stays client-side)
      */
     public static Pipeline lockPipeline(
             Path dir,
@@ -83,7 +83,7 @@ public final class LockPipelines {
             boolean sources,
             ResolveObserver observer,
             BiFunction<String, String, String> coordLabel) {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
@@ -326,7 +326,9 @@ public final class LockPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
-                    LockfileWriter.write(ctx.require(LOCKFILE), lockFile);
+                    Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
+                    ctx.put(LOCKFILE, stamped);
+                    LockfileWriter.write(stamped, lockFile);
                     ctx.progress(1);
                 })
                 .build();
@@ -348,7 +350,7 @@ public final class LockPipelines {
 
     /**
      * As {@link #updatePipeline(Path, JkBuild, Path, URI, List, boolean)} with optional CLI
-     * platform-policy override ({@code enforced}|{@code floor}, JK-1206).
+     * platform-policy override ({@code enforced}|{@code floor},.
      */
     public static Pipeline updatePipeline(
             Path dir,
@@ -358,7 +360,7 @@ public final class LockPipelines {
             List<String> features,
             boolean withDefaultFeatures,
             String platformOverride) {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         PlatformPolicy policy = effectivePlatformPolicy(effective, platformOverride);
 
         Step parseBuild = Step.builder(StepNames.PARSE_BUILD)
@@ -409,7 +411,9 @@ public final class LockPipelines {
                 .ticks(1)
                 .execute(ctx -> {
                     ctx.label("write " + lockFile.getFileName());
-                    LockfileWriter.write(ctx.require(LOCKFILE), lockFile);
+                    Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
+                    ctx.put(LOCKFILE, stamped);
+                    LockfileWriter.write(stamped, lockFile);
                     ctx.progress(1);
                 })
                 .build();
@@ -434,7 +438,7 @@ public final class LockPipelines {
      * {@code jk update --git [<name>]}: re-resolve git dependencies only, in {@code root}'s project
      * and (for a workspace root) each declared module — one dependency by its declared name, or
      * every git dependency when {@code targetLibrary} is {@code null}. Every scope with no matching
-     * git dependency is left untouched entirely (its {@code jk.lock} isn't even read).
+     * git dependency is left untouched entirely (its {@code jk-lock.toml} isn't even read).
      */
     public static GitUpdateOutcome updateGitOnly(
             Path dir,
@@ -501,7 +505,7 @@ public final class LockPipelines {
             boolean withDefaultFeatures,
             List<Dependency> targeted)
             throws Exception {
-        Path lockFile = dir.resolve("jk.lock");
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
         Cas cas = JkStores.cas(cache);
@@ -540,13 +544,17 @@ public final class LockPipelines {
             spliced.add(old != null ? old : a);
         }
         Lockfile finalLock = new Lockfile(
-                newLock.version(),
-                newLock.generatedBy(),
-                newLock.resolutionAlgorithm(),
-                newLock.jdk(),
-                newLock.kotlin(),
-                spliced,
-                oldLock != null ? oldLock.plugins() : newLock.plugins());
+                        newLock.version(),
+                        newLock.generatedBy(),
+                        newLock.resolutionAlgorithm(),
+                        newLock.jdk(),
+                        newLock.kotlin(),
+                        spliced,
+                        oldLock != null ? oldLock.plugins() : newLock.plugins(),
+                        oldLock != null ? oldLock.sdk() : newLock.sdk(),
+                        List.of(),
+                        newLock.jk());
+        finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
         LockfileWriter.write(finalLock, lockFile);
         return refreshed;
     }
@@ -559,9 +567,7 @@ public final class LockPipelines {
         if (override != null && !override.isBlank()) {
             return PlatformPolicy.parse(override.trim());
         }
-        return project != null && project.build() != null
-                ? project.build().platformPolicy()
-                : PlatformPolicy.ENFORCED;
+        return project != null && project.build() != null ? project.build().platformPolicy() : PlatformPolicy.ENFORCED;
     }
 
     private static String gitKey(GitSource s) {
@@ -616,6 +622,36 @@ public final class LockPipelines {
     }
 
     /**
+     * The single lock scope for {@code entryDir}: workspace root (merged model) or standalone
+     * project. A workspace <em>member</em> redirects to its root so any lock entry point — CLI
+     * cascade, HTTP/MCP job — resolves the full workspace union and writes the root
+     * {@code jk-lock.toml}, never one module's closure over it.
+     */
+    public record LockScope(Path lockDir, JkBuild effective, String coord) {}
+
+    /** Resolve the {@link LockScope} for {@code entryDir}. Throws like {@link JkBuildParser#parse}. */
+    public static LockScope lockScope(Path entryDir) throws java.io.IOException {
+        // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
+        // background StoreFeedRefresh on first start of a host).
+        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
+        JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
+        if (root.isWorkspaceRoot()) {
+            var modules = WorkspaceLoader.loadModules(entryDir, root);
+            return new LockScope(entryDir, WorkspaceMerge.merge(root, modules.values()), coordLabel(root, entryDir));
+        }
+        var rootOpt = WorkspaceLocator.findRoot(entryDir);
+        if (rootOpt.isPresent()) {
+            Path wsRoot = rootOpt.get();
+            JkBuild rootManifest = JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            var modules = WorkspaceLoader.loadModules(wsRoot, rootManifest);
+            return new LockScope(
+                    wsRoot, WorkspaceMerge.merge(rootManifest, modules.values()), coordLabel(rootManifest, wsRoot));
+        }
+        JkBuild effective = applyWorkspaceContextIfModule(entryDir, root);
+        return new LockScope(entryDir, effective, coordLabel(effective, entryDir));
+    }
+
+    /**
      * Display coordinate for a module: {@code group:artifact} from its {@code [project]}, falling
      * back to the directory name.
      */
@@ -635,7 +671,7 @@ public final class LockPipelines {
      * or declared deps × a transitive expansion factor.
      */
     private static int scopeEstimate(JkBuild effective, Path lockFile) {
-        // Dual-phase budget (graph + materialize) ≈ 2× packages (JK-1088).
+        // Dual-phase budget (graph + materialize) ≈ 2× packages.
         try {
             int n = LockfileReader.read(lockFile).artifacts().size();
             if (n > 0) return Math.max(10, n * 2);
@@ -703,7 +739,7 @@ public final class LockPipelines {
                 if (!locked.contains(dep.module())) {
                     throw new IllegalStateException("offline: "
                             + dep.module()
-                            + " is declared in jk.toml but not in jk.lock; run `jk lock` online first");
+                            + " is declared in jk.toml but not in jk-lock.toml; run `jk lock` online first");
                 }
             }
         }

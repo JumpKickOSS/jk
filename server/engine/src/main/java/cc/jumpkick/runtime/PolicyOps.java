@@ -24,7 +24,7 @@ public final class PolicyOps {
     public static DenyReport denyCheck(Path dir) {
         try {
             var policy = DenyPolicyParser.parse(dir.resolve("jk.toml"));
-            Lockfile lock = LockfileReader.read(dir.resolve("jk.lock"));
+            Lockfile lock = LockfileReader.read(cc.jumpkick.lock.LockPaths.lockFile(dir));
             List<PolicyChecker.Violation> violations = new PolicyChecker(policy).check(lock);
             List<String> modules = new ArrayList<>(violations.size());
             List<String> versions = new ArrayList<>(violations.size());

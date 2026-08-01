@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.engine.discovery.ClassNameFilter;
 import org.junit.platform.engine.discovery.DiscoverySelectors;
@@ -127,7 +126,7 @@ final class LauncherPath {
         if (classFiles <= 0) return;
         // Protocol warning, not stderr: passthrough stderr is muted unless --verbose and the
         // crash buffer only surfaces on non-zero exit — an empty plan exits 0, so the one
-        // diagnostic that explains "No tests" was invisible exactly when needed (JK-1227).
+        // diagnostic that explains "No tests" was invisible exactly when needed.
         adapter.emitWarning(
                 "empty-plan",
                 "discovery found 0 tests under " + scanClasspath + " (" + classFiles
@@ -147,7 +146,8 @@ final class LauncherPath {
     private static long countClassFiles(Path root) {
         if (root == null || !java.nio.file.Files.isDirectory(root)) return 0;
         try (var stream = java.nio.file.Files.walk(root)) {
-            return stream.filter(p -> p.getFileName() != null && p.getFileName().toString().endsWith(".class"))
+            return stream.filter(p -> p.getFileName() != null
+                            && p.getFileName().toString().endsWith(".class"))
                     .count();
         } catch (Exception e) {
             return 0;
@@ -155,9 +155,8 @@ final class LauncherPath {
     }
 
     private static void reportDiscoveryFailure(Path scanClasspath, RuntimeException e) {
-        System.err.println(
-                "jk-test-runner: test discovery failed under " + scanClasspath + ": " + e.getClass().getSimpleName()
-                        + ": " + e.getMessage());
+        System.err.println("jk-test-runner: test discovery failed under " + scanClasspath + ": "
+                + e.getClass().getSimpleName() + ": " + e.getMessage());
         Throwable c = e.getCause();
         int depth = 0;
         while (c != null && depth++ < 6) {
@@ -171,11 +170,7 @@ final class LauncherPath {
      * merges that into its session failure bit.
      */
     static boolean runClass(
-            String className,
-            List<String> includeTags,
-            List<String> excludeTags,
-            int workerId,
-            EventWriter writer) {
+            String className, List<String> includeTags, List<String> excludeTags, int workerId, EventWriter writer) {
         Adapter adapter = new Adapter(writer, workerId);
         LauncherDiscoveryRequestBuilder b =
                 LauncherDiscoveryRequestBuilder.request().selectors(DiscoverySelectors.selectClass(className));
@@ -266,7 +261,7 @@ final class LauncherPath {
         @Override
         public void dynamicTestRegistered(TestIdentifier id) {
             // Without this, every @ParameterizedTest/@TestFactory invocation counts as static
-            // and the progress numerator blows past the static-plan denominator (JK-1227).
+            // and the progress numerator blows past the static-plan denominator.
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("id", id.getUniqueId());
             p.put("display", id.getDisplayName());
