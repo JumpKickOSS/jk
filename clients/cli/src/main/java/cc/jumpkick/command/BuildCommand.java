@@ -65,7 +65,7 @@ public final class BuildCommand implements CliCommand {
                 "<git-ref>", "Build only modules (and dependents) changed since this git ref.", "--affected-since"));
         opts.add(Opt.value(
                 "<sel>",
-                "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "Build only selected modules (paths, project names, or Gradle :name; comma/globs/braces). Intersects with --affected-since.",
                 "-m",
                 "--modules"));
         opts.addAll(VariantSelection.options());

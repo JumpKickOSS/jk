@@ -66,7 +66,7 @@ public final class TestCommand implements CliCommand {
                 "<git-ref>", "Test only modules (and dependents) changed since this git ref.", "--affected-since"));
         opts.add(Opt.value(
                 "<sel>",
-                "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "Test only selected modules (paths, project names, or Gradle :name; comma/globs/braces). Intersects with --affected-since.",
                 "-m",
                 "--modules"));
         opts.add(Opt.value(
