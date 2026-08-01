@@ -133,4 +133,53 @@ class AutoLockWorkspaceTest {
         assertThat(names).anyMatch(n -> n.contains("extra"));
         assertThat(names).anyMatch(n -> n.contains("util"));
     }
+
+    @Test
+    void relock_refreshes_module_identity_pins(@TempDir Path tmp) throws Exception {
+        Path repo = tmp.resolve("repo");
+        repoArtifact(repo, "org.junit.platform", "junit-platform-launcher", "1.10.0");
+        repoArtifact(repo, "org.junit.jupiter", "junit-jupiter", "5.10.0");
+
+        Path proj = tmp.resolve("proj");
+        Files.createDirectories(proj);
+        // The current jk.toml already carries the bumped version…
+        Files.writeString(proj.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "solo"
+                version = "2.0.0"
+                jdk = 21
+                java = 21
+                """);
+
+        // …while the stale on-disk lock still pins 1.0.0 identity. Auto-relock fires exactly
+        // in this state (jk.toml newer than the lock) and must not persist the old pin.
+        Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(proj);
+        Lockfile stale = new Lockfile(1, "test", "jk-test", List.of())
+                .withModules(List.of(new Lockfile.ModuleEntry(
+                        ".", "com.example", "solo", "1.0.0", "21", 21, null, null, null, null, null, null)));
+        LockfileWriter.write(stale, lockFile);
+        Files.setLastModifiedTime(lockFile, FileTime.from(Instant.now().minusSeconds(120)));
+        Files.setLastModifiedTime(proj.resolve("jk.toml"), FileTime.from(Instant.now()));
+
+        Lockfile updated = AutoLock.maybeReLock(
+                proj,
+                cc.jumpkick.lock.LockfileReader.read(lockFile),
+                lockFile,
+                tmp.resolve("cache"),
+                repo.toUri(),
+                "test",
+                List.of(),
+                true,
+                ResolveObserver.NOOP,
+                null);
+
+        assertThat(updated).isNotNull();
+        assertThat(updated.modules())
+                .as("auto-relock IS a re-lock — [[module]] identity must be restamped")
+                .anyMatch(m -> m.path().equals(".") && m.version().equals("2.0.0"));
+        // And the write that landed on disk agrees.
+        Lockfile onDisk = cc.jumpkick.lock.LockfileReader.read(lockFile);
+        assertThat(onDisk.modules()).anyMatch(m -> m.version().equals("2.0.0"));
+    }
 }
