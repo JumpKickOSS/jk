@@ -62,6 +62,27 @@ public final class NativePipelines {
             List<String> extraArgs,
             boolean skipTests,
             boolean verbose) {
+        return modulePipeline(
+                moduleDir, module, cache, jdksDir, graalHome, mainOverride, extraArgs, skipTests, verbose, true);
+    }
+
+    /**
+     * As {@link #modulePipeline(Path, JkBuild, Path, Path, Path, String, List, boolean, boolean)}
+     * with {@code allowNative}: a prereq the cascade pulled in for a {@code -m} selection builds to
+     * a jar only — the user selected what gets native-compiled, and the client resolved GraalVM
+     * homes for the selection alone (JK-1361).
+     */
+    public static Pipeline modulePipeline(
+            Path moduleDir,
+            JkBuild module,
+            Path cache,
+            Path jdksDir,
+            Path graalHome,
+            String mainOverride,
+            List<String> extraArgs,
+            boolean skipTests,
+            boolean verbose,
+            boolean allowNative) {
         Path buildFile = moduleDir.resolve("jk.toml");
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(moduleDir);
         boolean compact = cc.jumpkick.layout.ModuleLayout.isCompact(moduleDir);
@@ -83,7 +104,7 @@ public final class NativePipelines {
                 java.util.Set.of(),
                 cc.jumpkick.config.SessionContext.current());
         Pipeline.Builder builder = BuildPipelines.coreBuilder(inputs);
-        if (isNativeEligible(module)) {
+        if (allowNative && isNativeEligible(module)) {
             builder.addStep(BuildPipelines.nativeStep(
                     moduleDir, cache, lockFile, jdksDir, graalHome, resolveMain(buildFile, mainOverride), extraArgs));
         }

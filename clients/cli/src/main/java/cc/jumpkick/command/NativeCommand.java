@@ -251,10 +251,14 @@ public final class NativeCommand implements CliCommand {
         // must not let module-local num/den clobber the engine aggregate rider.
         if (mode != PipelineConsole.Mode.AUTO && mode != PipelineConsole.Mode.QUIET) {
             int[] idx = {0};
+            // Engine-corrected denominator: with -m the engine adds transitive prereqs the client
+            // never counted, so the plan's modulesTotal wins over the client-side guess (JK-1361).
+            int[] total = {totalModules};
             boolean json = mode == PipelineConsole.Mode.JSON;
             var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
                 @Override
                 public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                    if (snap.modulesTotal() > 0) total[0] = snap.modulesTotal();
                     if (!json) return;
                     cc.jumpkick.cli.run.LiveProgress.get().apply(snap);
                     cc.jumpkick.cli.run.JsonlShape.emitJsonl(
@@ -272,8 +276,8 @@ public final class NativeCommand implements CliCommand {
                 public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
                     if (!json) {
                         CliOutput.out();
-                        CliOutput.out(
-                                "══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/" + totalModules + ") ══");
+                        CliOutput.out("══ " + wsRoot.relativize(m.dir()) + " (" + (++idx[0]) + "/"
+                                + Math.max(total[0], idx[0]) + ") ══");
                     }
                     var log = EventLogListener.open(m.cache(), m.pipeline().name());
                     // JSON: workspace member listener (no aggregate-rider writes). Verbose: full console.

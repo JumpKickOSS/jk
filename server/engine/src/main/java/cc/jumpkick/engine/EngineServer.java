@@ -3508,6 +3508,9 @@ public final class EngineServer implements AutoCloseable {
         }
 
         var scopes = new java.util.LinkedHashMap<Path, JkBuild>();
+        // Canonical (real-path) identities of the modules the CLIENT selected — engine-added
+        // prereqs are absent and build jar-only (JK-1361); null = no selection, all native-compile.
+        java.util.Set<Path> selectedCanonical = null;
         if (root.isWorkspaceRoot()) {
             java.util.Map<Path, JkBuild> modulesByDir;
             try {
@@ -3521,29 +3524,46 @@ public final class EngineServer implements AutoCloseable {
                                 java.util.List.of(String.valueOf(e.getMessage()))));
                 return;
             }
-            // -m / --modules: keep selected modules + transitive build prereqs (same graph as build).
+            // -m / --modules: keep selected modules + transitive build prereqs. Identities are the
+            // graph's canonical (real) paths so symlinked checkouts do not silently drop prereqs,
+            // and an unresolvable graph fails the request instead of degrading (JK-1362).
             if (selectedDirs != null && !selectedDirs.isEmpty()) {
                 java.util.Set<Path> want = new java.util.LinkedHashSet<>();
-                for (Path p : selectedDirs) want.add(p.toAbsolutePath().normalize());
+                for (Path p : selectedDirs) want.add(cc.jumpkick.runtime.BuildGraph.canonicalPath(p));
+                selectedCanonical = java.util.Set.copyOf(want);
                 try {
                     var graph = cc.jumpkick.runtime.BuildGraph.resolve(entryDir, root);
-                    if (!graph.hasErrors()) {
-                        java.util.Map<Path, java.util.Set<Path>> edges = graph.edges();
-                        java.util.ArrayDeque<Path> q = new java.util.ArrayDeque<>(want);
-                        while (!q.isEmpty()) {
-                            Path d = q.poll();
-                            for (Path pre : edges.getOrDefault(d, java.util.Set.of())) {
-                                Path n = pre.toAbsolutePath().normalize();
-                                if (want.add(n)) q.add(n);
-                            }
+                    if (graph.hasErrors()) {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.workspaceFinish(
+                                        false,
+                                        cc.jumpkick.model.command.Exit.CONFIG,
+                                        java.util.List.copyOf(graph.errors())));
+                        return;
+                    }
+                    java.util.Map<Path, java.util.Set<Path>> edges = graph.edges();
+                    java.util.ArrayDeque<Path> q = new java.util.ArrayDeque<>(want);
+                    while (!q.isEmpty()) {
+                        Path d = q.poll();
+                        for (Path pre : edges.getOrDefault(d, java.util.Set.of())) {
+                            Path n = cc.jumpkick.runtime.BuildGraph.canonicalPath(pre);
+                            if (want.add(n)) q.add(n);
                         }
                     }
-                } catch (IOException ignored) {
-                    // fall through with selected dirs only
+                } catch (IOException e) {
+                    sendQuiet(
+                            writer,
+                            EngineProtocol.workspaceFinish(
+                                    false,
+                                    cc.jumpkick.model.command.Exit.CONFIG,
+                                    java.util.List.of("module selection: cannot resolve the build graph — "
+                                            + e.getMessage())));
+                    return;
                 }
                 java.util.Map<Path, JkBuild> filtered = new java.util.LinkedHashMap<>();
                 for (var e : modulesByDir.entrySet()) {
-                    Path d = e.getKey().toAbsolutePath().normalize();
+                    Path d = cc.jumpkick.runtime.BuildGraph.canonicalPath(e.getKey());
                     if (want.contains(d)) filtered.put(e.getKey(), e.getValue());
                 }
                 modulesByDir = filtered;
@@ -3561,6 +3581,8 @@ public final class EngineServer implements AutoCloseable {
         var coords = new java.util.LinkedHashMap<Path, String>();
         for (var scope : scopes.entrySet()) {
             Path dir = scope.getKey();
+            boolean allowNative = selectedCanonical == null
+                    || selectedCanonical.contains(cc.jumpkick.runtime.BuildGraph.canonicalPath(dir));
             cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.NativePipelines.modulePipeline(
                     dir,
                     scope.getValue(),
@@ -3570,7 +3592,8 @@ public final class EngineServer implements AutoCloseable {
                     mainClass,
                     extraArgs,
                     skipTests,
-                    verbose);
+                    verbose,
+                    allowNative);
             pipelines.put(dir, pipeline);
             coords.put(dir, cc.jumpkick.runtime.LockPipelines.coordLabel(scope.getValue(), dir));
         }
