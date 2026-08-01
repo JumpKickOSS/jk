@@ -35,13 +35,17 @@ public final class CommonOpts {
     /**
      * Workspace module selection shared by every build-family command ({@code -m}/{@code
      * --modules}, {@code --affected-since}). Resolved via {@code ModuleSelection.resolveOptional}.
+     *
+     * <p>Semantics: {@code build}/{@code test} treat the selection as the work list (siblings are
+     * not rebuilt — pair with {@code --affected-since} to catch dependents); {@code native} builds
+     * the selection's prereq closure but native-compiles only the selection.
      */
     public static List<Opt> moduleSelection() {
         return List.of(
                 Opt.value(
                         "<sel>",
                         "Only selected modules (paths, project names, or Gradle :name; comma/globs/braces)."
-                                + " Intersects with --affected-since.",
+                                + " Intersects with --affected-since. Siblings are not rebuilt.",
                         "-m",
                         "--modules"),
                 Opt.value(

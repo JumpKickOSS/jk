@@ -213,6 +213,19 @@ public final class TasksCommand implements CliCommand {
         Path root = startDir.toAbsolutePath().normalize();
         String modulesSpec = in.value("modules").orElse(null);
         String affected = in.value("affected-since").orElse(null);
+        // Inside a workspace member with a selector: resolve against the enclosing root so
+        // `-m sibling` works exactly like build/test (JK-1366). No selector stays module-local.
+        if (!entry.isWorkspaceRoot()
+                && ((modulesSpec != null && !modulesSpec.isBlank()) || (affected != null && !affected.isBlank()))) {
+            var rootOpt = cc.jumpkick.config.WorkspaceLocator.findRoot(root);
+            if (rootOpt.isPresent()) {
+                JkBuild rootBuild = JkBuildParser.parse(rootOpt.get().resolve("jk.toml"));
+                if (rootBuild.isWorkspaceRoot()) {
+                    entry = rootBuild;
+                    root = rootOpt.get().toAbsolutePath().normalize();
+                }
+            }
+        }
 
         Map<Path, JkBuild> all = new LinkedHashMap<>();
         if (entry.isWorkspaceRoot()) {
@@ -223,7 +236,7 @@ public final class TasksCommand implements CliCommand {
             all.put(root, entry);
         }
 
-        ModuleSelection.Result selected = ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affected);
+        ModuleSelection.Result selected = ModuleSelection.resolveOptional(root, entry, modulesSpec, affected);
         if (selected != null && !selected.ok()) {
             throw new IllegalStateException(selected.errorMessage());
         }

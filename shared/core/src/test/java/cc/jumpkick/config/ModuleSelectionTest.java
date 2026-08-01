@@ -112,6 +112,24 @@ class ModuleSelectionTest {
     }
 
     @Test
+    void ambiguous_literal_fails_instead_of_fanning_out(@TempDir Path root) throws Exception {
+        // JK-1366: `cli` naming both clients/cli and tools/cli is a collision, not a two-module
+        // build — only globs/braces fan out.
+        writeWorkspace(root, List.of("clients/cli", "tools/cli"));
+        JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
+
+        var r = ModuleSelection.resolve(root, build, "cli");
+        assertThat(r.ok()).isFalse();
+        assertThat(r.errorMessage()).contains("ambiguous").contains("clients/cli").contains("tools/cli");
+
+        // Full path, glob, and brace forms still select.
+        assertThat(ModuleSelection.resolve(root, build, "clients/cli").ok()).isTrue();
+        var glob = ModuleSelection.resolve(root, build, "*/cli");
+        assertThat(glob.ok()).isTrue();
+        assertThat(glob.moduleDirs()).hasSize(2);
+    }
+
+    @Test
     void unknown_selector_labels_are_deterministic(@TempDir Path root) throws Exception {
         // JK-1367: the "known:" labels pick the first non-path alias in insertion order (the
         // project name) — never a randomly iterated set member.

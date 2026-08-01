@@ -150,6 +150,19 @@ public final class BuildCommand implements CliCommand {
             }
             return finishSession(buildWorkspace(root));
         }
+        // Single project: -m/--affected-since still validate (JK-1366) — `-m bogus` must not
+        // silently build; a matching selector is just this project.
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
+            Selection sel = resolveSelection(startDir, null);
+            if (sel.error() != null) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                return finishSession(Exit.CONFIG);
+            }
+            if (sel.empty()) {
+                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Build", selectionEmptyMessage()));
+                return finishSession(0);
+            }
+        }
         int code = runForDir(startDir);
         if (code == 0 && aotCache) {
             // Post-build tail (like run's exec): extract layout + training run, client-side

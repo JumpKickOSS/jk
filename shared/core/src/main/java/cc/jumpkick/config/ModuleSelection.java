@@ -99,19 +99,27 @@ public final class ModuleSelection {
         for (String token : tokens) {
             String t = normalizeToken(token);
             if (t.isEmpty()) continue;
-            boolean any = matchToken(candidates, t, matched);
-            if (!any && !namesLoaded) {
+            Set<String> hits = matchToken(candidates, t);
+            if (hits.isEmpty() && !namesLoaded) {
                 candidates = candidates(root, entryBuild, true);
                 namesLoaded = true;
-                any = matchToken(candidates, t, matched);
+                hits = matchToken(candidates, t);
             }
-            if (!any) {
+            if (hits.isEmpty()) {
                 if (!namesLoaded) {
                     candidates = candidates(root, entryBuild, true);
                     namesLoaded = true;
                 }
                 return Result.fail("no module matched `" + token + "` (known: " + knownLabels(candidates) + ")");
             }
+            // A literal token naming several modules is a collision (e.g. clients/cli vs
+            // tools/cli both answering to `cli`) — fan-out is for globs/braces only (JK-1366).
+            if (!isGlob(t) && hits.size() > 1) {
+                return Result.fail(
+                        "`" + token + "` is ambiguous — matches " + String.join(", ", hits)
+                                + " (use the full path, a glob, or a brace list)");
+            }
+            matched.addAll(hits);
         }
         if (matched.isEmpty()) {
             return Result.fail("no modules matched --modules=" + modulesSpec);
@@ -186,26 +194,20 @@ public final class ModuleSelection {
         return new Candidate(rel, aliases);
     }
 
-    /** Match one normalized token against {@code candidates}, adding hits to {@code matched}. */
-    private static boolean matchToken(List<Candidate> candidates, String t, Set<String> matched) {
-        boolean any = false;
+    /** Rel-paths of the candidates one normalized token matches (insertion order). */
+    private static Set<String> matchToken(List<Candidate> candidates, String t) {
+        Set<String> hits = new LinkedHashSet<>();
         if (isGlob(t)) {
             Pattern pat = globToPattern(t);
             for (Candidate c : candidates) {
-                if (matchesGlob(c, pat)) {
-                    matched.add(c.relPath());
-                    any = true;
-                }
+                if (matchesGlob(c, pat)) hits.add(c.relPath());
             }
         } else {
             for (Candidate c : candidates) {
-                if (matchesLiteral(c, t)) {
-                    matched.add(c.relPath());
-                    any = true;
-                }
+                if (matchesLiteral(c, t)) hits.add(c.relPath());
             }
         }
-        return any;
+        return hits;
     }
 
     private static void addNameAliases(Set<String> aliases, String name) {

@@ -125,7 +125,19 @@ public final class NativeCommand implements CliCommand {
             }
         }
 
-        // Single project.
+        // Single project: -m/--affected-since still validate (JK-1366).
+        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
+            var entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
+            if (sel != null && !sel.ok()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", sel.errorMessage()));
+                return Exit.CONFIG;
+            }
+            if (sel != null && sel.moduleDirs().isEmpty()) {
+                CliOutput.out("(no modules matched selection)");
+                return 0;
+            }
+        }
         return runSingleProject(startDir, buildFile, cache);
     }
 

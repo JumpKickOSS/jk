@@ -77,6 +77,25 @@ class ModuleFlagValidationTest {
     }
 
     @Test
+    void single_project_build_and_native_reject_unknown_selectors(@TempDir Path dir) throws Exception {
+        // JK-1366: single-project trees validate -m like the workspace paths do.
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "solo"
+                version = "0.0.1"
+                jdk = 25
+                java = 25
+                [application]
+                main = "t.Main"
+                """);
+        Run build = run("build", "-C", dir.toString(), "-m", "bogus");
+        assertThat(build.exit()).isEqualTo(2);
+        Run nat = run("native", "-C", dir.toString(), "-m", "bogus");
+        assertThat(nat.exit()).isEqualTo(2);
+    }
+
+    @Test
     void image_rejects_an_unknown_selector(@TempDir Path dir) throws Exception {
         workspace(dir);
         Run r = run("image", "-C", dir.toString(), "-m", "bogus");
