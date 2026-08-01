@@ -18,13 +18,23 @@ import java.util.Objects;
  * <ul>
  * <li><b>Missing file</b> — fetch once (first-time host / race with the engine's background
  * {@code StoreFeedRefresh}). Fail soft to the bundled catalog if the network is down.
- * <li><b>Present file</b> — conditional-GET revalidation (same as historical {@code jk lock}
- * behaviour).
+ * <li><b>Fresh file</b> (mtime younger than {@link #FRESH_FOR}) — no network at all. The
+ * resident engine keeps the file warm on this same cadence; foreground commands must not stack
+ * blocking fetches on top (a blackholed network stalls each one to the full HTTP timeouts, and
+ * a stale-lock <em>build</em> reaches here via auto-relock).
+ * <li><b>Stale file</b> — conditional-GET revalidation (same as historical {@code jk lock}
+ * behaviour); a 304 re-arms the freshness window.
  * </ul>
  *
  * <p>Offline callers skip the network entirely.
  */
 public final class LibraryRegistrySync {
+
+    /**
+     * How long a downloaded registry counts as fresh. The engine's {@code StoreFeedRefresh}
+     * cadence aliases this so the two never drift apart.
+     */
+    public static final java.time.Duration FRESH_FOR = java.time.Duration.ofHours(12);
 
     private LibraryRegistrySync() {}
 
@@ -42,6 +52,7 @@ public final class LibraryRegistrySync {
         if (offline) return;
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(cacheFile, "cacheFile");
+        if (isFresh(cacheFile)) return;
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
         try {
             // The client skips If-None-Match when cacheFile is missing/empty, so an orphan etag
@@ -49,6 +60,8 @@ public final class LibraryRegistrySync {
             LibraryRegistryClient.Result result =
                     new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
             if (result instanceof LibraryRegistryClient.Result.Unchanged) {
+                // Re-arm the freshness window so the next FRESH_FOR of commands skip the network.
+                Files.setLastModifiedTime(cacheFile, java.nio.file.attribute.FileTime.from(java.time.Instant.now()));
                 return;
             }
             if (!(result instanceof LibraryRegistryClient.Result.Updated updated)) {
@@ -67,6 +80,25 @@ public final class LibraryRegistrySync {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
             // because the registry is unreachable (except operators may still lack short names only
             // present upstream — then parse reports unknown library).
+        }
+    }
+
+    private static boolean isNonEmptyFile(Path file) {
+        try {
+            return Files.isRegularFile(file) && Files.size(file) > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Non-empty and modified within {@link #FRESH_FOR} — recently downloaded or revalidated. */
+    private static boolean isFresh(Path file) {
+        try {
+            if (!isNonEmptyFile(file)) return false;
+            java.time.Instant mtime = Files.getLastModifiedTime(file).toInstant();
+            return java.time.Duration.between(mtime, java.time.Instant.now()).compareTo(FRESH_FOR) < 0;
+        } catch (IOException e) {
+            return false;
         }
     }
 }

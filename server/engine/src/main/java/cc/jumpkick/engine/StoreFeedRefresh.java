@@ -40,8 +40,11 @@ import java.util.function.Supplier;
  */
 public final class StoreFeedRefresh implements AutoCloseable {
 
-    /** Shared cadence for feeds and the scheduled cache-GC enqueue. */
-    public static final Duration INTERVAL = Duration.ofHours(12);
+    /**
+     * Shared cadence for feeds and the scheduled cache-GC enqueue. Aliases the client-side
+     * freshness window so foreground {@code ensurePresent} gating and this refresher agree.
+     */
+    public static final Duration INTERVAL = cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR;
 
     private final Consumer<String> log;
     private final Http http;
