@@ -155,6 +155,47 @@ class LockFreshenConservativeTest {
         assertThat(libVersion(lock)).isEqualTo("1.0");
     }
 
+    @Test
+    void workspace_freshen_resolves_with_default_features_like_jk_lock(@TempDir Path tmp) throws Exception {
+        // JK-1358: lock content must not depend on which path freshened. The pre-build guard
+        // used noDefaultFeatures=true and silently dropped feature-gated deps from the lock.
+        serveLib("1.0");
+        serveLeaf("com.foo", "extra", "1.0");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                jdk = 21
+                java = 21
+
+                [dependencies]
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                extra = { group = "com.foo", name = "extra", version = "1.0", optional = true }
+
+                [features]
+                default = ["extra-feat"]
+                extra-feat = { deps = ["extra"] }
+                """);
+
+        LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, base, false);
+        assertThat(explicit.status()).isZero();
+        assertThat(hasArtifact(explicit.lockfile(), "com.foo:extra")).isTrue();
+
+        touchManifest(tmp);
+        restartServer();
+        // Same argument shape as BuildService.ensureWorkspaceLockFresh (features=[],
+        // noDefaultFeatures=false, conservative=true): the feature-gated dep must survive.
+        LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), false, base, true);
+        assertThat(freshened.status()).isZero();
+        assertThat(hasArtifact(freshened.lockfile(), "com.foo:extra")).isTrue();
+        assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
+    }
+
+    private static boolean hasArtifact(Lockfile lock, String ga) {
+        return lock.artifacts().stream().anyMatch(a -> a.packageKey().startsWith(ga + ":"));
+    }
+
     // ---- fixture ------------------------------------------------------------
 
     private static void project(Path tmp) throws IOException {

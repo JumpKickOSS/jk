@@ -193,8 +193,9 @@ public final class BuildPlanForecast {
                     new BuildPlan.Step("compile-main", BuildPlan.Status.RUN, "not locked yet (run `jk build`)", null));
             return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
-        // Two-tier lock check: mtime first (cheap), deep dep validation only when stale.
-        if (cc.jumpkick.runtime.AutoLock.needsRelocking(dir, lockFile)) {
+        // Digest-only staleness — the same predicate the build's freshen uses (JK-1358), so the
+        // forecast and the live build agree on whether a lock update runs.
+        if (cc.jumpkick.runtime.AutoLock.isStale(dir, lockFile)) {
             steps.add(new BuildPlan.Step(
                     "compile-main", BuildPlan.Status.RUN, "jk.toml changed — lock update needed", null));
             return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);

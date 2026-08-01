@@ -3,26 +3,19 @@ package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.cache.JkStores;
-import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.jdk.JavaHomes;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
 import cc.jumpkick.lock.LockfileWriter;
-import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
-import cc.jumpkick.model.Scope;
-import cc.jumpkick.model.VersionSelector;
 import cc.jumpkick.plugin.manifest.PluginContributions;
 import cc.jumpkick.resolver.LockOrchestrator;
 import cc.jumpkick.resolver.ResolveObserver;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.task.AccessLedger;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 /**
@@ -51,134 +44,6 @@ public final class AutoLock {
      */
     public static boolean isStale(Path dir, Path lockFile) {
         return cc.jumpkick.lock.LockFreshness.isStale(dir, lockFile);
-    }
-
-    /**
-     * Whether the lock needs refresh: mtime first; if stale, parse and check that every declared
-     * dep is still satisfied (comment-only manifest edits do not force a re-lock).
-     */
-    public static boolean needsRelocking(Path dir, Path lockFile) {
-        if (!isStale(dir, lockFile)) return false; // fast path — lock is fresh
-        try {
-            JkBuild build = JkBuildParser.parse(dir.resolve("jk.toml"));
-            Lockfile lock = LockfileReader.read(lockFile);
-            return !lockSatisfiesDeps(build, lock);
-        } catch (Exception e) {
-            return true; // unreadable → assume stale, let parse-lock handle it
-        }
-    }
-
-    /**
-     * Returns {@code true} when every dependency declared in {@code build} is present in
-     * {@code lock} with a version satisfying the declared constraint.
-     */
-    private static boolean lockSatisfiesDeps(JkBuild build, Lockfile lock) {
-        Map<String, String> lockedVersions = new HashMap<>();
-        for (Lockfile.Artifact a : lock.artifacts()) {
-            // Index by package key and GA — declared deps use GA; lock rows use g:a:type:classifier.
-            lockedVersions.put(a.name(), a.version());
-            lockedVersions.put(a.packageKey(), a.version());
-            try {
-                if (cc.jumpkick.model.PackageId.isMavenPackageKey(a.name())) {
-                    lockedVersions.put(
-                            cc.jumpkick.model.PackageId.parse(a.name()).ga(), a.version());
-                }
-            } catch (RuntimeException ignored) {
-                // non-Maven lock name
-            }
-        }
-        for (Scope scope : Scope.values()) {
-            for (Dependency dep : build.dependencies().of(scope)) {
-                if (dep.gitSource() != null) continue; // raw git declaration, not a group:artifact key yet
-                String module = dep.module(); // "group:artifact"
-                String locked = lockedVersions.get(module);
-                if (locked == null) return false; // dep not in lock
-                if (!versionSatisfied(dep.version(), locked)) return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean versionSatisfied(VersionSelector sel, String locked) {
-        if (sel == null) return true;
-        return switch (sel) {
-            case VersionSelector.Latest lat -> true; // any locked version is acceptable
-            case VersionSelector.Exact e -> locked.equals(e.version());
-            case VersionSelector.Caret c -> satisfiesCaret(c.version(), locked);
-            case VersionSelector.Tilde t -> satisfiesTilde(t.version(), locked);
-            case VersionSelector.Range r -> satisfiesRange(r.raw(), locked);
-            // Same answer as `latest`, and for the same reason: an existing lock entry is accepted so
-            // an ordinary build neither reaches the network nor drifts. `snapshot` moves when the user
-            // re-locks, not on every build — otherwise the selector would make builds
-            // non-reproducible and offline builds impossible.
-            case VersionSelector.Snapshot sn -> true;
-        };
-    }
-
-    /** {@code ^X.Y.Z} → locked >= X.Y.Z AND locked < (X+1).0.0 */
-    private static boolean satisfiesCaret(String declared, String locked) {
-        if (Versions.compare(locked, declared) < 0) return false;
-        String[] p = declared.split("\\.", -1);
-        try {
-            String upper = (Integer.parseInt(p[0]) + 1) + ".0.0";
-            return Versions.compare(locked, upper) < 0;
-        } catch (Exception ignored) {
-            return true;
-        }
-    }
-
-    /** {@code ~X.Y.Z} → locked >= X.Y.Z AND locked < X.(Y+1).0 */
-    private static boolean satisfiesTilde(String declared, String locked) {
-        if (Versions.compare(locked, declared) < 0) return false;
-        String[] p = declared.split("\\.", -1);
-        try {
-            String upper = p[0] + "." + (Integer.parseInt(p[1]) + 1) + ".0";
-            return Versions.compare(locked, upper) < 0;
-        } catch (Exception ignored) {
-            return true;
-        }
-    }
-
-    /**
-     * Maven bracket-notation range: {@code [1,2)}, {@code (1,2]}, {@code >=1.0,<2.0}, etc.
-     * Parses both bracket and inequality forms; unknown forms are treated as satisfied.
-     */
-    private static boolean satisfiesRange(String raw, String locked) {
-        try {
-            String s = raw.trim();
-            // Bracket form: [lo,hi) / (lo,hi] / [lo,hi] / (lo,hi)
-            if (s.startsWith("[") || s.startsWith("(")) {
-                boolean loIncl = s.startsWith("[");
-                boolean hiIncl = s.endsWith("]");
-                String inner = s.substring(1, s.length() - 1);
-                String[] parts = inner.split(",", 2);
-                if (parts.length == 2) {
-                    String lo = parts[0].trim(), hi = parts[1].trim();
-                    int cmpLo = Versions.compare(locked, lo);
-                    int cmpHi = Versions.compare(locked, hi);
-                    boolean loOk = loIncl ? cmpLo >= 0 : cmpLo > 0;
-                    boolean hiOk = hiIncl ? cmpHi <= 0 : cmpHi < 0;
-                    return loOk && hiOk;
-                }
-            }
-            // Inequality form: ">=1.0.0", ">=1.0.0,<2.0.0", ">1.0", "<2.0"
-            String[] clauses = s.split(",");
-            for (String clause : clauses) {
-                clause = clause.trim();
-                if (clause.startsWith(">=")) {
-                    if (Versions.compare(locked, clause.substring(2).trim()) < 0) return false;
-                } else if (clause.startsWith(">")) {
-                    if (Versions.compare(locked, clause.substring(1).trim()) <= 0) return false;
-                } else if (clause.startsWith("<=")) {
-                    if (Versions.compare(locked, clause.substring(2).trim()) > 0) return false;
-                } else if (clause.startsWith("<")) {
-                    if (Versions.compare(locked, clause.substring(1).trim()) >= 0) return false;
-                }
-            }
-            return true;
-        } catch (Exception ignored) {
-            return true; // unrecognised range → optimistic
-        }
     }
 
     /**

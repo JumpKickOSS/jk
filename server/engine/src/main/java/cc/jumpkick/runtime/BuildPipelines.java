@@ -732,7 +732,8 @@ public final class BuildPipelines {
                         ctx.label("resolve deps (first run)");
                         LockFlow.Result result;
                         try {
-                            result = LockFlow.run(in.lockDir(), in.cache(), List.of(), true, null);
+                            // noDefaultFeatures=false — same feature selection as `jk lock` (JK-1358).
+                            result = LockFlow.run(in.lockDir(), in.cache(), List.of(), false, null);
                         } catch (UnsatisfiableException e) {
                             ctx.error("verbatim", e.getMessage());
                             throw new RuntimeException("dependency resolution failed");

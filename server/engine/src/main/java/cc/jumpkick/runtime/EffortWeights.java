@@ -488,9 +488,9 @@ public final class EffortWeights {
             boolean useGroovy,
             boolean forceRebuild) {
         boolean rerun = in.session().config().rebuildOr(false) || forceRebuild;
-        // If jk.toml is newer than jk-lock.toml AND the lock no longer satisfies all declared
-        // deps, treat the module as dirty so parse-lock runs and updates the lock.
-        boolean lockStale = !rerun && AutoLock.needsRelocking(in.dir(), in.lockFile());
+        // Same digest-only staleness predicate the build's freshen uses (JK-1358): a stale digest
+        // means parse-lock will run a conservative re-lock, so forecast it.
+        boolean lockStale = !rerun && AutoLock.isStale(in.dir(), in.lockFile());
         if (lockStale) rerun = true;
 
         int sync = predictSync(in, cas);
