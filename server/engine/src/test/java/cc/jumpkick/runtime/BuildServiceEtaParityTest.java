@@ -70,4 +70,20 @@ class BuildServiceEtaParityTest {
         assertThat(cost.weight()).isEqualTo(120);
         assertThat(cost.testWeight()).isEqualTo(100);
     }
+
+    @Test
+    void mixed_history_floors_cold_tests_with_the_shape_test_weight() {
+        // Compile-warm / test-cold: costFromRunningSteps with no counts priced run-tests as
+        // suite startup only (testWeight 3) while the shape's coupled count-aware pair says
+        // 841 — the collapsed cold test ETA the full-work floor forbids.
+        var repriced = new EffortWeights.ModuleCost(MOD, Set.of(), 50, 3);
+        var floored = BuildService.floorColdTests(repriced, /* runTestsOwnMillis */ 0, /* shape */ 841);
+        assertThat(floored.testWeight()).isEqualTo(841);
+        assertThat(floored.weight()).isEqualTo(50 - 3 + 841); // non-test share preserved
+
+        // Own run-tests history wins over the shape floor (measured beats estimated).
+        assertThat(BuildService.floorColdTests(repriced, 12_000, 841)).isSameAs(repriced);
+        // Skip-tests shapes carry testWeight 0 — never floor.
+        assertThat(BuildService.floorColdTests(repriced, 0, 0)).isSameAs(repriced);
+    }
 }
