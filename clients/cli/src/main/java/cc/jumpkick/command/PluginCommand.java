@@ -138,13 +138,22 @@ public final class PluginCommand extends GroupCommand {
                     deps = List.of();
                 }
                 // Sidecar must not list the worker jar itself (resolve() prepends it).
+                // Merge ModuleRuntimeClasspath with WorkerClasspath.paths (findPluginSdk) so pure-jk
+                // thin jars never ship an empty .classpath (JK-1347).
                 List<Path> sideDeps = new ArrayList<>();
                 Path sourceAbs = source.toAbsolutePath().normalize();
                 for (Path d : deps) {
                     if (d == null) continue;
                     Path abs = d.toAbsolutePath().normalize();
-                    if (!abs.equals(sourceAbs)) sideDeps.add(abs);
+                    if (!abs.equals(sourceAbs) && !sideDeps.contains(abs)) sideDeps.add(abs);
                 }
+                for (Path p : WorkerClasspath.paths(source)) {
+                    Path abs = p.toAbsolutePath().normalize();
+                    if (!abs.equals(sourceAbs) && !sideDeps.contains(abs)) sideDeps.add(abs);
+                }
+                // Materialize plugin-sdk into the same local store so sidecars don't dangle when
+                // workspace target/ is cleaned.
+                sideDeps = installSidecarDeps(installRoot, sideDeps);
 
                 if (dryRun) {
                     CliOutput.out("would install " + artifactId + " " + version + " ← " + source
@@ -190,6 +199,41 @@ public final class PluginCommand extends GroupCommand {
             Path assembly = layout.assemblyJar();
             if (Files.isRegularFile(assembly)) return assembly;
             return null;
+        }
+
+        /**
+         * For workspace {@code plugin-sdk} jars, also copy into {@code repos/local} and rewrite the
+         * sidecar path to the store copy so workers keep launching after {@code target/} is cleaned.
+         */
+        private static List<Path> installSidecarDeps(Path installRoot, List<Path> deps) {
+            List<Path> out = new ArrayList<>();
+            for (Path d : deps) {
+                if (d == null || !Files.isRegularFile(d)) continue;
+                String name = d.getFileName().toString();
+                if (name.contains("plugin-sdk") && name.endsWith(".jar")) {
+                    // jk-plugin-sdk-0.10.1.jar or plugin-sdk-0.1.0.jar
+                    String base = name.endsWith(".jar") ? name.substring(0, name.length() - 4) : name;
+                    String artifact = base.contains("jk-plugin-sdk") ? "jk-plugin-sdk" : "plugin-sdk";
+                    String version = JkVersion.VERSION;
+                    int lastDash = base.lastIndexOf('-');
+                    if (lastDash > 0 && lastDash < base.length() - 1) {
+                        version = base.substring(lastDash + 1);
+                    }
+                    String rel = "cc/jumpkick/" + artifact + "/" + version + "/" + artifact + "-" + version + ".jar";
+                    try {
+                        RepoArtifactStore.writeToLocalStore(installRoot, rel, d);
+                        Path stored = installRoot.resolve("repos/local").resolve(rel);
+                        if (Files.isRegularFile(stored)) {
+                            out.add(stored.toAbsolutePath().normalize());
+                            continue;
+                        }
+                    } catch (Exception ignored) {
+                        /* keep workspace path */
+                    }
+                }
+                out.add(d.toAbsolutePath().normalize());
+            }
+            return out;
         }
 
         private static Map<Path, JkBuild> filterModules(Path workspaceRoot, Map<Path, JkBuild> all, String spec) {

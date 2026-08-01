@@ -2580,23 +2580,32 @@ public final class BuildPipelines {
 
     /**
      * When packaging a PluginMain worker, write {@code <jar>.classpath} for thin launches. No-op
-     * for libraries / ordinary applications.
+     * for libraries / ordinary applications. Prefer lock/workspace closure; fall back to {@link
+     * WorkerClasspath#paths} discovery so pure-jk thin jars still get {@code plugin-sdk} (JK-1347).
      */
     private static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
         String main = project.mainClass();
         if (main == null || !"cc.jumpkick.plugin.process.PluginMain".equals(main)) return;
         try {
-            List<Path> deps = ModuleRuntimeClasspath.jars(moduleDir, project, JkStores.cas(cache));
             Path jarAbs = jarPath.toAbsolutePath().normalize();
             List<Path> side = new ArrayList<>();
-            for (Path d : deps) {
-                if (d == null) continue;
-                Path abs = d.toAbsolutePath().normalize();
-                if (!abs.equals(jarAbs)) side.add(abs);
+            try {
+                for (Path d : ModuleRuntimeClasspath.jars(moduleDir, project, JkStores.cas(cache))) {
+                    if (d == null) continue;
+                    Path abs = d.toAbsolutePath().normalize();
+                    if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
+                }
+            } catch (Exception ignored) {
+                /* fall through to WorkerClasspath.paths */
+            }
+            // paths() expands sidecar + findPluginSdk; use it to fill gaps (e.g. empty lock mid-bootstrap).
+            for (Path p : WorkerClasspath.paths(jarPath)) {
+                Path abs = p.toAbsolutePath().normalize();
+                if (!abs.equals(jarAbs) && !side.contains(abs)) side.add(abs);
             }
             WorkerClasspath.writeSidecar(jarPath, side);
         } catch (Exception ignored) {
-            // Best-effort: launch may still work if the jar vendors the codec.
+            // Best-effort: launch may still work if the jar vendors the codec or findPluginSdk runs.
         }
     }
 
