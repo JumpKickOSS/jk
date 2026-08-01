@@ -134,21 +134,24 @@ public final class WorkerClasspath {
             // Don't walk forever — monorepos are shallow
             if (dir.getNameCount() < 2) break;
         }
-        // Installed: ~/.jk/store/repos/local/cc/jumpkick/jk-plugin-sdk/<ver>/*.jar
-        Path storeLocal = JkDirs.store().resolve("repos/local/cc/jumpkick");
-        for (String artifact : List.of("jk-plugin-sdk", "plugin-sdk")) {
-            Path base = storeLocal.resolve(artifact);
-            if (!Files.isDirectory(base)) continue;
-            try (Stream<Path> vers = Files.list(base)) {
-                List<Path> versionDirs =
-                        vers.filter(Files::isDirectory).sorted().toList();
-                // Prefer highest version string last
-                for (int i = versionDirs.size() - 1; i >= 0; i--) {
-                    Path hit = firstJar(versionDirs.get(i), artifact);
-                    if (hit != null) return hit;
+        // Installed: ~/.jk/store/repos/{local,jumpkick}/cc/jumpkick/jk-plugin-sdk/<ver>/*.jar
+        // (side-loaded installs land in repos/local; official fetches in repos/jumpkick).
+        for (String repoName : List.of("local", "jumpkick")) {
+            Path storeRepo = JkDirs.store().resolve("repos").resolve(repoName).resolve("cc/jumpkick");
+            for (String artifact : List.of("jk-plugin-sdk", "plugin-sdk")) {
+                Path base = storeRepo.resolve(artifact);
+                if (!Files.isDirectory(base)) continue;
+                try (Stream<Path> vers = Files.list(base)) {
+                    List<Path> versionDirs =
+                            vers.filter(Files::isDirectory).sorted().toList();
+                    // Prefer highest version string last
+                    for (int i = versionDirs.size() - 1; i >= 0; i--) {
+                        Path hit = firstJar(versionDirs.get(i), artifact);
+                        if (hit != null) return hit;
+                    }
+                } catch (IOException ignored) {
+                    /* try next */
                 }
-            } catch (IOException ignored) {
-                /* try next */
             }
         }
         return null;

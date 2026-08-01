@@ -122,6 +122,34 @@ tasks.register("installLocal") {
         File(target.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
         // Mirror next to build jar for -Djk.*.plugin.jar test overrides.
         File(jar.path + ".classpath").writeText(cpLines.joinToString("\n", postfix = "\n"))
+        // JK-1351: publishable flat coordinate closure (`<jar>.deps`) so a cold store can
+        // provision the thin worker: external deps keep their Maven coordinates (fetched from
+        // Central); project-built jars are staged into repos/local under cc.jumpkick:<base>:<ver>
+        // so publish-maven-repo.sh ships them to the official repo.
+        val externalByFile = runCatching {
+            configurations.getByName("runtimeClasspath").resolvedConfiguration.resolvedArtifacts
+                    .filter { it.id.componentIdentifier !is org.gradle.api.artifacts.component.ProjectComponentIdentifier }
+                    .associateBy({ it.file }, { "${it.moduleVersion.id.group}:${it.moduleVersion.id.name}:${it.moduleVersion.id.version}" })
+        }.getOrDefault(emptyMap())
+        val depsLines = mutableListOf("# jk worker deps — flat runtime closure, group:artifact:version")
+        depJars.forEach { f ->
+            val external = externalByFile[f]
+            if (external != null) {
+                depsLines.add(external)
+            } else {
+                val noExt = f.name.removeSuffix(".jar")
+                val tail = noExt.substringAfterLast('-')
+                val base = if (tail.firstOrNull()?.isDigit() == true) noExt.substringBeforeLast('-') else noExt
+                val d = storeRoot.resolve("repos/local/cc/jumpkick/$base/$ver")
+                d.mkdirs()
+                f.copyTo(d.resolve("$base-$ver.jar"), overwrite = true)
+                val h = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
+                        .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+                d.resolve("$base-$ver.jar.sha256").writeText(h)
+                depsLines.add("cc.jumpkick:$base:$ver")
+            }
+        }
+        File(target.path + ".deps").writeText(depsLines.joinToString("\n", postfix = "\n"))
         // JK-1348: hard-link worker + deps into JK_LIB_DIR/<artifact>/ (default store/lib/).
         val libRoot: File = System.getenv("JK_LIB_DIR")?.let { File(it) }
                 ?: storeRoot.resolve("lib")

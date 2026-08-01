@@ -152,7 +152,53 @@ public enum PluginJar {
         Path casBlob = cas.put(bytes, sha);
         RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), OFFICIAL_REPO);
         store.materialize(relPath, casBlob, sha);
-        return store.locate(relPath).orElseThrow();
+        Path localJar = store.locate(relPath).orElseThrow();
+        fetchDepsSidecar(cas, http, base, jarUri, localJar);
+        return localJar;
+    }
+
+    /**
+     * Thin workers publish a flat coordinate closure as {@code <jar>.deps} (one {@code
+     * group:artifact:version} per line — see {@code jk.plugin-conventions} installLocal and
+     * {@code scripts/publish-maven-repo.sh}). Resolve every coordinate — first-party from the
+     * official repo, the rest from Maven Central — and write the absolute-path launch sidecar next
+     * to the fetched jar so a thin worker starts on a cold store (JK-1351). A missing {@code .deps}
+     * means a legacy fat jar: nothing to do. A listed-but-unfetchable dep fails the whole fetch —
+     * a thin worker without its classpath would only die later with a bare CNFE.
+     */
+    private static void fetchDepsSidecar(Cas cas, Http http, URI base, URI jarUri, Path localJar)
+            throws IOException, InterruptedException {
+        HttpResponse<byte[]> depsResp;
+        try {
+            depsResp = http.get(URI.create(jarUri + ".deps"));
+        } catch (IOException e) {
+            return; // no sidecar reachable — legacy repo
+        }
+        if (depsResp.statusCode() < 200 || depsResp.statusCode() >= 300) return;
+        List<String> lines = new String(depsResp.body(), java.nio.charset.StandardCharsets.UTF_8)
+                .lines()
+                .map(String::trim)
+                .filter(l -> !l.isEmpty() && !l.startsWith("#"))
+                .toList();
+        if (lines.isEmpty()) return;
+        cc.jumpkick.repo.MavenRepo official = new cc.jumpkick.repo.MavenRepo(OFFICIAL_REPO, base, http, cas);
+        cc.jumpkick.repo.MavenRepo central =
+                new cc.jumpkick.repo.MavenRepo("central", RepositorySpec.MAVEN_CENTRAL.url(), http, cas);
+        cc.jumpkick.repo.RepoGroup repos =
+                cc.jumpkick.repo.RepoGroup.of(central).withReposPrepended(List.of(official));
+        List<Path> resolved = new ArrayList<>();
+        for (String line : lines) {
+            String[] parts = line.split(":");
+            if (parts.length < 3) {
+                throw new IOException("malformed line in " + jarUri + ".deps: `" + line + "`");
+            }
+            var coord = cc.jumpkick.model.Coordinate.of(parts[0], parts[1], parts[2]);
+            var fetched = repos.tryFetchArtifact(coord)
+                    .orElseThrow(() -> new IOException(
+                            "worker dependency " + line + " (from " + jarUri + ".deps) not found in any repo"));
+            resolved.add(fetched.fetched().cachePath());
+        }
+        cc.jumpkick.compile.WorkerClasspath.writeSidecar(localJar, resolved);
     }
 
     /**
