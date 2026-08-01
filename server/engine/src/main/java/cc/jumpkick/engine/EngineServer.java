@@ -2641,8 +2641,9 @@ public final class EngineServer implements AutoCloseable {
             java.util.Map<Path, String> preFps = null;
             if (!session.config().rebuildOr(false) && !session.config().forceOr(false)) {
                 try {
-                    cc.jumpkick.model.JkBuild entry =
-                            cc.jumpkick.config.JkBuildParser.parse(Files.readString(buildFile));
+                    // Path-based parse: applyWorkspace must run, or a thin member manifest
+                    // yields sentinel group/version and the memo silently never stores.
+                    cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
                     BuildGraph.Result g = BuildGraph.resolve(entryDir, entry);
                     if (!g.hasErrors()) {
                         preGraph = g;
