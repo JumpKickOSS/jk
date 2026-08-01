@@ -57,17 +57,11 @@ public final class BuildCommand implements CliCommand {
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(Opt.flag("Skip compiling and running tests.", "--skip-tests"));
+        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         opts.add(Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"));
         // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
-        opts.add(Opt.value(
-                "<git-ref>", "Build only modules (and dependents) changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value(
-                "<sel>",
-                "Build only selected modules (paths, project names, or Gradle :name; comma/globs/braces). Intersects with --affected-since.",
-                "-m",
-                "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }

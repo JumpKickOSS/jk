@@ -58,13 +58,12 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
         opts.add(Opt.value(
                 "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
-        opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
+        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.add(Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "-m", "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(Opt.value(
                 "<fmt>",
                 "Emit a machine graph instead of the rebuild forecast. Supported: dot | mermaid (module DAG).",

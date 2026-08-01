@@ -62,13 +62,7 @@ public final class TestCommand implements CliCommand {
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(Opt.value(
-                "<git-ref>", "Test only modules (and dependents) changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value(
-                "<sel>",
-                "Test only selected modules (paths, project names, or Gradle :name; comma/globs/braces). Intersects with --affected-since.",
-                "-m",
-                "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(Opt.value(
                         "<name>",
                         "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",

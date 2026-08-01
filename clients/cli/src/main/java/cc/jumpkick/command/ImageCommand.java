@@ -50,7 +50,8 @@ public final class ImageCommand implements CliCommand {
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                         .hide(),
-                Opt.flag("Skip compiling and running tests.", "--skip-tests")));
+                cc.jumpkick.cli.CommonOpts.skipTests()));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }

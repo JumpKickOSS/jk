@@ -55,21 +55,10 @@ public final class TasksCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value(
-                        "<sel>",
-                        "Module selector (comma list, globs, braces). Default: current project/module.",
-                        "-m",
-                        "--modules"),
-                Opt.value(
-                        "<git-ref>",
-                        "Intersect selection with modules changed since this git ref.",
-                        "--affected-since"),
-                Opt.value(
-                                "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
-                                "--cache-dir")
-                        .hide());
+        var opts = new java.util.ArrayList<Opt>();
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+        opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
+        return opts;
     }
 
     @Override

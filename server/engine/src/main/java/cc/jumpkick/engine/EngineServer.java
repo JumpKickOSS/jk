@@ -3455,6 +3455,10 @@ public final class EngineServer implements AutoCloseable {
             java.util.List<String> extraArgs = Jsonl.strArray(requestLine, "extraArgs");
             java.util.Map<Path, Path> graalByDir = new java.util.HashMap<>();
             Jsonl.strMap(requestLine, "graalHomes").forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            java.util.List<Path> selectedDirs = new java.util.ArrayList<>();
+            for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
+                if (d != null && !d.isBlank()) selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
+            }
             Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
             SessionContext.where(session, () -> {
                 nativeCascade(
@@ -3464,6 +3468,7 @@ public final class EngineServer implements AutoCloseable {
                         mainClass,
                         extraArgs,
                         graalByDir,
+                        selectedDirs,
                         skipTests,
                         verbose,
                         writer);
@@ -3482,6 +3487,7 @@ public final class EngineServer implements AutoCloseable {
             String mainClass,
             java.util.List<String> extraArgs,
             java.util.Map<Path, Path> graalByDir,
+            java.util.List<Path> selectedDirs,
             boolean skipTests,
             boolean verbose,
             BufferedWriter writer) {
@@ -3511,6 +3517,33 @@ public final class EngineServer implements AutoCloseable {
                                 cc.jumpkick.model.command.Exit.CONFIG,
                                 java.util.List.of(String.valueOf(e.getMessage()))));
                 return;
+            }
+            // -m / --modules: keep selected modules + transitive build prereqs (same graph as build).
+            if (selectedDirs != null && !selectedDirs.isEmpty()) {
+                java.util.Set<Path> want = new java.util.LinkedHashSet<>();
+                for (Path p : selectedDirs) want.add(p.toAbsolutePath().normalize());
+                try {
+                    var graph = cc.jumpkick.runtime.BuildGraph.resolve(entryDir, root);
+                    if (!graph.hasErrors()) {
+                        java.util.Map<Path, java.util.Set<Path>> edges = graph.edges();
+                        java.util.ArrayDeque<Path> q = new java.util.ArrayDeque<>(want);
+                        while (!q.isEmpty()) {
+                            Path d = q.poll();
+                            for (Path pre : edges.getOrDefault(d, java.util.Set.of())) {
+                                Path n = pre.toAbsolutePath().normalize();
+                                if (want.add(n)) q.add(n);
+                            }
+                        }
+                    }
+                } catch (IOException ignored) {
+                    // fall through with selected dirs only
+                }
+                java.util.Map<Path, JkBuild> filtered = new java.util.LinkedHashMap<>();
+                for (var e : modulesByDir.entrySet()) {
+                    Path d = e.getKey().toAbsolutePath().normalize();
+                    if (want.contains(d)) filtered.put(e.getKey(), e.getValue());
+                }
+                modulesByDir = filtered;
             }
             for (Path dir : cc.jumpkick.runtime.BuildGraph.orderModules(modulesByDir)) {
                 scopes.put(dir, modulesByDir.get(dir));

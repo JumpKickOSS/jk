@@ -1364,6 +1364,27 @@ public final class EngineProtocol {
             boolean verbose,
             List<String> extraArgs,
             java.util.Map<String, String> graalHomes) {
+        return nativeRequest(
+                dir, cache, jdksDir, mainClass, skipTests, offline, force, verbose, extraArgs, graalHomes, List.of());
+    }
+
+    /**
+     * As {@link #nativeRequest(String, String, String, String, boolean, boolean, boolean, boolean,
+     * List, Map)} with optional {@code moduleDirs}: when non-empty, the engine only cascades those
+     * modules plus their build prereqs ({@code -m}/{@code --modules} selection).
+     */
+    public static String nativeRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            String mainClass,
+            boolean skipTests,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            List<String> extraArgs,
+            java.util.Map<String, String> graalHomes,
+            List<String> moduleDirs) {
         return "{\"type\":\""
                 + NATIVE_REQUEST
                 + "\",\"dir\":"
@@ -1386,6 +1407,8 @@ public final class EngineProtocol {
                 + quoteArray(extraArgs)
                 + ",\"graalHomes\":"
                 + Jsonl.map(graalHomes)
+                + ",\"moduleDirs\":"
+                + quoteArray(moduleDirs == null ? List.of() : moduleDirs)
                 + "}";
     }
 

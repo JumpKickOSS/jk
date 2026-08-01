@@ -226,6 +226,12 @@ final class EngineBuildListenerAdapter {
             for (Map.Entry<Path, Path> e : req.graalByDir().entrySet()) {
                 graalHomes.put(e.getKey().toString(), e.getValue().toString());
             }
+            List<String> moduleDirs = new java.util.ArrayList<>();
+            if (req.selectedModuleDirs() != null) {
+                for (Path p : req.selectedModuleDirs()) {
+                    if (p != null) moduleDirs.add(p.toString());
+                }
+            }
             writer.write(EngineProtocol.withSession(
                     EngineProtocol.nativeRequest(
                             req.entryDir().toString(),
@@ -237,7 +243,8 @@ final class EngineBuildListenerAdapter {
                             req.force(),
                             req.verbose(),
                             req.extraArgs(),
-                            graalHomes),
+                            graalHomes,
+                            moduleDirs),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),

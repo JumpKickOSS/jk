@@ -1270,7 +1270,9 @@ public final class EngineClient {
             boolean force,
             boolean verbose,
             List<String> extraArgs,
-            java.util.Map<Path, Path> graalByDir) {}
+            java.util.Map<Path, Path> graalByDir,
+            /** When non-null/non-empty: only these module dirs (+ their build prereqs) run. */
+            List<Path> selectedModuleDirs) {}
 
     /**
      * Run {@code jk native}'s hosted module cascade against the engine, driving {@code listener}

@@ -45,17 +45,14 @@ public final class NativeCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value("<class>", "Main class. Default: jk.toml image.main or project.main.", "--main"),
-                Opt.value(
-                                "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
-                                "--cache-dir")
-                        .hide(),
-                Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
-                        .hide(),
-                Opt.flag("Install Oracle GraalVM if native-image is missing.", "--yes", "-y"),
-                Opt.flag("Skip compiling and running tests.", "--skip-tests")));
+        var opts = new java.util.ArrayList<Opt>();
+        opts.add(Opt.value("<class>", "Main class. Default: jk.toml image.main or project.main.", "--main"));
+        opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
+        opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
+                .hide());
+        opts.add(Opt.flag("Install Oracle GraalVM if native-image is missing.", "--yes", "-y"));
+        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -76,6 +73,9 @@ public final class NativeCommand implements CliCommand {
     cc.jumpkick.cli.BuildOptions buildOpts;
     GlobalOptions global;
     cc.jumpkick.cli.GraalResolver graal;
+    /** Optional {@code -m}/{@code --affected-since} filter; null = whole workspace. */
+    String modulesSpec;
+    String affectedSince;
 
     @Override
     public int run(Invocation in) throws Exception {
@@ -88,6 +88,8 @@ public final class NativeCommand implements CliCommand {
         this.buildOpts.skipTests = in.isSet("skip-tests");
         this.global = GlobalOptions.from(in);
         this.graal = new cc.jumpkick.cli.GraalResolver(jdksDir, assumeYes);
+        this.modulesSpec = in.value("modules").orElse(null);
+        this.affectedSince = in.value("affected-since").orElse(null);
 
         Path startDir = global.workingDir();
         VariantSelection.install(in, startDir);
@@ -136,7 +138,8 @@ public final class NativeCommand implements CliCommand {
     }
 
     /** The engine request for {@code entryDir}, with the client-resolved GraalVM homes attached. */
-    private EngineClient.NativeRequest hostedRequest(Path entryDir, Path cache, Map<Path, Path> graalHomes) {
+    private EngineClient.NativeRequest hostedRequest(
+            Path entryDir, Path cache, Map<Path, Path> graalHomes, List<Path> selectedModuleDirs) {
         var session = cc.jumpkick.config.SessionContext.current();
         return new EngineClient.NativeRequest(
                 entryDir,
@@ -148,7 +151,8 @@ public final class NativeCommand implements CliCommand {
                 session.force(),
                 global.verbose,
                 extra,
-                graalHomes);
+                graalHomes,
+                selectedModuleDirs);
     }
 
     // --- workspace cascade ---------------------------------------------------
@@ -170,10 +174,40 @@ public final class NativeCommand implements CliCommand {
             CliOutput.out("(workspace declares no modules)");
             return 0;
         }
+
+        // -m / --affected-since: same ModuleSelection as jk build/test (paths, names, :gradle).
+        List<Path> selectedDirs = null;
+        if ((modulesSpec != null && !modulesSpec.isBlank())
+                || (affectedSince != null && !affectedSince.isBlank())) {
+            cc.jumpkick.model.JkBuild rootBuild;
+            try {
+                rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
+            } catch (Exception e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", String.valueOf(e.getMessage())));
+                return Exit.CONFIG;
+            }
+            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                    wsRoot, rootBuild, modulesSpec, affectedSince);
+            if (sel == null) {
+                // neither set — whole workspace
+            } else if (!sel.ok()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", sel.errorMessage()));
+                return Exit.CONFIG;
+            } else if (sel.moduleDirs().isEmpty()) {
+                CliOutput.out("(no modules matched selection)");
+                return 0;
+            } else {
+                selectedDirs = List.copyOf(sel.moduleDirs());
+            }
+        }
+
         Map<Path, Path> graalHomes = new java.util.HashMap<>();
         long nativeCount = 0;
+        int considered = 0;
         for (String rel : rootInfo.moduleDirs()) {
-            Path moduleDir = wsRoot.resolve(rel);
+            Path moduleDir = wsRoot.resolve(rel).toAbsolutePath().normalize();
+            if (selectedDirs != null && !selectedDirs.contains(moduleDir)) continue;
+            considered++;
             var info = BuildCommand.projectInfoOrNull(moduleDir);
             if (info == null || !"ALWAYS".equals(info.nativeMode())) continue;
             nativeCount++;
@@ -181,13 +215,18 @@ public final class NativeCommand implements CliCommand {
             if (home.isEmpty()) return Exit.CONFIG; // GraalResolver already printed why
             graalHomes.put(moduleDir, home.get());
         }
+        if (selectedDirs != null && considered == 0) {
+            CliOutput.out("(no modules matched selection)");
+            return 0;
+        }
         return runWorkspaceHosted(
                 wsRoot,
                 cache,
                 graalHomes,
+                selectedDirs,
                 mode,
                 buildStart,
-                rootInfo.moduleDirs().size(),
+                selectedDirs != null ? considered : rootInfo.moduleDirs().size(),
                 nativeCount);
     }
 
@@ -200,11 +239,12 @@ public final class NativeCommand implements CliCommand {
             Path wsRoot,
             Path cache,
             Map<Path, Path> graalHomes,
+            List<Path> selectedModuleDirs,
             PipelineConsole.Mode mode,
             long buildStart,
             int totalModules,
             long nativeCount) {
-        var req = hostedRequest(wsRoot, cache, graalHomes);
+        var req = hostedRequest(wsRoot, cache, graalHomes, selectedModuleDirs);
         var paths = EnginePaths.current();
 
         // JSON / verbose: append-only per-module listeners. JSON must not print human banners and
@@ -375,7 +415,7 @@ public final class NativeCommand implements CliCommand {
         try {
             result = EngineClient.runNative(
                     EnginePaths.current(),
-                    hostedRequest(projectDir, cache, Map.of(projectDir, graalHome.get())),
+                    hostedRequest(projectDir, cache, Map.of(projectDir, graalHome.get()), null),
                     listener);
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", e.getMessage()));
