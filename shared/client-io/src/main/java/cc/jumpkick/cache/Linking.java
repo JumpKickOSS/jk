@@ -8,8 +8,12 @@ import java.nio.file.StandardCopyOption;
 
 /**
  * CAS/ActionCache materialization: hard-link when possible, else copy. Safe for build outputs
- * because writers use create/truncate or temp-and-rename (they break the link, not mutate the inode).
- * Deletes any existing {@code target} first.
+ * because writers use create/truncate or temp-and-rename (they break the link, not mutate the
+ * shared file). Deletes any existing {@code target} first.
+ *
+ * <p>Portable across Linux, macOS, and Windows: {@link Files#createLink} is a real hard link
+ * ({@code link(2)} / {@code CreateHardLinkW} on NTFS). No admin rights required on Windows
+ * (unlike symlinks). Cross-volume or non-NTFS volumes fall back to copy.
  */
 public final class Linking {
 
@@ -30,9 +34,8 @@ public final class Linking {
         } catch (UnsupportedOperationException | java.nio.file.FileSystemException ignored) {
             // Fall through to copy. UnsupportedOperationException covers
             // filesystems that don't implement hard links at all
-            // (older Windows configurations, some FUSE mounts);
-            // FileSystemException covers cross-filesystem and
-            // permission-denied cases on Linux/macOS.
+            // (some FUSE mounts); FileSystemException covers cross-volume,
+            // non-NTFS Windows volumes, and permission-denied cases.
         }
         Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES, StandardCopyOption.REPLACE_EXISTING);
     }

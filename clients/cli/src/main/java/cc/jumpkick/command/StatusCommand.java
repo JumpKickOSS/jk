@@ -232,21 +232,18 @@ public final class StatusCommand implements CliCommand {
         sectionHeader("Cache", null);
         Path root = JkDirs.cache();
         try {
-            if (!Files.isDirectory(root)) {
+            Path storeRoot = cc.jumpkick.cache.JkStores.storeRootFor(root);
+            if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
                 kv("Size on Disk", "—");
                 kv("CAS Entries", "0");
                 kv("Actions Cached", "0");
                 return;
             }
-            CacheCommand.Stats sha = CacheCommand.statsOf(root.resolve("sha256"));
-            CacheCommand.Stats actions = CacheCommand.statsOf(root.resolve("actions"));
-            CacheCommand.Stats repos = CacheCommand.statsOf(root.resolve("repos"));
-            CacheCommand.Stats runs = CacheCommand.statsOf(root.resolve("runs"));
-            CacheCommand.Stats stamps = CacheCommand.statsOf(root.resolve("format-stamps"));
-            long totalBytes = sha.bytes() + actions.bytes() + repos.bytes() + runs.bytes() + stamps.bytes();
-            kv("Size on Disk", CacheCommand.fmtBytes(totalBytes));
-            kv("CAS Entries", formatCount(sha.files()));
-            kv("Actions Cached", formatCount(actions.files()));
+            // Exclusive sizes: hard-linked repos/ + sha256/ share one allocation (not 2×).
+            CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
+            kv("Size on Disk", CacheCommand.fmtBytes(s.totalBytes()));
+            kv("CAS Entries", formatCount(s.cas().files()));
+            kv("Actions Cached", formatCount(s.actions().files()));
         } catch (IOException e) {
             kv("Size on Disk", "—");
             kv("CAS Entries", "—");

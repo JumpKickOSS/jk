@@ -22,11 +22,14 @@ import java.util.stream.Stream;
  * Per-named-repository artifact index and store.
  *
  * <h3>Full store, every repo</h3>
- * Both the artifact and its {@code .sha256} sidecar live under {@code <cache>/repos/<name>/} —
- * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>copied</em> in from the CAS via
- * {@link #materialize} (never hard-linked — repo overwrites must not mutate CAS blobs).
- * (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2} for Maven/Gradle
- * interop — see {@code project.m2install} — but that mirror is not this store.)
+ * Both the artifact and its {@code .sha256} sidecar live under {@code <store>/repos/<name>/} —
+ * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>materialized</em> from the CAS via
+ * {@link #materialize}: a <strong>hard link</strong> to the CAS blob when the filesystem allows it
+ * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
+ * {@code ~/.jk/store}); writers must use temp + atomic replace, never in-place truncation of a
+ * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
+ * for Maven/Gradle interop — see {@code project.m2install} — but that mirror is not this store and
+ * is never hard-linked from the CAS by default.)
  *
  * <h3>Sidecar invariant</h3>
  * The sidecar is written <em>last</em>, after the artifact is fully on disk. Its existence is the
@@ -143,12 +146,29 @@ public final class RepoArtifactStore {
     // See materialize() below.
 
     /**
-     * Materialise a fetched artifact: copy {@code casBlob} into {@code repos/<name>/} and write
-     * its {@code .sha256} sidecar. Used for every repo now (not just {@code local}). Idempotent;
-     * best-effort (the CAS blob remains the source of truth), but never torn: the artifact lands
-     * via temp + atomic move and the sidecar is written only after the artifact is complete, so
-     * "sidecar present" always implies "whole artifact" — a crash mid-copy leaves at most a
-     * {@code .part} file that the next call replaces.
+     * Materialise a fetched artifact under {@code repos/<name>/} and write its {@code .sha256}
+     * sidecar. Prefer a <strong>hard link</strong> to {@code casBlob} so the Maven-layout name and
+     * the CAS path share one file identity (no double disk for the same bytes). Fall back to a
+     * byte copy when the filesystem refuses links.
+     *
+     * <h3>Platform notes</h3>
+     * Uses {@link Files#createLink} — the portable NIO hard-link API:
+     * <ul>
+     * <li><b>Linux / macOS</b> — {@code link(2)} on the same filesystem
+     * <li><b>Windows</b> — {@code CreateHardLinkW} on NTFS (same volume). No elevation required
+     * (unlike symbolic links). FAT/exFAT/network shares that reject hard links fall through to
+     * copy via the same catch path as {@link cc.jumpkick.cache.Linking#linkOrCopy}
+     * </ul>
+     * CAS and {@code repos/} always live under one store root, so the same-volume constraint is
+     * satisfied on every supported platform. Soft links are intentionally not used.
+     *
+     * <p>Idempotent and reclaiming: if the repo entry already hard-links the CAS blob, this is a
+     * no-op. If a legacy <em>copy</em> already exists beside a CAS blob, replace it with a hard
+     * link so warm re-locks free the duplicate. Crash-safe: link/copy lands on a {@code .part}
+     * then atomic-move; the sidecar is written only after the artifact is complete.
+     *
+     * <p>Callers that overwrite a repo path (e.g. {@link #writeToLocalStore}) must use temp +
+     * atomic replace so they detach the directory entry without truncating the CAS file.
      */
     public void materialize(String relativePath, Path casBlob, String sha256) {
         if (root == null) return;
@@ -156,13 +176,25 @@ public final class RepoArtifactStore {
         Path tmp = artifact.resolveSibling(artifact.getFileName() + ".part");
         try {
             Path sidecar = sidecarPath(relativePath);
-            // Complete only when both halves exist (a sidecar alone — e.g. after a pre-atomicity
-            // crash — is repaired by re-materializing, not trusted).
-            if (Files.exists(sidecar) && Files.isRegularFile(artifact)) return;
-            // COPY, never link: installLocal/maven overwrite repo files in place; a link
-            // would let that overwrite mutate the CAS blob (see Cas.putFile).
+            boolean complete = Files.isRegularFile(sidecar) && Files.isRegularFile(artifact);
+            if (complete) {
+                // Already single identity with the CAS — nothing to do.
+                if (Files.isRegularFile(casBlob) && Files.isSameFile(artifact, casBlob)) return;
+                // Legacy duplicate copy (or missing CAS): only reclaim when the CAS blob exists.
+                if (!Files.isRegularFile(casBlob)) return;
+            } else if (!Files.isRegularFile(casBlob)) {
+                return;
+            }
             Files.createDirectories(artifact.getParent());
-            Files.copy(casBlob, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            Files.deleteIfExists(tmp);
+            // Hard link first (one allocation under the jk-owned store); copy only if the FS refuses.
+            // Catch set matches Linking.linkOrCopy: Windows CreateHardLink failures surface as
+            // FileSystemException; providers without hard links throw UnsupportedOperationException.
+            try {
+                Files.createLink(tmp, casBlob);
+            } catch (UnsupportedOperationException | java.nio.file.FileSystemException linkRefused) {
+                Files.copy(casBlob, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
             AtomicWrites.moveInto(tmp, artifact);
             Files.createDirectories(sidecar.getParent());
             Files.writeString(sidecar, sha256);
@@ -311,14 +343,15 @@ public final class RepoArtifactStore {
     }
 
     /**
-     * Remove entries whose sidecar hash matches one of {@code shas} — both the sidecar and the
-     * artifact file. Never touches an opt-in {@code ~/.m2} mirror (jk doesn't GC Maven's store; see
-     * {@code project.m2install}). Returns count removed. Never throws.
-     */
-    /**
      * Remove entries hashing to {@code shas} from EVERY named repo store under
-     * {@code <cacheRoot>/repos/} — the shared tail of cache GC / sweep / LRU eviction, keeping
-     * the repo trees in lock-step with the CAS. Best-effort; returns entries removed.
+     * {@code <cacheRoot>/repos/} — the shared tail of cache GC / sweep / LRU eviction.
+     *
+     * <p>Deletes the {@code .sha256} sidecar <em>and</em> the artifact file (the hard-link or
+     * legacy copy of the CAS blob). Callers that delete CAS paths must invoke this for the same
+     * sha set: with hard-linked materialization, removing only {@code sha256/…} leaves a live
+     * nlink under {@code repos/} and the GC does not reclaim disk. Never touches an opt-in
+     * {@code ~/.m2} mirror (jk doesn't GC Maven's store; see {@code project.m2install}).
+     * Best-effort; returns entries removed. Never throws.
      */
     public static int removeShasFromAll(Path cacheRoot, Set<String> shas, boolean dryRun) {
         if (shas.isEmpty()) return 0;
@@ -337,6 +370,11 @@ public final class RepoArtifactStore {
         return removed;
     }
 
+    /**
+     * Drop artifact + sidecar for each entry whose sidecar hash is in {@code shas}. The artifact
+     * path is typically a hard link to the CAS blob — unlinking it is half of disk reclaim (the
+     * CAS path is the other half, deleted by the GC caller).
+     */
     public int removeShas(Set<String> shas, boolean dryRun) {
         if (root == null || shas.isEmpty() || !Files.isDirectory(root)) return 0;
         // Collect BEFORE deleting: pruning directories under a still-lazy Files.walk iterator
@@ -354,7 +392,7 @@ public final class RepoArtifactStore {
                 if (!shas.contains(hash)) continue;
                 if (!dryRun) {
                     Files.deleteIfExists(sidecar);
-                    // Every store is a full store now: also delete the artifact file.
+                    // Unlink the hard-linked (or legacy-copied) artifact so nlink can hit zero.
                     Files.deleteIfExists(sidecar.resolveSibling(
                             sidecar.getFileName().toString().replaceFirst("\\.sha256$", "")));
                     pruneEmptyParents(sidecar.getParent());

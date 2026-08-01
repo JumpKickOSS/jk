@@ -40,6 +40,7 @@ class CacheCommandTest {
     @Test
     void info_reports_blob_counts_and_sizes(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
+        // Explicit --cache-dir isolates all sections under that root (not the ambient store).
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
 
@@ -54,12 +55,41 @@ class CacheCommandTest {
     }
 
     @Test
+    void info_does_not_double_count_hardlinked_repos_and_cas(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
+        byte[] payload = new byte[8192];
+        writeBlob(casBlob, payload);
+        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
+        Files.createDirectories(repoJar.getParent());
+        try {
+            Files.createLink(repoJar, casBlob);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
+        }
+        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
+
+        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
+        // Strip ANSI so compact sizes are easy to match.
+        String plain = TestAnsi.strip(stdout);
+        // Total storage = 8192 blob + 64 sidecar ≈ 8.1K, not 8192×2 + 64 ≈ 16K.
+        assertThat(plain).contains("Total");
+        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
+        assertThat(plain).containsPattern("CAS Blobs\\s+.*8\\.0K");
+        // Worker JARs row should only show the sidecar (~64B), not another 8K for the hard link.
+        assertThat(plain).containsPattern("Worker JARs\\s+.*64B");
+        assertThat(plain).doesNotContain("16.0K");
+    }
+
+    @Test
     void prune_removes_stale_action_entries_and_tmp_files(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
         Path stale = writeBlob(cache.resolve("actions/keys/old"), new byte[256]);
         Path fresh = writeBlob(cache.resolve("actions/keys/new"), new byte[256]);
-        Path leftoverTmp = writeBlob(cache.resolve("sha256/ab/cd/.put-abc.tmp"), new byte[128]);
-        Path keptBlob = writeBlob(cache.resolve("sha256/ab/cd/realblob"), new byte[128]);
+        // CAS janitor runs on the artifact store (JkStores), not the action-cache root.
+        Path storeCas = cc.jumpkick.cache.JkStores.resolve(cache, "sha256");
+        Path leftoverTmp = writeBlob(storeCas.resolve("ab/cd/.put-abc.tmp"), new byte[128]);
+        Path keptBlob = writeBlob(storeCas.resolve("ab/cd/realblob"), new byte[128]);
 
         // Backdate the stale entry by 60 days.
         Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(60, ChronoUnit.DAYS)));

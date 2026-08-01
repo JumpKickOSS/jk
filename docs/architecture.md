@@ -213,8 +213,15 @@ and exclusions stay GA-scoped.
 3. **Action cache** hit → restore outputs from the **CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
-Local cache roots under `~/.jk/cache/` (content-addressed blobs + action mappings). CAS writes
-are copy/atomic; build trees must not share inodes with immutable blobs.
+**Store** (`~/.jk/store/`, or `JK_STORE_DIR`): CAS blobs under `sha256/…` plus Maven-layout
+views under `repos/<name>/…`. Repo materialization **hard-links** to the CAS blob when the
+filesystem allows (one allocation, no double disk) via portable NIO `Files.createLink` —
+`link(2)` on Linux/macOS, `CreateHardLinkW` on Windows NTFS (no elevation; not a symlink).
+Copy only as a fallback (FAT/exFAT, cross-volume, or providers without hard links). GC unlinks
+**both** the CAS path and matching `repos/` entries so space is reclaimed. Action-cache
+mappings live under `~/.jk/cache/`. CAS **ingest** from build outputs / `~/.m2` is copy (or
+opt-in link for m2) so non-store trees never share identity with a hashed blob; writers inside
+the store must temp + atomic-replace, never truncate a hard-linked path in place.
 
 ### Action keys and future remote cache (design)
 

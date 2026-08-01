@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.http;
 
+import cc.jumpkick.cache.DiskUsage;
+import cc.jumpkick.cache.JkStores;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -10,6 +12,9 @@ import java.nio.file.Path;
  * and the CLI can never drift apart. {@code maxBytes} is the configured LRU ceiling ({@code [cache]
  * max-size-gb}, default 20 GiB) so the utilization meter always has a denominator;
  * {@code lastPrunedMillis} is {@code 0} when the cache has never been pruned.
+ *
+ * <p>Byte sizes are <em>exclusive</em> across sections (CAS before repos) so hard-linked
+ * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
  */
 public record CacheSnapshot(
         long casCount,
@@ -34,51 +39,46 @@ public record CacheSnapshot(
     }
 
     /**
-     * Walk {@code cacheRoot}'s sections and snapshot their sizes — the identical dirs and
-     * recursive file-count/byte-sum semantics as {@code jk cache info}. IO-shaped (a full walk of
-     * the CAS), so callers invoke it per request, never on a hot path. Best-effort: an unreadable
-     * section counts as empty.
+     * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
+     * exclusive byte accounting as {@code jk cache info}. IO-shaped (a full walk of the CAS), so
+     * callers invoke it per request, never on a hot path. Best-effort: an unreadable section
+     * counts as empty.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
-        // sha256/ and repos/ moved to the store; reading them off the cache root would report
-        // an empty CAS on the dashboard while the real one sits elsewhere.
-        long[] cas = statsOf(cc.jumpkick.cache.JkStores.resolve(cacheRoot, "sha256"));
-        long[] actions = statsOf(cacheRoot.resolve("actions"));
-        long[] repos = statsOf(cc.jumpkick.cache.JkStores.resolve(cacheRoot, "repos"));
-        long[] runs = statsOf(cacheRoot.resolve("runs"));
-        long[] stamps = statsOf(cacheRoot.resolve("format-stamps"));
+        // sha256/ and repos/ live under the store; actions/runs/stamps under the cache root.
+        Path cas = JkStores.resolve(cacheRoot, "sha256");
+        Path repos = JkStores.resolve(cacheRoot, "repos");
+        Path actions = cacheRoot.resolve("actions");
+        Path runs = cacheRoot.resolve("runs");
+        Path stamps = cacheRoot.resolve("format-stamps");
+        DiskUsage.Stats[] parts;
+        try {
+            // CAS first so hard-linked repo jars do not inflate worker-jar or total bytes.
+            parts = DiskUsage.exclusive(cas, repos, actions, runs, stamps);
+        } catch (Exception e) {
+            parts = new DiskUsage.Stats[] {
+                new DiskUsage.Stats(0, 0),
+                new DiskUsage.Stats(0, 0),
+                new DiskUsage.Stats(0, 0),
+                new DiskUsage.Stats(0, 0),
+                new DiskUsage.Stats(0, 0)
+            };
+        }
         long maxBytes = configuredMaxBytes();
         long lastPruned = readLastPrunedMillis(cacheRoot);
         return new CacheSnapshot(
-                cas[0],
-                cas[1],
-                actions[0],
-                actions[1],
-                repos[0],
-                repos[1],
-                runs[0],
-                runs[1],
-                stamps[0],
-                stamps[1],
+                parts[0].files(),
+                parts[0].bytes(),
+                parts[2].files(),
+                parts[2].bytes(),
+                parts[1].files(),
+                parts[1].bytes(),
+                parts[3].files(),
+                parts[3].bytes(),
+                parts[4].files(),
+                parts[4].bytes(),
                 maxBytes,
                 lastPruned);
-    }
-
-    /** {files, bytes} of every regular file under {@code dir}; missing/unreadable → zeros. */
-    private static long[] statsOf(Path dir) {
-        long files = 0, bytes = 0;
-        if (Files.isDirectory(dir)) {
-            try (var stream = Files.walk(dir)) {
-                for (Path p : (Iterable<Path>) stream::iterator) {
-                    if (!Files.isRegularFile(p)) continue;
-                    files++;
-                    bytes += Files.size(p);
-                }
-            } catch (Exception ignored) {
-                // best-effort — a vanished file mid-walk must not fail the endpoint
-            }
-        }
-        return new long[] {files, bytes};
     }
 
     /** The configured LRU ceiling, or the documented 20 GiB default when unset/unreadable. */

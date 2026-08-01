@@ -26,6 +26,10 @@ import java.util.stream.Stream;
  * reachableEvicted} and surfaced in the report — the user gets a "your budget is below your live
  * set" signal without us silently corrupting the next build (the action / sync layer naturally
  * re-fetches deleted CAS objects).
+ *
+ * <p><strong>Disk reclaim:</strong> CAS blobs and {@code repos/} views share an inode via hard
+ * link. Eviction unlinks the repo entry ({@code removeShasFromAll}) <em>then</em> the CAS path so
+ * nlink reaches zero and {@code --max-size} actually frees space.
  */
 public final class LruEvictor {
 
@@ -82,17 +86,23 @@ public final class LruEvictor {
         int reachableEvicted = 0;
         long remaining = totalSize;
         Set<String> deletedShas = new HashSet<>();
+        List<Path> casPaths = new ArrayList<>();
         for (Entry e : entries) {
             if (remaining <= maxBytes) break;
-            if (!dryRun) Files.deleteIfExists(e.file());
             deleted++;
             freed += e.size();
             if (e.reachable()) reachableEvicted++;
             remaining -= e.size();
             deletedShas.add(e.hex());
+            casPaths.add(e.file());
         }
-        // Keep every named repo store in lock-step with the CAS.
+        // Repo hard-links first, then CAS paths — both must go or the inode stays allocated.
         cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(cas.root(), deletedShas, dryRun);
+        if (!dryRun) {
+            for (Path p : casPaths) {
+                Files.deleteIfExists(p);
+            }
+        }
         return new Report(deleted, freed, reachableEvicted, remaining);
     }
 
