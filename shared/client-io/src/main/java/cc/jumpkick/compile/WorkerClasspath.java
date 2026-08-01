@@ -30,10 +30,10 @@ public final class WorkerClasspath {
     }
 
     /**
-     * Classpath string for {@code -cp}: worker jar first, then sidecar entries that still exist.
-     * Missing sidecar paths are skipped (stale install) rather than failing the launch line.
+     * Classpath entries: worker jar first, then sidecar entries that still exist. Missing sidecar
+     * paths are skipped (stale install) rather than failing the launch line.
      */
-    public static String resolve(Path workerJar) {
+    public static List<Path> paths(Path workerJar) {
         List<Path> entries = new ArrayList<>();
         entries.add(workerJar.toAbsolutePath().normalize());
         Path side = sidecarPath(workerJar);
@@ -49,8 +49,15 @@ public final class WorkerClasspath {
                 // Fall back to jar-only; launcher will fail clearly if classes are missing.
             }
         }
+        return entries;
+    }
+
+    /**
+     * Classpath string for {@code -cp}: worker jar first, then sidecar entries that still exist.
+     */
+    public static String resolve(Path workerJar) {
         String sep = System.getProperty("path.separator", ":");
-        return entries.stream().map(Path::toString).collect(Collectors.joining(sep));
+        return paths(workerJar).stream().map(Path::toString).collect(Collectors.joining(sep));
     }
 
     /** Write a classpath sidecar next to {@code workerJar} (overwrites). */

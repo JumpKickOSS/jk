@@ -7,6 +7,7 @@ import cc.jumpkick.compile.AssemblyPackager;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
+import cc.jumpkick.compile.WorkerClasspath;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.compile.CycloneDxSbom;
 import cc.jumpkick.compile.GroovycRequest;
@@ -2541,6 +2542,8 @@ public final class BuildPipelines {
                     String pkgKey =
                             ActionKey.forArtifact(pkgTask, cc.jumpkick.model.BuildIdentity.cacheKeyVersion(), tokens);
                     if (restorePackaged(in.cache(), pkgKey, jarPath.getParent())) {
+                        // Sidecar is not in the action cache — refresh for thin PluginMain workers.
+                        writeWorkerClasspathSidecar(in.dir(), project, jarPath, in.cache());
                         ctx.put(JAR_PATH, jarPath);
                         ctx.label(jarPath.getFileName() + " up-to-date");
                         ctx.cached();
@@ -2566,10 +2569,35 @@ public final class BuildPipelines {
                             jarPath.getParent(),
                             List.of(jarPath),
                             !in.ephemeralActions());
+                    // Thin PluginMain workers: write .classpath next to the jar so -cp launches
+                    // find plugin-sdk and other runtime deps (JK-1347).
+                    writeWorkerClasspathSidecar(in.dir(), project, jarPath, in.cache());
                     ctx.put(JAR_PATH, jarPath);
                     ctx.progress(1);
                 })
                 .build();
+    }
+
+    /**
+     * When packaging a PluginMain worker, write {@code <jar>.classpath} for thin launches. No-op
+     * for libraries / ordinary applications.
+     */
+    private static void writeWorkerClasspathSidecar(Path moduleDir, JkBuild project, Path jarPath, Path cache) {
+        String main = project.mainClass();
+        if (main == null || !"cc.jumpkick.plugin.process.PluginMain".equals(main)) return;
+        try {
+            List<Path> deps = ModuleRuntimeClasspath.jars(moduleDir, project, JkStores.cas(cache));
+            Path jarAbs = jarPath.toAbsolutePath().normalize();
+            List<Path> side = new ArrayList<>();
+            for (Path d : deps) {
+                if (d == null) continue;
+                Path abs = d.toAbsolutePath().normalize();
+                if (!abs.equals(jarAbs)) side.add(abs);
+            }
+            WorkerClasspath.writeSidecar(jarPath, side);
+        } catch (Exception ignored) {
+            // Best-effort: launch may still work if the jar vendors the codec.
+        }
     }
 
     /**
