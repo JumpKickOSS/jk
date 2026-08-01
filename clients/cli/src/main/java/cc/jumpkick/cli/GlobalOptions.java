@@ -168,8 +168,11 @@ public final class GlobalOptions {
         // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
         JkConfig cliOverlay = new JkConfig(
                 java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
+                // offline + rebuild ride the overlay too (JK-1365): the engine reads them off the
+                // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
+                // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
+                g.offline ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.rebuild ? java.util.Optional.of(true) : java.util.Optional.empty(),
                 g.noProgress ? java.util.Optional.of(true) : java.util.Optional.empty(),
                 g.quiet ? java.util.Optional.of(true) : java.util.Optional.empty(),
                 g.verbose ? java.util.Optional.of(true) : java.util.Optional.empty(),
