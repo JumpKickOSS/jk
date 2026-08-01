@@ -839,6 +839,15 @@ class CommandManagerTest {
         assertThat(CommandManager.truncateVisible("plain", 10)).isEqualTo("plain");
     }
 
+    @Test
+    void truncate_visible_one_column_keeps_a_fitting_char() {
+        // Degenerate 1-column width: fitting content survives; only longer input degrades
+        // to the bare ellipsis. Empty stays empty.
+        assertThat(CommandManager.truncateVisible("", 1)).isEmpty();
+        assertThat(CommandManager.truncateVisible("a", 1)).isEqualTo("a");
+        assertThat(TestAnsi.strip(CommandManager.truncateVisible("ab", 1))).isEqualTo("…");
+    }
+
     private static List<String> stripAll(List<String> lines) {
         return lines.stream().map(TestAnsi::strip).toList();
     }

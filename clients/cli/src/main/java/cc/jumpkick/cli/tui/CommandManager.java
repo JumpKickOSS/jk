@@ -1563,10 +1563,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
-        if (maxCols == 1) {
-            // Only room for the ellipsis glyph.
-            return ELLIPSIS + Ansi.RESET;
-        }
+        // No maxCols==1 shortcut: the reserve logic below already handles it — a 1-column
+        // string fits as-is, only longer input degrades to the bare ellipsis.
         int budget = maxCols;
         StringBuilder sb = new StringBuilder(s.length());
         int visible = 0;
