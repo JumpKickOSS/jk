@@ -155,6 +155,45 @@ class WorkerLibTest {
     }
 
     @Test
+    void partial_or_foreign_lib_dirs_are_rejected() throws Exception {
+        // JK-1353: no order file (e.g. an installed tool's bin dir) or a missing listed entry
+        // (partial/damaged dir) must never resolve as a worker classpath.
+        String id = "jk-partial-test-" + System.nanoTime();
+        Path d = WorkerLib.dir(id);
+        Files.createDirectories(d);
+        try {
+            Files.writeString(d.resolve("some-tool.jar"), "tool-bytes");
+            assertThat(WorkerLib.pathsIfPresent(id)).isNull(); // no order file → not a worker dir
+
+            Files.writeString(
+                    d.resolve(WorkerLib.ORDER_FILE), "# header\nsome-tool.jar\nmissing-dep.jar\n");
+            assertThat(WorkerLib.pathsIfPresent(id)).isNull(); // listed entry absent → partial
+        } finally {
+            try {
+                WorkerLib.remove(id);
+            } catch (Exception ignored) {
+                /* cleanup */
+            }
+        }
+    }
+
+    @Test
+    void remove_deletes_the_lib_dir_entirely() throws Exception {
+        Path src = storeSideSrc();
+        Path worker = src.resolve("jk-rm-1.0.jar");
+        Files.writeString(worker, "w");
+        String id = "jk-rm-test-" + System.nanoTime();
+        try {
+            Path lib = WorkerLib.materialize(id, worker, List.of());
+            assertThat(Files.isDirectory(lib)).isTrue();
+            WorkerLib.remove(id);
+            assertThat(Files.exists(lib)).isFalse(); // dir itself gone → CAS inodes unpinned
+        } finally {
+            deleteTree(src);
+        }
+    }
+
+    @Test
     void worker_classpath_prefers_lib_when_materialized() throws Exception {
         // Store-side sources: real installs hardlink store → store/lib on one filesystem, and the
         // JK-1349 inode guard only accepts a lib dir materialized from the exact jar launched.

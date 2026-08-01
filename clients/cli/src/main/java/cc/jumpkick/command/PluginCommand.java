@@ -45,12 +45,70 @@ public final class PluginCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "First-party plugin worker helpers (install-local)";
+        return "First-party plugin worker helpers (install-local, uninstall)";
     }
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new InstallLocalSub());
+        return List.of(new InstallLocalSub(), new UninstallSub());
+    }
+
+    /**
+     * {@code jk plugin uninstall <artifactId>} — drop a side-loaded worker: its
+     * {@code store/lib/<id>/} hardlink dir (unpins CAS inodes for GC — JK-1353) and its
+     * {@code repos/local} Maven entries.
+     */
+    static final class UninstallSub implements CliCommand {
+
+        @Override
+        public String name() {
+            return "uninstall";
+        }
+
+        @Override
+        public String description() {
+            return "Remove a side-loaded worker's store/lib dir and local repo entries";
+        }
+
+        @Override
+        public List<cc.jumpkick.model.command.Param> parameters() {
+            return List.of(cc.jumpkick.model.command.Param.of(
+                    "artifact-id", cc.jumpkick.model.command.Arity.ONE, "worker artifactId, e.g. jk-test-runner"));
+        }
+
+        @Override
+        public List<Opt> options() {
+            return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
+        }
+
+        @Override
+        public int run(Invocation in) throws Exception {
+            String artifactId = in.positionals().get(0);
+            boolean isolated = in.value("cache-dir").isPresent();
+            Path installRoot =
+                    isolated ? in.value("cache-dir").map(Path::of).orElseThrow() : JkDirs.store();
+            boolean removed = false;
+            // The shared lib dir belongs to the global store; leave it alone under --cache-dir.
+            if (!isolated && Files.isDirectory(WorkerLib.dir(artifactId))) {
+                WorkerLib.remove(artifactId);
+                removed = true;
+            }
+            Path repoDir = installRoot.resolve("repos/local/cc/jumpkick").resolve(artifactId);
+            if (Files.isDirectory(repoDir)) {
+                try (var walk = Files.walk(repoDir)) {
+                    for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                        Files.deleteIfExists(p);
+                    }
+                }
+                removed = true;
+            }
+            if (!removed) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Plugin", "nothing installed for " + artifactId));
+                return Exit.CONFIG;
+            }
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Plugin", "Uninstalled " + artifactId));
+            return Exit.SUCCESS;
+        }
     }
 
     /**
@@ -175,21 +233,25 @@ public final class PluginCommand extends GroupCommand {
                 WorkerClasspath.writeSidecar(dest, sideDeps);
                 // Also write sidecar next to the build output so -Djk.*.plugin.jar overrides work.
                 WorkerClasspath.writeSidecar(source, sideDeps);
-                // JK-1348: short store/lib/<id>/ hardlinks for ps-friendly -cp (prefer over sidecar).
+                // JK-1348: short store/lib/<id>/ hardlinks for ps-friendly -cp (prefer over
+                // sidecar). WorkerLib is rooted in the global store, so an isolated --cache-dir
+                // install must not touch it (JK-1354) — sidecar absolute paths still launch.
                 Path libDir = null;
-                try {
-                    // Prefer the store copy as the worker hardlink source when ambient install.
-                    Path workerForLib = Files.isRegularFile(dest) ? dest : source;
-                    libDir = WorkerLib.materialize(artifactId, workerForLib, sideDeps);
-                    // Point sidecars at lib paths when materialize succeeded (compact + GC-safe).
-                    List<Path> libPaths = WorkerLib.pathsIfPresent(artifactId);
-                    if (libPaths != null && libPaths.size() > 1) {
-                        List<Path> libDeps = new ArrayList<>(libPaths.subList(1, libPaths.size()));
-                        WorkerClasspath.writeSidecar(dest, libDeps);
-                        WorkerClasspath.writeSidecar(source, libDeps);
+                if (!in.value("cache-dir").isPresent()) {
+                    try {
+                        // Prefer the store copy as the worker hardlink source when ambient install.
+                        Path workerForLib = Files.isRegularFile(dest) ? dest : source;
+                        libDir = WorkerLib.materialize(artifactId, workerForLib, sideDeps);
+                        // Point sidecars at lib paths when materialize succeeded (compact + GC-safe).
+                        List<Path> libPaths = WorkerLib.pathsIfPresent(artifactId);
+                        if (libPaths != null && libPaths.size() > 1) {
+                            List<Path> libDeps = new ArrayList<>(libPaths.subList(1, libPaths.size()));
+                            WorkerClasspath.writeSidecar(dest, libDeps);
+                            WorkerClasspath.writeSidecar(source, libDeps);
+                        }
+                    } catch (Exception ignored) {
+                        // Best-effort; sidecar absolute paths still launch.
                     }
-                } catch (Exception ignored) {
-                    // Best-effort; sidecar absolute paths still launch.
                 }
                 String libNote = libDir != null ? "; lib " + PathDisplay.styledRaw(libDir) : "";
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(

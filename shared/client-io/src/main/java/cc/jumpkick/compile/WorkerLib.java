@@ -75,28 +75,47 @@ public final class WorkerLib {
     /**
      * Materialize {@code workerJar} + {@code depJars} into {@code store/lib/&lt;id&gt;/} as
      * hardlinks (copy fallback). Writes {@link #ORDER_FILE} for launch order (worker first).
-     * Replaces any previous contents of the lib dir.
+     * Replaces any previous contents of the lib dir via temp-dir + rename (JK-1353), so a
+     * concurrent launcher observes the old dir, no dir at all (brief swap window → sidecar
+     * fallback), or the complete new dir — never a partial one.
      *
      * @return the lib directory
      */
     public static Path materialize(String id, Path workerJar, List<Path> depJars) throws IOException {
         String safe = sanitizeId(id);
-        Path d = dir(safe);
-        clearDir(d);
-        Files.createDirectories(d);
-        List<String> order = new ArrayList<>();
-        linkInto(d, workerJar, order);
-        if (depJars != null) {
-            for (Path dep : depJars) {
-                if (dep == null) continue;
-                Path abs = dep.toAbsolutePath().normalize();
-                if (!Files.isRegularFile(abs)) continue;
-                if (workerJar != null && abs.equals(workerJar.toAbsolutePath().normalize())) continue;
-                linkInto(d, abs, order);
+        Path root = root();
+        Files.createDirectories(root);
+        Path tmp = Files.createTempDirectory(root, "." + safe + "-tmp-");
+        try {
+            List<String> order = new ArrayList<>();
+            linkInto(tmp, workerJar, order);
+            if (depJars != null) {
+                for (Path dep : depJars) {
+                    if (dep == null) continue;
+                    Path abs = dep.toAbsolutePath().normalize();
+                    if (!Files.isRegularFile(abs)) continue;
+                    if (workerJar != null && abs.equals(workerJar.toAbsolutePath().normalize())) continue;
+                    linkInto(tmp, abs, order);
+                }
             }
+            writeOrder(tmp, order);
+
+            Path d = dir(safe);
+            Path old = null;
+            if (Files.isDirectory(d)) {
+                old = root.resolve("." + safe + "-old-" + System.nanoTime());
+                Files.move(d, old);
+            }
+            try {
+                Files.move(tmp, d, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, d);
+            }
+            if (old != null) deleteTree(old);
+            return d;
+        } finally {
+            if (Files.isDirectory(tmp)) deleteTree(tmp);
         }
-        writeOrder(d, order);
-        return d;
     }
 
     /** Convenience: id from worker jar path. */
@@ -105,37 +124,28 @@ public final class WorkerLib {
     }
 
     /**
-     * If {@code store/lib/&lt;id&gt;/} has a valid order file (or jars), return absolute paths in
-     * launch order; otherwise {@code null} (caller should fall back to sidecar/CAS paths).
+     * If {@code store/lib/&lt;id&gt;/} has a complete {@link #ORDER_FILE}, return absolute paths in
+     * launch order; otherwise {@code null} (caller falls back to sidecar/CAS paths). Strict on
+     * purpose (JK-1353): no order file means the dir is not a materialized worker (e.g. an
+     * installed tool's bin dir sharing {@code lib/}), and a missing listed entry means a partial
+     * or damaged dir — neither may ever launch as a worker classpath.
      */
     public static List<Path> pathsIfPresent(String id) {
         Path d = dir(id);
         if (!Files.isDirectory(d)) return null;
         Path orderFile = d.resolve(ORDER_FILE);
+        if (!Files.isRegularFile(orderFile)) return null;
         List<Path> out = new ArrayList<>();
-        if (Files.isRegularFile(orderFile)) {
-            try {
-                for (String line : Files.readAllLines(orderFile, StandardCharsets.UTF_8)) {
-                    String t = line.trim();
-                    if (t.isEmpty() || t.startsWith("#")) continue;
-                    Path p = d.resolve(t).toAbsolutePath().normalize();
-                    if (Files.isRegularFile(p)) out.add(p);
-                }
-            } catch (IOException e) {
-                return null;
+        try {
+            for (String line : Files.readAllLines(orderFile, StandardCharsets.UTF_8)) {
+                String t = line.trim();
+                if (t.isEmpty() || t.startsWith("#")) continue;
+                Path p = d.resolve(t).toAbsolutePath().normalize();
+                if (!Files.isRegularFile(p)) return null;
+                out.add(p);
             }
-        } else {
-            // No order file: jars sorted by name (worker name usually sorts with artifact prefix).
-            try (DirectoryStream<Path> ds = Files.newDirectoryStream(d, "*.jar")) {
-                List<Path> jars = new ArrayList<>();
-                for (Path p : ds) {
-                    if (Files.isRegularFile(p)) jars.add(p.toAbsolutePath().normalize());
-                }
-                jars.sort(Comparator.comparing(p -> p.getFileName().toString()));
-                out.addAll(jars);
-            } catch (IOException e) {
-                return null;
-            }
+        } catch (IOException e) {
+            return null;
         }
         return out.isEmpty() ? null : List.copyOf(out);
     }
@@ -162,10 +172,13 @@ public final class WorkerLib {
         return null;
     }
 
-    /** Remove {@code store/lib/&lt;id&gt;/} so GC may reclaim unreferenced CAS blobs. */
+    /** Remove {@code store/lib/&lt;id&gt;/} entirely so GC may reclaim unreferenced CAS blobs. */
     public static void remove(String id) throws IOException {
         Path d = dir(id);
-        if (Files.isDirectory(d)) clearDir(d);
+        if (Files.isDirectory(d)) {
+            clearDir(d);
+            Files.deleteIfExists(d);
+        }
     }
 
     /** True when a lib dir is populated for this id. */
@@ -238,6 +251,11 @@ public final class WorkerLib {
         sb.append("# jk worker lib classpath — generated; do not edit by hand\n");
         for (String n : order) sb.append(n).append('\n');
         Files.writeString(dir.resolve(ORDER_FILE), sb.toString(), StandardCharsets.UTF_8);
+    }
+
+    private static void deleteTree(Path d) throws IOException {
+        clearDir(d);
+        Files.deleteIfExists(d);
     }
 
     private static void clearDir(Path d) throws IOException {

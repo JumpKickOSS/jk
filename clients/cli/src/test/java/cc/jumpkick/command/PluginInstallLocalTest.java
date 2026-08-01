@@ -237,6 +237,78 @@ class PluginInstallLocalTest {
     }
 
     @Test
+    void cache_dir_install_leaves_the_global_lib_untouched(@TempDir Path dir) throws Exception {
+        // JK-1354: an isolated --cache-dir install must not create or overwrite the shared
+        // store/lib/<id>/ dir every ambient launch prefers.
+        Path cache = dir.resolve("cache");
+        Path mod = dir.resolve("plugins/worker");
+        Files.createDirectories(mod);
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["plugins/worker"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                [project]
+                group = "cc.jumpkick"
+                name = "jk-iso-worker"
+                version = "0.10.1"
+                jdk = 25
+                java = 25
+                [application]
+                main = "cc.jumpkick.plugin.process.PluginMain"
+                """);
+        Path jar = dir.resolve("target/plugins/worker/jk-iso-worker-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "fake-worker-jar");
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-iso-worker/0.10.1/jk-iso-worker-0.10.1.jar"))
+                .exists();
+        assertThat(Files.exists(cc.jumpkick.compile.WorkerLib.dir("jk-iso-worker")))
+                .isFalse();
+    }
+
+    @Test
+    void uninstall_removes_local_repo_entries(@TempDir Path dir) throws Exception {
+        // JK-1353: `jk plugin uninstall` drops what install-local side-loaded.
+        Path cache = dir.resolve("cache");
+        Path mod = dir.resolve("plugins/worker");
+        Files.createDirectories(mod);
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["plugins/worker"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "fake-worker-jar");
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        Path repoDir = cache.resolve("repos/local/cc/jumpkick/jk-test-runner");
+        assertThat(repoDir).exists();
+
+        assertThat(Jk.execute("plugin", "uninstall", "jk-test-runner", "--cache-dir", cache.toString()))
+                .isZero();
+        assertThat(Files.exists(repoDir)).isFalse();
+
+        // A second uninstall has nothing to remove.
+        assertThat(Jk.execute("plugin", "uninstall", "jk-test-runner", "--cache-dir", cache.toString()))
+                .isEqualTo(2);
+    }
+
+    @Test
     void no_plugin_main_modules_is_config_error(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Files.writeString(dir.resolve("jk.toml"), """
