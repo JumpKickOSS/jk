@@ -160,6 +160,9 @@ public final class LockFlow {
             int moduleCount,
             boolean workspaceLock)
             throws Exception {
+        // Capture the manifests digest before resolving: an edit that lands mid-resolution must
+        // leave the written lock stale, not stamp itself fresh from the live files (JK-1357).
+        String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(lockDir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos =
                 RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
@@ -220,7 +223,7 @@ public final class LockFlow {
         }
         // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
-        LockfileWriter.write(lock, lockFile);
+        LockfileWriter.write(lock, lockFile, manifestsSha);
         cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
         return new Result(0, null, lock, effective, moduleCount, workspaceLock, lockDir);
     }

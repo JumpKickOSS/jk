@@ -22,7 +22,16 @@ public final class LockfileWriter {
     public static void write(Lockfile lockfile, Path file) throws IOException {
         // Always stamp a live manifests digest so staleness survives git-clone mtimes.
         Path owner = file.toAbsolutePath().normalize().getParent();
-        Lockfile stamped = LockManifestDigest.stamp(lockfile, owner);
+        write(lockfile, file, LockManifestDigest.compute(owner));
+    }
+
+    /**
+     * As {@link #write(Lockfile, Path)} with a caller-captured {@code manifestsSha256} — capture it
+     * when the manifests are first read so a manifest edited mid-resolution leaves a lock that
+     * reads as stale, instead of stamping itself fresh from the live files (JK-1357).
+     */
+    public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
+        Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
         // Atomic (temp + rename): concurrent readers never observe a truncated lock (JK-1356).
         cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
     }

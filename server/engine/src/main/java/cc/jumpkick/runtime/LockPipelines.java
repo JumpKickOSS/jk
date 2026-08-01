@@ -61,6 +61,13 @@ public final class LockPipelines {
     public static final PipelineKey<Lockfile> LOCKFILE = PipelineKey.of("lockfile", Lockfile.class);
 
     /**
+     * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
+     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock
+     * (JK-1357).
+     */
+    public static final PipelineKey<String> MANIFESTS_SHA = PipelineKey.of("manifests-sha", String.class);
+
+    /**
      * Build the {@code jk lock} pipeline for one project directory: {@code parse-build} → {@code
      * resolve} (offline-aware, git-source materialization, PubGrub solve, kotlin pin) → {@code
      * lock-plugins} → {@code write-lockfile}. The offline flag is read off the ambient {@link
@@ -113,6 +120,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     ctx.put(EFFECTIVE, effective);
+                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
                     ctx.progress(1);
                 })
                 .build();
@@ -364,7 +372,7 @@ public final class LockPipelines {
                     ctx.label("write " + lockFile.getFileName());
                     Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
                     ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile);
+                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
                     ctx.progress(1);
                 })
                 .build();
@@ -404,6 +412,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     ctx.put(EFFECTIVE, effective);
+                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
                     ctx.progress(1);
                 })
                 .build();
@@ -449,7 +458,7 @@ public final class LockPipelines {
                     ctx.label("write " + lockFile.getFileName());
                     Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
                     ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile);
+                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
                     ctx.progress(1);
                 })
                 .build();
@@ -544,6 +553,8 @@ public final class LockPipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
+        // Digest captured before resolving (JK-1357).
+        String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(dir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
         Path javaHome = JavaHomes.resolveJavaHome(dir);
@@ -591,7 +602,7 @@ public final class LockPipelines {
                 List.of(),
                 newLock.jk());
         finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
-        LockfileWriter.write(finalLock, lockFile);
+        LockfileWriter.write(finalLock, lockFile, manifestsSha);
         return refreshed;
     }
 

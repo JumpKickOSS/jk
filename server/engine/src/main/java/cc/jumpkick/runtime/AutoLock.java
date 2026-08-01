@@ -245,6 +245,9 @@ public final class AutoLock {
             JkBuild effective = scope.effective();
             Path scopeDir = scope.lockDir();
 
+            // Digest captured before resolving: a manifest edit mid-re-lock must leave a lock
+            // that reads as stale (JK-1357).
+            String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(scopeDir);
             Cas cas = JkStores.cas(cache);
             cc.jumpkick.repo.RepoGroup repos =
                     RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(scopeDir));
@@ -280,7 +283,7 @@ public final class AutoLock {
             // a version/group bump stays frozen in the lockfile until a manual `jk lock`.
             updated = cc.jumpkick.lock.LockfileModules.stamp(updated, scopeDir);
 
-            LockfileWriter.write(updated, lockFile);
+            LockfileWriter.write(updated, lockFile, manifestsSha);
             AccessLedger.atDefaultPath().touchLock(updated);
             return updated;
         } catch (cc.jumpkick.resolver.pubgrub.UnsatisfiableException e) {
