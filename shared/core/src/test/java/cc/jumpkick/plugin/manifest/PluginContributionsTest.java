@@ -269,4 +269,39 @@ class PluginContributionsTest {
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("more than one predicate");
     }
+
+    @Test
+    void kotlin_project_condition_gates_platform_deps_on_the_resolved_project() {
+        // The condition must be evaluated against the RESOLVED project — a thin workspace
+        // member inherits kotlin from its root, so the pre-inheritance fold sees kotlin
+        // absent and would drop this contribution (WorkspaceResolve re-folds post-inherit).
+        PluginDescriptor manifest = PluginDescriptors.parse(
+                """
+                [plugin]
+                id = "ktextra"
+                table = "ktextra"
+
+                [[contribute.platform-dependency]]
+                coordinate = "com.acme:kt-bom:1.0.0"
+                when = { kotlin-project = true }
+                """,
+                "p.toml");
+        var configs = java.util.Map.of(
+                "ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
+
+        JkBuild.Project thin =
+                JkBuild.Project.builder("g", "m", "1.0").jdkMajor(21).java(21).build();
+        assertThat(PluginContributions.platformDependencies(thin, false, configs, java.util.List.of(manifest)))
+                .as("no kotlin → condition false")
+                .isEmpty();
+
+        JkBuild.Project resolved = JkBuild.Project.builder("g", "m", "1.0")
+                .jdkMajor(21)
+                .java(21)
+                .kotlin(cc.jumpkick.model.VersionSelector.parse("=2.4.0"))
+                .build();
+        assertThat(PluginContributions.platformDependencies(resolved, false, configs, java.util.List.of(manifest)))
+                .extracting(PluginContributions.PlatformDep::module)
+                .containsExactly("com.acme:kt-bom");
+    }
 }

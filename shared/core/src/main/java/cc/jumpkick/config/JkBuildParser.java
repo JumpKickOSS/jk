@@ -1678,6 +1678,29 @@ public final class JkBuildParser {
     /**
      * Merge plugin platform contributions into deps; user-declared modules win (no duplicates).
      */
+    /**
+     * Re-fold conditioned plugin platform contributions against the RESOLVED project.
+     * {@code parseLocal} folds them before workspace inheritance, so a manifest condition like
+     * {@code kotlin-project} evaluates against the thin manifest (kotlin not yet inherited) and
+     * conditioned deps silently never contribute. Idempotent: modules already declared (including
+     * everything the pre-resolution fold added) are skipped.
+     */
+    static JkBuild reapplyPlatformContributions(Path moduleDir, JkBuild module) {
+        try {
+            List<PluginDescriptor> manifests = PluginTableRegistry.manifestsFor(moduleDir, module.plugins());
+            return module.withDependencies(withPlatformContributions(
+                    module.dependencies(),
+                    module.project(),
+                    module.nativeConfig().isPresent(),
+                    module.pluginConfigs(),
+                    manifests));
+        } catch (RuntimeException e) {
+            // Contribution refolding is best-effort here — parseLocal already surfaced real
+            // manifest errors.
+            return module;
+        }
+    }
+
     private static JkBuild.Dependencies withPlatformContributions(
             JkBuild.Dependencies deps,
             JkBuild.Project project,
