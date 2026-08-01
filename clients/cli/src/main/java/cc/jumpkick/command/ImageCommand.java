@@ -85,6 +85,29 @@ public final class ImageCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", jkBuildPath + " not found."));
             return Exit.NO_INPUT;
         }
+        // -m/--modules: an image is built for exactly one module — redirect to it (JK-1360).
+        String modulesSpec = in.value("modules").orElse(null);
+        String affectedSince = in.value("affected-since").orElse(null);
+        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
+            cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(jkBuildPath);
+            var selected =
+                    cc.jumpkick.config.ModuleSelection.resolveOptional(projectDir, entry, modulesSpec, affectedSince);
+            if (selected != null && !selected.ok()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Image", selected.errorMessage()));
+                return Exit.CONFIG;
+            }
+            if (selected != null) {
+                if (selected.moduleDirs().size() != 1) {
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                            "Image",
+                            "an image is built for exactly one module — the selector matched "
+                                    + selected.moduleDirs().size()));
+                    return Exit.USAGE;
+                }
+                projectDir = selected.moduleDirs().iterator().next();
+                jkBuildPath = projectDir.resolve("jk.toml");
+            }
+        }
         Path cache = cacheDirOverride != null ? cacheDirOverride : JkDirs.cache();
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         String module = BuildCommand.buildTarget(jkBuildPath, projectDir);
