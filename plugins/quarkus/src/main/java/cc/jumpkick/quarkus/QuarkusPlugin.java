@@ -28,7 +28,7 @@ import java.util.Locale;
 import java.util.stream.Stream;
 
 /**
- * Quarkus build plugin/1160/1202): {@code quarkus-augment} step + {@code quarkus-fast-jar}
+ * Quarkus build plugin: {@code quarkus-augment} step + {@code quarkus-fast-jar}
  * packager.
  *
  * <p>Augmentation forks {@link QuarkusAugmentMain} on a BOM-aligned bootstrap tool classpath

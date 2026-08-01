@@ -243,7 +243,7 @@ public final class BuildCommand implements CliCommand {
         // OSC 0 tab/window title while the live build region is open.
         view.setWindowTitle("JumpKick - Building " + projectGavLabel(entryDir, entryBuild) + "...");
         AggregateContext earlyAgg = new AggregateContext(view);
-        // Do not client-seed a "checking" phase rowthe engine owns Checking /
+        // Do not client-seed a "checking" phase row — the engine owns Checking /
         // Lock / Graph preflight events on the single build RPC. A seed left a
         // stale Checking row until checking 1/1.
 

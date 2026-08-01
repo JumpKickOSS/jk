@@ -1,4 +1,4 @@
-# Built-in Quarkus build plugin — declarative layer/1159/1160/1202).
+# Built-in Quarkus build plugin — declarative layer.
 # Worker code (augment + fast-jar packager) lands in the jar; BOM + scaffold are pure data.
 
 [plugin]
