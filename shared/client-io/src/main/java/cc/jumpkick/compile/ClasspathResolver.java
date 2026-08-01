@@ -3,15 +3,23 @@ package cc.jumpkick.compile;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.lock.Lockfile;
+import cc.jumpkick.model.Dependency;
+import cc.jumpkick.model.JkBuild;
+import cc.jumpkick.model.PackageId;
 import cc.jumpkick.model.Scope;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Queue;
 import java.util.Set;
 
 /**
@@ -21,6 +29,10 @@ import java.util.Set;
  *
  * <p>This is a pure name-resolution step: it doesn't fetch anything. {@code jk sync} ensures the
  * CAS is populated.
+ *
+ * <p>Workspace locks are a <strong>union</strong> of every module's graph. Prefer
+ * {@link #classpathClosure} / {@link #entriesForClosure} for packaging (assembly, native-image)
+ * so a fat jar only embeds the module's runtime closure — not the whole monorepo lock (JK-1345).
  */
 public final class ClasspathResolver {
 
@@ -67,6 +79,36 @@ public final class ClasspathResolver {
     }
 
     /**
+     * Transitive closure of {@code rootModules} walked through the lockfile dependency graph,
+     * then resolved to jar paths. Roots may be bare {@code g:a} or full package keys; workspace /
+     * git / path refs are ignored. Used by assembly and native-image packaging so a monorepo lock
+     * does not dump every module's deps into one fat jar (JK-1345).
+     */
+    public List<Path> classpathClosure(Lockfile lock, Collection<String> rootModules, Set<Scope> scopes) {
+        List<Path> result = new ArrayList<>();
+        for (Entry entry : entriesForClosure(lock, rootModules, scopes)) {
+            if (entry.jar() != null) result.add(entry.jar());
+        }
+        return result;
+    }
+
+    /**
+     * Declared external dependency modules on {@code project} in {@code scopes} (skips workspace /
+     * git / path). Suitable seeds for {@link #classpathClosure}.
+     */
+    public static Set<String> declaredExternalRoots(JkBuild project, Set<Scope> scopes) {
+        LinkedHashSet<String> roots = new LinkedHashSet<>();
+        for (Scope scope : scopes) {
+            for (Dependency dep : project.dependencies().of(scope)) {
+                if (dep.isWorkspace() || dep.isGit() || dep.isPath()) continue;
+                String module = dep.module();
+                if (module != null && !module.isBlank()) roots.add(module);
+            }
+        }
+        return roots;
+    }
+
+    /**
      * A resolved classpath element with the lockfile artifact it came from. {@code container} is
      * the exploded archive dir for artifacts whose packaging is a container (an AAR: res/,
      * AndroidManifest.xml, R.txt live there; {@code jar} is its {@code classes.jar}) — null for
@@ -92,8 +134,94 @@ public final class ClasspathResolver {
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.inAnyScope(scopes)) matched.add(pkg);
         }
-        List<Lockfile.Artifact> selected = selectPerModule(matched, scopes);
+        return resolveEntries(selectPerModule(matched, scopes));
+    }
 
+    /**
+     * As {@link #classpathClosure}, but keeping each path paired with its lockfile artifact.
+     */
+    public List<Entry> entriesForClosure(Lockfile lock, Collection<String> rootModules, Set<Scope> scopes) {
+        List<Lockfile.Artifact> closure = reachableArtifacts(lock, rootModules);
+        List<Lockfile.Artifact> matched = new ArrayList<>();
+        for (Lockfile.Artifact pkg : closure) {
+            if (pkg.inAnyScope(scopes)) matched.add(pkg);
+        }
+        // Prefer main-scoped dual rows when the walk hit both; same collapse as the full-lock path.
+        return resolveEntries(selectPerModule(matched, scopes));
+    }
+
+    /**
+     * BFS from {@code rootModules} through lock {@code deps} edges. Roots that do not resolve in
+     * the lock are skipped (caller may still surface missing-dep diagnostics elsewhere).
+     */
+    static List<Lockfile.Artifact> reachableArtifacts(Lockfile lock, Collection<String> rootModules) {
+        if (rootModules == null || rootModules.isEmpty()) return List.of();
+        Map<String, Lockfile.Artifact> byKey = indexArtifacts(lock);
+        LinkedHashSet<Lockfile.Artifact> visited = new LinkedHashSet<>();
+        Queue<String> queue = new ArrayDeque<>();
+        Set<String> enqueued = new HashSet<>();
+        for (String root : rootModules) {
+            if (root == null || root.isBlank()) continue;
+            if (Dependency.isWorkspaceRef(root)
+                    || root.startsWith(Dependency.GIT_PREFIX)
+                    || root.startsWith(Dependency.PATH_PREFIX)) {
+                continue;
+            }
+            if (enqueued.add(root)) queue.add(root);
+        }
+        while (!queue.isEmpty()) {
+            String key = queue.poll();
+            Lockfile.Artifact pkg = lookup(byKey, key);
+            if (pkg == null || !visited.add(pkg)) continue;
+            for (String depRef : pkg.deps()) {
+                String child = stripVersion(depRef);
+                if (child.isBlank()) continue;
+                if (enqueued.add(child)) queue.add(child);
+            }
+        }
+        return new ArrayList<>(visited);
+    }
+
+    /** Index lock rows by package key, bare name, and default-jar GA for declared-root lookup. */
+    static Map<String, Lockfile.Artifact> indexArtifacts(Lockfile lock) {
+        Map<String, Lockfile.Artifact> result = new HashMap<>();
+        for (Lockfile.Artifact pkg : lock.artifacts()) {
+            result.put(pkg.name(), pkg);
+            result.put(pkg.packageKey(), pkg);
+            if (PackageId.isMavenPackageKey(pkg.name())) {
+                PackageId id = PackageId.parse(pkg.name());
+                if (id.isDefaultJar()) {
+                    result.put(id.ga(), pkg);
+                } else {
+                    result.putIfAbsent(id.ga(), pkg);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static Lockfile.Artifact lookup(Map<String, Lockfile.Artifact> byKey, String moduleOrKey) {
+        Lockfile.Artifact direct = byKey.get(moduleOrKey);
+        if (direct != null) return direct;
+        if (!PackageId.isMavenPackageKey(moduleOrKey)) return null;
+        try {
+            PackageId id = PackageId.parse(moduleOrKey);
+            Lockfile.Artifact byKeyHit = byKey.get(id.key());
+            if (byKeyHit != null) return byKeyHit;
+            return byKey.get(id.ga());
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** {@code g:a:jar:@1.2.3} / {@code g:a@1.2.3} → package key or GA without version pin. */
+    static String stripVersion(String depRef) {
+        if (depRef == null) return "";
+        int at = depRef.indexOf('@');
+        return at > 0 ? depRef.substring(0, at) : depRef;
+    }
+
+    private List<Entry> resolveEntries(List<Lockfile.Artifact> selected) {
         List<Entry> result = new ArrayList<>(selected.size());
         cc.jumpkick.task.AccessLedger ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
         for (Lockfile.Artifact pkg : selected) {

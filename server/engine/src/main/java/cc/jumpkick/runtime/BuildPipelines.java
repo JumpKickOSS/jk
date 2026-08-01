@@ -14,6 +14,7 @@ import cc.jumpkick.compile.KotlincRequest;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.config.WorkspaceClasspath;
+import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.JavaHomes;
@@ -44,7 +45,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -383,7 +387,7 @@ public final class BuildPipelines {
             if (!jkBuild.plugins().isEmpty() && PluginDescriptorOps.ensureMaterialized(in.dir(), in.cache())) {
                 jkBuild = JkBuildParser.reparse(in.buildFile());
             }
-            // CLI packaging override (jk assembly --shrink / --fat) wins over jk.toml for this run.
+            // CLI packaging override (jk assemble --shrink / --fat) wins over jk.toml for this run.
             // Read from Inputs.session (not ambient SessionContext) — single-build constructs the
             // pipeline outside SessionContext.where.
             jkBuild = applyAssemblyOverride(jkBuild, in.session());
@@ -2450,7 +2454,7 @@ public final class BuildPipelines {
                     // compile cache restores byte-identical classes, the key recomputes the
                     // same, and the marker is found. The green counts ride the record so the
                     // skip path can replay them in its summary.
-                    // Always store on success — including --rebuild/--force. Rerun only means
+                    // Always store on success — including --redo/--force. Rerun only means
                     // "do not restore/skip the runner"; the marker still uses the normal
                     // content key (not a verify scratch salt), so the next explain must see it
                     // (same contract as compile). Skip only when the key failed open.
@@ -3295,30 +3299,8 @@ public final class BuildPipelines {
                     BuildLayout layout = ctx.require(LAYOUT);
                     Path classes = ctx.require(MAIN_CLASSES);
                     Path assemblyJar = layout.assemblyJar();
-                    List<Path> depJars = new ArrayList<>();
-                    if (Files.exists(lockFile)) {
-                        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
-                        depJars.addAll(resolver.classpathFor(LockfileReader.read(lockFile), ClasspathResolver.RUNTIME));
-                        // Workspace siblings are filtered out of the lockfile by
-                        // WorkspaceMerge, but a fat jar must bundle them (and their
-                        // own transitive external deps) or it can't run standalone
-                        // e.g. a plugin jar would be missing PluginMain.
-                        WorkspaceClasspath.Result siblings = WorkspaceClasspath.resolve(
-                                layout.moduleRoot(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-                        for (Path j : siblings.jars()) {
-                            if (!depJars.contains(j)) depJars.add(j);
-                        }
-                        for (Path sibLock : siblings.siblingLockfiles()) {
-                            try {
-                                for (Path p : resolver.classpathFor(
-                                        LockfileReader.read(sibLock), ClasspathResolver.RUNTIME)) {
-                                    if (!depJars.contains(p)) depJars.add(p);
-                                }
-                            } catch (Exception ignored) {
-                                /* best-effort */
-                            }
-                        }
-                    }
+                    // Module-scoped runtime closure (not the whole workspace lock) — JK-1345.
+                    List<Path> depJars = assemblyDependencyJars(layout.moduleRoot(), project, lockFile, cache);
                     // Packaging cache: the fat jar is a pure function of the main
                     // classes, the bundled dependency jars' content, the main-class,
                     // and the manifest.
@@ -3521,30 +3503,9 @@ public final class BuildPipelines {
                     } else {
                         classpath.add(mainJar);
                     }
-                    ClasspathResolver cpResolver = new ClasspathResolver(JkStores.cas(cache));
-                    if (Files.exists(lockFile)) {
-                        Lockfile lock = LockfileReader.read(lockFile);
-                        classpath.addAll(cpResolver.classpathFor(lock, ClasspathResolver.RUNTIME));
-                    }
-                    // Add workspace sibling JARs (and their external transitive deps)
-                    // so native-image can resolve all referenced classes.
-                    try {
-                        cc.jumpkick.config.WorkspaceClasspath.Result siblings =
-                                cc.jumpkick.config.WorkspaceClasspath.resolve(
-                                        dir, project, Set.of(Scope.EXPORT, Scope.MAIN));
-                        for (java.nio.file.Path sj : siblings.jars()) {
-                            if (!classpath.contains(sj)) classpath.add(sj);
-                        }
-                        for (java.nio.file.Path sibLock : siblings.siblingLockfiles()) {
-                            try {
-                                Lockfile sibLockfile = LockfileReader.read(sibLock);
-                                for (Path p : cpResolver.classpathFor(sibLockfile, ClasspathResolver.RUNTIME)) {
-                                    if (!classpath.contains(p)) classpath.add(p);
-                                }
-                            } catch (Exception ignored) {
-                            }
-                        }
-                    } catch (Exception ignored) {
+                    // Module-scoped runtime closure + workspace sibling jars (JK-1345).
+                    for (Path p : assemblyDependencyJars(dir, project, lockFile, cache)) {
+                        if (!classpath.contains(p)) classpath.add(p);
                     }
 
                     // Reachability metadata (general, not Boot-specific): third-party libs
@@ -3773,6 +3734,85 @@ public final class BuildPipelines {
             }
         }
         return cp;
+    }
+
+    /**
+     * Jars to embed in an assembly / native-image classpath for one module: the lockfile
+     * <em>transitive</em> runtime closure of that module (and its workspace siblings' main/export
+     * external deps), plus sibling thin jars. Never the whole workspace lock (JK-1345).
+     */
+    static List<Path> assemblyDependencyJars(Path moduleDir, JkBuild project, Path lockFile, Path cache)
+            throws IOException {
+        List<Path> depJars = new ArrayList<>();
+        if (lockFile == null || !Files.exists(lockFile)) {
+            // Still try siblings when the lock is missing (incomplete tree).
+            try {
+                WorkspaceClasspath.Result siblings =
+                        WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+                depJars.addAll(siblings.jars());
+            } catch (Exception ignored) {
+                /* best-effort */
+            }
+            return depJars;
+        }
+        ClasspathResolver resolver = new ClasspathResolver(JkStores.cas(cache));
+        Lockfile lock = LockfileReader.read(lockFile);
+        WorkspaceClasspath.Result siblings =
+                WorkspaceClasspath.resolve(moduleDir, project, Set.of(Scope.EXPORT, Scope.MAIN));
+
+        LinkedHashSet<String> roots = new LinkedHashSet<>();
+        roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
+        // Sibling modules contribute their own MAIN/EXPORT external roots; their third-party
+        // transitive deps are then walked via the lock (same graph the sibling was locked with).
+        for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
+            roots.addAll(ClasspathResolver.declaredExternalRoots(
+                    sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
+        }
+        depJars.addAll(resolver.classpathClosure(lock, roots, ClasspathResolver.RUNTIME));
+        for (Path j : siblings.jars()) {
+            if (!depJars.contains(j)) depJars.add(j);
+        }
+        return depJars;
+    }
+
+    /**
+     * Load workspace unit manifests whose {@code group:name} is in {@code siblingCoords}. Used to
+     * seed assembly external roots for the module's workspace dependency closure.
+     */
+    static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords)
+            throws IOException {
+        if (siblingCoords == null || siblingCoords.isEmpty()) return List.of();
+        Set<String> want = new HashSet<>(siblingCoords);
+        Path root;
+        JkBuild rootManifest;
+        if (project.isWorkspaceRoot()) {
+            root = moduleDir;
+            rootManifest = project;
+        } else {
+            var rootOpt = WorkspaceLocator.findRoot(moduleDir);
+            if (rootOpt.isEmpty()) return List.of();
+            root = rootOpt.get();
+            rootManifest = JkBuildParser.parse(root.resolve("jk.toml"));
+            if (!rootManifest.isWorkspaceRoot()) return List.of();
+        }
+        List<JkBuild> out = new ArrayList<>();
+        for (String moduleName : rootManifest.workspace().modules()) {
+            Path unitDir = root.resolve(moduleName);
+            Path manifest = unitDir.resolve("jk.toml");
+            if (!Files.isRegularFile(manifest)) continue;
+            JkBuild unit;
+            try {
+                unit = JkBuildParser.parse(manifest);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            String coord = unit.project().group() + ":" + unit.project().name();
+            if (want.contains(coord)) out.add(unit);
+        }
+        // Root is a unit too when a member depends on it.
+        String rootCoord = rootManifest.project().group() + ":" + rootManifest.project().name();
+        if (want.contains(rootCoord)) out.add(rootManifest);
+        return out;
     }
 
     /**
@@ -4154,7 +4194,7 @@ public final class BuildPipelines {
      * true} when a cached artifact for {@code key} was hard-linked back into {@code baseDir} — the
      * caller then skips the (re)packaging work.
      *
-     * <p>{@code --rebuild}/{@code --force} skip <em>restore</em> (always re-package) but still
+     * <p>{@code --redo}/{@code --force} skip <em>restore</em> (always re-package) but still
      * {@link #storePackaged store} — same contract as {@link JavaIncrementalCompile}: the next
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
@@ -4170,7 +4210,7 @@ public final class BuildPipelines {
 
     /**
      * Record a freshly-produced packaging artifact so a later build / explain can skip it. Writes
-     * even under {@code --rebuild} — rebuild only means "do not restore/skip work", not "do not
+     * even under {@code --redo} — redo only means "do not restore/skip work", not "do not
      * teach the cache" (parity with compile). {@code persist=false} is {@code jk verify}'s scratch
      * rebuild: packaging DOES run there (the artifact is what verify diffs), its keys embed the
      * unique scratch path so they can never recur, and a store would be a permanent orphan record
