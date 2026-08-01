@@ -44,13 +44,16 @@ public final class LibraryRegistryClient {
     }
 
     /**
-     * GET {@code source}, sending {@code If-None-Match} when {@code etagFile} holds a prior ETag.
-     * Throws on any network error or non-{200,304} status — callers decide whether that's fatal
-     * ({@code jk library update}) or something to swallow and fall back from ({@code jk lock}).
+     * GET {@code source}, sending {@code If-None-Match} when {@code etagFile} holds a prior ETag
+     * <em>and</em> {@code cacheFile} actually exists non-empty. An orphan sidecar (cache deleted or
+     * pruned, etag left behind) must never turn into a 304 — the caller would have nothing to fall
+     * back on and, with the sidecar still in place, would loop that 304 forever. Throws on any
+     * network error or non-{200,304} status — callers decide whether that's fatal ({@code jk
+     * library update}) or something to swallow and fall back from ({@code jk lock}).
      */
-    public Result fetch(URI source, Path etagFile) throws IOException, InterruptedException {
+    public Result fetch(URI source, Path etagFile, Path cacheFile) throws IOException, InterruptedException {
         Map<String, String> headers = new LinkedHashMap<>();
-        String etag = readEtag(etagFile);
+        String etag = isNonEmptyFile(cacheFile) ? readEtag(etagFile) : null;
         if (etag != null) headers.put("If-None-Match", etag);
 
         HttpResponse<byte[]> response = http.get(source, headers);
@@ -67,5 +70,13 @@ public final class LibraryRegistryClient {
         if (!Files.isRegularFile(etagFile)) return null;
         String value = Files.readString(etagFile, StandardCharsets.UTF_8).strip();
         return value.isBlank() ? null : value;
+    }
+
+    private static boolean isNonEmptyFile(Path file) {
+        try {
+            return Files.isRegularFile(file) && Files.size(file) > 0;
+        } catch (IOException e) {
+            return false;
+        }
     }
 }

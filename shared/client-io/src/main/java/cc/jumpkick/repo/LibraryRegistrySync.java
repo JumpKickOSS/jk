@@ -43,9 +43,11 @@ public final class LibraryRegistrySync {
         Objects.requireNonNull(source, "source");
         Objects.requireNonNull(cacheFile, "cacheFile");
         Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
-        boolean missing = !isNonEmptyFile(cacheFile);
         try {
-            LibraryRegistryClient.Result result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
+            // The client skips If-None-Match when cacheFile is missing/empty, so an orphan etag
+            // sidecar can never 304 us into returning without materializing the file.
+            LibraryRegistryClient.Result result =
+                    new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
             if (result instanceof LibraryRegistryClient.Result.Unchanged) {
                 return;
             }
@@ -65,17 +67,6 @@ public final class LibraryRegistrySync {
             // Fail soft: missing → bundled floor; present → keep stale. Lock must not fail solely
             // because the registry is unreachable (except operators may still lack short names only
             // present upstream — then parse reports unknown library).
-            if (missing) {
-                // leave absent
-            }
-        }
-    }
-
-    private static boolean isNonEmptyFile(Path file) {
-        try {
-            return Files.isRegularFile(file) && Files.size(file) > 0;
-        } catch (IOException e) {
-            return false;
         }
     }
 }

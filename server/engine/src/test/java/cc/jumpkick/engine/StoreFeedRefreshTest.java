@@ -167,6 +167,26 @@ class StoreFeedRefreshTest {
     }
 
     @Test
+    void missing_library_file_with_orphan_etag_is_rewritten(@TempDir Path tmp) throws Exception {
+        Path libs = tmp.resolve("libs.global.toml");
+        Path jdks = tmp.resolve("jdks.json");
+        Files.write(jdks, JDKS_BODY);
+        Files.setLastModifiedTime(jdks, FileTime.from(Instant.now()));
+        // Cache pruned but the sidecar survived: a conditional GET would 304 and the file
+        // would then stay missing on every 12 h tick, forever.
+        Files.writeString(tmp.resolve(".libs.global.toml.etag"), ETAG);
+
+        try (StoreFeedRefresh refresh = new StoreFeedRefresh(
+                s -> {}, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, null)) {
+            refresh.tickQuietly();
+        }
+        assertThat(libs).exists();
+        assertThat(Files.readAllBytes(libs)).isEqualTo(LIBS_BODY);
+        assertThat(lastIfNoneMatch).isNull(); // unconditional — nothing to be "unchanged" against
+        assertThat(libHits.get()).isEqualTo(1);
+    }
+
+    @Test
     void after_tick_exceptions_do_not_escape(@TempDir Path tmp) throws Exception {
         Path libs = tmp.resolve("libs.global.toml");
         Path jdks = tmp.resolve("jdks.json");

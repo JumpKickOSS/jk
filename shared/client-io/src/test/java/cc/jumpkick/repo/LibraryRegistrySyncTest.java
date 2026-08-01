@@ -72,6 +72,18 @@ class LibraryRegistrySyncTest {
     }
 
     @Test
+    void missing_file_with_orphan_etag_is_still_downloaded(@TempDir Path tmp) throws Exception {
+        Path cache = tmp.resolve("libs.global.toml");
+        // Cache deleted (user refetch / partial prune) but the sidecar survived: the server
+        // would answer 304 to a conditional GET, which must not leave the file absent forever.
+        Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
+        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        assertThat(cache).exists();
+        assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
+        assertThat(hits.get()).isEqualTo(1);
+    }
+
+    @Test
     void offline_never_hits_the_network(@TempDir Path tmp) {
         Path cache = tmp.resolve("libs.global.toml");
         LibraryRegistrySync.ensurePresent(true, uri, cache);
