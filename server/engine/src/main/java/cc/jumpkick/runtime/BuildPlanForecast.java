@@ -487,6 +487,30 @@ public final class BuildPlanForecast {
                     }
                 }
             }
+
+            // ---- restore gate ----
+            // Right after jk clean every step can predict CACHED (action keys survive the wipe
+            // by design), but a clean-forecast module is never scheduled, so nothing restores
+            // target/ and workspace links dangle. When the promised outputs are absent, add a
+            // restore step: the module schedules and its steps resolve as cheap cache restores.
+            // The name is deliberately not compile-*/package-jar so it never seeds downstream
+            // dirtiness — restored outputs are byte-identical to what consumers hashed.
+            if (steps.stream().allMatch(BuildPlan.Step::cached)) {
+                boolean outputsAbsent = false;
+                if (producesJar) {
+                    outputsAbsent = !Files.isRegularFile(layout.mainJar())
+                            || !classesDirHasContent(layout.classesDir())
+                            || (project.assembly() && !Files.isRegularFile(layout.assemblyJar()));
+                } else if (!packageResourceRoots(dir, compact, project).isEmpty()) {
+                    // Resources-only module: its classes tree (copied resources) is consumed
+                    // straight off sibling classpaths, so an empty tree is a missing output too.
+                    outputsAbsent = !classesDirHasContent(layout.classesDir());
+                }
+                if (outputsAbsent) {
+                    steps.add(new BuildPlan.Step(
+                            "restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
+                }
+            }
         } catch (Exception e) {
             // Degrade gracefully — never crash explain over one unparseable module.
             steps.add(new BuildPlan.Step(
