@@ -62,13 +62,43 @@ class LibraryRegistrySyncTest {
     }
 
     @Test
-    void present_file_revalidates_with_etag(@TempDir Path tmp) throws Exception {
+    void fresh_file_skips_the_network_entirely(@TempDir Path tmp) throws Exception {
+        // The resident engine keeps the file warm on the same cadence; a foreground command
+        // must not stack a blocking fetch on top of a recently-downloaded registry.
         Path cache = tmp.resolve("libs.global.toml");
         Files.write(cache, BODY);
         Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
         LibraryRegistrySync.ensurePresent(false, uri, cache);
+        assertThat(hits.get()).isZero();
+        assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
+    }
+
+    @Test
+    void stale_file_revalidates_with_etag_and_rearms_freshness(@TempDir Path tmp) throws Exception {
+        Path cache = tmp.resolve("libs.global.toml");
+        Files.write(cache, BODY);
+        Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
+        java.time.Instant stale =
+                java.time.Instant.now().minus(LibraryRegistrySync.FRESH_FOR).minusSeconds(60);
+        Files.setLastModifiedTime(cache, java.nio.file.attribute.FileTime.from(stale));
+        LibraryRegistrySync.ensurePresent(false, uri, cache);
         assertThat(hits.get()).isEqualTo(1);
         assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
+        // The 304 re-armed the window: an immediate second call stays off the network.
+        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        assertThat(hits.get()).isEqualTo(1);
+    }
+
+    @Test
+    void missing_file_with_orphan_etag_is_still_downloaded(@TempDir Path tmp) throws Exception {
+        Path cache = tmp.resolve("libs.global.toml");
+        // Cache deleted (user refetch / partial prune) but the sidecar survived: the server
+        // would answer 304 to a conditional GET, which must not leave the file absent forever.
+        Files.writeString(LibraryCatalog.etagFileFor(cache), ETAG);
+        LibraryRegistrySync.ensurePresent(false, uri, cache);
+        assertThat(cache).exists();
+        assertThat(Files.readAllBytes(cache)).isEqualTo(BODY);
+        assertThat(hits.get()).isEqualTo(1);
     }
 
     @Test

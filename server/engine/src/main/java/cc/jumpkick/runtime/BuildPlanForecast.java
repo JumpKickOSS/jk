@@ -58,6 +58,10 @@ public final class BuildPlanForecast {
         // Dirs whose *main output* will change this build — seeds downstream and
         // cross-module dirtiness. Filled as we walk in dependency order.
         Set<Path> dirty = new java.util.HashSet<>();
+        // Jar CAS shas recovered from each walked module's CURRENT package-jar record —
+        // consumers fingerprint wiped sibling jars from here, never from an unvalidated
+        // last-record pointer (which may name a different edit of the sibling).
+        Map<Path, String> restoredJarShas = new java.util.HashMap<>();
         for (BuildGraph.BuildUnit u : graph.topoOrder()) {
             boolean depDirty = false;
             for (Path dep : graph.edges().getOrDefault(u.dir(), Set.of())) {
@@ -67,7 +71,8 @@ public final class BuildPlanForecast {
                 }
             }
             long t0 = Perf.start();
-            BuildPlan.Module m = forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache);
+            BuildPlan.Module m =
+                    forecastModule(u, depDirty, force, skipTests, cas, actionCache, cache, restoredJarShas);
             Perf.end("forecast " + u.coord(), t0);
             // A module's consumed output changes — and so seeds downstream dirtiness
             // when its compile does real work (classes change) OR its jar will be
@@ -178,7 +183,8 @@ public final class BuildPlanForecast {
             boolean skipTests,
             Cas cas,
             ActionCache actionCache,
-            Path cache) {
+            Path cache,
+            Map<Path, String> restoredJarShas) {
         JkBuild project = u.manifest();
         Path dir = u.dir();
         List<BuildPlan.Step> steps = new ArrayList<>();
@@ -216,6 +222,11 @@ public final class BuildPlanForecast {
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
 
             boolean compileDirty = depDirty || force;
+            // The CURRENT compile-main action key when the content predictor ran — post-clean
+            // reconstruction must resolve the record for this key, never lastFor (the last
+            // record may belong to a different edit of the sources; see the revert scenario in
+            // BuildPlanForecastCleanPackageTest).
+            String compileMainKey = null;
 
             // ---- compile-main (Java) ----
             Path mainSrcDir = compact ? dir.resolve("src") : dir.resolve("src/main/java");
@@ -280,6 +291,7 @@ public final class BuildPlanForecast {
                     var pred = JavaIncrementalCompile.predict(
                             taskId, req, BuildIdentity.cacheKeyVersion(), actionCache, stateDir);
                     Perf.end("  predict-compile-main", tc);
+                    compileMainKey = pred.actionKey();
                     steps.add(compileStep("compile-main", pred, depDirty || force));
                     if (!steps.get(steps.size() - 1).cached()) compileDirty = true;
                 }
@@ -431,7 +443,7 @@ public final class BuildPlanForecast {
                         // best-effort: missing SBOM → key still includes empty sbom: like a null sbom
                     }
                 }
-                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache);
+                String classesTok = classesTokenForPackage(dir, compact, layout, project, actionCache, compileMainKey);
                 List<String> tokens = List.of(
                         "classes:" + classesTok,
                         "main:" + (mainClass == null ? "" : mainClass),
@@ -445,6 +457,16 @@ public final class BuildPlanForecast {
                         hit
                                 ? new BuildPlan.Step("package-jar", BuildPlan.Status.CACHED, "", key8(pkgKey))
                                 : new BuildPlan.Step("package-jar", BuildPlan.Status.RUN, "repackage", null));
+                if (hit && !Files.isRegularFile(jar)) {
+                    // Publish the wiped jar's content sha from THIS key's record so downstream
+                    // assembly forecasts fingerprint the same bytes the live restore produces.
+                    actionCache.lookup(pkgKey).ifPresent(rec -> rec.outputs().entrySet().stream()
+                            .filter(e -> e.getKey().endsWith(jar.getFileName().toString()))
+                            .map(Map.Entry::getValue)
+                            .findFirst()
+                            .or(() -> rec.outputs().values().stream().findFirst())
+                            .ifPresent(sha -> restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
+                }
             }
 
             // ---- package-assembly (fat jar) — only when configured ----
@@ -454,7 +476,8 @@ public final class BuildPlanForecast {
                     steps.add(new BuildPlan.Step(
                             "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
                 } else {
-                    boolean hit = assemblyActionCached(dir, project, layout, lock, lockFile, cas, actionCache, cache);
+                    boolean hit = assemblyActionCached(
+                            dir, project, layout, lock, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
                     steps.add(
                             hit
                                     ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
@@ -524,19 +547,30 @@ public final class BuildPlanForecast {
 
     /**
      * {@code classes:} fingerprint for package/assembly keys — live tree when present, else the
-     * compile action record merged with current resource roots (post-{@code jk clean} restore path).
+     * record of the CURRENT compile key ({@code compileMainKey}) merged with current resource
+     * roots (post-{@code jk clean} restore path). Never {@code lastFor}: after an edit → build →
+     * revert → clean, the last record names the other edit's outputs while the live build would
+     * restore the reverted ones — reconstruction must match the live restore or the forecast
+     * flips to false CACHED/RUN.
      */
     static String classesTokenForPackage(
-            Path dir, boolean compact, BuildLayout layout, JkBuild project, ActionCache actionCache)
+            Path dir,
+            boolean compact,
+            BuildLayout layout,
+            JkBuild project,
+            ActionCache actionCache,
+            String compileMainKey)
             throws IOException {
         Path classesDir = layout.classesDir();
         if (classesDirHasContent(classesDir)) {
             return ClasspathFingerprint.entry(classesDir);
         }
-        String compileTask = ActionKey.qualifiedTaskId("compile-main", classesDir);
-        Optional<ActionCache.ActionRecord> compile = actionCache.lastFor(compileTask);
-        Map<String, String> compileOut =
-                compile.map(ActionCache.ActionRecord::outputs).orElse(Map.of());
+        Map<String, String> compileOut = compileMainKey == null
+                ? Map.of()
+                : actionCache
+                        .lookup(compileMainKey)
+                        .map(ActionCache.ActionRecord::outputs)
+                        .orElse(Map.of());
         List<Path> resRoots = packageResourceRoots(dir, compact, project);
         if (compileOut.isEmpty() && resRoots.isEmpty()) {
             return ClasspathFingerprint.entry(classesDir); // missing:… — package key will miss
@@ -573,7 +607,7 @@ public final class BuildPlanForecast {
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
      * computes (classes + dep jar content + main + manifest). Sibling jars missing after clean are
-     * fingerprinted via their last {@code package-jar} CAS blobs when present.
+     * fingerprinted via the CAS shas the walk recovered from each sibling's current package record.
      */
     static boolean assemblyActionCached(
             Path dir,
@@ -583,11 +617,13 @@ public final class BuildPlanForecast {
             Path lockFile,
             Cas cas,
             ActionCache actionCache,
-            Path cache)
+            Path cache,
+            String compileMainKey,
+            Map<Path, String> restoredJarShas)
             throws IOException {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
-                dir, CompileSupport.isSimpleLayout(project.project(), dir), layout, project, actionCache);
+                dir, CompileSupport.isSimpleLayout(project.project(), dir), layout, project, actionCache, compileMainKey);
         List<Path> depJars = new ArrayList<>();
         if (Files.exists(lockFile)) {
             ClasspathResolver resolver = new ClasspathResolver(cas);
@@ -607,7 +643,7 @@ public final class BuildPlanForecast {
                 }
             }
         }
-        String depsTok = fingerprintDepJars(depJars, cas, actionCache);
+        String depsTok = fingerprintDepJars(depJars, cas, restoredJarShas);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
                 "deps:" + depsTok,
@@ -621,30 +657,32 @@ public final class BuildPlanForecast {
 
     /**
      * Content fingerprint of dep jars matching {@link ClasspathFingerprint#of}, recovering sibling
-     * jars wiped by {@code jk clean} from their last {@code package-jar} action record.
+     * jars wiped by {@code jk clean} from the CAS shas the walk pinned off each sibling's current
+     * package record.
      */
-    static String fingerprintDepJars(List<Path> depJars, Cas cas, ActionCache actionCache) throws IOException {
+    static String fingerprintDepJars(List<Path> depJars, Cas cas, Map<Path, String> restoredJarShas)
+            throws IOException {
         List<String> parts = new ArrayList<>(depJars.size());
         for (Path jar : depJars) {
-            parts.add(fingerprintJarOrCached(jar, cas, actionCache));
+            parts.add(fingerprintJarOrCached(jar, cas, restoredJarShas));
         }
         parts.sort(java.util.Comparator.naturalOrder());
         return cc.jumpkick.util.Hashing.sha256Hex(String.join("\n", parts));
     }
 
-    static String fingerprintJarOrCached(Path jar, Cas cas, ActionCache actionCache) throws IOException {
+    static String fingerprintJarOrCached(Path jar, Cas cas, Map<Path, String> restoredJarShas) throws IOException {
         if (Files.isRegularFile(jar)) {
             return ClasspathFingerprint.entry(jar);
         }
-        // After clean: sibling module jars live under target/ — recover content from last package.
-        String taskId = ActionKey.qualifiedTaskId("package-jar", jar);
-        Optional<ActionCache.ActionRecord> rec = actionCache.lastFor(taskId);
-        if (rec.isPresent()) {
-            for (var e : rec.get().outputs().entrySet()) {
-                Path blob = cas.pathFor(e.getValue());
-                if (Files.isRegularFile(blob)) {
-                    return ClasspathFingerprint.entry(blob);
-                }
+        // After clean: sibling jars live under target/ — recover content from the sha the walk
+        // pinned when the sibling's CURRENT package key hit. An unpinned wiped jar stays
+        // missing:… (assembly forecasts RUN — pessimistic, never a false hit): an unvalidated
+        // last-record pointer could name a different edit of the sibling.
+        String sha = restoredJarShas.get(jar.toAbsolutePath().normalize());
+        if (sha != null) {
+            Path blob = cas.pathFor(sha);
+            if (Files.isRegularFile(blob)) {
+                return ClasspathFingerprint.entry(blob);
             }
         }
         return ClasspathFingerprint.entry(jar); // missing:…

@@ -132,10 +132,16 @@ public final class ActionCache {
     }
 
     /**
-     * Clear the contents of {@code outputDir} and copy each cached output back from the CAS. Stale
-     * files from a prior compile are removed before restoring.
+     * Clear the contents of {@code outputDir} and copy each cached output back from the CAS,
+     * verifying every copied blob against its recorded digest. Stale files from a prior compile
+     * are removed before restoring. Returns {@code false} — with {@code outputDir} left empty —
+     * when a blob is missing or corrupt (the corrupt blob is dropped so the next store re-puts
+     * it), so the caller falls through to a real run instead of building on wrong bytes.
      */
-    public void restore(ActionRecord record, Path outputDir) throws IOException {
+    public boolean restore(ActionRecord record, Path outputDir) throws IOException {
+        for (String sha : record.outputs().values()) {
+            if (!Files.isRegularFile(cas.pathFor(sha))) return false;
+        }
         // Build-host compile freshness stamps (.jstamp/.kstamp) live inside the
         // classes tree but are NOT part of the cached compiled output — they're
         // written by a *later* step (write-stamp) of the previous build. Preserve
@@ -163,12 +169,58 @@ public final class ActionCache {
             // build, and a hard link would let that rewrite mutate the CAS blob (see
             // Cas.putFile). Costs O(bytes) instead of O(entries) — correctness wins.
             Files.createDirectories(target.getParent());
-            Files.copy(cas.pathFor(entry.getValue()), target);
+            // Digest while copying: the memo seed below asserts these exact bytes, so a
+            // truncated/corrupt blob must surface as a miss here — not as green tests over
+            // wrong classes downstream.
+            if (!copyVerified(cas.pathFor(entry.getValue()), target, entry.getValue())) {
+                dropCorruptBlob(entry.getValue());
+                deleteRecursively(outputDir);
+                Files.createDirectories(outputDir);
+                return false;
+            }
             // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
             FileHashMemo.rememberContent(target, entry.getValue());
             // Best-effort access journal — feeds the LRU evictor when the
             // user configures a cache size budget.
             ledger.touch(entry.getValue());
+        }
+        return true;
+    }
+
+    /**
+     * Copy {@code blob} to {@code target} computing SHA-256 on the way; true when the bytes match
+     * {@code expectedSha}. A mismatching target is deleted before returning false.
+     */
+    private static boolean copyVerified(Path blob, Path target, String expectedSha) throws IOException {
+        java.security.MessageDigest md;
+        try {
+            md = java.security.MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+        try (var in = Files.newInputStream(blob);
+                var out = new java.security.DigestOutputStream(
+                        Files.newOutputStream(
+                                target,
+                                java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                                java.nio.file.StandardOpenOption.WRITE),
+                        md)) {
+            in.transferTo(out);
+        }
+        if (expectedSha.equalsIgnoreCase(java.util.HexFormat.of().formatHex(md.digest()))) {
+            return true;
+        }
+        Files.deleteIfExists(target);
+        return false;
+    }
+
+    /** A blob whose bytes no longer match its name is garbage — drop it so the next store re-puts. */
+    private void dropCorruptBlob(String sha) {
+        try {
+            Files.deleteIfExists(cas.pathFor(sha));
+        } catch (IOException ignored) {
+            // best-effort hygiene
         }
     }
 
@@ -218,8 +270,12 @@ public final class ActionCache {
             if (!identicalTo(target, e.getValue())) {
                 Files.deleteIfExists(target);
                 // COPY, never link: a packager may later rewrite the target in place, and a link
-                // would let that rewrite mutate the blob (see Cas.putFile).
-                Files.copy(cas.pathFor(e.getValue()), target);
+                // would let that rewrite mutate the blob (see Cas.putFile). Digest while copying —
+                // the memo seed below asserts these exact bytes.
+                if (!copyVerified(cas.pathFor(e.getValue()), target, e.getValue())) {
+                    dropCorruptBlob(e.getValue());
+                    return false;
+                }
             }
             // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
             FileHashMemo.rememberContent(target, e.getValue());

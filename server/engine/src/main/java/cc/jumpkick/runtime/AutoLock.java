@@ -260,6 +260,12 @@ public final class AutoLock {
                 updated = updated.withKotlin(existing.kotlin());
             }
 
+            // Auto-relock fires precisely when jk.toml is newer than the lock — i.e. right
+            // after identity edits. lockConservative carries the OLD lock's [[module]] pins
+            // through, so stamp fresh identity like every explicit lock-write path does, or
+            // a version/group bump stays frozen in the lockfile until a manual `jk lock`.
+            updated = cc.jumpkick.lock.LockfileModules.stamp(updated, scopeDir);
+
             LockfileWriter.write(updated, lockFile);
             AccessLedger.atDefaultPath().touchLock(updated);
             return updated;

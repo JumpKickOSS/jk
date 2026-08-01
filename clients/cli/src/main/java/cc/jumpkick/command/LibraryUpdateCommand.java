@@ -62,7 +62,7 @@ public final class LibraryUpdateCommand implements CliCommand {
 
         LibraryRegistryClient.Result result;
         try {
-            result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
+            result = new LibraryRegistryClient(new Http()).fetch(source, etagFile, cacheFile);
         } catch (IOException e) {
             CliOutput.err(CommandWedge.fail("Library", "failed to reach " + source + "\n  " + e.getMessage()));
             return 1;

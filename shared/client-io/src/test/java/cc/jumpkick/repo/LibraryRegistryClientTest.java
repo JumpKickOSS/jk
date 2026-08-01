@@ -70,7 +70,7 @@ class LibraryRegistryClientTest {
     void first_fetch_with_no_etag_sidecar_returns_updated_with_body_and_etag(@TempDir Path dir) throws Exception {
         Path etagFile = dir.resolve(".libs.global.toml.etag");
 
-        var result = client().fetch(uri, etagFile);
+        var result = client().fetch(uri, etagFile, cacheFile(dir));
 
         assertThat(result).isInstanceOf(LibraryRegistryClient.Result.Updated.class);
         var updated = (LibraryRegistryClient.Result.Updated) result;
@@ -84,7 +84,7 @@ class LibraryRegistryClientTest {
         Path etagFile = dir.resolve(".libs.global.toml.etag");
         Files.writeString(etagFile, ETAG, StandardCharsets.UTF_8);
 
-        var result = client().fetch(uri, etagFile);
+        var result = client().fetch(uri, etagFile, cacheFile(dir));
 
         assertThat(result).isInstanceOf(LibraryRegistryClient.Result.Unchanged.class);
         assertThat(lastIfNoneMatch).isEqualTo(ETAG);
@@ -92,20 +92,54 @@ class LibraryRegistryClientTest {
     }
 
     @Test
+    void orphan_etag_without_cache_file_fetches_unconditionally(@TempDir Path dir) throws Exception {
+        Path etagFile = dir.resolve(".libs.global.toml.etag");
+        Files.writeString(etagFile, ETAG, StandardCharsets.UTF_8);
+        Path missingCache = dir.resolve("libs.global.toml"); // never written
+
+        var result = client().fetch(uri, etagFile, missingCache);
+
+        // A 304 here would be unrecoverable — there is no cache to be "unchanged" against.
+        assertThat(result).isInstanceOf(LibraryRegistryClient.Result.Updated.class);
+        assertThat(lastIfNoneMatch).isNull();
+    }
+
+    @Test
+    void orphan_etag_with_empty_cache_file_fetches_unconditionally(@TempDir Path dir) throws Exception {
+        Path etagFile = dir.resolve(".libs.global.toml.etag");
+        Files.writeString(etagFile, ETAG, StandardCharsets.UTF_8);
+        Path emptyCache = dir.resolve("libs.global.toml");
+        Files.createFile(emptyCache);
+
+        var result = client().fetch(uri, etagFile, emptyCache);
+
+        assertThat(result).isInstanceOf(LibraryRegistryClient.Result.Updated.class);
+        assertThat(lastIfNoneMatch).isNull();
+    }
+
+    @Test
     void stale_etag_still_yields_a_fresh_updated_body(@TempDir Path dir) throws Exception {
         Path etagFile = dir.resolve(".libs.global.toml.etag");
         Files.writeString(etagFile, "\"stale\"", StandardCharsets.UTF_8);
 
-        var result = client().fetch(uri, etagFile);
+        var result = client().fetch(uri, etagFile, cacheFile(dir));
 
         assertThat(result).isInstanceOf(LibraryRegistryClient.Result.Updated.class);
     }
 
     @Test
-    void non_200_non_304_status_throws(@TempDir Path dir) {
+    void non_200_non_304_status_throws(@TempDir Path dir) throws Exception {
         forceStatus = 503;
         Path etagFile = dir.resolve(".libs.global.toml.etag");
+        Path cacheFile = cacheFile(dir);
 
-        assertThatThrownBy(() -> client().fetch(uri, etagFile)).isInstanceOf(IOException.class);
+        assertThatThrownBy(() -> client().fetch(uri, etagFile, cacheFile)).isInstanceOf(IOException.class);
+    }
+
+    /** A present, non-empty cache file — the state under which conditional GET is allowed. */
+    private static Path cacheFile(Path dir) throws IOException {
+        Path cache = dir.resolve("libs.global.toml");
+        Files.write(cache, BODY);
+        return cache;
     }
 }

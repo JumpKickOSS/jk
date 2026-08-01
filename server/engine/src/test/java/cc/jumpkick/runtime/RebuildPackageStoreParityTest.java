@@ -67,7 +67,7 @@ class RebuildPackageStoreParityTest {
         Session session = Session.defaults().withConfig(rebuildConfig()).withCacheDir(cache);
         SessionContext.where(session, () -> {
             // Same store path the package step uses (must not no-op under rebuild).
-            BuildPipelines.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar));
+            BuildPipelines.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), true);
             return null;
         });
 
@@ -75,5 +75,29 @@ class RebuildPackageStoreParityTest {
         assertThat(ac.lookup(key))
                 .as("rebuild must persist package-jar action keys for the next explain/build")
                 .isPresent();
+    }
+
+    @Test
+    void ephemeral_actions_store_nothing(@TempDir Path tmp) throws Exception {
+        // jk verify's scratch rebuild DOES package (the artifact is what verify diffs), but its
+        // keys embed the unique scratch path — a store would be an unreachable orphan record
+        // plus CAS copies on every verify run, forever.
+        Path cache = tmp.resolve("cache");
+        Path jarDir = Files.createDirectories(tmp.resolve("jk-verify-scratch/target"));
+        Path jar = jarDir.resolve("lib.jar");
+        Files.writeString(jar, "jar-bytes");
+        String task = ActionKey.qualifiedTaskId("package-jar", jar);
+        List<String> tokens = List.of("classes:x", "main:", "sbom:", "manifest:" + Map.of());
+        String key = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokens);
+
+        Session session = Session.defaults().withCacheDir(cache);
+        SessionContext.where(session, () -> {
+            BuildPipelines.storePackagedForTest(cache, task, key, tokens, jarDir, List.of(jar), false);
+            return null;
+        });
+
+        assertThat(Files.exists(cache.resolve("actions")))
+                .as("persist=false must leave zero action-cache residue")
+                .isFalse();
     }
 }

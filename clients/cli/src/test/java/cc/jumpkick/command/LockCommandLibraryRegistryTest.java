@@ -100,11 +100,35 @@ class LockCommandLibraryRegistryTest {
         LockfileReader.clearCache();
     }
 
+    /** Age {@code file} past the client-side freshness window so a lock revalidates it. */
+    private static void makeStale(Path file) throws IOException {
+        Files.setLastModifiedTime(
+                file,
+                java.nio.file.attribute.FileTime.from(java.time.Instant.now()
+                        .minus(cc.jumpkick.repo.LibraryRegistrySync.FRESH_FOR)
+                        .minusSeconds(60)));
+    }
+
+    @Test
+    void lock_skips_a_fresh_catalog_without_touching_the_network(@TempDir Path tempDir) throws Exception {
+        // The resident engine keeps the file warm on the same cadence — a lock right after a
+        // download must not stack another blocking fetch on top.
+        Path libraryCache = tempDir.resolve("libs.global.toml");
+        Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
+
+        run("new", tempDir.toString());
+        int exit = lock(tempDir, libraryCache);
+
+        assertThat(exit).isEqualTo(0);
+        assertThat(registryHits.get()).isZero();
+    }
+
     @Test
     void lock_revalidates_an_existing_catalog_and_stores_the_fresh_body_and_etag(@TempDir Path tempDir)
             throws Exception {
         Path libraryCache = tempDir.resolve("libs.global.toml");
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
+        makeStale(libraryCache);
 
         run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
@@ -122,6 +146,7 @@ class LockCommandLibraryRegistryTest {
         String original = "[libraries]\nold = \"com.old:thing\"\n";
         Files.writeString(libraryCache, original);
         Files.writeString(LibraryCatalog.etagFileFor(libraryCache), ETAG);
+        makeStale(libraryCache);
 
         run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
@@ -149,11 +174,14 @@ class LockCommandLibraryRegistryTest {
     void lock_offline_skips_the_registry_entirely(@TempDir Path tempDir) throws Exception {
         Path libraryCache = tempDir.resolve("libs.global.toml");
         Files.writeString(libraryCache, "[libraries]\nold = \"com.old:thing\"\n");
+        makeStale(libraryCache);
 
         run("new", tempDir.toString());
         assertThat(lock(tempDir, libraryCache)).isEqualTo(0); // warm the jk-lock.toml
         assertThat(registryHits.get()).isEqualTo(1);
 
+        // Stale again — only --offline (not freshness) may skip the fetch below.
+        makeStale(libraryCache);
         mavenServer.stop(0);
         registryServer.stop(0); // any network attempt would now fail
         int exit = Jk.execute(
@@ -177,6 +205,7 @@ class LockCommandLibraryRegistryTest {
         Path libraryCache = tempDir.resolve("libs.global.toml");
         String original = "[libraries]\nold = \"com.old:thing\"\n";
         Files.writeString(libraryCache, original);
+        makeStale(libraryCache);
         registryStatus = 200; // handled below via a body override instead
         registryServer.stop(0);
         registryServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
