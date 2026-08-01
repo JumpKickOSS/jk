@@ -442,6 +442,13 @@ public final class LockPipelines {
                                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
+                        // jk update floats everything — including the Kotlin compiler pin, which
+                        // this pipeline used to drop from the lock entirely (JK-1371).
+                        String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
+                        if (kotlinVersion != null) {
+                            ctx.label("resolved kotlin " + kotlinVersion);
+                            lock = lock.withKotlin(kotlinVersion);
+                        }
                         ctx.put(LOCKFILE, lock);
                     } catch (Exception e) {
                         ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
@@ -737,9 +744,10 @@ public final class LockPipelines {
 
     /**
      * Resolve the project's {@code kotlin} version selector to a concrete Kotlin compiler release.
-     * Returns {@code null} for a Java project or when resolution can't complete.
+     * Returns {@code null} for a Java project or when resolution can't complete. Shared with
+     * {@link LockFlow} and the update pipeline so every lock-write path stamps the pin (JK-1371).
      */
-    private static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
+    static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
         if (!effective.project().isKotlin()) return null;
         VersionSelector selector = effective.project().kotlin();
         if (selector instanceof VersionSelector.Exact exact) {

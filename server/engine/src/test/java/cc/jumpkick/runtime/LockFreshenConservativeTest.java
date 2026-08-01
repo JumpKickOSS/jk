@@ -192,6 +192,30 @@ class LockFreshenConservativeTest {
         assertThat(libVersion(freshened.lockfile())).isEqualTo("1.0");
     }
 
+    @Test
+    void first_lock_of_a_kotlin_project_pins_the_compiler(@TempDir Path tmp) throws Exception {
+        // JK-1371: LockFlow (first-run/workspace freshen path) writes the kotlin pin like
+        // lockPipeline does.
+        serveLib("1.0");
+        serveLeaf("org.jetbrains.kotlin", "kotlin-compiler-embeddable", "2.1.0");
+        Files.writeString(tmp.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "demo"
+                version = "1.0.0"
+                jdk = 21
+                java = 21
+                kotlin = "2.1.0"
+
+                [dependencies]
+                lib = { group = "com.foo", name = "lib", version = "^1.0" }
+                """);
+
+        LockFlow.Result first = LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), false, base, false);
+        assertThat(first.status()).isZero();
+        assertThat(first.lockfile().kotlin()).isEqualTo("2.1.0");
+    }
+
     private static boolean hasArtifact(Lockfile lock, String ga) {
         return lock.artifacts().stream().anyMatch(a -> a.packageKey().startsWith(ga + ":"));
     }
