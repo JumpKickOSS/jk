@@ -55,6 +55,12 @@ tasks.withType<Test>().configureEach {
     // injected junit-jupiter test deps) and corrupting every later build on the
     // machine. The env var also reaches any jk subprocess a test forks.
     environment("JK_M2_LOCAL", layout.buildDirectory.dir("test-m2").get().asFile.absolutePath)
+    // The resident engine queues a cache GC on its 12h feed tick — immediately on startup when
+    // idle. In-process engines under test share the module's JK_HOME store, so that startup GC
+    // races any test fixture staging prune-eligible files (.put-* temps) for its own explicit
+    // prune request and eats them first (flaky counts). Explicit `jk cache prune` requests are
+    // unaffected by this switch.
+    environment("JK_AUTO_PRUNE", "false")
     // The embedded HTTP server is on by default (docs/http.md). Tests must not open listening
     // sockets as a side effect: engines spawned by integration tests would race the developer's
     // real engine (and each other, across parallel checkouts) for port 8910. The env var reaches
