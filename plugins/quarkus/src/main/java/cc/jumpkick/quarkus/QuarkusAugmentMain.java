@@ -401,7 +401,11 @@ public final class QuarkusAugmentMain {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     String name = dir.relativize(file).toString().replace('\\', '/');
-                    jos.putNextEntry(new JarEntry(name));
+                    // Pin entry times (setTimeLocal: TZ-safe) so repeated augments produce
+                    // byte-identical jars — raw-jar fingerprints key downstream action caches.
+                    JarEntry entry = new JarEntry(name);
+                    entry.setTimeLocal(java.time.LocalDateTime.of(1980, 2, 1, 0, 0));
+                    jos.putNextEntry(entry);
                     Files.copy(file, jos);
                     jos.closeEntry();
                     return FileVisitResult.CONTINUE;

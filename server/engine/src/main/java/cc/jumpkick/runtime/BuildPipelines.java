@@ -4153,8 +4153,8 @@ public final class BuildPipelines {
      * {@code jk explain} / incremental build must see a CACHE_HIT, not a phantom repackage.
      */
     private static boolean restorePackaged(Path cacheRoot, String key, Path baseDir) throws IOException {
-        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)
-                || cc.jumpkick.config.SessionContext.current().config().forceOr(false)) {
+        // rebuildOr already subsumes force (JkConfig: force implies rebuild).
+        if (cc.jumpkick.config.SessionContext.current().config().rebuildOr(false)) {
             return false;
         }
         ActionCache ac = new ActionCache(JkStores.cas(cacheRoot), cacheRoot.resolve("actions"));
