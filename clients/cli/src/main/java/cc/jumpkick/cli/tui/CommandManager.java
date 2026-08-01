@@ -1327,11 +1327,18 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         };
     }
 
+    /**
+     * Capitalized type, optional {@code .method(…)}, no spaces (worker tags already stripped).
+     * Compiled once: this runs per visible row on every 80 ms animator frame — with a 128 MB
+     * heap, per-frame {@code String.matches} (a fresh {@code Pattern.compile}) is real garbage.
+     */
+    private static final java.util.regex.Pattern JAVA_MEMBER =
+            java.util.regex.Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+
     /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
     static boolean looksLikeJavaMember(String s) {
         if (s == null || s.isEmpty()) return false;
-        // Capitalized type, optional.method(…), no spaces (worker tags already stripped).
-        return s.matches("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+        return JAVA_MEMBER.matcher(s).matches();
     }
 
     /**
@@ -1556,10 +1563,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      */
     static String truncateVisible(String s, int maxCols) {
         if (maxCols <= 0) return "";
-        if (maxCols == 1) {
-            // Only room for the ellipsis glyph.
-            return ELLIPSIS + Ansi.RESET;
-        }
+        // No maxCols==1 shortcut: the reserve logic below already handles it — a 1-column
+        // string fits as-is, only longer input degrades to the bare ellipsis.
         int budget = maxCols;
         StringBuilder sb = new StringBuilder(s.length());
         int visible = 0;

@@ -46,8 +46,8 @@ public final class LiveProgress {
     }
 
     /**
-     * Apply an engine workspace snapshot — the only aggregate truth for multi-module builds
-     * /1121). Percent-only snapshots (denominator 0) still land.
+     * Apply an engine workspace snapshot — the only aggregate truth for multi-module builds.
+     * Percent-only snapshots (denominator 0) still land.
      */
     public void apply(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
         if (snap == null) return;

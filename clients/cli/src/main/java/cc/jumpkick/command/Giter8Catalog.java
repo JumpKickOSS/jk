@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * First-party Giter8 short-name catalog/1188).
+ * First-party Giter8 short-name catalog.
  *
  * <p>Resolution order for a short name (e.g. {@code quarkus}, {@code java-cli}):
  *

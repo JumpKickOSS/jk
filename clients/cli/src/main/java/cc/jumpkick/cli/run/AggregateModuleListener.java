@@ -14,7 +14,7 @@ import java.util.List;
 
 /**
  * Feeds one workspace module's step/tree events into the shared {@link AggregateContext}'s {@link
- * CommandManager}. Aggregate bar math is engine-owned/1121) — this listener does not update
+ * CommandManager}. Aggregate bar math is engine-owned — this listener does not update
  * {@link LiveProgress} or workspace percent.
  */
 public final class AggregateModuleListener implements PipelineListener {

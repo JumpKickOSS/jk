@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
+#
 # jk installer
+#
 # Usage:
-# curl -fsSL https://jumpkick.build/install.sh | bash
-# wget -qO- https://jumpkick.build/install.sh | bash
-# bash install.sh [/path/to/jk[.xz|.zip]]
+#   curl -fsSL https://jumpkick.build/install.sh | bash
+#   wget -qO- https://jumpkick.build/install.sh | bash
+#   bash install.sh [/path/to/jk[.xz|.zip]]
+#
 # Environment variables:
-# JK_ARCHIVE_URL Override the archive URL to download. Supports.xz and
-# .zip (a plain uncompressed binary also works for local
-# files). Defaults to the latest release matching this
-# machine's OS/arch and available extractor.
-# JK_RELEASES_URL Override the release site root (mirrors).
-# JK_VERSION Install a specific version instead of the latest.
-# JK_INSTALL_DIR Override the install directory (default: ~/.jk/bin).
+#   JK_ARCHIVE_URL   Override the archive URL to download. Supports .xz and
+#                    .zip (a plain uncompressed binary also works for local
+#                    files). Defaults to the latest release matching this
+#                    machine's OS/arch and available extractor.
+#   JK_RELEASES_URL  Override the release site root (mirrors).
+#   JK_VERSION       Install a specific version instead of the latest.
+#   JK_INSTALL_DIR   Override the install directory (default: ~/.jk/bin).
+#
 set -euo pipefail
 
 JK_HOME="${JK_HOME:-$HOME/.jk}"
@@ -27,19 +31,21 @@ RELEASES_URL="${JK_RELEASES_URL:-https://jumpkick.build/releases}"
 LOCAL_FILE="${1:-}"
 
 # ---- terminal / interactivity detection ------------------------------------
+#
 # Two independent signals, resolved once:
-# * ansi — gated on stdout being a real terminal (and not NO_COLOR / a dumb
-# or unset TERM), so piped/redirected output stays clean. Also drives
-# which glyphs we print: the ● / ✖ marks assume a UTF-8-ish terminal that
-# can also do escape codes, so a non-ANSI terminal gets plain ASCII
-# stand-ins instead of risking a `?`/tofu box.
-# * interactivity — whether a controlling terminal is reachable at all. Under
-# `curl … | bash`, fd 0 is the PIPE feeding bash the script, NOT a tty, so
-# `[ -t 0 ]` is the wrong probe — /dev/tty is. This drives TTY_IN, the stdin
-# every child `jk` command is given: a real terminal when one exists (so
-# jk's own prompts / console detection work), else /dev/null. Routing
-# children away from the script's stdin also stops a child from consuming
-# the rest of the piped script — the classic `curl | bash` truncation.
+#   * ansi — gated on stdout being a real terminal (and not NO_COLOR / a dumb
+#     or unset TERM), so piped/redirected output stays clean. Also drives
+#     which glyphs we print: the ● / ✖ marks assume a UTF-8-ish terminal that
+#     can also do escape codes, so a non-ANSI terminal gets plain ASCII
+#     stand-ins instead of risking a `?`/tofu box.
+#   * interactivity — whether a controlling terminal is reachable at all. Under
+#     `curl … | bash`, fd 0 is the PIPE feeding bash the script, NOT a tty, so
+#     `[ -t 0 ]` is the wrong probe — /dev/tty is. This drives TTY_IN, the stdin
+#     every child `jk` command is given: a real terminal when one exists (so
+#     jk's own prompts / console detection work), else /dev/null. Routing
+#     children away from the script's stdin also stops a child from consuming
+#     the rest of the piped script — the classic `curl | bash` truncation.
+#
 # Honour CI and JK_NONINTERACTIVE to force the non-interactive path explicitly.
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ -n "${TERM:-}" ] && [ "${TERM:-}" != "dumb" ]; then
@@ -83,25 +89,26 @@ if [ -z "$LOCAL_FILE" ]; then
   fi
 fi
 
-# Release artifacts are named jk-<os>-<arch> (linux|macos × x86_64|aarch64).
-# Windows: scripts/install.ps1. See docs/releases.md for the published layout.
+# Release artifacts are named jk-<os>-<arch> — the same vocabulary jk itself
+# uses (HostPlatform): linux|macos × x86_64|aarch64. Windows uses
+# scripts/install.ps1; its download half waits on the release layout.
 detect_target() {
   local os arch
   case "$(uname -s)" in
     Linux)  os="linux" ;;
     Darwin) os="macos" ;;
-    *) die "unsupported OS: $(uname -s) (this script supports Linux and macOS)";;
+    *) die "unsupported OS: $(uname -s) (this script supports Linux and macOS)" ;;
   esac
   case "$(uname -m)" in
     x86_64|amd64) arch="x86_64" ;;
     aarch64|arm64) arch="aarch64" ;;
-    *) die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)";;
+    *) die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)" ;;
   esac
   printf '%s-%s' "$os" "$arch"
 }
 
 # Archive format for auto URL resolution: releases publish exactly two
-# formats (docs/releases.md) —.xz, and.zip as the fallback for hosts
+# formats (docs/releases.md) — .xz, and .zip as the fallback for hosts
 # without xz. Only needed for the download flow, so failing here must not
 # break a local-file install.
 detect_ext() {
@@ -116,8 +123,8 @@ detect_ext() {
 
 # ---- resolve source (URL or local file) ------------------------------------
 
-# Sets decompress based on the file/URL extension.
-# Plain binary (no.xz/.zip — the local dist flow) is installed with cp.
+# Sets decompress() based on the file/URL extension.
+# Plain binary (no .xz/.zip — the local dist flow) is installed with cp.
 infer_decompress() {
   case "$1" in
     *.xz)
@@ -196,6 +203,7 @@ if [ -n "$LOCAL_FILE" ]; then
 fi
 
 # ---- side-by-side version layout (docs/architecture.md "Versioning") --------
+#
 # Local dist installs (binary + engine jar together) also materialize
 # ~/.jk/versions/<v>/ — through the client itself (`jk self materialize`), which
 # ingests both artifacts into the CAS first. The CAS stays the single source of
@@ -212,7 +220,7 @@ if [ -n "$LOCAL_FILE" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "versions/ materialization skipped (jk self materialize failed; the client re-fetches on demand)"
   fi
-  # Detect Nerd Font support into ~/.jk/config.toml; never fail install on this step.
+  # Nerd Font probe → ~/.jk/config.toml [global].nerdfont; never fail install.
   run_jk self setup-terminal >/dev/null 2>&1 \
     || note "terminal setup skipped (run 'jk self setup-terminal' later)"
 fi
@@ -220,27 +228,46 @@ fi
 # ---- activate --------------------------------------------------------------
 
 info "Running \`jk activate\`... This may download a JDK and optimize your installation."
-# Non-interactive shell integration. Failure does not abort install.
+# --yes: write shell integration without the interactive Yes/No wizard. install.sh
+# used to call bare `jk activate`, which opened a TUI over /dev/tty and waited for
+# a keypress even on automated/local installs. Failure must not abort warm-up —
+# the binary is already installed.
 run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or 'jk activate <shell>') manually."
 
 # ---- warm the engine -------------------------------------------------------
 #
-# Start the engine once so the first real build is not a cold start
-# (JDK install, engine jar fetch, AOT training — see docs/architecture.md).
-# Failures are non-fatal; the engine starts lazily on first use if needed.
+# Pre-pay the engine's cold-start costs now so the first real build doesn't:
+# `jk engine start` installs the JDK that hosts the engine when none
+# qualifies, and on a download install triggers the client's own engine-jar
+# fetch (which also completes ~/.jk/versions/<v>/ — jar, manifest, AND this
+# client binary). The engine serves immediately and manages its own AOT
+# training sidecar off to the side (docs/architecture.md), so ONE start is the
+# whole warm-up — no stop/restart dance. Best-effort by design: a failed
+# warm-up never fails the install (the engine starts lazily on first use
+# either way). Skipped only for a local dist install that carried no engine
+# jar — a -SNAPSHOT client won't self-fetch.
 if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
-  # Restart so a reinstall replaces a still-running engine of the same version.
+  # Local dogfood reinstalls keep the same version string (e.g. 0.10.1) while replacing the
+  # engine jar. A still-running engine would keep serving the old jar until stop — so always
+  # stop first, then start the freshly materialized engine.
   run_jk engine stop --force >/dev/null 2>&1 || true
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
-  # Host calibration for build-time estimates (non-fatal if offline).
+  # Host calibration: multi-probe once so the first explain/build ETA is grounded.
+  # Best-effort — network may be unavailable; --offline still leaves static floors / later ensure.
   run_jk engine calibrate >/dev/null 2>&1 \
     || note "Host calibration deferred; it will run on first explain/build"
 fi
 
-# ---- version layout ----------------------------------------------------------
-# Point bin/jk and bin/jkx at ~/.jk/versions/<v>/bin/jk when available
-# (same layout as `jk self update`). Falls back to real copies if symlinks fail.
+# ---- one home for the bits ---------------------------------------------------
+#
+# Every installed jk — including this one — lives in ~/.jk/versions/<v>/
+# (materialized above for local dists, by the engine-jar fetch during warm-up
+# for downloads). bin/jk and bin/jkx become SYMLINKS to the current version's
+# binary — the same end state `jk self update` leaves with its atomic symlink
+# flip, so the initial install, a pin, and an update are one consistent story.
+# Falls back to keeping the real copies when versions/ didn't materialize or
+# the filesystem refuses symlinks; the first `jk self update` converges it.
 VERSION="$(run_jk --version 2>/dev/null | awk '{print $2}')"
 VBIN="$JK_HOME/versions/${VERSION:-none}/bin/jk"
 if [ -n "$VERSION" ] && [ -x "$VBIN" ]; then
@@ -258,6 +285,7 @@ fi
 printf '\n'
 
 # ---- restart shell ---------------------------------------------------------
+#
 # Never block on a keypress here: install is finished. Cases that used to
 # `read` from /dev/tty (curl|bash) or silently `exec $SHELL` (local tty) made
 # the script feel hung after `jk activate`. Print how to pick up PATH/hooks;

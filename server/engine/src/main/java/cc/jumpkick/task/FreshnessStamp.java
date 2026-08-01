@@ -112,7 +112,15 @@ public final class FreshnessStamp {
             int release)
             throws IOException {
         Files.createDirectories(outputDir);
-        long stampMillis = System.currentTimeMillis();
+        // Same-clock stamping: isFresh compares stampMillis against input mtimes, which come
+        // from the filesystem's coarse clock — and that clock can LAG currentTimeMillis by a
+        // tick. Recording wall-clock millis let an input edited in the lag window carry
+        // mtime < stampMillis and read as fresh (a silently stale build). Probe the fs clock
+        // through the stamp file itself; recording at-or-before the final content write only
+        // errs toward staleness, which the action cache resolves correctly.
+        Path stampFile = outputDir.resolve(stampName);
+        Files.writeString(stampFile, "", StandardCharsets.UTF_8);
+        long stampMillis = Files.getLastModifiedTime(stampFile).toMillis();
         StringBuilder sb = new StringBuilder();
         sb.append("TASK ").append(taskId).append('\n');
         sb.append("KEY ").append(actionKey).append('\n');
@@ -124,7 +132,7 @@ public final class FreshnessStamp {
         for (Path cp : sortedAbs(classpath)) {
             sb.append("CP ").append(cp).append('\n');
         }
-        Files.writeString(outputDir.resolve(stampName), sb.toString(), StandardCharsets.UTF_8);
+        Files.writeString(stampFile, sb.toString(), StandardCharsets.UTF_8);
     }
 
     static Optional<Stamp> read(Path outputDir, String stampName) throws IOException {

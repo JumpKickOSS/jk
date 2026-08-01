@@ -577,7 +577,7 @@ public final class PreflightMemo {
     // Module dirty fingerprint (sources)
 
     /**
-     * Every regular file under dirs the build consumes feeds the digest/1148): main
+     * Every regular file under dirs the build consumes feeds the digest: main
      * sources, main resources, default + named test suites and suite resources. Derived from
      * {@link cc.jumpkick.layout.ModuleLayout#fingerprintDirs}, not a fixed literal list.
      */

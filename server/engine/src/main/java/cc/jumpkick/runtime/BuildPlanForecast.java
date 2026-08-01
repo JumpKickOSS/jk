@@ -216,7 +216,7 @@ public final class BuildPlanForecast {
                             project, dir, BuildPipelines.lockModules(lock)),
                     List.of());
             // Must mirror BuildPipelines' processor classpath exactly — workspace siblings
-            // includedor the forecast hashes a different -processorpath than the
+            // included — or the forecast hashes a different -processorpath than the
             // build and every KSP module forecasts a phantom rebuild.
             List<Path> processorCp = BuildPipelines.processorClasspath(
                     lock, resolver, WorkspaceClasspath.resolve(dir, project, Set.of(Scope.PROCESSOR)));
@@ -246,7 +246,7 @@ public final class BuildPlanForecast {
                 // Same stamp gate as BuildPipelines compile-main: a post-rebuild tree with a
                 // fresh.jstamp is cached even when action-cache keys were not rewritten
                 // (historical --rebuild skipped store). The input recipe is SHARED with the live
-                // check and write-stampmixed modules previously hashed different
+                // check and write-stamp — mixed modules previously hashed different
                 // inputs here and never stamp-matched.
                 Path groovyJar = null;
                 boolean groovyJarUnavailable = false;

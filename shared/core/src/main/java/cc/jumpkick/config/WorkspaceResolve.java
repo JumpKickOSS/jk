@@ -44,17 +44,41 @@ public final class WorkspaceResolve {
                 }
                 return module;
             }
-            // parseLocal for the root — parse() would re-enter applyWorkspace.
-            JkBuild root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
+            // Failure scope matters: a member is only entitled to fail for problems in the
+            // pieces it actually needs. Root errors hit members with pending [project]
+            // inherits; sibling errors hit members with workspace:<name> deps. A fully
+            // concrete member mid-refactor keeps parsing either way — the broken file's
+            // error belongs to whoever builds it.
+            JkBuild root;
+            try {
+                // parseLocal for the root — parse() would re-enter applyWorkspace.
+                root = JkBuildParser.parseLocal(rootDir.get().resolve("jk.toml"));
+            } catch (JkBuildParseException e) {
+                if (module.project().inheritsFromWorkspace()
+                        || module.project().requiresWorkspaceRoot()
+                        || hasWorkspaceDeps(module)) {
+                    throw e;
+                }
+                return module;
+            }
             if (!root.isWorkspaceRoot()) return module;
             // loadModules already rewrites project.*.workspace / omitted-field inherits.
             module = WorkspaceLoader.inheritFromRoot(module, root);
+            // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;
+            // re-evaluate them now that the project is concrete (idempotent).
+            module = JkBuildParser.reapplyPlatformContributions(moduleDir, module);
+            java.util.Collection<JkBuild> siblings;
+            try {
+                siblings = WorkspaceLoader.loadModules(rootDir.get(), root).values();
+            } catch (JkBuildParseException e) {
+                // Identity is already resolved from the root above; only workspace:<name>
+                // placeholders still need the sibling list.
+                if (hasWorkspaceDeps(module)) throw e;
+                return module;
+            }
             // resolveSiblingCoordinates, NOT applyToModule: the latter is the lock-orchestration
             // fold, which strips sibling edges entirely. A published POM has to keep them.
-            return WorkspaceMerge.resolveSiblingCoordinates(
-                    root,
-                    module,
-                    WorkspaceLoader.loadModules(rootDir.get(), root).values());
+            return WorkspaceMerge.resolveSiblingCoordinates(root, module, siblings);
         } catch (JkBuildParseException e) {
             throw e;
         } catch (Exception e) {
@@ -62,5 +86,15 @@ public final class WorkspaceResolve {
             // surfaced by the build itself rather than here.
             return module;
         }
+    }
+
+    /** True when any declared dependency is a {@code workspace:<name>} sibling placeholder. */
+    private static boolean hasWorkspaceDeps(JkBuild module) {
+        for (cc.jumpkick.model.Scope scope : cc.jumpkick.model.Scope.values()) {
+            for (var dep : module.dependencies().of(scope)) {
+                if (dep.isWorkspace()) return true;
+            }
+        }
+        return false;
     }
 }
