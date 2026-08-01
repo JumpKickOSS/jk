@@ -108,6 +108,111 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
+    void concrete_member_parses_despite_a_broken_sibling(@TempDir Path tempDir) throws IOException {
+        // Mid-refactor reality: one sibling's jk.toml is malformed. A member with fully
+        // concrete [project] and no workspace: deps needs nothing from the siblings — its
+        // parse must succeed; the broken sibling's error belongs to whoever builds it.
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["good", "broken"]
+                """);
+        Path good = Files.createDirectories(tempDir.resolve("good"));
+        Files.writeString(good.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "good"
+                version = "1.0.0"
+                jdk     = 21
+                java    = 21
+                """);
+        Path broken = Files.createDirectories(tempDir.resolve("broken"));
+        Files.writeString(broken.resolve("jk.toml"), "not [ valid toml ===");
+
+        JkBuild parsed = JkBuildParser.parse(good.resolve("jk.toml"));
+        assertThat(parsed.project().group()).isEqualTo("com.example");
+        assertThat(parsed.project().version()).isEqualTo("1.0.0");
+    }
+
+    @Test
+    void inheriting_member_still_fails_on_a_broken_root(@TempDir Path tempDir) throws IOException {
+        // A member whose identity depends on the workspace root cannot silently parse with
+        // sentinels — a malformed root must propagate to it.
+        Files.writeString(tempDir.resolve("jk.toml"), "not [ valid toml ===");
+        Path thin = Files.createDirectories(tempDir.resolve("thin"));
+        // findRoot needs a parseable [workspace] to locate the root; a malformed root file
+        // is found by directory walk, then fails to parse for the inheriting member.
+        Files.writeString(thin.resolve("jk.toml"), """
+                [project]
+                name = "thin"
+                """);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> JkBuildParser.parse(thin.resolve("jk.toml")))
+                .isInstanceOf(JkBuildParseException.class);
+    }
+
+    @Test
+    void inherited_member_survives_a_missing_sibling_dir(@TempDir Path tempDir) throws IOException {
+        // Identity resolves from the root; a missing listed sibling only matters to members
+        // with workspace:<name> deps.
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["thin", "missing"]
+                """);
+        Path thin = Files.createDirectories(tempDir.resolve("thin"));
+        Files.writeString(thin.resolve("jk.toml"), """
+                [project]
+                name = "thin"
+                """);
+        // "missing" module dir deliberately absent.
+
+        JkBuild parsed = JkBuildParser.parse(thin.resolve("jk.toml"));
+        assertThat(parsed.project().group()).isEqualTo("com.example");
+        assertThat(parsed.project().version()).isEqualTo("1.0.0");
+    }
+
+    @Test
+    void member_explicit_value_overrides_the_root(@TempDir Path tempDir) throws IOException {
+        // The precedence contract, asserted directly: a member's concrete value wins over
+        // the root's — resolveFromWorkspaceRoot only fills what the member left open.
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+                jdk     = 21
+                java    = 21
+
+                [workspace]
+                modules = ["pinned"]
+                """);
+        Path pinned = Files.createDirectories(tempDir.resolve("pinned"));
+        Files.writeString(pinned.resolve("jk.toml"), """
+                [project]
+                group   = "com.other"
+                name    = "pinned"
+                version = "9.9.9"
+                jdk     = 25
+                java    = 25
+                """);
+
+        JkBuild parsed = JkBuildParser.parse(pinned.resolve("jk.toml"));
+        assertThat(parsed.project().group()).isEqualTo("com.other");
+        assertThat(parsed.project().version()).isEqualTo("9.9.9");
+        assertThat(parsed.project().javaRelease()).isEqualTo(25);
+    }
+
+    @Test
     void workspace_loader_inherits_version_from_root(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
