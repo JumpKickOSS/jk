@@ -1327,11 +1327,18 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         };
     }
 
+    /**
+     * Capitalized type, optional {@code .method(…)}, no spaces (worker tags already stripped).
+     * Compiled once: this runs per visible row on every 80 ms animator frame — with a 128 MB
+     * heap, per-frame {@code String.matches} (a fresh {@code Pattern.compile}) is real garbage.
+     */
+    private static final java.util.regex.Pattern JAVA_MEMBER =
+            java.util.regex.Pattern.compile("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+
     /** {@code FooTest}, {@code FooTest.bar()}, or {@code FooTest.bar(Path)} — not free text. */
     static boolean looksLikeJavaMember(String s) {
         if (s == null || s.isEmpty()) return false;
-        // Capitalized type, optional.method(…), no spaces (worker tags already stripped).
-        return s.matches("[A-Z][\\w$]*(?:\\.[A-Za-z_][\\w$]*(?:\\([^)]*\\))?)?");
+        return JAVA_MEMBER.matcher(s).matches();
     }
 
     /**
