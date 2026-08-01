@@ -65,6 +65,44 @@ class StoreMigrationTest {
     }
 
     @Test
+    void a_legacy_marker_does_not_vouch_for_entries_added_later(@TempDir Path tmp) throws Exception {
+        // Installs that migrated before the registry pair joined STORE_ENTRIES carry a marker
+        // with no entries: line. The registry must still move out of prunable cache/.
+        Path legacy = tmp.resolve("cache");
+        Path store = tmp.resolve("store");
+        seed(store, ".migrated-from-cache", "jk moved its fetched artifacts here from cache/.\n");
+        seed(legacy, "libs.global.toml", "libraries = {}");
+        seed(legacy, ".libs.global.toml.etag", "\"etag-1\"");
+        // Already-covered entries left in cache/ (e.g. re-created by an old client) stay put —
+        // the marker vouches for them, and resolveForRead still finds them.
+        seed(legacy, "jdks.json", "{}");
+
+        int moved = StoreMigration.migrate(store, legacy);
+
+        assertThat(moved).isEqualTo(2);
+        assertThat(store.resolve("libs.global.toml")).exists();
+        assertThat(store.resolve(".libs.global.toml.etag")).exists();
+        assertThat(legacy.resolve("libs.global.toml")).doesNotExist();
+        assertThat(legacy.resolve("jdks.json")).exists();
+        // The refreshed marker now vouches for the grown set — the next run is a fast no-op.
+        assertThat(Files.readString(store.resolve(".migrated-from-cache"))).contains("entries: ");
+        assertThat(StoreMigration.migrate(store, legacy)).isZero();
+    }
+
+    @Test
+    void a_current_marker_short_circuits_without_probing(@TempDir Path tmp) throws Exception {
+        Path legacy = tmp.resolve("cache");
+        Path store = tmp.resolve("store");
+        seed(legacy, "libs.global.toml", "libraries = {}");
+        // A full migration writes a marker naming every entry; a second run moves nothing even
+        // when an old client later re-creates a covered entry under cache/.
+        assertThat(StoreMigration.migrate(store, legacy)).isEqualTo(1);
+        seed(legacy, "libs.global.toml", "recreated-by-old-client");
+        assertThat(StoreMigration.migrate(store, legacy)).isZero();
+        assertThat(Files.readString(store.resolve("libs.global.toml"))).isEqualTo("libraries = {}");
+    }
+
+    @Test
     void an_entry_already_in_the_store_is_never_overwritten(@TempDir Path tmp) throws Exception {
         Path legacy = tmp.resolve("cache");
         Path store = tmp.resolve("store");
