@@ -48,11 +48,12 @@ public final class ModuleSelection {
 
     /**
      * One workspace (or single-project) unit: the relative path used to resolve the directory, plus
-     * every alias {@code --modules} may use to select it.
+     * every alias {@code --modules} may use to select it. Alias order is insertion order (path,
+     * bare segment, project name, stripped name) so error labels are deterministic (JK-1367).
      */
     record Candidate(String relPath, Set<String> aliases) {
         Candidate {
-            aliases = Set.copyOf(aliases);
+            aliases = java.util.Collections.unmodifiableSet(new LinkedHashSet<>(aliases));
         }
     }
 
@@ -85,34 +86,30 @@ public final class ModuleSelection {
     /** Resolve {@code --modules} only. Empty match → fail with a clear message. */
     public static Result resolve(Path entryDir, JkBuild entryBuild, String modulesSpec) {
         Path root = entryDir.toAbsolutePath().normalize();
-        List<Candidate> candidates = candidates(root, entryBuild);
+        boolean workspace = entryBuild.isWorkspaceRoot();
+        // Path aliases first — parsing every member's jk.toml for name aliases is deferred until a
+        // token actually needs them, so plain path/glob selectors never pay N parses (JK-1367).
+        List<Candidate> candidates = candidates(root, entryBuild, false);
+        boolean namesLoaded = !workspace; // single-project aliases come from the parsed entry build
         List<String> tokens = expandSpec(modulesSpec);
         if (tokens.isEmpty()) {
             return Result.fail("--modules is empty");
         }
-        boolean workspace = entryBuild.isWorkspaceRoot();
         Set<String> matched = new LinkedHashSet<>();
         for (String token : tokens) {
             String t = normalizeToken(token);
             if (t.isEmpty()) continue;
-            boolean any = false;
-            if (isGlob(t)) {
-                Pattern pat = globToPattern(t);
-                for (Candidate c : candidates) {
-                    if (matchesGlob(c, pat)) {
-                        matched.add(c.relPath());
-                        any = true;
-                    }
-                }
-            } else {
-                for (Candidate c : candidates) {
-                    if (matchesLiteral(c, t)) {
-                        matched.add(c.relPath());
-                        any = true;
-                    }
-                }
+            boolean any = matchToken(candidates, t, matched);
+            if (!any && !namesLoaded) {
+                candidates = candidates(root, entryBuild, true);
+                namesLoaded = true;
+                any = matchToken(candidates, t, matched);
             }
             if (!any) {
+                if (!namesLoaded) {
+                    candidates = candidates(root, entryBuild, true);
+                    namesLoaded = true;
+                }
                 return Result.fail("no module matched `" + token + "` (known: " + knownLabels(candidates) + ")");
             }
         }
@@ -139,11 +136,19 @@ public final class ModuleSelection {
     }
 
     static List<Candidate> candidates(Path root, JkBuild entryBuild) {
+        return candidates(root, entryBuild, true);
+    }
+
+    /**
+     * As {@link #candidates(Path, JkBuild)}; {@code withNames=false} skips parsing member
+     * manifests (path + bare-segment aliases only) — the cheap first pass of {@link #resolve}.
+     */
+    static List<Candidate> candidates(Path root, JkBuild entryBuild, boolean withNames) {
         List<Candidate> out = new ArrayList<>();
         if (entryBuild.isWorkspaceRoot()) {
             for (String m : entryBuild.workspaceOpt().orElseThrow().modules()) {
                 String rel = normalizeRel(m);
-                out.add(candidateFor(root, rel, null));
+                out.add(candidateFor(root, rel, withNames));
             }
         } else {
             LinkedHashSet<String> aliases = new LinkedHashSet<>();
@@ -158,30 +163,49 @@ public final class ModuleSelection {
     }
 
     /**
-     * Build aliases for a workspace member: path, last segment, {@code [project] name}, and soft
-     * forms without a leading {@code jk-} on the project name.
+     * Build aliases for a workspace member: path, last segment, and (when {@code withNames})
+     * {@code [project] name} plus its form without a leading {@code jk-}.
      */
-    private static Candidate candidateFor(Path root, String rel, JkBuild preParsed) {
+    private static Candidate candidateFor(Path root, String rel, boolean withNames) {
         LinkedHashSet<String> aliases = new LinkedHashSet<>();
         aliases.add(rel);
         String bare = bareName(rel);
         if (!bare.isBlank()) aliases.add(bare);
-        JkBuild unit = preParsed;
-        if (unit == null) {
+        if (withNames) {
             Path manifest = root.resolve(rel).resolve("jk.toml");
             if (Files.isRegularFile(manifest)) {
                 try {
-                    unit = JkBuildParser.parse(manifest);
+                    JkBuild unit = JkBuildParser.parse(manifest);
+                    String name = unit.project().name();
+                    if (name != null && !name.isBlank()) addNameAliases(aliases, name);
                 } catch (Exception ignored) {
-                    unit = null;
+                    // unparseable member — path aliases still select it
                 }
             }
         }
-        if (unit != null) {
-            String name = unit.project().name();
-            if (name != null && !name.isBlank()) addNameAliases(aliases, name);
-        }
         return new Candidate(rel, aliases);
+    }
+
+    /** Match one normalized token against {@code candidates}, adding hits to {@code matched}. */
+    private static boolean matchToken(List<Candidate> candidates, String t, Set<String> matched) {
+        boolean any = false;
+        if (isGlob(t)) {
+            Pattern pat = globToPattern(t);
+            for (Candidate c : candidates) {
+                if (matchesGlob(c, pat)) {
+                    matched.add(c.relPath());
+                    any = true;
+                }
+            }
+        } else {
+            for (Candidate c : candidates) {
+                if (matchesLiteral(c, t)) {
+                    matched.add(c.relPath());
+                    any = true;
+                }
+            }
+        }
+        return any;
     }
 
     private static void addNameAliases(Set<String> aliases, String name) {

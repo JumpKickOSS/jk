@@ -95,6 +95,36 @@ class ModuleSelectionTest {
     }
 
     @Test
+    void path_selectors_resolve_without_parsing_member_manifests(@TempDir Path root) throws Exception {
+        // JK-1367: plain path/glob selectors take the cheap pass — a malformed member manifest
+        // must not matter (and N manifests are not parsed per resolve).
+        writeWorkspace(root, List.of("api", "worker"));
+        Files.writeString(root.resolve("api/jk.toml"), "this is [ not toml");
+        JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
+
+        var byPath = ModuleSelection.resolve(root, build, "api");
+        assertThat(byPath.ok()).isTrue();
+        assertThat(byPath.moduleDirs()).containsExactly(root.resolve("api").normalize());
+
+        // Name selectors still work — the lazy second pass loads them.
+        var byName = ModuleSelection.resolve(root, build, "worker");
+        assertThat(byName.ok()).isTrue();
+    }
+
+    @Test
+    void unknown_selector_labels_are_deterministic(@TempDir Path root) throws Exception {
+        // JK-1367: the "known:" labels pick the first non-path alias in insertion order (the
+        // project name) — never a randomly iterated set member.
+        writeWorkspaceNamed(root, List.of(new Mod("server/engine", "jk-engine")));
+        JkBuild build = JkBuildParser.parse(root.resolve("jk.toml"));
+        for (int i = 0; i < 5; i++) {
+            var r = ModuleSelection.resolve(root, build, "nope");
+            assertThat(r.ok()).isFalse();
+            assertThat(r.errorMessage()).contains("server/engine (jk-engine)");
+        }
+    }
+
+    @Test
     void normalize_token_strips_gradle_colons() {
         assertThat(ModuleSelection.normalizeToken(":jk-engine")).isEqualTo("jk-engine");
         assertThat(ModuleSelection.normalizeToken(":server:engine")).isEqualTo("server/engine");
