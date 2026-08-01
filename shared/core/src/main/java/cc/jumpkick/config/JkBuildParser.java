@@ -54,7 +54,9 @@ public final class JkBuildParser {
     private JkBuildParser() {}
 
     /**
-     * Process-lifetime memo of {@link #parse(Path)}, keyed by path + size + mtime (rewrites re-parse).
+     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by path + size + mtime (rewrites
+     * re-parse). Stores the <em>local</em> manifest only — workspace inheritance is applied by
+     * {@link #parse(Path)} on top so it always sees a fresh root.
      */
     // A plain (path, size, mtime) memo: the parse is a pure function of the file's bytes again, so
     // nothing environment-shaped belongs in this key.
@@ -62,7 +64,22 @@ public final class JkBuildParser {
 
     private record CacheKey(Path path, long size, FileTime modified) {}
 
+    /**
+     * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
+     * directory that owns the file. Prefer this for build, publish, status, etc.
+     */
     public static JkBuild parse(Path file) throws IOException {
+        Path abs = file.toAbsolutePath().normalize();
+        Path dir = abs.getParent();
+        return WorkspaceResolve.applyWorkspace(dir, parseLocal(file));
+    }
+
+    /**
+     * Parse {@code jk.toml} as written — no workspace inheritance or sibling-coordinate rewrite.
+     * Used by {@link WorkspaceLoader} / {@link WorkspaceResolve} to avoid recursive resolve while
+     * assembling the workspace.
+     */
+    public static JkBuild parseLocal(Path file) throws IOException {
         Objects.requireNonNull(file, "file");
         BasicFileAttributes attrs;
         try {
@@ -84,12 +101,20 @@ public final class JkBuildParser {
     }
 
     /**
-     * Drop memo for {@code file} and re-parse (e.g. after plugin-manifest materialization).
+     * Drop memo for {@code file} and re-parse with workspace resolution (e.g. after plugin-manifest
+     * materialization).
      */
     public static JkBuild reparse(Path file) throws IOException {
         Path key = file.toAbsolutePath().normalize();
         PARSE_CACHE.keySet().removeIf(k -> k.path().equals(key));
         return parse(file);
+    }
+
+    /** Drop memo and re-parse without workspace resolution. */
+    public static JkBuild reparseLocal(Path file) throws IOException {
+        Path key = file.toAbsolutePath().normalize();
+        PARSE_CACHE.keySet().removeIf(k -> k.path().equals(key));
+        return parseLocal(file);
     }
 
     public static JkBuild parse(String toml) {
@@ -121,7 +146,9 @@ public final class JkBuildParser {
         // the message names the position rather than surfacing later as a bewildering "no such
         // version".
         Interpolation.guard(result);
-        JkBuild.Project project = parseProject(result);
+        // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
+        boolean workspaceRoot = hasWorkspaceModules(result);
+        JkBuild.Project project = parseProject(result, workspaceRoot);
         LibraryCatalog effective = catalog.withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
@@ -173,6 +200,12 @@ public final class JkBuildParser {
         }
         JkBuild.FormatConfig format = parseFormat(result);
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
+        // project.*.workspace = true is for members only — the root is the inheritance source.
+        if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
+            throw new JkBuildParseException(
+                    "workspace root must set concrete [project] values"
+                            + " (`*.workspace = true` is only valid on workspace modules)");
+        }
         return new JkBuild(
                 project,
                 deps,
@@ -365,37 +398,124 @@ public final class JkBuildParser {
         }
     }
 
-    private static JkBuild.Project parseProject(TomlTable root) {
+    /** True when {@code [workspace] modules = [...]} is a non-empty array — a workspace root. */
+    private static boolean hasWorkspaceModules(TomlTable root) {
+        TomlTable ws = root.getTable("workspace");
+        if (ws == null || !ws.contains("modules") || !ws.isArray("modules")) return false;
+        TomlArray modules = ws.getArray("modules");
+        return modules != null && modules.size() > 0;
+    }
+
+    /**
+     * @param workspaceRoot when true, omitted optional fields keep local defaults (no inherit);
+     *     group/name/version stay required and concrete. When false (module or standalone), omitted
+     *     fields other than {@code name} and {@code description} mark workspace inheritance —
+     *     members resolve them from the root; standalones drop optional inherits and still require
+     *     concrete group+version (or fail if those were omitted).
+     */
+    private static JkBuild.Project parseProject(TomlTable root, boolean workspaceRoot) {
         TomlTable project = root.getTable("project");
         if (project == null) {
             throw new JkBuildParseException("jk.toml must declare a top-level `[project]` table");
         }
-        String group = requireString(project, "group", "project.group");
-        String name = requireString(project, "name", "project.name");
-        String version = requireString(project, "version", "project.version");
-        String jdk = parseJdkSpec(project);
-        int java = parseJavaRelease(project);
-        VersionSelector kotlin = parseKotlinVersion(project);
-        VersionSelector groovy = parseGroovyVersion(project);
-        requireSupportedMajor("project.java", java);
-        // sources = true → PUBLISH (assembled during `jk publish` only)
-        // sources = "always" → ALWAYS (built as package-sources step + published)
-        // sources absent/false → DISABLED (no sources jar)
-        Object sourcesRaw = project.get("sources");
-        JkBuild.SourcesMode sourcesMode;
-        if ("always".equalsIgnoreCase(sourcesRaw instanceof String s ? s : "")) {
-            sourcesMode = JkBuild.SourcesMode.ALWAYS;
-        } else if (Boolean.TRUE.equals(sourcesRaw)) {
-            sourcesMode = JkBuild.SourcesMode.PUBLISH;
-        } else {
-            sourcesMode = JkBuild.SourcesMode.DISABLED;
+        // name is the module identity — never workspace-inherited (Cargo package.name rule).
+        if (project.isTable("name")) {
+            throw new JkBuildParseException(
+                    "project.name cannot use workspace inheritance — every module must declare its own name");
         }
-        String description = project.getString("description");
-        // m2install defaults to false: ~/.jk/cache is the primary artifact store. Set
-        // m2install = true to additionally mirror into ~/.m2 for Maven/Gradle interop.
-        boolean m2install = Boolean.TRUE.equals(project.getBoolean("m2install"));
+        java.util.EnumSet<JkBuild.ProjectInherit> inherits = java.util.EnumSet.noneOf(JkBuild.ProjectInherit.class);
+
+        String name = requireString(project, "name", "project.name");
+
+        String group = parseInheritableString(
+                project,
+                "group",
+                JkBuild.ProjectInherit.GROUP,
+                inherits,
+                workspaceRoot,
+                /* requiredWhenRootOrStandalone */ true);
+
+        String version = parseInheritableString(
+                project,
+                "version",
+                JkBuild.ProjectInherit.VERSION,
+                inherits,
+                workspaceRoot,
+                /* requiredWhenRootOrStandalone */ true);
+
+        String jdk;
+        if (isWorkspaceInherit(project, "jdk") || (!workspaceRoot && !project.contains("jdk"))) {
+            inherits.add(JkBuild.ProjectInherit.JDK);
+            jdk = null;
+        } else {
+            jdk = parseJdkSpec(project);
+        }
+
+        int java;
+        if (isWorkspaceInherit(project, "java") || (!workspaceRoot && !project.contains("java"))) {
+            inherits.add(JkBuild.ProjectInherit.JAVA);
+            java = 0;
+        } else {
+            java = parseJavaRelease(project);
+            requireSupportedMajor("project.java", java);
+        }
+
+        VersionSelector kotlin;
+        if (isWorkspaceInherit(project, "kotlin") || (!workspaceRoot && !project.contains("kotlin"))) {
+            inherits.add(JkBuild.ProjectInherit.KOTLIN);
+            kotlin = null;
+        } else {
+            kotlin = parseKotlinVersion(project);
+        }
+
+        VersionSelector groovy;
+        if (isWorkspaceInherit(project, "groovy") || (!workspaceRoot && !project.contains("groovy"))) {
+            inherits.add(JkBuild.ProjectInherit.GROOVY);
+            groovy = null;
+        } else {
+            groovy = parseGroovyVersion(project);
+        }
+
+        // sources = true → PUBLISH; sources = "always" → ALWAYS; absent/false → DISABLED
+        // description is special: omit stays null (no auto-inherit). Explicit description.workspace = true ok.
+        JkBuild.SourcesMode sourcesMode;
+        if (isWorkspaceInherit(project, "sources") || (!workspaceRoot && !project.contains("sources"))) {
+            inherits.add(JkBuild.ProjectInherit.SOURCES);
+            sourcesMode = JkBuild.SourcesMode.DISABLED;
+        } else {
+            Object sourcesRaw = project.get("sources");
+            if ("always".equalsIgnoreCase(sourcesRaw instanceof String s ? s : "")) {
+                sourcesMode = JkBuild.SourcesMode.ALWAYS;
+            } else if (Boolean.TRUE.equals(sourcesRaw)) {
+                sourcesMode = JkBuild.SourcesMode.PUBLISH;
+            } else {
+                sourcesMode = JkBuild.SourcesMode.DISABLED;
+            }
+        }
+
+        String description;
+        if (isWorkspaceInherit(project, "description")) {
+            inherits.add(JkBuild.ProjectInherit.DESCRIPTION);
+            description = null;
+        } else {
+            // Omitted description stays unset — never auto-inherits from the workspace root.
+            description = project.getString("description");
+        }
+
+        boolean m2install;
+        if (isWorkspaceInherit(project, "m2install") || (!workspaceRoot && !project.contains("m2install"))) {
+            inherits.add(JkBuild.ProjectInherit.M2INSTALL);
+            m2install = false;
+        } else {
+            // m2install defaults to false: ~/.jk/cache is primary. true mirrors into ~/.m2.
+            m2install = Boolean.TRUE.equals(project.getBoolean("m2install"));
+        }
+
         JkBuild.Layout layout;
-        if (project.contains("layout")) {
+        if (isWorkspaceInherit(project, "layout") || (!workspaceRoot && !project.contains("layout"))) {
+            inherits.add(JkBuild.ProjectInherit.LAYOUT);
+            layout = JkBuild.Layout.AUTO;
+        } else if (project.contains("layout")) {
             String layoutRaw = project.getString("layout");
             try {
                 layout = JkBuild.Layout.parse(layoutRaw);
@@ -405,8 +525,92 @@ public final class JkBuildParser {
         } else {
             layout = JkBuild.Layout.AUTO;
         }
+
         return new JkBuild.Project(
-                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout);
+                group,
+                name,
+                version,
+                jdk,
+                java,
+                kotlin,
+                groovy,
+                sourcesMode,
+                description,
+                m2install,
+                layout,
+                inherits);
+    }
+
+    /**
+     * String project field that may be concrete, {@code field.workspace = true}, or omitted (member
+     * → inherit; root → error if required).
+     */
+    private static String parseInheritableString(
+            TomlTable project,
+            String key,
+            JkBuild.ProjectInherit inherit,
+            java.util.EnumSet<JkBuild.ProjectInherit> inherits,
+            boolean workspaceRoot,
+            boolean required) {
+        String path = "project." + key;
+        if (isWorkspaceInherit(project, key)) {
+            if (workspaceRoot) {
+                throw new JkBuildParseException(
+                        "workspace root must set a concrete " + path + " (`" + key + ".workspace = true` is only valid"
+                                + " on workspace modules)");
+            }
+            inherits.add(inherit);
+            return JkBuild.VERSION_FROM_WORKSPACE;
+        }
+        if (!project.contains(key)) {
+            if (workspaceRoot || required) {
+                // Members: omit → inherit. Roots: omit of group/version → error.
+                if (!workspaceRoot) {
+                    inherits.add(inherit);
+                    return JkBuild.VERSION_FROM_WORKSPACE;
+                }
+            }
+            if (required) {
+                throw new JkBuildParseException("jk.toml is missing required key `" + path + "`");
+            }
+            return null;
+        }
+        String value = project.getString(key);
+        if (value == null) {
+            throw new JkBuildParseException(
+                    path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
+        }
+        if (value.isBlank()) {
+            throw new JkBuildParseException(path + " must not be blank");
+        }
+        return value;
+    }
+
+    /**
+     * Cargo-style {@code field.workspace = true} / {@code field = { workspace = true }} under
+     * {@code [project]}. Only the boolean {@code true} is legal; extra keys are rejected.
+     */
+    private static boolean isWorkspaceInherit(TomlTable project, String key) {
+        if (!project.contains(key) || !project.isTable(key)) return false;
+        TomlTable t = project.getTable(key);
+        Boolean ws = t.getBoolean("workspace");
+        if (!Boolean.TRUE.equals(ws)) {
+            throw new JkBuildParseException("project."
+                    + key
+                    + ".workspace must be `true` (the only legal value), or set project."
+                    + key
+                    + " to a concrete value");
+        }
+        for (String k : t.keySet()) {
+            if (!"workspace".equals(k)) {
+                throw new JkBuildParseException("project."
+                        + key
+                        + " with workspace inheritance must only set `workspace = true` (unexpected key `"
+                        + k
+                        + "`)");
+            }
+        }
+        return true;
     }
 
     /**

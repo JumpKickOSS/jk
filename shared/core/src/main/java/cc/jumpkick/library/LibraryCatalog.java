@@ -20,12 +20,15 @@ import org.tomlj.TomlTable;
 
 /**
  * Short-name → {@code group:artifact} catalog. Layers (high → low): project {@code [libraries]},
- * {@code ~/.jk/libs.toml}, downloaded {@code cache/libs.global.toml}, bundled resource. Per-name
+ * {@code ~/.jk/libs.toml}, downloaded {@code store/libs.global.toml}, bundled resource. Per-name
  * shadowing; only the bundled layer is guaranteed present.
  */
 public final class LibraryCatalog {
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
+
+    /** Basename under {@link JkDirs#store()} (and legacy {@code cache/} until migration). */
+    public static final String DOWNLOADED_BASENAME = "libs.global.toml";
 
     private static volatile LibraryCatalog bundled;
 
@@ -40,9 +43,12 @@ public final class LibraryCatalog {
         return JkDirs.home().resolve("libs.toml");
     }
 
-    /** Downloaded registry mirror: {@code ~/.jk/cache/libs.global.toml}. */
+    /**
+     * Downloaded registry mirror: {@code ~/.jk/store/libs.global.toml} (falls back to the pre-split
+     * {@code ~/.jk/cache/} path until {@link cc.jumpkick.util.StoreMigration} moves it).
+     */
     public static Path downloadedFile() {
-        return JkDirs.cache().resolve("libs.global.toml");
+        return cc.jumpkick.util.StoreMigration.resolveForRead(DOWNLOADED_BASENAME);
     }
 
     /** ETag sidecar next to {@code cacheFile} for conditional-GET revalidation. */

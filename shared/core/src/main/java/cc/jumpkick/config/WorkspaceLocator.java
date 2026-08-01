@@ -30,7 +30,7 @@ public final class WorkspaceLocator {
             Path rootJkToml = parent.resolve("jk.toml");
             if (Files.exists(rootJkToml)) {
                 try {
-                    if (JkBuildParser.parse(rootJkToml).isWorkspaceRoot()) {
+                    if (JkBuildParser.parseLocal(rootJkToml).isWorkspaceRoot()) {
                         return Optional.of(parent);
                     }
                 } catch (RuntimeException ignored) {
@@ -56,7 +56,7 @@ public final class WorkspaceLocator {
             if (Files.exists(rootJkToml)) {
                 JkBuild root;
                 try {
-                    root = JkBuildParser.parse(rootJkToml);
+                    root = JkBuildParser.parseLocal(rootJkToml);
                 } catch (RuntimeException ignored) {
                     candidate = parent;
                     continue;

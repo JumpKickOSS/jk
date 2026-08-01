@@ -113,7 +113,42 @@ public final class LockfileReader {
                 sdk.add(new Lockfile.SdkEntry(component, revision));
             }
         }
-        return new Lockfile(lockVersion, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, jkPin);
+
+        List<Lockfile.ModuleEntry> modules = new ArrayList<>();
+        TomlArray moduleArray = result.getArray("module");
+        if (moduleArray != null) {
+            for (int i = 0; i < moduleArray.size(); i++) {
+                TomlTable t = moduleArray.getTable(i);
+                if (t == null) continue;
+                String path = t.getString("path");
+                String group = t.getString("group");
+                String name = t.getString("name");
+                String ver = t.getString("version");
+                if (path == null || group == null || name == null || ver == null) continue;
+                Integer java = null;
+                if (t.contains("java")) {
+                    Object raw = t.get("java");
+                    if (raw instanceof Long l) java = l.intValue();
+                    else if (raw instanceof Integer n) java = n;
+                }
+                Boolean m2 = t.contains("m2install") ? t.getBoolean("m2install") : null;
+                modules.add(new Lockfile.ModuleEntry(
+                        path,
+                        group,
+                        name,
+                        ver,
+                        t.getString("jdk"),
+                        java,
+                        t.getString("kotlin"),
+                        t.getString("groovy"),
+                        t.getString("description"),
+                        t.getString("sources"),
+                        m2,
+                        t.getString("layout")));
+            }
+        }
+        return new Lockfile(
+                lockVersion, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jkPin);
     }
 
     private static Lockfile.Artifact toArtifact(TomlTable table) {

@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.jdk.GlobalDefaultJdk;
@@ -118,10 +119,10 @@ public final class JdkUpdateCommand implements CliCommand {
         }
         List<JdkHit> managed = registry.managedHits(spec);
         if (managed.isEmpty()) {
-            CliOutput.out(
-                    spec == null || spec.isBlank()
-                            ? "(no jk-managed JDKs installed)"
-                            : "(no jk-managed JDK matches `" + spec + "`)");
+            String msg = spec == null || spec.isBlank()
+                    ? "Nothing to do. No JumpKick-managed JDKs installed."
+                    : "Nothing to do. No JumpKick-managed JDK matches `" + spec + "`.";
+            CliOutput.out(CommandWedge.ok("JDK", msg));
             return 0;
         }
 
@@ -132,7 +133,6 @@ public final class JdkUpdateCommand implements CliCommand {
 
         // Build the plan.
         List<Update> updates = new ArrayList<>();
-        int upToDate = 0;
         List<String> noTarget = new ArrayList<>();
         for (JdkHit hit : managed) {
             String id = JdkRegistry.identifierFor(hit.home());
@@ -144,8 +144,6 @@ public final class JdkUpdateCommand implements CliCommand {
             JdkCatalog.Entry e = target.get();
             if (newerThan(e.version(), hit.version())) {
                 updates.add(new Update(hit, e));
-            } else {
-                upToDate++;
             }
         }
 
@@ -158,17 +156,13 @@ public final class JdkUpdateCommand implements CliCommand {
         }
 
         if (updates.isEmpty()) {
-            CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().completedStep())
-                    + " All "
-                    + managed.size()
-                    + " jk-managed JDK"
-                    + (managed.size() == 1 ? "" : "s")
-                    + " are up to date.");
+            CliOutput.out(CommandWedge.ok(
+                    "JDK", "Nothing to do. All JumpKick-managed JDKs are up to date."));
             return 0;
         }
 
         if (!assumeYes && !confirm(updates)) {
-            CliOutput.out("Aborted.");
+            CliOutput.out(CommandWedge.ok("JDK", "Aborted."));
             return 0;
         }
 
@@ -211,8 +205,9 @@ public final class JdkUpdateCommand implements CliCommand {
                 if (currentDefault.isPresent() && currentDefault.get().equals(oldId)) {
                     defaults.set(newJdk);
                 }
+                // Progress detail (one line per JDK); the command settles with a wedge below.
                 CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().completedStep())
-                        + " Updated "
+                        + " "
                         + Theme.colorize(oldId, Theme.active().warning())
                         + " "
                         + Theme.colorize("→", Theme.active().darkGray())
@@ -222,7 +217,7 @@ public final class JdkUpdateCommand implements CliCommand {
             } catch (IOException | InterruptedException e) {
                 if (e instanceof InterruptedException) Thread.currentThread().interrupt();
                 CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().error())
-                        + " Failed to update "
+                        + " "
                         + Theme.colorize(oldId, Theme.active().warning())
                         + ": "
                         + e.getMessage());
@@ -233,7 +228,14 @@ public final class JdkUpdateCommand implements CliCommand {
         // Reap anything just enqueued (and any survivors from prior runs).
         new JdkGarbage(registry.jdksRoot()).drain();
 
-        CliOutput.out(updated + " updated" + (failed > 0 ? ", " + failed + " failed" : ""));
+        if (failed == 0) {
+            String msg = updated == 1
+                    ? "Updated 1 JumpKick-managed JDK."
+                    : "Updated " + updated + " JumpKick-managed JDKs.";
+            CliOutput.out(CommandWedge.ok("JDK", msg));
+        } else {
+            CliOutput.out(CommandWedge.fail("JDK", updated + " updated, " + failed + " failed."));
+        }
         return failed == 0;
     }
 

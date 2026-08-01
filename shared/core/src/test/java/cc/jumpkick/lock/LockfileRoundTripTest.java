@@ -127,4 +127,58 @@ class LockfileRoundTripTest {
         assertThat(rendered).doesNotContain("kotlin =");
         assertThat(LockfileReader.parse(rendered).kotlin()).isNull();
     }
+
+    @Test
+    void module_entries_round_trip() {
+        Lockfile original = Lockfile.empty("0.1.0-SNAPSHOT")
+                .withModules(List.of(
+                        new Lockfile.ModuleEntry(
+                                ".",
+                                "com.example",
+                                "root",
+                                "1.2.3",
+                                "temurin-25",
+                                25,
+                                null,
+                                null,
+                                "Root",
+                                null,
+                                null,
+                                null),
+                        new Lockfile.ModuleEntry(
+                                "lib",
+                                "com.example",
+                                "lib",
+                                "1.2.3",
+                                "temurin-25",
+                                25,
+                                "2.4.0",
+                                null,
+                                null,
+                                "publish",
+                                true,
+                                "maven")));
+
+        String rendered = LockfileWriter.render(original);
+        assertThat(rendered)
+                .contains("[[module]]")
+                .contains("path    = \".\"")
+                .contains("path    = \"lib\"")
+                .contains("version = \"1.2.3\"")
+                .contains("jdk     = \"temurin-25\"")
+                .contains("java    = 25")
+                .contains("kotlin  = \"2.4.0\"")
+                .contains("sources = \"publish\"")
+                .contains("m2install = true")
+                .contains("layout  = \"maven\"");
+
+        Lockfile parsed = LockfileReader.parse(rendered);
+        assertThat(parsed.modules()).hasSize(2);
+        assertThat(parsed.modules().getFirst().name()).isEqualTo("root");
+        assertThat(parsed.modules().get(1).name()).isEqualTo("lib");
+        assertThat(parsed.modules().get(1).version()).isEqualTo("1.2.3");
+        assertThat(parsed.modules().get(1).java()).isEqualTo(25);
+        assertThat(parsed.modules().get(1).kotlin()).isEqualTo("2.4.0");
+        assertThat(parsed.modules().get(1).m2install()).isTrue();
+    }
 }

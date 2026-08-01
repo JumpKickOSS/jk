@@ -1,10 +1,6 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-kotlin-compiler"
-version     = "0.10.1"
 description = "jk-kotlin-compiler: Kotlin Build Tools API worker (PluginMain)."
-jdk         = 25
-java        = 25
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
@@ -12,17 +8,17 @@ assembly = true
 
 # Codec only in the assembly; BTA impl is resolved at runtime onto the worker CP.
 [dependencies]
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
+jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
 kotlin-build-tools-api = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "2.4.0" }
-kotlin-stdlib          = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib",          version = "2.4.0" }
+kotlin-stdlib           = "2.4.0"
 
 [test-dependencies]
 # BTA must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
 # KotlinCompiler (Plugin SPI) and must load it without ClassNotFoundException.
 kotlin-build-tools-api  = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "2.4.0" }
-kotlin-stdlib           = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib",          version = "2.4.0" }
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+kotlin-stdlib           = "2.4.0"
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

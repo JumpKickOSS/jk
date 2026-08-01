@@ -1,21 +1,17 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-auditor"
-version     = "0.10.1"
 description = "jk-auditor: OSV audit plugin worker."
-jdk         = 25
-java        = 25
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.1" }
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
-jackson-databind = { group = "tools.jackson.core", name = "jackson-databind", version = "3.2.0" }
+jk-core.workspace = true
+jk-plugin-sdk.workspace = true
+jackson3-databind       = "3.2.0"
 
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

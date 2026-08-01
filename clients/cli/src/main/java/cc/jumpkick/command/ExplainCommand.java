@@ -363,8 +363,11 @@ public final class ExplainCommand implements CliCommand {
         return s >= 60 ? (s / 60) + "m " + (s % 60) + "s" : s + "s";
     }
 
-    /** Longest step-name column (e.g. {@code package-assembly}, {@code compile-kotlin}). */
-    private static final int STEP_COL = 14;
+    /**
+     * Extra bright-black dots after every step name (including the longest) so the {@code □}/{@code
+     * ✓} column never butts up against the name.
+     */
+    private static final int STEP_NAME_DOT_GAP = 2;
 
     /**
      * Render one module row under a section: {@code prefix} + connector + index badge + coordinate,
@@ -392,6 +395,13 @@ public final class ExplainCommand implements CliCommand {
                     ? prefix + (last ? "   " : Theme.colorize("│", t.darkGray()) + "  ")
                     : prefix + (last ? "   " : "|  ");
             List<BuildPlan.Step> ph = m.steps();
+            // Pad each step name to the widest in this module with bright-black dots so the
+            // □ / ✓ column lines up (package-assembly is longer than compile-main, etc.).
+            int nameCol = 0;
+            for (BuildPlan.Step p : ph) {
+                nameCol = Math.max(nameCol, p.name().length());
+            }
+            nameCol += STEP_NAME_DOT_GAP;
             // Pad each □ step's command to the widest in this module so the · column lines up.
             int commandCol = 0;
             for (BuildPlan.Step p : ph) {
@@ -400,12 +410,21 @@ public final class ExplainCommand implements CliCommand {
             for (int k = 0; k < ph.size(); k++) {
                 boolean lp = k == ph.size() - 1;
                 String stepConnector = ansi ? Theme.colorize(lp ? "╰─ " : "├─ ", t.darkGray()) : (lp ? "`- " : "+- ");
-                String stepName = ansi
-                        ? Theme.colorize(padRight(ph.get(k).name(), STEP_COL), t.brightWhite())
-                        : padRight(ph.get(k).name(), STEP_COL);
-                CliOutput.out(spine + stepConnector + stepName + "  " + renderStatus(ph.get(k), commandCol, t, ansi));
+                String stepName = formatStepName(ph.get(k).name(), nameCol, t, ansi);
+                CliOutput.out(spine + stepConnector + stepName + renderStatus(ph.get(k), commandCol, t, ansi));
             }
         }
+    }
+
+    /**
+     * Step name in bright white, right-padded with bright-black {@code .} to {@code width} so the
+     * status glyph lines up across steps. Non-ANSI: plain dots, no color.
+     */
+    static String formatStepName(String name, int width, Theme t, boolean ansi) {
+        int pad = Math.max(0, width - name.length());
+        String dots = pad == 0 ? "" : ".".repeat(pad);
+        if (!ansi) return name + dots;
+        return Theme.colorize(name, t.brightWhite()) + Theme.colorize(dots, t.darkGray());
     }
 
     /** Visible width of a step command — the text before {@code " · "} (or the whole text). */

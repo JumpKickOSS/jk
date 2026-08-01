@@ -35,4 +35,23 @@ class ExplainCommandEstimateTest {
         String label = TestAnsi.strip(ExplainCommand.buildTimeEstimate(8_000, false, Theme.active()));
         assertThat(label).isEqualTo("Build time estimate ~8s");
     }
+
+    @Test
+    void formatStepName_pads_shorter_names_with_dots_to_align_with_longest() {
+        // package-assembly (16) + 2-dot gap → width 18, matching the explain tree.
+        int width = "package-assembly".length() + 2;
+        assertThat(ExplainCommand.formatStepName("compile-main", width, Theme.active(), false))
+                .isEqualTo("compile-main......");
+        assertThat(ExplainCommand.formatStepName("run-tests", width, Theme.active(), false))
+                .isEqualTo("run-tests.........");
+        assertThat(ExplainCommand.formatStepName("package-assembly", width, Theme.active(), false))
+                .isEqualTo("package-assembly..");
+    }
+
+    @Test
+    void formatStepName_ansi_keeps_visible_width_and_name_prefix() {
+        int width = "package-assembly".length() + 2;
+        String styled = ExplainCommand.formatStepName("compile-main", width, Theme.active(), true);
+        assertThat(TestAnsi.strip(styled)).isEqualTo("compile-main......");
+    }
 }

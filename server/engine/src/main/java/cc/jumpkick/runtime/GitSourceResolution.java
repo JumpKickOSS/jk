@@ -152,7 +152,16 @@ public final class GitSourceResolution {
             }
         }
         return new Lockfile(
-                lock.version(), lock.generatedBy(), lock.resolutionAlgorithm(), lock.jdk(), lock.kotlin(), out);
+                lock.version(),
+                lock.generatedBy(),
+                lock.resolutionAlgorithm(),
+                lock.jdk(),
+                lock.kotlin(),
+                out,
+                lock.plugins(),
+                lock.sdk(),
+                lock.modules(),
+                lock.jk());
     }
 
     private static String ga(String nameOrKey) {

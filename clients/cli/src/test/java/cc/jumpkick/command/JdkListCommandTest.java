@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.command.JdkListCommand.Row;
 import cc.jumpkick.command.JdkListCommand.Status;
+import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -84,6 +86,67 @@ class JdkListCommandTest {
         assertThat(rows).noneMatch(r -> r.status() == Status.ACTIVE);
     }
 
+    @Test
+    void marks_installed_patch_outdated_when_feed_has_newer_point_release(@TempDir Path dir) {
+        Path home = dir.resolve("temurin-25.0.3");
+        List<JdkHit> installed = List.of(new JdkHit(home, "25.0.3", JdkVendor.TEMURIN, "jk"));
+        JdkCatalog catalog = catalog(
+                entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.3", "temurin-25.0.3"),
+                entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.4", "temurin-25.0.4"));
+
+        List<Row> rows = JdkListCommand.buildRows(installed, null, catalog, "linux", "x64", null, null);
+
+        Row installedRow = rowFor(rows, "temurin-25.0.3");
+        assertThat(installedRow.status()).isEqualTo(Status.OUTDATED);
+        assertThat(installedRow.statusLabel()).isEqualTo("outdated!");
+        // --all would surface the newer patch as available; buildRows always includes it.
+        Row available = rowFor(rows, "temurin-25.0.4");
+        assertThat(available.status()).isEqualTo(Status.AVAILABLE);
+        assertThat(available.location()).isEqualTo("download");
+    }
+
+    @Test
+    void active_outdated_composes_status_label(@TempDir Path dir) {
+        Path home = dir.resolve("temurin-25.0.3");
+        List<JdkHit> installed = List.of(new JdkHit(home, "25.0.3", JdkVendor.TEMURIN, "jk"));
+        JdkCatalog catalog = catalog(entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.4", "temurin-25.0.4"));
+
+        List<Row> rows = JdkListCommand.buildRows(installed, home, catalog, "linux", "x64", home, null);
+
+        Row row = rowFor(rows, "temurin-25.0.3");
+        assertThat(row.status()).isEqualTo(Status.ACTIVE);
+        assertThat(row.statusLabel()).isEqualTo("active/default/outdated!");
+    }
+
+    @Test
+    void up_to_date_install_suppresses_available_row_for_same_family(@TempDir Path dir) {
+        Path home = dir.resolve("temurin-25.0.4");
+        List<JdkHit> installed = List.of(new JdkHit(home, "25.0.4", JdkVendor.TEMURIN, "jk"));
+        JdkCatalog catalog = catalog(
+                entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.3", "temurin-25.0.3"),
+                entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.4", "temurin-25.0.4"));
+
+        List<Row> rows = JdkListCommand.buildRows(installed, null, catalog, "linux", "x64", null, null);
+
+        assertThat(rowFor(rows, "temurin-25.0.4").status()).isEqualTo(Status.INSTALLED);
+        assertThat(rows).noneMatch(r -> r.spec().equals("temurin-25.0.4") && r.status() == Status.AVAILABLE);
+        assertThat(rows).noneMatch(r -> r.status() == Status.AVAILABLE && r.major() == 25);
+    }
+
+    @Test
+    void available_row_still_shown_for_major_with_no_install(@TempDir Path dir) {
+        Path home = dir.resolve("temurin-21.0.5");
+        List<JdkHit> installed = List.of(new JdkHit(home, "21.0.5", JdkVendor.TEMURIN, "jk"));
+        JdkCatalog catalog = catalog(
+                entry("Eclipse", "Temurin", "temurin-21", 21, "21.0.5", "temurin-21.0.5"),
+                entry("Eclipse", "Temurin", "temurin-25", 25, "25.0.4", "temurin-25.0.4"));
+
+        List<Row> rows = JdkListCommand.buildRows(installed, null, catalog, "linux", "x64", null, null);
+
+        assertThat(rowFor(rows, "temurin-21.0.5").status()).isEqualTo(Status.INSTALLED);
+        assertThat(rowFor(rows, "temurin-25.0.4").status()).isEqualTo(Status.AVAILABLE);
+    }
+
     private static Row rowFor(List<Row> rows, String spec) {
         return rows.stream()
                 .filter(r -> r.spec().equals(spec))
@@ -97,5 +160,30 @@ class JdkListCommandTest {
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+    }
+
+    private static JdkCatalog catalog(JdkCatalog.Entry... entries) {
+        return new JdkCatalog(List.of(entries));
+    }
+
+    private static JdkCatalog.Entry entry(
+            String vendor, String product, String suggested, int major, String version, String folder) {
+        return new JdkCatalog.Entry(
+                vendor,
+                product,
+                suggested,
+                major,
+                version,
+                false,
+                false,
+                List.of(),
+                "linux",
+                "x64",
+                "targz",
+                URI.create("https://example.invalid/" + folder + ".tar.gz"),
+                "deadbeef",
+                1L,
+                folder,
+                "");
     }
 }

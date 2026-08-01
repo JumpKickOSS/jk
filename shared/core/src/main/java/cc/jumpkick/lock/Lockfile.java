@@ -12,7 +12,8 @@ import java.util.Set;
 
 /**
  * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code jdk},
- * {@code kotlin}, plugins, SDK, toolchain) may be null/empty for older lockfiles.
+ * {@code kotlin}, plugins, SDK, modules, toolchain) may be null/empty for older lockfiles.
+ * Additive only — schema stays at 1 until 1.0.
  */
 public record Lockfile(
         int version,
@@ -23,6 +24,7 @@ public record Lockfile(
         List<Artifact> artifacts,
         List<PluginEntry> plugins,
         List<SdkEntry> sdk,
+        List<ModuleEntry> modules,
         JkToolchain jk) {
 
     /**
@@ -30,6 +32,32 @@ public record Lockfile(
      * this checkout.
      */
     public record JkToolchain(String version, String sha256) {}
+
+    /**
+     * Resolved first-party project identity for one workspace member (or the standalone root at
+     * {@code path = "."}). Captures concrete values after {@code project.*.workspace = true}
+     * inheritance so a re-lock is the only way those pins change.
+     */
+    public record ModuleEntry(
+            String path,
+            String group,
+            String name,
+            String version,
+            String jdk,
+            Integer java,
+            String kotlin,
+            String groovy,
+            String description,
+            String sources,
+            Boolean m2install,
+            String layout) {
+        public ModuleEntry {
+            Objects.requireNonNull(path, "path");
+            Objects.requireNonNull(group, "group");
+            Objects.requireNonNull(name, "name");
+            Objects.requireNonNull(version, "version");
+        }
+    }
 
     public static final int CURRENT_VERSION = 1;
     public static final int MIN_SUPPORTED_VERSION = 1;
@@ -42,6 +70,7 @@ public record Lockfile(
         artifacts = List.copyOf(artifacts);
         plugins = plugins == null ? List.of() : List.copyOf(plugins);
         sdk = sdk == null ? List.of() : List.copyOf(sdk);
+        modules = modules == null ? List.of() : List.copyOf(modules);
     }
 
     /** Back-compat constructor without the jk toolchain pin. */
@@ -54,12 +83,27 @@ public record Lockfile(
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
             List<SdkEntry> sdk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, null);
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), null);
+    }
+
+    /** Back-compat constructor with toolchain pin but no module pins. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts,
+            List<PluginEntry> plugins,
+            List<SdkEntry> sdk,
+            JkToolchain jk) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), jk);
     }
 
     /** This lock with the jk toolchain pin set. */
     public Lockfile withJk(JkToolchain toolchain) {
-        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, toolchain);
+        return new Lockfile(
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, toolchain);
     }
 
     /** Back-compat constructor without SDK entries. */
@@ -97,17 +141,35 @@ public record Lockfile(
 
     /** Return a copy with the resolved Kotlin compiler version stamped in. */
     public Lockfile withKotlin(String kotlinVersion) {
-        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlinVersion, artifacts, plugins, sdk);
+        return new Lockfile(
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlinVersion,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                jk);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
     public Lockfile withPlugins(List<PluginEntry> newPlugins) {
-        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, newPlugins, sdk);
+        return new Lockfile(
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, newPlugins, sdk, modules, jk);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
     public Lockfile withSdk(List<SdkEntry> newSdk) {
-        return new Lockfile(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, newSdk);
+        return new Lockfile(
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, newSdk, modules, jk);
+    }
+
+    /** Return a copy with resolved first-party module identity pins (replaces any existing). */
+    public Lockfile withModules(List<ModuleEntry> newModules) {
+        return new Lockfile(
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, newModules, jk);
     }
 
     public static Lockfile empty(String jkVersion) {
@@ -117,7 +179,16 @@ public record Lockfile(
     /** Empty artifact set with a resolved JDK pinned for the project. */
     public static Lockfile empty(String jkVersion, String jdk) {
         return new Lockfile(
-                CURRENT_VERSION, "jk " + jkVersion, RESOLUTION_ALGORITHM, jdk, null, List.of(), List.of(), List.of());
+                CURRENT_VERSION,
+                "jk " + jkVersion,
+                RESOLUTION_ALGORITHM,
+                jdk,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null);
     }
 
     /** Provisioned SDK component pin (sdkmanager path + revision). */

@@ -202,8 +202,10 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * The cache root a deferred opportunistic prune should run against, or {@code null} when none
-     * is queued. Set by a successful build/sync when the auto-prune cadence is due (the enqueue that
-     * replaced the detached {@code jk cache prune --background} spawn); drained at the idle boundary.
+     * is queued. Set by a successful build/sync when the auto-prune cadence is due, or by the
+     * 12‑hour {@link StoreFeedRefresh} tick (CI-friendly night-time GC). Never double-queued —
+     * {@code compareAndSet(null, …)} only. Drained at the idle boundary, or immediately when the
+     * scheduler finds the engine already idle.
      */
     private final java.util.concurrent.atomic.AtomicReference<Path> pendingPruneCache =
             new java.util.concurrent.atomic.AtomicReference<>();
@@ -234,6 +236,13 @@ public final class EngineServer implements AutoCloseable {
 
     /** Non-null only on the loopback-TCP transport (Windows) — see {@link EngineTransport}. */
     private String expectedToken;
+
+    /**
+     * Quiet background revalidation of {@code store/libs.global.toml} and {@code store/jdks.json}
+     * (every 12 h). Started only after winning the resident-engine election — never in {@code --job}
+     * mode.
+     */
+    private StoreFeedRefresh storeFeedRefresh;
 
     public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
         this(paths, config, null, version, cc.jumpkick.model.BuildIdentity.buildId(), log);
@@ -383,6 +392,9 @@ public final class EngineServer implements AutoCloseable {
         if (abandoned > 0) {
             log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
         }
+        // Non-blocking: first tick immediately (feeds if stale + queue cache GC), then every 12 h.
+        storeFeedRefresh = new StoreFeedRefresh(log, this::enqueueScheduledCacheGc);
+        storeFeedRefresh.start();
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -1901,10 +1913,32 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
+     * 12‑hour {@link StoreFeedRefresh} hook: queue a full cache prune of the machine default cache
+     * (when auto-prune is on), never double-queueing if one is already pending. If the engine is
+     * already idle, drain immediately; otherwise the next {@link #maybeIdleBoundary} runs it.
+     *
+     * <p>Unlike {@link #maybeEnqueuePrune}, this path does <em>not</em> consult
+     * {@code .last-pruned} — the 12 h wake is the cadence (so a busy CI box still gets a night-time
+     * GC once quiet).
+     */
+    private void enqueueScheduledCacheGc() {
+        if (shuttingDown) return;
+        var config = cc.jumpkick.config.JkCacheConfig.resolve();
+        if (!config.autoPrune()) return;
+        Path cache = cc.jumpkick.util.JkDirs.cache();
+        // compareAndSet: already queued → leave the existing entry alone (never double-queue).
+        pendingPruneCache.compareAndSet(null, cache);
+        if (activePipelines.get() == 0) {
+            drainPendingPrune();
+        }
+    }
+
+    /**
      * Run the queued opportunistic prune, if any, now that no pipeline is in flight. Runs on the
-     * finishing request's connection thread; a pipeline that starts concurrently wins the
-     * {@link #cacheGate} race and the prune stays queued for the next boundary. Mirrors the legacy {@code --background} flags: sweep on,
-     * TTL/budget from {@code [cache]} config, {@code.prune.lock} held, {@code.last-pruned} stamped.
+     * finishing request's connection thread or the 12 h feed-refresh thread when already idle; a
+     * pipeline that starts concurrently wins the {@link #cacheGate} race and the prune stays queued
+     * for the next boundary. Mirrors the legacy {@code --background} flags: sweep on, TTL/budget
+     * from {@code [cache]} config, {@code.prune.lock} held, {@code.last-pruned} stamped.
      */
     private void drainPendingPrune() {
         Path cache = pendingPruneCache.getAndSet(null);
@@ -4215,7 +4249,13 @@ public final class EngineServer implements AutoCloseable {
         String dirFilter = Jsonl.str(requestLine, "dir");
         int n = 0;
         for (BuildMetrics.Entry e : BuildMetrics.load(metricsFile).entries()) {
-            if (dirFilter != null && !e.dir().isEmpty() && !e.dir().equals(dirFilter)) continue;
+            // Project rows are stored as bare dir and dirty-count shapes (dir#dN). Match
+            // the project's base path so `jk status` sees the folded project tier.
+            if (dirFilter != null
+                    && !e.dir().isEmpty()
+                    && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+                continue;
+            }
             send(writer, metricsEntryJson(e));
             n++;
         }
@@ -4248,6 +4288,9 @@ public final class EngineServer implements AutoCloseable {
                 .put("failMinMillis", e.failed().minMillis())
                 .put("failMaxMillis", e.failed().maxMillis())
                 .put("cancelledCount", e.cancelled().count())
+                .put("cancelledTotalMillis", e.cancelled().totalMillis())
+                .put("cancelledMinMillis", e.cancelled().minMillis())
+                .put("cancelledMaxMillis", e.cancelled().maxMillis())
                 .put("updated", e.updatedMillis())
                 .toString();
     }
@@ -5297,6 +5340,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void cleanup() {
+        if (storeFeedRefresh != null) {
+            storeFeedRefresh.close();
+            storeFeedRefresh = null;
+        }
         if (httpServer != null) httpServer.close();
         deleteQuietly(paths.http()); // the live bound-URL file — stale once we stop
         // The http token is deliberately NOT deleted: it persists across restarts so an open

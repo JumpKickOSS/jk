@@ -823,12 +823,34 @@ See `jk --help` for the canonical set; aliases are for muscle memory only.
 
 ```toml
 # root jk.toml
+[project]
+group   = "com.example"
+name    = "root"
+version = "1.2.3"   # concrete — the inheritance source
+
 [workspace]
 modules = ["libs/*", "services/*"]
 
 [workspace.dependencies]
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version = "2.18.2" }
 ```
+
+Workspace **modules** may omit most `[project]` fields; omitted fields resolve from the workspace
+root. **`name` is always required.** **`description` is optional** and does **not** auto-inherit
+when omitted (stays unset unless you set it or use `description.workspace = true`).
+
+```toml
+# libs/core/jk.toml — minimal module
+[project]
+name = "core"
+# group, version, java, jdk, … come from the workspace root
+```
+
+Explicit overrides still work (`version = "2.0.0"`, `java = 21`, or `version.workspace = true`).
+The root must keep concrete values for fields members inherit. Inheritance is resolved when the
+workspace loads members (lock, build, tree, publish). The **resolved** values are frozen into
+`jk-lock.toml` as `[[module]]` rows, so a re-lock is required after changing root or member
+`[project]` identity.
 
 Monorepo tip: rebuild or retest only what you need:
 

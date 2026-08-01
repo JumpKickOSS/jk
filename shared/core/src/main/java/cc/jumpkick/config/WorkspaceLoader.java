@@ -13,7 +13,8 @@ import java.util.Objects;
 
 /**
  * Loads each {@code workspace.modules} entry's {@code jk.toml} (literal paths only). Missing
- * modules raise {@link JkBuildParseException}.
+ * modules raise {@link JkBuildParseException}. Resolves Cargo-style {@code project.<field>.workspace
+ * = true} against the workspace root before returning.
  */
 public final class WorkspaceLoader {
 
@@ -23,6 +24,11 @@ public final class WorkspaceLoader {
         Objects.requireNonNull(workspaceRoot, "workspaceRoot");
         Objects.requireNonNull(root, "root");
         if (!root.isWorkspaceRoot()) return Map.of();
+        if (root.project().inheritsFromWorkspace()) {
+            throw new JkBuildParseException(
+                    "workspace root must set concrete [project] values"
+                            + " (`*.workspace = true` is only valid on workspace modules)");
+        }
 
         Map<Path, JkBuild> modules = new LinkedHashMap<>();
         List<String> bad = new ArrayList<>();
@@ -33,7 +39,8 @@ public final class WorkspaceLoader {
                 bad.add(module);
                 continue;
             }
-            JkBuild moduleBuild = JkBuildParser.parse(moduleJkToml);
+            // parseLocal: avoid WorkspaceResolve recursion (loadModules is called from applyWorkspace).
+            JkBuild moduleBuild = JkBuildParser.parseLocal(moduleJkToml);
             // Nested workspaces are forbidden (ambiguous shared target/).
             if (moduleBuild.isWorkspaceRoot()) {
                 throw new JkBuildParseException("workspaces cannot be nested — `"
@@ -43,13 +50,35 @@ public final class WorkspaceLoader {
                         + workspaceRoot
                         + "`.");
             }
-            modules.put(moduleDir, moduleBuild);
+            modules.put(moduleDir, inheritFromRoot(moduleBuild, root));
         }
         if (!bad.isEmpty()) {
             throw new JkBuildParseException("workspace modules missing jk.toml: " + bad);
         }
         checkArtifactCollisions(root, modules);
         return modules;
+    }
+
+    /**
+     * Apply every pending {@code project.*.workspace = true} field from the workspace root.
+     * Unchanged when the module has no inheritance flags.
+     */
+    public static JkBuild inheritFromRoot(JkBuild module, JkBuild root) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(root, "root");
+        if (!module.project().inheritsFromWorkspace()) return module;
+        try {
+            return module.withProject(module.project().resolveFromWorkspaceRoot(root.project()));
+        } catch (IllegalArgumentException e) {
+            throw new JkBuildParseException(
+                    "module `" + module.project().name() + "`: " + e.getMessage(), e);
+        }
+    }
+
+    /** @deprecated use {@link #inheritFromRoot} */
+    @Deprecated
+    public static JkBuild inheritVersionFromRoot(JkBuild module, JkBuild root) {
+        return inheritFromRoot(module, root);
     }
 
     /**

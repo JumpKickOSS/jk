@@ -136,6 +136,41 @@ public final class LockfileWriter {
             out.append("revision  = ").append(quote(e.revision())).append('\n');
         }
 
+        List<Lockfile.ModuleEntry> sortedModules = new ArrayList<>(lockfile.modules());
+        sortedModules.sort(Comparator.comparing(Lockfile.ModuleEntry::path).thenComparing(Lockfile.ModuleEntry::name));
+        for (Lockfile.ModuleEntry m : sortedModules) {
+            out.append('\n');
+            out.append("[[module]]\n");
+            out.append("path    = ").append(quote(m.path())).append('\n');
+            out.append("group   = ").append(quote(m.group())).append('\n');
+            out.append("name    = ").append(quote(m.name())).append('\n');
+            out.append("version = ").append(quote(m.version())).append('\n');
+            if (m.jdk() != null && !m.jdk().isBlank()) {
+                out.append("jdk     = ").append(quote(m.jdk())).append('\n');
+            }
+            if (m.java() != null && m.java() > 0) {
+                out.append("java    = ").append(m.java()).append('\n');
+            }
+            if (m.kotlin() != null && !m.kotlin().isBlank()) {
+                out.append("kotlin  = ").append(quote(m.kotlin())).append('\n');
+            }
+            if (m.groovy() != null && !m.groovy().isBlank()) {
+                out.append("groovy  = ").append(quote(m.groovy())).append('\n');
+            }
+            if (m.description() != null && !m.description().isBlank()) {
+                out.append("description = ").append(quote(m.description())).append('\n');
+            }
+            if (m.sources() != null && !m.sources().isBlank() && !"disabled".equals(m.sources())) {
+                out.append("sources = ").append(quote(m.sources())).append('\n');
+            }
+            if (Boolean.TRUE.equals(m.m2install())) {
+                out.append("m2install = true\n");
+            }
+            if (m.layout() != null && !m.layout().isBlank() && !"auto".equalsIgnoreCase(m.layout())) {
+                out.append("layout  = ").append(quote(m.layout())).append('\n');
+            }
+        }
+
         return out.toString();
     }
 

@@ -14,11 +14,11 @@ import cc.jumpkick.jdk.JdkCatalog;
 import cc.jumpkick.jdk.JdkCatalogClient;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
+import cc.jumpkick.jdk.JdkSelector;
 import cc.jumpkick.jdk.JdkVendor;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.resolver.Versions;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
@@ -43,9 +43,12 @@ import org.jline.utils.AttributedStyle;
  * source column names the tool that owns the install ({@code sdkman}, {@code intellij}, …) rather
  * than the ephemeral {@code $JAVA_HOME} pointer.
  *
- * <p>Renders a box-drawn table grouped by major version. Without {@code --all} the command is
- * purely offline; with {@code --all}, network failure degrades to installed-only rows with a stderr
- * warning.
+ * <p>Renders a box-drawn table grouped by major version. Both modes consult the JetBrains feed (or
+ * its cache) so installed point releases that lag the feed can be marked {@code outdated!}. Without
+ * {@code --all}, only installed rows are shown; with {@code --all}, a separate {@code available}
+ * row is added for each family whose latest feed entry is not yet installed (including when an older
+ * patch of that family is already on disk). Network failure degrades to installed-only rows with a
+ * stderr warning and no outdated markers.
  */
 public final class JdkListCommand implements CliCommand {
 
@@ -62,7 +65,9 @@ public final class JdkListCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Also list JDKs available for download from the JetBrains feed.", "--all"),
+                Opt.flag(
+                        "Also list downloadable JDKs from the JetBrains feed (including newer point releases of installed majors).",
+                        "--all"),
                 Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
                         .hide(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
@@ -84,6 +89,7 @@ public final class JdkListCommand implements CliCommand {
         DEFAULT("default"),
         NATIVE("native"),
         INSTALLED("installed"),
+        OUTDATED("outdated!"),
         AVAILABLE("available");
 
         final String label;
@@ -101,7 +107,7 @@ public final class JdkListCommand implements CliCommand {
     record Row(int major, String vendor, String spec, Status status, String statusLabel, String location) {}
 
     /** Build the composite status text from the roles a JDK holds. */
-    private static String compositeLabel(boolean active, boolean isDefault, boolean isNative) {
+    private static String compositeLabel(boolean active, boolean isDefault, boolean isNative, boolean outdated) {
         StringBuilder sb = new StringBuilder();
         if (active) sb.append("active");
         if (isDefault) {
@@ -111,6 +117,10 @@ public final class JdkListCommand implements CliCommand {
         if (isNative) {
             if (sb.length() > 0) sb.append('/');
             sb.append("native");
+        }
+        if (outdated) {
+            if (sb.length() > 0) sb.append('/');
+            sb.append("outdated!");
         }
         return sb.length() == 0 ? "installed" : sb.toString();
     }
@@ -147,10 +157,9 @@ public final class JdkListCommand implements CliCommand {
         } catch (IOException ignored) {
             // malformed config — leave both null (no row marked)
         }
-        // Catalog (and therefore the network fetch) is only consulted when the
-        // user opts in to "available" rows via --all. Default `list` is a
-        // pure offline view of what's on disk.
-        JdkCatalog catalog = all ? fetchCatalogOrNull() : null;
+        // Catalog (feed / cache) is always consulted so lagging point releases can
+        // be marked outdated!. --all additionally surfaces available download rows.
+        JdkCatalog catalog = fetchCatalogOrNull();
 
         String os = HostPlatform.currentOs();
         String arch = HostPlatform.currentArch();
@@ -161,6 +170,7 @@ public final class JdkListCommand implements CliCommand {
 
         List<Row> rows = buildRows(installed, defaultHome, catalog, os, arch, currentHome, graalHome);
         if (!all) {
+            // Default list: installed only (with outdated! when the feed is newer).
             rows = rows.stream().filter(r -> r.status() != Status.AVAILABLE).toList();
         }
         if (rows.isEmpty()) {
@@ -191,18 +201,31 @@ public final class JdkListCommand implements CliCommand {
             Path graalHome) {
         // Index catalog entries by installFolderName, restricted to current host.
         Map<String, JdkCatalog.Entry> byInstall = new HashMap<>();
+        // Latest non-preview catalog entry per (vendor, product, major) on this host.
+        Map<String, JdkCatalog.Entry> latestPerTuple = new LinkedHashMap<>();
         if (catalog != null) {
             for (JdkCatalog.Entry e : catalog.entries()) {
                 if (!e.os().equals(os) || !e.arch().equals(arch)) continue;
                 byInstall.putIfAbsent(e.installFolderName(), e);
+                if (e.preview()) continue;
+                String key = familyKey(e);
+                JdkCatalog.Entry prior = latestPerTuple.get(key);
+                if (prior == null || newerThan(e.version(), prior.version())) {
+                    latestPerTuple.put(key, e);
+                }
             }
         }
 
         // Installed → Row. Status precedence: CURRENT (what `javac` on PATH
         // resolves to) wins over DEFAULT (jk's global default) — so the green
         // "default" row only appears when the default JDK isn't the one on PATH.
+        // When the feed has a newer point release of the same family, the row is
+        // marked outdated! (alone or composed with active/default/native).
         boolean currentShown = false;
         List<Row> rows = new ArrayList<>();
+        // Highest installed version per family key — used to decide whether the
+        // latest feed entry still needs an "available" row under --all.
+        Map<String, String> maxInstalledVersion = new HashMap<>();
         for (JdkHit j : installed) {
             String id = IntellijJdkDir.installDirOf(j.home()).getFileName().toString();
             JdkCatalog.Entry e = byInstall.get(id);
@@ -216,12 +239,44 @@ public final class JdkListCommand implements CliCommand {
             boolean isActive = sameHome(currentHome, j.home());
             boolean isDefault = sameHome(defaultHome, j.home());
             boolean isNative = sameHome(graalHome, j.home());
+            Optional<JdkCatalog.Entry> latest =
+                    e != null
+                            ? Optional.ofNullable(latestPerTuple.get(familyKey(e)))
+                            : latestPointRelease(catalog, id, os, arch);
+            String installedVersion = j.version() != null && !j.version().isBlank() ? j.version() : id;
+            boolean outdated =
+                    latest.isPresent() && newerThan(latest.get().version(), installedVersion);
+            if (latest.isPresent()) {
+                String key = familyKey(latest.get());
+                String prev = maxInstalledVersion.get(key);
+                if (prev == null || newerThan(installedVersion, prev)) {
+                    maxInstalledVersion.put(key, installedVersion);
+                }
+            } else if (e != null) {
+                // Exact folder match but no latest? Still track for available suppression.
+                String key = familyKey(e);
+                String prev = maxInstalledVersion.get(key);
+                if (prev == null || newerThan(installedVersion, prev)) {
+                    maxInstalledVersion.put(key, installedVersion);
+                }
+            }
             // A JDK can hold several roles at once; status is the primary (for
             // sort/style), statusLabel the composite shown to the user.
-            Status status =
-                    isActive ? Status.ACTIVE : isDefault ? Status.DEFAULT : isNative ? Status.NATIVE : Status.INSTALLED;
+            Status status = isActive
+                    ? Status.ACTIVE
+                    : isDefault
+                            ? Status.DEFAULT
+                            : isNative
+                                    ? Status.NATIVE
+                                    : outdated ? Status.OUTDATED : Status.INSTALLED;
             if (isActive) currentShown = true;
-            rows.add(new Row(major, vendor, id, status, compositeLabel(isActive, isDefault, isNative), j.source()));
+            rows.add(new Row(
+                    major,
+                    vendor,
+                    id,
+                    status,
+                    compositeLabel(isActive, isDefault, isNative, outdated),
+                    j.source()));
         }
 
         // The active javac may resolve to a JDK no probe surfaced (e.g. on PATH
@@ -234,30 +289,46 @@ public final class JdkListCommand implements CliCommand {
                 String vendor = hit.vendor() != JdkVendor.UNKNOWN ? hit.vendor().displayName() : "";
                 boolean d = sameHome(defaultHome, hit.home());
                 boolean n = sameHome(graalHome, hit.home());
-                rows.add(new Row(parseMajor(id), vendor, id, Status.ACTIVE, compositeLabel(true, d, n), hit.source()));
+                Optional<JdkCatalog.Entry> latest = latestPointRelease(catalog, id, os, arch);
+                String installedVersion =
+                        hit.version() != null && !hit.version().isBlank() ? hit.version() : id;
+                boolean outdated =
+                        latest.isPresent() && newerThan(latest.get().version(), installedVersion);
+                if (latest.isPresent()) {
+                    String key = familyKey(latest.get());
+                    String prev = maxInstalledVersion.get(key);
+                    if (prev == null || newerThan(installedVersion, prev)) {
+                        maxInstalledVersion.put(key, installedVersion);
+                    }
+                }
+                rows.add(new Row(
+                        parseMajor(id),
+                        vendor,
+                        id,
+                        Status.ACTIVE,
+                        compositeLabel(true, d, n, outdated),
+                        hit.source()));
             });
         }
 
-        // Catalog → Row for each (vendor, product, major) not already installed.
-        // Pick the latest non-preview entry per tuple.
+        // Catalog → available rows for each (vendor, product, major) whose latest
+        // feed entry is not already satisfied by an install (missing family, or
+        // installed but lagging a newer point release — e.g. temurin-25.0.3 on
+        // disk while the feed has 25.0.4).
         if (catalog != null) {
-            var installedKeys = new java.util.HashSet<String>();
-            for (Row r : rows) {
-                installedKeys.add(r.vendor() + "|" + r.major());
-            }
-            Map<String, JdkCatalog.Entry> latestPerTuple = new LinkedHashMap<>();
-            for (JdkCatalog.Entry e : catalog.entries()) {
-                if (e.preview()) continue;
-                if (!e.os().equals(os) || !e.arch().equals(arch)) continue;
-                String label = e.vendor() + " " + e.product();
-                String key = label + "|" + e.majorVersion();
-                if (installedKeys.contains(key)) continue;
-                JdkCatalog.Entry prior = latestPerTuple.get(key);
-                if (prior == null || Versions.compare(e.version(), prior.version()) > 0) {
-                    latestPerTuple.put(key, e);
-                }
-            }
             for (JdkCatalog.Entry e : latestPerTuple.values()) {
+                String key = familyKey(e);
+                String installedMax = maxInstalledVersion.get(key);
+                if (installedMax != null && !newerThan(e.version(), installedMax)) {
+                    continue; // already at or past the latest feed version
+                }
+                // When maxInstalledVersion missed (no family-key match via latest),
+                // also suppress if any installed id belongs to this feed family and
+                // is already current — covered above when latestPointRelease keyed
+                // the install. Fallback: family match by suggested_sdk_name.
+                if (installedMax == null && isSatisfiedByInstalled(installed, e)) {
+                    continue;
+                }
                 rows.add(new Row(
                         e.majorVersion(),
                         e.vendor() + " " + e.product(),
@@ -268,13 +339,65 @@ public final class JdkListCommand implements CliCommand {
             }
         }
 
-        // Sort: major desc, then status priority (current > default > installed
-        // > available, via enum ordinal), then vendor alphabetical.
+        // Sort: major desc, then status priority (active > default > … > available,
+        // via enum ordinal), then vendor alphabetical.
         rows.sort(Comparator.comparingInt(Row::major)
                 .reversed()
                 .thenComparingInt((Row r) -> r.status().ordinal())
                 .thenComparing(Row::vendor, Comparator.nullsLast(String::compareTo)));
         return rows;
+    }
+
+    private static String familyKey(JdkCatalog.Entry e) {
+        return e.vendor() + " " + e.product() + "|" + e.majorVersion();
+    }
+
+    /**
+     * Highest-versioned non-preview catalog entry on this host that belongs to the same family as
+     * the installed id (its {@code suggested_sdk_name} is a delimiter-bounded prefix of the id).
+     * Same matching rules as {@code jk jdk update}.
+     */
+    private static Optional<JdkCatalog.Entry> latestPointRelease(
+            JdkCatalog catalog, String installedId, String os, String arch) {
+        if (catalog == null) return Optional.empty();
+        JdkCatalog.Entry best = null;
+        for (JdkCatalog.Entry e : catalog.entries()) {
+            if (e.preview()) continue;
+            if (!e.os().equals(os) || !e.arch().equals(arch)) continue;
+            if (!belongsToFamily(installedId, e.suggestedSdkName())) continue;
+            if (best == null || newerThan(e.version(), best.version())) best = e;
+        }
+        return Optional.ofNullable(best);
+    }
+
+    /** Does install id {@code id} belong to the family named by {@code suggested}? */
+    private static boolean belongsToFamily(String id, String suggested) {
+        if (suggested == null || suggested.isEmpty()) return false;
+        return id.equals(suggested)
+                || id.startsWith(suggested + ".")
+                || id.startsWith(suggested + "-")
+                || id.startsWith(suggested + "+");
+    }
+
+    /**
+     * True when some installed hit already matches {@code e}'s family and is at least as new as
+     * {@code e.version()} (suppresses a redundant available row).
+     */
+    private static boolean isSatisfiedByInstalled(List<JdkHit> installed, JdkCatalog.Entry e) {
+        for (JdkHit j : installed) {
+            String id = IntellijJdkDir.installDirOf(j.home()).getFileName().toString();
+            if (!belongsToFamily(id, e.suggestedSdkName())) continue;
+            String ver = j.version() != null && !j.version().isBlank() ? j.version() : id;
+            if (!newerThan(e.version(), ver)) return true;
+        }
+        return false;
+    }
+
+    /** {@code a > b} by {@link JdkSelector#versionKey} ordering ({@code 25.0.10 > 25.0.9}). */
+    private static boolean newerThan(String a, String b) {
+        if (a == null) return false;
+        if (b == null) return true;
+        return JdkSelector.versionKey(a).compareTo(JdkSelector.versionKey(b)) > 0;
     }
 
     /**
@@ -537,6 +660,7 @@ public final class JdkListCommand implements CliCommand {
             case "active" -> Theme.active().brightCyan().bold();
             case "default" -> Theme.active().brightYellow();
             case "native" -> Theme.active().brightGreen();
+            case "outdated!" -> Theme.active().error(); // red — upgrade this install
             case "available" -> Theme.active().darkGray();
             default -> Theme.active().completedStep(); // "installed"
         };

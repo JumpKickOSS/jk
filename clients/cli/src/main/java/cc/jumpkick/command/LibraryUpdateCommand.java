@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
@@ -63,12 +64,15 @@ public final class LibraryUpdateCommand implements CliCommand {
         try {
             result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
         } catch (IOException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Library", "failed to reach " + source + "\n  " + e.getMessage()));
+            CliOutput.err(CommandWedge.fail("Library", "failed to reach " + source + "\n  " + e.getMessage()));
             return 1;
         }
         if (result instanceof LibraryRegistryClient.Result.Unchanged) {
-            printSummary(before.size(), Diff.compute(before, before), Duration.ofNanos(System.nanoTime() - startNanos));
+            printSummary(
+                    before.size(),
+                    Diff.compute(before, before),
+                    Duration.ofNanos(System.nanoTime() - startNanos),
+                    /* fetched= */ false);
             return 0;
         }
         LibraryRegistryClient.Result.Updated updated = (LibraryRegistryClient.Result.Updated) result;
@@ -78,7 +82,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         try {
             after = materialise(body);
         } catch (RuntimeException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            CliOutput.err(CommandWedge.fail(
                     "Library", "refusing to replace cache — upstream payload did not validate:\\n  " + e.getMessage()));
             return 1;
         }
@@ -93,7 +97,7 @@ public final class LibraryUpdateCommand implements CliCommand {
         }
 
         Diff diff = Diff.compute(before, after);
-        printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos));
+        printSummary(after.size(), diff, Duration.ofNanos(System.nanoTime() - startNanos), /* fetched= */ true);
         return 0;
     }
 
@@ -113,14 +117,18 @@ public final class LibraryUpdateCommand implements CliCommand {
         return out;
     }
 
-    private void printSummary(int total, Diff diff, Duration elapsed) {
-        CliOutput.out(Theme.colorize("✓ Library catalog updated", Theme.active().completedStep())
-                + " — "
-                + Theme.colorize(String.valueOf(total), AttributedStyle.DEFAULT.bold())
-                + " entries cached "
-                + ConsoleSpec.took(elapsed));
+    private void printSummary(int total, Diff diff, Duration elapsed, boolean fetched) {
+        // ✓ Library  Catalog updated — 745 entries cached took 146ms
+        String head = fetched ? "Catalog updated" : "Catalog up to date";
+        CliOutput.out(CommandWedge.ok(
+                "Library",
+                head
+                        + " — "
+                        + Theme.colorize(String.valueOf(total), AttributedStyle.DEFAULT.bold())
+                        + " entries cached "
+                        + ConsoleSpec.took(elapsed)));
         if (diff.isEmpty()) {
-            CliOutput.out("\n  (no changes from previous version)");
+            if (fetched) CliOutput.out("\n  (no changes from previous version)");
             return;
         }
         emitList("Added", diff.added, Theme.active().completedStep());

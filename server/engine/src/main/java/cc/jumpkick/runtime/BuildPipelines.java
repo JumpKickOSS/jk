@@ -812,7 +812,8 @@ public final class BuildPipelines {
                             ctx.error("workspace", "processor sibling not built — " + missing);
                         throw new RuntimeException("missing workspace siblings");
                     }
-                    List<String> unresolvedProcessors = unresolvedProcessorDeps(project, lock);
+                    List<String> unresolvedProcessors =
+                            unresolvedProcessorDeps(project, lock, processorSiblings);
                     if (!unresolvedProcessors.isEmpty()) {
                         for (String unresolved : unresolvedProcessors)
                             ctx.error(
@@ -3702,15 +3703,30 @@ public final class BuildPipelines {
     }
 
     /**
-     * Declared {@code [processor-dependencies]} entries that resolve to nothingnot a
-     * workspace sibling and absent from the lock. Silently skipping code generation is the worst
-     * failure mode for an annotation-driven project, so callers turn this into a build error.
+     * Declared {@code [processor-dependencies]} entries that resolve to nothing — not a workspace
+     * sibling and absent from the lock. Silently skipping code generation is the worst failure mode
+     * for an annotation-driven project, so callers turn this into a build error.
+     *
+     * <p>After {@link cc.jumpkick.model.WorkspaceMerge#resolveSiblingCoordinates}, workspace
+     * processors are real {@code group:name} coords (so {@link
+     * cc.jumpkick.model.Dependency#isWorkspace()} is false) and still never appear in the lock —
+     * pass the {@link WorkspaceClasspath} result so rewritten siblings stay covered.
      */
     public static List<String> unresolvedProcessorDeps(JkBuild project, Lockfile lock) {
+        return unresolvedProcessorDeps(project, lock, null);
+    }
+
+    public static List<String> unresolvedProcessorDeps(
+            JkBuild project, Lockfile lock, WorkspaceClasspath.Result processorSiblings) {
         java.util.Set<String> locked = lockModules(lock);
+        java.util.Set<String> siblings = new java.util.HashSet<>();
+        if (processorSiblings != null) {
+            siblings.addAll(processorSiblings.siblingCoords());
+        }
         List<String> missing = new ArrayList<>();
         for (cc.jumpkick.model.Dependency dep : project.dependencies().of(Scope.PROCESSOR)) {
             if (dep.isWorkspace()) continue; // covered by the missing-sibling guard
+            if (siblings.contains(dep.module())) continue;
             if (!locked.contains(dep.module())) missing.add(dep.module());
         }
         return missing;

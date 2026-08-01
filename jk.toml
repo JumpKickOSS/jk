@@ -2,7 +2,7 @@
 group    = "cc.jumpkick"
 name     = "jk"
 version  = "0.10.1"
-description = "A modern build tool for Java and Kotlin."
+description = "JumpKick - the modern build tool for the JVM"
 jdk      = 25
 java     = 25
 
@@ -15,18 +15,22 @@ google  = "https://dl.google.com/dl/android/maven2/"
 # First-party workers are workspace modules with assembly + PluginMain.
 [workspace]
 modules = [
+  # Shared Libraries
   "shared/plugin-sdk",
   "shared/jk-api",
   "shared/core",
   "shared/client-io",
+  # Server/Engine
   "server/io",
   "server/resolver",
   "shared/toolchain-jdk",
   "server/toolchain",
   "shared/wire",
-  "clients/web",
   "server/engine",
+  # Clients
   "clients/cli",
+  "clients/web",
+  # Plugins/Workers
   "plugins/test-runner",
   "plugins/java-compiler",
   "plugins/kotlin-compiler",
@@ -35,11 +39,11 @@ modules = [
   "plugins/publisher",
   "plugins/image-builder",
   "plugins/compat-bridge",
+  "plugins/shrink",
   "plugins/formatter",
   "plugins/spring-boot",
-  "plugins/grails",
   "plugins/quarkus",
-  "plugins/android",
+  "plugins/grails",
   "plugins/protobuf",
-  "plugins/shrink",
+  "plugins/android",
 ]

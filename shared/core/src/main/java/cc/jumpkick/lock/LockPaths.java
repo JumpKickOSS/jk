@@ -40,7 +40,7 @@ public final class LockPaths {
         Path toml = dir.resolve("jk.toml");
         if (Files.isRegularFile(toml)) {
             try {
-                JkBuild build = JkBuildParser.parse(toml);
+                JkBuild build = JkBuildParser.parseLocal(toml);
                 if (build.isWorkspaceRoot()) {
                     return dir;
                 }

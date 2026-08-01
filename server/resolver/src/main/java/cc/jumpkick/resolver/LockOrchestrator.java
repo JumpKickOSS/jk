@@ -1048,7 +1048,10 @@ public final class LockOrchestrator {
                 lock.jdk(),
                 lock.kotlin(),
                 updated,
-                lock.plugins());
+                lock.plugins(),
+                lock.sdk(),
+                lock.modules(),
+                lock.jk());
     }
 
     /** BFS through the resolved graph starting from {@code roots}. */

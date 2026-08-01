@@ -139,7 +139,7 @@ public final class WorkspaceClasspath {
                 if (Files.exists(lockFile)) siblingLockfiles.add(lockFile);
             }
         }
-        return new Result(jars, missing, siblingLockfiles, closureJars);
+        return new Result(jars, missing, siblingLockfiles, closureJars, List.copyOf(visited));
     }
 
     /** Resolve a {@code workspace:<name>} dep reference to its full {@code group:name} coord. */
@@ -154,12 +154,15 @@ public final class WorkspaceClasspath {
             List<Path> jars,
             List<String> missingSiblingJars,
             List<Path> siblingLockfiles,
-            List<Path> siblingClosureJars) {
+            List<Path> siblingClosureJars,
+            /** Full {@code group:name} coords of workspace siblings in this resolve (built or not). */
+            List<String> siblingCoords) {
         public Result {
             jars = List.copyOf(jars);
             missingSiblingJars = List.copyOf(missingSiblingJars);
             siblingLockfiles = List.copyOf(siblingLockfiles);
             siblingClosureJars = List.copyOf(siblingClosureJars);
+            siblingCoords = List.copyOf(siblingCoords);
         }
 
         /**
@@ -167,12 +170,20 @@ public final class WorkspaceClasspath {
          * built jars (build/run): the closure defaults to {@code jars}.
          */
         public Result(List<Path> jars, List<String> missingSiblingJars, List<Path> siblingLockfiles) {
-            this(jars, missingSiblingJars, siblingLockfiles, jars);
+            this(jars, missingSiblingJars, siblingLockfiles, jars, List.of());
         }
 
         /** Back-compat constructor for callers that don't use sibling lockfiles. */
         public Result(List<Path> jars, List<String> missingSiblingJars) {
-            this(jars, missingSiblingJars, List.of(), jars);
+            this(jars, missingSiblingJars, List.of(), jars, List.of());
+        }
+
+        public Result(
+                List<Path> jars,
+                List<String> missingSiblingJars,
+                List<Path> siblingLockfiles,
+                List<Path> siblingClosureJars) {
+            this(jars, missingSiblingJars, siblingLockfiles, siblingClosureJars, List.of());
         }
     }
 }

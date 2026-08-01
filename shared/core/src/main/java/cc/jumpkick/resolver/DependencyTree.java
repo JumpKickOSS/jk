@@ -665,6 +665,15 @@ public final class DependencyTree {
      * dropped.
      */
     private static List<LoadedModule> loadModules(List<String> moduleRels, Path rootDir) {
+        JkBuild rootBuild = null;
+        if (rootDir != null) {
+            try {
+                Path rootToml = rootDir.resolve("jk.toml");
+                if (Files.isRegularFile(rootToml)) rootBuild = JkBuildParser.parse(rootToml);
+            } catch (Exception ignored) {
+                // inheritance best-effort
+            }
+        }
         List<LoadedModule> modules = new ArrayList<>();
         for (String rel : moduleRels) {
             Path dir = rootDir == null ? null : rootDir.resolve(rel).normalize();
@@ -673,12 +682,17 @@ public final class DependencyTree {
             try {
                 Path toml = dir == null ? null : dir.resolve("jk.toml");
                 Path lf = dir == null ? null : cc.jumpkick.lock.LockPaths.lockFile(dir);
-                if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parse(toml);
+                if (toml != null && Files.isRegularFile(toml)) build = JkBuildParser.parseLocal(toml);
                 if (lf != null && Files.isRegularFile(lf)) lock = LockfileReader.read(lf);
             } catch (Exception ignored) {
                 // unreadable module — dropped (can't read its scopes)
             }
-            if (build != null) modules.add(new LoadedModule(build, lock, dir));
+            if (build != null) {
+                if (rootBuild != null) {
+                    build = cc.jumpkick.config.WorkspaceLoader.inheritFromRoot(build, rootBuild);
+                }
+                modules.add(new LoadedModule(build, lock, dir));
+            }
         }
         return modules;
     }

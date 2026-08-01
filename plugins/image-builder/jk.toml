@@ -1,22 +1,18 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-image-builder"
-version     = "0.10.1"
 description = "jk-image-builder: OCI image (Jib) plugin worker."
-jdk         = 25
-java        = 25
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-core       = { group = "cc.jumpkick", name = "jk-core",       version = "0.10.1" }
-jk-io         = { group = "cc.jumpkick", name = "jk-io",         version = "0.10.1" }
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
-jib-core      = { group = "com.google.cloud.tools", name = "jib-core", version = "0.28.1" }
+jk-core.workspace = true
+jk-io.workspace = true
+jk-plugin-sdk.workspace = true
+jib-core                = "0.28.1"
 
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

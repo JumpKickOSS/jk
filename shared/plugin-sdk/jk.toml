@@ -1,16 +1,11 @@
 [project]
-group       = "cc.jumpkick"
 name        = "jk-plugin-sdk"
-version     = "0.10.1"
 description = "jk Plugin SPI + HostEvent wire codec. Zero external dependencies (Gradle: no project deps)."
-jdk         = 25
 # SPI floor: workers shade this into jars that must load on the user's test JVM (JDK 17+).
 # Match Gradle plugin-sdk --release 17 so PluginMain is not classfile 69 under pure-jk builds.
 java        = 17
 
-# Leaf of the contract pair — no main dependencies. jk-api (jk-model) depends on this module.
-
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

@@ -176,7 +176,9 @@ class JdkUpdateCommandTest {
                 jdks.toString(),
                 "--feed-url",
                 base.resolve("/feed/jdks.json").toString()));
+        assertThat(stdout).contains("Nothing to do");
         assertThat(stdout).contains("up to date");
+        assertThat(stdout).contains("JDK"); // CommandWedge chip label
         assertThat(jdks.resolve("temurin-25.0.3").resolve("bin").resolve("java"))
                 .exists();
     }
@@ -185,7 +187,9 @@ class JdkUpdateCommandTest {
     void no_managed_jdks_is_a_noop(@TempDir Path tempDir) {
         Path jdks = tempDir.resolve("jdks");
         String stdout = captureStdout(() -> run("jdk", "update", "--yes", "--jdks-dir", jdks.toString()));
-        assertThat(stdout).contains("no jk-managed JDKs installed");
+        assertThat(stdout).contains("Nothing to do");
+        assertThat(stdout).contains("No JumpKick-managed JDKs installed");
+        assertThat(stdout).contains("JDK");
     }
 
     @Test

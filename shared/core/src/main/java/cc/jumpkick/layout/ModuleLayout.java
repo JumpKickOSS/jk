@@ -62,16 +62,11 @@ public final class ModuleLayout {
                 // fall through
             }
         }
-        return !hasTraditionalDirs(moduleDir);
+        return !SourceLayout.looksTraditional(moduleDir);
     }
 
     static boolean hasTraditionalDirs(Path moduleDir) {
-        return Files.isDirectory(moduleDir.resolve("src/main/java"))
-                || Files.isDirectory(moduleDir.resolve("src/main/kotlin"))
-                || Files.isDirectory(moduleDir.resolve("src/main/groovy"))
-                || Files.isDirectory(moduleDir.resolve("src/test/java"))
-                || Files.isDirectory(moduleDir.resolve("src/test/kotlin"))
-                || Files.isDirectory(moduleDir.resolve("src/test/groovy"));
+        return SourceLayout.looksTraditional(moduleDir);
     }
 
     /**

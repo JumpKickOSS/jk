@@ -12,20 +12,18 @@ import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.http.Http;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.repo.LibraryRegistryClient;
+import cc.jumpkick.repo.LibraryRegistrySync;
 import cc.jumpkick.run.PipelineListener;
 import cc.jumpkick.run.PipelineResult;
 import cc.jumpkick.run.Step;
-import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -97,10 +95,10 @@ public final class LockCommand implements CliCommand {
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
 
-        // Client-side pre-flight: revalidate the downloaded library catalog before anything parses
-        // jk.toml — the engine reads the same on-disk cache file, so refreshing it here lands for
-        // both the hosted and the in-process path.
-        refreshLibraryRegistry(
+        // Client-side pre-flight: ensure libs.global.toml exists (first-time download) and
+        // revalidate when present — before anything parses jk.toml short names. The engine reads
+        // the same on-disk file; this closes the race with background StoreFeedRefresh.
+        LibraryRegistrySync.ensurePresent(
                 global.offline,
                 libraryRegistryUrl != null ? libraryRegistryUrl : LibraryRegistryClient.DEFAULT_SOURCE,
                 libraryCacheFile != null ? libraryCacheFile : LibraryCatalog.downloadedFile());
@@ -285,41 +283,4 @@ public final class LockCommand implements CliCommand {
         return lockSuccessTail(pkgs, startNanos, Path.of("."));
     }
 
-    /**
-     * Best-effort revalidation of the downloaded library catalog layer ({@link
-     * LibraryCatalog#downloadedFile}) before {@code jk.toml} is parsed — parsing is what expands
-     * short library names against the catalog, so this needs to land before resolution sees the
-     * effective dependency list.
-     *
-     * <p>Only revalidates a catalog that's already been downloaded; a project that has never run
-     * {@code jk library update} keeps resolving against the bundled floor rather than jk silently
-     * reaching out to GitHub on its behalf. A conditional GET means the common case (nothing changed
-     * upstream) costs one round trip of headers — a 304 — and any failure (offline, unreachable,
-     * malformed payload) is swallowed: the existing cache, or the bundled floor if there's none, is
-     * good enough to proceed with.
-     */
-    private static void refreshLibraryRegistry(boolean offline, URI source, Path cacheFile) {
-        if (offline) return;
-        if (!Files.isRegularFile(cacheFile)) return;
-        Path etagFile = LibraryCatalog.etagFileFor(cacheFile);
-        try {
-            var result = new LibraryRegistryClient(new Http()).fetch(source, etagFile);
-            if (result instanceof LibraryRegistryClient.Result.Updated updated) {
-                LibraryCatalog.parse(new String(updated.body(), StandardCharsets.UTF_8)); // validate before writing
-                writeAtomic(cacheFile, updated.body());
-                if (updated.etag() != null) {
-                    writeAtomic(etagFile, updated.etag().getBytes(StandardCharsets.UTF_8));
-                } else {
-                    Files.deleteIfExists(etagFile);
-                }
-            }
-        } catch (Exception ignored) {
-            // Fail soft: a stale or bundled catalog is still usable, and `jk lock` shouldn't fail
-            // because the library registry is unreachable or handed back something malformed.
-        }
-    }
-
-    private static void writeAtomic(Path target, byte[] data) throws java.io.IOException {
-        AtomicWrites.replace(target, data);
-    }
 }

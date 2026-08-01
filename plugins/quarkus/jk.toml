@@ -1,17 +1,12 @@
 [project]
-group   = "cc.jumpkick"
 name    = "jk-quarkus"
-version = "0.10.1"
-jdk     = 25
-java    = 25
-layout  = "traditional"
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
 assembly = true
 
 [dependencies]
-jk-plugin-sdk = { group = "cc.jumpkick", name = "jk-plugin-sdk", version = "0.10.1" }
+jk-plugin-sdk.workspace = true
 
 # Compile against the bootstrap APIs only; at runtime the engine supplies these on the forked
 # worker CP as step-dependency jars (quarkus-bootstrap + maven-resolver + aligned smallrye-common),
@@ -31,6 +26,6 @@ quarkus-bootstrap-app-model      = { group = "io.quarkus", name = "quarkus-boots
 # Gradle's jk.java-conventions injects these into every module's test scope; jk.toml has no such
 # implicit convention, so each manifest states them.
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

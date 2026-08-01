@@ -1,22 +1,18 @@
 [project]
-group    = "cc.jumpkick"
 name     = "jk-core"
-version  = "0.10.1"
 description = "jk core foundations: TOML config parser, lockfile, layout, deny policy."
-jdk      = 25
-java     = 25
 
 [dependencies]
-jk-model = { group = "cc.jumpkick", name = "jk-model", version = "0.10.1" }
-tomlj    = { group = "org.tomlj",   name = "tomlj",    version = "1.1.1" }
+jk-model.workspace = true
+tomlj                   = "1.1.1"
 # ComparableVersion for Versions.compare — rehomed from jk-resolver with the slim-client stage 5
 # move (mirrors build.gradle.kts).
-maven-artifact = { group = "org.apache.maven", name = "maven-artifact", version = "3.9.16" }
+maven-artifact          = "3.9.16"
 
 [test-dependencies]
-assertj-core            = { group = "org.assertj",        name = "assertj-core",            version = "3.27.7" }
-junit-jupiter           = { group = "org.junit.jupiter",  name = "junit-jupiter",           version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+assertj-core            = "3.27.7"
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"
 
 # The built-in plugin registry. Each plugin's jk-plugin.toml is the blueprint file third parties
 # copy, so it stays the single source of truth and is baked in from there rather than duplicated

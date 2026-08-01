@@ -1,10 +1,5 @@
 [project]
-group = "com.example"
 name = "app"
-version = "0.0.1"
-jdk = 25
-java = 25
-layout = "traditional"
 
 [application]
 main = "com.example.app.Main"
@@ -13,5 +8,5 @@ main = "com.example.app.Main"
 lib = { workspace = true }
 
 [test-dependencies]
-junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "6.1.0" }
-junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher", version = "6.1.0" }
+junit-jupiter           = "6.1.0"
+junit-platform-launcher = "6.1.0"

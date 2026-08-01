@@ -157,7 +157,7 @@ public final class BuildMetrics {
     }
 
     /** True when {@code candidate} is {@code dir} or a {@code dir#dN} shape of it. */
-    static boolean sameBaseDir(String dir, String candidate) {
+    public static boolean sameBaseDir(String dir, String candidate) {
         return dir.equals(candidate) || dir.equals(baseDir(candidate));
     }
 

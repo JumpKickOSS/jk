@@ -114,8 +114,9 @@ public final class JkDirs {
 
     /**
      * Everything jk fetched from somewhere else: the CAS ({@code sha256/}), the per-repo views
-     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, and the JDK catalog. Defaults
-     * to {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
+     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, the JDK catalog
+     * ({@code jdks.json}), and the library registry ({@code libs.global.toml}). Defaults to
+     * {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
      *
      * <h2>Why this is not under {@code cache/}</h2>
      *

@@ -90,12 +90,12 @@ detect_target() {
   case "$(uname -s)" in
     Linux)  os="linux" ;;
     Darwin) os="macos" ;;
-    * ) die "unsupported OS: $(uname -s) (this script supports Linux and macOS)";;
+    *) die "unsupported OS: $(uname -s) (this script supports Linux and macOS)" ;;
   esac
   case "$(uname -m)" in
     x86_64|amd64) arch="x86_64" ;;
     aarch64|arm64) arch="aarch64" ;;
-    * ) die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)";;
+    *) die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)" ;;
   esac
   printf '%s-%s' "$os" "$arch"
 }
@@ -120,14 +120,14 @@ detect_ext() {
 # Plain binary (no.xz/.zip — the local dist flow) is installed with cp.
 infer_decompress() {
   case "$1" in
-    * .xz)
+    *.xz)
       have xz || die "'$1' is a .xz file but xz is not installed."
       decompress() { xz -dc "$1" > "$2"; } ;;
-    * .zip)
+    *.zip)
       have unzip || die "'$1' is a .zip file but unzip is not installed."
       # Single-entry archive: -p streams the binary to stdout.
       decompress() { unzip -p "$1" > "$2"; } ;;
-    *
+    *)
       decompress() { cp "$1" "$2"; } ;;
   esac
 }

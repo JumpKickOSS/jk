@@ -132,15 +132,17 @@ class LockCommandLibraryRegistryTest {
     }
 
     @Test
-    void lock_never_triggers_the_first_download_of_an_uncached_catalog(@TempDir Path tempDir) throws Exception {
+    void lock_downloads_the_catalog_when_missing_before_parse(@TempDir Path tempDir) throws Exception {
         Path libraryCache = tempDir.resolve("libs.global.toml"); // deliberately never created
 
         run("new", tempDir.toString());
         int exit = lock(tempDir, libraryCache);
 
         assertThat(exit).isEqualTo(0);
-        assertThat(registryHits.get()).isZero();
-        assertThat(libraryCache).doesNotExist();
+        assertThat(registryHits.get()).isEqualTo(1);
+        assertThat(libraryCache).exists();
+        assertThat(Files.readString(libraryCache)).isEqualTo(new String(FRESH_BODY, StandardCharsets.UTF_8));
+        assertThat(Files.readString(LibraryCatalog.etagFileFor(libraryCache))).isEqualTo(ETAG);
     }
 
     @Test

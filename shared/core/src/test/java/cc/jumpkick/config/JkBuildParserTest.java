@@ -403,14 +403,130 @@ class JkBuildParserTest {
     }
 
     @Test
-    void missing_required_key_rejected() {
-        assertThatThrownBy(() -> JkBuildParser.parse("""
+    void missing_version_on_standalone_marks_workspace_inherit() {
+        // Non-root omit of version is inheritance (member-shaped); not a hard parse error.
+        JkBuild parsed = JkBuildParser.parse("""
                 [project]
                 group    = "com.example"
                 name     = "widget"
+                """);
+        assertThat(parsed.project().inheritsVersionFromWorkspace()).isTrue();
+        assertThat(parsed.project().requiresWorkspaceRoot()).isTrue();
+    }
+
+    @Test
+    void workspace_root_still_requires_concrete_version() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group    = "com.example"
+                name     = "root"
+
+                [workspace]
+                modules = ["lib"]
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("project.version");
+    }
+
+    @Test
+    void module_shaped_only_name_is_valid_parse() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                name = "foo"
+                """);
+        assertThat(parsed.project().name()).isEqualTo("foo");
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.GROUP)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.VERSION)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.JAVA)).isTrue();
+        assertThat(parsed.project().inherits(JkBuild.ProjectInherit.DESCRIPTION)).isFalse();
+        assertThat(parsed.project().description()).isNull();
+    }
+
+    @Test
+    void version_workspace_true_parses_as_inheritance_sentinel() {
+        // Dotted key form (Cargo-style).
+        JkBuild dotted = JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version.workspace = true
+                jdk     = 21
+                java    = 21
+                """);
+        assertThat(dotted.project().inheritsVersionFromWorkspace()).isTrue();
+        assertThat(dotted.project().version()).isEqualTo(JkBuild.VERSION_FROM_WORKSPACE);
+
+        // Inline table form.
+        JkBuild inline = JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version = { workspace = true }
+                jdk     = 21
+                java    = 21
+                """);
+        assertThat(inline.project().inheritsVersionFromWorkspace()).isTrue();
+    }
+
+    @Test
+    void project_field_workspace_inheritance_parses_multiple_fields() {
+        JkBuild parsed = JkBuildParser.parse("""
+                [project]
+                group.workspace = true
+                name    = "mod"
+                version.workspace = true
+                java.workspace = true
+                jdk.workspace = true
+                description.workspace = true
+                """);
+        var p = parsed.project();
+        assertThat(p.inheritsFromWorkspace()).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.GROUP)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.VERSION)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.JAVA)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.JDK)).isTrue();
+        assertThat(p.inherits(JkBuild.ProjectInherit.DESCRIPTION)).isTrue();
+        assertThat(p.name()).isEqualTo("mod");
+    }
+
+    @Test
+    void name_workspace_inheritance_rejected() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name.workspace = true
+                version = "1.0.0"
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("project.name")
+                .hasMessageContaining("workspace");
+    }
+
+    @Test
+    void version_workspace_true_rejected_on_workspace_root() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version.workspace = true
+
+                [workspace]
+                modules = ["lib"]
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace root");
+    }
+
+    @Test
+    void version_workspace_must_be_true() {
+        assertThatThrownBy(() -> JkBuildParser.parse("""
+                [project]
+                group   = "com.example"
+                name    = "mod"
+                version = { workspace = false }
+                """))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("workspace");
     }
 
     @Test

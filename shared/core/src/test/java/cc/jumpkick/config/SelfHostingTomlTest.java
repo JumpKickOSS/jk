@@ -92,9 +92,9 @@ class SelfHostingTomlTest {
                         "shared/toolchain-jdk",
                         "server/toolchain",
                         "shared/wire",
-                        "clients/web",
                         "server/engine",
                         "clients/cli",
+                        "clients/web",
                         "plugins/test-runner",
                         "plugins/java-compiler",
                         "plugins/kotlin-compiler",
@@ -103,13 +103,13 @@ class SelfHostingTomlTest {
                         "plugins/publisher",
                         "plugins/image-builder",
                         "plugins/compat-bridge",
+                        "plugins/shrink",
                         "plugins/formatter",
                         "plugins/spring-boot",
-                        "plugins/grails",
                         "plugins/quarkus",
-                        "plugins/android",
+                        "plugins/grails",
                         "plugins/protobuf",
-                        "plugins/shrink");
+                        "plugins/android");
     }
 
     @Test
@@ -135,6 +135,8 @@ class SelfHostingTomlTest {
         assertThat(web.project().name()).isEqualTo("jk-web");
         assertThat(web.mainClass()).isNull();
         assertThat(web.assembly()).isFalse();
+        // Traditional: src/main/resources + src/test/java (not SIMPLE flat src/).
+        assertThat(web.project().layout()).isEqualTo(JkBuild.Layout.TRADITIONAL);
     }
 
     @Test
@@ -172,9 +174,12 @@ class SelfHostingTomlTest {
                     .as(module)
                     .contains("cc.jumpkick:jk-plugin-sdk");
         }
-        // test-runner keeps the JDK-17 floor for the user's forked test JVM.
+        // test-runner + plugin-sdk keep the JDK-17 floor for the user's forked test JVM
+        // (classfile 61). Do not inherit workspace java=25 — JdkFloorTest depends on this.
         JkBuild runner = JkBuildParser.parse(REPO.resolve("plugins/test-runner/jk.toml"));
         assertThat(runner.project().javaRelease()).isEqualTo(17);
+        JkBuild sdk = JkBuildParser.parse(REPO.resolve("shared/plugin-sdk/jk.toml"));
+        assertThat(sdk.project().javaRelease()).isEqualTo(17);
     }
 
     @Test

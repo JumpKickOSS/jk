@@ -81,9 +81,11 @@ class ProcessorClasspathTest {
     void a_workspace_processor_is_not_flagged_as_an_unresolved_coordinate(@TempDir Path tmp) throws Exception {
         Path consumer = workspace(tmp).resolve("consumer");
         JkBuild build = JkBuildParser.parse(consumer.resolve("jk.toml"));
+        // parse() rewrites workspace:proc → com.example:proc; WorkspaceClasspath still owns it.
+        WorkspaceClasspath.Result siblings =
+                WorkspaceClasspath.resolve(consumer, build, java.util.Set.of(Scope.PROCESSOR));
 
-        // It resolves through the sibling path, not the lock — the missing-sibling guard owns it.
-        assertThat(BuildPipelines.unresolvedProcessorDeps(build, Lockfile.empty("test")))
+        assertThat(BuildPipelines.unresolvedProcessorDeps(build, Lockfile.empty("test"), siblings))
                 .isEmpty();
     }
 

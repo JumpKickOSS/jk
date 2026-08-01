@@ -108,6 +108,135 @@ class JkBuildWorkspaceTest {
     }
 
     @Test
+    void workspace_loader_inherits_version_from_root(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version = "2.5.0"
+
+                [workspace]
+                modules = ["lib"]
+                """);
+        Path lib = tempDir.resolve("lib");
+        Files.createDirectories(lib);
+        Files.writeString(lib.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "lib"
+                version.workspace = true
+                jdk     = 21
+                java    = 21
+                """);
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        assertThat(modules.get(lib).project().version()).isEqualTo("2.5.0");
+        assertThat(modules.get(lib).project().inheritsVersionFromWorkspace()).isFalse();
+    }
+
+    @Test
+    void workspace_loader_inherits_group_java_jdk_from_root(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group       = "com.acme"
+                name        = "root"
+                version     = "3.0.0"
+                java        = 25
+                jdk         = "temurin-25"
+                description = "Root description"
+
+                [workspace]
+                modules = ["lib"]
+                """);
+        Path lib = tempDir.resolve("lib");
+        Files.createDirectories(lib);
+        Files.writeString(lib.resolve("jk.toml"), """
+                [project]
+                group.workspace = true
+                name    = "lib"
+                version.workspace = true
+                java.workspace = true
+                jdk.workspace = true
+                description.workspace = true
+                """);
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        var p = modules.get(lib).project();
+        assertThat(p.group()).isEqualTo("com.acme");
+        assertThat(p.name()).isEqualTo("lib");
+        assertThat(p.version()).isEqualTo("3.0.0");
+        assertThat(p.java()).isEqualTo(25);
+        assertThat(p.jdk()).isEqualTo("temurin-25");
+        assertThat(p.description()).isEqualTo("Root description");
+        assertThat(p.inheritsFromWorkspace()).isFalse();
+    }
+
+    @Test
+    void minimal_module_only_name_inherits_everything_except_description(@TempDir Path tempDir)
+            throws IOException {
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group       = "com.acme"
+                name        = "root"
+                version     = "1.0.0"
+                java        = 25
+                jdk         = "25"
+                description = "Root only"
+
+                [workspace]
+                modules = ["foo"]
+                """);
+        Path foo = tempDir.resolve("foo");
+        Files.createDirectories(foo);
+        Files.writeString(foo.resolve("jk.toml"), """
+                [project]
+                name = "foo"
+                """);
+
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        Map<Path, JkBuild> modules = WorkspaceLoader.loadModules(tempDir, root);
+        var p = modules.get(foo).project();
+        assertThat(p.name()).isEqualTo("foo");
+        assertThat(p.group()).isEqualTo("com.acme");
+        assertThat(p.version()).isEqualTo("1.0.0");
+        assertThat(p.java()).isEqualTo(25);
+        assertThat(p.jdk()).isEqualTo("25");
+        // description is optional and does not auto-inherit when omitted
+        assertThat(p.description()).isNull();
+    }
+
+    @Test
+    void workspace_loader_collision_uses_inherited_version(@TempDir Path tempDir) throws IOException {
+        // Two modules inherit the same root version and share an artifact name → collision.
+        Files.writeString(tempDir.resolve("jk.toml"), """
+                [project]
+                group   = "com.example"
+                name    = "root"
+                version = "1.0.0"
+
+                [workspace]
+                modules = ["a", "b"]
+                """);
+        for (String name : new String[] {"a", "b"}) {
+            Path dir = tempDir.resolve(name);
+            Files.createDirectories(dir);
+            Files.writeString(dir.resolve("jk.toml"), """
+                    [project]
+                    group   = "com.example"
+                    name    = "dup"
+                    version.workspace = true
+                    """);
+        }
+        JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
+        assertThatThrownBy(() -> WorkspaceLoader.loadModules(tempDir, root))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("artifact collision")
+                .hasMessageContaining("dup-1.0.0");
+    }
+
+    @Test
     void workspace_loader_reports_missing_module(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
