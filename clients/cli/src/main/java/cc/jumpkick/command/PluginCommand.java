@@ -73,6 +73,7 @@ public final class PluginCommand extends GroupCommand {
                     Opt.value(
                             "<sel>",
                             "Only these modules (comma list / path fragments). Default: all PluginMain workers.",
+                            "-m",
                             "--modules"),
                     Opt.flag("Print what would be installed; write nothing.", "--dry-run"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());

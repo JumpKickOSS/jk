@@ -64,7 +64,8 @@ public final class ExplainCommand implements CliCommand {
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"));
+        opts.add(Opt.value(
+                "<sel>", "Forecast only selected modules (comma list, globs, braces).", "-m", "--modules"));
         opts.add(Opt.value(
                 "<fmt>",
                 "Emit a machine graph instead of the rebuild forecast. Supported: dot | mermaid (module DAG).",

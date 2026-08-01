@@ -59,6 +59,7 @@ public final class TasksCommand implements CliCommand {
                 Opt.value(
                         "<sel>",
                         "Module selector (comma list, globs, braces). Default: current project/module.",
+                        "-m",
                         "--modules"),
                 Opt.value(
                         "<git-ref>",

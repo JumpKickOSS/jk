@@ -67,6 +67,7 @@ public final class ReleaseCommand implements CliCommand {
                 Opt.value(
                         "<sel>",
                         "Build only selected modules (passed to jk build). Default: whole workspace.",
+                        "-m",
                         "--modules"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }

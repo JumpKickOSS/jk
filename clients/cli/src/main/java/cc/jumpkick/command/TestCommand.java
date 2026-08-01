@@ -67,6 +67,7 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value(
                 "<sel>",
                 "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "-m",
                 "--modules"));
         opts.add(Opt.value(
                         "<name>",

@@ -66,6 +66,7 @@ public final class BuildCommand implements CliCommand {
         opts.add(Opt.value(
                 "<sel>",
                 "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
+                "-m",
                 "--modules"));
         opts.addAll(VariantSelection.options());
         return opts;

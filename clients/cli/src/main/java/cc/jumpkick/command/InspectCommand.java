@@ -32,7 +32,7 @@ public final class InspectCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<sel>", "Module selector.", "--modules"),
+                Opt.value("<sel>", "Module selector.", "-m", "--modules"),
                 Opt.value("<git-ref>", "Intersect with modules changed since ref.", "--affected-since"),
                 Opt.value(
                                 "<dir>",
