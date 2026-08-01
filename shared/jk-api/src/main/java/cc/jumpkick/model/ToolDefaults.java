@@ -10,7 +10,7 @@ package cc.jumpkick.model;
 public final class ToolDefaults {
 
     /** {@code io.quarkus.platform:quarkus-bom} default for scaffolds and the tooling pom. */
-    public static final String QUARKUS_PLATFORM_VERSION = "3.28.5";
+    public static final String QUARKUS_PLATFORM_VERSION = "3.38.0";
 
     private ToolDefaults() {}
 }

@@ -12,10 +12,10 @@ assembly = true
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-apksig        = { group = "com.android.tools.build", name = "apksig", version = "=8.7.3" }
-asm                     = "9.10.1"
+apksig        = { group = "com.android.tools.build", name = "apksig", version = "latest" }
+asm                     = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

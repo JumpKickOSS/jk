@@ -3,22 +3,22 @@ package cc.jumpkick.task;
 
 import cc.jumpkick.util.Hashing;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipException;
-import java.util.zip.ZipFile;
 
 /**
- * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local jars/dirs
- * use logical content (sorted entry/file digests) so non-reproducible re-jars do not bust keys.
- * Missing entries become a distinct {@code missing:} token.
+ * Content (not path/mtime) fingerprint for cache keys: CAS path encodes the hash; local files use
+ * raw content SHA ({@code file:…}); directories use a tree of the same. Packagers emit
+ * byte-reproducible jars ({@code DeterministicJar}), so raw jar bytes are stable across no-op
+ * rebuilds and match CAS digests seeded by {@link FileHashMemo#rememberContent} after clean→restore
+ * — avoiding a multi-second {@code jar:logical} zip walk on every TestStamp. Missing entries become
+ * a distinct {@code missing:} token.
  */
 public final class ClasspathFingerprint {
 
@@ -30,6 +30,66 @@ public final class ClasspathFingerprint {
         for (Path p : entries) parts.add(entry(p));
         parts.sort(Comparator.naturalOrder());
         return Hashing.sha256Hex(String.join("\n", parts));
+    }
+
+    /**
+     * Directory fingerprint matching {@link #entry(Path)} for a classes tree that is not on disk —
+     * typically the outputs map from a compile action record after {@code jk clean}. Keys are
+     * forward-slash relative paths; values are content SHA-256 hex (same as {@link #hashTree}).
+     * Stamp / {@code .jk-*} scratch paths are ignored like a live tree walk.
+     */
+    public static String entryFromOutputDigests(Map<String, String> relPathToSha256) {
+        if (relPathToSha256 == null || relPathToSha256.isEmpty()) {
+            return "dir:" + Hashing.sha256Hex("");
+        }
+        List<String> files = new ArrayList<>();
+        for (Map.Entry<String, String> e : relPathToSha256.entrySet()) {
+            String rel = e.getKey().replace('\\', '/');
+            if (rel.isEmpty()) continue;
+            String base = rel.substring(rel.lastIndexOf('/') + 1);
+            if (isBuildMetadata(base)) continue;
+            if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
+            if (e.getValue() == null || e.getValue().isBlank()) continue;
+            files.add(rel + ":" + e.getValue());
+        }
+        files.sort(Comparator.naturalOrder());
+        return "dir:" + Hashing.sha256Hex(String.join("\n", files));
+    }
+
+    /**
+     * Merge compile outputs with resource-root files (as {@code copy-resources} would place them
+     * under classes/) into the same {@code dir:…} token {@link #entry(Path)} produces for a live
+     * tree. Resource paths overwrite compile paths on collision (copy order: compile then
+     * resources).
+     */
+    public static String entryFromCompileAndResources(
+            Map<String, String> compileOutputs, List<Path> resourceRoots) throws IOException {
+        Map<String, String> digests = new TreeMap<>();
+        if (compileOutputs != null) {
+            for (Map.Entry<String, String> e : compileOutputs.entrySet()) {
+                String rel = e.getKey().replace('\\', '/');
+                if (rel.isEmpty()) continue;
+                String base = rel.substring(rel.lastIndexOf('/') + 1);
+                if (isBuildMetadata(base)) continue;
+                if (ActionCache.hasJkScratchSegment(Path.of(rel))) continue;
+                if (e.getValue() == null || e.getValue().isBlank()) continue;
+                digests.put(rel, e.getValue());
+            }
+        }
+        if (resourceRoots != null) {
+            for (Path root : resourceRoots) {
+                if (root == null || !Files.isDirectory(root)) continue;
+                try (Stream<Path> walk = Files.walk(root)) {
+                    for (Path f : (Iterable<Path>) walk::iterator) {
+                        if (!Files.isRegularFile(f)) continue;
+                        String rel = root.relativize(f).toString().replace('\\', '/');
+                        if (isBuildMetadata(f.getFileName().toString())) continue;
+                        digests.put(rel, Hashing.sha256Hex(f));
+                    }
+                }
+            }
+        }
+        return entryFromOutputDigests(digests);
     }
 
     /** Content identity of a single entry (CAS blob, jar, classes dir, or missing). */
@@ -45,51 +105,20 @@ public final class ClasspathFingerprint {
             long size = Files.size(p);
             long mtime = Files.getLastModifiedTime(p).toMillis();
             String memoized = FileHashMemo.lookup(p, size, mtime);
-            if (memoized != null && (memoized.startsWith("jar:") || memoized.startsWith("file:"))) {
+            // file: = raw content (incl. CAS restore seeds). jar: = legacy logical zip token;
+            // still honor it so an older hash-memo entry does not force a re-walk mid-build.
+            if (memoized != null && (memoized.startsWith("file:") || memoized.startsWith("jar:"))) {
                 return memoized;
             }
-            String token;
-            if (isArchive(abs)) {
-                String logical = hashArchive(p);
-                token = logical != null
-                        ? "jar:" + logical // logical content, not raw bytes
-                        : "file:" + Hashing.sha256Hex(p);
-            } else {
-                token = "file:" + Hashing.sha256Hex(p);
-            }
+            // Raw content for jars and non-jars alike: deterministic packaging makes raw stable,
+            // and rememberContent can seed it for free after action-cache restore.
+            String token = "file:" + FileHashMemo.contentHash(p);
+            // Settle-gated disk memo only (not force-store): content can change at the same
+            // size+mtime on coarse clocks. CAS restore seeds via FileHashMemo.rememberContent.
             FileHashMemo.store(p, size, mtime, token);
             return token;
         }
         return "missing:" + abs;
-    }
-
-    private static boolean isArchive(String path) {
-        String lower = path.toLowerCase(Locale.ROOT);
-        return lower.endsWith(".jar") || lower.endsWith(".zip");
-    }
-
-    /**
-     * Logical content hash of a zip/jar: sorted {@code (entry name + entry SHA)}, ignoring entry
-     * order, timestamps, and compression — the packaging that jk does not produce reproducibly.
-     * Returns {@code null} if {@code jar} isn't a valid archive, so the caller falls back to a
-     * raw-byte hash.
-     */
-    private static String hashArchive(Path jar) throws IOException {
-        List<String> entries = new ArrayList<>();
-        try (ZipFile zf = new ZipFile(jar.toFile())) {
-            var en = zf.entries();
-            while (en.hasMoreElements()) {
-                ZipEntry e = en.nextElement();
-                if (e.isDirectory() || isBuildMetadata(baseName(e.getName()))) continue;
-                try (InputStream in = zf.getInputStream(e)) {
-                    entries.add(e.getName() + ":" + Hashing.sha256Hex(in.readAllBytes()));
-                }
-            }
-        } catch (ZipException ze) {
-            return null; // not a valid zip — caller hashes raw bytes
-        }
-        entries.sort(Comparator.naturalOrder());
-        return Hashing.sha256Hex(String.join("\n", entries));
     }
 
     /** Stable hash of a directory tree: each regular file's relpath + content SHA. */
@@ -102,7 +131,9 @@ public final class ClasspathFingerprint {
                 // `.jk-*` plugin scratch (bootstrap m2/staging) is not output content and
                 // re-hashing it on every no-op build is pure waste.
                 if (ActionCache.hasJkScratchSegment(dir.relativize(f))) continue;
-                files.add(dir.relativize(f).toString().replace('\\', '/') + ":" + Hashing.sha256Hex(f));
+                // FileHashMemo (thread + disk): after ActionCache.restore seeds CAS digests,
+                // TestStamp must not re-SHA every .class (jk-engine was ~10s on a SKIPPED run-tests).
+                files.add(dir.relativize(f).toString().replace('\\', '/') + ":" + FileHashMemo.contentHash(f));
             }
         }
         files.sort(Comparator.naturalOrder());
@@ -113,7 +144,7 @@ public final class ClasspathFingerprint {
      * jk's freshness/skip stamps ({@code.jstamp}, {@code.kstamp}, {@code.test-stamp}) — build-host
      * metadata that lives inside the classes tree but is not code, and whose content changes every
      * build. They must be excluded from a content fingerprint of a directory (the packagers already
-     * drop them from jars, so {@link #hashArchive} never sees them).
+     * drop them from jars).
      *
      * <p>Note {@code [build.embed-sha]} outputs ({@code META-INF/jk-<worker>-sha256.txt}) are
      * deliberately <em>not</em> excluded: now that the packagers build byte-reproducible jars, those
@@ -122,11 +153,6 @@ public final class ClasspathFingerprint {
      */
     private static boolean isBuildMetadata(String name) {
         return FreshnessStamp.isStampFile(name);
-    }
-
-    private static String baseName(String entryName) {
-        int slash = entryName.lastIndexOf('/');
-        return slash < 0 ? entryName : entryName.substring(slash + 1);
     }
 
     /** A path under {@code .../sha256/AA/BB/<rest>} is a CAS blob (path = content). */

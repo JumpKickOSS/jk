@@ -11,14 +11,14 @@ assembly = true
 jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
-kotlin-build-tools-api = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "2.4.0" }
-kotlin-stdlib           = "2.4.0"
+kotlin-build-tools-api = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "latest" }
+kotlin-stdlib           = "latest"
 
 [test-dependencies]
 # BTA must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
 # KotlinCompiler (Plugin SPI) and must load it without ClassNotFoundException.
-kotlin-build-tools-api  = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "2.4.0" }
-kotlin-stdlib           = "2.4.0"
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+kotlin-build-tools-api  = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "latest" }
+kotlin-stdlib           = "latest"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

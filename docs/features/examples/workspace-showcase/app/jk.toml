@@ -8,5 +8,5 @@ main = "com.example.app.Main"
 lib = { workspace = true }
 
 [test-dependencies]
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

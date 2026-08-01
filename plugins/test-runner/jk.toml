@@ -15,10 +15,10 @@ jk-plugin-sdk.workspace = true
 # The launcher is compile-only for the same reason, and additionally so the forked JVM uses the
 # project's own version: Quarkus hooks LauncherSessionListener on it.
 [provided-dependencies]
-junit-platform-engine   = "6.1.0"
-junit-platform-launcher = "6.1.0"
+junit-platform-engine   = "latest"
+junit-platform-launcher = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

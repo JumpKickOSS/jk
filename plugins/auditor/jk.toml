@@ -9,9 +9,9 @@ assembly = true
 [dependencies]
 jk-core.workspace = true
 jk-plugin-sdk.workspace = true
-jackson3-databind       = "3.2.0"
+jackson3-databind       = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

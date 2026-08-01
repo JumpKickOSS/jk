@@ -11,6 +11,6 @@ jk-plugin-sdk.workspace = true
 jk-spring-boot.workspace = true
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

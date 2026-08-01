@@ -164,6 +164,8 @@ public final class ActionCache {
             // Cas.putFile). Costs O(bytes) instead of O(entries) — correctness wins.
             Files.createDirectories(target.getParent());
             Files.copy(cas.pathFor(entry.getValue()), target);
+            // Seed content memo so TestStamp / package keys do not re-hash the whole tree.
+            FileHashMemo.rememberContent(target, entry.getValue());
             // Best-effort access journal — feeds the LRU evictor when the
             // user configures a cache size budget.
             ledger.touch(entry.getValue());
@@ -219,6 +221,8 @@ public final class ActionCache {
                 // would let that rewrite mutate the blob (see Cas.putFile).
                 Files.copy(cas.pathFor(e.getValue()), target);
             }
+            // Known CAS digest — seed so later ClasspathFingerprint/TestStamp work is free.
+            FileHashMemo.rememberContent(target, e.getValue());
             ledger.touch(e.getValue());
         }
         return true;

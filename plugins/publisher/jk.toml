@@ -10,10 +10,10 @@ assembly = true
 jk-core.workspace = true
 jk-io.workspace = true
 jk-plugin-sdk.workspace = true
-bcpg-jdk18on            = "1.84"
-sigstore-java           = "2.1.0"
+bcpg-jdk18on            = "latest"
+sigstore-java           = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

@@ -40,7 +40,7 @@ class QuarkusJunit5ResolveTest {
         EffectivePomBuilder pomBuilder = new EffectivePomBuilder(repos);
         Map<String, String> bom = new LinkedHashMap<>();
         for (var m : pomBuilder
-                .build(Coordinate.of("io.quarkus.platform", "quarkus-bom", "3.28.5"))
+                .build(Coordinate.of("io.quarkus.platform", "quarkus-bom", "3.38.0"))
                 .managedDependencies()) {
             if (m.version() != null && !m.version().isBlank()) bom.putIfAbsent(m.module(), m.version());
         }
@@ -68,7 +68,7 @@ class QuarkusJunit5ResolveTest {
         String pkg = PackageId.ofGa("io.quarkus:quarkus-junit5").key();
         long t0 = System.nanoTime();
         Map<String, String> sol = new PubGrubSolver(src, 50_000, 15_000L)
-                .solve("<root>", "0", List.of(Term.positive(pkg, VersionSet.exact("3.28.5"))));
+                .solve("<root>", "0", List.of(Term.positive(pkg, VersionSet.exact("3.38.0"))));
         long ms = (System.nanoTime() - t0) / 1_000_000L;
         System.out.println(
                 "junit5 n=" + sol.size() + " ms=" + ms + " versions=" + versions.get() + " deps=" + deps.get());

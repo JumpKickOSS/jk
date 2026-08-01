@@ -28,7 +28,7 @@ class QuarkusPlatformContribTest {
                 jdk = 25
 
                 [quarkus]
-                version = "3.28.5"
+                version = "3.38.0"
 
                 [dependencies]
                 quarkus-arc = { group = "io.quarkus", name = "quarkus-arc" }

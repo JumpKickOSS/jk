@@ -6,12 +6,12 @@ jk-core.workspace = true
 jk-io.workspace = true
 # ComparableVersion is the Maven-canonical version comparator (e.g.
 # `1.0-alpha < 1.0-rc < 1.0 < 1.0-sp1`). Used by Versions.compare.
-maven-artifact          = "3.9.16"
+maven-artifact          = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"
 
 # Parity with Gradle's `test` task, which is explicitly scoped to unit/fast (<5 min) and excludes
 # these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and

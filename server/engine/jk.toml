@@ -16,15 +16,15 @@ jk-resolver.workspace = true
 jk-toolchain.workspace = true
 # Dashboard static assets (classpath /web/*) — Gradle used runtimeOnly(project(":web")).
 jk-web.workspace = true
-asm                     = "9.10.1"
-asm-tree                = "9.10.1"
-asm-commons             = "9.10.1"
-jgit                    = "7.6.0.202603022253-r"
+asm                     = "latest"
+asm-tree                = "latest"
+asm-commons             = "latest"
+jgit                    = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"
 
 # Self-host: engine tests fork workers via -Djk.<worker>.plugin.jar from sibling assemblies
 # (or install-local / CAS). Prefer short names that match plugins/<name> modules.

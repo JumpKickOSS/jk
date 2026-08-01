@@ -36,7 +36,8 @@ class ClasspathFingerprintTest {
         String v1 = ClasspathFingerprint.entry(f);
         Files.writeString(f, "V1"); // same bytes
         assertThat(ClasspathFingerprint.entry(f)).isEqualTo(v1);
-        Files.writeString(f, "V2"); // changed bytes
+        // Different size so size+mtime identity cannot reuse a memo for a same-tick rewrite.
+        Files.writeString(f, "V2-longer");
         assertThat(ClasspathFingerprint.entry(f)).isNotEqualTo(v1);
     }
 
@@ -50,19 +51,50 @@ class ClasspathFingerprintTest {
     }
 
     @Test
-    void jar_is_keyed_by_logical_content_not_packaging(@TempDir Path dir) throws IOException {
-        // jk re-jars the same classes in a different order with fresh timestamps
-        // every build; the fingerprint must see through that to the contents.
+    void compile_outputs_plus_resources_match_live_classes_tree(@TempDir Path dir) throws Exception {
+        // Live tree after compile + copy-resources.
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        write(classes.resolve("a/A.class"), "AAAA");
+        write(classes.resolve("app.properties"), "x=1\n");
+        String live = ClasspathFingerprint.entry(classes);
+
+        // Same tree reconstructed after clean (action record + resource roots).
+        Path res = Files.createDirectories(dir.resolve("resources"));
+        write(res.resolve("app.properties"), "x=1\n");
+        java.util.Map<String, String> compileOut = java.util.Map.of(
+                "a/A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("a/A.class")));
+        String reconstructed = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of(res));
+        assertThat(reconstructed).isEqualTo(live);
+    }
+
+    @Test
+    void stamp_files_are_excluded_from_output_digest_fingerprints(@TempDir Path dir) throws Exception {
+        Path classes = Files.createDirectories(dir.resolve("classes"));
+        write(classes.resolve("A.class"), "AA");
+        write(classes.resolve(FreshnessStamp.JAVA_STAMP), "stamp-noise");
+        String live = ClasspathFingerprint.entry(classes);
+        java.util.Map<String, String> outs = new java.util.LinkedHashMap<>();
+        outs.put("A.class", cc.jumpkick.util.Hashing.sha256Hex(classes.resolve("A.class")));
+        outs.put(FreshnessStamp.JAVA_STAMP, "deadbeef");
+        assertThat(ClasspathFingerprint.entryFromOutputDigests(outs)).isEqualTo(live);
+    }
+
+    @Test
+    void jar_is_keyed_by_raw_bytes_matching_cas_and_content_change_busts(@TempDir Path dir) throws IOException {
+        // Packagers emit byte-reproducible jars, so raw SHA matches the CAS digest restored
+        // after clean. Fingerprint is file:<raw> — a real content change still busts it.
         Path j1 = writeJar(dir.resolve("a.jar"), new String[][] {{"A.class", "AA"}, {"B.class", "BB"}}, 1000);
-        Path j2 = writeJar(dir.resolve("b.jar"), new String[][] {{"B.class", "BB"}, {"A.class", "AA"}}, 9_999_000);
-        assertThat(ClasspathFingerprint.entry(j1))
-                .as("same entries, different order + timestamps → same fingerprint")
-                .isEqualTo(ClasspathFingerprint.entry(j2));
+        String fp1 = ClasspathFingerprint.entry(j1);
+        assertThat(fp1).startsWith("file:");
+        // Byte-identical rewrite (new path copy) keeps the same token value.
+        Path j1b = dir.resolve("a-copy.jar");
+        Files.copy(j1, j1b);
+        assertThat(ClasspathFingerprint.entry(j1b)).isEqualTo(fp1);
 
         Path j3 = writeJar(dir.resolve("c.jar"), new String[][] {{"A.class", "AA"}, {"B.class", "CHANGED"}}, 1000);
         assertThat(ClasspathFingerprint.entry(j3))
                 .as("an entry's content change → different fingerprint")
-                .isNotEqualTo(ClasspathFingerprint.entry(j1));
+                .isNotEqualTo(fp1);
     }
 
     private static Path writeJar(Path jar, String[][] entries, long time) throws IOException {
@@ -89,8 +121,8 @@ class ClasspathFingerprintTest {
         write(classes.resolve(".jstamp"), "stamp-2-different");
         write(classes.resolve(".kstamp"), "k");
         assertThat(ClasspathFingerprint.entry(classes)).isEqualTo(before);
-        // A real class change still busts it.
-        write(classes.resolve("a/A.class"), "BBBB");
+        // A real class change still busts it (size change avoids same-tick mtime memo).
+        write(classes.resolve("a/A.class"), "BBBBBB");
         assertThat(ClasspathFingerprint.entry(classes)).isNotEqualTo(before);
     }
 
@@ -136,6 +168,30 @@ class ClasspathFingerprintTest {
                             .as("content change re-fingerprints despite the memo")
                             .isNotEqualTo(fp1);
                     return null;
+                });
+    }
+
+    @Test
+    void jar_fingerprint_is_raw_content_and_cas_seed_is_trusted(@TempDir Path dir) throws Exception {
+        Path jar = writeJar(dir.resolve("dep.jar"), new String[][] {{"A.class", "AA"}}, 1000);
+        Path cache = dir.resolve("cache");
+        cc.jumpkick.config.SessionContext.where(
+                cc.jumpkick.config.Session.defaults().withCacheDir(cache), () -> {
+                    try {
+                        String fp = ClasspathFingerprint.entry(jar);
+                        assertThat(fp).startsWith("file:");
+                        // CAS restore seeds raw digest — entry must not re-hash.
+                        String hex = fp.substring("file:".length());
+                        FileHashMemo.clearThreadCache();
+                        FileHashMemo.rememberContent(jar, hex);
+                        FileHashMemo.resetStats();
+                        long reads = FileHashMemo.contentReads();
+                        assertThat(ClasspathFingerprint.entry(jar)).isEqualTo(fp);
+                        assertThat(FileHashMemo.contentReads() - reads).isZero();
+                        return null;
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
                 });
     }
 

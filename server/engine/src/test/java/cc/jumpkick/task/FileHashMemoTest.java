@@ -110,4 +110,28 @@ class FileHashMemoTest {
             }
         });
     }
+
+    @Test
+    void contentHash_same_size_rewrite_that_restores_prior_mtime_tick_is_not_stale(@TempDir Path dir)
+            throws Exception {
+        // TestStamp resource fixture pattern: hash → future mtime rewrite → content rewrite that
+        // lands back on the original mtime tick. Thread cache must not serve the first digest.
+        Path f = Files.writeString(dir.resolve("fixture.json"), "{\"v\":1}");
+        withCache(dir.resolve("cache"), () -> {
+            try {
+                FileHashMemo.clearThreadCache();
+                String first = FileHashMemo.contentHash(f);
+                Files.writeString(f, "{\"v\":1}");
+                Files.setLastModifiedTime(f, FileTime.fromMillis(System.currentTimeMillis() + 10_000));
+                assertThat(FileHashMemo.contentHash(f)).isEqualTo(first);
+                Files.writeString(f, "{\"v\":2}"); // same length; mtime often == first tick
+                String second = FileHashMemo.contentHash(f);
+                assertThat(second)
+                        .as("same-size rewrite must not reuse a prior tick's self-hash")
+                        .isNotEqualTo(first);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
 }

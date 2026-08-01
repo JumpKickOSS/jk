@@ -4,15 +4,15 @@ description = "jk core foundations: TOML config parser, lockfile, layout, deny p
 
 [dependencies]
 jk-model.workspace = true
-tomlj                   = "1.1.1"
+tomlj                   = "latest"
 # ComparableVersion for Versions.compare — rehomed from jk-resolver with the slim-client stage 5
 # move (mirrors build.gradle.kts).
-maven-artifact          = "3.9.16"
+maven-artifact          = "latest"
 
 [test-dependencies]
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"
 
 # The built-in plugin registry. Each plugin's jk-plugin.toml is the blueprint file third parties
 # copy, so it stays the single source of truth and is baked in from there rather than duplicated

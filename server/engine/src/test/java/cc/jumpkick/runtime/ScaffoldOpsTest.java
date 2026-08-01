@@ -93,7 +93,7 @@ class ScaffoldOpsTest {
                         "group", "com.example",
                         "name", "demo",
                         "version", "0.1.0",
-                        "quarkus.version", "3.28.5",
+                        "quarkus.version", "3.38.0",
                         "simpleLayout", "false",
                         "sample", "true",
                         "baseToml", "[project]\nname = \"demo\"\ngroup = \"com.example\"\n"));
@@ -106,7 +106,7 @@ class ScaffoldOpsTest {
         String xml = files.contents().get(pom);
         assertThat(xml).contains("<groupId>com.example</groupId>");
         assertThat(xml).contains("<artifactId>demo</artifactId>");
-        assertThat(xml).contains("<quarkus.platform.version>3.28.5</quarkus.platform.version>");
+        assertThat(xml).contains("<quarkus.platform.version>3.38.0</quarkus.platform.version>");
         assertThat(xml).doesNotContain("${group}").doesNotContain("${name}");
     }
 }

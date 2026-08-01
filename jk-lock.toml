@@ -12,9 +12,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "com.android.tools.build:apksig:jar:"
-version  = "8.7.3"
+version  = "9.3.1"
 source   = "google+https://dl.google.com/dl/android/maven2/"
-checksum = "sha256:c070ed1394629d74641aa0906f60b2ffa1ee77e6366a1f93437f59717b1aeb89"
+checksum = "sha256:562cd0a88890960d2ece48e116c61f12872222f1dcc306890799382bc019b201"
 scopes   = ["main"]
 
 [[artifact]]
@@ -607,36 +607,46 @@ deps = [
 
 [[artifact]]
 name     = "io.quarkus:quarkus-bootstrap-app-model:jar:"
-version  = "3.28.5"
+version  = "3.38.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:3003b7bb633434209e97eed2b05fcbc5e52061908502c01de9af280392ef15e5"
+checksum = "sha256:0b01a2ab4d6247e64fd2977730c7d7cb9803cd106f81b1df89140a53d63f8987"
 scopes   = ["provided"]
 deps = [
   "io.quarkus:quarkus-fs-util:jar:@1.4.2",
+  "io.smallrye.classfile:jdk-classfile-backport:jar:@27",
   "org.jboss.logging:commons-logging-jboss-logging:jar:@2.0.0.Final",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
 
 [[artifact]]
 name     = "io.quarkus:quarkus-bootstrap-core:jar:"
-version  = "3.28.5"
+version  = "3.38.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:cae98b8e0f973535eefe66bb5cf0030053b2888ac306952af497ec00e4bec864"
+checksum = "sha256:8ee08b1c3f181261b37b11ef2e95d001c60edde0bf14be169a78f543ef539694"
 scopes   = ["provided"]
 deps = [
-  "io.quarkus:quarkus-bootstrap-app-model:jar:@3.28.5",
+  "io.quarkus:quarkus-bootstrap-app-model:jar:@3.38.0",
+  "io.quarkus:quarkus-bootstrap-json:jar:@3.38.0",
   "io.quarkus:quarkus-classloader-commons:jar:@3.38.0",
+  "io.quarkus:quarkus-value-registry:jar:@3.38.0",
   "io.smallrye.common:smallrye-common-io:jar:@2.20.0",
 ]
 
 [[artifact]]
-name     = "io.quarkus:quarkus-bootstrap-maven-resolver:jar:"
-version  = "3.28.5"
+name     = "io.quarkus:quarkus-bootstrap-json:jar:"
+version  = "3.38.0"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:26eb79801e921005c1f07fcedc70ddd77a927db2ebccab0771f0976c23fa1862"
+checksum = "sha256:e908d9c07f82ce6fd7e946f8527e3be88c7af565f2467d0133c90d22d38dd315"
+scopes   = ["provided"]
+
+[[artifact]]
+name     = "io.quarkus:quarkus-bootstrap-maven-resolver:jar:"
+version  = "3.38.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:68bbd7fde18cd6fa0b91c7066adc6ed0e2128507e8d56d9e80cd172ab65fbc27"
 scopes   = ["provided"]
 deps = [
-  "io.quarkus:quarkus-bootstrap-app-model:jar:@3.28.5",
+  "io.quarkus:quarkus-bootstrap-app-model:jar:@3.38.0",
   "io.quarkus:quarkus-bootstrap-maven4-resolver:jar:@3.38.0",
   "io.quarkus:quarkus-classloader-commons:jar:@3.38.0",
   "io.quarkus:quarkus-fs-util:jar:@1.4.2",
@@ -674,6 +684,13 @@ name     = "io.quarkus:quarkus-fs-util:jar:"
 version  = "1.4.2"
 source   = "central+https://repo.maven.apache.org/maven2/"
 checksum = "sha256:a6034133b21de4e3aee4bc9e250f8416abfbdc0c86e6e0737f766415c3866169"
+scopes   = ["provided"]
+
+[[artifact]]
+name     = "io.quarkus:quarkus-value-registry:jar:"
+version  = "3.38.0"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:fedbf42460331c24ff4ed3e65cf6908ffc225be5d38d15c1f7fcc13eb7edb3a5"
 scopes   = ["provided"]
 
 [[artifact]]
@@ -742,6 +759,13 @@ deps = [
   "io.smallrye.common:smallrye-common-constraint:jar:@2.20.0",
   "org.jboss.logging:jboss-logging:jar:@3.6.3.Final",
 ]
+
+[[artifact]]
+name     = "io.smallrye.classfile:jdk-classfile-backport:jar:"
+version  = "27"
+source   = "central+https://repo.maven.apache.org/maven2/"
+checksum = "sha256:9d9524307e847200dbfd556ea85b928d8c5bbbcae312908ac22ea6866b47e792"
+scopes   = ["provided"]
 
 [[artifact]]
 name     = "io.smallrye.common:smallrye-common-annotation:jar:"

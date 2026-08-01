@@ -11,12 +11,12 @@ assembly = true
 jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
-groovy = { group = "org.apache.groovy", name = "groovy", version = "5.0.4" }
+groovy = { group = "org.apache.groovy", name = "groovy", version = "latest" }
 
 [test-dependencies]
 # Groovy must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
 # GroovyCompiler (Plugin SPI) and must load it without ClassNotFoundException.
-groovy                  = { group = "org.apache.groovy", name = "groovy",                  version = "5.0.4" }
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
+groovy                  = { group = "org.apache.groovy", name = "groovy",                  version = "latest" }
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"

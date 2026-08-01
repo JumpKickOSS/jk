@@ -44,7 +44,7 @@ class QuarkusLockPhaseTimingTest {
                 java = 25
 
                 [quarkus]
-                version = "3.28.5"
+                version = "3.38.0"
 
                 [dependencies]
                 quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }

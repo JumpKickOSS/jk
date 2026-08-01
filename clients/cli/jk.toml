@@ -14,21 +14,21 @@ jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
 jk-plugin-sdk.workspace = true
-jline-terminal-ffm = { group = "org.jline",   name = "jline-terminal-ffm", version = "4.1.2" }
+jline-terminal-ffm = { group = "org.jline",   name = "jline-terminal-ffm", version = "latest" }
 
 # ProcessProperties for argv[0] `jkx` dispatch (Argv0) — compile-time only; the
 # native-image builder provides the implementation and JVM mode never loads it.
 [provided-dependencies]
-graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version = "25.0.0" }
+graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version = "latest" }
 
 [test-dependencies]
 # Mirrors Gradle testImplementation(project(":engine")) — unit tests that touch TestSupport /
 # pipeline bridges need engine types; production classpath stays engine-free.
 jk-engine.workspace = true
-assertj-core            = "3.27.7"
-junit-jupiter           = "6.1.0"
-junit-platform-launcher = "6.1.0"
-bcpg-jdk18on            = "1.84"
+assertj-core            = "latest"
+junit-jupiter           = "latest"
+junit-platform-launcher = "latest"
+bcpg-jdk18on            = "latest"
 
 [image]
 main-class = "cc.jumpkick.cli.Jk"
