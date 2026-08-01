@@ -16,8 +16,8 @@ import java.util.List;
  * cc.jumpkick.plugin.process.PluginMain <spec>} (JK-1347). Heap sizing goes through {@link
  * JvmOptions}' shared plan.
  *
- * <p>Classpath deps come from an optional {@code <worker>.jar.classpath} sidecar written at
- * install-local / Gradle installLocal. Ugly absolute paths are OK until JK-1348.
+ * <p>Classpath resolution: prefer {@code $JK_STORE_DIR/lib/&lt;id&gt;/} hardlinks when install
+ * materialised them (JK-1348); else the optional {@code <worker>.jar.classpath} sidecar (JK-1347).
  */
 final class PluginLaunch {
 

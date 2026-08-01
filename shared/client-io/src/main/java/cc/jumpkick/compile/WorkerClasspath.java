@@ -16,14 +16,17 @@ import java.util.stream.Stream;
 /**
  * Resolves the JVM classpath for a thin plugin/worker jar.
  *
- * <p>Preferred layout after install: {@code <worker>.jar} plus optional sidecar {@code
+ * <p><strong>Preferred (JK-1348):</strong> {@code $JK_STORE_DIR/lib/&lt;id&gt;/} populated at
+ * install with hardlinked jars + ordered {@code .classpath}. Compact paths in {@code ps}.
+ *
+ * <p><strong>Fallback (JK-1347):</strong> {@code <worker>.jar} plus optional sidecar {@code
  * <worker>.jar.classpath} — one absolute jar path per line ({@code #} comments and blanks
  * ignored).
  *
  * <p>If the worker jar does not contain {@code PluginMain} (thin pure-jk package without a
- * vendored codec) and the sidecar is missing/empty, we also try to locate {@code
+ * vendored codec) and neither lib-dir nor sidecar supplies it, we also try to locate {@code
  * jk-plugin-sdk} nearby (workspace {@code target/…} or {@code store/repos/local/…}) so forks
- * still start (JK-1347).
+ * still start.
  */
 public final class WorkerClasspath {
 
@@ -37,12 +40,18 @@ public final class WorkerClasspath {
     }
 
     /**
-     * Classpath entries: worker jar first, then sidecar entries that still exist, then a
-     * best-effort {@code plugin-sdk} jar when {@link #PLUGIN_MAIN} is not inside the worker.
+     * Classpath entries: prefer {@link WorkerLib} when installed; else worker jar first, then
+     * sidecar entries that still exist, then a best-effort {@code plugin-sdk} jar when {@link
+     * #PLUGIN_MAIN} is not inside the worker.
      */
     public static List<Path> paths(Path workerJar) {
-        List<Path> entries = new ArrayList<>();
         Path worker = workerJar.toAbsolutePath().normalize();
+        // JK-1348: short store/lib/<id>/ paths when materialize has run for this worker.
+        List<Path> libPaths = WorkerLib.pathsIfPresent(worker);
+        if (libPaths != null && !libPaths.isEmpty()) {
+            return libPaths;
+        }
+        List<Path> entries = new ArrayList<>();
         entries.add(worker);
         Path side = sidecarPath(workerJar);
         if (Files.isRegularFile(side)) {
@@ -65,7 +74,8 @@ public final class WorkerClasspath {
     }
 
     /**
-     * Classpath string for {@code -cp}: worker jar first, then sidecar / plugin-sdk entries.
+     * Classpath string for {@code -cp}: {@link WorkerLib} paths when present, else worker +
+     * sidecar / plugin-sdk entries.
      */
     public static String resolve(Path workerJar) {
         String sep = System.getProperty("path.separator", ":");

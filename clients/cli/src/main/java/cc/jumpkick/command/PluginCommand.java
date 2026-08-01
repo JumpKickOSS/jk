@@ -7,6 +7,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.compile.ModuleRuntimeClasspath;
 import cc.jumpkick.compile.WorkerClasspath;
+import cc.jumpkick.compile.WorkerLib;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.layout.BuildLayout;
@@ -31,8 +32,9 @@ import java.util.Map;
  * {@code jk plugin …} — first-party worker packaging helpers for self-host / dogfood.
  *
  * <p>{@code install-local} side-loads workspace <strong>thin</strong> PluginMain jars into the
- * local Maven layout and writes a {@code .classpath} sidecar of runtime deps (JK-1347) so the
- * engine can {@code java -cp worker:deps… PluginMain}.
+ * local Maven layout, writes a {@code .classpath} sidecar of runtime deps (JK-1347), and
+ * hard-links worker + deps into {@code $JK_STORE_DIR/lib/&lt;id&gt;/} for compact launch paths
+ * (JK-1348).
  */
 public final class PluginCommand extends GroupCommand {
 
@@ -166,10 +168,27 @@ public final class PluginCommand extends GroupCommand {
                 WorkerClasspath.writeSidecar(dest, sideDeps);
                 // Also write sidecar next to the build output so -Djk.*.plugin.jar overrides work.
                 WorkerClasspath.writeSidecar(source, sideDeps);
+                // JK-1348: short store/lib/<id>/ hardlinks for ps-friendly -cp (prefer over sidecar).
+                Path libDir = null;
+                try {
+                    // Prefer the store copy as the worker hardlink source when ambient install.
+                    Path workerForLib = Files.isRegularFile(dest) ? dest : source;
+                    libDir = WorkerLib.materialize(artifactId, workerForLib, sideDeps);
+                    // Point sidecars at lib paths when materialize succeeded (compact + GC-safe).
+                    List<Path> libPaths = WorkerLib.pathsIfPresent(artifactId);
+                    if (libPaths != null && libPaths.size() > 1) {
+                        List<Path> libDeps = new ArrayList<>(libPaths.subList(1, libPaths.size()));
+                        WorkerClasspath.writeSidecar(dest, libDeps);
+                        WorkerClasspath.writeSidecar(source, libDeps);
+                    }
+                } catch (Exception ignored) {
+                    // Best-effort; sidecar absolute paths still launch.
+                }
+                String libNote = libDir != null ? "; lib " + PathDisplay.styledRaw(libDir) : "";
                 CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
                         "Plugin",
                         "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest)
-                                + " (" + sideDeps.size() + " deps)"));
+                                + " (" + sideDeps.size() + " deps" + libNote + ")"));
                 installed++;
             }
 
