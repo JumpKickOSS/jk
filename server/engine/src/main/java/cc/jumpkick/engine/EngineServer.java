@@ -2705,6 +2705,7 @@ public final class EngineServer implements AutoCloseable {
             java.util.List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
             boolean sources = Jsonl.bool(requestLine, "sources", false);
+            boolean conservative = Jsonl.bool(requestLine, "conservative", false);
             Session session = resolveSession(requestLine, cancelToken, false);
             java.net.URI repoUrl = repoUrlOf(requestLine);
             SessionContext.where(session, () -> {
@@ -2716,6 +2717,8 @@ public final class EngineServer implements AutoCloseable {
                         withDefaults,
                         sources,
                         false,
+                        null,
+                        conservative,
                         writer);
                 return null;
             });
@@ -3628,9 +3631,10 @@ public final class EngineServer implements AutoCloseable {
             boolean withDefaults,
             boolean sources,
             boolean update,
+            String platformOverride,
             BufferedWriter writer)
             throws Exception {
-        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, null, writer);
+        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, platformOverride, false, writer);
     }
 
     private void lockCascade(
@@ -3642,6 +3646,7 @@ public final class EngineServer implements AutoCloseable {
             boolean sources,
             boolean update,
             String platformOverride,
+            boolean conservative,
             BufferedWriter writer)
             throws Exception {
         java.nio.file.Files.createDirectories(cache);
@@ -3688,7 +3693,8 @@ public final class EngineServer implements AutoCloseable {
                     ? cc.jumpkick.runtime.LockPipelines.updatePipeline(
                             dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
                     : cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                            dir, effective, cache, repoUrl, features, withDefaults, sources, observer, null);
+                            dir, effective, cache, repoUrl, features, withDefaults, sources, conservative, observer,
+                            null);
             for (Step p : pipeline.steps()) {
                 sendQuiet(
                         writer,

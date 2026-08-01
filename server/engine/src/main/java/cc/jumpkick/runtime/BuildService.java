@@ -65,7 +65,7 @@ public final class BuildService {
         if (!workspaceLockStale(root, rootBuild, rootLock)) return LockGuard.OK;
         long t0 = System.nanoTime();
         try {
-            LockFlow.Result r = LockFlow.run(root, cache, List.of(), true, null);
+            LockFlow.Result r = LockFlow.run(root, cache, List.of(), true, null, /* conservative */ true);
             if (r.status() == 0) {
                 recordLockSuccess(root, (System.nanoTime() - t0) / 1_000_000L);
             }

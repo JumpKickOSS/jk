@@ -686,7 +686,8 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 Use **`jk explain`** (hidden aliases **`plan`**, **`why-rebuilt`**). It forecasts cache hit/miss
 per module and step (sources changed, dependency changed, options/classpath). When the lock is
 missing or stale it refreshes it first (same as `jk build`) so the plan and ETA match the live
-build countdown; a CommandWedge spinner shows while locking. Prefer this over Gradle build scans
+build countdown; a CommandWedge spinner shows while locking. Automatic refreshes are
+conservative — pinned versions stay put; only `jk lock` / `jk update` float to latest. Prefer this over Gradle build scans
 for day-to-day rebuild questions.
 
 ```bash

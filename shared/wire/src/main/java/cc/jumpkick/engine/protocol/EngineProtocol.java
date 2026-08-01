@@ -963,7 +963,8 @@ public final class EngineProtocol {
     /**
      * Resolve + write {@code jk-lock.toml} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
      * null}. {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side
-     * (the same fields {@link #buildRequest} carries).
+     * (the same fields {@link #buildRequest} carries). {@code conservative} marks an invisible
+     * freshen: existing lock pins are kept as solver preferences instead of floating to latest.
      */
     public static String lockRequest(
             String dir,
@@ -974,7 +975,8 @@ public final class EngineProtocol {
             String repoUrl,
             boolean offline,
             boolean force,
-            boolean verbose) {
+            boolean verbose,
+            boolean conservative) {
         return "{\"type\":\""
                 + LOCK_REQUEST
                 + "\",\"dir\":"
@@ -995,6 +997,8 @@ public final class EngineProtocol {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"conservative\":"
+                + conservative
                 + "}";
     }
 

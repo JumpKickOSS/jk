@@ -86,6 +86,7 @@ public final class EnsureFreshLock {
                 && isInteractiveAuto(global)
                 && !global.outputIsJson();
         try {
+            // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
             EngineClient.LockRequest req = new EngineClient.LockRequest(
                     dir,
                     cache,
@@ -95,7 +96,8 @@ public final class EnsureFreshLock {
                     null,
                     global.offline,
                     global.force,
-                    global.verbose);
+                    global.verbose,
+                    true);
 
             EngineClient.LockHandler quiet = new EngineClient.LockHandler() {
                 @Override

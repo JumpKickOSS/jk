@@ -83,6 +83,28 @@ public final class LockPipelines {
             boolean sources,
             ResolveObserver observer,
             BiFunction<String, String, String> coordLabel) {
+        return lockPipeline(
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, sources, false, observer, coordLabel);
+    }
+
+    /**
+     * As {@link #lockPipeline(Path, JkBuild, Path, URI, List, boolean, boolean, ResolveObserver,
+     * BiFunction)} with a {@code conservative} switch: an invisible freshen ({@code
+     * EnsureFreshLock}) keeps every pin from the existing lock as a solver preference — only
+     * coordinates a new or changed constraint rules out move. Explicit {@code jk lock} passes
+     * {@code false} and floats to latest.
+     */
+    public static Pipeline lockPipeline(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            boolean sources,
+            boolean conservative,
+            ResolveObserver observer,
+            BiFunction<String, String, String> coordLabel) {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
@@ -122,13 +144,16 @@ public final class LockPipelines {
                         }
                     }
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
-                    Map<String, String> lockedShas = Map.of();
+                    Lockfile existing = null;
                     if (Files.exists(lockFile)) {
                         try {
-                            lockedShas = GitSourceResolution.lockedImmutableShas(LockfileReader.read(lockFile));
+                            existing = LockfileReader.read(lockFile);
                         } catch (Exception ignored) {
+                            // unreadable lock — resolve fresh
                         }
                     }
+                    Map<String, String> lockedShas =
+                            existing != null ? GitSourceResolution.lockedImmutableShas(existing) : Map.of();
                     GitSourceResolution.Prepared prep;
                     PathSourceResolution.Prepared pathPrep;
                     try {
@@ -187,6 +212,7 @@ public final class LockPipelines {
                         }
                     };
                     try {
+                        boolean keepPins = conservative && !sources && existing != null;
                         Lockfile lock = sources
                                 ? orchestrator.lockWithSources(
                                         pathPrep.project(),
@@ -194,14 +220,24 @@ public final class LockPipelines {
                                         features,
                                         withDefaultFeatures,
                                         wrappedObserver)
-                                : orchestrator.lock(
-                                        pathPrep.project(),
-                                        JkVersion.VERSION,
-                                        features,
-                                        withDefaultFeatures,
-                                        wrappedObserver);
+                                : keepPins
+                                        ? orchestrator.lockConservative(
+                                                pathPrep.project(),
+                                                existing,
+                                                JkVersion.VERSION,
+                                                features,
+                                                withDefaultFeatures,
+                                                wrappedObserver)
+                                        : orchestrator.lock(
+                                                pathPrep.project(),
+                                                JkVersion.VERSION,
+                                                features,
+                                                withDefaultFeatures,
+                                                wrappedObserver);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-                        String kotlinVersion = resolveKotlinVersion(eff, repos);
+                        String kotlinVersion = keepPins && existing.kotlin() != null
+                                ? existing.kotlin()
+                                : resolveKotlinVersion(eff, repos);
                         if (kotlinVersion != null) {
                             ctx.label("resolved kotlin " + kotlinVersion);
                             lock = lock.withKotlin(kotlinVersion);

@@ -784,7 +784,11 @@ public final class EngineClient {
 
     // ---- resolver family (jk lock / update / sync) --------------------------------------------
 
-    /** Everything an engine-hosted {@code jk lock} needs — mirrors {@code LockCommand}'s local fields. */
+    /**
+     * Everything an engine-hosted {@code jk lock} needs — mirrors {@code LockCommand}'s local fields.
+     * {@code conservative} marks an invisible freshen ({@link cc.jumpkick.cli.EnsureFreshLock}):
+     * existing pins are kept as solver preferences; only explicit {@code jk lock} floats to latest.
+     */
     public record LockRequest(
             Path entryDir,
             Path cache,
@@ -794,7 +798,22 @@ public final class EngineClient {
             java.net.URI repoUrl,
             boolean offline,
             boolean force,
-            boolean verbose) {}
+            boolean verbose,
+            boolean conservative) {
+        /** Back-compat: explicit lock semantics (latest versions). */
+        public LockRequest(
+                Path entryDir,
+                Path cache,
+                List<String> features,
+                boolean noDefaultFeatures,
+                boolean sources,
+                java.net.URI repoUrl,
+                boolean offline,
+                boolean force,
+                boolean verbose) {
+            this(entryDir, cache, features, noDefaultFeatures, sources, repoUrl, offline, force, verbose, false);
+        }
+    }
 
     /** Everything an engine-hosted {@code jk update} needs — mirrors {@code UpdateCommand}'s local fields. */
     public record UpdateRequest(

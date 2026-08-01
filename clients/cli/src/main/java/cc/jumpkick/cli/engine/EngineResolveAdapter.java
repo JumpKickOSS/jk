@@ -66,7 +66,8 @@ final class EngineResolveAdapter {
                         req.repoUrl() != null ? req.repoUrl().toString() : null,
                         req.offline(),
                         req.force(),
-                        req.verbose()),
+                        req.verbose(),
+                        req.conservative()),
                 handler,
                 "lock");
     }

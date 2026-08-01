@@ -444,7 +444,16 @@ class EngineServerTest {
             int lastPackageTotal = -1;
             try (Client c = new Client(EnginePaths.activeSocket(p))) {
                 c.sendLine(EngineProtocol.lockRequest(
-                        project.toString(), cache.toString(), List.of(), false, false, repoUrl, false, false, false));
+                        project.toString(),
+                        cache.toString(),
+                        List.of(),
+                        false,
+                        false,
+                        repoUrl,
+                        false,
+                        false,
+                        false,
+                        false));
                 String line;
                 while ((line = c.readLine()) != null) {
                     String type = EngineProtocol.typeOf(line);

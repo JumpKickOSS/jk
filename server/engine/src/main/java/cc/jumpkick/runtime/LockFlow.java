@@ -55,8 +55,20 @@ public final class LockFlow {
         }
     }
 
-    /** Run the lock pipeline against {@code dir}. */
+    /** Run the lock pipeline against {@code dir} with explicit-lock (latest versions) semantics. */
     public static Result run(Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl)
+            throws Exception {
+        return run(dir, cache, features, noDefaultFeatures, repoUrl, false);
+    }
+
+    /**
+     * Run the lock pipeline against {@code dir}. {@code conservative} marks an invisible freshen
+     * (pre-build workspace guard): pins from the existing lock are fed to the solver as soft
+     * preferences, so only coordinates a new or changed constraint rules out move. With no readable
+     * existing lock the flag is a no-op (fresh resolve either way).
+     */
+    public static Result run(
+            Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl, boolean conservative)
             throws Exception {
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
@@ -130,10 +142,26 @@ public final class LockFlow {
                 .withPlatformPolicy(pathPrep.project().build().platformPolicy())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
 
+        Lockfile existing = null;
+        if (conservative && Files.exists(lockFile)) {
+            try {
+                existing = cc.jumpkick.lock.LockfileReader.read(lockFile);
+            } catch (Exception ignored) {
+                // unreadable lock — resolve fresh
+            }
+        }
         Lockfile lock;
         try {
-            lock = orchestrator.lock(
-                    pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
+            lock = existing != null
+                    ? orchestrator.lockConservative(
+                            pathPrep.project(),
+                            existing,
+                            cc.jumpkick.model.JkVersion.VERSION,
+                            features,
+                            !noDefaultFeatures,
+                            cc.jumpkick.resolver.ResolveObserver.NOOP)
+                    : orchestrator.lock(
+                            pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
         } catch (IOException e) {
             return new Result(
                     6,
@@ -145,6 +173,10 @@ public final class LockFlow {
                     lockDir);
         }
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
+        // Conservative freshen: carry the existing Kotlin pin — bumping the compiler is `jk lock`'s job.
+        if (existing != null && lock.kotlin() == null && existing.kotlin() != null) {
+            lock = lock.withKotlin(existing.kotlin());
+        }
         // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
         LockfileWriter.write(lock, lockFile);
