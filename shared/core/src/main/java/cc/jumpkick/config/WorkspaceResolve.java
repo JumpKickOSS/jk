@@ -64,6 +64,9 @@ public final class WorkspaceResolve {
             if (!root.isWorkspaceRoot()) return module;
             // loadModules already rewrites project.*.workspace / omitted-field inherits.
             module = WorkspaceLoader.inheritFromRoot(module, root);
+            // Conditioned plugin contributions (kotlin-project, …) were folded pre-inheritance;
+            // re-evaluate them now that the project is concrete (idempotent).
+            module = JkBuildParser.reapplyPlatformContributions(moduleDir, module);
             java.util.Collection<JkBuild> siblings;
             try {
                 siblings = WorkspaceLoader.loadModules(rootDir.get(), root).values();
