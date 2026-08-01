@@ -680,7 +680,10 @@ public final class BuildPlanForecast {
         if (sha != null) {
             Path blob = cas.pathFor(sha);
             if (Files.isRegularFile(blob)) {
-                return ClasspathFingerprint.entry(blob);
+                // The blob path would classify as "cas:<abs>", but the live step fingerprinted the
+                // on-disk sibling as "file:<content sha>" — return that form so a post-clean
+                // assembly forecast can match the stored key (JK-1369).
+                return "file:" + sha;
             }
         }
         return ClasspathFingerprint.entry(jar); // missing:…

@@ -56,6 +56,27 @@ class BuildPlanForecastPackageKeyTest {
     }
 
     @Test
+    void post_clean_sibling_fingerprints_in_the_live_file_form(@TempDir Path tmp) throws Exception {
+        // JK-1369: a jk-clean-wiped sibling recovered from the CAS must fingerprint as
+        // "file:<sha>" (what the live step stored for the on-disk jar), not "cas:<blob path>" —
+        // otherwise the post-clean assembly forecast can never key-match.
+        byte[] bytes = "sibling-jar-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        var cas = new cc.jumpkick.cache.Cas(tmp.resolve("cas"));
+        cas.put(bytes, sha);
+
+        Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
+        String recovered = BuildPlanForecast.fingerprintJarOrCached(
+                wiped, cas, Map.of(wiped.toAbsolutePath().normalize(), sha));
+
+        // Live-build form: the same content on disk.
+        Path onDisk = tmp.resolve("sibling.jar");
+        Files.write(onDisk, bytes);
+        assertThat(recovered).isEqualTo(ClasspathFingerprint.entry(onDisk));
+        assertThat(recovered).startsWith("file:");
+    }
+
+    @Test
     void estimate_eta_is_zero_when_plan_is_fully_cached(@TempDir Path tmp) {
         // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis.
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
