@@ -23,7 +23,8 @@ public final class LockfileWriter {
         // Always stamp a live manifests digest so staleness survives git-clone mtimes.
         Path owner = file.toAbsolutePath().normalize().getParent();
         Lockfile stamped = LockManifestDigest.stamp(lockfile, owner);
-        Files.writeString(file, render(stamped), StandardCharsets.UTF_8);
+        // Atomic (temp + rename): concurrent readers never observe a truncated lock (JK-1356).
+        cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
     }
 
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */

@@ -78,6 +78,7 @@ class LockFreshenConservativeTest {
 
         serveLib("1.0", "1.1");
         restartServer();
+        touchManifest(tmp); // whitespace-only edit → digest-stale, so the freshen actually resolves
 
         LockFlow.Result freshened = LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, base, true);
         assertThat(freshened.status()).isZero();
@@ -87,6 +88,23 @@ class LockFreshenConservativeTest {
         LockFlow.Result explicit = LockFlow.run(tmp, tmp.resolve("cache3"), List.of(), true, base, false);
         assertThat(explicit.status()).isZero();
         assertThat(libVersion(explicit.lockfile())).isEqualTo("1.1");
+    }
+
+    @Test
+    void conservative_freshen_on_a_fresh_lock_skips_resolution(@TempDir Path tmp) throws Exception {
+        project(tmp);
+        serveLib("1.0");
+
+        assertThat(LockFlow.run(tmp, tmp.resolve("cache1"), List.of(), true, base, false)
+                        .status())
+                .isZero();
+
+        // Repo is now unreachable: only the single-flight skip can succeed.
+        server.stop(0);
+        LockFlow.Result skipped =
+                LockFlow.run(tmp, tmp.resolve("cache2"), List.of(), true, URI.create("http://127.0.0.1:9/"), true);
+        assertThat(skipped.status()).isZero();
+        assertThat(libVersion(skipped.lockfile())).isEqualTo("1.0");
     }
 
     @Test
@@ -126,6 +144,7 @@ class LockFreshenConservativeTest {
                 .isZero();
         serveLib("1.0", "1.1");
         restartServer();
+        touchManifest(tmp);
 
         var effective = cc.jumpkick.config.JkBuildParser.parse(tmp.resolve("jk.toml"));
         var pipeline = LockPipelines.lockPipeline(
@@ -150,6 +169,11 @@ class LockFreshenConservativeTest {
                 [dependencies]
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }
                 """);
+    }
+
+    private static void touchManifest(Path tmp) throws IOException {
+        Path toml = tmp.resolve("jk.toml");
+        Files.writeString(toml, Files.readString(toml) + "\n# touched\n");
     }
 
     private static String libVersion(Lockfile lock) {

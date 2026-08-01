@@ -212,6 +212,30 @@ public final class AutoLock {
             ResolveObserver observer,
             Consumer<String> warn) {
         if (!isStale(dir, lockFile)) return null;
+        // Serialize per lock dir (JK-1356); a concurrent job may have freshened while we waited.
+        synchronized (LockGate.monitorFor(lockFile.toAbsolutePath().normalize().getParent())) {
+            if (!isStale(dir, lockFile)) {
+                try {
+                    return LockfileReader.read(lockFile);
+                } catch (Exception ignored) {
+                    // unreadable — fall through and re-lock
+                }
+            }
+            return reLock(dir, existing, lockFile, cache, repoUrl, jkVersion, features, withDefaults, observer, warn);
+        }
+    }
+
+    private static Lockfile reLock(
+            Path dir,
+            Lockfile existing,
+            Path lockFile,
+            Path cache,
+            URI repoUrl,
+            String jkVersion,
+            Collection<String> features,
+            boolean withDefaults,
+            ResolveObserver observer,
+            Consumer<String> warn) {
         try {
             // One lock scope, shared with every other lock entry pointa workspace
             // member (or root) resolves the merged union at the root — a module-scoped

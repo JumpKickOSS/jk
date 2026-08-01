@@ -119,6 +119,47 @@ public final class LockFlow {
         // inside WorkspaceMerge (idempotent either way).
         effective = Variants.unionDependencies(effective);
 
+        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
+        // lock already fresh — a concurrent job won the flight; skip the duplicate resolve.
+        synchronized (LockGate.monitorFor(lockDir)) {
+            if (conservative && Files.exists(lockFile) && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, lockFile)) {
+                try {
+                    Lockfile current = cc.jumpkick.lock.LockfileReader.read(lockFile);
+                    return new Result(0, null, current, effective, moduleCount, workspaceLock, lockDir);
+                } catch (Exception ignored) {
+                    // unreadable — fall through and re-lock
+                }
+            }
+            return resolveAndWrite(
+                    dir,
+                    cache,
+                    features,
+                    noDefaultFeatures,
+                    repoUrl,
+                    conservative,
+                    parsed,
+                    lockDir,
+                    lockFile,
+                    effective,
+                    moduleCount,
+                    workspaceLock);
+        }
+    }
+
+    private static Result resolveAndWrite(
+            Path dir,
+            Path cache,
+            List<String> features,
+            boolean noDefaultFeatures,
+            URI repoUrl,
+            boolean conservative,
+            JkBuild parsed,
+            Path lockDir,
+            Path lockFile,
+            JkBuild effective,
+            int moduleCount,
+            boolean workspaceLock)
+            throws Exception {
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos =
                 RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));

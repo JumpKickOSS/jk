@@ -3671,7 +3671,16 @@ public final class EngineServer implements AutoCloseable {
             return;
         }
 
-        {
+        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
+        // lock already fresh — a concurrent job won the flight; the bare lock-finish is a complete
+        // stream (the client returns on the terminal without any pipeline events).
+        synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
+            if (conservative
+                    && !cc.jumpkick.lock.LockFreshness.isStale(
+                            lockDir, cc.jumpkick.lock.LockPaths.lockFile(lockDir))) {
+                sendQuiet(writer, EngineProtocol.lockFinish(true, 0, java.util.List.of(), -1));
+                return;
+            }
             Path dir = lockDir;
             String dirTag = dir.toString();
             sendQuiet(writer, EngineProtocol.lockModule(dirTag, coord));
@@ -5098,7 +5107,11 @@ public final class EngineServer implements AutoCloseable {
                     ResolveObserver.NOOP,
                     null);
             pipeline.addListener(singlePipelineHubListener(lockDir.toString()));
-            cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
+            cc.jumpkick.run.PipelineResult result;
+            // Serialize per lock dir with every other lock entry point (JK-1356).
+            synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
+                result = SessionContext.where(session, pipeline::run);
+            }
             accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
             if (!result.success()) {
                 for (var d : result.errors().stream().limit(5).toList()) {
