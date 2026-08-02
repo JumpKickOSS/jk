@@ -21,7 +21,8 @@ class PlainAsciiTest {
         assertThat(PlainAscii.transform("Locking g:n…")).isEqualTo("Locking g:n...");
         assertThat(PlainAscii.transform(" • Label: value")).isEqualTo(" - Label: value");
         assertThat(PlainAscii.transform("● working")).isEqualTo("* working");
-        assertThat(PlainAscii.transform("building… · 4%")).isEqualTo("building... . 4%");
+        assertThat(PlainAscii.transform("building… · 4%")).isEqualTo("building... - 4%");
+        assertThat(PlainAscii.transform("□ pending")).isEqualTo("[ ] pending");
     }
 
     @Test
@@ -31,6 +32,8 @@ class PlainAsciiTest {
         assertThat(PlainAscii.transform("‼ warn")).isEqualTo("! warn");
         assertThat(PlainAscii.transform("▶ run")).isEqualTo("> run");
         assertThat(PlainAscii.transform("≡ menu")).isEqualTo("= menu");
+        assertThat(PlainAscii.transform("□")).isEqualTo("[ ]");
+        assertThat(PlainAscii.transform("·")).isEqualTo("-");
     }
 
     @Test
