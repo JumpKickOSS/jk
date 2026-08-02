@@ -81,9 +81,9 @@ per-module step walls for the next estimate.
 
 | Store | What is recorded | Recency |
 |---|---|---|
-| `StepTimings` (`timings.toml`) | Per-step rates from real SUCCESS work | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates) |
-| `BuildMetrics` (`metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
-| Calibration | Bootstrap probe + continuous host rates (`calibration.toml`) | `Calibration.ensure` on explain/build ETA (network unless `--offline`); `jk engine calibrate`; learned trimmed means on success |
+| `StepTimings` (`~/.jk/state/builds/timings.toml`) | Per-step rates from real SUCCESS work (not under CAS cache) | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates); migrates legacy `~/.jk/cache/timings.toml` once |
+| `BuildMetrics` (`~/.jk/state/builds/metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
+| Calibration | Bootstrap probe + continuous host rates (`~/.jk/state/builds/calibration.toml`) | `Calibration.ensure` on explain/build ETA (network unless `--offline`); `jk engine calibrate`; learned trimmed means on success |
 
 **Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
 the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
@@ -125,7 +125,8 @@ job concurrency and a thin contention margin. Baselines/schedule are provisional
 monorepo); re-fit when multi-project OSS ports exist.
 
 **Continuous learning** folds successful-build absolute walls into trimmed-mean rings; those win
-over baselines when present. Stored in `~/.jk/state/builds/calibration.toml` (survives `jk clean`):
+over baselines when present. Stored in `~/.jk/state/builds/` next to step timings and metrics
+(survives `jk clean` and cache GC):
 
 | Field | What it stands for |
 |---|---|

@@ -117,7 +117,7 @@ public final class BuildMetrics {
         this.steps = steps;
     }
 
-    /** The default store location: state, beside {@code calibration.toml}, survives {@code jk clean}. */
+    /** The default store location: {@code ~/.jk/state/builds/metrics.json}, beside calibration/timings. */
     public static Path defaultFile() {
         return JkDirs.builds().resolve("metrics.json");
     }

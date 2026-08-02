@@ -123,6 +123,20 @@ class StepTimingsTest {
     }
 
     @Test
+    void default_file_is_under_state_builds_not_cache() {
+        Path def = StepTimings.defaultFile();
+        assertThat(def.getFileName().toString()).isEqualTo("timings.toml");
+        assertThat(def.toString()).contains("state");
+        assertThat(def.toString()).contains("builds");
+        // Hermetic roots keep the file under the test directory.
+    }
+
+    @Test
+    void isolated_root_keeps_ledger_next_to_fixture(@TempDir Path root) {
+        assertThat(StepTimings.file(root)).isEqualTo(root.resolve("timings.toml"));
+    }
+
+    @Test
     void limits_resolve_from_env_over_config_over_default(@TempDir Path dir) throws Exception {
         Path cfg = dir.resolve("config.toml");
         Files.writeString(cfg, "[cache]\ntimings-max-size-mb = 50\ntimings-max-age-days = 365\n");
