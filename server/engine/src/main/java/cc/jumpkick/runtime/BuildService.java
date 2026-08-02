@@ -320,7 +320,9 @@ public final class BuildService {
         }
         Cas cas = JkStores.cas(cache);
         ActionCache actionCache = new ActionCache(cas, cache.resolve("actions"));
-        List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache);
+        // Same forecast walk as build preflight (BuildPlanForecast) — skipTests=false matches bare
+        // `jk build`. Callers that need --skip-tests pass it through the engine explain request.
+        List<BuildPlan.Module> modules = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
         return new ExplainPlan(modules, graph.edges(), graph.maxReadyWidth(), List.of());
     }
 

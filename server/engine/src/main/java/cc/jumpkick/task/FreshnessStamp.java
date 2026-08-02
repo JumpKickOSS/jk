@@ -178,15 +178,50 @@ public final class FreshnessStamp {
 
     private static Set<Path> normalise(List<Path> paths) {
         Set<Path> out = new TreeSet<>();
-        for (Path p : paths) out.add(p.toAbsolutePath().normalize());
+        for (Path p : paths) out.add(identityKey(p));
         return out;
     }
 
     private static List<Path> sortedAbs(List<Path> paths) {
         List<Path> copy = new ArrayList<>(paths.size());
-        for (Path p : paths) copy.add(p.toAbsolutePath().normalize());
+        for (Path p : paths) copy.add(identityKey(p));
         copy.sort(Comparator.comparing(Path::toString));
         return copy;
+    }
+
+    /**
+     * Stable classpath identity for stamp compare/write. Locked store jars may appear as either
+     * {@code store/sha256/ab/cd/…} or {@code store/repos/&lt;name&gt;/…/artifact.jar} (same bytes).
+     * Prefer the CAS form so build and explain agree after ClasspathResolver path policy changes.
+     */
+    public static Path identityKey(Path p) {
+        if (p == null) return Path.of(".");
+        Path abs = p.toAbsolutePath().normalize();
+        String s = abs.toString().replace('\\', '/');
+        int storeAt = s.indexOf("/store/");
+        if (storeAt < 0) return abs;
+        // Already content-addressed.
+        if (s.contains("/store/sha256/")) return abs;
+        // Named-repo view: prefer the CAS blob named by the sidecar hash.
+        Path sidecar = Path.of(abs + ".sha256");
+        if (Files.isRegularFile(sidecar)) {
+            try {
+                String hex = Files.readString(sidecar, StandardCharsets.UTF_8).trim();
+                if (hex.length() >= 64) {
+                    hex = hex.substring(0, 64);
+                    if (hex.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+                        Path storeRoot = Path.of(s.substring(0, storeAt + "/store".length()));
+                        return storeRoot
+                                .resolve("sha256")
+                                .resolve(hex.substring(0, 2))
+                                .resolve(hex.substring(2, 4))
+                                .resolve(hex.substring(4));
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        return abs;
     }
 
     private static boolean newerThan(Path file, long stampMillis) throws IOException {

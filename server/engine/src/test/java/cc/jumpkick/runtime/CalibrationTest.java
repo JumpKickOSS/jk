@@ -117,13 +117,17 @@ class CalibrationTest {
         long method = cal.testMethodMs();
         long startup = cal.testSuiteStartupMs();
         // Product baseline × scale × cold bias — well above empty-probe residual.
-        assertThat(method).isGreaterThanOrEqualTo(80);
+        assertThat(method).isGreaterThanOrEqualTo(20);
         assertThat(method).isLessThanOrEqualTo(Calibration.BASELINE_METHOD_MS * 2);
-        assertThat(startup).isGreaterThanOrEqualTo(350);
+        assertThat(startup).isGreaterThanOrEqualTo(100);
+        // Default coldStepWallMs uses 1 worker → serial body.
         long expectedSerial = startup + 10 * method;
         assertThat(cal.coldStepWallMs("run-tests", 10)).isEqualTo(expectedSerial);
-        // Cold ETA ignores -w speedup (COLD_MAX_TEST_PARALLEL=1) so explain prefers over- under-shoot.
-        assertThat(cal.coldStepWallMs("run-tests", 10, 8)).isEqualTo(expectedSerial);
+        // Within-module -w is capped by COLD_MAX_TEST_PARALLEL (not fully linear).
+        int w = Calibration.coldTestParallel(8);
+        long expectedCapped = startup + (10 * method + w - 1) / w;
+        assertThat(cal.coldStepWallMs("run-tests", 10, 8)).isEqualTo(expectedCapped);
+        assertThat(w).isEqualTo(Calibration.COLD_MAX_TEST_PARALLEL);
     }
 
     @Test

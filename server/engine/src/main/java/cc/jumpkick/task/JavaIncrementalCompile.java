@@ -301,17 +301,23 @@ public final class JavaIncrementalCompile {
     private static boolean processorPathUnchanged(CompileRequest request, Map<String, String> in) {
         Set<String> now = new TreeSet<>();
         for (Path pp : request.processorPath())
-            now.add("pp:" + pp.toAbsolutePath().normalize());
+            now.add("pp:" + FreshnessStamp.identityKey(pp));
         Set<String> prior = new TreeSet<>();
-        for (String k : in.keySet()) if (k.startsWith("pp:")) prior.add(k);
+        for (String k : in.keySet()) {
+            if (!k.startsWith("pp:")) continue;
+            prior.add("pp:" + FreshnessStamp.identityKey(Path.of(k.substring(3))));
+        }
         return now.equals(prior);
     }
 
     private static boolean classpathUnchanged(CompileRequest request, Map<String, String> in) {
         Set<String> now = new TreeSet<>();
-        for (Path cp : request.classpath()) now.add("cp:" + cp.toAbsolutePath().normalize());
+        for (Path cp : request.classpath()) now.add("cp:" + FreshnessStamp.identityKey(cp));
         Set<String> prior = new TreeSet<>();
-        for (String k : in.keySet()) if (k.startsWith("cp:")) prior.add(k);
+        for (String k : in.keySet()) {
+            if (!k.startsWith("cp:")) continue;
+            prior.add("cp:" + FreshnessStamp.identityKey(Path.of(k.substring(3))));
+        }
         return now.equals(prior);
     }
 

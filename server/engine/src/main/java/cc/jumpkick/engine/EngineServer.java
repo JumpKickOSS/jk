@@ -168,20 +168,12 @@ public final class EngineServer implements AutoCloseable {
     /** The running invocation/step aggregates every finished build/test folds into. */
     private Path metricsFile = BuildMetrics.defaultFile();
 
-    /** Durable start-time build numbers. */
-    private Path runNumbersFile = cc.jumpkick.runtime.BuildNumberAllocator.defaultFile();
-
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
 
     /** Test seam: point the metrics store at a sandbox file instead of the user's real state dir. */
     void metricsFileForTests(Path file) {
         this.metricsFile = file;
-    }
-
-    /** Test seam: isolate run-number counters. */
-    void runNumbersFileForTests(Path file) {
-        this.runNumbersFile = file;
     }
 
     /** Test seam: inspect exclusive holds. */

@@ -61,19 +61,19 @@ public final class Calibration {
 
     /**
      * Typical unit-test method wall on the reference host (AssertJ/temp-dir style, not empty).
-     * Provisional — fit on the jk monorepo cold rebuild (~1.0–1.5× high); re-fit when OSS ports
-     * (Netty et al.) give a multi-project distribution.
+     * Fit against the jk monorepo cold full rebuild (~2m wall for ~3.3k tests / 27 modules);
+     * prior 125ms overshot ~3× when combined with serial cold test parallel.
      */
-    static final long BASELINE_METHOD_MS = 125;
+    static final long BASELINE_METHOD_MS = 45;
 
     /** Suite / worker JVM + JUnit Platform + classpath warm-up for one module test step. */
-    static final long BASELINE_SUITE_STARTUP_MS = 650;
+    static final long BASELINE_SUITE_STARTUP_MS = 280;
 
     /** javac-ish ms per source file including classpath / AP overhead (not micro-probe only). */
-    static final long BASELINE_COMPILE_PER_SOURCE_MS = 40;
+    static final long BASELINE_COMPILE_PER_SOURCE_MS = 18;
 
     /** package-jar fixed cost on the reference host. */
-    static final long BASELINE_PACKAGE_JAR_MS = 180;
+    static final long BASELINE_PACKAGE_JAR_MS = 90;
 
     /**
      * Uncalibrated / EffortWeights fallback constants — same product baselines (host scale = 1).
@@ -101,17 +101,16 @@ public final class Calibration {
     static final double HOST_SCALE_MAX = 2.0;
 
     /**
-     * Thin cold-path pad only — prefer a slight over-estimate once baselines + schedule are in
-     * range. Learned / measured step walls do not use this. Not the primary fit knob.
+     * Thin cold-path pad only. Learned / measured step walls do not use this. Kept at 1.0 after
+     * monorepo cold-ETA overshoot (baselines carry the uncertainty, not a second pad).
      */
-    static final double COLD_BIAS = 1.10;
+    static final double COLD_BIAS = 1.0;
 
     /**
-     * Cold ETA ignores within-module {@code -w} speedup. Runtime still parallelizes tests; cold
-     * forecasts prefer a slight over-estimate over assuming linear suite speedup that monorepos
-     * rarely achieve under full rebuild load.
+     * Cap within-module test workers for cold ETA. Runtime may use more; cold forecasts allow
+     * modest parallelism so test-heavy monorepos are not estimated as fully serial method walls.
      */
-    static final int COLD_MAX_TEST_PARALLEL = 1;
+    static final int COLD_MAX_TEST_PARALLEL = 4;
 
     private static final AtomicReference<Calibration> MEMO = new AtomicReference<>();
 

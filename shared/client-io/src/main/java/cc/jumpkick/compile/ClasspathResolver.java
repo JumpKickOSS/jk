@@ -228,10 +228,12 @@ public final class ClasspathResolver {
             String checksum = pkg.checksum();
             if (checksum == null) continue;
             String hex = checksum.startsWith("sha256:") ? checksum.substring("sha256:".length()) : checksum;
-            // Prefer the human-readable repos/<name>/<m2-path>.jar path; fall back to the CAS
-            // hash path for artifacts fetched before the named-repo store was introduced, or in
-            // the rare case repos/<name>/ itself no longer matches the locked hash — the CAS blob
-            // is the only path guaranteed to hold the pinned bytes.
+            // Always use the content-addressed CAS path for jar classpath entries.
+            // repos/<name>/<m2-path> is human-readable but optional: a blob may exist only under
+            // sha256/ until the named-repo view is linked (or vice versa). Mixing the two forms
+            // across build vs explain made FreshnessStamp / ActionCache treat every module as
+            // "classpath changed" after a successful build (JK explain/build dirty skew).
+            // The CAS path is the stable identity of the locked bytes.
             if (pkg.isAar()) {
                 // Container packaging: the classpath entry is the exploded AAR's classes.jar;
                 // the container dir itself rides along for resource/manifest consumers.
@@ -246,8 +248,10 @@ public final class ClasspathResolver {
                 ledger.touch(hex);
                 continue;
             }
-            Path repoPath = resolveFromRepos(pkg, hex);
-            result.add(new Entry(pkg, repoPath != null ? repoPath : cas.pathFor(hex)));
+            // Ensure the blob is present (and repos views stay linked for humans) without
+            // using the repos path as the fingerprint.
+            resolveFromRepos(pkg, hex);
+            result.add(new Entry(pkg, cas.pathFor(hex)));
             ledger.touch(hex);
         }
         return result;

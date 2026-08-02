@@ -74,13 +74,13 @@ class ClasspathResolverTest {
                 Lockfile.RESOLUTION_ALGORITHM,
                 List.of(pkg("com.foo:a", "1.0", "sha256:" + hex)));
 
-        // Intact store: the human-readable repos/<name>/... path wins.
-        assertThat(new ClasspathResolver(cas).classpathFor(lock)).containsExactly(readablePath);
+        // Compile classpath always uses the CAS content path so stamps/action-keys stay stable
+        // whether or not repos/<name>/ views exist (see ClasspathResolver.resolveEntries).
+        assertThat(new ClasspathResolver(cas).classpathFor(lock)).containsExactly(cas.pathFor(hex));
+        // Readable view is still materialised for humans / non-classpath consumers.
+        assertThat(readablePath).exists();
 
-        // Corrupt the index sidecar itself (repos/<name>/ is exclusively jk-owned, so this models
-        // local corruption/tampering rather than an external tool's rewrite). The resolver must
-        // not serve an artifact whose recorded hash no longer matches the lockfile pin — it falls
-        // back to the CAS path, whose bytes are the hash it is named by.
+        // Corrupt the index sidecar: classpath still resolves via CAS (locked bytes).
         Path sidecar = store.root().resolve(m2Path + ".sha256");
         Files.writeString(sidecar, "0000000000000000000000000000000000000000000000000000000000000000");
         assertThat(new ClasspathResolver(cas).classpathFor(lock)).containsExactly(cas.pathFor(hex));
