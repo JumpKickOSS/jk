@@ -29,7 +29,7 @@ public final class PipelineWedge {
      * Chip body + trailing pad on {@code chip} style. Trailing pad is one space when {@code
      * nerdfont} (powerline follows) or two spaces when not (pill end without PUA).
      */
-    static String chip(String glyph, String name, AttributedStyle chip, boolean nerdfont) {
+    public static String chip(String glyph, String name, AttributedStyle chip, boolean nerdfont) {
         String body = " " + glyph + (name == null || name.isEmpty() ? "" : " " + name);
         String trail = nerdfont ? " " : "  ";
         return Theme.colorize(body + trail, chip);
@@ -40,7 +40,7 @@ public final class PipelineWedge {
      * empty — {@link #chip} already ends with two bg-colored spaces. Plain: empty (caller uses
      * {@link #plainWedge}).
      */
-    static String cap(Rgb chipColor, boolean nerdfont) {
+    public static String cap(Rgb chipColor, boolean nerdfont) {
         if (!nerdfont) return "";
         Theme t = Theme.active();
         return Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(chipColor));
