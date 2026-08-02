@@ -116,6 +116,7 @@ public final class Spinner implements AutoCloseable {
     private Thread animator;
 
     public static Spinner show(PrintStream out, String message) {
+        CommandWedge.envelopeStart(out); // open spinner is often first chrome for the command
         Spinner s = new Spinner(out, message, null, false);
         s.start();
         return s;
@@ -127,6 +128,8 @@ public final class Spinner implements AutoCloseable {
      * wedge (e.g. {@code ≡ Status  …}) on the same line.
      */
     public static Spinner showWedge(PrintStream out, String command, String message) {
+        // analyzing() also calls envelopeStart — idempotent if both run.
+        CommandWedge.envelopeStart(out);
         Spinner s = new Spinner(out, message, command == null ? "" : command, true);
         s.start();
         return s;

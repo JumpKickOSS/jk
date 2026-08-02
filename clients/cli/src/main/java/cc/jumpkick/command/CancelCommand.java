@@ -93,7 +93,7 @@ public final class CancelCommand implements CliCommand {
         if (cancelled) {
             String msg = jid > 0 ? cancelledJobMessage(jid) : "Cancelled project build jobs";
             if (note != null && !note.isBlank() && jid <= 0) msg = msg + " (" + note + ")";
-            CliOutput.out(CommandWedge.ok("Cancel", msg));
+            CommandWedge.printOk("Cancel", msg);
             return 0;
         }
         String fail = note != null && !note.isBlank() ? note : "no running job matched";

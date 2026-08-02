@@ -122,7 +122,7 @@ public final class JdkUpdateCommand implements CliCommand {
             String msg = spec == null || spec.isBlank()
                     ? "Nothing to do. No JumpKick-managed JDKs installed."
                     : "Nothing to do. No JumpKick-managed JDK matches `" + spec + "`.";
-            CliOutput.out(CommandWedge.ok("JDK", msg));
+            CommandWedge.printOk("JDK", msg);
             return 0;
         }
 
@@ -156,12 +156,12 @@ public final class JdkUpdateCommand implements CliCommand {
         }
 
         if (updates.isEmpty()) {
-            CliOutput.out(CommandWedge.ok("JDK", "Nothing to do. All JumpKick-managed JDKs are up to date."));
+            CommandWedge.printOk("JDK", "Nothing to do. All JumpKick-managed JDKs are up to date.");
             return 0;
         }
 
         if (!assumeYes && !confirm(updates)) {
-            CliOutput.out(CommandWedge.ok("JDK", "Aborted."));
+            CommandWedge.printOk("JDK", "Aborted.");
             return 0;
         }
 
@@ -230,7 +230,7 @@ public final class JdkUpdateCommand implements CliCommand {
         if (failed == 0) {
             String msg =
                     updated == 1 ? "Updated 1 JumpKick-managed JDK." : "Updated " + updated + " JumpKick-managed JDKs.";
-            CliOutput.out(CommandWedge.ok("JDK", msg));
+            CommandWedge.printOk("JDK", msg);
         } else {
             CliOutput.out(CommandWedge.fail("JDK", updated + " updated, " + failed + " failed."));
         }

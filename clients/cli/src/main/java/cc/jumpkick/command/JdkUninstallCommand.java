@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.Ansi;
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
@@ -370,6 +371,7 @@ public final class JdkUninstallCommand implements CliCommand {
                     + "!");
             throw e;
         }
+        CommandWedge.envelopeStart();
         CliOutput.out(JdkRender.removed(hit.source(), identifier, cc.jumpkick.config.GlobalConfig.nerdfont()));
     }
 

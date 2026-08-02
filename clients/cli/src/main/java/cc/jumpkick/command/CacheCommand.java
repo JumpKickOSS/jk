@@ -741,23 +741,19 @@ public final class CacheCommand extends GroupCommand {
             boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
             Path root = resolveCacheRoot(cacheDir);
             if (!Files.isDirectory(root)) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Cache",
-                        nerdfont,
-                        "Nothing to purge — cache directory does not exist."));
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
+                        "Cache", "Nothing to purge — cache directory does not exist.");
                 return 0;
             }
             Stats stats = statsOf(root);
             if (dryRun) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Cache",
-                        nerdfont,
-                        "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + "."));
+                        "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + ".");
                 return 0;
             }
             if (!assumeYes && !confirmPurge(root, stats)) {
+                cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CROSS, "Cache", nerdfont, "Purge aborted."));
                 return 1;

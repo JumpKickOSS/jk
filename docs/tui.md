@@ -37,20 +37,24 @@ API: `cc.jumpkick.cli.tui.CommandWedge` (delegates to `PipelineWedge`).
 
 Every **wedge-bearing** human command prints:
 
-1. Exactly **one blank line before** the first chrome line  
-2. **No** automatic blank after the last settle line (that left an empty row before the shell prompt on `jk build` / `jk lock` / one-shot wedges)
+1. Exactly **one blank line before** the **first** chrome of the invocation — whichever comes first: prep spinner (`EnsureFreshLock` / `CommandWedge.analyzing`), open spinner, live `CommandManager` bar, or settle chip  
+2. **No** automatic blank after the last settle line (extra empty row before the shell prompt)
+
+`CommandWedge.envelopeStart()` is **idempotent per leaf command**. Dispatch calls `CommandWedge.resetEnvelope()` before `run`. Spinners, `CommandManager`, and `printOk`/`printFail` all go through `envelopeStart`, so conditional paths (cache-hit vs rebuild, lock freshen before explain) cannot skip or double the blank.
 
 Helpers:
 
-- One-shot success: `CommandWedge.printOk(command, message)` (leading blank + wedge)  
+- One-shot success: `CommandWedge.printOk(command, message)`  
 - One-shot failure: `CommandWedge.printFail(command, message)`  
-- Multi-line chrome: `envelopeStart()` then body lines (no trailing blank after the last line)  
-- Live pipelines: `CommandManager` opens the leading blank; settle is the final line  
+- Multi-line chrome: `envelopeStart()` then body lines  
+- Live pipelines: `CommandManager` opens the leading blank if prep has not already  
 - **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
 
 Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not a trailing envelope.
 
-**Script-mode** commands must **not** add decorative blanks (they break `eval` and command substitution).
+**Script-mode** commands must **not** use the envelope (paths, tokens, shell hooks, `jk --version`).
+
+**Do not** print raw `PipelineWedge.chipLine` / `CommandWedge.ok` without `printOk` or `envelopeStart` — that is how the fully-cached `jk build` fast path skipped the blank.
 
 ## Script-mode allowlist (no wedge)
 

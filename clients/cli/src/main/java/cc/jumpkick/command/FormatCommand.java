@@ -154,7 +154,7 @@ public final class FormatCommand implements CliCommand {
             }
             if (o.total() == 0) {
                 if (!global.outputIsJson())
-                    CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Format", "no Java or Kotlin sources found."));
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
                 return 0;
             }
             if (!global.outputIsJson()) {

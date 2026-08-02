@@ -5,9 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.GlobalConfig;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.EnginePaths;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -51,7 +49,7 @@ public final class EngineStartCommand implements CliCommand {
             String pid = pidStyled(hs.pid());
             String message =
                     alreadyUp ? "Engine already running (pid " + pid + ")" : "Build engine started (pid " + pid + ")";
-            CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Engine", GlobalConfig.nerdfont(), message));
+            CommandWedge.printOk("Engine", message);
             return Exit.SUCCESS;
         } catch (IOException e) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Engine", e.getMessage()));

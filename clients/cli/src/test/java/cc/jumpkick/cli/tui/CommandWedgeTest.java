@@ -58,6 +58,18 @@ class CommandWedgeTest {
     }
 
     @Test
+    void envelope_start_is_idempotent_until_reset() {
+        CommandWedge.resetEnvelope();
+        assertThat(CommandWedge.envelopeStarted()).isFalse();
+        CommandWedge.envelopeStart();
+        assertThat(CommandWedge.envelopeStarted()).isTrue();
+        CommandWedge.envelopeStart(); // no second blank side effect on flag
+        assertThat(CommandWedge.envelopeStarted()).isTrue();
+        CommandWedge.resetEnvelope();
+        assertThat(CommandWedge.envelopeStarted()).isFalse();
+    }
+
+    @Test
     void analyzing_returns_live_wedge_spinner() {
         var buf = new ByteArrayOutputStream();
         try (Spinner s = CommandWedge.analyzing(

@@ -234,7 +234,8 @@ public final class ExplainCommand implements CliCommand {
         // work but no learned timings yet.
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(BuildPlan.Module::dirty);
         String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
-        CliOutput.out();
+        // Leading blank once per command (prep lock wedge may already have opened it).
+        CommandWedge.envelopeStart();
         CliOutput.out(header + " " + estimate);
         // Root node: ● bullet, then the entry project's group:artifact in bold.
         String rootBullet = ansi ? Theme.colorize("●", t.darkGray()) : "*";

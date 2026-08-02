@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
@@ -248,6 +249,7 @@ public final class JdkEnsureCommand implements CliCommand {
     }
 
     private static void report(String displayName, Path home, boolean downloaded) {
+        CommandWedge.envelopeStart();
         CliOutput.out(JdkRender.available(displayName, home, GlobalConfig.nerdfont(), downloaded));
     }
 

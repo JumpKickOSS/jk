@@ -87,7 +87,7 @@ public final class BspCommand implements CliCommand {
                 """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("BSP", "Wrote " + out));
+        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + out);
         CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
         return 0;
     }

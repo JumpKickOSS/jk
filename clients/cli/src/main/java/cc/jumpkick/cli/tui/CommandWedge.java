@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.PrintStream;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Human-facing settled command result chrome.
@@ -27,11 +28,12 @@ import java.io.PrintStream;
  * <h2>Blank-line envelope (JK-1373)</h2>
  *
  * <p>Human wedge-bearing commands print exactly <strong>one blank line before</strong> the first
- * chrome line. Do <strong>not</strong> add a trailing blank after the settle line — that leaves an
- * extra empty row before the shell prompt ({@code jk build}/{@code jk lock} regressions). Use
- * {@link #printOk}/{@link #printFail} for one-shot settles, or {@link #envelopeStart} before
- * multi-line chrome. Pipeline {@link CommandManager} owns the leading blank for live progress +
- * settle. Script-mode commands (paths, tokens, shell hooks) must not use the envelope.
+ * chrome line of the invocation (prep spinner, live bar, or settle chip — whichever comes first).
+ * {@link #envelopeStart()} is idempotent for the life of a command ({@link #resetEnvelope} at
+ * dispatch). Do <strong>not</strong> add a trailing blank after the settle line. Spinners,
+ * {@link CommandManager}, and {@link #printOk}/{@link #printFail} all go through
+ * {@link #envelopeStart}. Script-mode commands (paths, tokens, shell hooks) must not use the
+ * envelope.
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
@@ -42,7 +44,23 @@ import java.io.PrintStream;
  */
 public final class CommandWedge {
 
+    /**
+     * Once true, {@link #envelopeStart()} is a no-op until {@link #resetEnvelope()}. Reset at the
+     * start of each leaf command so prep lock wedges and main settles share one leading blank.
+     */
+    private static final AtomicBoolean ENVELOPE_STARTED = new AtomicBoolean(false);
+
     private CommandWedge() {}
+
+    /** Clear the per-command envelope flag — call from command dispatch before {@code run}. */
+    public static void resetEnvelope() {
+        ENVELOPE_STARTED.set(false);
+    }
+
+    /** True after the leading blank has been printed for this command. */
+    public static boolean envelopeStarted() {
+        return ENVELOPE_STARTED.get();
+    }
 
     /** Green check chip + message (done successfully). */
     public static String ok(String command, String message) {
@@ -65,6 +83,7 @@ public final class CommandWedge {
      * Clears the line on close so the caller can settle with {@link #chip} / {@link #ok} in place.
      */
     public static Spinner analyzing(PrintStream out, String command, String message) {
+        // showWedge calls envelopeStart(out) — first chrome may be prep lock, not the final settle
         return Spinner.showWedge(out, command, message);
     }
 
@@ -101,17 +120,27 @@ public final class CommandWedge {
     }
 
     /**
-     * Leading blank of the human chrome envelope. Call once before the first wedge / table / tree
-     * line. No-op under machine JSON modes is the caller's responsibility. There is no matching
-     * trailing blank — settle lines end the command output.
+     * Leading blank of the human chrome envelope on stdout — at most once per command (see
+     * {@link #resetEnvelope}). Safe to call from every chrome entry (spinner, bar, settle). There
+     * is no matching trailing blank.
      */
     public static void envelopeStart() {
-        CliOutput.out();
+        envelopeStart(CliOutput.stdout());
     }
 
     /**
-     * Print a success settle with leading blank only: blank, then {@link #ok}. Prefer this for
-     * one-shot commands over raw {@link CliOutput#out} of a check glyph.
+     * Like {@link #envelopeStart()} but writes the blank on {@code out} (e.g. a test capture stream
+     * or {@link CommandManager}'s sink).
+     */
+    public static void envelopeStart(PrintStream out) {
+        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
+            out.println();
+        }
+    }
+
+    /**
+     * Print a success settle with leading blank only: blank (if first chrome), then {@link #ok}.
+     * Prefer this for one-shot commands over raw {@link CliOutput#out} of a check glyph.
      */
     public static void printOk(String command, String message) {
         envelopeStart();
@@ -119,18 +148,23 @@ public final class CommandWedge {
     }
 
     /**
-     * Print a failure settle with leading blank only on stderr: blank, then {@link #fail}.
+     * Print a failure settle with leading blank only on stderr when this is first chrome; then
+     * {@link #fail}.
      */
     public static void printFail(String command, String message) {
-        CliOutput.err();
+        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
+            CliOutput.err();
+        }
         CliOutput.err(fail(command, message));
     }
 
     /**
-     * Print a failure settle with "Failed to …" phrasing and a leading stderr blank.
+     * Print a failure settle with "Failed to …" phrasing and a leading stderr blank when first.
      */
     public static void printFailedTo(String command, String tail) {
-        CliOutput.err();
+        if (ENVELOPE_STARTED.compareAndSet(false, true)) {
+            CliOutput.err();
+        }
         CliOutput.err(failedTo(command, tail));
     }
 }

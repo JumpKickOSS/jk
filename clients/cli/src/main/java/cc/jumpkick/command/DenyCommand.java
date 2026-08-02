@@ -77,8 +77,8 @@ public final class DenyCommand implements CliCommand {
         DenyReport report = pipeline.get(REPORT).orElseThrow();
         if (report.violationCount() == 0) {
             if (!global.outputIsJson())
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
-                        "Deny", report.checked() + " package(s) checked — no violations."));
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
+                        "Deny", report.checked() + " package(s) checked — no violations.");
             return 0;
         }
         CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deny", report.violationCount() + " violation(s):"));

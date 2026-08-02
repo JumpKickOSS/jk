@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.config.GlobalConfig;
@@ -114,6 +115,7 @@ public final class JdkDefaultCommand implements CliCommand {
         cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(identifier, "default-set");
         String name = Theme.colorize(renderDisplayName(hit), Theme.active().focused());
         String message = "Default JDK set to " + name + ": " + JdkRender.coord(hit.source(), identifier);
+        CommandWedge.envelopeStart(out);
         out.println(PipelineWedge.chipLine(Glyphs.CHECK, "JDK", GlobalConfig.nerdfont(), message));
     }
 

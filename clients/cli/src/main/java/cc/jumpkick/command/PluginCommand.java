@@ -106,7 +106,7 @@ public final class PluginCommand extends GroupCommand {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Plugin", "nothing installed for " + artifactId));
                 return Exit.CONFIG;
             }
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Plugin", "Uninstalled " + artifactId));
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Plugin", "Uninstalled " + artifactId);
             return Exit.SUCCESS;
         }
     }
@@ -254,10 +254,10 @@ public final class PluginCommand extends GroupCommand {
                     }
                 }
                 String libNote = libDir != null ? "; lib " + PathDisplay.styledRaw(libDir) : "";
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Plugin",
                         "Installed " + artifactId + " " + version + " → " + PathDisplay.styledRaw(dest) + " ("
-                                + sideDeps.size() + " deps" + libNote + ")"));
+                                + sideDeps.size() + " deps" + libNote + ")");
                 installed++;
             }
 

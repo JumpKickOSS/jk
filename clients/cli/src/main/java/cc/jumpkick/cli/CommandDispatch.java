@@ -272,6 +272,8 @@ public final class CommandDispatch {
             return 0;
         }
         try {
+            // One leading chrome blank per leaf command (prep spinner + settle share it).
+            cc.jumpkick.cli.tui.CommandWedge.resetEnvelope();
             return cmd.run(in);
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();

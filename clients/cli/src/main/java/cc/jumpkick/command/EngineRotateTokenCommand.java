@@ -58,10 +58,10 @@ public final class EngineRotateTokenCommand implements CliCommand {
                             + " run 'jk engine stop' so the old token stops being accepted"));
             return Exit.SOFTWARE;
         }
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+        cc.jumpkick.cli.tui.CommandWedge.printOk(
                 "Engine",
                 "token rotated." + " The next command spawns an engine with a fresh token —"
-                        + " run 'jk engine status' for the new dashboard URL."));
+                        + " run 'jk engine status' for the new dashboard URL.");
         return Exit.SUCCESS;
     }
 }

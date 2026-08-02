@@ -73,7 +73,7 @@ public final class CompileCommand implements CliCommand {
             }
             if (selected != null) {
                 if (selected.moduleDirs().isEmpty()) {
-                    CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Compile", "nothing selected to compile"));
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Compile", "nothing selected to compile");
                     return 0;
                 }
                 dirs = List.copyOf(selected.moduleDirs());

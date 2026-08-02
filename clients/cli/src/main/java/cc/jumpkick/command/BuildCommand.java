@@ -159,7 +159,7 @@ public final class BuildCommand implements CliCommand {
                 return finishSession(Exit.CONFIG);
             }
             if (sel.empty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Build", selectionEmptyMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
                 return finishSession(0);
             }
         }

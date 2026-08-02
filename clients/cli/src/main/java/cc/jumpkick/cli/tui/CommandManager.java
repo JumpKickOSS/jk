@@ -648,11 +648,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         }
     }
 
-    /** Print the leading blank of the human chrome envelope once (JK-1373). */
+    /**
+     * Leading blank once per command (JK-1373). Shared with prep spinners via
+     * {@link CommandWedge#envelopeStart(PrintStream)} so lock/analyze wedges and the live region
+     * do not double-space.
+     */
     private void ensureLeadingBlank() {
         if (leadingBlankPrinted) return;
         leadingBlankPrinted = true;
-        out.println();
+        CommandWedge.envelopeStart(out);
     }
 
     /** Cancel line text (shown by {@link GlobalCancel} when the region did not paint itself). */

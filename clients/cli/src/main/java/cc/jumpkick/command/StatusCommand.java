@@ -114,6 +114,8 @@ public final class StatusCommand implements CliCommand {
         }
 
         // ── Header: ≡ Status  JumpKick Engine v[bold]X.Y.Z[/] is running (pid [yellow]N[/]) ─
+        // Prep lock / analyzing may already have opened the envelope; this is first chrome if not.
+        CommandWedge.envelopeStart();
         CliOutput.out(CommandWedge.chip(Glyphs.MENU, "Status", engineStatusMessage(engine)));
         CliOutput.out("");
 

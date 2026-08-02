@@ -74,16 +74,14 @@ public final class CleanCommand implements CliCommand {
 
         long elapsedMs = System.currentTimeMillis() - startMs;
 
-        boolean nerdfont = GlobalConfig.nerdfont();
         if (stats[0] == 0) {
-            CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Clean", nerdfont, "Nothing to remove"));
+            CommandWedge.printOk("Clean", "Nothing to remove");
         } else {
             String removed = Theme.colorize("Removed", Theme.active().focused());
             String stats_ = String.format(
                     "%,d file%s, %s total", stats[0], stats[0] == 1 ? "" : "s", CacheCommand.fmtBytes(stats[1]));
             String inTime = ConsoleSpec.took(Duration.ofMillis(elapsedMs));
-            CliOutput.out(
-                    PipelineWedge.chipLine(Glyphs.CHECK, "Clean", nerdfont, removed + " " + stats_ + " " + inTime));
+            CommandWedge.printOk("Clean", removed + " " + stats_ + " " + inTime);
         }
 
         if (gcCache) {
@@ -124,9 +122,8 @@ public final class CleanCommand implements CliCommand {
         freedBytes = Math.max(0, summary[0].bytes());
         repoLinksRemoved = Math.max(0, summary[0].repoLinks());
 
-        boolean nerdfont = GlobalConfig.nerdfont();
         if (purgedBlobs == 0) {
-            CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Cache GC", nerdfont, "nothing idle past 90 days"));
+            CommandWedge.printOk("Cache GC", "nothing idle past 90 days");
         } else {
             String msg = String.format(
                     "purged %,d blob%s (%s), %,d repo link%s",
@@ -135,7 +132,7 @@ public final class CleanCommand implements CliCommand {
                     CacheCommand.fmtBytes(freedBytes),
                     repoLinksRemoved,
                     repoLinksRemoved == 1 ? "" : "s");
-            CliOutput.out(PipelineWedge.chipLine(Glyphs.CHECK, "Cache GC", nerdfont, msg));
+            CommandWedge.printOk("Cache GC", msg);
         }
     }
 

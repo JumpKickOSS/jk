@@ -151,6 +151,7 @@ class CommandManagerTest {
 
     @Test
     void settle_prints_leading_blank_only() {
+        CommandWedge.resetEnvelope();
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Build", false);
         cm.finishSuccess("ok took 1s");
@@ -164,6 +165,7 @@ class CommandManagerTest {
 
     @Test
     void exec_handoff_settle_has_no_trailing_blank() {
+        CommandWedge.resetEnvelope();
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Run", false);
         cm.finishPipelineExec("Executing `java -cp … Main`");
@@ -172,6 +174,21 @@ class CommandManagerTest {
         assertThat(out).doesNotEndWith("\n\n");
         assertThat(out).endsWith("\n");
         assertThat(out).contains("Executing");
+    }
+
+    @Test
+    void prep_envelope_then_command_manager_does_not_double_blank() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var ps = stream(buf);
+        CommandWedge.envelopeStart(ps); // e.g. EnsureFreshLock / analyzing
+        var cm = CommandManager.pipeline(ps, "Build", false);
+        cm.finishPipelineSuccess("built");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        // Exactly one leading blank for the whole command, not two.
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("built");
     }
 
     @Test

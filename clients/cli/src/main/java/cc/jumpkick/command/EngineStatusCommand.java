@@ -6,6 +6,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineClient;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.config.GlobalConfig;
@@ -56,6 +57,7 @@ public final class EngineStatusCommand implements CliCommand {
             if (global.outputIsJson()) {
                 CliOutput.out("{\"running\":false,\"engines\":" + enginesJson(others) + "}");
             } else {
+                CommandWedge.envelopeStart();
                 CliOutput.out(PipelineWedge.chipLine(
                         Glyphs.STOP,
                         "Engine",
@@ -89,6 +91,7 @@ public final class EngineStatusCommand implements CliCommand {
                     + "}");
             return Exit.SUCCESS;
         }
+        CommandWedge.envelopeStart();
         CliOutput.out(PipelineWedge.chipLine(
                 Glyphs.PLAY, "Engine", GlobalConfig.nerdfont(), "Engine is running (pid " + pidStyled(s.pid()) + ")"));
         detail("Version", s.version());

@@ -120,8 +120,8 @@ public final class ReleaseCommand implements CliCommand {
 
         // 2) Ensure a native CLI when the module is native-eligible and none is staged yet
         if (!skipNative && cliDir != null && findNativeClient(cliDir) == null && isNativeEligible(cliDir)) {
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
-                    "Release", "no native CLI yet — running `jk native --skip-tests`"));
+            cc.jumpkick.cli.tui.CommandWedge.printOk(
+                    "Release", "no native CLI yet — running `jk native --skip-tests`");
             code = runNative(dir, cacheDir);
             if (code != 0) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
@@ -149,8 +149,8 @@ public final class ReleaseCommand implements CliCommand {
         }
         Path stagedEngine = out.resolve("lib").resolve("jk-engine-" + version + ".jar");
         Files.copy(engineJar, stagedEngine, StandardCopyOption.REPLACE_EXISTING);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
-                "Release", "engine (JVM) → " + PathDisplay.styledRaw(stagedEngine)));
+        cc.jumpkick.cli.tui.CommandWedge.printOk(
+                "Release", "engine (JVM) → " + PathDisplay.styledRaw(stagedEngine));
 
         Path clientBin = resolveClientBinary(cliDir);
         if (clientBin == null || !Files.isRegularFile(clientBin)) {
@@ -168,14 +168,14 @@ public final class ReleaseCommand implements CliCommand {
             // Windows / non-POSIX: install.sh / materialize may still work
         }
         boolean nativeClient = isNativeClientPath(cliDir, clientBin);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+        cc.jumpkick.cli.tui.CommandWedge.printOk(
                 "Release",
                 (nativeClient ? "client (native)" : "client (bootstrap)")
                         + " → "
                         + PathDisplay.styledRaw(stagedClient)
                         + " (from "
                         + clientBin
-                        + ")"));
+                        + ")");
         if (!nativeClient) {
             CliOutput.out("  tip: run `jk native --skip-tests` then `jk release` again for a production native CLI");
         }

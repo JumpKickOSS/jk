@@ -164,7 +164,7 @@ public final class SelectiveCommand implements CliCommand {
         Path parent = planPath.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(planPath, body);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+        cc.jumpkick.cli.tui.CommandWedge.printOk(
                 "Selective",
                 "Wrote "
                         + planPath
@@ -172,7 +172,7 @@ public final class SelectiveCommand implements CliCommand {
                         + rels.size()
                         + " module"
                         + (rels.size() == 1 ? "" : "s")
-                        + ", content hashes recorded)"));
+                        + ", content hashes recorded)");
         return 0;
     }
 
@@ -242,12 +242,12 @@ public final class SelectiveCommand implements CliCommand {
                 if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
             }
             if (dirty.isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Selective",
                         "content hashes match plan — nothing changed (" + plannedClean.size()
                                 + " module"
                                 + (plannedClean.size() == 1 ? "" : "s")
-                                + ")"));
+                                + ")");
                 return 0;
             }
             effectiveModules = String.join(",", dirty);

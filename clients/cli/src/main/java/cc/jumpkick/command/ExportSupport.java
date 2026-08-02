@@ -97,6 +97,7 @@ final class ExportSupport {
     }
 
     static void wrote(Path path) {
-        CliOutput.out(CommandWedge.ok("Export", "Wrote " + PathDisplay.styled(path)));
+        // Multi-file export: writeAll already opened the envelope; printOk is idempotent.
+        CommandWedge.printOk("Export", "Wrote " + PathDisplay.styled(path));
     }
 }
