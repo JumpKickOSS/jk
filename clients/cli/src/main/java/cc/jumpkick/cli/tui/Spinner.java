@@ -157,7 +157,8 @@ public final class Spinner implements AutoCloseable {
     }
 
     private Spinner(PrintStream out, String message, String wedgeCommand, boolean wedge) {
-        this.out = out;
+        // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
+        this.out = PlainAscii.wrap(out);
         this.message = message == null ? "" : message;
         this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
         this.nerdfont = wedge && cc.jumpkick.config.GlobalConfig.nerdfont();

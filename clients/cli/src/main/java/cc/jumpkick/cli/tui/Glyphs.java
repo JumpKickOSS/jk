@@ -9,7 +9,8 @@ import cc.jumpkick.cli.theme.Theme;
  * Theme.colorize(Glyphs.CHECK, Theme.active().success())}).
  *
  * <p>Unicode forms are for ANSI/nerd modes. Prefer {@link #check()}, {@link #cross()}, etc. when
- * emitting markers outside {@link PipelineWedge} so {@code --no-ansi} stays ASCII-only.
+ * emitting markers outside {@link PipelineWedge} so {@code --no-ansi} stays ASCII-only. Free-form
+ * message text is rewritten at print time by {@link PlainAscii} (ellipsis, bullets, pulse).
  */
 public final class Glyphs {
 
@@ -53,8 +54,10 @@ public final class Glyphs {
     public static final String PENDING_PLAIN = ".";
     public static final String PLAY_PLAIN = ">";
     public static final String STOP_PLAIN = "x";
-    public static final String BULLET_PLAIN = "*";
+    /** List bullet under plain — dash, distinct from pulse {@link #PULSE_PLAIN} {@code *}. */
+    public static final String BULLET_PLAIN = "-";
     public static final String MENU_PLAIN = "=";
+    /** Spinner / black-circle under plain. */
     public static final String PULSE_PLAIN = "*";
 
     /** Progress bar filled cell (plain ASCII). */

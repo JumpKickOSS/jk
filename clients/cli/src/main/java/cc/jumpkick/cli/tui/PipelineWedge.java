@@ -55,7 +55,8 @@ public final class PipelineWedge {
         String icon = asciiIcon == null || asciiIcon.isEmpty() ? Glyphs.BULLET_PLAIN : asciiIcon;
         String head = " " + icon + " " + cmd + " >";
         if (message == null || message.isEmpty()) return head;
-        return head + " " + message;
+        // Messages often carry … / • from callers; always ASCII-clean on the plain path.
+        return head + " " + PlainAscii.transform(message);
     }
 
     /** ASCII icon for a Unicode wedge glyph (CHECK/CROSS/PLAY/MENU/PULSE/…). */

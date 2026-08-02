@@ -142,7 +142,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private boolean capturing;
 
     CommandManager(PrintStream out, boolean animate, boolean pipelineMode, int width) {
-        this.out = out;
+        // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
+        this.out = PlainAscii.wrap(out);
         this.animate = animate;
         this.pipelineMode = pipelineMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
