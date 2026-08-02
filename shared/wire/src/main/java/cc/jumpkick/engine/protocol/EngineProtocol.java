@@ -2437,6 +2437,24 @@ public final class EngineProtocol {
 
     /** {@link #JOB_START}: job admitted — {@code jid} is the public cancel handle. */
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {
+        return jobStart(jid, kind, dir, buildNumber, null, null, -1);
+    }
+
+    /**
+     * {@link #JOB_START} with history/details binding for the CLI session transcript.
+     *
+     * @param historyId journal run id under projects/.../runs/
+     * @param detailsPath absolute path to details.jsonl for this run (may be null)
+     * @param etaMs estimated wall ms at admit (-1 omit)
+     */
+    public static String jobStart(
+            long jid,
+            String kind,
+            String dir,
+            long buildNumber,
+            String historyId,
+            String detailsPath,
+            long etaMs) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(JOB_START)
                 .append("\",\"jid\":")
@@ -2448,6 +2466,13 @@ public final class EngineProtocol {
                 .append(",\"dir\":")
                 .append(Jsonl.quote(dir == null ? "" : dir));
         if (buildNumber > 0) b.append(",\"buildNumber\":").append(buildNumber);
+        if (historyId != null && !historyId.isBlank()) {
+            b.append(",\"historyId\":").append(Jsonl.quote(historyId));
+        }
+        if (detailsPath != null && !detailsPath.isBlank()) {
+            b.append(",\"detailsPath\":").append(Jsonl.quote(detailsPath));
+        }
+        if (etaMs >= 0) b.append(",\"etaMs\":").append(etaMs);
         return b.append('}').toString();
     }
 

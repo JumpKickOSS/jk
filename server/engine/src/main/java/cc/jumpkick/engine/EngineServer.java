@@ -966,7 +966,7 @@ public final class EngineServer implements AutoCloseable {
                 new java.util.concurrent.atomic.AtomicReference<>();
         // Public jid surfaceclient tracks this for Ctrl-C / jk cancel.
         try {
-            send(writer, EngineProtocol.jobStart(eventRequestId, eventKind, eventDir, admit.buildNumber()));
+            send(writer, jobStartLine(eventRequestId, eventKind, eventDir, admit));
         } catch (IOException ignored) {
             // client gone before job body — still run cancel registration below
         }
@@ -1184,6 +1184,16 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
+    /** job-start wire line with history id + details path for the CLI transcript. */
+    private String jobStartLine(long jid, String kind, String dir, AdmitResult admit) {
+        String historyId = admit.journalId();
+        String detailsPath = null;
+        if (historyId != null && !historyId.isBlank()) {
+            detailsPath = journal.detailsFile(historyId).map(Path::toString).orElse(null);
+        }
+        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), historyId, detailsPath, -1);
+    }
+
     /**
      * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required,
      * and persist an in-flight journal stub.
@@ -1197,11 +1207,11 @@ public final class EngineServer implements AutoCloseable {
             if (existing.isPresent()) return AdmitResult.reject(existing.get());
         }
         String canonDir = BuildJobFingerprint.canonicalDir(dir);
+        String coord = coordOf(dir);
         long buildNumber = 0L;
         if (JOURNALED_KINDS.contains(kind) && canonDir != null && !canonDir.isBlank()) {
-            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(runNumbersFile, metricsFile, canonDir);
+            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
-        String coord = coordOf(dir);
         long startedAt = clockMillis.getAsLong();
         String journalId = null;
         if (JOURNALED_KINDS.contains(kind) && historyConfig.enabled() && buildNumber > 0) {
@@ -4176,13 +4186,9 @@ public final class EngineServer implements AutoCloseable {
             // Estimate the cache's wall-clock benefit from baselines as of BEFORE this run's fold.
             CacheBenefit.Result benefit = computeBenefit(a, millis);
             BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
-            // Prefer start-time number; metrics fold trains stats without minting a second #.
-            // rebuild/force must train build:rebuild priors even when SessionContext is
-            // already cleared (async runner finishes outside the request session).
-            long buildNumber =
-                    BuildMetrics.record(metricsFile, toOutcome(record, a.rebuild()), finishedAt, a.buildNumber());
-            if (buildNumber <= 0) buildNumber = a.buildNumber();
-            record = record.withBuildNumber(buildNumber);
+            // Start-time number only — per-run metrics.toml + MetricsHarvest train ETA aggregates.
+            long buildNumber = a.buildNumber();
+            if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             // Chrome timeline (web / late path): same step durations as metrics. Socket clients
             // usually already flushed via flushTimelineToClient before terminal events.
             a.flushTimeline().ifPresent(path -> {

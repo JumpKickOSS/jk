@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.engine.journal;
 
+import cc.jumpkick.builds.MetricsHarvest;
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,9 +22,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 /**
- * Best-effort build history under {@code ~/.jk/state/builds/journal/}: per-run {@code <id>/} with
- * {@code record.json} and artifact snapshots. Ids are time-sortable; append is atomic temp→move
- * with no cross-entry lock; readers tolerate mid-scan churn.
+ * Best-effort build history under {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/}
+ * with {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
+ * Ids are time-sortable; append is atomic temp→move. On complete, requests {@link MetricsHarvest}.
  */
 public final class BuildJournal {
 
@@ -39,15 +41,29 @@ public final class BuildJournal {
 
     private static final int APPEND_RETRIES = 8;
 
-    private final Path journalDir;
+    /** Builds root ({@link JkDirs#builds()}); runs live under projects/.../runs/. */
+    private final Path buildsRoot;
 
-    public BuildJournal(Path journalDir) {
-        this.journalDir = journalDir.normalize();
+    public BuildJournal(Path buildsRoot) {
+        this.buildsRoot = buildsRoot.normalize();
     }
 
-    /** The live journal at {@code ~/.jk/state/builds/journal/}. */
+    /** The live store at {@code ~/.jk/state/builds/}. */
     public static BuildJournal current() {
-        return new BuildJournal(JkDirs.builds().resolve("journal"));
+        return new BuildJournal(JkDirs.builds());
+    }
+
+    public Path buildsRoot() {
+        return buildsRoot;
+    }
+
+    /** Resolve the absolute path of a run directory (for CLI details binding). */
+    public Optional<Path> runDir(String id) {
+        return findRunDir(id);
+    }
+
+    public Optional<Path> detailsFile(String id) {
+        return findRunDir(id).map(d -> d.resolve(ProjectBuilds.DETAILS));
     }
 
     /** The heavy artifacts to snapshot beside {@code record.json}; any field may be {@code null}. */
@@ -64,27 +80,34 @@ public final class BuildJournal {
      */
     public String append(BuildRecord record, Snapshot snapshot) {
         try {
-            Files.createDirectories(journalDir);
+            Path projectPath = Path.of(record.dir() == null || record.dir().isBlank() ? "." : record.dir());
+            String coord = record.coord() == null || record.coord().isBlank() ? "unknown:unknown" : record.coord();
+            Path home = ProjectBuilds.projectHome(buildsRoot, coord, projectPath);
+            Files.createDirectories(home.resolve(ProjectBuilds.RUNS));
+            ProjectBuilds.writeIdentity(home, coord, projectPath);
             long stampMillis = record.finishedAt() > 0
                     ? record.finishedAt()
                     : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
             String stamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
+            long n = record.buildNumber() > 0 ? record.buildNumber() : ProjectBuilds.allocateRunNumber(home);
             for (int attempt = 0; attempt < APPEND_RETRIES; attempt++) {
-                String id = stamp + "-" + randomHex();
-                Path target = journalDir.resolve(id);
-                Path tmp = journalDir.resolve("." + id + ".tmp");
+                String id = String.format(java.util.Locale.ROOT, "%04d-%s-%s", n, stamp, randomHex());
+                Path target = home.resolve(ProjectBuilds.RUNS).resolve(id);
+                Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + id + ".tmp");
                 try {
                     Files.createDirectory(tmp);
                 } catch (FileAlreadyExistsException e) {
-                    continue; // vanishingly unlikely — regenerate the suffix
+                    continue;
                 }
                 try {
                     Files.writeString(tmp.resolve(RECORD), Json.write(withId(record, id)), StandardCharsets.UTF_8);
                     writeSnapshot(tmp, snapshot);
+                    if (!record.running()) writeRunMetricsToml(tmp, record);
                     move(tmp, target);
+                    if (!record.running()) MetricsHarvest.get().request();
                     return id;
                 } catch (FileAlreadyExistsException e) {
-                    deleteTreeQuietly(tmp); // target id taken — retry with a fresh suffix
+                    deleteTreeQuietly(tmp);
                 } catch (IOException e) {
                     deleteTreeQuietly(tmp);
                     return null;
@@ -111,17 +134,24 @@ public final class BuildJournal {
      */
     public boolean complete(String id, BuildRecord finished, Snapshot snapshot) {
         if (!validId(id) || finished == null) return false;
-        Path target = journalDir.resolve(id);
-        if (!Files.isDirectory(target)) return false;
-        Path tmp = journalDir.resolve("." + id + ".complete.tmp");
+        Path target = findRunDir(id).orElse(null);
+        if (target == null || !Files.isDirectory(target)) return false;
+        Path parent = target.getParent();
+        Path tmp = parent.resolve("." + id + ".complete.tmp");
         try {
             deleteTreeQuietly(tmp);
             Files.createDirectory(tmp);
             Files.writeString(tmp.resolve(RECORD), Json.write(withId(finished, id)), StandardCharsets.UTF_8);
             writeSnapshot(tmp, snapshot);
-            // Replace record.json in place; keep entry dir id stable for dashboard historyId.
+            writeRunMetricsToml(tmp, finished);
             Path rec = target.resolve(RECORD);
             Files.move(tmp.resolve(RECORD), rec, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
+                Files.move(
+                        tmp.resolve(ProjectBuilds.METRICS),
+                        target.resolve(ProjectBuilds.METRICS),
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
             if (snapshot != null) {
                 if (snapshot.testResultsMd() != null && Files.isRegularFile(tmp.resolve(TEST_RESULTS_MD))) {
                     Files.move(
@@ -140,11 +170,112 @@ public final class BuildJournal {
                 }
             }
             deleteTreeQuietly(tmp);
+            MetricsHarvest.get().request();
             return true;
         } catch (IOException | RuntimeException e) {
             deleteTreeQuietly(tmp);
             return false;
         }
+    }
+
+    /**
+     * Append host-rate samples into an existing run's {@code metrics.toml} (success path). Best-effort.
+     */
+    public void appendHostSamples(String id, List<HostSampleLine> samples) {
+        if (!validId(id) || samples == null || samples.isEmpty()) return;
+        Path run = findRunDir(id).orElse(null);
+        if (run == null) return;
+        Path metrics = run.resolve(ProjectBuilds.METRICS);
+        try {
+            StringBuilder sb = new StringBuilder();
+            if (Files.isRegularFile(metrics)) {
+                sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
+                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+            } else {
+                sb.append("# run metrics\n");
+            }
+            for (HostSampleLine s : samples) {
+                if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
+                sb.append("host.").append(sanitize(s.key())).append(" = ").append(Math.round(s.ms())).append('\n');
+            }
+            Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
+        } catch (IOException ignored) {
+        }
+    }
+
+    public record HostSampleLine(String key, double ms) {}
+
+    /** Per-run successful step/module walls for MetricsHarvest (scalars only). */
+    private static void writeRunMetricsToml(Path dir, BuildRecord finished) throws IOException {
+        if (finished == null || finished.running()) return;
+        if (!finished.success() || finished.cancelled()) return;
+        StringBuilder sb = new StringBuilder();
+        sb.append("# run metrics — successful steps/modules only\n");
+        if (finished.millis() > 0) {
+            sb.append("workspace.wall-ms = ").append(finished.millis()).append('\n');
+            String kind = finished.kind() == null ? "build" : finished.kind();
+            sb.append("invocation.")
+                    .append(sanitize(kind))
+                    .append(".wall-ms = ")
+                    .append(finished.millis())
+                    .append('\n');
+            if (finished.dir() != null && !finished.dir().isBlank()) {
+                int dirty = finished.modules() == null ? 0 : finished.modules().size();
+                if (dirty == 0 && finished.steps() != null && !finished.steps().isEmpty()) dirty = 1;
+                String dirKey = sanitize(finished.dir()) + (dirty > 0 ? "#d" + dirty : "");
+                sb.append("invocation.")
+                        .append(sanitize(kind))
+                        .append(".")
+                        .append(dirKey)
+                        .append(".wall-ms = ")
+                        .append(finished.millis())
+                        .append('\n');
+            }
+        }
+        if (finished.modules() != null) {
+            for (BuildRecord.Module m : finished.modules()) {
+                if (m == null || m.millis() <= 0 || !m.success()) continue;
+                String key = "module." + sanitize(m.coord() != null ? m.coord() : m.dir());
+                sb.append(key).append(".wall-ms = ").append(m.millis()).append('\n');
+            }
+        }
+        if (finished.steps() != null) {
+            for (BuildRecord.Step s : finished.steps()) {
+                appendStepMetrics(sb, s, finished.dir());
+            }
+        }
+        if (finished.modules() != null) {
+            for (BuildRecord.Module m : finished.modules()) {
+                if (m == null || m.steps() == null) continue;
+                for (BuildRecord.Step s : m.steps()) {
+                    appendStepMetrics(sb, s, m.dir());
+                }
+            }
+        }
+        if (sb.length() > 40) {
+            Files.writeString(dir.resolve(ProjectBuilds.METRICS), sb.toString(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void appendStepMetrics(StringBuilder sb, BuildRecord.Step s, String moduleDir) {
+        if (s == null || s.millis() <= 0) return;
+        if (s.status() == null || !"SUCCESS".equalsIgnoreCase(s.status())) return;
+        String step = sanitize(s.name());
+        sb.append("step.").append(step).append(".wall-ms = ").append(s.millis()).append('\n');
+        if (moduleDir != null && !moduleDir.isBlank()) {
+            sb.append("module.")
+                    .append(sanitize(moduleDir))
+                    .append(".step.")
+                    .append(step)
+                    .append(".wall-ms = ")
+                    .append(s.millis())
+                    .append('\n');
+        }
+    }
+
+    static String sanitize(String s) {
+        if (s == null) return "unknown";
+        return s.replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
     /**
@@ -178,7 +309,7 @@ public final class BuildJournal {
                     r.commit(),
                     null,
                     false,
-                    r.io()); // whatever the abandoned run had metered (null for an in-flight stub)
+                    r.io());
             if (complete(r.id(), done, Snapshot.NONE)) n++;
         }
         return n;
@@ -207,7 +338,8 @@ public final class BuildJournal {
     }
 
     public Optional<BuildRecord> get(String id) {
-        return validId(id) ? readRecord(journalDir.resolve(id)) : Optional.empty();
+        if (!validId(id)) return Optional.empty();
+        return findRunDir(id).flatMap(BuildJournal::readRecord);
     }
 
     /**
@@ -222,7 +354,6 @@ public final class BuildJournal {
             try {
                 if (Files.isRegularFile(rec)) out.add(Files.readString(rec, StandardCharsets.UTF_8));
             } catch (IOException ignored) {
-                // skip an unreadable entry
             }
         }
         return out;
@@ -231,22 +362,20 @@ public final class BuildJournal {
     /** The raw {@code record.json} path (for verbatim HTTP passthrough), if the entry exists. */
     public Optional<Path> recordFile(String id) {
         if (!validId(id)) return Optional.empty();
-        Path p = journalDir.resolve(id).resolve(RECORD);
-        return Files.isRegularFile(p) ? Optional.of(p) : Optional.empty();
+        return findRunDir(id).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
     }
 
     /** A snapshot artifact by whitelisted {@code name}, if present. */
     public Optional<Path> artifact(String id, String name) {
         if (!validId(id) || !isArtifactName(name)) return Optional.empty();
-        Path p = journalDir.resolve(id).resolve(name);
-        return Files.isRegularFile(p) ? Optional.of(p) : Optional.empty();
+        return findRunDir(id).map(d -> d.resolve(name)).filter(Files::isRegularFile);
     }
 
     /** Delete one entry. {@code true} if it existed and was removed. */
     public boolean delete(String id) {
         if (!validId(id)) return false;
-        Path dir = journalDir.resolve(id);
-        if (!Files.isDirectory(dir)) return false;
+        Path dir = findRunDir(id).orElse(null);
+        if (dir == null || !Files.isDirectory(dir)) return false;
         deleteTreeQuietly(dir);
         return true;
     }
@@ -255,6 +384,9 @@ public final class BuildJournal {
      * Enforce retention: delete entries older than {@code maxAgeMillis} (0 = no age limit), then, if
      * the remaining total exceeds {@code maxDiskBytes} (0 = no cap), delete oldest-first until under
      * it. Ages come from the id timestamp (no file read), falling back to the dir's mtime.
+     *
+     * <p>Note: {@link MetricsHarvest} also enforces 50-run / 90-day per project; this is the
+     * history-config disk budget path.
      */
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
         List<Entry> entries = new ArrayList<>();
@@ -293,18 +425,13 @@ public final class BuildJournal {
 
     private record Entry(Path dir, long millis, long size) {}
 
-    /** Entry directories (dot-prefixed staging/stamp names excluded), newest id first. */
+    private Optional<Path> findRunDir(String id) {
+        return ProjectBuilds.findRunDir(buildsRoot, id);
+    }
+
+    /** Entry directories (dot-prefixed staging names excluded), newest id first. */
     private List<Path> entryDirs() {
-        if (!Files.isDirectory(journalDir)) return List.of();
-        try (Stream<Path> s = Files.list(journalDir)) {
-            return s.filter(Files::isDirectory)
-                    .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .sorted(Comparator.comparing((Path p) -> p.getFileName().toString())
-                            .reversed())
-                    .toList();
-        } catch (IOException e) {
-            return List.of();
-        }
+        return ProjectBuilds.listAllRuns(buildsRoot);
     }
 
     private static Optional<BuildRecord> readRecord(Path dir) {
@@ -317,18 +444,28 @@ public final class BuildJournal {
         }
     }
 
+    /**
+     * Ids look like {@code 0027-20260802T035529298-a1b2}. Parse the timestamp segment after the first
+     * dash.
+     */
     private long entryMillis(Path dir, long fallback) {
         String name = dir.getFileName().toString();
-        int dash = name.indexOf('-');
-        String stamp = dash > 0 ? name.substring(0, dash) : name;
+        int first = name.indexOf('-');
+        if (first < 0) return mtime(dir, fallback);
+        int second = name.indexOf('-', first + 1);
+        String stamp = second > first ? name.substring(first + 1, second) : name.substring(first + 1);
         try {
             return LocalDateTime.parse(stamp, ID_TS).toInstant(ZoneOffset.UTC).toEpochMilli();
         } catch (RuntimeException e) {
-            try {
-                return Files.getLastModifiedTime(dir).toMillis();
-            } catch (IOException io) {
-                return fallback;
-            }
+            return mtime(dir, fallback);
+        }
+    }
+
+    private static long mtime(Path dir, long fallback) {
+        try {
+            return Files.getLastModifiedTime(dir).toMillis();
+        } catch (IOException io) {
+            return fallback;
         }
     }
 
@@ -348,7 +485,6 @@ public final class BuildJournal {
         }
     }
 
-    /** Atomic if the filesystem supports it (same dir → same store), else a plain move. */
     private static void move(Path from, Path to) throws IOException {
         try {
             Files.move(from, to, StandardCopyOption.ATOMIC_MOVE);
@@ -364,11 +500,9 @@ public final class BuildJournal {
                 try {
                     Files.deleteIfExists(p);
                 } catch (IOException ignored) {
-                    // best-effort — a concurrent delete/append may have removed it already
                 }
             });
         } catch (IOException ignored) {
-            // best-effort
         }
     }
 
@@ -376,12 +510,11 @@ public final class BuildJournal {
         return TEST_RESULTS_MD.equals(name) || LOCKFILE.equals(name) || DIAGNOSTICS_TXT.equals(name);
     }
 
-    /** Reject ids that could escape the journal directory (path traversal from a hostile query). */
+    /** Reject ids that could escape via path traversal. */
     private boolean validId(String id) {
         if (id == null || id.isBlank() || id.startsWith(".")) return false;
         if (id.indexOf('/') >= 0 || id.indexOf('\\') >= 0 || id.contains("..")) return false;
-        Path resolved = journalDir.resolve(id).normalize();
-        return journalDir.equals(resolved.getParent());
+        return true;
     }
 
     private static String randomHex() {

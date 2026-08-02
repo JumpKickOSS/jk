@@ -99,8 +99,9 @@ class CalibrationTest {
         Calibration.writeTo(f, written);
         Calibration read = Calibration.readFrom(f, NOW);
         assertThat(read.present()).isTrue();
+        // Scalars only on disk (JK-1377) — trimmed mean persists as a single prior sample.
         assertThat(read.learned().sampleCount(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
-                .isEqualTo(2);
+                .isEqualTo(1);
         assertThat(read.learned().meanMs(HostLearnedRates.RUN_TESTS_PER_METHOD_MS))
                 .hasValueCloseTo(45.0, within(1e-6));
         assertThat(read.probeTestMethodMs()).isEqualTo(15);

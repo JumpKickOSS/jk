@@ -1,90 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.runtime;
 
-import cc.jumpkick.plugin.protocol.MiniJson;
-import cc.jumpkick.util.AtomicWrites;
-import cc.jumpkick.util.JkDirs;
+import cc.jumpkick.builds.ProjectBuilds;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Durable monotonic per-project build numbers allocated at <em>request-start</em>.
  *
- * <p>Finish-time {@link BuildMetrics#record} still trains stats; it must <strong>not</strong> mint
- * a second number. Numbers live in {@code ~/.jk/state/builds/run-numbers.json} keyed by canonical
- * project dir, advanced under a process lock and never decrease.
+ * <p>Numbers live in {@code ~/.jk/state/builds/projects/&lt;key&gt;/run-number.txt}. Finish-time
+ * metrics harvest must <strong>not</strong> mint a second number.
  */
 public final class BuildNumberAllocator {
 
-    private static final ReentrantLock LOCK = new ReentrantLock();
-
     private BuildNumberAllocator() {}
 
+    /** @deprecated per-project {@code run-number.txt}; kept so call sites compile. */
+    @Deprecated
     public static Path defaultFile() {
-        return JkDirs.builds().resolve("run-numbers.json");
+        return ProjectBuilds.buildsRoot().resolve("run-number.txt");
     }
 
     /**
-     * Next build number for {@code projectDir} (≥ 1). {@code metricsFile} is consulted so a fresh
-     * allocator file still continues past historical {@link BuildMetrics} run counts.
+     * Next build number for {@code projectDir} (≥ 1). {@code coord} may be null (falls back to
+     * unknown). {@code countersFile}/{@code metricsFile} are ignored (API compat for call sites).
      */
     public static long allocate(Path countersFile, Path metricsFile, String projectDir) {
+        return allocate(projectDir, null);
+    }
+
+    /** Next build number for {@code projectDir} + optional {@code coord}. */
+    public static long allocate(String projectDir, String coord) {
         if (projectDir == null || projectDir.isBlank()) return 0;
-        String key = BuildMetrics.baseDir(projectDir);
-        LOCK.lock();
         try {
-            Map<String, Long> map = read(countersFile);
-            long stored = map.getOrDefault(key, 0L);
-            long fromMetrics = 0;
-            if (metricsFile != null) {
-                try {
-                    BuildMetrics m = BuildMetrics.load(metricsFile);
-                    fromMetrics = m.projectRunCount(key);
-                } catch (RuntimeException ignored) {
-                    fromMetrics = 0;
-                }
-            }
-            long next = Math.max(stored, fromMetrics) + 1;
-            map.put(key, next);
-            write(countersFile, map);
-            return next;
-        } finally {
-            LOCK.unlock();
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Long> read(Path file) {
-        Map<String, Long> out = new LinkedHashMap<>();
-        if (file == null || !Files.isRegularFile(file)) return out;
-        try {
-            Object root = MiniJson.parse(Files.readString(file, StandardCharsets.UTF_8));
-            if (!(root instanceof Map<?, ?> m)) return out;
-            for (Map.Entry<?, ?> e : m.entrySet()) {
-                if (!(e.getKey() instanceof String k)) continue;
-                if (e.getValue() instanceof Number n) out.put(k, n.longValue());
-            }
-        } catch (IOException | RuntimeException ignored) {
-            // empty
-        }
-        return out;
-    }
-
-    private static void write(Path file, Map<String, Long> map) {
-        try {
-            Files.createDirectories(file.getParent());
-            Map<String, Object> flat = new LinkedHashMap<>();
-            for (Map.Entry<String, Long> e : map.entrySet()) {
-                flat.put(e.getKey(), e.getValue());
-            }
-            AtomicWrites.replace(file, MiniJson.write(flat));
-        } catch (IOException | RuntimeException ignored) {
-            // advisory
+            Path dir = Path.of(projectDir);
+            Path home = ProjectBuilds.projectHome(coord, dir);
+            java.nio.file.Files.createDirectories(home);
+            ProjectBuilds.writeIdentity(home, coord, dir);
+            return ProjectBuilds.allocateRunNumber(home);
+        } catch (IOException | RuntimeException e) {
+            return 0;
         }
     }
 }

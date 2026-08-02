@@ -50,14 +50,19 @@ class BuildJournalTest {
         BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", 1_700_000_000_000L, "9.9", "cli");
         String id = j.begin(run);
         assertThat(id).isNotNull();
+        assertThat(id).startsWith("0027-");
         assertThat(j.get(id)).isPresent();
         assertThat(j.get(id).orElseThrow().running()).isTrue();
         assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
+        assertThat(j.detailsFile(id)).isPresent();
         BuildRecord done = record(1_700_000_000_100L, true, "g:a").withBuildNumber(27);
         assertThat(j.complete(id, done, BuildJournal.Snapshot.NONE)).isTrue();
         assertThat(j.get(id).orElseThrow().running()).isFalse();
         assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
         assertThat(j.get(id).orElseThrow().success()).isTrue();
+        // Success writes run metrics.toml under the run dir.
+        assertThat(j.runDir(id).map(p -> p.resolve("metrics.toml")).filter(java.nio.file.Files::isRegularFile))
+                .isPresent();
     }
 
     @Test

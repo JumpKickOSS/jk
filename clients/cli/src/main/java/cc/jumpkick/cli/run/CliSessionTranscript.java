@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.run;
 
+import cc.jumpkick.builds.ProjectBuilds;
 import cc.jumpkick.plugin.protocol.Jsonl;
 import cc.jumpkick.run.PipelineResult;
 import java.io.ByteArrayOutputStream;
@@ -12,26 +13,22 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /**
- * Incremental CLI session transcript under {@code <project>/target/.jk-cli/<ts>/details.jsonl}
- * . Same event shape as {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema
- * 1), appended live so agents/CI can {@code tail -F} mid-run. Flush cadence:.
+ * Incremental CLI session transcript as {@code details.jsonl} under the project run dir
+ * ({@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/details.jsonl}). Same event shape as
+ * {@code --output json}/{@code jsonl} ({@link JsonlShape}, schema 1), appended live so agents can
+ * {@code tail -F} mid-run.
  *
- * <p>Disk materialize is <strong>line-bounded</strong>: only complete newline-terminated records
- * leave the pending buffer on flush. Partial lines never hit the file mid-write — incomplete
- * records stay buffered until a later flush turn (or {@link #finish}).
+ * <p>On open the session buffers until {@link #bindJob} (from engine {@code job-start}) points at the
+ * journal run's details path. If the command never receives job-start (failure before admit), a
+ * local run dir is created at {@link #finish} so the transcript is still retained.
  *
  * <p>Never throws into the user command path: open/append/finish failures are silent no-ops. Disable
  * with {@code JK_CLI_DETAILS=off} (or {@code 0}).
- *
- * <p>The active session (if any) is held in a volatile for dual-write from {@link JsonlListener},
- * workspace {@code emitJsonl}, and {@link SessionMirrorListener}.
  */
 public final class CliSessionTranscript {
 
@@ -41,78 +38,69 @@ public final class CliSessionTranscript {
      */
     public static final int SCHEMA = 1;
 
-    public static final String REL_ROOT = "target/.jk-cli";
-    /** Canonical live session log (replaces end-only {@code details.json}). */
+    /** @deprecated details live under project runs; kept for tests that assert the constant. */
+    @Deprecated
+    public static final String REL_ROOT = "state/builds/projects";
+
     public static final String FILE_NAME = "details.jsonl";
 
     private static final String ENV = "JK_CLI_DETAILS";
 
-    private static final DateTimeFormatter DIR_TS =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HHmmss.SSS'Z'").withZone(ZoneOffset.UTC);
-
     /** Active session for dual-write; cleared on finish. */
     private static volatile CliSessionTranscript active;
 
-    private final Path file;
+    private final Path projectDir;
     private final Instant started;
     private final String command;
     private final List<String> argv;
     private final List<String> modules = new ArrayList<>();
     private final Object lock = new Object();
-    /** Unbuffered (or lightly buffered) file stream — we own record framing. */
-    private OutputStream out;
-    /**
-     * Complete records only ({@code …\n} each). Flushed as a unit so readers never observe a partial
-     * JSON line on disk.
-     */
     private final ByteArrayOutputStream pending = new ByteArrayOutputStream(4096);
 
+    private Path file;
+    private OutputStream out;
     private long lastFlushMs;
     private String wedgeSummary;
     private boolean closed;
+    private boolean bound;
 
-    private CliSessionTranscript(Path file, Instant started, String command, List<String> argv, OutputStream out) {
-        this.file = file;
+    private long jid = -1;
+    private long buildNumber;
+    private String historyId;
+    private long etaMs = -1;
+
+    private CliSessionTranscript(Path projectDir, Instant started, String command, List<String> argv) {
+        this.projectDir = projectDir;
         this.started = started;
         this.command = command;
         this.argv = List.copyOf(argv);
-        this.out = out;
         this.lastFlushMs = System.currentTimeMillis();
     }
 
-    /** Currently open session, or {@code null}. */
     public static CliSessionTranscript active() {
         return active;
     }
 
     /**
-     * Open a transcript session under {@code projectDir}. Returns {@code null} when disabled, the
-     * project path is unusable, or directory creation fails. Writes a {@code session-start} line
-     * immediately (flush) so a crash still leaves a partial file.
+     * Open a transcript session for {@code projectDir}. Returns {@code null} when disabled or the
+     * project path is unusable. Writes a {@code session-start} line into the buffer immediately.
      */
     public static CliSessionTranscript open(Path projectDir, String command, List<String> argv) {
         if (projectDir == null || command == null || command.isBlank()) return null;
         if (disabled()) return null;
         try {
             Instant started = Instant.now();
-            Path dir = projectDir.toAbsolutePath().normalize().resolve(REL_ROOT).resolve(DIR_TS.format(started));
-            Files.createDirectories(dir);
-            Path file = dir.resolve(FILE_NAME);
             List<String> args = argv == null || argv.isEmpty() ? List.of(command) : List.copyOf(argv);
-            // Raw stream: no BufferedWriter auto-flush mid-line when the internal buffer fills.
-            OutputStream out = Files.newOutputStream(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-            CliSessionTranscript session = new CliSessionTranscript(file, started, command, args, out);
+            CliSessionTranscript session = new CliSessionTranscript(projectDir, started, command, args);
             LiveProgress.get().clear();
             active = session;
-            // session-start is metadata — no progress yet (null rider).
             session.appendRaw(JsonlShape.withProgress(JsonlShape.sessionStart(command, args), null), true);
             return session;
-        } catch (RuntimeException | IOException e) {
+        } catch (RuntimeException e) {
             return null;
         }
     }
 
-    /** Same as {@link #open(Path, String, List)} with argv = {@code [command]}. */
     public static CliSessionTranscript open(Path projectDir, String command) {
         return open(projectDir, command, List.of(command));
     }
@@ -124,6 +112,108 @@ public final class CliSessionTranscript {
 
     public Path file() {
         return file;
+    }
+
+    public Path projectDir() {
+        return projectDir;
+    }
+
+    /**
+     * Bind to the engine journal run (from {@code job-start}). Opens {@code detailsPath} and flushes
+     * buffered events. Emits a {@code job} metadata line with jid / historyId / ETA when known.
+     */
+    public void bindJob(long jid, long buildNumber, String historyId, String detailsPath, long etaMs) {
+        synchronized (lock) {
+            if (closed) return;
+            this.jid = jid;
+            this.buildNumber = buildNumber;
+            this.historyId = historyId;
+            this.etaMs = etaMs;
+            try {
+                if (detailsPath != null && !detailsPath.isBlank()) {
+                    openFile(Path.of(detailsPath));
+                } else if (historyId != null && !historyId.isBlank()) {
+                    ProjectBuilds.findRunDir(historyId).ifPresent(run -> {
+                        try {
+                            openFile(run.resolve(ProjectBuilds.DETAILS));
+                        } catch (IOException ignored) {
+                        }
+                    });
+                }
+                // Metadata line so any AI reading details.jsonl sees jid / ETA / history id.
+                String jobLine = JsonlShape.jobMeta(jid, buildNumber, historyId, etaMs, detailsPath);
+                if (jobLine != null) {
+                    enqueueRecord(jobLine);
+                    flushPending();
+                }
+            } catch (IOException | RuntimeException ignored) {
+            }
+        }
+    }
+
+    /** Note ETA once known (explain / plan phase); appends an {@code eta} event when bound. */
+    public void noteEta(long etaMs) {
+        if (etaMs < 0) return;
+        synchronized (lock) {
+            this.etaMs = etaMs;
+            appendRaw(JsonlShape.withProgress(JsonlShape.eta(etaMs), null), true);
+        }
+    }
+
+    private void openFile(Path detailsFile) throws IOException {
+        if (detailsFile == null) return;
+        Files.createDirectories(detailsFile.getParent());
+        if (out != null) {
+            try {
+                flushPending();
+                out.close();
+            } catch (IOException ignored) {
+            }
+            out = null;
+        }
+        this.file = detailsFile;
+        this.out = Files.newOutputStream(
+                detailsFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        this.bound = true;
+        // Re-write any pending records (session-start etc.) that arrived before bind.
+        flushPending();
+    }
+
+    /** Ensure a local run dir exists when finish happens without engine bind (tests / pre-admit fail). */
+    private void ensureLocalRun() throws IOException {
+        if (bound && out != null) return;
+        String coord = coordOf(projectDir);
+        ProjectBuilds.RunDir run = ProjectBuilds.openRun(coord, projectDir);
+        openFile(run.detailsFile());
+    }
+
+    private static String coordOf(Path dir) {
+        try {
+            Path toml = dir.resolve("jk.toml");
+            if (!Files.isRegularFile(toml)) return "unknown:unknown";
+            String text = Files.readString(toml, StandardCharsets.UTF_8);
+            String group = null, name = null;
+            for (String line : text.split("\n")) {
+                String t = line.trim();
+                if (t.startsWith("group") && t.contains("=")) {
+                    group = unquote(t.substring(t.indexOf('=') + 1).trim());
+                } else if (t.startsWith("name") && t.contains("=") && !t.startsWith("namespace")) {
+                    name = unquote(t.substring(t.indexOf('=') + 1).trim());
+                }
+            }
+            if (group != null && name != null) return group + ":" + name;
+        } catch (Exception ignored) {
+        }
+        return "unknown:unknown";
+    }
+
+    private static String unquote(String s) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s.length() >= 2 && s.charAt(0) == '"' && s.charAt(s.length() - 1) == '"') {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
     }
 
     public CliSessionTranscript modules(Iterable<String> coords) {
@@ -139,18 +229,12 @@ public final class CliSessionTranscript {
         return this;
     }
 
-    /** Settled wedge / summary line (plain text preferred; ANSI is fine — not re-rendered). */
     public CliSessionTranscript wedge(String summary) {
         if (summary != null && !summary.isBlank()) this.wedgeSummary = summary;
         return this;
     }
 
-    /**
-     * Acknowledge a finished pipeline. Step/error events should already be in the JSONL stream via
-     * {@link SessionMirrorListener} or {@link JsonlListener} — this does not re-emit them.
-     */
     public CliSessionTranscript absorb(PipelineResult result) {
-        // Reserved for future summary fields; pipeline events already dual-written.
         return this;
     }
 
@@ -158,10 +242,6 @@ public final class CliSessionTranscript {
         return error("", "", message);
     }
 
-    /**
-     * Record a command-level error as a JSONL {@code error} event (immediate flush). Prefer pipeline
-     * listeners for step diagnostics so events are not duplicated.
-     */
     public CliSessionTranscript error(String step, String code, String message) {
         if (message == null || message.isBlank()) return this;
         String s = step == null ? "" : step;
@@ -170,48 +250,40 @@ public final class CliSessionTranscript {
         return this;
     }
 
-    /**
-     * Append one {@link JsonlShape} line (progress rider applied). {@code immediateFlush} is true for
-     * M1–M3 semantic boundaries; false for hot ticks (flush ≤ {@link LiveProgress#DISK_HEARTBEAT_MS}).
-     */
     public void append(String line, boolean immediateFlush) {
         if (line == null || line.isBlank()) return;
         appendRaw(JsonlShape.withProgress(line), immediateFlush);
     }
 
-    /**
-     * Append a fully-formed JSON object as one record. Strips any trailing CR/LF from {@code line},
-     * then enqueues exactly one {@code line + '\n'} into the pending buffer. Disk flush only writes
-     * complete pending records — never a partial line.
-     */
     public void appendRaw(String line, boolean immediateFlush) {
         if (line == null || line.isBlank()) return;
-        // Normalize: callers may pass a line that already ends with \n.
         String record = stripTrailingNewlines(line);
         if (record.isEmpty()) return;
-        byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
         synchronized (lock) {
-            if (closed || out == null) return;
+            if (closed) return;
             try {
-                pending.write(bytes);
+                enqueueRecord(record);
                 long now = System.currentTimeMillis();
                 if (immediateFlush || now - lastFlushMs >= LiveProgress.DISK_HEARTBEAT_MS) {
                     flushPending();
                 }
             } catch (IOException ignored) {
-                // Best-effort; the failed batch was already dropped by flushPending.
             }
         }
     }
 
-    /**
-     * Write every complete pending record to the file, then flush the OS stream. Empty pending is a
-     * no-op. Never writes a non-newline-terminated fragment. Pending is cleared <em>before</em> the
-     * write: a failed or torn write drops that batch (best-effort file) rather than re-writing it
-     * later as duplicate/torn records or growing the buffer unboundedly.
-     */
+    private void enqueueRecord(String record) throws IOException {
+        byte[] bytes = (record + "\n").getBytes(StandardCharsets.UTF_8);
+        pending.write(bytes);
+    }
+
     private void flushPending() throws IOException {
-        if (out == null || pending.size() == 0) return;
+        if (pending.size() == 0) return;
+        if (out == null) {
+            // Keep buffering until bind/finish opens a file.
+            lastFlushMs = System.currentTimeMillis();
+            return;
+        }
         byte[] records = pending.toByteArray();
         pending.reset();
         lastFlushMs = System.currentTimeMillis();
@@ -225,37 +297,27 @@ public final class CliSessionTranscript {
         return s.substring(0, end);
     }
 
-    /**
-     * Dual-write helper for stdout JSONL / workspace emit paths. No-op when no active session.
-     * Flush policy inferred from the event {@code type} field when present.
-     */
     public static void appendActive(String line) {
         CliSessionTranscript s = active;
         if (s == null || line == null || line.isBlank()) return;
         s.append(line, isImmediateType(line));
     }
 
-    /** Needles derived from the one classification source, {@link JsonlShape#HOT_TYPES}. */
     private static final String[] HOT_TYPE_NEEDLES =
             JsonlShape.HOT_TYPES.stream().map(t -> "\"type\":\"" + t + "\"").toArray(String[]::new);
 
-    /** Semantic events flush immediately (M1–M3); hot ticks use the 2s heartbeat (M4/M5). */
     static boolean isImmediateType(String line) {
-        // Cheap substring checks — avoid full JSON parse on the hot path.
         for (String needle : HOT_TYPE_NEEDLES) {
             if (line.contains(needle)) return false;
         }
         return true;
     }
 
-    /**
-     * Write {@code session-finish}, flush all pending complete records, and close. Never throws.
-     * Returns the path written, or empty on failure.
-     */
     public Optional<Path> finish(int exitCode) {
         synchronized (lock) {
-            if (closed) return Optional.of(file);
+            if (closed) return file == null ? Optional.empty() : Optional.of(file);
             try {
+                if (!bound || out == null) ensureLocalRun();
                 Instant finished = Instant.now();
                 long durationMs = Duration.between(started, finished).toMillis();
                 if (exitCode == 0) LiveProgress.get().setPercent(100.0);
@@ -264,12 +326,20 @@ public final class CliSessionTranscript {
                         durationMs,
                         wedgeSummary == null ? null : stripAnsi(wedgeSummary),
                         List.copyOf(modules)));
-                // Enqueue finish as a complete record, then drain pending.
+                // Enrich finish with jid when known.
+                if (jid > 0 && !finishLine.contains("\"jid\":")) {
+                    finishLine = finishLine.substring(0, finishLine.length() - 1)
+                            + ",\"jid\":"
+                            + jid
+                            + (buildNumber > 0 ? ",\"buildNumber\":" + buildNumber : "")
+                            + (historyId != null ? ",\"historyId\":" + Jsonl.quote(historyId) : "")
+                            + "}";
+                }
                 if (out != null) {
-                    pending.write((stripTrailingNewlines(finishLine) + "\n").getBytes(StandardCharsets.UTF_8));
+                    enqueueRecord(stripTrailingNewlines(finishLine));
                     flushPending();
                 }
-                return Optional.of(file);
+                return file == null ? Optional.empty() : Optional.of(file);
             } catch (RuntimeException | IOException e) {
                 return Optional.empty();
             } finally {
@@ -286,10 +356,6 @@ public final class CliSessionTranscript {
         }
     }
 
-    /**
-     * Finish {@code session} (if non-null) and optionally print a one-line path on verbose. Always
-     * returns {@code exit} so callers can {@code return finish(session, code, verbose)}.
-     */
     public static int finish(CliSessionTranscript session, int exit, boolean verbose) {
         if (session == null) return exit;
         session.finish(exit).ifPresent(p -> {
@@ -298,27 +364,20 @@ public final class CliSessionTranscript {
         return exit;
     }
 
-    /**
-     * One-line discoverability on stderr. Prefer announcing at open when verbose so mid-run
-     * consumers know the path; finish may re-print.
-     */
     public static void announceWritten(Path file) {
         if (file == null) return;
         System.err.println("Details: " + file + "  (session JSONL; disable: JK_CLI_DETAILS=off)");
     }
 
-    /** Announce path when a session opens (verbose callers). */
     public void announceIf(boolean verbose) {
-        if (verbose) announceWritten(file);
+        if (verbose && file != null) announceWritten(file);
     }
 
-    /** Drop common SGR sequences so wedge text is greppable in JSON. */
     static String stripAnsi(String s) {
         if (s == null || s.isEmpty()) return s;
         return s.replaceAll("\\u001B\\[[0-9;]*m", "");
     }
 
-    /** Package-visible JSON string escape for tests — delegates to shared codec. */
     static String quote(String s) {
         return Jsonl.quote(s);
     }

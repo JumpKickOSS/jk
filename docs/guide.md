@@ -45,7 +45,7 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 | `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
 | `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
-| `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
+| `~/.jk/state/builds/projects/.../runs/` | Run history + `details.jsonl` transcripts | Optional for CI speed; useful for agents |
 | `jk-lock.toml` | Resolved coords | **Commit** this (not a cache) |
 
 **Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
@@ -516,7 +516,8 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
-- Session log (same JSONL shape, live append) lands in `target/.jk-cli/<ts>/details.jsonl`
+- Session log (same JSONL shape, live append) lands in the project run dir under
+  `~/.jk/state/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
   (below). Deep timings: `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
@@ -570,17 +571,18 @@ elapsed time is ≥ 1 minute; `always`/`true` always notifies; `never`/`false` n
 ### Session transcripts (`details.jsonl`)
 
 `jk build` and `jk test` write a **live** JSONL session log by default (same event shape as
-`--output json`/`jsonl`):
+`--output json`/`jsonl`) into the project run directory:
 
 ```text
-target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<run-id>/details.jsonl
 ```
 
-One JSON object per line (`schema: 1`), appended as events arrive — safe to `tail -F` mid-run.
-Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
-`session-start`, ends with `session-finish` (`exit`, duration, optional wedge/modules). The
-terminal stays terse; with `-v` / `--verbose`, jk prints `Details: <path>` when the session
-opens (and again at finish).
+Alongside `record.json` and `metrics.toml` for that run. One JSON object per line (`schema: 1`),
+appended as events arrive — safe to `tail -F` mid-run. Includes **jid**, **buildNumber**,
+**historyId**, and **etaMs** (from engine `job-start`) so an agent can diagnose the run from this
+file alone. Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
+`session-start`, a `job` meta line after admit, and ends with `session-finish`. With `-v` /
+`--verbose`, jk prints `Details: <path>` when the path is known.
 
 Writing is best-effort: a missing project, full disk, or permission error never fails the
 user command. Disable with `JK_CLI_DETAILS=off` (or `0`). See [machine-output.md](machine-output.md)

@@ -18,7 +18,7 @@ Status: **normative** for TUI / wire progress (JK-1150). Implementations: JK-115
 | Component | Responsibility |
 |-----------|----------------|
 | `EffortWeights` | Plan-time step weights; `TOKEN` for skip/check paths; learned rates |
-| `StepTimings` / `BuildMetrics` | Durable learning stores (per-unit + avg ms) |
+| Project runs + harvest (JK-1377) | Per-run `metrics.toml`; harvested `project-metrics.toml` + `host-metrics.toml` (scalars) |
 | `BuildService.seedEta` | Schedule-aware wall ETA + history priors (project then host) |
 | `WorkspaceProgressTracker` | Preflight band + calibrated Σ module slices; peak-hold |
 | Wire `workspace-progress` / `eta` | Snapshots clients must paint, not re-sum |
@@ -77,39 +77,45 @@ when online) then price dirty steps as **product baseline × host scale × cold 
 hosts use scale=1 (baselines alone). Successful builds refine continuous `learned-*` rates and
 per-module step walls for the next estimate.
 
-## Learning / recency (JK-1178)
+## Learning layout (JK-1377)
 
-| Store | What is recorded | Recency |
+```
+~/.jk/state/builds/
+  host-metrics.toml              # probe [calibration] + harvested [mean] host rates
+  projects/<hash(coord+\0+path)>/
+    identity.toml
+    run-number.txt
+    project-metrics.toml         # [mean] / [last] / [count] scalars only
+    runs/<NNNN-ts-hex>/
+      record.json
+      details.jsonl              # AI-complete: jid, ETA, all events
+      metrics.toml               # this run's successful walls (trains harvest)
+```
+
+| Store | What is recorded | How |
 |---|---|---|
-| `StepTimings` (`~/.jk/state/builds/timings.toml`) | Per-step rates from real SUCCESS work (not under CAS cache) | EWMA α=0.4; **near-zero samples dropped** (cache hits must not poison rates); migrates legacy `~/.jk/cache/timings.toml` once |
-| `BuildMetrics` (`~/.jk/state/builds/metrics.json`) | Invocation wall under `build` / `build:rebuild` (+ `#dN`) | EWMA α=0.4 on success avg; count capped; failed/cancelled excluded from `ok` |
-| Calibration | Bootstrap probe + continuous host rates (`~/.jk/state/builds/calibration.toml`) | `Calibration.ensure` on explain/build ETA (network unless `--offline`); `jk engine calibrate`; learned trimmed means on success |
+| Per-run `metrics.toml` | Successful step/module/workspace walls (+ host rate samples) | Written on journal complete |
+| `project-metrics.toml` | Trimmed means + last-success ladder | Serial `MetricsHarvest` after each finish |
+| `host-metrics.toml` | Host-wide rates + bootstrap probe | Harvest `[mean]` + `Calibration` `[calibration]` |
+| Retention | 50 runs/project, 90 days | Harvest reaper (plus history disk budget) |
+
+**No sample rings** on aggregate files. **No** `timings.toml` / `metrics.json` / `run-numbers.json` /
+`calibration.toml` (wipe `~/.jk` is fine).
 
 **Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
 the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
-pipeline result). That truncated wall-clock goes into the `cancelled` bucket only — never `ok` —
-so history priors and explain/build countdown seeds stay calibrated from full successes. Session
-cancel also flips `PipelineResult.userCancelled` when the pipeline can finish cooperatively.
+pipeline result). Truncated walls never write success metrics.
 
 **Success-only teaching (estimator hygiene):**
 
 | Layer | Trains on |
 |-------|-----------|
-| `BuildMetrics` invocation `ok` | Workspace success, not cancelled |
-| `BuildMetrics` step `ok` | Full successful workspace only (cancelled runs train no step ok) |
-| `StepTimings` rates | Successful non-cancelled module pipelines only |
-| Host ms/method prior | Successful `run-tests` suites (`__host__/test-method-ms`) |
-| Continuous host rates | Successful builds → `calibration.toml` `learned-*` trimmed means |
-| `FetchTimings` | Successful remote CAS-miss jar downloads only (trimmed mean, drop top/bottom 10%) |
-| `LockTimings` | Successful locks: graph-ms/package, materialize-ms/package, fixed overhead (trimmed means); every project trains the host |
+| Run `metrics.toml` / harvest means | Full successful workspace only |
+| Host rate keys | Successful builds only |
+| `FetchTimings` / `LockTimings` | Successful remote work only (trimmed means) |
 
-Failed steps still land in the `failed` bucket for diagnostics; they never contribute to `ok`
-averages. Cold modules without local rates fall back to project/host medians, then host absolute
-test-method ms / continuous calibration, then tight static floors.
-
-Successful **`jk build --redo`** always folds timings + metrics under **`build:rebuild`** (request
-flag stored on the accumulator — not ambient session at journal write). Newer successes supersede
-older ones via EWMA; multi-year raw averages are not used as the sole ETA prior.
+Cold modules without local rates fall back to project last/mean, then host means, then calibration
+baselines, then static floors.
 
 ## Host calibration suite (JK-1180 + continuous learning)
 

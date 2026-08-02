@@ -68,7 +68,11 @@ class EnvSecretRedactionTest {
             for (Path p : walk.filter(Files::isRegularFile).toList()) {
                 String body = Files.readString(p);
                 assertThat(body).as("journal file %s", p).doesNotContain(SECRET);
-                assertThat(body).contains(SecretRedactor.MASK);
+                String name = p.getFileName().toString();
+                // Only diagnostic-bearing files must include the mask; identity/run-number do not.
+                if (name.equals("record.json") || name.equals(BuildJournal.DIAGNOSTICS_TXT)) {
+                    assertThat(body).as("journal file %s", p).contains(SecretRedactor.MASK);
+                }
             }
         }
     }

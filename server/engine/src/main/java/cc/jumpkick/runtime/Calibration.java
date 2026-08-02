@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.concurrent.atomic.AtomicReference;
@@ -618,8 +619,9 @@ public final class Calibration {
 
     // --- load / ensure -------------------------------------------------------
 
+    /** Host metrics file (probe + continuous means). Formerly {@code calibration.toml}. */
     static Path file() {
-        return JkDirs.builds().resolve("calibration.toml");
+        return JkDirs.builds().resolve("host-metrics.toml");
     }
 
     public static Calibration load() {
@@ -992,28 +994,40 @@ public final class Calibration {
         try {
             if (!Files.isRegularFile(f)) return absent;
             TomlParseResult t = Toml.parse(f);
-            double mpw = t.getDouble("ms-per-weight") != null ? t.getDouble("ms-per-weight") : 0;
-            long updated = t.getLong("updated") != null ? t.getLong("updated") : 0L;
-            String version = t.getString("jk-version");
+            // Prefer [calibration] table in host-metrics.toml; fall back to root keys.
+            org.tomlj.TomlTable cal =
+                    t.getTable("calibration") != null ? t.getTable("calibration") : t;
+            double mpw = cal.getDouble("ms-per-weight") != null ? cal.getDouble("ms-per-weight") : 0;
+            long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
+            String version = cal.getString("jk-version");
             HostLearnedRates learned = HostLearnedRates.readFrom(t);
-            // Allow a learned-only file (no probe yet) to still be present for ETA.
+            // Also fold scalar [mean] host rates as single-sample learned priors.
+            if (t.getTable("mean") != null) {
+                org.tomlj.TomlTable mean = t.getTable("mean");
+                Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(learned.samples());
+                for (String key : mean.keySet()) {
+                    Object v = mean.get(key);
+                    if (v instanceof Number n && n.doubleValue() > 0) {
+                        rings.putIfAbsent(key, List.of(n.doubleValue()));
+                    }
+                }
+                if (!rings.isEmpty()) learned = new HostLearnedRates(rings);
+            }
             if (mpw <= 0 && learned.isEmpty()) return absent;
             if (mpw <= 0) mpw = EffortWeights.MS_PER_WEIGHT;
             if (stale(version, updated, nowMillis) && learned.isEmpty()) return absent;
-            // Stale probe but still have learned rates — keep learned, mark probe fields.
-            int schema = t.getLong("schema") != null ? Math.toIntExact(t.getLong("schema")) : 1;
-            long probeSuite = longOr(t, "probe-test-suite-startup-ms", 0);
-            long probeMethod = longOr(t, "probe-test-method-ms", 0);
-            long probeCompile = longOr(t, "probe-compile-per-source-ms", 0);
-            boolean measuredFlag = t.getBoolean("measured") != null && t.getBoolean("measured");
+            int schema = cal.getLong("schema") != null ? Math.toIntExact(cal.getLong("schema")) : 1;
+            long probeSuite = longOr(cal, "probe-test-suite-startup-ms", 0);
+            long probeMethod = longOr(cal, "probe-test-method-ms", 0);
+            long probeCompile = longOr(cal, "probe-compile-per-source-ms", 0);
+            boolean measuredFlag = cal.getBoolean("measured") != null && cal.getBoolean("measured");
             if (probeSuite <= 0 || probeMethod <= 0 || probeCompile <= 0) {
-                // Derive from components for schema ≤ 3 files.
-                long jFork = longOr(t, "junit-fork-ms", 0);
-                long jRun = longOr(t, "junit-run-ms", 0);
-                long jPlat = longOr(t, "junit-platform-ms", 0);
-                long jvm = longOr(t, "jvm-fork-ms", 0);
-                long javac = longOr(t, "javac-ms", 0);
-                boolean jUsed = t.getBoolean("junit-platform-used") != null && t.getBoolean("junit-platform-used");
+                long jFork = longOr(cal, "junit-fork-ms", 0);
+                long jRun = longOr(cal, "junit-run-ms", 0);
+                long jPlat = longOr(cal, "junit-platform-ms", 0);
+                long jvm = longOr(cal, "jvm-fork-ms", 0);
+                long javac = longOr(cal, "javac-ms", 0);
+                boolean jUsed = cal.getBoolean("junit-platform-used") != null && cal.getBoolean("junit-platform-used");
                 if (probeSuite <= 0) probeSuite = deriveSuiteStartup(jUsed, jPlat, jFork, jvm);
                 if (probeMethod <= 0) probeMethod = deriveMethodMs(jRun, jUsed, jPlat);
                 if (probeCompile <= 0 && javac > 0) {
@@ -1022,23 +1036,23 @@ public final class Calibration {
             }
             return new Calibration(
                     mpw,
-                    longOr(t, "jvm-fork-ms", 0),
-                    longOr(t, "javac-ms", 0),
-                    longOr(t, "disk-io-ms", 0),
-                    longOr(t, "hash-cpu-ms", 0),
-                    longOr(t, "junit-fork-ms", 0),
-                    longOr(t, "junit-run-ms", 0),
-                    longOr(t, "junit-platform-ms", 0),
-                    longOr(t, "resolve-ms", 0),
-                    longOr(t, "engine-cold-start-ms", 0),
-                    t.getDouble("load-at-calibration") != null ? t.getDouble("load-at-calibration") : -1,
-                    t.getLong("cores") != null ? Math.toIntExact(t.getLong("cores")) : 0,
-                    t.getString("jdk"),
+                    longOr(cal, "jvm-fork-ms", 0),
+                    longOr(cal, "javac-ms", 0),
+                    longOr(cal, "disk-io-ms", 0),
+                    longOr(cal, "hash-cpu-ms", 0),
+                    longOr(cal, "junit-fork-ms", 0),
+                    longOr(cal, "junit-run-ms", 0),
+                    longOr(cal, "junit-platform-ms", 0),
+                    longOr(cal, "resolve-ms", 0),
+                    longOr(cal, "engine-cold-start-ms", 0),
+                    cal.getDouble("load-at-calibration") != null ? cal.getDouble("load-at-calibration") : -1,
+                    cal.getLong("cores") != null ? Math.toIntExact(cal.getLong("cores")) : 0,
+                    cal.getString("jdk"),
                     version,
                     updated,
                     measuredFlag,
-                    t.getBoolean("junit-platform-used") != null && t.getBoolean("junit-platform-used"),
-                    t.getBoolean("resolve-used") != null && t.getBoolean("resolve-used"),
+                    cal.getBoolean("junit-platform-used") != null && cal.getBoolean("junit-platform-used"),
+                    cal.getBoolean("resolve-used") != null && cal.getBoolean("resolve-used"),
                     schema,
                     probeSuite,
                     probeMethod,
@@ -1049,7 +1063,7 @@ public final class Calibration {
         }
     }
 
-    private static long longOr(TomlParseResult t, String key, long dflt) {
+    private static long longOr(org.tomlj.TomlTable t, String key, long dflt) {
         Long v = t.getLong(key);
         return v != null ? v : dflt;
     }
@@ -1089,14 +1103,40 @@ public final class Calibration {
     }
 
     static void writeTo(Path file, Calibration c) throws IOException {
-        AtomicWrites.replace(file, c.render());
+        // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch] from harvest.
+        StringBuilder out = new StringBuilder();
+        out.append("# host-metrics — probe + continuous means (JK-1377)\n");
+        if (Files.isRegularFile(file)) {
+            try {
+                String existing = Files.readString(file);
+                // Keep [mean] and non-calibration sections from harvest / lock-fetch writers.
+                for (String section : java.util.List.of("mean", "lock", "fetch", "bootstrap")) {
+                    int idx = existing.indexOf("\n[" + section + "]");
+                    if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
+                    if (idx >= 0) {
+                        int end = existing.indexOf("\n[", idx + 2);
+                        String block = end < 0 ? existing.substring(idx) : existing.substring(idx, end);
+                        if (!block.isBlank()) out.append(block.strip()).append('\n');
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        // Learned rates as scalar means under [mean] (no sample rings).
+        out.append("\n[mean]\n");
+        if (c.learned != null && !c.learned.isEmpty()) {
+            for (var e : c.learned.samples().entrySet()) {
+                double m = HostLearnedRates.trimmedMean(e.getValue());
+                if (m > 0) out.append(e.getKey()).append(" = ").append(round3(m)).append('\n');
+            }
+        }
+        out.append('\n').append(c.renderCalibrationSection());
+        AtomicWrites.replace(file, out.toString());
     }
 
-    private String render() {
-        String base = """
-                # JumpKick host calibration for build-time estimates.
-                # Produced by `jk engine calibrate` or automatically on explain/build.
-                # Safe to delete; it will be recreated as needed. Use global --offline to skip network probes.
+    private String renderCalibrationSection() {
+        return """
+                [calibration]
                 schema               = %d
                 ms-per-weight        = %s
                 jvm-fork-ms          = %d
@@ -1120,29 +1160,28 @@ public final class Calibration {
                 resolve-used         = %s
                 updated              = %d
                 """.formatted(
-                        schema <= 0 ? SCHEMA : schema,
-                        round3(msPerWeight),
-                        jvmForkMs,
-                        javacMs,
-                        diskIoMs,
-                        hashCpuMs,
-                        junitForkMs,
-                        junitRunMs,
-                        junitPlatformMs,
-                        resolveMs,
-                        engineColdStartMs,
-                        probeTestSuiteStartupMs,
-                        probeTestMethodMs,
-                        probeCompilePerSourceMs,
-                        round3(loadAtCalibration),
-                        cores,
-                        quote(jdk == null ? "" : jdk),
-                        quote(jkVersion == null ? "" : jkVersion),
-                        measured,
-                        junitPlatformUsed,
-                        resolveUsed,
-                        updated);
-        return base + learned.renderToml();
+                schema <= 0 ? SCHEMA : schema,
+                round3(msPerWeight),
+                jvmForkMs,
+                javacMs,
+                diskIoMs,
+                hashCpuMs,
+                junitForkMs,
+                junitRunMs,
+                junitPlatformMs,
+                resolveMs,
+                engineColdStartMs,
+                probeTestSuiteStartupMs,
+                probeTestMethodMs,
+                probeCompilePerSourceMs,
+                round3(loadAtCalibration),
+                cores,
+                quote(jdk == null ? "" : jdk),
+                quote(jkVersion == null ? "" : jkVersion),
+                measured,
+                junitPlatformUsed,
+                resolveUsed,
+                updated);
     }
 
     public String summary() {

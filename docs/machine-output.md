@@ -81,7 +81,7 @@ Implementation: `JsonlListener` + `JsonlShape` (stdout); `EventLogListener` and
 ### Session log: `details.jsonl` (JK-1116)
 
 ```text
-target/.jk-cli/<utc-ts>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<run-id>/details.jsonl
 ```
 
 - Default **on**; disable with `JK_CLI_DETAILS=off` (or `0`).

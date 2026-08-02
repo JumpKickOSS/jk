@@ -58,7 +58,8 @@ public final class StepTimings {
     }
 
     /**
-     * Canonical host path: {@code ~/.jk/state/builds/timings.toml} (or {@code JK_BUILDS_DIR}).
+     * Legacy path marker — production rates hydrate from harvested metrics (JK-1377).
+     * Hermetic tests still use isolated roots via {@link #file(Path)}.
      */
     public static Path defaultFile() {
         return JkDirs.builds().resolve("timings.toml");
@@ -89,7 +90,55 @@ public final class StepTimings {
      */
     public static StepTimings load(Path rootOrCache) {
         Path f = file(rootOrCache);
+        if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
+            return fromAggregates();
+        }
         return MEMO.computeIfAbsent(f, StepTimings::readFile);
+    }
+
+    private static boolean isLiveBuildsTimings(Path f) {
+        try {
+            return f != null
+                    && "timings.toml".equals(f.getFileName().toString())
+                    && f.getParent() != null
+                    && f.getParent().equals(JkDirs.builds().toAbsolutePath().normalize());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Hydrate per-unit rates from harvested project/host metrics. */
+    static StepTimings fromAggregates() {
+        cc.jumpkick.builds.AggregatedMetrics agg =
+                cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        Map<String, Entry> m = new HashMap<>();
+        long now = System.currentTimeMillis();
+        for (var e : agg.meanMap().entrySet()) {
+            String k = e.getKey();
+            double v = e.getValue();
+            if (!(v > 0)) continue;
+            if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".step.")) {
+                // module.<dir>.step.<step>.per-unit-ms
+                String body = k.substring("module.".length(), k.length() - ".per-unit-ms".length());
+                int stepAt = body.indexOf(".step.");
+                if (stepAt > 0) {
+                    String dir = body.substring(0, stepAt);
+                    String step = body.substring(stepAt + ".step.".length());
+                    m.put(key(dir, step), new Entry(v, now));
+                }
+            } else if (k.startsWith("step.") && k.endsWith(".per-unit-ms")) {
+                String step = k.substring("step.".length(), k.length() - ".per-unit-ms".length());
+                m.put(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
+            } else if (k.startsWith("host.") || k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
+                m.put(key(HOST_METHOD_MS_DIR, k), new Entry(v, now));
+            }
+        }
+        for (var e : agg.hostMeanMap().entrySet()) {
+            if (e.getValue() > 0) {
+                m.putIfAbsent(key(HOST_METHOD_MS_DIR, e.getKey()), new Entry(e.getValue(), now));
+            }
+        }
+        return new StepTimings(m);
     }
 
     /** True when nothing has been learned yet (cold) — the caller can't show a trustworthy ETA. */
@@ -168,6 +217,10 @@ public final class StepTimings {
     public static void record(Path rootOrCache, List<Sample> samples, double alpha, long nowMillis) {
         if (samples == null || samples.isEmpty()) return;
         Path f = file(rootOrCache);
+        // Production: per-run metrics.toml + harvest own durable rates (JK-1377).
+        if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
+            return;
+        }
         Map<String, Entry> m = new HashMap<>(readFile(f).entries);
         for (Sample s : samples) {
             // Ignore negative and near-zero (cache-hit / empty work) so rates stay about real work.
