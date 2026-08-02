@@ -128,10 +128,43 @@ public final class TestCommand implements CliCommand {
         // 0 = auto (Mill-like min(jobs, classCount) + heap clamp); explicit -w1 keeps one JVM.
         int workerCount = workers != null ? Math.max(0, workers) : 0;
 
-        // Selective tests: --modules and/or --affected-since (intersection when both).
+        cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
+
+        // Workspace root: fan out to members (JK-1285). Bare `jk test` at the root used to run
+        // only the root module's (usually empty) suite and print a green "No tests".
+        if (entry.isWorkspaceRoot()) {
+            java.util.Set<Path> moduleDirs;
+            boolean selective = (affectedSince != null && !affectedSince.isBlank())
+                    || (modulesSpec != null && !modulesSpec.isBlank());
+            if (selective) {
+                var selected =
+                        cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
+                if (selected != null && !selected.ok()) {
+                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
+                    if (session != null) session.error(selected.errorMessage());
+                    return finishSession(Exit.CONFIG);
+                }
+                if (selected == null || selected.moduleDirs().isEmpty()) {
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
+                    if (session != null) session.wedge("nothing selected for tests");
+                    return finishSession(0);
+                }
+                moduleDirs = selected.moduleDirs();
+            } else {
+                moduleDirs = allWorkspaceModuleDirs(dir, entry);
+                if (moduleDirs.isEmpty()) {
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "workspace declares no modules");
+                    if (session != null) session.wedge("workspace declares no modules");
+                    return finishSession(0);
+                }
+            }
+            return finishSession(runWorkspaceTests(dir, entry, cache, workerCount, moduleDirs));
+        }
+
+        // Single-module selective: --modules / --affected-since may exclude this dir.
         if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            cc.jumpkick.model.JkBuild entry = cc.jumpkick.config.JkBuildParser.parse(buildFile);
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
+            var selected =
+                    cc.jumpkick.config.ModuleSelection.resolveOptional(dir, entry, modulesSpec, affectedSince);
             if (selected != null && !selected.ok()) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Test", selected.errorMessage()));
                 if (session != null) session.error(selected.errorMessage());
@@ -141,9 +174,6 @@ public final class TestCommand implements CliCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
-            }
-            if (selected != null && entry.isWorkspaceRoot()) {
-                return finishSession(runWorkspaceTests(dir, entry, cache, workerCount, selected.moduleDirs()));
             }
             if (selected != null
                     && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
@@ -233,10 +263,22 @@ public final class TestCommand implements CliCommand {
         return argv;
     }
 
+    /** Absolute dirs of every workspace member (declaration order). */
+    static java.util.Set<Path> allWorkspaceModuleDirs(Path workspaceRoot, cc.jumpkick.model.JkBuild entry) {
+        java.util.LinkedHashSet<Path> dirs = new java.util.LinkedHashSet<>();
+        if (!entry.isWorkspaceRoot()) return dirs;
+        Path root = workspaceRoot.toAbsolutePath().normalize();
+        for (String m : entry.workspaceOpt().orElseThrow().modules()) {
+            if (m == null || m.isBlank()) continue;
+            dirs.add(root.resolve(m.strip()).normalize());
+        }
+        return dirs;
+    }
+
     /**
-     * Workspace selective tests: one engine {@code runTest} per selected module (only those dirs
-     * not the whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code
-     * --serial-tests} runs modules one at a time.
+     * Workspace tests: one engine {@code runTest} per selected module (only those dirs, not the
+     * whole graph). Default parallel (C2) with a {@code -j}-bounded pool; {@code --serial-tests}
+     * runs modules one at a time.
      *
      * <p>With {@code --output json}/{@code jsonl}, emits {@code workspace-start} / {@code
      * module-start} / {@code module-finish} / {@code workspace-finish} around each module's pipeline
