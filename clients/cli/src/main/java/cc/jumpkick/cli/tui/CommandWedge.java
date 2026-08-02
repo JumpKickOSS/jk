@@ -2,7 +2,6 @@
 package cc.jumpkick.cli.tui;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicBoolean;

@@ -145,8 +145,7 @@ public final class PipelineWedge {
         Theme t = Theme.active();
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         if (!t.isAnsi()) {
-            return plainWedge(
-                    Glyphs.CROSS_PLAIN, name, "job was cancelled" + (byUser ? " by user" : "") + took);
+            return plainWedge(Glyphs.CROSS_PLAIN, name, "job was cancelled" + (byUser ? " by user" : "") + took);
         }
         String body = "job was " + Theme.colorize("cancelled", t.warning()) + (byUser ? " by user" : "") + took;
         return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)

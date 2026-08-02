@@ -80,6 +80,18 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     /** JK-1373: true after the leading blank of the human chrome envelope was printed. */
     private boolean leadingBlankPrinted;
 
+    /**
+     * Plain ({@code --no-ansi}) multi-line progress: last printed 10% decade (0..9), or -1 before
+     * the mandatory 0% start line. 100% is only emitted as a done line on settle (JK-1379).
+     */
+    private int plainLastDecade = -1;
+
+    /** True after any plain working/progress line has been printed for this region. */
+    private boolean plainChromeStarted;
+
+    /** True when aggregate progress (den &gt; 0) drove plain chrome — settle uses 100% done. */
+    private boolean plainProgressMode;
+
     // simple mode
     private String label = "";
 
@@ -153,6 +165,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
+        } else if (animate) {
+            // Plain multi-line: mandatory start line (JK-1379).
+            cm.printPlainIndeterminate(true);
         }
         return cm;
     }
@@ -183,6 +198,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.flush();
             cm.startAnimator();
         }
+        // Plain pipeline: no start line until progress() or settle (message may not exist yet).
         return cm;
     }
 
@@ -463,6 +479,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             this.denominator = denominator;
             // Prefer the bar over the text-only solve label once we have a denominator.
             if (denominator > 0) this.solveLabel = "";
+            // Plain multi-line: emit 0% then each newly crossed 10% decade (JK-1379).
+            if (animate && !Theme.active().isAnsi() && denominator > 0) {
+                emitPlainProgressDecades();
+            }
         }
     }
 
@@ -591,12 +611,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             done = true;
             LiveRegion.clearActive(this);
             clearWindowTitle();
-            if (animate) {
+            if (animate && Theme.active().isAnsi()) {
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
                 out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 out.flush();
+            } else if (animate && !Theme.active().isAnsi()) {
+                // Plain: end multi-line chrome without a settle wedge (caller owns outcome).
+                printPlainDone();
             } else {
                 out.flush();
             }
@@ -634,6 +657,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 else freezeSpinnerLine();
                 out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
+            } else if (animate && !Theme.active().isAnsi()) {
+                // Plain multi-line: mandatory done line before the settle wedge (JK-1379).
+                printPlainDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
@@ -646,6 +672,119 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             out.println(line);
             out.flush();
         }
+    }
+
+    // --- plain multi-line chrome (JK-1379) ---------------------------------
+
+    /**
+     * Emit plain progress lines for every newly crossed 10% decade up to (and not past) 90%.
+     * Must hold {@link #lock}. First call always prints the mandatory 0% start line.
+     */
+    private void emitPlainProgressDecades() {
+        if (done || denominator <= 0) return;
+        plainProgressMode = true;
+        // Decade 0..9 while working; 100% only on settle as done.
+        long cappedNum = Math.min(numerator, denominator);
+        int decade = (int) Math.min(9, (cappedNum * 10) / denominator);
+        if (plainLastDecade < 0) {
+            out.println(plainProgressLine(0, false));
+            plainLastDecade = 0;
+            plainChromeStarted = true;
+            out.flush();
+        }
+        while (plainLastDecade < decade) {
+            plainLastDecade++;
+            out.println(plainProgressLine(plainLastDecade * 10, false));
+            out.flush();
+        }
+    }
+
+    /** Indeterminate plain start/heartbeat (simple mode open, or pipeline without progress). */
+    private void printPlainIndeterminate(boolean forceStart) {
+        synchronized (lock) {
+            if (done) return;
+            if (plainChromeStarted && !forceStart) return;
+            if (plainChromeStarted && plainProgressMode) return;
+            out.println(plainIndeterminateLine(false));
+            plainChromeStarted = true;
+            out.flush();
+        }
+    }
+
+    /** Mandatory plain done line — progress ends at 100%, spinner at {@code done.}. */
+    private void printPlainDone() {
+        if (!animate) return;
+        if (plainProgressMode) {
+            // Catch up any remaining decades so a fast finish still shows 0→…→90 then 100 done.
+            if (plainLastDecade < 0) {
+                out.println(plainProgressLine(0, false));
+                plainLastDecade = 0;
+                plainChromeStarted = true;
+            }
+            // Do not invent intermediate decades on settle if we never crossed them mid-run —
+            // only ensure 0% was printed, then 100% done.
+            out.println(plainProgressLine(100, true));
+            plainChromeStarted = true;
+            out.flush();
+            return;
+        }
+        if (plainChromeStarted || !pipelineMode) {
+            // Simple mode always had a start; pipeline without progress prints done only if started.
+            if (!plainChromeStarted) {
+                out.println(plainIndeterminateLine(false));
+            }
+            out.println(plainIndeterminateLine(true));
+            plainChromeStarted = true;
+            out.flush();
+        }
+    }
+
+    /**
+     * {@code " * Format > Examining source files - 10% - working..."} or {@code … - 100% - done.}.
+     */
+    static String plainProgressLine(String command, String message, int percent, boolean done) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - " + percent + "% - " + (done ? "done." : "working...");
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
+    }
+
+    private String plainProgressLine(int percent, boolean doneLine) {
+        return plainProgressLine(pipelineName(), plainWorkMessage(), percent, doneLine);
+    }
+
+    /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
+    static String plainIndeterminateLine(String command, String message, boolean done) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - " + (done ? "done." : "working...");
+        if (command == null || command.isEmpty()) {
+            return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        }
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+    }
+
+    private String plainIndeterminateLine(boolean doneLine) {
+        if (pipelineMode) {
+            return plainIndeterminateLine(pipelineName(), plainWorkMessage(), doneLine);
+        }
+        // Simple mode: the label is the whole message (no command chip name beyond label).
+        return plainIndeterminateLine(null, label, doneLine);
+    }
+
+    /** Best-effort work description for plain lines: solve label, active step, or pipeline name. */
+    private String plainWorkMessage() {
+        String sl = solveLabel;
+        if (sl != null && !sl.isEmpty()) return sl;
+        for (Row r : rows.values()) {
+            if (r.state == RowState.ACTIVE) {
+                if (r.message != null && !r.message.isEmpty()) return r.message;
+                if (r.step != null && !r.step.isEmpty()) return r.step;
+            }
+        }
+        for (Row r : rows.values()) {
+            if (r.step != null && !r.step.isEmpty()) return r.step;
+        }
+        String n = pipelineName();
+        return n == null || n.isEmpty() ? "working" : n;
     }
 
     /**
@@ -682,18 +821,26 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             clearWindowTitle();
             if (!animate) return false;
             if (pipelineMode) {
-                wipeRegion();
-                out.print(Ansi.taskbarClear());
-                out.print(Ansi.SHOW_CURSOR);
+                if (Theme.active().isAnsi()) {
+                    wipeRegion();
+                    out.print(Ansi.taskbarClear());
+                    out.print(Ansi.SHOW_CURSOR);
+                } else {
+                    printPlainDone();
+                }
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
                 out.println(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
                 out.flush();
                 return true;
             }
-            freezeSpinnerLine();
-            out.print(Ansi.taskbarClear());
-            out.print(Ansi.SHOW_CURSOR);
+            if (Theme.active().isAnsi()) {
+                freezeSpinnerLine();
+                out.print(Ansi.taskbarClear());
+                out.print(Ansi.SHOW_CURSOR);
+            } else {
+                printPlainDone();
+            }
             out.flush();
             return false;
         }
@@ -712,9 +859,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 out.flush();
                 return;
             }
-            wipeRegion();
-            out.print(Ansi.taskbarClear());
-            out.print(Ansi.SHOW_CURSOR);
+            if (Theme.active().isAnsi()) {
+                wipeRegion();
+                out.print(Ansi.taskbarClear());
+                out.print(Ansi.SHOW_CURSOR);
+            } else {
+                printPlainDone();
+            }
             out.flush();
         }
     }
@@ -1453,8 +1604,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (remaining <= 0) {
                 h.append(Theme.colorize("+" + fmtClock(-remaining), t.warning()));
             } else {
-                h.append(Theme.colorize("ETA ", dim.italic()))
-                        .append(Theme.colorize(fmtClock(remaining), t.blue()));
+                h.append(Theme.colorize("ETA ", dim.italic())).append(Theme.colorize(fmtClock(remaining), t.blue()));
             }
         } else {
             h.append(Theme.colorize("+" + fmtClock(elapsedMillis), t.warning()));

@@ -4,9 +4,15 @@ package cc.jumpkick.cli.tui;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class SpinnerTest {
@@ -35,7 +41,8 @@ class SpinnerTest {
         String raw = buf.toString(StandardCharsets.UTF_8);
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             // Plain: single static frame, no multi-frame thrash.
-            assertThat(countOccurrences(TestAnsi.strip(raw), Glyphs.PULSE_PLAIN)).isEqualTo(1);
+            assertThat(countOccurrences(TestAnsi.strip(raw), Glyphs.PULSE_PLAIN))
+                    .isEqualTo(1);
             return;
         }
         // Same solid circle every frame; only ANSI FG changes.
@@ -209,17 +216,52 @@ class SpinnerTest {
         if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
         } else {
-            assertThat(painted).isEqualTo(" * Status > Analyzing status...");
+            // Plain multi-line working frame (JK-1379).
+            assertThat(painted.trim()).isEqualTo("* Status > Analyzing status... - working...");
         }
         buf.reset();
         s.close();
         String closed = buf.toString(StandardCharsets.UTF_8);
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
-            assertThat(closed).contains("\n");
+            assertThat(TestAnsi.strip(closed).trim())
+                    .isEqualTo("* Status > Analyzing status... - done.");
             return;
         }
         assertThat(closed).contains("\r\033[K"); // clear current line on close
         assertThat(closed).contains("\033[?25h"); // show cursor
+    }
+
+    @Test
+    void plain_working_and_done_line_shapes() {
+        assertThat(Spinner.plainWorkingLine("Format", "Examining source files"))
+                .isEqualTo(" * Format > Examining source files - working...");
+        assertThat(Spinner.plainDoneLine("Format", "Examining source files"))
+                .isEqualTo(" * Format > Examining source files - done.");
+        assertThat(Spinner.plainWorkingLine(null, "Cleaning"))
+                .isEqualTo(" * Cleaning - working...");
+    }
+
+    @Test
+    void plain_heartbeat_only_after_60s() throws Exception {
+        withNoAnsi(() -> {
+            var buf = new ByteArrayOutputStream();
+            var clock = new AtomicLong(1_000L);
+            var s = Spinner.wedge(stream(buf), "Format", "Examining");
+            s.clockForTests(clock::get);
+            s.step(); // start
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(1);
+            clock.addAndGet(30_000L);
+            s.step(); // still within 60s — no second line
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(1);
+            clock.addAndGet(30_000L); // total +60s
+            s.step();
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(2);
+            s.close();
+            assertThat(buf.toString(StandardCharsets.UTF_8)).contains("done.");
+            assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\u001B[");
+            assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain(Spinner.PULSE_GLYPH);
+            return null;
+        });
     }
 
     private static PrintStream stream(ByteArrayOutputStream buf) {
@@ -234,5 +276,26 @@ class SpinnerTest {
             idx += needle.length();
         }
         return count;
+    }
+
+    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
+        JkConfig noAnsi = new JkConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty());
+        Session original = SessionContext.current();
+        try {
+            return SessionContext.where(original.withConfig(noAnsi), body::get);
+        } finally {
+            SessionContext.install(original);
+        }
     }
 }

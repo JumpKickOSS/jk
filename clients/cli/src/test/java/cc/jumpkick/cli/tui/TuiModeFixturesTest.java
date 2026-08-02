@@ -88,6 +88,17 @@ class TuiModeFixturesTest {
         assertThat(CommandWedge.fail("Add", "y")).isNotBlank();
     }
 
+    @Test
+    void format_settle_plain_shape_matches_wedge_and_took() throws Exception {
+        withConfig(noAnsiConfig(), () -> {
+            String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(547));
+            String settle = CommandWedge.ok("Format", "Already formatted " + took, false);
+            assertThat(settle).isEqualTo(" + Format > Already formatted - took 547ms");
+            assertThat(settle).doesNotContain(CSI).doesNotContain(Glyphs.CHECK);
+            return null;
+        });
+    }
+
     private static JkConfig noAnsiConfig() {
         return new JkConfig(
                 Optional.empty(),

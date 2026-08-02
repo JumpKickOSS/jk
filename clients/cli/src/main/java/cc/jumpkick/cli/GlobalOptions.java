@@ -152,8 +152,9 @@ public final class GlobalOptions {
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
         g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
-        // --no-ansi implies no progress (same as applyCliOverrides).
-        g.noProgress = in.isSet("no-progress") || g.noAnsi || cfg.noProgressOr(false);
+        // Progress is independent of --no-ansi: plain multi-line chrome (JK-1379) still runs
+        // unless --no-progress / quiet / json mute it.
+        g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false);
         g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false);
         // Notify: --no-notify > --notify > config/env (default AUTO).
         if (in.isSet("no-notify")) {

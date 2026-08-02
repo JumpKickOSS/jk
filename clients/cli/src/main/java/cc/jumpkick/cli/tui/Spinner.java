@@ -109,17 +109,28 @@ public final class Spinner implements AutoCloseable {
 
     private final boolean nerdfont;
 
+    /** Plain-mode still-working heartbeat interval (JK-1379). */
+    public static final long PLAIN_HEARTBEAT_MS = 60_000L;
+
     private volatile String message;
     private int frame = 0;
     private String lastMessage = "";
     private volatile boolean closed = false;
     private Thread animator;
+    private boolean plainStarted;
+    private long plainLastBeatMs;
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
 
     public static Spinner show(PrintStream out, String message) {
         CommandWedge.envelopeStart(out); // open spinner is often first chrome for the command
         Spinner s = new Spinner(out, message, null, false);
         s.start();
         return s;
+    }
+
+    /** Test seam: wall clock for plain heartbeat cadence. */
+    void clockForTests(java.util.function.LongSupplier clock) {
+        if (clock != null) this.clock = clock;
     }
 
     /**
@@ -162,10 +173,12 @@ public final class Spinner implements AutoCloseable {
 
     private void start() {
         if (silent) return;
-        // Plain / --no-ansi: no animation, no cursor hide, no OSC — one static frame only
-        // (JK-1376). Callers still close() and print a settled wedge.
+        // Plain / --no-ansi: multi-line start + optional 60s heartbeats + done on close (JK-1379).
         if (!Theme.active().isAnsi()) {
-            step();
+            printPlainWorking(true);
+            animator = new Thread(this::plainHeartbeatLoop, "jk-spinner-plain");
+            animator.setDaemon(true);
+            animator.start();
             return;
         }
         out.print(HIDE_CURSOR);
@@ -187,6 +200,18 @@ public final class Spinner implements AutoCloseable {
         }
     }
 
+    private void plainHeartbeatLoop() {
+        while (!closed) {
+            try {
+                Thread.sleep(Math.min(FRAME_MS * 10, 5_000L));
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (closed) return;
+            printPlainWorking(false);
+        }
+    }
+
     public void update(String message) {
         this.message = message == null ? "" : message;
     }
@@ -196,13 +221,7 @@ public final class Spinner implements AutoCloseable {
             if (closed || silent) return;
             String currentMsg = message;
             if (!Theme.active().isAnsi()) {
-                // ASCII static frame — no CR thrash, no OSC (JK-1376).
-                if (wedgeCommand != null) {
-                    out.print(renderWedgeFrame(0, wedgeCommand, currentMsg, false, frameColors));
-                } else {
-                    out.print(Glyphs.PULSE_PLAIN + " " + currentMsg);
-                }
-                out.flush();
+                printPlainWorking(false);
                 lastMessage = currentMsg;
                 return;
             }
@@ -222,6 +241,42 @@ public final class Spinner implements AutoCloseable {
             lastMessage = currentMsg;
             frame = (frame + 1) % PULSE_FRAMES;
         }
+    }
+
+    /** Plain multi-line working frame (start or 60s heartbeat). */
+    private void printPlainWorking(boolean force) {
+        synchronized (lock) {
+            if (closed || silent) return;
+            long now = clock.getAsLong();
+            if (!force && plainStarted && now - plainLastBeatMs < PLAIN_HEARTBEAT_MS) return;
+            plainStarted = true;
+            plainLastBeatMs = now;
+            out.println(plainWorkingLine(wedgeCommand, message));
+            out.flush();
+        }
+    }
+
+    private void printPlainDone() {
+        synchronized (lock) {
+            if (silent) return;
+            out.println(plainDoneLine(wedgeCommand, message));
+            out.flush();
+        }
+    }
+
+    /** {@code " * Status > Message - working..."} (open spinner omits command when null). */
+    static String plainWorkingLine(String command, String message) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - working...";
+        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+    }
+
+    static String plainDoneLine(String command, String message) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - done.";
+        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
     }
 
     /**
@@ -260,10 +315,7 @@ public final class Spinner implements AutoCloseable {
         if (silent) return;
         synchronized (lock) {
             if (!Theme.active().isAnsi()) {
-                // Static plain frame had no cursor hide / live line — just a newline so the
-                // settled wedge lands below.
-                out.println();
-                out.flush();
+                printPlainDone();
                 return;
             }
             out.print(CLEAR_LINE);

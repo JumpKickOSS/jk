@@ -286,10 +286,9 @@ class CommandManagerTest {
         assertThat(header).contains("ETA 56s");
         assertThat(header).doesNotContain("2/8");
         // Count-up has no ETA prefix.
-        String cold = TestAnsi.strip(
-                CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
-                        .renderPipelineLines(120, 12_000)
-                        .get(0));
+        String cold = TestAnsi.strip(CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
+                .renderPipelineLines(120, 12_000)
+                .get(0));
         assertThat(cold).contains("+12s");
         assertThat(cold).doesNotContain("ETA ");
     }
@@ -346,6 +345,54 @@ class CommandManagerTest {
                     cm.finishPipelineSuccess("ok", List.of());
                     assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
                 });
+    }
+
+    @Test
+    void plain_progress_emits_decades_then_100_done() {
+        var noAnsi = new cc.jumpkick.config.JkConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty());
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = CommandManager.pipeline(stream(buf), "Format", true);
+                    cm.addStepLabeled("", "fmt", "Examining source files");
+                    cm.stepRunning("", "fmt");
+                    cm.progress(0, 100);
+                    cm.progress(15, 100); // crosses 10%
+                    cm.progress(25, 100); // crosses 20%
+                    cm.progress(100, 100); // still working chrome max 90% mid-run
+                    cm.finishPipelineSuccess("Already formatted - took 547ms", List.of());
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).doesNotContain("\u001B[");
+                    assertThat(out).doesNotContain(Spinner.PULSE_GLYPH);
+                    assertThat(out).contains(" * Format > Examining source files - 0% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 10% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 20% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 100% - done.");
+                    assertThat(out).contains(" + Format > Already formatted - took 547ms");
+                    // No mid-run 100% working line — 100% is only the done line.
+                    assertThat(out).doesNotContain("100% - working...");
+                });
+    }
+
+    @Test
+    void plain_progress_line_helper_shape() {
+        assertThat(CommandManager.plainProgressLine("Format", "Examining source files", 0, false))
+                .isEqualTo(" * Format > Examining source files - 0% - working...");
+        assertThat(CommandManager.plainProgressLine("Format", "Examining source files", 100, true))
+                .isEqualTo(" * Format > Examining source files - 100% - done.");
+        assertThat(CommandManager.plainIndeterminateLine("Format", "Examining source files", false))
+                .isEqualTo(" * Format > Examining source files - working...");
     }
 
     @Test

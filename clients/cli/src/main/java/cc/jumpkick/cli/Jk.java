@@ -201,14 +201,10 @@ public final class Jk {
                 case "-F", "--force" -> force = java.util.Optional.of(true);
                 case "-r", "--redo", "--rebuild" -> rebuild = java.util.Optional.of(true);
                 case "--no-progress" -> noProgress = java.util.Optional.of(true);
-                // --no-ansi: strip ALL ANSI (color + bold/italic) and disable animations.
-                // Sets noAnsi=true (→ isAnsi=false → colorize returns plain text) and
-                // noProgress=true (→ QUIET mode, no cursor-movement redraws).
+                // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
+                // multi-line plain frames (JK-1379) — use --no-progress to silence chrome entirely.
                 // Distinct from --color never which strips color but preserves text attributes.
-                case "--no-ansi" -> {
-                    noAnsi = java.util.Optional.of(true);
-                    noProgress = java.util.Optional.of(true);
-                }
+                case "--no-ansi" -> noAnsi = java.util.Optional.of(true);
                 case "--no-osc" -> noOsc = java.util.Optional.of(true);
                 case "--notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.ALWAYS);
                 case "--no-notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.NEVER);
