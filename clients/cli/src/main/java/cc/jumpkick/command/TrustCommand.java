@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -78,7 +79,8 @@ public final class TrustCommand extends GroupCommand {
             }
             boolean added = TrustedSources.load(stateDir(in)).add(prefix);
             if (!GlobalOptions.from(in).outputIsJson()) {
-                CliOutput.out(added ? "Trusted " + prefix : prefix + " is already trusted");
+                if (added) CommandWedge.printOk("Trust", "Trusted " + prefix);
+                else CommandWedge.printOk("Trust", prefix + " is already trusted");
             }
             return 0;
         }
@@ -115,7 +117,8 @@ public final class TrustCommand extends GroupCommand {
             }
             boolean added = TrustedPlugins.load(stateDir(in)).add(coordinate);
             if (!GlobalOptions.from(in).outputIsJson()) {
-                CliOutput.out(
+                CommandWedge.printOk(
+                        "Trust",
                         added
                                 ? "Trusted plugin " + coordinate + " — its build code may now run in worker JVMs"
                                 : coordinate + " is already trusted");
@@ -186,7 +189,7 @@ public final class TrustCommand extends GroupCommand {
                 return Exit.USAGE;
             }
             if (!GlobalOptions.from(in).outputIsJson()) {
-                CliOutput.out("Removed " + prefix);
+                CommandWedge.printOk("Trust", "Removed " + prefix);
             }
             return 0;
         }
@@ -233,7 +236,9 @@ public final class TrustCommand extends GroupCommand {
                 if (store.add(p)) added++;
             }
             if (!GlobalOptions.from(in).outputIsJson()) {
-                CliOutput.out("Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
+                CommandWedge.printOk(
+                        "Trust",
+                        "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
             }
             return 0;
         }

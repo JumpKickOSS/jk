@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli.tui;
 
+import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.config.GlobalConfig;
 import java.io.PrintStream;
@@ -22,6 +23,14 @@ import java.io.PrintStream;
  * <tr><td>verbose</td><td>{@code -v}</td><td>same wedge + extra post-wedge detail (caller)</td></tr>
  * <tr><td>json</td><td>{@code --output json}</td><td>no wedge — structured events only</td></tr>
  * </table>
+ *
+ * <h2>Blank-line envelope (JK-1373)</h2>
+ *
+ * <p>Human wedge-bearing commands print exactly one blank line before the first chrome line and
+ * one blank line after the last chrome line. Use {@link #printOk}/{@link #printFail} for one-shot
+ * settles, or {@link #envelopeStart}/{@link #envelopeEnd} around multi-line chrome. Pipeline
+ * {@link CommandManager} owns the envelope for live progress + settle. Script-mode commands
+ * (paths, tokens, shell hooks) must not use the envelope.
  *
  * <p>Colors: blue/work chip for {@link #working}, green for {@link #ok}, red for {@link #fail}.
  * Subprocess streams go <em>before</em> the wedge; engine detail after (or details.jsonl).
@@ -88,5 +97,46 @@ public final class CommandWedge {
 
     public static String fail(String command, String message, boolean nerdfont) {
         return PipelineWedge.failureLineCustom(command, nerdfont, message);
+    }
+
+    /**
+     * Leading blank of the human chrome envelope. Call once before the first wedge / table / tree
+     * line. No-op under machine JSON modes is the caller's responsibility.
+     */
+    public static void envelopeStart() {
+        CliOutput.out();
+    }
+
+    /** Trailing blank of the human chrome envelope. Call once after the last chrome line. */
+    public static void envelopeEnd() {
+        CliOutput.out();
+    }
+
+    /**
+     * Print a success settle with the blank-line envelope on stdout: blank, {@link #ok}, blank.
+     * Prefer this for one-shot commands over raw {@link CliOutput#out} of a check glyph.
+     */
+    public static void printOk(String command, String message) {
+        envelopeStart();
+        CliOutput.out(ok(command, message));
+        envelopeEnd();
+    }
+
+    /**
+     * Print a failure settle with the blank-line envelope on stderr: blank, {@link #fail}, blank.
+     */
+    public static void printFail(String command, String message) {
+        CliOutput.err();
+        CliOutput.err(fail(command, message));
+        CliOutput.err();
+    }
+
+    /**
+     * Print a failure settle with "Failed to …" phrasing and the stderr blank-line envelope.
+     */
+    public static void printFailedTo(String command, String tail) {
+        CliOutput.err();
+        CliOutput.err(failedTo(command, tail));
+        CliOutput.err();
     }
 }

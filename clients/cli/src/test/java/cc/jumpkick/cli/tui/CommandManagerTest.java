@@ -150,6 +150,18 @@ class CommandManagerTest {
     }
 
     @Test
+    void settle_prints_leading_and_trailing_blank_envelope() {
+        var buf = new ByteArrayOutputStream();
+        var cm = CommandManager.pipeline(stream(buf), "Build", false);
+        cm.finishSuccess("ok took 1s");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        // Leading blank at construct + trailing blank after settle (JK-1373).
+        assertThat(out).startsWith("\n");
+        assertThat(out).endsWith("\n\n");
+        assertThat(out).contains("ok took 1s");
+    }
+
+    @Test
     void header_shows_a_wallclock_countdown_from_the_estimate() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;

@@ -77,6 +77,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private int frame;
     private int linesDrawn; // pipeline mode: lines in the live region
     private List<String> lastLines = List.of(); // pipeline mode: last painted lines, for diffing
+    /** JK-1373: true after the leading blank of the human chrome envelope was printed. */
+    private boolean leadingBlankPrinted;
 
     // simple mode
     private String label = "";
@@ -146,7 +148,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         CommandManager cm = new CommandManager(out, animate, false, DEFAULT_WIDTH);
         cm.label = command;
         LiveRegion.setActive(cm);
-        if (animate) {
+        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
@@ -174,7 +177,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         cm.name = name;
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);
-        if (animate) {
+        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
@@ -614,7 +618,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             done = true;
             LiveRegion.clearActive(this);
             clearWindowTitle();
-            if (animate) {
+            if (animate && Theme.active().isAnsi()) {
                 // Simple mode keeps the settled spinner line and prints the
                 // result below it; pipeline mode replaces the whole region.
                 if (pipelineMode) wipeRegion();
@@ -629,9 +633,18 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 for (String s : above) out.println(s);
                 out.println();
             }
+            ensureLeadingBlank(); // quiet / late settle still gets the envelope
             out.println(line);
+            out.println(); // JK-1373: trailing blank after settle chrome
             out.flush();
         }
+    }
+
+    /** Print the leading blank of the human chrome envelope once (JK-1373). */
+    private void ensureLeadingBlank() {
+        if (leadingBlankPrinted) return;
+        leadingBlankPrinted = true;
+        out.println();
     }
 
     /** Cancel line text (shown by {@link GlobalCancel} when the region did not paint itself). */

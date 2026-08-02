@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -65,7 +66,7 @@ public final class JdkUpdateShellCommand implements CliCommand {
         if (Files.exists(rcFile)) {
             String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
             if (existing.contains(MARKER) || existing.contains(addition)) {
-                CliOutput.out(rcFile + ": already on PATH");
+                CommandWedge.printOk("JDK", rcFile + ": already on PATH");
                 return 0;
             }
         } else {
@@ -77,7 +78,7 @@ public final class JdkUpdateShellCommand implements CliCommand {
                 StandardCharsets.UTF_8,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND);
-        CliOutput.out("Updated " + rcFile);
+        CommandWedge.printOk("JDK", "Updated " + rcFile);
         CliOutput.out("Restart your shell or run: source " + rcFile);
         return 0;
     }

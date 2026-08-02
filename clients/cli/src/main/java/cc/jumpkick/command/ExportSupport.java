@@ -6,7 +6,7 @@ import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.engine.protocol.GeneratedFiles;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.util.JkDirs;
@@ -56,12 +56,14 @@ final class ExportSupport {
         for (String path : files.paths()) {
             if (!canWrite(Path.of(path), force, cmd)) return Exit.CANT_CREATE;
         }
+        CommandWedge.envelopeStart();
         for (int i = 0; i < files.paths().size(); i++) {
             Path path = Path.of(files.paths().get(i));
             if (path.getParent() != null) Files.createDirectories(path.getParent());
             Files.writeString(path, files.contents().get(i), StandardCharsets.UTF_8);
             wrote(path);
         }
+        CommandWedge.envelopeEnd();
         int warnings = printNotes(files);
         if (warnings > 0) {
             CliOutput.out("  (" + warnings + " fidelity note" + (warnings == 1 ? "" : "s") + ")");
@@ -96,6 +98,6 @@ final class ExportSupport {
     }
 
     static void wrote(Path path) {
-        CliOutput.out(Theme.colorize(Glyphs.CHECK, Theme.active().success()) + " Wrote " + PathDisplay.styled(path));
+        CliOutput.out(CommandWedge.ok("Export", "Wrote " + PathDisplay.styled(path)));
     }
 }

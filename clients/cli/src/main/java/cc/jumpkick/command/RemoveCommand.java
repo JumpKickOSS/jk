@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -93,13 +93,14 @@ public final class RemoveCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Remove", e.getMessage()));
             return 1;
         }
-        CliOutput.out(Theme.colorize(Glyphs.CROSS, Theme.active().darkGray())
-                + " Removed "
-                + Theme.colorize(name, Theme.active().activeStep())
-                + " from "
-                + Theme.colorize("dependencies", Theme.active().cyan())
-                + "."
-                + Theme.colorize(scope.canonical(), Theme.active().cyan()));
+        CommandWedge.printOk(
+                "Remove",
+                "Removed "
+                        + Theme.colorize(name, Theme.active().activeStep())
+                        + " from "
+                        + Theme.colorize("dependencies", Theme.active().cyan())
+                        + "."
+                        + Theme.colorize(scope.canonical(), Theme.active().cyan()));
         return 0;
     }
 

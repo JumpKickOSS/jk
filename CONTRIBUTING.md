@@ -193,7 +193,8 @@ with a clear message. Use a separate worktree for true parallel builds.
 Requires `jk` on PATH. No engine jars in the IDE process. See `clients/vscode/README.md` and
 `clients/intellij/README.md`.
 See [docs/architecture.md](docs/architecture.md) for layering and process model, and
-[docs/guide.md](docs/guide.md) for product behavior.
+[docs/guide.md](docs/guide.md) for product behavior. CLI human chrome rules (CommandWedge,
+blank envelope, script-mode allowlist, nerd/ansi/plain): [docs/tui.md](docs/tui.md).
 
 ## Docs and planning
 

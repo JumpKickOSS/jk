@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.credential.RepoCredential;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
@@ -76,8 +77,13 @@ public final class RepoLoginCommand implements CliCommand {
         store(credentialsDir).write(id, cred);
 
         if (!global.quiet) {
-            CliOutput.out(
-                    "Stored " + (username != null ? "basic" : "token") + " credentials for repository '" + id + "'.");
+            CommandWedge.printOk(
+                    "Login",
+                    "Stored "
+                            + (username != null ? "basic" : "token")
+                            + " credentials for repository '"
+                            + id
+                            + "'.");
         }
         return 0;
     }

@@ -17,7 +17,12 @@ class SpinnerTest {
         var s = new Spinner(stream(buf), "Working");
         s.step();
         String visible = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
+        // ANSI: ● Working; plain / CI: * Working (JK-1376)
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(visible).contains(Spinner.PULSE_GLYPH + " Working");
+        } else {
+            assertThat(visible).contains(Glyphs.PULSE_PLAIN + " Working");
+        }
     }
 
     @Test
@@ -28,6 +33,11 @@ class SpinnerTest {
             s.step();
         }
         String raw = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            // Plain: single static frame, no multi-frame thrash.
+            assertThat(countOccurrences(TestAnsi.strip(raw), Glyphs.PULSE_PLAIN)).isEqualTo(1);
+            return;
+        }
         // Same solid circle every frame; only ANSI FG changes.
         assertThat(countOccurrences(raw, Spinner.PULSE_GLYPH)).isEqualTo(Spinner.PULSE_FRAMES);
         assertThat(TestAnsi.strip(raw)).doesNotContain("·");
@@ -47,6 +57,10 @@ class SpinnerTest {
 
     @Test
     void shrinking_message_pads_only_the_removed_tail() {
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            // Plain mode does not pad tails (static single frame).
+            return;
+        }
         String longMsg = "downloading temurin-25.tar.gz";
         String shortMsg = "done";
         int expectedShrink = longMsg.length() - shortMsg.length();
@@ -117,6 +131,11 @@ class SpinnerTest {
         buf.reset();
         s.close();
         String out = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            // Plain: newline only (no cursor hide / clear sequence).
+            assertThat(out).contains("\n");
+            return;
+        }
         assertThat(out).contains("\r\033[K"); // clear current line
         assertThat(out).contains("\033[?25h"); // show cursor
     }
@@ -128,6 +147,10 @@ class SpinnerTest {
             Thread.yield();
         }
         String out = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(out).doesNotContain("\033]9;4;3\007");
+            return;
+        }
         assertThat(out).contains("\033]9;4;3\007"); // indeterminate
         assertThat(out).contains("\033]9;4;0\007"); // cleared on close
         assertThat(out.indexOf("\033]9;4;3\007")).isLessThan(out.indexOf("\033]9;4;0\007"));
@@ -141,6 +164,10 @@ class SpinnerTest {
         s.step();
         s.step();
         String out = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(countOccurrences(out, "\033]9;4;3\007")).isZero();
+            return;
+        }
         long count = countOccurrences(out, "\033]9;4;3\007");
         assertThat(count).isEqualTo(3);
     }
@@ -153,6 +180,9 @@ class SpinnerTest {
         buf.reset();
         s.close();
         String out = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            return;
+        }
         assertThat(out.indexOf("\033]9;4;0\007")).isLessThan(out.indexOf("\033[?25h"));
     }
 
@@ -174,12 +204,20 @@ class SpinnerTest {
         var s = Spinner.wedge(stream(buf), "Status", "Analyzing status...");
         s.step();
         String painted = TestAnsi.strip(buf.toString(StandardCharsets.UTF_8));
-        assertThat(painted).contains(Spinner.PULSE_GLYPH);
         assertThat(painted).contains("Status");
         assertThat(painted).contains("Analyzing status...");
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(painted).contains(Spinner.PULSE_GLYPH);
+        } else {
+            assertThat(painted).startsWith("* Status:");
+        }
         buf.reset();
         s.close();
         String closed = buf.toString(StandardCharsets.UTF_8);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(closed).contains("\n");
+            return;
+        }
         assertThat(closed).contains("\r\033[K"); // clear current line on close
         assertThat(closed).contains("\033[?25h"); // show cursor
     }

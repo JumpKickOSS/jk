@@ -159,6 +159,12 @@ public final class Spinner implements AutoCloseable {
 
     private void start() {
         if (silent) return;
+        // Plain / --no-ansi: no animation, no cursor hide, no OSC — one static frame only
+        // (JK-1376). Callers still close() and print a settled wedge.
+        if (!Theme.active().isAnsi()) {
+            step();
+            return;
+        }
         out.print(HIDE_CURSOR);
         out.print(oscIndeterminate());
         out.flush();
@@ -186,6 +192,17 @@ public final class Spinner implements AutoCloseable {
         synchronized (lock) {
             if (closed || silent) return;
             String currentMsg = message;
+            if (!Theme.active().isAnsi()) {
+                // ASCII static frame — no CR thrash, no OSC (JK-1376).
+                if (wedgeCommand != null) {
+                    out.print(renderWedgeFrame(0, wedgeCommand, currentMsg, false, frameColors));
+                } else {
+                    out.print(Glyphs.PULSE_PLAIN + " " + currentMsg);
+                }
+                out.flush();
+                lastMessage = currentMsg;
+                return;
+            }
             out.print(oscIndeterminate());
             out.print("\r");
             if (wedgeCommand != null) {
@@ -233,6 +250,13 @@ public final class Spinner implements AutoCloseable {
         if (animator != null) animator.interrupt();
         if (silent) return;
         synchronized (lock) {
+            if (!Theme.active().isAnsi()) {
+                // Static plain frame had no cursor hide / live line — just a newline so the
+                // settled wedge lands below.
+                out.println();
+                out.flush();
+                return;
+            }
             out.print(CLEAR_LINE);
             out.print(oscClear());
             out.print(SHOW_CURSOR);
