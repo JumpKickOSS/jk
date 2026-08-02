@@ -574,15 +574,16 @@ elapsed time is ≥ 1 minute; `always`/`true` always notifies; `never`/`false` n
 `--output json`/`jsonl`) into the project run directory:
 
 ```text
-~/.jk/state/builds/projects/<key>/runs/<run-id>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
-Alongside `record.json` and `metrics.toml` for that run. One JSON object per line (`schema: 1`),
-appended as events arrive — safe to `tail -F` mid-run. Includes **jid**, **buildNumber**,
-**historyId**, and **etaMs** (from engine `job-start`) so an agent can diagnose the run from this
-file alone. Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
-`session-start`, a `job` meta line after admit, and ends with `session-finish`. With `-v` /
-`--verbose`, jk prints `Details: <path>` when the path is known.
+Alongside `record.json` and `metrics.toml` for that run (directory name is the project build
+number, e.g. `27`). One JSON object per line (`schema: 1`),
+appended as events arrive — safe to `tail -F` mid-run. Includes **jid** (cancel handle),
+**buildNumber**, and **etaMs** when known (from engine `job-start`) so an agent can diagnose
+the run from this file alone. Lines carry an aggregate `progress` percent (0–100) matching the
+human bar. Opens with `session-start`, a `job` meta line after admit, and ends with
+`session-finish`. With `-v` / `--verbose`, jk prints `Details: <path>` when the path is known.
 
 Writing is best-effort: a missing project, full disk, or permission error never fails the
 user command. Disable with `JK_CLI_DETAILS=off` (or `0`). See [machine-output.md](machine-output.md)

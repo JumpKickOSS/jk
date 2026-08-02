@@ -37,12 +37,13 @@ does **not** mint a second number. The journal and SSE `request-start` carry the
 
 ## Durable in-flight
 
-At admit, when history is enabled, `BuildJournal.begin` writes `record.json` under
-`projects/<key>/runs/<id>/` with `running: true` and the start-time `buildNumber`. CLI
-`details.jsonl` binds to the same run dir from `job-start` (`historyId` / `detailsPath`).
+At admit, when history is enabled, `BuildJournal.begin` writes under
+`projects/<key>/runs/<buildNumber>/` with `running: true`. `record.json` carries a UTC timestamp
+as `id` (when the run started) and the numeric `buildNumber`. CLI `details.jsonl` binds to that
+run dir from `job-start` (`buildNumber` + `detailsPath`) — no separate history id on the wire.
 
-On finish, `complete` rewrites the **same** entry id with the finished record (`running: false`)
-and `metrics.toml`, then requests `MetricsHarvest`.
+On finish, `complete` rewrites the **same** run directory with the finished record
+(`running: false`) and `metrics.toml`, then requests `MetricsHarvest`.
 
 `/api/history` therefore lists in-flight runs; the web client `seedFromHistory` materializes
 running cards so a refresh/new tab still shows them. SSE reconciles by `buildNumber` + `dir`.

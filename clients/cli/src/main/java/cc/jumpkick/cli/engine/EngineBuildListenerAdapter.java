@@ -50,10 +50,9 @@ final class EngineBuildListenerAdapter {
         if (s == null || jobStartLine == null) return;
         long jid = Jsonl.longValue(jobStartLine, "jid", Jsonl.longValue(jobStartLine, "requestId", -1));
         long buildNumber = Jsonl.longValue(jobStartLine, "buildNumber", 0);
-        String historyId = Jsonl.str(jobStartLine, "historyId");
         String detailsPath = Jsonl.str(jobStartLine, "detailsPath");
         long etaMs = Jsonl.longValue(jobStartLine, "etaMs", -1);
-        s.bindJob(jid, buildNumber, historyId, detailsPath, etaMs);
+        s.bindJob(jid, buildNumber, detailsPath, etaMs);
     }
 
     /** One module's identity/sizing, accumulated from the {@code plan-module}/{@code plan-step} burst. */

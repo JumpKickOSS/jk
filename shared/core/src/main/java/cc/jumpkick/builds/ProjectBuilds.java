@@ -8,14 +8,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
@@ -29,14 +25,14 @@ import java.util.stream.Stream;
  *     identity.toml
  *     run-number.txt
  *     project-metrics.toml
- *     runs/&lt;run-id&gt;/
+ *     runs/&lt;build-number&gt;/
  *       record.json
  *       details.jsonl
  *       metrics.toml
  * </pre>
  *
- * <p>Key = SHA-256 of {@code coord + "\\0" + absolute normalized path}. No backward compat with
- * legacy journal/ or metrics.json layouts.
+ * <p>Key = SHA-256 of {@code coord + "\\0" + absolute normalized path}. Run directories are the
+ * plain build number (e.g. {@code 27}), not a timestamp. No backward compat with legacy layouts.
  */
 public final class ProjectBuilds {
 
@@ -49,8 +45,6 @@ public final class ProjectBuilds {
     public static final String DETAILS = "details.jsonl";
     public static final String METRICS = "metrics.toml";
 
-    private static final DateTimeFormatter RUN_TS =
-            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS").withZone(ZoneOffset.UTC);
     private static final ReentrantLock RUN_NUMBER_LOCK = new ReentrantLock();
 
     private ProjectBuilds() {}
@@ -106,24 +100,40 @@ public final class ProjectBuilds {
         return projectsRoot(buildsRoot).resolve(key);
     }
 
+    /** Directory name for a build number ({@code 27}, not zero-padded). */
+    public static String runDirName(long buildNumber) {
+        return Long.toString(Math.max(0, buildNumber));
+    }
+
+    /** Run directory for this project + build number (may not exist yet). */
+    public static Path runDir(Path projectHome, long buildNumber) {
+        return projectHome.resolve(RUNS).resolve(runDirName(buildNumber));
+    }
+
+    public static Path runDir(Path buildsRoot, String coord, Path projectDir, long buildNumber) {
+        return runDir(projectHome(buildsRoot, coord, projectDir), buildNumber);
+    }
+
     /**
-     * Ensure project home exists, write identity, allocate the next run number, create
-     * {@code runs/<id>/}. Returns the run directory.
+     * Ensure project home exists, write identity, allocate the next build number, create
+     * {@code runs/<build-number>/}.
      */
     public static RunDir openRun(String coord, Path projectDir) throws IOException {
         return openRun(buildsRoot(), coord, projectDir);
     }
 
     public static RunDir openRun(Path buildsRoot, String coord, Path projectDir) throws IOException {
-        Path abs = projectDir == null ? Path.of(".").toAbsolutePath().normalize() : projectDir.toAbsolutePath().normalize();
+        Path abs = projectDir == null
+                ? Path.of(".").toAbsolutePath().normalize()
+                : projectDir.toAbsolutePath().normalize();
         Path home = projectHome(buildsRoot, coord, abs);
         Files.createDirectories(home.resolve(RUNS));
         writeIdentity(home, coord, abs);
         long n = allocateRunNumber(home);
-        String id = String.format(Locale.ROOT, "%04d-%s", n, RUN_TS.format(Instant.now()));
-        Path runDir = home.resolve(RUNS).resolve(id);
+        Path runDir = runDir(home, n);
         Files.createDirectories(runDir);
-        return new RunDir(key(coord, abs), home, runDir, id, n, coord == null ? "unknown:unknown" : coord, abs);
+        return new RunDir(
+                key(coord, abs), home, runDir, n, coord == null || coord.isBlank() ? "unknown:unknown" : coord, abs);
     }
 
     public static void writeIdentity(Path home, String coord, Path projectDir) throws IOException {
@@ -167,7 +177,6 @@ public final class ProjectBuilds {
         }
     }
 
-    /** All project home directories under {@code projects/}. */
     public static List<Path> listProjectHomes() {
         return listProjectHomes(buildsRoot());
     }
@@ -182,21 +191,34 @@ public final class ProjectBuilds {
         }
     }
 
-    /** Newest-first run directories for a project home. */
+    /** Newest-first run directories for a project (by numeric build number). */
     public static List<Path> listRuns(Path projectHome) {
         Path runs = projectHome.resolve(RUNS);
         if (!Files.isDirectory(runs)) return List.of();
         try (Stream<Path> s = Files.list(runs)) {
             return s.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .sorted(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed())
+                    .sorted(Comparator.comparingLong(ProjectBuilds::runNumberOf).reversed())
                     .toList();
         } catch (IOException e) {
             return List.of();
         }
     }
 
-    /** Every run dir across all projects, newest-first by directory name. */
+    /** Parse build number from a run directory name; non-numeric → 0. */
+    public static long runNumberOf(Path runDir) {
+        if (runDir == null) return 0;
+        try {
+            return Long.parseLong(runDir.getFileName().toString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Every run dir across all projects, newest-first by directory mtime (build numbers are
+     * per-project and not globally comparable).
+     */
     public static List<Path> listAllRuns() {
         return listAllRuns(buildsRoot());
     }
@@ -206,30 +228,53 @@ public final class ProjectBuilds {
         for (Path home : listProjectHomes(buildsRoot)) {
             all.addAll(listRuns(home));
         }
-        all.sort(Comparator.comparing((Path p) -> p.getFileName().toString()).reversed());
+        all.sort(Comparator.comparingLong(ProjectBuilds::mtimeOf).reversed());
         return all;
     }
 
-    /** Locate a run directory by id across all projects. */
-    public static Optional<Path> findRunDir(String runId) {
-        return findRunDir(buildsRoot(), runId);
+    private static long mtimeOf(Path p) {
+        try {
+            return Files.getLastModifiedTime(p).toMillis();
+        } catch (IOException e) {
+            return 0L;
+        }
     }
 
-    public static Optional<Path> findRunDir(Path buildsRoot, String runId) {
-        if (runId == null || runId.isBlank() || runId.startsWith(".") || runId.contains("..")
-                || runId.indexOf('/') >= 0
-                || runId.indexOf('\\') >= 0) {
-            return Optional.empty();
-        }
+    /**
+     * Locate {@code runs/<buildNumber>/} under a specific project home.
+     */
+    public static Optional<Path> findRunDir(Path projectHome, long buildNumber) {
+        if (projectHome == null || buildNumber <= 0) return Optional.empty();
+        Path candidate = runDir(projectHome, buildNumber);
+        return Files.isDirectory(candidate) ? Optional.of(candidate) : Optional.empty();
+    }
+
+    /**
+     * Locate a run directory by build-number directory name across all projects.
+     * Prefer {@link #findRunDir(Path, long)} when the project is known (numbers collide across projects).
+     */
+    public static Optional<Path> findRunDirByNumber(Path buildsRoot, long buildNumber) {
+        if (buildNumber <= 0) return Optional.empty();
+        String name = runDirName(buildNumber);
         for (Path home : listProjectHomes(buildsRoot)) {
-            Path candidate = home.resolve(RUNS).resolve(runId);
+            Path candidate = home.resolve(RUNS).resolve(name);
             if (Files.isDirectory(candidate)) return Optional.of(candidate);
         }
         return Optional.empty();
     }
 
+    /** True when {@code name} is a safe run directory name (digits only, no traversal). */
+    public static boolean validRunDirName(String name) {
+        if (name == null || name.isBlank() || name.startsWith(".")) return false;
+        if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.contains("..")) return false;
+        for (int i = 0; i < name.length(); i++) {
+            if (!Character.isDigit(name.charAt(i))) return false;
+        }
+        return true;
+    }
+
     public record RunDir(
-            String key, Path projectHome, Path runDir, String runId, long runNumber, String coord, Path projectPath) {
+            String key, Path projectHome, Path runDir, long buildNumber, String coord, Path projectPath) {
         public Path detailsFile() {
             return runDir.resolve(DETAILS);
         }

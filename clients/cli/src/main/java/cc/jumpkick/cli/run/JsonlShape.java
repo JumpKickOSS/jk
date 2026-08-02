@@ -103,14 +103,13 @@ public final class JsonlShape {
     }
 
     /**
-     * Engine job binding — jid, build number, history id, ETA, details path. Written into
+     * Engine job binding — jid (cancel), buildNumber (run dir), ETA, details path. Written into
      * details.jsonl so agents can diagnose a run without other files.
      */
-    public static String jobMeta(long jid, long buildNumber, String historyId, long etaMs, String detailsPath) {
+    public static String jobMeta(long jid, long buildNumber, long etaMs, String detailsPath) {
         StringBuilder sb = open("job");
         if (jid > 0) sb.append(",\"jid\":").append(jid);
         if (buildNumber > 0) sb.append(",\"buildNumber\":").append(buildNumber);
-        if (historyId != null && !historyId.isBlank()) sb.append(",\"historyId\":").append(js(historyId));
         if (etaMs >= 0) sb.append(",\"etaMs\":").append(etaMs);
         if (detailsPath != null && !detailsPath.isBlank()) sb.append(",\"detailsPath\":").append(js(detailsPath));
         return sb.append('}').toString();

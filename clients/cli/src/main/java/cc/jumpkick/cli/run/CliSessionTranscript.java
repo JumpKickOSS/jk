@@ -66,7 +66,6 @@ public final class CliSessionTranscript {
 
     private long jid = -1;
     private long buildNumber;
-    private String historyId;
     private long etaMs = -1;
 
     private CliSessionTranscript(Path projectDir, Instant started, String command, List<String> argv) {
@@ -119,29 +118,30 @@ public final class CliSessionTranscript {
     }
 
     /**
-     * Bind to the engine journal run (from {@code job-start}). Opens {@code detailsPath} and flushes
-     * buffered events. Emits a {@code job} metadata line with jid / historyId / ETA when known.
+     * Bind to the engine journal run (from {@code job-start}). Opens {@code detailsPath} (under
+     * {@code runs/<buildNumber>/}) and flushes buffered events. Emits a {@code job} metadata line
+     * with jid / buildNumber / ETA when known.
      */
-    public void bindJob(long jid, long buildNumber, String historyId, String detailsPath, long etaMs) {
+    public void bindJob(long jid, long buildNumber, String detailsPath, long etaMs) {
         synchronized (lock) {
             if (closed) return;
             this.jid = jid;
             this.buildNumber = buildNumber;
-            this.historyId = historyId;
             this.etaMs = etaMs;
             try {
                 if (detailsPath != null && !detailsPath.isBlank()) {
                     openFile(Path.of(detailsPath));
-                } else if (historyId != null && !historyId.isBlank()) {
-                    ProjectBuilds.findRunDir(historyId).ifPresent(run -> {
-                        try {
-                            openFile(run.resolve(ProjectBuilds.DETAILS));
-                        } catch (IOException ignored) {
-                        }
-                    });
+                } else if (buildNumber > 0 && projectDir != null) {
+                    // Fallback: resolve runs/<N>/details.jsonl for this project under the live builds root.
+                    try {
+                        String coord = coordOf(projectDir);
+                        Path run = ProjectBuilds.runDir(
+                                ProjectBuilds.buildsRoot(), coord, projectDir, buildNumber);
+                        openFile(run.resolve(ProjectBuilds.DETAILS));
+                    } catch (IOException ignored) {
+                    }
                 }
-                // Metadata line so any AI reading details.jsonl sees jid / ETA / history id.
-                String jobLine = JsonlShape.jobMeta(jid, buildNumber, historyId, etaMs, detailsPath);
+                String jobLine = JsonlShape.jobMeta(jid, buildNumber, etaMs, detailsPath);
                 if (jobLine != null) {
                     enqueueRecord(jobLine);
                     flushPending();
@@ -326,13 +326,11 @@ public final class CliSessionTranscript {
                         durationMs,
                         wedgeSummary == null ? null : stripAnsi(wedgeSummary),
                         List.copyOf(modules)));
-                // Enrich finish with jid when known.
-                if (jid > 0 && !finishLine.contains("\"jid\":")) {
+                // Enrich finish with jid / buildNumber when known.
+                if ((jid > 0 || buildNumber > 0) && !finishLine.contains("\"jid\":")) {
                     finishLine = finishLine.substring(0, finishLine.length() - 1)
-                            + ",\"jid\":"
-                            + jid
+                            + (jid > 0 ? ",\"jid\":" + jid : "")
                             + (buildNumber > 0 ? ",\"buildNumber\":" + buildNumber : "")
-                            + (historyId != null ? ",\"historyId\":" + Jsonl.quote(historyId) : "")
                             + "}";
                 }
                 if (out != null) {

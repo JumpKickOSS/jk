@@ -40,7 +40,6 @@ class MetricsHarvestTest {
         assertThat(Files.isRegularFile(host)).isTrue();
         String hm = Files.readString(host);
         assertThat(hm).contains("host.run-tests-per-method-ms").contains("step.compile-java.wall-ms");
-        // Project-only keys stay out of host
         assertThat(hm).doesNotContain("workspace.wall-ms");
     }
 
@@ -49,7 +48,7 @@ class MetricsHarvestTest {
         Path home = ProjectBuilds.projectHome(root, "g:cap", root.resolve("p"));
         Files.createDirectories(home.resolve(ProjectBuilds.RUNS));
         for (int i = 1; i <= 5; i++) {
-            Path run = home.resolve(ProjectBuilds.RUNS).resolve(String.format("%04d-run", i));
+            Path run = home.resolve(ProjectBuilds.RUNS).resolve(Integer.toString(i));
             Files.createDirectories(run);
             Files.writeString(run.resolve(ProjectBuilds.METRICS), "workspace.wall-ms = " + i + "00\n");
         }
@@ -57,8 +56,8 @@ class MetricsHarvestTest {
         h.configure(2, 90);
         h.runOnce(root);
         assertThat(ProjectBuilds.listRuns(home)).hasSize(2);
-        // Newest kept
-        assertThat(ProjectBuilds.listRuns(home).get(0).getFileName().toString()).isEqualTo("0005-run");
+        // Newest (highest number) kept
+        assertThat(ProjectBuilds.listRuns(home).get(0).getFileName().toString()).isEqualTo("5");
     }
 
     @Test

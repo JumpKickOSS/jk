@@ -48,33 +48,36 @@ class BuildJournalTest {
     void begin_then_complete_keeps_id_and_clears_running() {
         BuildJournal j = new BuildJournal(dir);
         BuildRecord run = BuildRecord.running(27, "build", "/proj", "g:a", 1_700_000_000_000L, "9.9", "cli");
-        String id = j.begin(run);
-        assertThat(id).isNotNull();
-        assertThat(id).startsWith("0027-");
-        assertThat(j.get(id)).isPresent();
-        assertThat(j.get(id).orElseThrow().running()).isTrue();
-        assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
-        assertThat(j.detailsFile(id)).isPresent();
+        String locator = j.begin(run);
+        assertThat(locator).isEqualTo("27"); // directory name = build number
+        assertThat(j.get(locator)).isPresent();
+        assertThat(j.get(locator).orElseThrow().running()).isTrue();
+        assertThat(j.get(locator).orElseThrow().buildNumber()).isEqualTo(27);
+        // record.id is a UTC timestamp stamp, not the directory name
+        assertThat(j.get(locator).orElseThrow().id()).matches("\\d{8}T\\d{9}");
+        assertThat(j.detailsFile(locator)).isPresent();
+        assertThat(j.runDir("g:a", "/proj", 27)).isPresent();
         BuildRecord done = record(1_700_000_000_100L, true, "g:a").withBuildNumber(27);
-        assertThat(j.complete(id, done, BuildJournal.Snapshot.NONE)).isTrue();
-        assertThat(j.get(id).orElseThrow().running()).isFalse();
-        assertThat(j.get(id).orElseThrow().buildNumber()).isEqualTo(27);
-        assertThat(j.get(id).orElseThrow().success()).isTrue();
-        // Success writes run metrics.toml under the run dir.
-        assertThat(j.runDir(id).map(p -> p.resolve("metrics.toml")).filter(java.nio.file.Files::isRegularFile))
+        assertThat(j.complete(locator, done, BuildJournal.Snapshot.NONE)).isTrue();
+        assertThat(j.get(locator).orElseThrow().running()).isFalse();
+        assertThat(j.get(locator).orElseThrow().buildNumber()).isEqualTo(27);
+        assertThat(j.get(locator).orElseThrow().success()).isTrue();
+        assertThat(j.runDir(locator).map(p -> p.resolve("metrics.toml")).filter(java.nio.file.Files::isRegularFile))
                 .isPresent();
     }
 
     @Test
     void append_then_get_and_list_roundtrip() {
         BuildJournal j = new BuildJournal(dir);
-        String id = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
-        assertThat(id).isNotNull();
-        assertThat(j.get(id)).isPresent();
-        assertThat(j.get(id).get().success()).isTrue();
-        assertThat(j.get(id).get().coord()).isEqualTo("g:a");
+        String locator = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
+        assertThat(locator).isNotNull();
+        assertThat(j.get(locator)).isPresent();
+        assertThat(j.get(locator).get().success()).isTrue();
+        assertThat(j.get(locator).get().coord()).isEqualTo("g:a");
         assertThat(j.list()).hasSize(1);
-        assertThat(j.list().get(0).id()).isEqualTo(id);
+        // list entry id is timestamp; locator is build-number dir
+        assertThat(j.list().get(0).buildNumber()).isGreaterThan(0);
+        assertThat(j.get(j.list().get(0).id())).isPresent(); // lookup by timestamp id
     }
 
     @Test
@@ -83,8 +86,10 @@ class BuildJournalTest {
         String older = j.append(record(1_000_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
         String newer = j.append(record(1_700_000_000_000L, true, "g:a"), BuildJournal.Snapshot.NONE);
         List<BuildRecord> list = j.list();
-        assertThat(list.get(0).id()).isEqualTo(newer);
-        assertThat(list.get(1).id()).isEqualTo(older);
+        // Locator is build-number dir; list is ordered by finishedAt, newest first.
+        assertThat(list.get(0).buildNumber()).isEqualTo(Long.parseLong(newer));
+        assertThat(list.get(1).buildNumber()).isEqualTo(Long.parseLong(older));
+        assertThat(list.get(0).finishedAt()).isGreaterThan(list.get(1).finishedAt());
     }
 
     @Test
@@ -157,7 +162,7 @@ class BuildJournalTest {
         BuildJournal.PruneResult r = j.prune(2 * day, 0, now);
         assertThat(r.removedEntries()).isEqualTo(1);
         assertThat(j.list()).hasSize(1);
-        assertThat(j.list().get(0).id()).isEqualTo(fresh);
+        assertThat(j.list().get(0).buildNumber()).isEqualTo(Long.parseLong(fresh));
     }
 
     @Test
@@ -165,13 +170,14 @@ class BuildJournalTest {
         BuildJournal j = new BuildJournal(dir);
         long now = 1_700_000_000_000L;
         String big = "x".repeat(4096);
-        String oldest = j.append(record(now - 3000, true, "a"), new BuildJournal.Snapshot(null, null, big));
-        j.append(record(now - 2000, true, "b"), new BuildJournal.Snapshot(null, null, big));
-        String newest = j.append(record(now - 1000, true, "c"), new BuildJournal.Snapshot(null, null, big));
+        // Same project so build numbers are 1,2,3 under one home.
+        String oldest = j.append(record(now - 3000, true, "g:a"), new BuildJournal.Snapshot(null, null, big));
+        j.append(record(now - 2000, true, "g:a"), new BuildJournal.Snapshot(null, null, big));
+        String newest = j.append(record(now - 1000, true, "g:a"), new BuildJournal.Snapshot(null, null, big));
         // Budget below the 3-entry total forces at least the oldest out.
         BuildJournal.PruneResult r = j.prune(0, 6000, now);
         assertThat(r.removedEntries()).isGreaterThanOrEqualTo(1);
-        List<String> ids = j.list().stream().map(BuildRecord::id).toList();
-        assertThat(ids).contains(newest).doesNotContain(oldest);
+        List<Long> numbers = j.list().stream().map(BuildRecord::buildNumber).toList();
+        assertThat(numbers).contains(Long.parseLong(newest)).doesNotContain(Long.parseLong(oldest));
     }
 }

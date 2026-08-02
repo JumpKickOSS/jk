@@ -18,17 +18,19 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Stream;
 
 /**
- * Best-effort build history under {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;id&gt;/}
- * with {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
- * Ids are time-sortable; append is atomic temp→move. On complete, requests {@link MetricsHarvest}.
+ * Best-effort build history under
+ * {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
+ * {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
+ *
+ * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
+ * UTC timestamp stamp for the run, not a path key. {@link #begin}/{@link #complete} locators are
+ * the build-number directory name. On complete, requests {@link MetricsHarvest}.
  */
 public final class BuildJournal {
 
-    /** Snapshot files a caller may fetch by name; also the traversal whitelist for {@link #artifact}. */
     public static final String TEST_RESULTS_MD = "test-results.md";
 
     public static final String LOCKFILE = "jk-lock.toml";
@@ -37,18 +39,15 @@ public final class BuildJournal {
 
     private static final String RECORD = "record.json";
 
+    /** UTC timestamp form stored as {@link BuildRecord#id()} (not the directory name). */
     private static final DateTimeFormatter ID_TS = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS");
 
-    private static final int APPEND_RETRIES = 8;
-
-    /** Builds root ({@link JkDirs#builds()}); runs live under projects/.../runs/. */
     private final Path buildsRoot;
 
     public BuildJournal(Path buildsRoot) {
         this.buildsRoot = buildsRoot.normalize();
     }
 
-    /** The live store at {@code ~/.jk/state/builds/}. */
     public static BuildJournal current() {
         return new BuildJournal(JkDirs.builds());
     }
@@ -57,26 +56,39 @@ public final class BuildJournal {
         return buildsRoot;
     }
 
-    /** Resolve the absolute path of a run directory (for CLI details binding). */
-    public Optional<Path> runDir(String id) {
-        return findRunDir(id);
+    /**
+     * Resolve a run directory. {@code locator} is the build-number directory name (digits), or a
+     * record timestamp id (scanned). Prefer project-scoped lookup when dir/coord are known.
+     */
+    public Optional<Path> runDir(String locator) {
+        return findRunDir(locator);
     }
 
-    public Optional<Path> detailsFile(String id) {
-        return findRunDir(id).map(d -> d.resolve(ProjectBuilds.DETAILS));
+    public Optional<Path> runDir(String coord, String projectDir, long buildNumber) {
+        if (buildNumber <= 0) return Optional.empty();
+        Path home = ProjectBuilds.projectHome(
+                buildsRoot, coord, Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir));
+        return ProjectBuilds.findRunDir(home, buildNumber);
     }
 
-    /** The heavy artifacts to snapshot beside {@code record.json}; any field may be {@code null}. */
+    public Optional<Path> detailsFile(String locator) {
+        return findRunDir(locator).map(d -> d.resolve(ProjectBuilds.DETAILS));
+    }
+
+    public Optional<Path> detailsFile(String coord, String projectDir, long buildNumber) {
+        return runDir(coord, projectDir, buildNumber).map(d -> d.resolve(ProjectBuilds.DETAILS));
+    }
+
     public record Snapshot(Path testResultsMd, Path lockfile, String diagnosticsText) {
         public static final Snapshot NONE = new Snapshot(null, null, null);
     }
 
-    /** What a {@link #prune} pass reclaimed. */
     public record PruneResult(int removedEntries, long removedBytes) {}
 
     /**
-     * Persist {@code record} (its {@code id} is (re)assigned here) plus {@code snapshot}. Returns the
-     * assigned id, or {@code null} if persistence failed — never throws.
+     * Persist {@code record} under {@code runs/<buildNumber>/}. Returns the <strong>directory
+     * locator</strong> (build-number string) for {@link #complete}, or {@code null} on failure.
+     * {@link BuildRecord#id()} on disk is a UTC timestamp stamp, not the directory name.
      */
     public String append(BuildRecord record, Snapshot snapshot) {
         try {
@@ -88,40 +100,44 @@ public final class BuildJournal {
             long stampMillis = record.finishedAt() > 0
                     ? record.finishedAt()
                     : (record.startedAt() > 0 ? record.startedAt() : System.currentTimeMillis());
-            String stamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
+            String timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
             long n = record.buildNumber() > 0 ? record.buildNumber() : ProjectBuilds.allocateRunNumber(home);
-            for (int attempt = 0; attempt < APPEND_RETRIES; attempt++) {
-                String id = String.format(java.util.Locale.ROOT, "%04d-%s-%s", n, stamp, randomHex());
-                Path target = home.resolve(ProjectBuilds.RUNS).resolve(id);
-                Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + id + ".tmp");
-                try {
-                    Files.createDirectory(tmp);
-                } catch (FileAlreadyExistsException e) {
-                    continue;
-                }
-                try {
-                    Files.writeString(tmp.resolve(RECORD), Json.write(withId(record, id)), StandardCharsets.UTF_8);
-                    writeSnapshot(tmp, snapshot);
-                    if (!record.running()) writeRunMetricsToml(tmp, record);
-                    move(tmp, target);
-                    if (!record.running()) MetricsHarvest.get().request();
-                    return id;
-                } catch (FileAlreadyExistsException e) {
-                    deleteTreeQuietly(tmp);
-                } catch (IOException e) {
-                    deleteTreeQuietly(tmp);
-                    return null;
-                }
+            String dirName = ProjectBuilds.runDirName(n);
+            Path target = home.resolve(ProjectBuilds.RUNS).resolve(dirName);
+            Path tmp = home.resolve(ProjectBuilds.RUNS).resolve("." + dirName + ".tmp");
+            deleteTreeQuietly(tmp);
+            try {
+                Files.createDirectory(tmp);
+            } catch (FileAlreadyExistsException e) {
+                // concurrent same number should not happen under allocator lock; last write wins via replace
+                deleteTreeQuietly(tmp);
+                Files.createDirectory(tmp);
             }
-            return null;
+            try {
+                BuildRecord withIds = withId(record.withBuildNumber(n), timestamp);
+                Files.writeString(tmp.resolve(RECORD), Json.write(withIds), StandardCharsets.UTF_8);
+                writeSnapshot(tmp, snapshot);
+                if (!record.running()) writeRunMetricsToml(tmp, withIds);
+                if (Files.exists(target)) {
+                    // Replacing an existing run dir (complete path uses complete(); append for finished
+                    // orphan may overwrite). Prefer atomic replace of contents.
+                    deleteTreeQuietly(target);
+                }
+                move(tmp, target);
+                if (!record.running()) MetricsHarvest.get().request();
+                return dirName;
+            } catch (IOException e) {
+                deleteTreeQuietly(tmp);
+                return null;
+            }
         } catch (IOException | RuntimeException e) {
             return null;
         }
     }
 
     /**
-     * Open an in-flight journal entry at request-start. Returns the assigned id, or
-     * {@code null} on failure.
+     * Open an in-flight journal entry at request-start. Returns the build-number directory locator
+     * for {@link #complete}, or {@code null} on failure.
      */
     public String begin(BuildRecord running) {
         if (running == null) return null;
@@ -129,23 +145,39 @@ public final class BuildJournal {
     }
 
     /**
-     * Replace an in-flight entry with its finished record (same id). Returns {@code false} if the
-     * entry is missing or the write fails — never throws.
+     * Replace an in-flight entry with its finished record. {@code locator} is the build-number
+     * directory name returned by {@link #begin}. Preserves the timestamp {@code id} from the
+     * in-flight record when {@code finished.id()} is blank.
      */
-    public boolean complete(String id, BuildRecord finished, Snapshot snapshot) {
-        if (!validId(id) || finished == null) return false;
-        Path target = findRunDir(id).orElse(null);
+    public boolean complete(String locator, BuildRecord finished, Snapshot snapshot) {
+        if (!validLocator(locator) || finished == null) return false;
+        Path target = resolveForComplete(locator, finished).orElse(null);
         if (target == null || !Files.isDirectory(target)) return false;
         Path parent = target.getParent();
-        Path tmp = parent.resolve("." + id + ".complete.tmp");
+        String dirName = target.getFileName().toString();
+        Path tmp = parent.resolve("." + dirName + ".complete.tmp");
         try {
             deleteTreeQuietly(tmp);
             Files.createDirectory(tmp);
-            Files.writeString(tmp.resolve(RECORD), Json.write(withId(finished, id)), StandardCharsets.UTF_8);
+            String timestamp = finished.id();
+            if (timestamp == null || timestamp.isBlank()) {
+                timestamp = readRecord(target).map(BuildRecord::id).orElse(null);
+            }
+            if (timestamp == null || timestamp.isBlank()) {
+                long stampMillis = finished.finishedAt() > 0
+                        ? finished.finishedAt()
+                        : (finished.startedAt() > 0 ? finished.startedAt() : System.currentTimeMillis());
+                timestamp = ID_TS.format(
+                        LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
+            }
+            long n = finished.buildNumber() > 0
+                    ? finished.buildNumber()
+                    : ProjectBuilds.runNumberOf(target);
+            BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
+            Files.writeString(tmp.resolve(RECORD), Json.write(toWrite), StandardCharsets.UTF_8);
             writeSnapshot(tmp, snapshot);
-            writeRunMetricsToml(tmp, finished);
-            Path rec = target.resolve(RECORD);
-            Files.move(tmp.resolve(RECORD), rec, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            writeRunMetricsToml(tmp, toWrite);
+            Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
                 Files.move(
                         tmp.resolve(ProjectBuilds.METRICS),
@@ -178,12 +210,9 @@ public final class BuildJournal {
         }
     }
 
-    /**
-     * Append host-rate samples into an existing run's {@code metrics.toml} (success path). Best-effort.
-     */
-    public void appendHostSamples(String id, List<HostSampleLine> samples) {
-        if (!validId(id) || samples == null || samples.isEmpty()) return;
-        Path run = findRunDir(id).orElse(null);
+    public void appendHostSamples(String locator, List<HostSampleLine> samples) {
+        if (!validLocator(locator) || samples == null || samples.isEmpty()) return;
+        Path run = findRunDir(locator).orElse(null);
         if (run == null) return;
         Path metrics = run.resolve(ProjectBuilds.METRICS);
         try {
@@ -205,7 +234,6 @@ public final class BuildJournal {
 
     public record HostSampleLine(String key, double ms) {}
 
-    /** Per-run successful step/module walls for MetricsHarvest (scalars only). */
     private static void writeRunMetricsToml(Path dir, BuildRecord finished) throws IOException {
         if (finished == null || finished.running()) return;
         if (!finished.success() || finished.cancelled()) return;
@@ -278,10 +306,6 @@ public final class BuildJournal {
         return s.replaceAll("[^a-zA-Z0-9._:/-]+", "_");
     }
 
-    /**
-     * On engine start: mark leftover {@code running=true} entries as cancelled (process died).
-     * Returns how many were abandoned.
-     */
     public int abandonStaleRunning(String jkVersion) {
         int n = 0;
         long now = System.currentTimeMillis();
@@ -310,7 +334,8 @@ public final class BuildJournal {
                     null,
                     false,
                     r.io());
-            if (complete(r.id(), done, Snapshot.NONE)) n++;
+            String locator = ProjectBuilds.runDirName(r.buildNumber());
+            if (complete(locator, done, Snapshot.NONE)) n++;
         }
         return n;
     }
@@ -328,29 +353,41 @@ public final class BuildJournal {
         }
     }
 
-    /** Newest-first list of every readable entry. Bounded implicitly by {@link #prune}. */
     public List<BuildRecord> list() {
         List<BuildRecord> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
             readRecord(dir).ifPresent(out::add);
         }
+        // Newest first by startedAt / finishedAt
+        out.sort(Comparator.comparingLong((BuildRecord r) -> r.finishedAt() > 0 ? r.finishedAt() : r.startedAt())
+                .reversed());
         return out;
     }
 
-    public Optional<BuildRecord> get(String id) {
-        if (!validId(id)) return Optional.empty();
-        return findRunDir(id).flatMap(BuildJournal::readRecord);
+    /**
+     * Look up by build-number directory name or by record timestamp {@code id}.
+     */
+    public Optional<BuildRecord> get(String idOrLocator) {
+        if (idOrLocator == null || idOrLocator.isBlank()) return Optional.empty();
+        Optional<Path> byDir = findRunDir(idOrLocator);
+        if (byDir.isPresent()) return readRecord(byDir.get());
+        // Timestamp id: scan records
+        for (Path dir : entryDirs()) {
+            Optional<BuildRecord> r = readRecord(dir);
+            if (r.isPresent() && idOrLocator.equals(r.get().id())) return r;
+        }
+        return Optional.empty();
     }
 
-    /**
-     * The newest {@code limit} entries' raw {@code record.json} contents (already valid JSON), for
-     * assembling a list response verbatim without a parse/re-serialize round-trip.
-     */
     public List<String> rawRecords(int limit) {
         List<String> out = new ArrayList<>();
-        for (Path dir : entryDirs()) {
+        for (BuildRecord r : list()) {
             if (out.size() >= limit) break;
-            Path rec = dir.resolve(RECORD);
+            // Prefer path via build number + project
+            Optional<Path> dir = runDir(r.coord(), r.dir(), r.buildNumber());
+            if (dir.isEmpty()) dir = findRunDir(ProjectBuilds.runDirName(r.buildNumber()));
+            if (dir.isEmpty()) continue;
+            Path rec = dir.get().resolve(RECORD);
             try {
                 if (Files.isRegularFile(rec)) out.add(Files.readString(rec, StandardCharsets.UTF_8));
             } catch (IOException ignored) {
@@ -359,35 +396,22 @@ public final class BuildJournal {
         return out;
     }
 
-    /** The raw {@code record.json} path (for verbatim HTTP passthrough), if the entry exists. */
-    public Optional<Path> recordFile(String id) {
-        if (!validId(id)) return Optional.empty();
-        return findRunDir(id).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
+    public Optional<Path> recordFile(String idOrLocator) {
+        return getRunPath(idOrLocator).map(d -> d.resolve(RECORD)).filter(Files::isRegularFile);
     }
 
-    /** A snapshot artifact by whitelisted {@code name}, if present. */
-    public Optional<Path> artifact(String id, String name) {
-        if (!validId(id) || !isArtifactName(name)) return Optional.empty();
-        return findRunDir(id).map(d -> d.resolve(name)).filter(Files::isRegularFile);
+    public Optional<Path> artifact(String idOrLocator, String name) {
+        if (!isArtifactName(name)) return Optional.empty();
+        return getRunPath(idOrLocator).map(d -> d.resolve(name)).filter(Files::isRegularFile);
     }
 
-    /** Delete one entry. {@code true} if it existed and was removed. */
-    public boolean delete(String id) {
-        if (!validId(id)) return false;
-        Path dir = findRunDir(id).orElse(null);
+    public boolean delete(String idOrLocator) {
+        Path dir = getRunPath(idOrLocator).orElse(null);
         if (dir == null || !Files.isDirectory(dir)) return false;
         deleteTreeQuietly(dir);
         return true;
     }
 
-    /**
-     * Enforce retention: delete entries older than {@code maxAgeMillis} (0 = no age limit), then, if
-     * the remaining total exceeds {@code maxDiskBytes} (0 = no cap), delete oldest-first until under
-     * it. Ages come from the id timestamp (no file read), falling back to the dir's mtime.
-     *
-     * <p>Note: {@link MetricsHarvest} also enforces 50-run / 90-day per project; this is the
-     * history-config disk budget path.
-     */
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
         List<Entry> entries = new ArrayList<>();
         for (Path dir : entryDirs()) {
@@ -408,7 +432,7 @@ public final class BuildJournal {
         if (maxDiskBytes > 0) {
             long total = kept.stream().mapToLong(Entry::size).sum();
             if (total > maxDiskBytes) {
-                kept.sort(Comparator.comparingLong(Entry::millis)); // oldest first
+                kept.sort(Comparator.comparingLong(Entry::millis));
                 for (Entry e : kept) {
                     if (total <= maxDiskBytes) break;
                     deleteTreeQuietly(e.dir);
@@ -421,15 +445,39 @@ public final class BuildJournal {
         return new PruneResult(removed, removedBytes);
     }
 
-    // ---------------------------------------------------------------- internals
-
     private record Entry(Path dir, long millis, long size) {}
 
-    private Optional<Path> findRunDir(String id) {
-        return ProjectBuilds.findRunDir(buildsRoot, id);
+    private Optional<Path> resolveForComplete(String locator, BuildRecord finished) {
+        if (finished != null && finished.buildNumber() > 0 && finished.dir() != null) {
+            Optional<Path> scoped = runDir(finished.coord(), finished.dir(), finished.buildNumber());
+            if (scoped.isPresent()) return scoped;
+        }
+        return findRunDir(locator);
     }
 
-    /** Entry directories (dot-prefixed staging names excluded), newest id first. */
+    private Optional<Path> getRunPath(String idOrLocator) {
+        if (idOrLocator == null || idOrLocator.isBlank()) return Optional.empty();
+        Optional<Path> byDir = findRunDir(idOrLocator);
+        if (byDir.isPresent()) return byDir;
+        for (Path dir : entryDirs()) {
+            Optional<BuildRecord> r = readRecord(dir);
+            if (r.isPresent() && idOrLocator.equals(r.get().id())) return Optional.of(dir);
+        }
+        return Optional.empty();
+    }
+
+    private Optional<Path> findRunDir(String locator) {
+        if (!validLocator(locator)) return Optional.empty();
+        if (ProjectBuilds.validRunDirName(locator)) {
+            try {
+                long n = Long.parseLong(locator);
+                return ProjectBuilds.findRunDirByNumber(buildsRoot, n);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return Optional.empty();
+    }
+
     private List<Path> entryDirs() {
         return ProjectBuilds.listAllRuns(buildsRoot);
     }
@@ -444,27 +492,22 @@ public final class BuildJournal {
         }
     }
 
-    /**
-     * Ids look like {@code 0027-20260802T035529298-a1b2}. Parse the timestamp segment after the first
-     * dash.
-     */
     private long entryMillis(Path dir, long fallback) {
-        String name = dir.getFileName().toString();
-        int first = name.indexOf('-');
-        if (first < 0) return mtime(dir, fallback);
-        int second = name.indexOf('-', first + 1);
-        String stamp = second > first ? name.substring(first + 1, second) : name.substring(first + 1);
-        try {
-            return LocalDateTime.parse(stamp, ID_TS).toInstant(ZoneOffset.UTC).toEpochMilli();
-        } catch (RuntimeException e) {
-            return mtime(dir, fallback);
+        Optional<BuildRecord> r = readRecord(dir);
+        if (r.isPresent()) {
+            long t = r.get().finishedAt() > 0 ? r.get().finishedAt() : r.get().startedAt();
+            if (t > 0) return t;
+            String id = r.get().id();
+            if (id != null) {
+                try {
+                    return LocalDateTime.parse(id, ID_TS).toInstant(ZoneOffset.UTC).toEpochMilli();
+                } catch (RuntimeException ignored) {
+                }
+            }
         }
-    }
-
-    private static long mtime(Path dir, long fallback) {
         try {
             return Files.getLastModifiedTime(dir).toMillis();
-        } catch (IOException io) {
+        } catch (IOException e) {
             return fallback;
         }
     }
@@ -510,16 +553,10 @@ public final class BuildJournal {
         return TEST_RESULTS_MD.equals(name) || LOCKFILE.equals(name) || DIAGNOSTICS_TXT.equals(name);
     }
 
-    /** Reject ids that could escape via path traversal. */
-    private boolean validId(String id) {
-        if (id == null || id.isBlank() || id.startsWith(".")) return false;
-        if (id.indexOf('/') >= 0 || id.indexOf('\\') >= 0 || id.contains("..")) return false;
+    private static boolean validLocator(String locator) {
+        if (locator == null || locator.isBlank() || locator.startsWith(".")) return false;
+        if (locator.indexOf('/') >= 0 || locator.indexOf('\\') >= 0 || locator.contains("..")) return false;
         return true;
-    }
-
-    private static String randomHex() {
-        String hex = Integer.toHexString(ThreadLocalRandom.current().nextInt(0x10000));
-        return "0000".substring(hex.length()) + hex;
     }
 
     private static BuildRecord withId(BuildRecord r, String id) {

@@ -86,9 +86,9 @@ per-module step walls for the next estimate.
     identity.toml
     run-number.txt
     project-metrics.toml         # [mean] / [last] / [count] scalars only
-    runs/<NNNN-ts-hex>/
-      record.json
-      details.jsonl              # AI-complete: jid, ETA, all events
+    runs/<build-number>/         # e.g. runs/27/
+      record.json                # id = UTC timestamp stamp; buildNumber = N
+      details.jsonl              # AI-complete: jid, buildNumber, ETA, all events
       metrics.toml               # this run's successful walls (trains harvest)
 ```
 

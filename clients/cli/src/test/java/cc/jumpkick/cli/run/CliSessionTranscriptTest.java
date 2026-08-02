@@ -29,10 +29,10 @@ class CliSessionTranscriptTest {
         if (leftover != null) leftover.finish(0);
     }
 
-    /** Bind to a details path under the temp project (engine job-start does this in production). */
+    /** Bind to a details path under runs/<buildNumber>/ (engine job-start does this in production). */
     private static Path bind(CliSessionTranscript session, Path project) throws Exception {
-        Path details = project.resolve("runs").resolve("0001-test").resolve(CliSessionTranscript.FILE_NAME);
-        session.bindJob(42, 7, "0001-test", details.toString(), 12_000);
+        Path details = project.resolve("runs").resolve("7").resolve(CliSessionTranscript.FILE_NAME);
+        session.bindJob(42, 7, details.toString(), 12_000);
         assertTrue(Files.isRegularFile(details));
         return details;
     }
@@ -51,8 +51,12 @@ class CliSessionTranscriptTest {
         assertFalse(early.isEmpty());
         // session-start + job meta
         assertTrue(early.stream().anyMatch(l -> l.contains("\"type\":\"session-start\"")));
-        assertTrue(early.stream().anyMatch(l -> l.contains("\"type\":\"job\"") && l.contains("\"jid\":42")));
+        assertTrue(early.stream()
+                .anyMatch(l -> l.contains("\"type\":\"job\"")
+                        && l.contains("\"jid\":42")
+                        && l.contains("\"buildNumber\":7")));
         assertTrue(early.stream().anyMatch(l -> l.contains("\"etaMs\":12000")));
+        assertTrue(early.stream().noneMatch(l -> l.contains("historyId")));
 
         LiveProgress.get().update(50, 100);
         session.append(JsonlShape.stepStart("compile-main", "compile", 10), true);

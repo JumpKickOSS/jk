@@ -1184,14 +1184,19 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
-    /** job-start wire line with history id + details path for the CLI transcript. */
+    /** job-start wire line with buildNumber + details path for the CLI transcript. */
     private String jobStartLine(long jid, String kind, String dir, AdmitResult admit) {
-        String historyId = admit.journalId();
         String detailsPath = null;
-        if (historyId != null && !historyId.isBlank()) {
-            detailsPath = journal.detailsFile(historyId).map(Path::toString).orElse(null);
+        if (admit.buildNumber() > 0) {
+            detailsPath = journal
+                    .detailsFile(coordOf(dir), dir, admit.buildNumber())
+                    .map(Path::toString)
+                    .orElseGet(() -> journal
+                            .detailsFile(java.lang.Long.toString(admit.buildNumber()))
+                            .map(Path::toString)
+                            .orElse(null));
         }
-        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), historyId, detailsPath, -1);
+        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
     }
 
     /**
@@ -4398,12 +4403,19 @@ public final class EngineServer implements AutoCloseable {
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
                     (int) r.modules().stream().filter(m -> !m.success()).count();
-            // Live progress + jid for in-flight rows (Jobs feed) — match journal id to the hold.
+            // Live progress + jid for in-flight rows — match by build number + project dir.
             int progressPct = -1;
             long jid = 0;
             if (r.running()) {
                 for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
-                    if (r.id() != null && r.id().equals(h.journalId())) {
+                    boolean sameRun = r.buildNumber() > 0
+                            && r.buildNumber() == h.buildNumber()
+                            && r.dir() != null
+                            && r.dir().equals(h.dir());
+                    boolean sameLocator = h.journalId() != null
+                            && (h.journalId().equals(Long.toString(r.buildNumber()))
+                                    || h.journalId().equals(r.id()));
+                    if (sameRun || sameLocator) {
                         jid = h.requestId();
                         Double p = lastProgressByRequest.get(h.requestId());
                         if (p != null && !Double.isNaN(p)) progressPct = (int) Math.round(p);
