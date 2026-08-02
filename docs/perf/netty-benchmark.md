@@ -5,7 +5,7 @@
 | Deliverable | Status |
 |-------------|--------|
 | **netty-echo** sample ([jk-examples](https://github.com/jkbuild/jk-examples)/`jvm/netty-echo`) | JumpKick arm for cold/warm/no-op (published Netty jars) |
-| Full multi-module Netty **source** port (~50 Maven modules) | Not in-tree; Mill’s port is the reference graph |
+| Full multi-module Netty **source** port (~40 workspace modules) | **In [jk-examples/jvm/netty](https://github.com/jkbuild/jk-examples)** — Mill graph parity; `jk build --skip-tests` green |
 | Three-way Maven vs Mill vs jk table | Run locally with script below; check results into this doc when measured |
 
 ## Fairness notes
@@ -27,7 +27,19 @@ Document JDK (`java -version`), OS, CPU, and tool versions on every results row.
 
 Scenarios: cold full `jk build --skip-tests`, warm no-op, single-file dirty.
 
-## Full Netty monorepo (future)
+## Full Netty monorepo (jk-examples)
+
+Port: [jkbuild/jk-examples](https://github.com/jkbuild/jk-examples) `jvm/netty/` (tag `netty-4.1.115.Final`, Mill module graph).
+
+```bash
+cd jk-examples/jvm/netty && ./setup.sh && ./run.sh
+./scripts/bench-netty.sh   # cold / warm / dirty
+```
+
+See that tree’s `PARITY.md` for JNI / compiler-args gaps.
+
+## Full Netty monorepo (remaining)
+
 
 1. Pin Netty SHA (align with Mill `example/thirdparty/netty` if possible).
 2. Overlay workspace under `jk-examples/jvm/netty/` (NiA pattern).
