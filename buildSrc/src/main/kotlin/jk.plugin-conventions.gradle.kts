@@ -18,6 +18,33 @@ plugins {
     `maven-publish`
 }
 
+/**
+ * Copy [src] onto [dest], replacing any existing file. Uses temp + move so concurrent
+ * [installLocal] tasks staging the same project jar (e.g. plugin-sdk) do not race on
+ * Kotlin [File.copyTo] overwrite (delete-then-create fails when another task already
+ * unlinked the target).
+ */
+fun copyReplacing(src: File, dest: File) {
+    dest.parentFile?.mkdirs()
+    val parent = dest.parentFile?.toPath() ?: dest.toPath().parent
+    val tmp = Files.createTempFile(parent, ".${dest.name}.", ".tmp")
+    try {
+        Files.copy(src.toPath(), tmp, StandardCopyOption.REPLACE_EXISTING)
+        try {
+            Files.move(
+                    tmp,
+                    dest.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(tmp, dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    } catch (e: Exception) {
+        runCatching { Files.deleteIfExists(tmp) }
+        throw e
+    }
+}
+
 // Coordinates + version must match cc.jumpkick.util.JkVersion.VERSION and the
 // cc.jumpkick.engine.plugin.PluginJar registry (artifactId = jk-<projectName>).
 group = "cc.jumpkick"
@@ -113,7 +140,7 @@ tasks.register("installLocal") {
         repoDir.mkdirs()
         val target = repoDir.resolve("$artifact-$ver.jar")
         val sidecar = repoDir.resolve("$artifact-$ver.jar.sha256")
-        jar.copyTo(target, overwrite = true)
+        copyReplacing(jar, target)
         sidecar.writeText(hex)
         // Classpath sidecar: absolute paths (runtimeClasspath + bundledCodec).
         val depJars = workerClasspathJars()
@@ -142,7 +169,9 @@ tasks.register("installLocal") {
                 val base = if (tail.firstOrNull()?.isDigit() == true) noExt.substringBeforeLast('-') else noExt
                 val d = storeRoot.resolve("repos/local/cc/jumpkick/$base/$ver")
                 d.mkdirs()
-                f.copyTo(d.resolve("$base-$ver.jar"), overwrite = true)
+                // Shared project jars (plugin-sdk, core, …) are staged by every worker's
+                // installLocal in parallel — must tolerate concurrent replace.
+                copyReplacing(f, d.resolve("$base-$ver.jar"))
                 val h = MessageDigest.getInstance("SHA-256").digest(f.readBytes())
                         .joinToString("") { "%02x".format(it.toInt() and 0xff) }
                 d.resolve("$base-$ver.jar.sha256").writeText(h)

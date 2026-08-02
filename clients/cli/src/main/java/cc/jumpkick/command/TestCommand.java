@@ -51,7 +51,11 @@ public final class TestCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
+                Opt.value(
+                        "<name>",
+                        "Apply a build profile. Default: auto (ci on CI).",
+                        "-p",
+                        "--profile"),
                 Opt.flag("Skip profile tag filters (incl. the auto ci profile).", "--no-profile"),
                 Opt.value(
                         "<N>",
@@ -66,6 +70,7 @@ public final class TestCommand implements CliCommand {
         opts.add(Opt.value(
                         "<name>",
                         "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",
+                        "-s",
                         "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite (test + integration + …).", "--all"));

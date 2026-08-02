@@ -29,6 +29,8 @@ class PluginJarDepsFetchTest {
     private HttpServer server;
     private String base;
     private final Map<String, byte[]> served = new HashMap<>();
+    /** Restored after each test — self-host / Gradle may pin a real publisher jar. */
+    private String savedPublisherJarProp;
 
     @BeforeEach
     void start() throws IOException {
@@ -46,11 +48,21 @@ class PluginJarDepsFetchTest {
         server.start();
         base = "http://127.0.0.1:" + server.getAddress().getPort() + "/";
         System.setProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY, base);
+        // Self-host engine tests set -Djk.publisher.plugin.jar to the monorepo assembly
+        // (server/engine/jk.toml test-plugin-jars). locate() would return that binary jar
+        // before the cold-store official fetch — Files.readString then throws MalformedInput.
+        savedPublisherJarProp = System.getProperty(PluginJar.PUBLISHER.jarProperty());
+        System.clearProperty(PluginJar.PUBLISHER.jarProperty());
     }
 
     @AfterEach
     void stop() {
         System.clearProperty(PluginJar.OFFICIAL_REPO_URL_PROPERTY);
+        if (savedPublisherJarProp != null) {
+            System.setProperty(PluginJar.PUBLISHER.jarProperty(), savedPublisherJarProp);
+        } else {
+            System.clearProperty(PluginJar.PUBLISHER.jarProperty());
+        }
         server.stop(0);
     }
 

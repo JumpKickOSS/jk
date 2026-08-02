@@ -634,15 +634,15 @@ exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
 jk test                           # default suite ("test") only
-jk test --suite integration       # only that suite
-jk test --suite test --suite integration
+jk test --suite integration       # only that suite (-s is the short form)
+jk test -s test -s integration
 jk test --all                     # every discovered suite
 jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
 jk test --include-tag smoke
 jk test --all --exclude-tag bench
 ```
 
-`--all` and `--suite` cannot be combined. Unknown suite names error with the available list.
+`--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
 
 Declarative defaults (CLI wins when you pass tags):
 
@@ -656,7 +656,7 @@ exclude-tags = ["bench"]
 include-tags = []   # optional
 ```
 
-`--profile` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
+`--profile`/`-p` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
 the test stamp: changing selection re-runs tests even if sources are unchanged.
 
 ## Quality (format + lint)
