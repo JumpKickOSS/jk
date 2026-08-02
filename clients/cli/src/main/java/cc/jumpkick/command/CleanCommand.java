@@ -6,6 +6,7 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.cli.tui.Spinner;
@@ -66,6 +67,7 @@ public final class CleanCommand implements CliCommand {
         long startMs = System.currentTimeMillis();
         long[] stats = {0L, 0L}; // [fileCount, totalBytes]
 
+        CommandWedge.envelopeStart(); // leading blank before spinner / settle chrome
         try (Spinner spinner = Spinner.show(CliOutput.stdout(), "Cleaning...")) {
             cleanTargets(workspaceRoot, projectDirs, keepArtifacts, stats);
         }
