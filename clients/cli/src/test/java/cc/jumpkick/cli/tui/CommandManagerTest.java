@@ -275,16 +275,23 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_shows_module_remaining_work_counter() {
-        // modulesComplete/modulesTotal next to the wall clock.
+    void header_countdown_has_dim_eta_prefix_and_no_module_counter() {
+        // Countdown: dim "ETA " + remaining; module n/m lives on tree rows only.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.progress(50, 100);
         cm.setEtaEstimate(60_000);
         cm.setModuleProgress(2, 8);
         String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
-        assertThat(header).contains("2/8");
-        assertThat(header).contains("56s");
+        assertThat(header).contains("ETA 56s");
+        assertThat(header).doesNotContain("2/8");
+        // Count-up has no ETA prefix.
+        String cold = TestAnsi.strip(
+                CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
+                        .renderPipelineLines(120, 12_000)
+                        .get(0));
+        assertThat(cold).contains("+12s");
+        assertThat(cold).doesNotContain("ETA ");
     }
 
     @Test
@@ -367,31 +374,34 @@ class CommandManagerTest {
     @Test
     void header_countdown_is_blue_count_up_is_yellow() {
         Theme t = Theme.active();
-        // Seeded ETA with elapsed under the seed → countdown remaining (blue).
+        // Seeded ETA with elapsed under the seed → dim "ETA " + blue remaining.
         var down = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         down.nerdfont = false;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
         String downHeader = down.renderPipelineLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(downHeader)).contains("56s");
+        assertThat(TestAnsi.strip(downHeader)).contains("ETA 56s");
+        assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray()));
         assertThat(downHeader).contains(Theme.colorize("56s", t.blue()));
         assertThat(downHeader).doesNotContain(Theme.colorize("56s", t.warning()));
 
-        // No seed → +elapsed count-up (yellow).
+        // No seed → +elapsed count-up (yellow), no ETA prefix.
         var up = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
         String upHeader = up.renderPipelineLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("+12s");
+        assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → +excess count-up (yellow).
+        // Seed overrun → +excess count-up (yellow), no ETA prefix.
         var over = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
         String overHeader = over.renderPipelineLines(120, 15_000).get(0);
         assertThat(TestAnsi.strip(overHeader)).contains("+5s");
+        assertThat(TestAnsi.strip(overHeader)).doesNotContain("ETA ");
         assertThat(overHeader).contains(Theme.colorize("+5s", t.warning()));
     }
 

@@ -1435,24 +1435,19 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded estimate → pure wall-clock countdown (blue) then +Ns overrun (yellow); no seed
-        // → +Ns count-up from construction (yellow). Never resets on phase/module boundaries.
-        String clockStr;
-        boolean countUp;
+        // Seeded estimate → pure wall-clock countdown (dim "ETA " + blue time) then +Ns overrun
+        // (yellow); no seed → +Ns count-up from construction (yellow). Never resets on
+        // phase/module boundaries. Module n/m is only on tree rows below — not repeated here.
+        h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         if (etaEstimateMs > 0) {
             long remaining = etaEstimateMs - elapsedMillis;
-            countUp = remaining <= 0;
-            clockStr = countUp ? "+" + fmtClock(-remaining) : fmtClock(remaining);
+            if (remaining <= 0) {
+                h.append(Theme.colorize("+" + fmtClock(-remaining), t.warning()));
+            } else {
+                h.append(Theme.colorize("ETA ", dim)).append(Theme.colorize(fmtClock(remaining), t.blue()));
+            }
         } else {
-            countUp = true;
-            clockStr = "+" + fmtClock(elapsedMillis);
-        }
-        AttributedStyle clockStyle = countUp ? t.warning() : t.blue();
-        h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(clockStr, clockStyle));
-        // remaining-work module counter (run-wide, not per-module local).
-        if (modulesTotal > 0) {
-            String mods = modulesComplete + "/" + modulesTotal;
-            h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(mods, dim));
+            h.append(Theme.colorize("+" + fmtClock(elapsedMillis), t.warning()));
         }
         return h.toString();
     }
