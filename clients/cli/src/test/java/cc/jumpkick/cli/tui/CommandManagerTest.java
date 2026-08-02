@@ -162,6 +162,19 @@ class CommandManagerTest {
     }
 
     @Test
+    void exec_handoff_settle_omits_trailing_envelope_blank() {
+        // jk run: one separator is owned by RunCommand before inheritIO — not a double blank.
+        var buf = new ByteArrayOutputStream();
+        var cm = CommandManager.pipeline(stream(buf), "Run", false);
+        cm.finishPipelineExec("Executing `java -cp … Main`");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n"); // leading still present
+        assertThat(out).doesNotEndWith("\n\n");
+        assertThat(out).endsWith("\n");
+        assertThat(out).contains("Executing");
+    }
+
+    @Test
     void header_shows_a_wallclock_countdown_from_the_estimate() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;

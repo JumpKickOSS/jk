@@ -522,9 +522,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Settle with the play chip: {@code ▶ Run Executing `java …`} — for commands that hand off to a
      * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName} is the
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
+     *
+     * <p>No trailing envelope blank: {@code jk run} prints its own single separator before
+     * {@code inheritIO} so process output is not double-spaced (JK-1373).
      */
     public void finishPipelineExec(String tail, List<String> above) {
-        settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
+        settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above, false);
     }
 
     /** {@link #finishPipelineExec(String, List)} with no buffered output above. */
@@ -607,10 +610,19 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     private void settle(String line) {
-        settle(line, List.of());
+        settle(line, List.of(), true);
     }
 
     private void settle(String line, List<String> above) {
+        settle(line, above, true);
+    }
+
+    /**
+     * @param trailingBlank when true (normal settles), print the JK-1373 trailing envelope blank
+     *     after the result line. When false (exec handoff), omit it — the caller owns spacing
+     *     before a subprocess that inherits the terminal.
+     */
+    private void settle(String line, List<String> above, boolean trailingBlank) {
         restoreStreams(); // flush any captured output above the region first
         stopAnimator();
         synchronized (lock) {
@@ -635,7 +647,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
             ensureLeadingBlank(); // quiet / late settle still gets the envelope
             out.println(line);
-            out.println(); // JK-1373: trailing blank after settle chrome
+            if (trailingBlank) {
+                out.println(); // JK-1373: trailing blank after settle chrome
+            }
             out.flush();
         }
     }

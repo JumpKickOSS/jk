@@ -46,6 +46,7 @@ Helpers:
 - One-shot failure: `CommandWedge.printFail(command, message)`  
 - Multi-line chrome: `envelopeStart()` … lines … `envelopeEnd()`  
 - Live pipelines: `CommandManager.simple` / `pipeline` open the leading blank; settle prints the trailing blank  
+- **Exec handoff** (`jk run` via `finishPipelineExec`): **no** trailing blank from the manager — the command prints a single separator before `inheritIO` so process output is not double-spaced  
 
 **Script-mode** commands must **not** add decorative blanks (they break `eval` and command substitution).
 
