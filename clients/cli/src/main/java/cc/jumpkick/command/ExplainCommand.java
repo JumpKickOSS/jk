@@ -271,7 +271,8 @@ public final class ExplainCommand implements CliCommand {
         if (!cachedIdx.isEmpty()) {
             boolean lastSection = dirtyIdx.isEmpty();
             String sectionConnector = lastSection ? "╰─" : "├─";
-            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : " [Fully Cached]";
+            // Plain: no space between connector and pill (`-[Fully Cached]`) — matches jk tree.
+            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : "[Fully Cached]";
             CliOutput.out(" "
                     + (ansi ? Theme.colorize(sectionConnector, t.darkGray()) : (lastSection ? "`-" : "+-"))
                     + sectionBadge);
@@ -299,7 +300,7 @@ public final class ExplainCommand implements CliCommand {
             }
         }
         if (!dirtyIdx.isEmpty()) {
-            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : " [Rebuild]";
+            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : "[Rebuild]";
             CliOutput.out(" " + (ansi ? Theme.colorize("╰─", t.darkGray()) : "`-") + rebuildBadge);
             String secPfx = ansi ? "    " + Theme.colorize("│", t.darkGray()) + " · " : "    | - ";
             int dirtyModules = dirtyIdx.size();
