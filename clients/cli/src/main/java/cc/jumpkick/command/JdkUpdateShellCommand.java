@@ -79,6 +79,7 @@ public final class JdkUpdateShellCommand implements CliCommand {
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND);
         CommandWedge.printOk("JDK", "Updated " + rcFile);
+        CliOutput.out();
         CliOutput.out("Restart your shell or run: source " + rcFile);
         return 0;
     }

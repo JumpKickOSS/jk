@@ -157,6 +157,7 @@ public final class AddCommand implements CliCommand {
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan());
         CommandWedge.printOk("Add", msg);
+        CliOutput.out();
         CliOutput.out("The next "
                 + Theme.colorize("jk build", Theme.active().warning())
                 + " / "
@@ -370,6 +371,7 @@ public final class AddCommand implements CliCommand {
                 + "."
                 + Theme.colorize(scope.canonical(), Theme.active().cyan());
         CommandWedge.printOk("Add", msg);
+        CliOutput.out();
         CliOutput.out("The next "
                 + Theme.colorize("jk build", Theme.active().warning())
                 + " / "

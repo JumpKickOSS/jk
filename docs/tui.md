@@ -38,15 +38,17 @@ API: `cc.jumpkick.cli.tui.CommandWedge` (delegates to `PipelineWedge`).
 Every **wedge-bearing** human command prints:
 
 1. Exactly **one blank line before** the first chrome line  
-2. Exactly **one blank line after** the last chrome line  
+2. **No** automatic blank after the last settle line (that left an empty row before the shell prompt on `jk build` / `jk lock` / one-shot wedges)
 
 Helpers:
 
-- One-shot success: `CommandWedge.printOk(command, message)`  
+- One-shot success: `CommandWedge.printOk(command, message)` (leading blank + wedge)  
 - One-shot failure: `CommandWedge.printFail(command, message)`  
-- Multi-line chrome: `envelopeStart()` … lines … `envelopeEnd()`  
-- Live pipelines: `CommandManager.simple` / `pipeline` open the leading blank; settle prints the trailing blank  
-- **Exec handoff** (`jk run` via `finishPipelineExec`): **no** trailing blank from the manager — the command prints a single separator before `inheritIO` so process output is not double-spaced  
+- Multi-line chrome: `envelopeStart()` then body lines (no trailing blank after the last line)  
+- Live pipelines: `CommandManager` opens the leading blank; settle is the final line  
+- **Exec handoff** (`jk run`): command may print a single separator before `inheritIO`  
+
+Optional blank lines **between** chrome and follow-up tips (e.g. after `jk add`) are fine — that is content spacing, not a trailing envelope.
 
 **Script-mode** commands must **not** add decorative blanks (they break `eval` and command substitution).
 

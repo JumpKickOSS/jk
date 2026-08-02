@@ -523,11 +523,11 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName} is the
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
      *
-     * <p>No trailing envelope blank: {@code jk run} prints its own single separator before
-     * {@code inheritIO} so process output is not double-spaced (JK-1373).
+     * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
+     * trailing blank — settles never add one; see {@link #settle}).
      */
     public void finishPipelineExec(String tail, List<String> above) {
-        settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above, false);
+        settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
     }
 
     /** {@link #finishPipelineExec(String, List)} with no buffered output above. */
@@ -610,19 +610,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     private void settle(String line) {
-        settle(line, List.of(), true);
-    }
-
-    private void settle(String line, List<String> above) {
-        settle(line, above, true);
+        settle(line, List.of());
     }
 
     /**
-     * @param trailingBlank when true (normal settles), print the JK-1373 trailing envelope blank
-     *     after the result line. When false (exec handoff), omit it — the caller owns spacing
-     *     before a subprocess that inherits the terminal.
+     * Print the settled result line. Leading blank only (JK-1373): one blank before chrome starts,
+     * no automatic blank after the settle line — that looked like an extra line before the shell
+     * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
+     * subprocess ({@code jk run}) add their own separator when needed.
      */
-    private void settle(String line, List<String> above, boolean trailingBlank) {
+    private void settle(String line, List<String> above) {
         restoreStreams(); // flush any captured output above the region first
         stopAnimator();
         synchronized (lock) {
@@ -645,11 +642,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 for (String s : above) out.println(s);
                 out.println();
             }
-            ensureLeadingBlank(); // quiet / late settle still gets the envelope
+            ensureLeadingBlank(); // quiet / late settle still gets the leading blank
             out.println(line);
-            if (trailingBlank) {
-                out.println(); // JK-1373: trailing blank after settle chrome
-            }
             out.flush();
         }
     }

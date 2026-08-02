@@ -63,7 +63,6 @@ final class ExportSupport {
             Files.writeString(path, files.contents().get(i), StandardCharsets.UTF_8);
             wrote(path);
         }
-        CommandWedge.envelopeEnd();
         int warnings = printNotes(files);
         if (warnings > 0) {
             CliOutput.out("  (" + warnings + " fidelity note" + (warnings == 1 ? "" : "s") + ")");

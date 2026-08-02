@@ -150,25 +150,25 @@ class CommandManagerTest {
     }
 
     @Test
-    void settle_prints_leading_and_trailing_blank_envelope() {
+    void settle_prints_leading_blank_only() {
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Build", false);
         cm.finishSuccess("ok took 1s");
         String out = buf.toString(StandardCharsets.UTF_8);
-        // Leading blank at construct + trailing blank after settle (JK-1373).
+        // Leading blank at construct; settle line is last (no trailing blank before prompt).
         assertThat(out).startsWith("\n");
-        assertThat(out).endsWith("\n\n");
+        assertThat(out).doesNotEndWith("\n\n");
+        assertThat(out).endsWith("\n");
         assertThat(out).contains("ok took 1s");
     }
 
     @Test
-    void exec_handoff_settle_omits_trailing_envelope_blank() {
-        // jk run: one separator is owned by RunCommand before inheritIO — not a double blank.
+    void exec_handoff_settle_has_no_trailing_blank() {
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Run", false);
         cm.finishPipelineExec("Executing `java -cp … Main`");
         String out = buf.toString(StandardCharsets.UTF_8);
-        assertThat(out).startsWith("\n"); // leading still present
+        assertThat(out).startsWith("\n");
         assertThat(out).doesNotEndWith("\n\n");
         assertThat(out).endsWith("\n");
         assertThat(out).contains("Executing");
