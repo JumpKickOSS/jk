@@ -187,7 +187,7 @@ public final class JavaIncrementalCompile {
 
         String key = ActionKey.forJavac(taskId, request, jkVersion);
 
-        // useCache=false means "do not restore / skip work" (--rebuild / --force), NOT "do not
+        // useCache=false means "do not restore / skip work" (--redo / --force), NOT "do not
         // write" — rebuilds store successful results so the next `jk explain` / incremental build
         // sees CACHE_HIT instead of a phantom full recompile. persist=false (jk verify's scratch
         // rebuild) is the one mode that skips writes: its scratch-salted keys can never recur, so
@@ -300,18 +300,23 @@ public final class JavaIncrementalCompile {
 
     private static boolean processorPathUnchanged(CompileRequest request, Map<String, String> in) {
         Set<String> now = new TreeSet<>();
-        for (Path pp : request.processorPath())
-            now.add("pp:" + pp.toAbsolutePath().normalize());
+        for (Path pp : request.processorPath()) now.add("pp:" + FreshnessStamp.identityKey(pp));
         Set<String> prior = new TreeSet<>();
-        for (String k : in.keySet()) if (k.startsWith("pp:")) prior.add(k);
+        for (String k : in.keySet()) {
+            if (!k.startsWith("pp:")) continue;
+            prior.add("pp:" + FreshnessStamp.identityKey(Path.of(k.substring(3))));
+        }
         return now.equals(prior);
     }
 
     private static boolean classpathUnchanged(CompileRequest request, Map<String, String> in) {
         Set<String> now = new TreeSet<>();
-        for (Path cp : request.classpath()) now.add("cp:" + cp.toAbsolutePath().normalize());
+        for (Path cp : request.classpath()) now.add("cp:" + FreshnessStamp.identityKey(cp));
         Set<String> prior = new TreeSet<>();
-        for (String k : in.keySet()) if (k.startsWith("cp:")) prior.add(k);
+        for (String k : in.keySet()) {
+            if (!k.startsWith("cp:")) continue;
+            prior.add("cp:" + FreshnessStamp.identityKey(Path.of(k.substring(3))));
+        }
         return now.equals(prior);
     }
 

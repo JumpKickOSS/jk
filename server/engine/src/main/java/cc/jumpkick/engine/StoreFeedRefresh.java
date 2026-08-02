@@ -54,6 +54,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
     private final URI jdkFeed;
     /** Engine hook: queue idle-boundary cache GC (never blocks the tick on builds). */
     private final Runnable afterTick;
+
     private final AtomicBoolean closed = new AtomicBoolean();
     private final ScheduledExecutorService scheduler;
 

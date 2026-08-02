@@ -22,7 +22,7 @@ Companion: [test-parallelization.md](test-parallelization.md) (JK-1086 Phase A).
 Synthetic traditional project, **24** JUnit Jupiter classes each sleeping **200 ms** (+ scaffold test → 25 tests).
 
 ```bash
-jk test -w N --rebuild --no-progress
+jk test -w N --redo --no-progress
 ```
 
 Host: macOS (agent laptop), local `jk` 0.10.1.

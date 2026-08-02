@@ -58,7 +58,10 @@ public final class SelectiveCommand implements CliCommand {
         return List.of(
                 Opt.value("<git-ref>", "Select modules changed since this git ref.", "--since", "--affected-since"),
                 Opt.value(
-                        "<sel>", "Module selector (comma list, globs, braces). Intersects with --since.", "--modules"),
+                        "<sel>",
+                        "Module selector (comma list, globs, braces). Intersects with --since.",
+                        "-m",
+                        "--modules"),
                 Opt.flag("Machine-readable module list (one path per line).", "--json"),
                 Opt.value("<file>", "Plan file path (default: .jk/selective-plan.json).", "--plan"));
     }
@@ -161,7 +164,7 @@ public final class SelectiveCommand implements CliCommand {
         Path parent = planPath.getParent();
         if (parent != null) Files.createDirectories(parent);
         AtomicWrites.replace(planPath, body);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+        cc.jumpkick.cli.tui.CommandWedge.printOk(
                 "Selective",
                 "Wrote "
                         + planPath
@@ -169,7 +172,7 @@ public final class SelectiveCommand implements CliCommand {
                         + rels.size()
                         + " module"
                         + (rels.size() == 1 ? "" : "s")
-                        + ", content hashes recorded)"));
+                        + ", content hashes recorded)");
         return 0;
     }
 
@@ -217,7 +220,7 @@ public final class SelectiveCommand implements CliCommand {
         }
 
         // Content-hash skipwhen plan has contentHashes, only re-run modules whose
-        // fingerprints changed (unless --force / --rebuild).
+        // fingerprints changed (unless --force / --redo).
         GlobalOptions g = GlobalOptions.from(in);
         if (plan != null && !plan.contentHashes.isEmpty() && !g.force && !g.rebuild) {
             List<String> planned = !plan.modules.isEmpty()
@@ -239,12 +242,12 @@ public final class SelectiveCommand implements CliCommand {
                 if (prev == null || cur == null || !prev.equals(cur)) dirty.add(m);
             }
             if (dirty.isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok(
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Selective",
                         "content hashes match plan — nothing changed (" + plannedClean.size()
                                 + " module"
                                 + (plannedClean.size() == 1 ? "" : "s")
-                                + ")"));
+                                + ")");
                 return 0;
             }
             effectiveModules = String.join(",", dirty);
@@ -269,7 +272,7 @@ public final class SelectiveCommand implements CliCommand {
             args.add(effectiveSince);
         }
         if (g.force) args.add("--force");
-        if (g.rebuild) args.add("--rebuild");
+        if (g.rebuild) args.add("--redo");
 
         return cc.jumpkick.cli.Jk.execute(args.toArray(String[]::new));
     }

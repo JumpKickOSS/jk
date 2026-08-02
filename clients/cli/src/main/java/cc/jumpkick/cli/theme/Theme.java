@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.theme;
 
 import cc.jumpkick.cli.Ansi;
+import cc.jumpkick.cli.tui.PlainAscii;
 import cc.jumpkick.cli.tui.Rail;
 import cc.jumpkick.config.JkConfig;
 import org.jline.utils.AttributedString;
@@ -331,9 +332,10 @@ public interface Theme {
      */
     static String colorize(String text, AttributedStyle style) {
         // No-ANSI mode (--no-ansi / TERM=dumb / CI=true|1): strip ALL ANSI sequences
-        // including bold/italic. --color never and NO_COLOR only strip color but
+        // including bold/italic, and rewrite Unicode chrome (… → ..., • → -, ● → *) so
+        // free-form messages stay ASCII. --color never and NO_COLOR only strip color but
         // preserve text attributes — they do NOT reach this early-return.
-        if (!Theme.active().isAnsi()) return text;
+        if (!Theme.active().isAnsi()) return PlainAscii.transform(text);
         String sgr = style.toAnsi();
         // A style with no attributes renders as a blank SGR body (JLine emits a
         // single space, not ""), which would otherwise produce a stray `\033[ m`.

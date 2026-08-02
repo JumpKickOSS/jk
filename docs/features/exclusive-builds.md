@@ -31,18 +31,19 @@ MVP is **engine-local** (not multi-engine / multi-host).
 
 ## Build numbers
 
-`BuildNumberAllocator` assigns a monotonic per-project number at **request-start**
-(`~/.jk/state/builds/run-numbers.json`), continuing past historical `BuildMetrics` counts.
-
-Finish-time `BuildMetrics.record(..., assignedBuildNumber)` trains stats but does **not** mint a
-second number. The journal and SSE `request-start` carry the same `#N`.
+`BuildNumberAllocator` assigns a monotonic per-project number at **request-start** from
+`~/.jk/state/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
+does **not** mint a second number. The journal and SSE `request-start` carry the same `#N`.
 
 ## Durable in-flight
 
-At admit, when history is enabled, `BuildJournal.begin` writes `record.json` with `running: true`
-and the start-time `buildNumber`.
+At admit, when history is enabled, `BuildJournal.begin` writes under
+`projects/<key>/runs/<buildNumber>/` with `running: true`. `record.json` carries a UTC timestamp
+as `id` (when the run started) and the numeric `buildNumber`. CLI `details.jsonl` binds to that
+run dir from `job-start` (`buildNumber` + `detailsPath`) — no separate history id on the wire.
 
-On finish, `complete` rewrites the **same** entry id with the finished record (`running: false`).
+On finish, `complete` rewrites the **same** run directory with the finished record
+(`running: false`) and `metrics.toml`, then requests `MetricsHarvest`.
 
 `/api/history` therefore lists in-flight runs; the web client `seedFromHistory` materializes
 running cards so a refresh/new tab still shows them. SSE reconciles by `buildNumber` + `dir`.

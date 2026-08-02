@@ -2,6 +2,7 @@
 package cc.jumpkick.cli.engine;
 
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.config.Session;
 import cc.jumpkick.config.SessionContext;
 import cc.jumpkick.engine.EnginePaths;
@@ -42,6 +43,17 @@ import java.util.Map;
 final class EngineBuildListenerAdapter {
 
     private EngineBuildListenerAdapter() {}
+
+    /** Bind CLI details.jsonl to the engine journal run from a {@code job-start} line. */
+    private static void bindTranscript(String jobStartLine) {
+        CliSessionTranscript s = CliSessionTranscript.active();
+        if (s == null || jobStartLine == null) return;
+        long jid = Jsonl.longValue(jobStartLine, "jid", Jsonl.longValue(jobStartLine, "requestId", -1));
+        long buildNumber = Jsonl.longValue(jobStartLine, "buildNumber", 0);
+        String detailsPath = Jsonl.str(jobStartLine, "detailsPath");
+        long etaMs = Jsonl.longValue(jobStartLine, "etaMs", -1);
+        s.bindJob(jid, buildNumber, detailsPath, etaMs);
+    }
 
     /** One module's identity/sizing, accumulated from the {@code plan-module}/{@code plan-step} burst. */
     private static final class ModuleMeta {
@@ -226,6 +238,12 @@ final class EngineBuildListenerAdapter {
             for (Map.Entry<Path, Path> e : req.graalByDir().entrySet()) {
                 graalHomes.put(e.getKey().toString(), e.getValue().toString());
             }
+            List<String> moduleDirs = new java.util.ArrayList<>();
+            if (req.selectedModuleDirs() != null) {
+                for (Path p : req.selectedModuleDirs()) {
+                    if (p != null) moduleDirs.add(p.toString());
+                }
+            }
             writer.write(EngineProtocol.withSession(
                     EngineProtocol.nativeRequest(
                             req.entryDir().toString(),
@@ -237,7 +255,8 @@ final class EngineBuildListenerAdapter {
                             req.force(),
                             req.verbose(),
                             req.extraArgs(),
-                            graalHomes),
+                            graalHomes,
+                            moduleDirs),
                     SessionContext.current().variant(),
                     SessionContext.current().clientEnv(),
                     SessionContext.current().jvm(),
@@ -344,6 +363,7 @@ final class EngineBuildListenerAdapter {
                     if (EngineProtocol.JOB_START.equals(type)) {
                         notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
                         cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                        bindTranscript(line);
                         continue;
                     }
                     switch (type) {
@@ -631,6 +651,7 @@ final class EngineBuildListenerAdapter {
                 if (EngineProtocol.JOB_START.equals(type)) {
                     notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
                     cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                    bindTranscript(line);
                     continue;
                 }
                 switch (type) {
@@ -752,6 +773,7 @@ final class EngineBuildListenerAdapter {
                 if (EngineProtocol.JOB_START.equals(type)) {
                     notedJid = Jsonl.longValue(line, "jid", Jsonl.longValue(line, "requestId", -1));
                     cc.jumpkick.cli.engine.EngineClient.ActiveJobs.note(notedJid);
+                    bindTranscript(line);
                     continue;
                 }
                 String dir = Jsonl.str(line, "dir");

@@ -11,16 +11,10 @@ description = "jk-publish-runner: child-JVM worker that assembles, signs, and pu
 dependencies {
     implementation(project(":core"))  // Hashing (util) + io + jsonl codec all reachable transitively
     implementation(project(":io"))
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (bundled into the fat jar)
+    implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
     implementation(libs.bouncycastle.bcpg)
     implementation(libs.sigstore.java)
 
     // GpgTestFixture moved here from supply-chain-testkit (which is deleted)
     testImplementation(libs.bouncycastle.bcpg)
-}
-
-// Fat JAR: bundle the full runtime closure so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }

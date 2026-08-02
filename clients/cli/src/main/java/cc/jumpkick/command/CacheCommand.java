@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.cache.DiskUsage;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
@@ -56,19 +58,65 @@ public final class CacheCommand extends GroupCommand {
         return override != null ? override : JkDirs.cache();
     }
 
-    record Stats(long files, long bytes) {}
-
-    static Stats statsOf(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) return new Stats(0, 0);
-        long files = 0, bytes = 0;
-        try (var stream = Files.walk(dir)) {
-            for (Path p : (Iterable<Path>) stream::iterator) {
-                if (!Files.isRegularFile(p)) continue;
-                files++;
-                bytes += Files.size(p);
-            }
+    record Stats(long files, long bytes) {
+        static Stats from(DiskUsage.Stats s) {
+            return new Stats(s.files(), s.bytes());
         }
-        return new Stats(files, bytes);
+    }
+
+    /**
+     * Unique-byte size of one tree (hard links within the tree counted once). Prefer
+     * {@link #sectionStats} when summing CAS + repos so cross-tree hard links are not double-counted.
+     */
+    static Stats statsOf(Path dir) throws IOException {
+        return Stats.from(DiskUsage.of(dir));
+    }
+
+    /**
+     * Cache/store section sizes for {@code jk cache info} / {@code jk status} / dashboard parity.
+     *
+     * <p>Default (ambient cache root): CAS ({@code sha256/}) and {@code repos/} are under the
+     * artifact store; action/run/stamp trees stay under the cache root. Explicit {@code
+     * --cache-dir} (not ambient) reports trees under that directory alone — test isolation and
+     * alternate cache roots.
+     *
+     * <p>Byte sizes are exclusive across sections (CAS first), so hard-linked repo jars do not
+     * inflate "Size on Disk" or the utilization bar.
+     */
+    static SectionStats sectionStats(Path cacheRoot) throws IOException {
+        Path cas;
+        Path repos;
+        Path abs = cacheRoot.toAbsolutePath().normalize();
+        Path ambient = JkDirs.cache().toAbsolutePath().normalize();
+        if (abs.equals(ambient)) {
+            cas = JkStores.resolve(cacheRoot, "sha256");
+            repos = JkStores.resolve(cacheRoot, "repos");
+        } else {
+            cas = cacheRoot.resolve("sha256");
+            repos = cacheRoot.resolve("repos");
+        }
+        Path actions = cacheRoot.resolve("actions");
+        Path runs = cacheRoot.resolve("runs");
+        Path stamps = cacheRoot.resolve("format-stamps");
+        // Order: CAS claims blob bytes; repos only adds unique (sidecars / non-linked copies).
+        DiskUsage.Stats[] parts = DiskUsage.exclusive(cas, repos, actions, runs, stamps);
+        return new SectionStats(
+                Stats.from(parts[0]),
+                Stats.from(parts[2]),
+                Stats.from(parts[1]),
+                Stats.from(parts[3]),
+                Stats.from(parts[4]));
+    }
+
+    /** Breakdown used by info / status — fields ordered for the info table. */
+    record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
+        long totalFiles() {
+            return cas.files + actions.files + repos.files + runs.files + stamps.files;
+        }
+
+        long totalBytes() {
+            return cas.bytes + actions.bytes + repos.bytes + runs.bytes + stamps.bytes;
+        }
     }
 
     static String fmtCount(long n) {
@@ -163,17 +211,16 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public int run(Invocation in) throws IOException {
             Path root = resolveCacheRoot(in.value("cache-dir").map(Path::of).orElse(null));
-            if (!Files.isDirectory(root)) {
+            Path absRoot = root.toAbsolutePath().normalize();
+            boolean isolated = !absRoot.equals(JkDirs.cache().toAbsolutePath().normalize());
+            // Explicit --cache-dir: only that tree. Ambient: also consider the artifact store.
+            if (!Files.isDirectory(root) && (isolated || !Files.isDirectory(JkStores.storeRootFor(root)))) {
                 CliOutput.out("Cache directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            Stats sha = statsOf(root.resolve("sha256"));
-            Stats actions = statsOf(root.resolve("actions"));
-            Stats repos = statsOf(root.resolve("repos"));
-            Stats runs = statsOf(root.resolve("runs"));
-            Stats stamps = statsOf(root.resolve("format-stamps"));
-            long totalFiles = sha.files + actions.files + repos.files + runs.files + stamps.files;
-            long totalBytes = sha.bytes + actions.bytes + repos.bytes + runs.bytes + stamps.bytes;
+            SectionStats s = sectionStats(root);
+            long totalFiles = s.totalFiles();
+            long totalBytes = s.totalBytes();
 
             // Utilization denominator: the configured LRU ceiling ([cache]
             // max-size-gb in ~/.jk/config.toml), or the documented 20 GiB default
@@ -184,8 +231,16 @@ public final class CacheCommand extends GroupCommand {
             // Last-pruned timestamp from the scheduler stamp file.
             String lastPruned = lastPrunedLabel(root);
 
-            for (String line :
-                    renderInfoTable(sha, actions, repos, runs, stamps, totalFiles, totalBytes, maxBytes, lastPruned)) {
+            for (String line : renderInfoTable(
+                    s.cas(),
+                    s.actions(),
+                    s.repos(),
+                    s.runs(),
+                    s.stamps(),
+                    totalFiles,
+                    totalBytes,
+                    maxBytes,
+                    lastPruned)) {
                 CliOutput.out(line);
             }
             return 0;
@@ -686,23 +741,18 @@ public final class CacheCommand extends GroupCommand {
             boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
             Path root = resolveCacheRoot(cacheDir);
             if (!Files.isDirectory(root)) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Cache",
-                        nerdfont,
-                        "Nothing to purge — cache directory does not exist."));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — cache directory does not exist.");
                 return 0;
             }
             Stats stats = statsOf(root);
             if (dryRun) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
+                cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Cache",
-                        nerdfont,
-                        "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + "."));
+                        "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + ".");
                 return 0;
             }
             if (!assumeYes && !confirmPurge(root, stats)) {
+                cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CROSS, "Cache", nerdfont, "Purge aborted."));
                 return 1;

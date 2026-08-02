@@ -54,7 +54,7 @@ public final class GradleCommand implements CliCommand {
 
     @Override
     public int run(Invocation in) throws IOException, InterruptedException {
-        Path directory = in.value("directory").map(Path::of).orElse(null);
+        Path directory = in.value("dir").map(Path::of).orElse(null);
         Path toolsDir = in.value("tools-dir").map(Path::of).orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
         boolean noDiscover = in.isSet("no-discover");

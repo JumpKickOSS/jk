@@ -14,7 +14,11 @@ import java.util.stream.Stream;
 
 /**
  * {@code jk clean --cache} GC: mark reachable ({@link CacheRoots}), delete unreferenced blobs idle
- * longer than {@link #MAX_AGE} (and matching {@code repo/} links), compact the access log.
+ * longer than {@link #MAX_AGE}, drop matching {@code repos/} hard-links, compact the access log.
+ *
+ * <p>CAS and {@code repos/<name>/} share inodes via hard link. Purging must remove <strong>every
+ * directory entry</strong> for a sha (repo view first, then {@code sha256/…}) or the bytes stay
+ * allocated and GC fails its only job.
  */
 public final class CacheGc {
 
@@ -52,6 +56,7 @@ public final class CacheGc {
         long maxAgeMillis = MAX_AGE.toMillis();
 
         Set<String> purged = new HashSet<>();
+        java.util.ArrayList<Path> casPaths = new java.util.ArrayList<>();
         long freed = 0;
         if (Files.isDirectory(shaRoot)) {
             try (Stream<Path> stream = Files.walk(shaRoot)) {
@@ -70,14 +75,20 @@ public final class CacheGc {
                     if (now - last < maxAgeMillis) continue; // still warm
 
                     long size = Files.size(file);
-                    if (!dryRun) Files.deleteIfExists(file);
                     purged.add(hex);
+                    casPaths.add(file);
                     freed += size;
                 }
             }
         }
 
+        // Unlink repos/ first (hard links), then CAS — both required to free the inode.
         int repoLinks = cc.jumpkick.repo.RepoArtifactStore.removeShasFromAll(storeRoot, purged, dryRun);
+        if (!dryRun) {
+            for (Path file : casPaths) {
+                Files.deleteIfExists(file);
+            }
+        }
 
         // Compact the access log: sum each sha's counts, dedupe to the latest
         // entry, and drop entries for anything we just purged.

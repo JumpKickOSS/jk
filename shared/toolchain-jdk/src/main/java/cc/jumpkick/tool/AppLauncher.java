@@ -15,7 +15,7 @@ import java.util.Set;
 /**
  * Writes a launcher script for an application installed by {@code jk install} (the {@code make
  * install} step). Unlike {@link ToolLauncher} — which embeds CAS paths and writes {@code env.json}
- * — this launcher points at an explicit set of jars under {@code ~/.jk/lib} (the app jar plus
+ * — this launcher points at an explicit set of jars under {@code $JK_LIB_DIR/&lt;bin&gt;/} (the app jar plus
  * its hard-linked runtime dependencies, or a single fat jar).
  *
  * <p>The classpath is written out as an explicit jar list (not a {@code lib/*} glob) so

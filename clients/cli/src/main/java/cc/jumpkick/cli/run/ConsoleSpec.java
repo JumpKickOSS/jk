@@ -3,6 +3,7 @@ package cc.jumpkick.cli.run;
 
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Glyphs;
+// Theme used for ANSI styling of took / errors
 import cc.jumpkick.run.PipelineResult;
 import java.time.Duration;
 import java.util.function.Function;
@@ -44,22 +45,27 @@ public record ConsoleSpec(
     }
 
     /**
-     * Dim italic {@code "took Xms"} duration suffix — appended by the framework to every result line.
+     * Duration suffix for settle lines. ANSI: dim italic {@code took Xms}. Plain ({@code
+     * --no-ansi}): {@code - took Xms} so the dash substitutes for color separation.
      */
     public static String took(Duration d) {
-        return Theme.colorize(
-                "took " + fmtDuration(d), Theme.active().darkGray().italic());
+        String body = "took " + fmtDuration(d);
+        if (!Theme.active().isAnsi()) {
+            return "- " + body;
+        }
+        return Theme.colorize(body, Theme.active().darkGray().italic());
     }
 
     /**
-     * A diagnostic error line: red {@code ‼ Error}, the step in plain brackets, then the message on
-     * its own line — e.g.
-     *
-     * <pre>‼ Error [compile-test]:
-     * Foo.java:3: package … does not exist</pre>
+     * A diagnostic error line: red {@code ‼ Error} (or plain {@code ! Error}), the step in
+     * brackets, then the message on its own line.
      */
     public static String errorLine(String step, String message) {
-        return Theme.colorize(Glyphs.CROSS + " Error", Theme.active().error())
+        Theme t = Theme.active();
+        if (!t.isAnsi()) {
+            return Glyphs.CROSS_PLAIN + " Error [" + step + "]:" + System.lineSeparator() + message;
+        }
+        return Theme.colorize(Glyphs.CROSS + " Error", t.error())
                 + " ["
                 + step
                 + "]:"

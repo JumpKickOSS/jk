@@ -41,7 +41,13 @@ class ThirdPartyPluginTest {
 
     private static final String GROUP = "com.example";
     private static final String ARTIFACT = "hello-jk-plugin";
-    private static final String VERSION = "1.0.0";
+
+    /**
+     * Unique per run: the shared store feeds artifacts by coordinate across test runs, and the
+     * fixture jar's bytes differ every publish (jar entry timestamps) — a fixed version would
+     * make a later run fetch the previous run's jar and fail the SHA pin.
+     */
+    private static final String VERSION = "1.0." + System.currentTimeMillis();
 
     private static final String MANIFEST = """
             [plugin]
@@ -114,7 +120,9 @@ class ThirdPartyPluginTest {
         assertThat(build.plugins().getFirst().sha256()).isEqualTo(hex);
 
         // 2. Lock: resolve the coordinate exactly as lock-plugins does — fetch, SHA-pin, extract.
-        Cas cas = new Cas(cache);
+        // JkStores.cas, not new Cas(cache): the engine reads plugin jars through the shared
+        // store root, so the fetch must land there too or ensureMaterialized sees no jar.
+        Cas cas = cc.jumpkick.cache.JkStores.cas(cache);
         RepoGroup repos = RepoGroupBuilder.buildFor(build, null, cas);
         var fetched =
                 repos.tryFetchArtifact(Coordinate.of(GROUP, ARTIFACT, VERSION)).orElseThrow();

@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class PluginInstallLocalTest {
 
+    /** Thin PluginMain worker — no assembly (JK-1347). */
     private static final String WORKER_TOML = """
             [project]
             group = "cc.jumpkick"
@@ -25,14 +27,13 @@ class PluginInstallLocalTest {
             java = 25
             [application]
             main = "cc.jumpkick.plugin.process.PluginMain"
-            assembly = true
             """;
 
     @Test
-    void install_local_side_loads_assembly_jar(@TempDir Path dir) throws Exception {
+    void install_local_side_loads_thin_jar_and_classpath(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
-        Files.createDirectories(mod.resolve("target"));
+        Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -43,7 +44,8 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Path jar = mod.resolve("target/jk-test-runner-0.10.1-all.jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
         Files.writeString(jar, "fake-worker-jar");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -61,14 +63,95 @@ class PluginInstallLocalTest {
         assertThat(Files.readString(dest)).isEqualTo("fake-worker-jar");
         assertThat(Path.of(dest + ".sha256")).exists();
         assertThat(Files.readString(Path.of(dest + ".sha256"))).matches("[0-9a-f]{64}");
+        assertThat(Path.of(dest + ".classpath")).exists();
         assertThat(out.toString(StandardCharsets.UTF_8)).contains("Installed");
+    }
+
+    @Test
+    void reinstall_drops_stale_sidecar_entries(@TempDir Path dir) throws Exception {
+        // JK-1352: the lock closure is authoritative — a removed dep left in the previous
+        // sidecar must not survive regeneration.
+        Path cache = dir.resolve("cache");
+        Path mod = dir.resolve("plugins/worker");
+        Files.createDirectories(mod);
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["plugins/worker"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                [project]
+                group = "cc.jumpkick"
+                name = "jk-test-runner"
+                version = "0.10.1"
+                jdk = 25
+                java = 25
+                [application]
+                main = "cc.jumpkick.plugin.process.PluginMain"
+                [dependencies]
+                gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
+                """);
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "fake-worker-jar");
+
+        // Deterministic non-empty closure: seed the CAS with a fake gson blob and hand-write a
+        // fresh (digest-stamped) lock pinning it, so no engine or network is needed.
+        byte[] gsonBytes = "fake-gson-jar".getBytes(StandardCharsets.UTF_8);
+        String gsonSha = cc.jumpkick.util.Hashing.sha256Hex(gsonBytes);
+        cc.jumpkick.cache.JkStores.cas(cache).put(gsonBytes, gsonSha);
+        cc.jumpkick.lock.Lockfile lock = new cc.jumpkick.lock.Lockfile(
+                cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
+                "jk test",
+                cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
+                List.of(new cc.jumpkick.lock.Lockfile.Artifact(
+                        "com.google.code.gson:gson",
+                        "2.11.0",
+                        "https://repo.example/gson",
+                        "sha256:" + gsonSha,
+                        null,
+                        List.of(cc.jumpkick.model.Scope.MAIN),
+                        List.of(),
+                        null,
+                        null)));
+        cc.jumpkick.lock.LockfileWriter.write(lock, dir.resolve("jk-lock.toml"));
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        Path dest = cache.resolve("repos/local/cc/jumpkick/jk-test-runner/0.10.1/jk-test-runner-0.10.1.jar");
+        Path destSidecar = Path.of(dest + ".classpath");
+        assertThat(destSidecar).exists();
+        long depLines = Files.readAllLines(destSidecar).stream()
+                .filter(l -> !l.isBlank() && !l.startsWith("#"))
+                .count();
+        assertThat(depLines).isGreaterThanOrEqualTo(1); // the pinned gson resolved from the CAS
+
+        // A dep that has since been removed from the manifest, still on disk and in both sidecars.
+        Path stale = dir.resolve("stale.jar");
+        Files.writeString(stale, "stale-bytes");
+        Files.writeString(destSidecar, Files.readString(destSidecar) + stale.toAbsolutePath() + "\n");
+        Path sourceSidecar = Path.of(jar + ".classpath");
+        Files.writeString(sourceSidecar, stale.toAbsolutePath() + "\n");
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        String regenerated = Files.readString(destSidecar);
+        assertThat(regenerated).doesNotContain("stale.jar");
+        assertThat(Files.readAllLines(destSidecar).stream()
+                        .filter(l -> !l.isBlank() && !l.startsWith("#"))
+                        .count())
+                .isGreaterThanOrEqualTo(1);
     }
 
     @Test
     void dry_run_writes_nothing(@TempDir Path dir) throws Exception {
         Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
-        Files.createDirectories(mod.resolve("target"));
+        Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -79,7 +162,8 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        Files.writeString(mod.resolve("target/jk-test-runner-0.10.1-all.jar"), "x");
+        Files.createDirectories(dir.resolve("target/plugins/worker"));
+        Files.writeString(dir.resolve("target/plugins/worker/jk-test-runner-0.10.1.jar"), "x");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream orig = System.out;
@@ -101,8 +185,8 @@ class PluginInstallLocalTest {
         Path cache = dir.resolve("cache");
         Path a = dir.resolve("plugins/alpha");
         Path b = dir.resolve("plugins/beta");
-        Files.createDirectories(a.resolve("target"));
-        Files.createDirectories(b.resolve("target"));
+        Files.createDirectories(a);
+        Files.createDirectories(b);
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
@@ -121,7 +205,6 @@ class PluginInstallLocalTest {
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
-                assembly = true
                 """);
         Files.writeString(b.resolve("jk.toml"), """
                 [project]
@@ -132,10 +215,11 @@ class PluginInstallLocalTest {
                 java = 25
                 [application]
                 main = "cc.jumpkick.plugin.process.PluginMain"
-                assembly = true
                 """);
-        Files.writeString(a.resolve("target/jk-alpha-0.10.1-all.jar"), "A");
-        Files.writeString(b.resolve("target/jk-beta-0.10.1-all.jar"), "B");
+        Files.createDirectories(dir.resolve("target/plugins/alpha"));
+        Files.createDirectories(dir.resolve("target/plugins/beta"));
+        Files.writeString(dir.resolve("target/plugins/alpha/jk-alpha-0.10.1.jar"), "A");
+        Files.writeString(dir.resolve("target/plugins/beta/jk-beta-0.10.1.jar"), "B");
 
         assertThat(Jk.execute(
                         "plugin",
@@ -154,7 +238,47 @@ class PluginInstallLocalTest {
     }
 
     @Test
-    void missing_jar_fails_when_no_workers_installed(@TempDir Path dir) throws Exception {
+    void cache_dir_install_leaves_the_global_lib_untouched(@TempDir Path dir) throws Exception {
+        // JK-1354: an isolated --cache-dir install must not create or overwrite the shared
+        // store/lib/<id>/ dir every ambient launch prefers.
+        Path cache = dir.resolve("cache");
+        Path mod = dir.resolve("plugins/worker");
+        Files.createDirectories(mod);
+        Files.writeString(dir.resolve("jk.toml"), """
+                [project]
+                group = "t"
+                name = "ws"
+                version = "0.0.1"
+                jdk = 25
+                [workspace]
+                modules = ["plugins/worker"]
+                """);
+        Files.writeString(mod.resolve("jk.toml"), """
+                [project]
+                group = "cc.jumpkick"
+                name = "jk-iso-worker"
+                version = "0.10.1"
+                jdk = 25
+                java = 25
+                [application]
+                main = "cc.jumpkick.plugin.process.PluginMain"
+                """);
+        Path jar = dir.resolve("target/plugins/worker/jk-iso-worker-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "fake-worker-jar");
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        assertThat(cache.resolve("repos/local/cc/jumpkick/jk-iso-worker/0.10.1/jk-iso-worker-0.10.1.jar"))
+                .exists();
+        assertThat(Files.exists(cc.jumpkick.compile.WorkerLib.dir("jk-iso-worker")))
+                .isFalse();
+    }
+
+    @Test
+    void uninstall_removes_local_repo_entries(@TempDir Path dir) throws Exception {
+        // JK-1353: `jk plugin uninstall` drops what install-local side-loaded.
+        Path cache = dir.resolve("cache");
         Path mod = dir.resolve("plugins/worker");
         Files.createDirectories(mod);
         Files.writeString(dir.resolve("jk.toml"), """
@@ -167,43 +291,31 @@ class PluginInstallLocalTest {
                 modules = ["plugins/worker"]
                 """);
         Files.writeString(mod.resolve("jk.toml"), WORKER_TOML);
-        // no target jar
-        ByteArrayOutputStream err = new ByteArrayOutputStream();
-        PrintStream orig = System.err;
-        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
-        int exit;
-        try {
-            exit = Jk.execute(
-                    "plugin",
-                    "install-local",
-                    "-C",
-                    dir.toString(),
-                    "--cache-dir",
-                    dir.resolve("cache").toString());
-        } finally {
-            System.setErr(orig);
-        }
-        assertThat(exit).isEqualTo(1); // FAILURE
-        assertThat(err.toString(StandardCharsets.UTF_8)).contains("missing jar");
+        Path jar = dir.resolve("target/plugins/worker/jk-test-runner-0.10.1.jar");
+        Files.createDirectories(jar.getParent());
+        Files.writeString(jar, "fake-worker-jar");
+
+        assertThat(Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString()))
+                .isZero();
+        Path repoDir = cache.resolve("repos/local/cc/jumpkick/jk-test-runner");
+        assertThat(repoDir).exists();
+
+        assertThat(Jk.execute("plugin", "uninstall", "jk-test-runner", "--cache-dir", cache.toString()))
+                .isZero();
+        assertThat(Files.exists(repoDir)).isFalse();
+
+        // A second uninstall has nothing to remove.
+        assertThat(Jk.execute("plugin", "uninstall", "jk-test-runner", "--cache-dir", cache.toString()))
+                .isEqualTo(2);
     }
 
     @Test
-    void skips_non_plugin_main_modules(@TempDir Path dir) throws Exception {
-        Path lib = dir.resolve("lib");
-        Files.createDirectories(lib);
+    void no_plugin_main_modules_is_config_error(@TempDir Path dir) throws Exception {
+        Path cache = dir.resolve("cache");
         Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "t"
-                name = "ws"
-                version = "0.0.1"
-                jdk = 25
-                [workspace]
-                modules = ["lib"]
-                """);
-        Files.writeString(lib.resolve("jk.toml"), """
-                [project]
-                group = "t"
-                name = "lib"
+                name = "solo"
                 version = "0.0.1"
                 jdk = 25
                 """);
@@ -212,13 +324,7 @@ class PluginInstallLocalTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute(
-                    "plugin",
-                    "install-local",
-                    "-C",
-                    dir.toString(),
-                    "--cache-dir",
-                    dir.resolve("cache").toString());
+            exit = Jk.execute("plugin", "install-local", "-C", dir.toString(), "--cache-dir", cache.toString());
         } finally {
             System.setErr(orig);
         }

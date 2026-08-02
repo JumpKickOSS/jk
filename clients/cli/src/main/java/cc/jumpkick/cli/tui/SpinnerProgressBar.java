@@ -18,6 +18,14 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     static final char FILLED_CHAR = '▰';
     static final char EMPTY_CHAR = '▱';
 
+    private static char filledChar() {
+        return Theme.active().isAnsi() ? FILLED_CHAR : Glyphs.BAR_FULL_PLAIN;
+    }
+
+    private static char emptyChar() {
+        return Theme.active().isAnsi() ? EMPTY_CHAR : Glyphs.BAR_EMPTY_PLAIN;
+    }
+
     /** Right-aligned percent column: " 5%", " 62%", "100%". */
     static final int PERCENT_WIDTH = 4;
 
@@ -35,7 +43,6 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     // (clear) on close. BEL terminator is more universally honored
     // than ST in OSC handling. Terminals that don't recognise OSC 9;4
     // silently swallow the sequence in their OSC parser.
-    static final String OSC_CLEAR = Ansi.TASKBAR_CLEAR;
 
     private final PrintStream out;
     private final AttributedStyle[] segmentColors;
@@ -114,7 +121,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         // before any progress) would stay in the transcript next to
         // the failure summary that follows.
         if (drawn) out.print(Ansi.CLEAR_LINE);
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
     }
@@ -137,7 +144,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
             return;
         }
         out.print(Ansi.CLEAR_LINE); // clear the bar line
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println(message);
         out.flush();
@@ -186,22 +193,23 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         if (silent) return;
         AttributedStyle strikeStyle = Theme.active().dim().crossedOut();
         out.print("\r");
-        out.print(
-                Theme.colorize(Glyphs.CROSS + " Failed", Theme.active().error().bold()));
+        out.print(Theme.colorize(
+                Glyphs.cross() + " Failed", Theme.active().error().bold()));
         out.print(" ");
         // Every segment painted with the dark-red→bright-red gradient.
         // We don't care about filled vs empty here — the bar's role at
         // this point is to mark *where* the pipeline stopped, not to
         // continue showing in-flight progress.
+        char empty = emptyChar();
         for (int i = 0; i < SEGMENTS; i++) {
-            out.print(Theme.colorize(String.valueOf(EMPTY_CHAR), failColors[i]));
+            out.print(Theme.colorize(String.valueOf(empty), failColors[i]));
         }
         out.print(GAP);
         out.print(Theme.colorize(lastPercent, percentStyle(lastPercentVal)));
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) status
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.println();
         out.flush();
@@ -220,8 +228,10 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         AttributedStyle redStyle = Theme.active().error();
         AttributedStyle strikeStyle = Theme.active().dim().crossedOut();
         out.print("\r");
+        char filled = filledChar();
+        char empty = emptyChar();
         for (int i = 0; i < SEGMENTS; i++) {
-            char c = i < lastFilled ? FILLED_CHAR : EMPTY_CHAR;
+            char c = i < lastFilled ? filled : empty;
             out.print(Theme.colorize(String.valueOf(c), redStyle));
         }
         out.print(GAP);
@@ -229,7 +239,7 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
         out.print(SEPARATOR);
         out.print(Theme.colorize(lastStatus, strikeStyle));
         out.print(Ansi.ERASE_LINE_TO_END); // wipe any residue past the (shorter) cancel status
-        out.print(OSC_CLEAR);
+        out.print(Ansi.taskbarClear());
         out.print(SHOW_CURSOR);
         out.flush();
         // Cursor is left mid-line with no newline; GlobalCancel prints the
@@ -269,9 +279,11 @@ public final class SpinnerProgressBar implements AutoCloseable, LiveRegion {
     }
 
     private void renderSegments(int from, int to, int filled) {
+        char full = filledChar();
+        char empty = emptyChar();
         for (int i = from; i < to; i++) {
             boolean isFilled = i < filled;
-            char c = isFilled ? FILLED_CHAR : EMPTY_CHAR;
+            char c = isFilled ? full : empty;
             AttributedStyle style = isFilled ? filledColor(i, filled) : emptyStyle;
             out.print(Theme.colorize(String.valueOf(c), style));
         }

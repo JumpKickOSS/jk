@@ -56,11 +56,80 @@ class BuildPlanForecastPackageKeyTest {
     }
 
     @Test
+    void post_clean_sibling_fingerprints_in_the_live_file_form(@TempDir Path tmp) throws Exception {
+        // JK-1369: a jk-clean-wiped sibling recovered from the CAS must fingerprint as
+        // "file:<sha>" (what the live step stored for the on-disk jar), not "cas:<blob path>" —
+        // otherwise the post-clean assembly forecast can never key-match.
+        byte[] bytes = "sibling-jar-bytes".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        String sha = cc.jumpkick.util.Hashing.sha256Hex(bytes);
+        var cas = new cc.jumpkick.cache.Cas(tmp.resolve("cas"));
+        cas.put(bytes, sha);
+
+        Path wiped = tmp.resolve("target/sibling.jar"); // does not exist (post-clean)
+        String recovered = BuildPlanForecast.fingerprintJarOrCached(
+                wiped, cas, Map.of(wiped.toAbsolutePath().normalize(), sha));
+
+        // Live-build form: the same content on disk.
+        Path onDisk = tmp.resolve("sibling.jar");
+        Files.write(onDisk, bytes);
+        assertThat(recovered).isEqualTo(ClasspathFingerprint.entry(onDisk));
+        assertThat(recovered).startsWith("file:");
+    }
+
+    @Test
     void estimate_eta_is_zero_when_plan_is_fully_cached(@TempDir Path tmp) {
         // Empty plan modules → 0; fully-cached modules skipped in estimateEtaMillis.
         ExplainPlan empty = new ExplainPlan(List.of(), Map.of(), 1, List.of());
         long eta = BuildService.estimateEtaMillis(
                 empty, tmp, tmp.resolve("cache"), 1, null, null, false, false, true, false);
         assertThat(eta).isZero();
+    }
+
+    @Test
+    void assembly_forecast_tokens_match_build_pipelines_recipe(@TempDir Path tmp) throws Exception {
+        // Regression: forecast used whole-lock RUNTIME + all sibling lock RUNTIME jars while
+        // assemblyStep (JK-1345) uses ModuleRuntimeClasspath — permanent "repackage" on explain.
+        Path classes = Files.createDirectories(tmp.resolve("classes"));
+        Path classFile = classes.resolve("App.class");
+        Files.writeString(classFile, "fake");
+        Path dep = tmp.resolve("dep.jar");
+        Files.writeString(dep, "dep-bytes");
+
+        List<Path> depJars = List.of(dep);
+        String main = "com.example.Main";
+        Map<String, String> manifest = Map.of();
+
+        List<String> buildTokens = List.of(
+                "classes:" + ClasspathFingerprint.entry(classes),
+                "deps:" + ClasspathFingerprint.of(depJars),
+                "main:" + main,
+                "manifest:" + manifest,
+                "packaging:fat");
+
+        // Forecast path: same deps set (assemblyDependencyJars) + fingerprintDepJars when jars exist.
+        String depsTok = BuildPlanForecast.fingerprintDepJars(depJars, null, Map.of());
+        List<String> forecastTokens = List.of(
+                "classes:" + ClasspathFingerprint.entry(classes),
+                "deps:" + depsTok,
+                "main:" + main,
+                "manifest:" + manifest,
+                "packaging:fat");
+
+        assertThat(forecastTokens).isEqualTo(buildTokens);
+
+        Path assemblyJar = tmp.resolve("app-all.jar");
+        String task = ActionKey.qualifiedTaskId("package-assembly", assemblyJar);
+        String good = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), buildTokens);
+        // Old whole-workspace-style deps set (extra unrelated jar) must not share the key.
+        Path extra = tmp.resolve("workspace-noise.jar");
+        Files.writeString(extra, "noise");
+        List<String> oldStyle = List.of(
+                "classes:" + ClasspathFingerprint.entry(classes),
+                "deps:" + ClasspathFingerprint.of(List.of(dep, extra)),
+                "main:" + main,
+                "manifest:" + manifest,
+                "packaging:fat");
+        String bad = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), oldStyle);
+        assertThat(good).isNotEqualTo(bad);
     }
 }

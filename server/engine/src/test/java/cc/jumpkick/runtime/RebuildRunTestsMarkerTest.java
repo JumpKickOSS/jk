@@ -23,7 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk build --rebuild} reruns tests but must still store the green marker under the normal
+ * {@code jk build --redo} reruns tests but must still store the green marker under the normal
  * content key — the next {@code jk explain} / build forecast has to see run-tests CACHED, not a
  * phantom retest (same parity contract as compile and package-jar).
  *
@@ -38,6 +38,8 @@ class RebuildRunTestsMarkerTest {
                 Optional.empty(),
                 Optional.empty(),
                 Optional.of(true), // rebuild
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
                 Optional.empty(),
@@ -134,7 +136,7 @@ class RebuildRunTestsMarkerTest {
                 List<BuildPlan.Module> plan = BuildPlanForecast.of(graph, cas, actionCache, cache, false);
                 assertThat(plan).hasSize(1);
                 assertThat(plan.get(0).steps())
-                        .as("run-tests marker stored under --rebuild → forecast sees CACHED")
+                        .as("run-tests marker stored under --redo → forecast sees CACHED")
                         .anyMatch(s -> s.name().equals("run-tests") && s.cached());
             } catch (Exception e) {
                 throw new RuntimeException(e);

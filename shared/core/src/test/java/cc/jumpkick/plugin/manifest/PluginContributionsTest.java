@@ -9,6 +9,8 @@ import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.model.Dependency;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.Scope;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -275,8 +277,7 @@ class PluginContributionsTest {
         // The condition must be evaluated against the RESOLVED project — a thin workspace
         // member inherits kotlin from its root, so the pre-inheritance fold sees kotlin
         // absent and would drop this contribution (WorkspaceResolve re-folds post-inherit).
-        PluginDescriptor manifest = PluginDescriptors.parse(
-                """
+        PluginDescriptor manifest = PluginDescriptors.parse("""
                 [plugin]
                 id = "ktextra"
                 table = "ktextra"
@@ -284,14 +285,12 @@ class PluginContributionsTest {
                 [[contribute.platform-dependency]]
                 coordinate = "com.acme:kt-bom:1.0.0"
                 when = { kotlin-project = true }
-                """,
-                "p.toml");
-        var configs = java.util.Map.of(
-                "ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
+                """, "p.toml");
+        var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
 
         JkBuild.Project thin =
                 JkBuild.Project.builder("g", "m", "1.0").jdkMajor(21).java(21).build();
-        assertThat(PluginContributions.platformDependencies(thin, false, configs, java.util.List.of(manifest)))
+        assertThat(PluginContributions.platformDependencies(thin, false, configs, List.of(manifest)))
                 .as("no kotlin → condition false")
                 .isEmpty();
 
@@ -300,7 +299,7 @@ class PluginContributionsTest {
                 .java(21)
                 .kotlin(cc.jumpkick.model.VersionSelector.parse("=2.4.0"))
                 .build();
-        assertThat(PluginContributions.platformDependencies(resolved, false, configs, java.util.List.of(manifest)))
+        assertThat(PluginContributions.platformDependencies(resolved, false, configs, List.of(manifest)))
                 .extracting(PluginContributions.PlatformDep::module)
                 .containsExactly("com.acme:kt-bom");
     }

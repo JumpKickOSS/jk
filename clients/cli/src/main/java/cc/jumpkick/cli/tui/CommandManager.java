@@ -77,6 +77,20 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private int frame;
     private int linesDrawn; // pipeline mode: lines in the live region
     private List<String> lastLines = List.of(); // pipeline mode: last painted lines, for diffing
+    /** JK-1373: true after the leading blank of the human chrome envelope was printed. */
+    private boolean leadingBlankPrinted;
+
+    /**
+     * Plain ({@code --no-ansi}) multi-line progress: last printed 10% decade (0..9), or -1 before
+     * the mandatory 0% start line. 100% is only emitted as a done line on settle (JK-1379).
+     */
+    private int plainLastDecade = -1;
+
+    /** True after any plain working/progress line has been printed for this region. */
+    private boolean plainChromeStarted;
+
+    /** True when aggregate progress (den &gt; 0) drove plain chrome — settle uses 100% done. */
+    private boolean plainProgressMode;
 
     // simple mode
     private String label = "";
@@ -128,7 +142,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     private boolean capturing;
 
     CommandManager(PrintStream out, boolean animate, boolean pipelineMode, int width) {
-        this.out = out;
+        // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
+        this.out = PlainAscii.wrap(out);
         this.animate = animate;
         this.pipelineMode = pipelineMode;
         this.width = width <= 0 ? DEFAULT_WIDTH : width;
@@ -146,10 +161,14 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         CommandManager cm = new CommandManager(out, animate, false, DEFAULT_WIDTH);
         cm.label = command;
         LiveRegion.setActive(cm);
-        if (animate) {
+        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
+        } else if (animate) {
+            // Plain multi-line: mandatory start line (JK-1379).
+            cm.printPlainIndeterminate(true);
         }
         return cm;
     }
@@ -174,11 +193,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         cm.name = name;
         cm.startNanos = System.nanoTime();
         LiveRegion.setActive(cm);
-        if (animate) {
+        cm.ensureLeadingBlank(); // JK-1373: blank line before human chrome
+        if (animate && Theme.active().isAnsi()) {
             out.print(Ansi.HIDE_CURSOR);
             out.flush();
             cm.startAnimator();
         }
+        // Plain pipeline: no start line until progress() or settle (message may not exist yet).
         return cm;
     }
 
@@ -217,7 +238,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             // Only an interactive ANSI terminal gets OSC 0 — under pipes/--quiet (!animate)
             // or no-ANSI mode (--no-ansi, TERM=dumb, CI) the escapes would land verbatim in
             // the output stream.
-            if (done || !animate || !Theme.active().isAnsi()) return;
+            if (done || !animate || !Theme.active().isAnsi() || !Ansi.oscEnabled()) return;
             windowTitleBase = title == null ? "" : title;
             windowTitleActive = !windowTitleBase.isEmpty();
             windowTitleLastGlyph = null; // force immediate emit with current fill glyph
@@ -244,7 +265,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         windowTitleActive = false;
         windowTitleBase = "";
         windowTitleLastGlyph = null;
-        out.print(Ansi.WINDOW_TITLE_CLEAR);
+        out.print(Ansi.windowTitleClear());
     }
 
     /** Register a not-yet-started step row with a humanized display name. */
@@ -306,9 +327,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
     }
 
     /**
-     * Seed the header clock with the total predicted build wall-clock (the same figure {@code jk
-     * explain} reports). The clock is <em>run-wide</em> and pure wall-clock from {@link
-     * #pipeline(PrintStream, String, boolean) construction}:
+     * Seed the header clock with the total predicted build wall-clock from command start. The clock
+     * is <em>run-wide</em> pure wall-clock from {@link #pipeline(PrintStream, String, boolean)
+     * construction}:
      *
      * <ul>
      * <li>With a seed {@code > 0}: count down {@code seed − elapsed} one second per real second;
@@ -319,6 +340,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * <p>Early + post-prepare seeds may refine the total while no module has finished yet. Once
      * execute has completed any module, further updates are ignored so mid-build re-projections
      * cannot jump the countdown or reset count-up at module boundaries.
+     *
+     * <p>Prefer {@link #setRemainingWorkEstimate} when the engine reports work still to do after
+     * elapsed preflight (lock/graph) — that keeps the explain figure and the live countdown equal.
      */
     public void setEtaEstimate(long totalMillis) {
         synchronized (lock) {
@@ -329,6 +353,29 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (etaEstimateMs > 0 && modulesComplete > 0) return;
             this.etaEstimateMs = next;
         }
+    }
+
+    /**
+     * Seed from a <em>remaining-work</em> estimate (what {@code jk explain} prints after lock).
+     * Converts to a run-wide total: {@code elapsed + remaining} so lock/preflight time already spent
+     * is not subtracted twice and the countdown ends near zero when the estimate is accurate.
+     */
+    public void setRemainingWorkEstimate(long remainingMillis) {
+        long rem = Math.max(0, remainingMillis);
+        if (rem == 0) return;
+        setEtaEstimate(elapsedMillis() + rem);
+    }
+
+    /** Seeded ETA total in milliseconds (0 = none). Used for long-build desktop notifications. */
+    public long etaEstimateMs() {
+        synchronized (lock) {
+            return etaEstimateMs;
+        }
+    }
+
+    /** Wall-clock ms since this manager was constructed (run-wide). */
+    public long elapsedMillisPublic() {
+        return elapsedMillis();
     }
 
     /**
@@ -433,6 +480,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             this.denominator = denominator;
             // Prefer the bar over the text-only solve label once we have a denominator.
             if (denominator > 0) this.solveLabel = "";
+            // Plain multi-line: emit 0% then each newly crossed 10% decade (JK-1379).
+            if (animate && !Theme.active().isAnsi() && denominator > 0) {
+                emitPlainProgressDecades();
+            }
         }
     }
 
@@ -492,6 +543,9 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
      * Settle with the play chip: {@code ▶ Run Executing `java …`} — for commands that hand off to a
      * subprocess after the pipeline settles (e.g. {@code jk run}). {@code pipelineName} is the
      * command label (typically {@code Run}); {@code tail} is the pre-styled message.
+     *
+     * <p>{@code jk run} prints its own single separator before {@code inheritIO} (no settle
+     * trailing blank — settles never add one; see {@link #settle}).
      */
     public void finishPipelineExec(String tail, List<String> above) {
         settle(PipelineWedge.chipLine(Glyphs.PLAY, pipelineName(), nerdfont, tail), above);
@@ -558,12 +612,15 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             done = true;
             LiveRegion.clearActive(this);
             clearWindowTitle();
-            if (animate) {
+            if (animate && Theme.active().isAnsi()) {
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
-                out.print(Ansi.TASKBAR_CLEAR);
+                out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
                 out.flush();
+            } else if (animate && !Theme.active().isAnsi()) {
+                // Plain: end multi-line chrome without a settle wedge (caller owns outcome).
+                printPlainDone();
             } else {
                 out.flush();
             }
@@ -580,6 +637,12 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         settle(line, List.of());
     }
 
+    /**
+     * Print the settled result line. Leading blank only (JK-1373): one blank before chrome starts,
+     * no automatic blank after the settle line — that looked like an extra line before the shell
+     * prompt on {@code jk build}/{@code jk lock}/one-shot wedges. Callers that hand off to a
+     * subprocess ({@code jk run}) add their own separator when needed.
+     */
     private void settle(String line, List<String> above) {
         restoreStreams(); // flush any captured output above the region first
         stopAnimator();
@@ -588,13 +651,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             done = true;
             LiveRegion.clearActive(this);
             clearWindowTitle();
-            if (animate) {
+            if (animate && Theme.active().isAnsi()) {
                 // Simple mode keeps the settled spinner line and prints the
                 // result below it; pipeline mode replaces the whole region.
                 if (pipelineMode) wipeRegion();
                 else freezeSpinnerLine();
-                out.print(Ansi.TASKBAR_CLEAR);
+                out.print(Ansi.taskbarClear());
                 out.print(Ansi.SHOW_CURSOR);
+            } else if (animate && !Theme.active().isAnsi()) {
+                // Plain multi-line: mandatory done line before the settle wedge (JK-1379).
+                printPlainDone();
             }
             // Deferred subprocess output (e.g. compiler warnings) prints as
             // scrollback above the result line, with a blank separator, so the
@@ -603,9 +669,134 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 for (String s : above) out.println(s);
                 out.println();
             }
+            ensureLeadingBlank(); // quiet / late settle still gets the leading blank
             out.println(line);
             out.flush();
         }
+    }
+
+    // --- plain multi-line chrome (JK-1379) ---------------------------------
+
+    /**
+     * Emit plain progress lines for every newly crossed 10% decade up to (and not past) 90%.
+     * Must hold {@link #lock}. First call always prints the mandatory 0% start line.
+     */
+    private void emitPlainProgressDecades() {
+        if (done || denominator <= 0) return;
+        plainProgressMode = true;
+        // Decade 0..9 while working; 100% only on settle as done.
+        long cappedNum = Math.min(numerator, denominator);
+        int decade = (int) Math.min(9, (cappedNum * 10) / denominator);
+        if (plainLastDecade < 0) {
+            out.println(plainProgressLine(0, false));
+            plainLastDecade = 0;
+            plainChromeStarted = true;
+            out.flush();
+        }
+        while (plainLastDecade < decade) {
+            plainLastDecade++;
+            out.println(plainProgressLine(plainLastDecade * 10, false));
+            out.flush();
+        }
+    }
+
+    /** Indeterminate plain start/heartbeat (simple mode open, or pipeline without progress). */
+    private void printPlainIndeterminate(boolean forceStart) {
+        synchronized (lock) {
+            if (done) return;
+            if (plainChromeStarted && !forceStart) return;
+            if (plainChromeStarted && plainProgressMode) return;
+            out.println(plainIndeterminateLine(false));
+            plainChromeStarted = true;
+            out.flush();
+        }
+    }
+
+    /** Mandatory plain done line — progress ends at 100%, spinner at {@code done.}. */
+    private void printPlainDone() {
+        if (!animate) return;
+        if (plainProgressMode) {
+            // Catch up any remaining decades so a fast finish still shows 0→…→90 then 100 done.
+            if (plainLastDecade < 0) {
+                out.println(plainProgressLine(0, false));
+                plainLastDecade = 0;
+                plainChromeStarted = true;
+            }
+            // Do not invent intermediate decades on settle if we never crossed them mid-run —
+            // only ensure 0% was printed, then 100% done.
+            out.println(plainProgressLine(100, true));
+            plainChromeStarted = true;
+            out.flush();
+            return;
+        }
+        if (plainChromeStarted || !pipelineMode) {
+            // Simple mode always had a start; pipeline without progress prints done only if started.
+            if (!plainChromeStarted) {
+                out.println(plainIndeterminateLine(false));
+            }
+            out.println(plainIndeterminateLine(true));
+            plainChromeStarted = true;
+            out.flush();
+        }
+    }
+
+    /**
+     * {@code " * Format > Examining source files - 10% - working..."} or {@code … - 100% - done.}.
+     */
+    static String plainProgressLine(String command, String message, int percent, boolean done) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - " + percent + "% - " + (done ? "done." : "working...");
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command == null ? "" : command, tail);
+    }
+
+    private String plainProgressLine(int percent, boolean doneLine) {
+        return plainProgressLine(pipelineName(), plainWorkMessage(), percent, doneLine);
+    }
+
+    /** {@code " * Format > Examining source files - working..."} / {@code … - done.}. */
+    static String plainIndeterminateLine(String command, String message, boolean done) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - " + (done ? "done." : "working...");
+        if (command == null || command.isEmpty()) {
+            return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        }
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+    }
+
+    private String plainIndeterminateLine(boolean doneLine) {
+        if (pipelineMode) {
+            return plainIndeterminateLine(pipelineName(), plainWorkMessage(), doneLine);
+        }
+        // Simple mode: the label is the whole message (no command chip name beyond label).
+        return plainIndeterminateLine(null, label, doneLine);
+    }
+
+    /** Best-effort work description for plain lines: solve label, active step, or pipeline name. */
+    private String plainWorkMessage() {
+        String sl = solveLabel;
+        if (sl != null && !sl.isEmpty()) return sl;
+        for (Row r : rows.values()) {
+            if (r.state == RowState.ACTIVE) {
+                if (r.message != null && !r.message.isEmpty()) return r.message;
+                if (r.step != null && !r.step.isEmpty()) return r.step;
+            }
+        }
+        for (Row r : rows.values()) {
+            if (r.step != null && !r.step.isEmpty()) return r.step;
+        }
+        String n = pipelineName();
+        return n == null || n.isEmpty() ? "working" : n;
+    }
+
+    /**
+     * Leading blank once per command (JK-1373). Shared with prep spinners via
+     * {@link CommandWedge#envelopeStart(PrintStream)} so lock/analyze wedges and the live region
+     * do not double-space.
+     */
+    private void ensureLeadingBlank() {
+        if (leadingBlankPrinted) return;
+        leadingBlankPrinted = true;
+        CommandWedge.envelopeStart(out);
     }
 
     /** Cancel line text (shown by {@link GlobalCancel} when the region did not paint itself). */
@@ -631,18 +822,26 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             clearWindowTitle();
             if (!animate) return false;
             if (pipelineMode) {
-                wipeRegion();
-                out.print(Ansi.TASKBAR_CLEAR);
-                out.print(Ansi.SHOW_CURSOR);
+                if (Theme.active().isAnsi()) {
+                    wipeRegion();
+                    out.print(Ansi.taskbarClear());
+                    out.print(Ansi.SHOW_CURSOR);
+                } else {
+                    printPlainDone();
+                }
                 // Ctrl-C: "by user" + took duration.
                 String took = cc.jumpkick.cli.run.ConsoleSpec.took(java.time.Duration.ofMillis(elapsedMillis()));
                 out.println(PipelineWedge.cancelledJobLine(pipelineName(), nerdfont, true, took));
                 out.flush();
                 return true;
             }
-            freezeSpinnerLine();
-            out.print(Ansi.TASKBAR_CLEAR);
-            out.print(Ansi.SHOW_CURSOR);
+            if (Theme.active().isAnsi()) {
+                freezeSpinnerLine();
+                out.print(Ansi.taskbarClear());
+                out.print(Ansi.SHOW_CURSOR);
+            } else {
+                printPlainDone();
+            }
             out.flush();
             return false;
         }
@@ -661,9 +860,13 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 out.flush();
                 return;
             }
-            wipeRegion();
-            out.print(Ansi.TASKBAR_CLEAR);
-            out.print(Ansi.SHOW_CURSOR);
+            if (Theme.active().isAnsi()) {
+                wipeRegion();
+                out.print(Ansi.taskbarClear());
+                out.print(Ansi.SHOW_CURSOR);
+            } else {
+                printPlainDone();
+            }
             out.flush();
         }
     }
@@ -720,7 +923,7 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         out.print(label);
         out.print(ELLIPSIS);
         out.print(Ansi.ERASE_LINE_TO_END);
-        out.print(Ansi.TASKBAR_INDETERMINATE);
+        out.print(Ansi.taskbarIndeterminate());
     }
 
     /**
@@ -1356,7 +1559,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
         AttributedStyle pulse =
                 t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
-        if (nerdfont) {
+        if (!t.isAnsi()) {
+            // " * Build >" then bar/clock plain text.
+            h.append(PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, null));
+            if (phase1) {
+                h.append(' ').append(sl);
+            } else {
+                h.append(barStr);
+            }
+        } else if (nerdfont) {
+            // " {●} {name} " + powerline
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
                     .append(Theme.colorize(" ", chip))
@@ -1373,10 +1585,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
             }
         } else {
+            // " {●} {name}  " — two trailing spaces on the chip bg (no PUA).
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
-                    .append(Theme.colorize(" " + name + " ", chip))
-                    .append(Theme.colorize(" ", chip)); // plain trailing cap space
+                    .append(Theme.colorize(" " + name + "  ", chip));
             if (phase1) {
                 h.append(' ').append(Theme.colorize(sl, t.brightWhite()));
             } else {
@@ -1384,24 +1596,19 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             }
         }
         // After the bar's percent: a bright-black middle dot, then the run-wide build clock.
-        // Seeded estimate → pure wall-clock countdown (blue) then +Ns overrun (yellow); no seed
-        // → +Ns count-up from construction (yellow). Never resets on phase/module boundaries.
-        String clockStr;
-        boolean countUp;
+        // Seeded estimate → pure wall-clock countdown (dim "ETA " + blue time) then +Ns overrun
+        // (yellow); no seed → +Ns count-up from construction (yellow). Never resets on
+        // phase/module boundaries. Module n/m is only on tree rows below — not repeated here.
+        h.append(' ').append(Theme.colorize("·", dim)).append(' ');
         if (etaEstimateMs > 0) {
             long remaining = etaEstimateMs - elapsedMillis;
-            countUp = remaining <= 0;
-            clockStr = countUp ? "+" + fmtClock(-remaining) : fmtClock(remaining);
+            if (remaining <= 0) {
+                h.append(Theme.colorize("+" + fmtClock(-remaining), t.warning()));
+            } else {
+                h.append(Theme.colorize("ETA ", dim.italic())).append(Theme.colorize(fmtClock(remaining), t.blue()));
+            }
         } else {
-            countUp = true;
-            clockStr = "+" + fmtClock(elapsedMillis);
-        }
-        AttributedStyle clockStyle = countUp ? t.warning() : t.blue();
-        h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(clockStr, clockStyle));
-        // remaining-work module counter (run-wide, not per-module local).
-        if (modulesTotal > 0) {
-            String mods = modulesComplete + "/" + modulesTotal;
-            h.append(' ').append(Theme.colorize("·", dim)).append(' ').append(Theme.colorize(mods, dim));
+            h.append(Theme.colorize("+" + fmtClock(elapsedMillis), t.warning()));
         }
         return h.toString();
     }

@@ -6,6 +6,9 @@ import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.compile.ClasspathResolver;
 import cc.jumpkick.model.Scope;
 import cc.jumpkick.model.command.CliCommand;
@@ -14,6 +17,7 @@ import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.resolver.DependencyTree;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -78,38 +82,33 @@ public final class TreeCommand implements CliCommand {
             }
             scopes = new ArrayList<>(ordered);
         }
-        Path dir = new GlobalOptions().workingDir();
+        GlobalOptions global = GlobalOptions.from(in);
+        Path dir = global.workingDir();
         var proj = ProjectContext.require(dir, "tree").orElse(null);
         if (proj == null) return Exit.CONFIG;
-        Path buildFile = proj.buildFile();
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Tree");
+        if (lockCode != 0) return lockCode;
         Path lockFile = proj.lockFile();
-        if (!proj.isLocked()) {
+        if (!Files.isRegularFile(lockFile)) {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
                     "Tree",
-                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir) + " (run `jk lock` first)"));
+                    "no jk-lock.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(dir)
+                            + " (lock refresh did not produce one)"));
             return Exit.CONFIG;
         }
 
         int max = depth != null ? depth : Integer.MAX_VALUE;
 
-        // Header: a leading blank line, then a left-flush green powerline chip
-        // " ● Dependencies Tree " — white on PLAN_BLUE with a PLAN_BLUE cap.
-        // Uses the filled-circle bullet (●) consistent with the root-node glyph.
+        // Header: shared CommandWedge chip (nerd powerline / ansi two-space trail / plain " >").
         boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
         Theme t = Theme.active();
         boolean ansi = t.isAnsi();
-
+        CommandWedge.envelopeStart();
         if (ansi) {
-            String title = " ≡ Dependencies Tree ";
-            String header = nerdfont
-                    ? Theme.colorize(title, t.pipelineChip())
-                            + Theme.colorize(cc.jumpkick.cli.tui.Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()))
-                    : Theme.colorize(title, t.pipelineChip());
-            CliOutput.out();
-            CliOutput.out(header);
+            CliOutput.out(PipelineWedge.chip(Glyphs.MENU, "Dependencies Tree", t.pipelineChip(), nerdfont)
+                    + PipelineWedge.cap(t.planBadgeColor(), nerdfont));
         } else {
-            CliOutput.out();
-            CliOutput.out(" - Dependencies Tree:");
+            CliOutput.out(PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, "Dependencies Tree", null));
         }
 
         // Composite-aware: walks path deps' own trees too (anchored at `dir`). The walk runs

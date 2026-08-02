@@ -55,8 +55,20 @@ public final class LockFlow {
         }
     }
 
-    /** Run the lock pipeline against {@code dir}. */
+    /** Run the lock pipeline against {@code dir} with explicit-lock (latest versions) semantics. */
     public static Result run(Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl)
+            throws Exception {
+        return run(dir, cache, features, noDefaultFeatures, repoUrl, false);
+    }
+
+    /**
+     * Run the lock pipeline against {@code dir}. {@code conservative} marks an invisible freshen
+     * (pre-build workspace guard): pins from the existing lock are fed to the solver as soft
+     * preferences, so only coordinates a new or changed constraint rules out move. With no readable
+     * existing lock the flag is a no-op (fresh resolve either way).
+     */
+    public static Result run(
+            Path dir, Path cache, List<String> features, boolean noDefaultFeatures, URI repoUrl, boolean conservative)
             throws Exception {
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
@@ -107,6 +119,50 @@ public final class LockFlow {
         // inside WorkspaceMerge (idempotent either way).
         effective = Variants.unionDependencies(effective);
 
+        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
+        // lock already fresh — a concurrent job won the flight; skip the duplicate resolve.
+        synchronized (LockGate.monitorFor(lockDir)) {
+            if (conservative && Files.exists(lockFile) && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, lockFile)) {
+                try {
+                    Lockfile current = cc.jumpkick.lock.LockfileReader.read(lockFile);
+                    return new Result(0, null, current, effective, moduleCount, workspaceLock, lockDir);
+                } catch (Exception ignored) {
+                    // unreadable — fall through and re-lock
+                }
+            }
+            return resolveAndWrite(
+                    dir,
+                    cache,
+                    features,
+                    noDefaultFeatures,
+                    repoUrl,
+                    conservative,
+                    parsed,
+                    lockDir,
+                    lockFile,
+                    effective,
+                    moduleCount,
+                    workspaceLock);
+        }
+    }
+
+    private static Result resolveAndWrite(
+            Path dir,
+            Path cache,
+            List<String> features,
+            boolean noDefaultFeatures,
+            URI repoUrl,
+            boolean conservative,
+            JkBuild parsed,
+            Path lockDir,
+            Path lockFile,
+            JkBuild effective,
+            int moduleCount,
+            boolean workspaceLock)
+            throws Exception {
+        // Capture the manifests digest before resolving: an edit that lands mid-resolution must
+        // leave the written lock stale, not stamp itself fresh from the live files (JK-1357).
+        String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(lockDir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos =
                 RepoGroupBuilder.buildFor(effective, repoUrl, cas, cc.jumpkick.config.BuildEnv.forModule(dir));
@@ -130,10 +186,26 @@ public final class LockFlow {
                 .withPlatformPolicy(pathPrep.project().build().platformPolicy())
                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy());
 
+        Lockfile existing = null;
+        if (conservative && Files.exists(lockFile)) {
+            try {
+                existing = cc.jumpkick.lock.LockfileReader.read(lockFile);
+            } catch (Exception ignored) {
+                // unreadable lock — resolve fresh
+            }
+        }
         Lockfile lock;
         try {
-            lock = orchestrator.lock(
-                    pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
+            lock = existing != null
+                    ? orchestrator.lockConservative(
+                            pathPrep.project(),
+                            existing,
+                            cc.jumpkick.model.JkVersion.VERSION,
+                            features,
+                            !noDefaultFeatures,
+                            cc.jumpkick.resolver.ResolveObserver.NOOP)
+                    : orchestrator.lock(
+                            pathPrep.project(), cc.jumpkick.model.JkVersion.VERSION, features, !noDefaultFeatures);
         } catch (IOException e) {
             return new Result(
                     6,
@@ -145,9 +217,19 @@ public final class LockFlow {
                     lockDir);
         }
         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
+        // Conservative freshen: carry the existing Kotlin pin — bumping the compiler is `jk lock`'s job.
+        if (existing != null && lock.kotlin() == null && existing.kotlin() != null) {
+            lock = lock.withKotlin(existing.kotlin());
+        }
+        // First lock of a Kotlin project (nothing to carry): resolve the pin like lockPipeline
+        // does — a lock written without it loses compiler provisioning (JK-1371).
+        if (lock.kotlin() == null) {
+            String kotlinVersion = LockPipelines.resolveKotlinVersion(effective, pathPrep.repos());
+            if (kotlinVersion != null) lock = lock.withKotlin(kotlinVersion);
+        }
         // Freeze resolved first-party [project] identity (incl. workspace-inherited fields).
         lock = cc.jumpkick.lock.LockfileModules.stamp(lock, lockDir);
-        LockfileWriter.write(lock, lockFile);
+        LockfileWriter.write(lock, lockFile, manifestsSha);
         cc.jumpkick.task.AccessLedger.atDefaultPath().touchLock(lock);
         return new Result(0, null, lock, effective, moduleCount, workspaceLock, lockDir);
     }

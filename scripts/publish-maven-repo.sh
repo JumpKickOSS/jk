@@ -53,6 +53,10 @@ while IFS= read -r -d '' jar; do
   dest="$STAGE/cc/jumpkick/$art/$ver"
   mkdir -p "$dest"
   cp -f "$jar" "$dest/"
+  # JK-1351: thin workers ship a flat coordinate closure so cold stores can provision them.
+  if [[ -f "${jar}.deps" ]]; then
+    cp -f "${jar}.deps" "$dest/"
+  fi
   if [[ -f "${jar}.sha256" ]]; then
     cp -f "${jar}.sha256" "$dest/"
   else

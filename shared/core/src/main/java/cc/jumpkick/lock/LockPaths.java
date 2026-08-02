@@ -3,7 +3,6 @@ package cc.jumpkick.lock;
 
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLocator;
-import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,8 +39,10 @@ public final class LockPaths {
         Path toml = dir.resolve("jk.toml");
         if (Files.isRegularFile(toml)) {
             try {
-                JkBuild build = JkBuildParser.parseLocal(toml);
-                if (build.isWorkspaceRoot()) {
+                // Raw probe, NOT a full parse: this runs inside JkBuildParser.parse itself
+                // (plugin-manifest resolution → lockEntry → here), so parsing the same file
+                // again would recurse without end (JK-1341).
+                if (JkBuildParser.declaresWorkspaceModules(toml)) {
                     return dir;
                 }
             } catch (IOException | RuntimeException ignored) {

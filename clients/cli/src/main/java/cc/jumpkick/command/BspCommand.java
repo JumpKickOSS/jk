@@ -58,7 +58,7 @@ public final class BspCommand implements CliCommand {
 
         return switch (action) {
             case "install" -> install(dir);
-            case "serve", "run" -> serve(dir);
+            case "serve", "run" -> serve(dir, global);
             default -> {
                 CliOutput.err(
                         cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "expected install or serve (got " + action + ")"));
@@ -87,14 +87,18 @@ public final class BspCommand implements CliCommand {
                 """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
-        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("BSP", "Wrote " + out));
+        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + out);
         CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
         return 0;
     }
 
-    private static int serve(Path projectDir) throws Exception {
+    private static int serve(Path projectDir, GlobalOptions global) throws Exception {
         var proj = ProjectContext.require(projectDir, "bsp").orElse(null);
         if (proj == null) return Exit.CONFIG;
+        // Freshen once at serve start so IDE classpaths match manifests (long-lived process).
+        int lockCode =
+                cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, cc.jumpkick.util.JkDirs.cache(), global, "BSP");
+        if (lockCode != 0) return lockCode;
         IdeEngineClient ide = IdeEngineClient.open(projectDir);
         ide.connect();
         new BspServer(ide, System.in, System.out).serve();

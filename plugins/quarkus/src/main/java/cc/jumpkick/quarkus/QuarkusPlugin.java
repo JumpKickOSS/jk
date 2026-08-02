@@ -154,7 +154,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Files.createDirectories(outJar.getParent());
 
         Path augmentRoot = io.stepOutput(AUGMENT_STEP)
-                .orElseThrow(() -> new IOException("quarkus-augment produced no output — rebuild with --rebuild"));
+                .orElseThrow(() -> new IOException("quarkus-augment produced no output — rebuild with --redo"));
         // Uber-jar: single self-contained runner (no sibling lib/).
         Path uber = findUberJar(augmentRoot);
         if (uber != null) {
@@ -166,7 +166,7 @@ public final class QuarkusPlugin implements Plugin, BuildExtension, PackageExten
         Path runJar = findQuarkusRunJar(augmentRoot);
         if (runJar == null) {
             throw new IOException("no quarkus-run.jar or *-runner.jar under " + augmentRoot
-                    + " — augment output is incomplete; rebuild with --rebuild");
+                    + " — augment output is incomplete; rebuild with --redo");
         }
         Path layoutRoot = runJar.getParent(); // directory containing quarkus-run.jar + lib/
         io.label("package " + outJar.getFileName() + " (quarkus-run.jar)");

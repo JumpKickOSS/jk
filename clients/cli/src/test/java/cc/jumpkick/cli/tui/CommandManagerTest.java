@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
@@ -149,6 +150,48 @@ class CommandManagerTest {
     }
 
     @Test
+    void settle_prints_leading_blank_only() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = CommandManager.pipeline(stream(buf), "Build", false);
+        cm.finishSuccess("ok took 1s");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        // Leading blank at construct; settle line is last (no trailing blank before prompt).
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotEndWith("\n\n");
+        assertThat(out).endsWith("\n");
+        assertThat(out).contains("ok took 1s");
+    }
+
+    @Test
+    void exec_handoff_settle_has_no_trailing_blank() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var cm = CommandManager.pipeline(stream(buf), "Run", false);
+        cm.finishPipelineExec("Executing `java -cp … Main`");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotEndWith("\n\n");
+        assertThat(out).endsWith("\n");
+        assertThat(out).contains("Executing");
+    }
+
+    @Test
+    void prep_envelope_then_command_manager_does_not_double_blank() {
+        CommandWedge.resetEnvelope();
+        var buf = new ByteArrayOutputStream();
+        var ps = stream(buf);
+        CommandWedge.envelopeStart(ps); // e.g. EnsureFreshLock / analyzing
+        var cm = CommandManager.pipeline(ps, "Build", false);
+        cm.finishPipelineSuccess("built");
+        String out = buf.toString(StandardCharsets.UTF_8);
+        // Exactly one leading blank for the whole command, not two.
+        assertThat(out).startsWith("\n");
+        assertThat(out).doesNotStartWith("\n\n");
+        assertThat(out).contains("built");
+    }
+
+    @Test
     void header_shows_a_wallclock_countdown_from_the_estimate() {
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
@@ -189,6 +232,22 @@ class CommandManagerTest {
     }
 
     @Test
+    void remaining_work_seed_adds_elapsed_so_countdown_matches_explain() {
+        // Engine reports remaining work (same figure as jk explain). After 30s of lock, a 90s
+        // remaining estimate must show ~90s left — not 60s (which would finish 30s early).
+        var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
+        cm.nerdfont = false;
+        // Simulate 30s already elapsed by using setEtaEstimate with elapsed+remaining directly
+        // via setRemainingWorkEstimate after construction; render at that elapsed.
+        // We can't freeze elapsedMillis, so set total = 30s + 90s and render at 30s.
+        cm.setEtaEstimate(30_000 + 90_000);
+        assertThat(TestAnsi.strip(cm.renderPipelineLines(120, 30_000).get(0))).contains("1m 30s");
+        // At end of remaining work (elapsed 120s) → 0s / overrun.
+        String done = TestAnsi.strip(cm.renderPipelineLines(120, 120_000).get(0));
+        assertThat(done).containsAnyOf("0s", "+0s");
+    }
+
+    @Test
     void eta_seed_locks_after_a_module_completes_so_reprojections_cannot_jump_the_clock() {
         // Live re-projections used to overwrite the total mid-build (elapsed + remaining schedule),
         // so the countdown jumped at module boundaries and count-up reset near zero.
@@ -216,16 +275,22 @@ class CommandManagerTest {
     }
 
     @Test
-    void header_shows_module_remaining_work_counter() {
-        // modulesComplete/modulesTotal next to the wall clock.
+    void header_countdown_has_dim_eta_prefix_and_no_module_counter() {
+        // Countdown: dim "ETA " + remaining; module n/m lives on tree rows only.
         var cm = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         cm.nerdfont = false;
         cm.progress(50, 100);
         cm.setEtaEstimate(60_000);
         cm.setModuleProgress(2, 8);
         String header = TestAnsi.strip(cm.renderPipelineLines(120, 4_000).get(0));
-        assertThat(header).contains("2/8");
-        assertThat(header).contains("56s");
+        assertThat(header).contains("ETA 56s");
+        assertThat(header).doesNotContain("2/8");
+        // Count-up has no ETA prefix.
+        String cold = TestAnsi.strip(CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false)
+                .renderPipelineLines(120, 12_000)
+                .get(0));
+        assertThat(cold).contains("+12s");
+        assertThat(cold).doesNotContain("ETA ");
     }
 
     @Test
@@ -261,15 +326,17 @@ class CommandManagerTest {
     void window_title_suppressed_in_no_ansi_mode() {
         // --no-ansi on a real TTY: still animated, but ANSI sequences are promised away.
         var noAnsi = new cc.jumpkick.config.JkConfig(
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.empty(),
-                java.util.Optional.of(true));
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true), // noAnsi
+                Optional.empty(),
+                Optional.empty()); // noOsc
         cc.jumpkick.config.SessionContext.runWhere(
                 cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
                     var buf = new ByteArrayOutputStream();
@@ -278,6 +345,54 @@ class CommandManagerTest {
                     cm.finishPipelineSuccess("ok", List.of());
                     assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\033]0;");
                 });
+    }
+
+    @Test
+    void plain_progress_emits_decades_then_100_done() {
+        var noAnsi = new cc.jumpkick.config.JkConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty());
+        cc.jumpkick.config.SessionContext.runWhere(
+                cc.jumpkick.config.Session.defaults().withConfig(noAnsi), () -> {
+                    var buf = new ByteArrayOutputStream();
+                    var cm = CommandManager.pipeline(stream(buf), "Format", true);
+                    cm.addStepLabeled("", "fmt", "Examining source files");
+                    cm.stepRunning("", "fmt");
+                    cm.progress(0, 100);
+                    cm.progress(15, 100); // crosses 10%
+                    cm.progress(25, 100); // crosses 20%
+                    cm.progress(100, 100); // still working chrome max 90% mid-run
+                    cm.finishPipelineSuccess("Already formatted - took 547ms", List.of());
+                    String out = buf.toString(StandardCharsets.UTF_8);
+                    assertThat(out).doesNotContain("\u001B[");
+                    assertThat(out).doesNotContain(Spinner.PULSE_GLYPH);
+                    assertThat(out).contains(" * Format > Examining source files - 0% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 10% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 20% - working...");
+                    assertThat(out).contains(" * Format > Examining source files - 100% - done.");
+                    assertThat(out).contains(" + Format > Already formatted - took 547ms");
+                    // No mid-run 100% working line — 100% is only the done line.
+                    assertThat(out).doesNotContain("100% - working...");
+                });
+    }
+
+    @Test
+    void plain_progress_line_helper_shape() {
+        assertThat(CommandManager.plainProgressLine("Format", "Examining source files", 0, false))
+                .isEqualTo(" * Format > Examining source files - 0% - working...");
+        assertThat(CommandManager.plainProgressLine("Format", "Examining source files", 100, true))
+                .isEqualTo(" * Format > Examining source files - 100% - done.");
+        assertThat(CommandManager.plainIndeterminateLine("Format", "Examining source files", false))
+                .isEqualTo(" * Format > Examining source files - working...");
     }
 
     @Test
@@ -306,31 +421,34 @@ class CommandManagerTest {
     @Test
     void header_countdown_is_blue_count_up_is_yellow() {
         Theme t = Theme.active();
-        // Seeded ETA with elapsed under the seed → countdown remaining (blue).
+        // Seeded ETA with elapsed under the seed → dim "ETA " + blue remaining.
         var down = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         down.nerdfont = false;
         down.progress(10, 100);
         down.setEtaEstimate(60_000);
         String downHeader = down.renderPipelineLines(120, 4_000).get(0);
-        assertThat(TestAnsi.strip(downHeader)).contains("56s");
+        assertThat(TestAnsi.strip(downHeader)).contains("ETA 56s");
+        assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
         assertThat(downHeader).contains(Theme.colorize("56s", t.blue()));
         assertThat(downHeader).doesNotContain(Theme.colorize("56s", t.warning()));
 
-        // No seed → +elapsed count-up (yellow).
+        // No seed → +elapsed count-up (yellow), no ETA prefix.
         var up = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         up.nerdfont = false;
         up.progress(10, 100);
         String upHeader = up.renderPipelineLines(120, 12_000).get(0);
         assertThat(TestAnsi.strip(upHeader)).contains("+12s");
+        assertThat(TestAnsi.strip(upHeader)).doesNotContain("ETA ");
         assertThat(upHeader).contains(Theme.colorize("+12s", t.warning()));
 
-        // Seed overrun → +excess count-up (yellow).
+        // Seed overrun → +excess count-up (yellow), no ETA prefix.
         var over = CommandManager.pipeline(stream(new ByteArrayOutputStream()), "Build", false);
         over.nerdfont = false;
         over.progress(90, 100);
         over.setEtaEstimate(10_000);
         String overHeader = over.renderPipelineLines(120, 15_000).get(0);
         assertThat(TestAnsi.strip(overHeader)).contains("+5s");
+        assertThat(TestAnsi.strip(overHeader)).doesNotContain("ETA ");
         assertThat(overHeader).contains(Theme.colorize("+5s", t.warning()));
     }
 

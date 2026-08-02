@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Tag;
@@ -262,6 +263,7 @@ class IdeIdeaGenerationTest {
                 generated-by = "jk test"
                 resolution-algorithm = "pubgrub-v1"
                 jdk = "temurin-25.0.3"
+                manifests-sha256 = "%s"
 
                 [[artifact]]
                 name = "org.example:myprocessor"
@@ -269,16 +271,15 @@ class IdeIdeaGenerationTest {
                 source = "central+https://repo.maven.apache.org/maven2/"
                 checksum = "sha256:%s"
                 scopes = ["processor"]
-                """.formatted(hex));
+                """
+                // Digest-stamped so the invisible freshen sees a fresh lock and keeps the
+                // processor row (the fixture manifest never declares it).
+                .formatted(cc.jumpkick.lock.LockManifestDigest.compute(ws), hex));
 
         // Pre-populate the CAS so the processor JAR is "synced".
         Path cache = tmp.resolve("cache");
-        Path casJar = cache.resolve("sha256")
-                .resolve(hex.substring(0, 2))
-                .resolve(hex.substring(2, 4))
-                .resolve(hex.substring(4));
-        Files.createDirectories(casJar.getParent());
-        Files.writeString(casJar, "dummy-jar");
+        // Seed via JkStores: the engine's CAS root is the ambient store, not the raw cache dir.
+        cc.jumpkick.cache.JkStores.cas(cache).put("dummy-jar".getBytes(StandardCharsets.UTF_8), hex);
 
         Path jdks = tmp.resolve("jdks");
         Files.createDirectories(jdks);

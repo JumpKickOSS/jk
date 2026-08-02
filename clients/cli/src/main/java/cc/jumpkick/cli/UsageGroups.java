@@ -24,6 +24,7 @@ public final class UsageGroups {
                     "Build commands:",
                     List.of(
                             "build",
+                            "assemble",
                             "run",
                             "clean",
                             "image",
@@ -51,7 +52,8 @@ public final class UsageGroups {
      */
     public static final List<CommandGroup> SHORT_COMMAND_GROUPS = List.of(
             new CommandGroup(
-                    "Build commands:", List.of("build", "run", "clean", "image", "native", "install", "publish")),
+                    "Build commands:",
+                    List.of("build", "assemble", "run", "clean", "image", "native", "install", "publish")),
             new CommandGroup("Project commands:", List.of("new", "init", "add", "remove", "lock", "update")),
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate")));
 
@@ -62,16 +64,27 @@ public final class UsageGroups {
      * name-set check is the most portable way.
      */
     public static final Set<String> GLOBAL_OPTION_LONG_NAMES = Set.of(
+            "--force",
+            "--redo",
+            "--output",
             "--quiet",
             "--verbose",
-            "--color",
-            "--offline",
-            "--force",
             "--no-progress",
-            "--output",
+            "--no-timeline",
+            "--no-ansi",
+            "--no-osc",
+            "--notify",
+            "--no-notify",
+            "--color",
             "--config-file",
             "--no-config",
-            "--directory",
-            "--help",
-            "--version");
+            "--dir",
+            "--jobs",
+            "--ram-percent",
+            "--jdk",
+            "--graal",
+            "--jvm-arg",
+            "--offline",
+            "--version",
+            "--help");
 }

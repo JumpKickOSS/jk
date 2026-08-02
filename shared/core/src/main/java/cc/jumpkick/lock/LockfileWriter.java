@@ -20,7 +20,20 @@ public final class LockfileWriter {
     private LockfileWriter() {}
 
     public static void write(Lockfile lockfile, Path file) throws IOException {
-        Files.writeString(file, render(lockfile), StandardCharsets.UTF_8);
+        // Always stamp a live manifests digest so staleness survives git-clone mtimes.
+        Path owner = file.toAbsolutePath().normalize().getParent();
+        write(lockfile, file, LockManifestDigest.compute(owner));
+    }
+
+    /**
+     * As {@link #write(Lockfile, Path)} with a caller-captured {@code manifestsSha256} — capture it
+     * when the manifests are first read so a manifest edited mid-resolution leaves a lock that
+     * reads as stale, instead of stamping itself fresh from the live files (JK-1357).
+     */
+    public static void write(Lockfile lockfile, Path file, String manifestsSha256) throws IOException {
+        Lockfile stamped = lockfile.withManifestsSha256(manifestsSha256);
+        // Atomic (temp + rename): concurrent readers never observe a truncated lock (JK-1356).
+        cc.jumpkick.util.AtomicWrites.replace(file, render(stamped));
     }
 
     /** Engine-jar sha from {@code versions/<v>/manifest.toml}, or {@code ""} if absent. */
@@ -65,6 +78,11 @@ public final class LockfileWriter {
                 .append(", sha256 = ")
                 .append(quote(jk.sha256() == null ? "" : jk.sha256()))
                 .append(" }\n");
+        if (lockfile.manifestsSha256() != null && !lockfile.manifestsSha256().isBlank()) {
+            out.append("manifests-sha256 = ")
+                    .append(quote(lockfile.manifestsSha256()))
+                    .append('\n');
+        }
 
         List<Lockfile.Artifact> sorted = new ArrayList<>(lockfile.artifacts());
         sorted.sort(Comparator.comparing(Lockfile.Artifact::name).thenComparing(Lockfile.Artifact::version));

@@ -80,7 +80,9 @@ class ActionCacheVerifiedRestoreTest {
         Files.delete(jar);
 
         assertThat(ac.restoreArtifacts(rec, out)).isFalse();
-        assertThat(Files.exists(jar)).as("a mismatching restore target is deleted").isFalse();
+        assertThat(Files.exists(jar))
+                .as("a mismatching restore target is deleted")
+                .isFalse();
     }
 
     @Test
@@ -107,8 +109,7 @@ class ActionCacheVerifiedRestoreTest {
 
         // Fresh thread view (disk memo only): the seeded nano stamp no longer matches.
         FileHashMemo.clearThreadCache();
-        assertThat(FileHashMemo.contentHash(f))
-                .isEqualTo(Hashing.sha256Hex("BBBB".getBytes(StandardCharsets.UTF_8)));
+        assertThat(FileHashMemo.contentHash(f)).isEqualTo(Hashing.sha256Hex("BBBB".getBytes(StandardCharsets.UTF_8)));
     }
 
     @Test

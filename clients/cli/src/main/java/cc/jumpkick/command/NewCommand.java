@@ -352,6 +352,7 @@ public final class NewCommand implements CliCommand {
         }
         try {
             int n = Giter8LocalApply.apply(template, target, params);
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
             CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                     cc.jumpkick.cli.tui.Glyphs.CHECK,
                     "New Project",

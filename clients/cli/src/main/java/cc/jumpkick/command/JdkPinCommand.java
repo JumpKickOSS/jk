@@ -4,7 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.jdk.JdkHit;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkSelector;
@@ -75,8 +75,7 @@ public final class JdkPinCommand implements CliCommand {
         Files.writeString(projectDir.resolve(".jdk-version"), pin + "\n", StandardCharsets.UTF_8);
         cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(pin, "pin");
         Theme t = Theme.active();
-        CliOutput.out(
-                Theme.colorize(Glyphs.CHECK, t.success()) + " Pinned project to " + Theme.colorize(pin, t.focused()));
+        CommandWedge.printOk("Pin", "Pinned project to " + Theme.colorize(pin, t.focused()));
         return 0;
     }
 

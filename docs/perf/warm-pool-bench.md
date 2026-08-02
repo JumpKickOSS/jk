@@ -3,7 +3,7 @@
 **Date:** 2026-07-21 (Temurin 25 re-run)  
 **Status:** **DEFER** warm pool (no implementation on `main`)  
 **Baseline:** JumpKick short-lived **fork** + JEP 514 `.aot` (`PluginAot`) on **HotSpot / Temurin 25**  
-**Harness:** `scripts/aot-vs-fork-bench.sh`, forced `jk build --skip-tests --rebuild --jdk temurin-25`
+**Harness:** `scripts/aot-vs-fork-bench.sh`, forced `jk build --skip-tests --redo --jdk temurin-25`
 
 ## Important: GraalVM does not participate in worker AOT
 
@@ -49,7 +49,7 @@ So any “AOT-on vs AOT-off” numbers collected while the **compiler JDK** was 
 
 ### A. Bare `javac` (historical — AOT removed)
 
-Temurin spring-boot-hello `--rebuild` had AOT-on ~496 vs AOT-off ~485 ms (**noise**). Bare-`javac`
+Temurin spring-boot-hello `--redo` had AOT-on ~496 vs AOT-off ~485 ms (**noise**). Bare-`javac`
 AOT training/mapping was **removed**; default Java compiles no longer touch `javac-*.aot`.
 
 ### B. `java … jk-java-compiler` PluginMain (microbench)
@@ -68,7 +68,7 @@ Same microbench on **Graal** host: ~252 vs ~249 ms (void — ineligible).
 
 ### C. `java … jk-kotlin-compiler` PluginMain (hello-kotlin)
 
-Chrome `compile-kotlin` duration, 3× `--rebuild --jdk temurin-25` after train:
+Chrome `compile-kotlin` duration, 3× `--redo --jdk temurin-25` after train:
 
 | Arm | compile-kotlin (approx) |
 |-----|------------------------:|
@@ -109,7 +109,7 @@ jk jdk pin temurin-25 -C /path/to/project
 # Train then measure (after caches exist under ~/.jk/state/aot/javac-*)
 RUNS=7 ./scripts/aot-vs-fork-bench.sh /path/to/project
 # or forced:
-for i in 1..7; do jk build --skip-tests --rebuild --jdk temurin-25; done  # AOT on
+for i in 1..7; do jk build --skip-tests --redo --jdk temurin-25; done  # AOT on
 JK_WORKER_AOT=off  # same with AOT off
 ```
 

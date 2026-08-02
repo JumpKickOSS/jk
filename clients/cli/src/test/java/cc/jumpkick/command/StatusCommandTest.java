@@ -3,6 +3,9 @@ package cc.jumpkick.command;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.engine.EngineClient;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /** Pure unit coverage for {@link StatusCommand} formatting helpers. */
@@ -38,5 +41,20 @@ class StatusCommandTest {
     void baseDir_strips_shape_suffix() {
         assertThat(StatusCommand.baseDir("/home/me/app#d27")).isEqualTo("/home/me/app");
         assertThat(StatusCommand.baseDir("/home/me/app")).isEqualTo("/home/me/app");
+    }
+
+    @Test
+    void engineStatusMessage_shapes_running_and_down() {
+        String down = stripAnsi(StatusCommand.engineStatusMessage(Optional.empty()));
+        assertThat(down).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is not running");
+
+        EngineClient.Status s =
+                new EngineClient.Status(Jk.VERSION, 403279L, 0L, 0, 0, false, 0L, 0L, 0L, 0L, 0L, null, null, null);
+        String up = stripAnsi(StatusCommand.engineStatusMessage(Optional.of(s)));
+        assertThat(up).isEqualTo("JumpKick Engine v" + Jk.VERSION + " is running (pid 403279)");
+    }
+
+    private static String stripAnsi(String s) {
+        return s.replaceAll("\u001B\\[[0-9;]*m", "");
     }
 }

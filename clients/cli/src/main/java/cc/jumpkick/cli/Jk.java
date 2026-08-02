@@ -31,7 +31,9 @@ public final class Jk {
             Map.entry("bash", List.of("shell")),
             Map.entry("nativeCompile", List.of("native")), // Gradle :nativeCompile task
             Map.entry("verify-target", List.of("verify")), // Maven's `verify` step output naming
-            Map.entry("why-rebuilt", List.of("explain"))); // early-roadmap name for the cache-diff report
+            Map.entry("why-rebuilt", List.of("explain")), // early-roadmap name for the cache-diff report
+            Map.entry("plan", List.of("explain")), // hidden alias: build-plan forecast
+            Map.entry("check", List.of("compile"))); // pre-v1.0 name of the compile-only verb
 
     public static void main(String[] args) {
         // Invoked as `jkx` (hardlink/link to this binary): behave exactly like
@@ -185,6 +187,8 @@ public final class Jk {
         java.util.Optional<Boolean> rebuild = java.util.Optional.empty();
         java.util.Optional<Boolean> noProgress = java.util.Optional.empty();
         java.util.Optional<Boolean> noAnsi = java.util.Optional.empty();
+        java.util.Optional<Boolean> noOsc = java.util.Optional.empty();
+        java.util.Optional<JkConfig.NotifyChoice> notify = java.util.Optional.empty();
         java.util.Optional<Boolean> quiet = java.util.Optional.empty();
         java.util.Optional<Boolean> verbose = java.util.Optional.empty();
         java.util.Optional<java.nio.file.Path> directory = java.util.Optional.empty();
@@ -194,33 +198,35 @@ public final class Jk {
                 case "-q", "--quiet" -> quiet = java.util.Optional.of(true);
                 case "-v", "--verbose" -> verbose = java.util.Optional.of(true);
                 case "--offline" -> offline = java.util.Optional.of(true);
-                case "--force" -> force = java.util.Optional.of(true);
-                case "--rebuild" -> rebuild = java.util.Optional.of(true);
+                case "-F", "--force" -> force = java.util.Optional.of(true);
+                case "-r", "--redo", "--rebuild" -> rebuild = java.util.Optional.of(true);
                 case "--no-progress" -> noProgress = java.util.Optional.of(true);
-                // --no-ansi: strip ALL ANSI (color + bold/italic) and disable animations.
-                // Sets noAnsi=true (→ isAnsi=false → colorize returns plain text) and
-                // noProgress=true (→ QUIET mode, no cursor-movement redraws).
+                // --no-ansi: strip ALL ANSI (color + bold/italic + CSI). Progress still runs as
+                // multi-line plain frames (JK-1379) — use --no-progress to silence chrome entirely.
                 // Distinct from --color never which strips color but preserves text attributes.
-                case "--no-ansi" -> {
-                    noAnsi = java.util.Optional.of(true);
-                    noProgress = java.util.Optional.of(true);
-                }
+                case "--no-ansi" -> noAnsi = java.util.Optional.of(true);
+                case "--no-osc" -> noOsc = java.util.Optional.of(true);
+                case "--notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.ALWAYS);
+                case "--no-notify" -> notify = java.util.Optional.of(JkConfig.NotifyChoice.NEVER);
                 case "--color" -> {
                     if (i + 1 < args.length) color = JkConfig.ColorChoice.parse(args[++i]);
                 }
-                case "-C", "--directory" -> {
+                case "-C", "--dir", "--directory" -> {
                     if (i + 1 < args.length) directory = java.util.Optional.of(java.nio.file.Path.of(args[++i]));
                 }
                 default -> {
                     if (a.startsWith("--color=")) {
                         color = JkConfig.ColorChoice.parse(a.substring("--color=".length()));
+                    } else if (a.startsWith("--dir=")) {
+                        directory = java.util.Optional.of(java.nio.file.Path.of(a.substring("--dir=".length())));
                     } else if (a.startsWith("--directory=")) {
                         directory = java.util.Optional.of(java.nio.file.Path.of(a.substring("--directory=".length())));
                     }
                 }
             }
         }
-        JkConfig cli = new JkConfig(color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi);
+        JkConfig cli = new JkConfig(
+                color, offline, rebuild, noProgress, quiet, verbose, directory, force, noAnsi, noOsc, notify);
         cc.jumpkick.config.SessionContext.installConfig(
                 cc.jumpkick.config.SessionContext.current().config().mergedWith(cli));
     }

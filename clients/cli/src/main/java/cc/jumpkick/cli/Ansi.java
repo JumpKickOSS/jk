@@ -117,15 +117,29 @@ public final class Ansi {
 
     // --- OSC 9;4 taskbar progress (ConEmu / Windows Terminal / WezTerm / kitty) ---
 
-    /** Set determinate taskbar progress to {@code percent} (0–100). */
+    /** Set determinate taskbar progress to {@code percent} (0–100). Empty when OSC is disabled. */
     public static String taskbarProgress(int percent) {
+        if (!oscEnabled()) return "";
         return OSC + "9;4;1;" + percent + BEL;
     }
 
-    /** Set the taskbar to the indeterminate (busy) state. */
+    /** Set the taskbar to the indeterminate (busy) state. Empty when OSC is disabled. */
+    public static String taskbarIndeterminate() {
+        return oscEnabled() ? OSC + "9;4;3" + BEL : "";
+    }
+
+    /**
+     * Indeterminate taskbar progress (legacy constant form). Prefer {@link #taskbarIndeterminate()}
+     * so {@code --no-osc} is honored; this field is the raw sequence for tests that assert bytes.
+     */
     public static final String TASKBAR_INDETERMINATE = OSC + "9;4;3" + BEL;
 
-    /** Clear any taskbar progress indicator. */
+    /** Clear any taskbar progress indicator. Empty when OSC is disabled. */
+    public static String taskbarClear() {
+        return oscEnabled() ? OSC + "9;4;0" + BEL : "";
+    }
+
+    /** Clear taskbar progress (raw sequence; see {@link #taskbarClear()}). */
     public static final String TASKBAR_CLEAR = OSC + "9;4;0" + BEL;
 
     // --- OSC 0 window title -------------------------------------------------
@@ -136,12 +150,63 @@ public final class Ansi {
      * XTerm OSC, not legacy BEL. Control characters that would break the OSC string are stripped.
      */
     public static String windowTitle(String title) {
+        if (!oscEnabled()) return "";
         String t = title == null ? "" : title;
         // OSC text must not contain BEL, ESC, or ST (would terminate / nest sequences).
         t = t.replace("\007", "").replace("\033", "").replace('\n', ' ').replace('\r', ' ');
         return OSC + "0;" + t + ST;
     }
 
-    /** Clear the terminal window title (empty OSC 0 + ST). */
+    /** Clear the terminal window title (empty OSC 0 + ST). Empty when OSC is disabled. */
+    public static String windowTitleClear() {
+        return oscEnabled() ? OSC + "0;" + ST : "";
+    }
+
+    /** Clear window title (raw sequence; see {@link #windowTitleClear()}). */
     public static final String WINDOW_TITLE_CLEAR = OSC + "0;" + ST;
+
+    // --- OSC 99 desktop notifications (kitty / ghostty / conforming terminals) ---
+
+    /**
+     * Whether OSC sequences may be emitted. False when {@code --no-osc} is set (or the session
+     * config carries {@code noOsc}). Independent of color / {@code --no-ansi}.
+     */
+    public static boolean oscEnabled() {
+        return !cc.jumpkick.config.SessionContext.current().config().noOscOr(false);
+    }
+
+    /**
+     * OSC&nbsp;99 desktop notification with a title and body (kitty protocol). Terminals that ignore
+     * OSC 99 no-op. Payload is sanitized to escape-code-safe UTF-8 (no C0 controls). Uses a two-chunk
+     * form: title first ({@code d=0}), then body with {@code d=1} so the notification is complete.
+     *
+     * <p>Returns empty string when OSC is disabled so callers can print unconditionally.
+     */
+    public static String desktopNotify(String title, String body) {
+        if (!oscEnabled()) return "";
+        String t = oscSafe(title);
+        String b = oscSafe(body);
+        if (t.isEmpty() && b.isEmpty()) return "";
+        // i=jk: fixed id; d=0 holds title until body chunk completes the notification.
+        String titleChunk = OSC + "99;i=jk:d=0;" + t + ST;
+        String bodyChunk = OSC + "99;i=jk:d=1:p=body;" + b + ST;
+        return titleChunk + bodyChunk;
+    }
+
+    /** Strip C0/C1 controls that would break an OSC string; collapse newlines to spaces. */
+    static String oscSafe(String s) {
+        if (s == null || s.isEmpty()) return "";
+        StringBuilder out = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\n' || c == '\r' || c == '\t') {
+                out.append(' ');
+            } else if (c < 0x20 || c == 0x7F || (c >= 0x80 && c <= 0x9F)) {
+                // drop C0 / DEL / C1
+            } else {
+                out.append(c);
+            }
+        }
+        return out.toString();
+    }
 }

@@ -4,10 +4,12 @@ package cc.jumpkick.runtime;
 import cc.jumpkick.config.EnvValues;
 import cc.jumpkick.config.TomlValues;
 import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,8 +26,13 @@ import org.tomlj.TomlTable;
 
 /**
  * Learned per-unit step rates ({@code floor + perUnit × count}) for progress-bar weights. Rates
- * are EWMA-smoothed in {@code <cache>/timings.toml}; cold steps fall back to static estimates.
- * Reads are memoized per cache root; {@link #record} is a single load-update-write at build end.
+ * are EWMA-smoothed in {@code ~/.jk/state/builds/timings.toml} (beside {@code calibration.toml} /
+ * {@code metrics.json}) so they survive cache GC and {@code jk clean}. Cold steps fall back to
+ * static estimates. Reads are memoized per store file; {@link #record} is a single load-update-write
+ * at build end.
+ *
+ * <p>Legacy location {@code ~/.jk/cache/timings.toml} is migrated into state on first load.
+ * Hermetic tests may pass a non-default root; then the file is {@code <root>/timings.toml}.
  */
 public final class StepTimings {
 
@@ -51,11 +58,86 @@ public final class StepTimings {
     }
 
     /**
-     * Read-only ledger for {@code cache}, memoized for the process. Missing/unreadable → empty
-     * (cold).
+     * Legacy path marker — production rates hydrate from harvested metrics (JK-1377).
+     * Hermetic tests still use isolated roots via {@link #file(Path)}.
      */
-    public static StepTimings load(Path cache) {
-        return MEMO.computeIfAbsent(cache, StepTimings::read);
+    public static Path defaultFile() {
+        return JkDirs.builds().resolve("timings.toml");
+    }
+
+    /**
+     * Resolve the timings file for {@code rootOrCache}. Production callers pass the jk cache root
+     * ({@link JkDirs#cache()}); that maps to {@link #defaultFile()} under state. A distinct root
+     * (tests, isolated dirs) keeps {@code <root>/timings.toml}.
+     */
+    public static Path file(Path rootOrCache) {
+        if (rootOrCache == null) return defaultFile();
+        Path p = rootOrCache.toAbsolutePath().normalize();
+        if (p.getFileName() != null && "timings.toml".equals(p.getFileName().toString())) {
+            return p;
+        }
+        Path liveCache = JkDirs.cache().toAbsolutePath().normalize();
+        if (p.equals(liveCache)) {
+            return defaultFile();
+        }
+        // Hermetic / overridden roots: keep the ledger next to the test fixture.
+        return p.resolve("timings.toml");
+    }
+
+    /**
+     * Read-only ledger for {@code rootOrCache}, memoized for the process. Missing/unreadable → empty
+     * (cold). See {@link #file(Path)}.
+     */
+    public static StepTimings load(Path rootOrCache) {
+        Path f = file(rootOrCache);
+        if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
+            return fromAggregates();
+        }
+        return MEMO.computeIfAbsent(f, StepTimings::readFile);
+    }
+
+    private static boolean isLiveBuildsTimings(Path f) {
+        try {
+            return f != null
+                    && "timings.toml".equals(f.getFileName().toString())
+                    && f.getParent() != null
+                    && f.getParent().equals(JkDirs.builds().toAbsolutePath().normalize());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Hydrate per-unit rates from harvested project/host metrics. */
+    static StepTimings fromAggregates() {
+        cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        Map<String, Entry> m = new HashMap<>();
+        long now = System.currentTimeMillis();
+        for (var e : agg.meanMap().entrySet()) {
+            String k = e.getKey();
+            double v = e.getValue();
+            if (!(v > 0)) continue;
+            if (k.endsWith(".per-unit-ms") && k.startsWith("module.") && k.contains(".step.")) {
+                // module.<dir>.step.<step>.per-unit-ms
+                String body = k.substring("module.".length(), k.length() - ".per-unit-ms".length());
+                int stepAt = body.indexOf(".step.");
+                if (stepAt > 0) {
+                    String dir = body.substring(0, stepAt);
+                    String step = body.substring(stepAt + ".step.".length());
+                    m.put(key(dir, step), new Entry(v, now));
+                }
+            } else if (k.startsWith("step.") && k.endsWith(".per-unit-ms")) {
+                String step = k.substring("step.".length(), k.length() - ".per-unit-ms".length());
+                m.put(key(HOST_METHOD_MS_DIR, step), new Entry(v, now));
+            } else if (k.startsWith("host.") || k.endsWith("-per-method-ms") || k.endsWith("-per-source-ms")) {
+                m.put(key(HOST_METHOD_MS_DIR, k), new Entry(v, now));
+            }
+        }
+        for (var e : agg.hostMeanMap().entrySet()) {
+            if (e.getValue() > 0) {
+                m.putIfAbsent(key(HOST_METHOD_MS_DIR, e.getKey()), new Entry(e.getValue(), now));
+            }
+        }
+        return new StepTimings(m);
     }
 
     /** True when nothing has been learned yet (cold) — the caller can't show a trustworthy ETA. */
@@ -131,9 +213,14 @@ public final class StepTimings {
      * <p>near-zero residuals (cache-hit / skipped work) are ignored so they cannot poison
      * learned rates toward zero. Alpha defaults to {@link #DEFAULT_ALPHA}.
      */
-    public static void record(Path cache, List<Sample> samples, double alpha, long nowMillis) {
+    public static void record(Path rootOrCache, List<Sample> samples, double alpha, long nowMillis) {
         if (samples == null || samples.isEmpty()) return;
-        Map<String, Entry> m = new HashMap<>(read(cache).entries);
+        Path f = file(rootOrCache);
+        // Production: per-run metrics.toml + harvest own durable rates (JK-1377).
+        if (f.equals(defaultFile()) || isLiveBuildsTimings(f)) {
+            return;
+        }
+        Map<String, Entry> m = new HashMap<>(readFile(f).entries);
         for (Sample s : samples) {
             // Ignore negative and near-zero (cache-hit / empty work) so rates stay about real work.
             if (s.observedPerUnit() < 1e-6) continue;
@@ -144,10 +231,10 @@ public final class StepTimings {
             m.put(k, new Entry(next, nowMillis));
         }
         try {
-            write(cache.resolve("timings.toml"), m);
-            MEMO.remove(cache); // next load in this process sees the update
+            write(f, m);
+            MEMO.remove(f); // next load in this process sees the update
         } catch (IOException | RuntimeException ignored) {
-            // advisory cache — never fail the build over it
+            // advisory store — never fail the build over it
         }
     }
 
@@ -175,10 +262,10 @@ public final class StepTimings {
     }
 
     /** Evict by age then by size cap; rewrites unless {@code dryRun}. */
-    public static PruneReport prune(Path cache, Limits limits, long nowMillis, boolean dryRun) {
-        Path file = cache.resolve("timings.toml");
+    public static PruneReport prune(Path rootOrCache, Limits limits, long nowMillis, boolean dryRun) {
+        Path file = file(rootOrCache);
         if (!Files.isRegularFile(file)) return PruneReport.EMPTY;
-        Map<String, Entry> m = new HashMap<>(read(cache).entries);
+        Map<String, Entry> m = new HashMap<>(readFile(file).entries);
         int total = m.size();
 
         int byAge = 0;
@@ -214,7 +301,7 @@ public final class StepTimings {
             try {
                 if (m.isEmpty()) Files.deleteIfExists(file);
                 else write(file, m);
-                MEMO.remove(cache);
+                MEMO.remove(file);
             } catch (IOException | RuntimeException ignored) {
                 // advisory — leave the file as-is on failure
             }
@@ -224,9 +311,9 @@ public final class StepTimings {
 
     // --- IO -----------------------------------------------------------------
 
-    private static StepTimings read(Path cache) {
+    private static StepTimings readFile(Path f) {
+        migrateLegacyIfNeeded(f);
         Map<String, Entry> m = new HashMap<>();
-        Path f = cache.resolve("timings.toml");
         try {
             if (Files.isRegularFile(f)) {
                 TomlParseResult toml = Toml.parse(f);
@@ -249,6 +336,29 @@ public final class StepTimings {
             // unreadable/corrupt ledger → treat as cold
         }
         return new StepTimings(m);
+    }
+
+    /**
+     * One-shot move of the pre-state location {@code ~/.jk/cache/timings.toml} into
+     * {@link #defaultFile()} when the state path is empty.
+     */
+    private static void migrateLegacyIfNeeded(Path f) {
+        try {
+            Path dest = defaultFile().toAbsolutePath().normalize();
+            if (!f.toAbsolutePath().normalize().equals(dest)) return;
+            if (Files.isRegularFile(dest)) return;
+            Path legacy = JkDirs.cache().resolve("timings.toml");
+            if (!Files.isRegularFile(legacy)) return;
+            Files.createDirectories(dest.getParent());
+            try {
+                Files.move(legacy, dest, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                Files.copy(legacy, dest, StandardCopyOption.REPLACE_EXISTING);
+                Files.deleteIfExists(legacy);
+            }
+        } catch (Exception ignored) {
+            // best-effort migration
+        }
     }
 
     private static String render(Map<String, Entry> m) {

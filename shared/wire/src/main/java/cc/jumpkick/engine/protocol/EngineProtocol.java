@@ -963,7 +963,8 @@ public final class EngineProtocol {
     /**
      * Resolve + write {@code jk-lock.toml} (see {@link #LOCK_REQUEST}). {@code repoUrl} may be {@code
      * null}. {@code offline}/{@code force}/{@code verbose} reconstruct the session config engine-side
-     * (the same fields {@link #buildRequest} carries).
+     * (the same fields {@link #buildRequest} carries). {@code conservative} marks an invisible
+     * freshen: existing lock pins are kept as solver preferences instead of floating to latest.
      */
     public static String lockRequest(
             String dir,
@@ -974,7 +975,8 @@ public final class EngineProtocol {
             String repoUrl,
             boolean offline,
             boolean force,
-            boolean verbose) {
+            boolean verbose,
+            boolean conservative) {
         return "{\"type\":\""
                 + LOCK_REQUEST
                 + "\",\"dir\":"
@@ -995,6 +997,8 @@ public final class EngineProtocol {
                 + force
                 + ",\"verbose\":"
                 + verbose
+                + ",\"conservative\":"
+                + conservative
                 + "}";
     }
 
@@ -1364,6 +1368,27 @@ public final class EngineProtocol {
             boolean verbose,
             List<String> extraArgs,
             java.util.Map<String, String> graalHomes) {
+        return nativeRequest(
+                dir, cache, jdksDir, mainClass, skipTests, offline, force, verbose, extraArgs, graalHomes, List.of());
+    }
+
+    /**
+     * As {@link #nativeRequest(String, String, String, String, boolean, boolean, boolean, boolean,
+     * List, Map)} with optional {@code moduleDirs}: when non-empty, the engine only cascades those
+     * modules plus their build prereqs ({@code -m}/{@code --modules} selection).
+     */
+    public static String nativeRequest(
+            String dir,
+            String cache,
+            String jdksDir,
+            String mainClass,
+            boolean skipTests,
+            boolean offline,
+            boolean force,
+            boolean verbose,
+            List<String> extraArgs,
+            java.util.Map<String, String> graalHomes,
+            List<String> moduleDirs) {
         return "{\"type\":\""
                 + NATIVE_REQUEST
                 + "\",\"dir\":"
@@ -1386,6 +1411,8 @@ public final class EngineProtocol {
                 + quoteArray(extraArgs)
                 + ",\"graalHomes\":"
                 + Jsonl.map(graalHomes)
+                + ",\"moduleDirs\":"
+                + quoteArray(moduleDirs == null ? List.of() : moduleDirs)
                 + "}";
     }
 
@@ -1469,7 +1496,7 @@ public final class EngineProtocol {
 
     /**
      * As {@link #explainRequest(String, String, int, boolean, String, String, boolean, boolean, boolean)}
-     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --rebuild}.
+     * with {@code rebuild} — when true, forecast/ETA match {@code jk build --redo}.
      */
     public static String explainRequest(
             String dir,
@@ -2410,6 +2437,16 @@ public final class EngineProtocol {
 
     /** {@link #JOB_START}: job admitted — {@code jid} is the public cancel handle. */
     public static String jobStart(long jid, String kind, String dir, long buildNumber) {
+        return jobStart(jid, kind, dir, buildNumber, null, -1);
+    }
+
+    /**
+     * {@link #JOB_START} with details binding for the CLI session transcript.
+     *
+     * @param detailsPath absolute path to {@code runs/<buildNumber>/details.jsonl} (may be null)
+     * @param etaMs estimated wall ms at admit (-1 omit)
+     */
+    public static String jobStart(long jid, String kind, String dir, long buildNumber, String detailsPath, long etaMs) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(JOB_START)
                 .append("\",\"jid\":")
@@ -2421,6 +2458,10 @@ public final class EngineProtocol {
                 .append(",\"dir\":")
                 .append(Jsonl.quote(dir == null ? "" : dir));
         if (buildNumber > 0) b.append(",\"buildNumber\":").append(buildNumber);
+        if (detailsPath != null && !detailsPath.isBlank()) {
+            b.append(",\"detailsPath\":").append(Jsonl.quote(detailsPath));
+        }
+        if (etaMs >= 0) b.append(",\"etaMs\":").append(etaMs);
         return b.append('}').toString();
     }
 
@@ -2660,7 +2701,7 @@ public final class EngineProtocol {
     /**
      * Append the client's flag/env JVM-tuning layer to an already-encoded request line (thin-client
      * contract: the {@code jk.toml [jvm]} table never resolves client-side — the engine overlays it
-     * at worker-fork time; only {@code --max-ram-percent}/{@code --jvm-arg} and {@code JK_JVM_*}
+     * at worker-fork time; only {@code --ram-percent}/{@code --jvm-arg} and {@code JK_JVM_*}
      * cross the wire). A NONE tuning returns the line unchanged, so absent fields stay absent.
      */
     /**
@@ -2704,7 +2745,7 @@ public final class EngineProtocol {
 
     /**
      * Session envelope including optional {@code assemblyOverride} ({@code fat} / {@code shrink}) for
-     * {@code jk assembly --shrink} one-offs.
+     * {@code jk assemble --shrink} one-offs.
      */
     public static String withSession(
             String request,

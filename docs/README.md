@@ -5,6 +5,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and
 | Doc | Audience |
 |---|---|
 | [**User guide**](guide.md) | Day-to-day use: projects, deps, lockfile, platforms, packaging, plugins, JDK, workspaces |
+| [**TUI style guide**](tui.md) | CommandWedge, blank envelope, script-mode allowlist, nerd/ansi/plain glyphs |
 | [**Machine / agent output**](machine-output.md) | JSONL events, web SSE, verbose, MCP plan, agent recipe |
 | [**Architecture**](architecture.md) | How jk is built: client/engine split, modules, resolution, caching |
 | [**Plugins**](plugins.md) | Authoring first-party-style build plugins (Spring Boot, Quarkus, Grails, …) |

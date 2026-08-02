@@ -2,6 +2,7 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -71,7 +72,7 @@ public final class ToolUninstallCommand implements CliCommand {
         }
         Files.deleteIfExists(launcher);
         Files.deleteIfExists(winLauncher);
-        CliOutput.out("Removed " + name);
+        CommandWedge.printOk("Uninstall", "Removed " + name);
         return 0;
     }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
+import cc.jumpkick.lock.LockManifestDigest;
 import cc.jumpkick.task.ActionCache;
 import cc.jumpkick.task.FreshnessStamp;
 import java.nio.file.Files;
@@ -45,12 +46,16 @@ class BuildPlanForecastGroovyTest {
         Path src = Files.createDirectories(mod.resolve("src"));
         Path foo = src.resolve("Foo.groovy");
         Files.writeString(foo, "class Foo {}");
-        // Workspace lock lives at the root only (not under the module).
+        // Workspace lock lives at the root only (not under the module). Must stamp
+        // manifests-sha256 or LockFreshness treats the lock as always-stale and the forecast
+        // short-circuits to a single "compile-main" step (no compile-groovy).
+        String manifestsSha = LockManifestDigest.compute(tmp);
         Files.writeString(tmp.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
-                """);
+                manifests-sha256 = "%s"
+                """.formatted(manifestsSha));
 
         BuildGraph.Result graph = BuildGraph.resolve(tmp, JkBuildParser.parse(tmp.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();

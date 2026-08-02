@@ -92,7 +92,8 @@ valid for bootstrap and comparison.
 
 ## Side-load workers (no Gradle)
 
-After `jk build` produces assembly jars under `plugins/*/target/`:
+After `jk build` produces thin PluginMain jars under `plugins/*/target/` (or
+`target/plugins/…` for pure-jk):
 
 ```bash
 jk plugin install-local
@@ -100,9 +101,17 @@ jk plugin install-local
 # or: jk plugin install-local --dry-run
 ```
 
-Copies each PluginMain assembly jar into
-`~/.jk/cache/repos/local/cc/jumpkick/jk-<name>/<ver>/` (same layout as Gradle
-`installLocal`) so the engine can locate workers.
+For each PluginMain worker:
+
+1. Thin jar → `~/.jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
+   same as Gradle `installLocal`).
+2. Runtime deps → `.classpath` sidecar next to the jar (JK-1347).
+3. Worker + deps hard-linked into `~/.jk/store/lib/jk-<name>/` (same
+   `JK_LIB_DIR` tree as `jk tool install` / `jk install` apps — default
+   `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps` (JK-1348). A
+   normal CAS/`repos/` sweep that unlinks repo materializations leaves these
+   hardlinks; the inode stays until you uninstall (remove that lib dir) or
+   reinstall.
 
 ## Ship layout (`jk release` / `jk dist`)
 

@@ -157,8 +157,7 @@ public final class FileHashMemo {
                 long recorded = Long.parseLong(token.substring(nanoAt + " nano=".length()));
                 token = token.substring(0, nanoAt).trim();
                 if (token.isEmpty()) return null;
-                long current = Files.getLastModifiedTime(file)
-                        .to(java.util.concurrent.TimeUnit.NANOSECONDS);
+                long current = Files.getLastModifiedTime(file).to(java.util.concurrent.TimeUnit.NANOSECONDS);
                 return recorded == current ? token : null;
             }
             if (System.currentTimeMillis() - mtimeMillis < SETTLE_MS) return null;
@@ -199,29 +198,6 @@ public final class FileHashMemo {
             // nano= stamp is the seed's provenance mark — lookup trusts it immediately but only
             // while the file's nanosecond mtime is unchanged (see lookup).
             forceStore(abs, size, ft.toMillis(), "file:" + sha256Hex + " nano=" + nanos);
-        } catch (IOException | RuntimeException ignored) {
-            // best-effort
-        }
-    }
-
-    /**
-     * Seed a full fingerprint token ({@code file:…} / {@code jar:…}) for {@link
-     * ClasspathFingerprint#entry} — bypasses settle (CAS restore / just-computed).
-     */
-    public static void rememberEntryToken(Path file, String entryToken) {
-        if (entryToken == null || entryToken.isBlank()) return;
-        try {
-            Path abs = file.toAbsolutePath().normalize();
-            if (!Files.isRegularFile(abs)) return;
-            long size = Files.size(abs);
-            long mtime = Files.getLastModifiedTime(abs).toMillis();
-            // Thread cache stores bare hex for contentHash; entry tokens go to disk only.
-            forceStore(abs, size, mtime, entryToken);
-            // Also cache bare hex when token is file:<hex> so contentHash/hashTree hit.
-            if (entryToken.startsWith("file:") && entryToken.length() > 5) {
-                String tkey = abs + "\0" + size + "\0" + mtime;
-                THREAD_CACHE.get().put(tkey, "known:" + entryToken.substring(5));
-            }
         } catch (IOException | RuntimeException ignored) {
             // best-effort
         }

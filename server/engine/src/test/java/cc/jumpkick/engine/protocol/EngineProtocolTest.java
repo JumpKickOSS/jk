@@ -177,7 +177,7 @@ class EngineProtocolTest {
     @Test
     void lock_request_round_trips_all_fields() {
         String json = EngineProtocol.lockRequest(
-                "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true);
+                "/work", "/cache", List.of("a", "b"), true, true, "http://repo", true, false, true, true);
         assertThat(EngineProtocol.typeOf(json)).isEqualTo(EngineProtocol.LOCK_REQUEST);
         assertThat(Jsonl.str(json, "dir")).isEqualTo("/work");
         assertThat(Jsonl.str(json, "cache")).isEqualTo("/cache");
@@ -188,11 +188,12 @@ class EngineProtocolTest {
         assertThat(Jsonl.bool(json, "offline", false)).isTrue();
         assertThat(Jsonl.bool(json, "force", true)).isFalse();
         assertThat(Jsonl.bool(json, "verbose", false)).isTrue();
+        assertThat(Jsonl.bool(json, "conservative", false)).isTrue();
     }
 
     @Test
     void lock_request_null_repo_url_decodes_as_absent() {
-        String json = EngineProtocol.lockRequest("/w", "/c", List.of(), false, false, null, false, false, false);
+        String json = EngineProtocol.lockRequest("/w", "/c", List.of(), false, false, null, false, false, false, false);
         assertThat(Jsonl.str(json, "repoUrl")).isNull();
     }
 

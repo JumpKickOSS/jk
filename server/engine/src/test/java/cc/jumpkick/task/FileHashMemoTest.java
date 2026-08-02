@@ -112,8 +112,7 @@ class FileHashMemoTest {
     }
 
     @Test
-    void contentHash_same_size_rewrite_that_restores_prior_mtime_tick_is_not_stale(@TempDir Path dir)
-            throws Exception {
+    void contentHash_same_size_rewrite_that_restores_prior_mtime_tick_is_not_stale(@TempDir Path dir) throws Exception {
         // TestStamp resource fixture pattern: hash → future mtime rewrite → content rewrite that
         // lands back on the original mtime tick. Thread cache must not serve the first digest.
         Path f = Files.writeString(dir.resolve("fixture.json"), "{\"v\":1}");

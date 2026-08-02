@@ -126,8 +126,8 @@ public final class QuarkusAugmentMain {
         System.err.println("jk-quarkus-augment: resolving ApplicationModel (direct=" + direct.size() + " pathDeps="
                 + pathDeps + ")…");
         // Bootstrap 3.38+: (app, directDeps, excludedArtifacts, managingProject, reloadableModules).
-        var model = modelResolver.resolveManagedModel(
-                appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
+        var model =
+                modelResolver.resolveManagedModel(appCoords, direct, Set.of(), managing, Set.of(appCoords.getKey()));
         System.err.println(
                 "jk-quarkus-augment: model deps=" + model.getDependencies().size());
 
@@ -401,7 +401,11 @@ public final class QuarkusAugmentMain {
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                     String name = dir.relativize(file).toString().replace('\\', '/');
-                    jos.putNextEntry(new JarEntry(name));
+                    // Pin entry times (setTimeLocal: TZ-safe) so repeated augments produce
+                    // byte-identical jars — raw-jar fingerprints key downstream action caches.
+                    JarEntry entry = new JarEntry(name);
+                    entry.setTimeLocal(java.time.LocalDateTime.of(1980, 2, 1, 0, 0));
+                    jos.putNextEntry(entry);
                     Files.copy(file, jos);
                     jos.closeEntry();
                     return FileVisitResult.CONTINUE;

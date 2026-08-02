@@ -24,10 +24,8 @@ import org.junit.jupiter.api.io.TempDir;
 class StoreFeedRefreshTest {
 
     private static final String ETAG = "\"reg-v1\"";
-    private static final byte[] LIBS_BODY =
-            "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
-    private static final byte[] JDKS_BODY =
-            """
+    private static final byte[] LIBS_BODY = "[libraries]\nfoo = \"com.acme:foo\"\n".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] JDKS_BODY = """
             {
               "jdks": [
                 {
@@ -53,8 +51,7 @@ class StoreFeedRefreshTest {
                 }
               ]
             }
-            """
-                    .getBytes(StandardCharsets.UTF_8);
+            """.getBytes(StandardCharsets.UTF_8);
 
     private HttpServer server;
     private URI libsUri;
@@ -154,8 +151,8 @@ class StoreFeedRefreshTest {
         Files.setLastModifiedTime(libs, FileTime.from(Instant.now().minus(Duration.ofHours(13))));
         Files.setLastModifiedTime(jdks, FileTime.from(Instant.now()));
 
-        try (StoreFeedRefresh refresh = new StoreFeedRefresh(
-                s -> {}, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, null)) {
+        try (StoreFeedRefresh refresh =
+                new StoreFeedRefresh(s -> {}, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, null)) {
             refresh.tickQuietly();
         }
         assertThat(libHits.get()).isEqualTo(1);
@@ -176,8 +173,8 @@ class StoreFeedRefreshTest {
         // would then stay missing on every 12 h tick, forever.
         Files.writeString(tmp.resolve(".libs.global.toml.etag"), ETAG);
 
-        try (StoreFeedRefresh refresh = new StoreFeedRefresh(
-                s -> {}, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, null)) {
+        try (StoreFeedRefresh refresh =
+                new StoreFeedRefresh(s -> {}, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, null)) {
             refresh.tickQuietly();
         }
         assertThat(libs).exists();
@@ -195,14 +192,8 @@ class StoreFeedRefreshTest {
         Files.setLastModifiedTime(libs, FileTime.from(Instant.now()));
         Files.setLastModifiedTime(jdks, FileTime.from(Instant.now()));
         List<String> logs = new ArrayList<>();
-        try (StoreFeedRefresh refresh = new StoreFeedRefresh(
-                logs::add,
-                new Http(),
-                () -> libs,
-                () -> jdks,
-                libsUri,
-                jdkUri,
-                () -> {
+        try (StoreFeedRefresh refresh =
+                new StoreFeedRefresh(logs::add, new Http(), () -> libs, () -> jdks, libsUri, jdkUri, () -> {
                     throw new RuntimeException("boom");
                 })) {
             refresh.tickQuietly(); // must not throw

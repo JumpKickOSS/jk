@@ -8,6 +8,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.http.Http;
 import cc.jumpkick.model.Coordinate;
@@ -147,20 +148,21 @@ public final class AddCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", e.getMessage()));
             return 1;
         }
-        String check = Theme.colorize(Glyphs.CHECK, Theme.active().success());
-        CliOutput.out(check
-                + " Added "
+        String msg = "Added "
                 + Coords.shortName(parsed.library())
                 + " ("
                 + Coords.gav(parsed.group(), parsed.name(), parsed.versionLiteral())
                 + ") to "
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
-                + Theme.colorize(scope.canonical(), Theme.active().cyan()));
+                + Theme.colorize(scope.canonical(), Theme.active().cyan());
+        CommandWedge.printOk("Add", msg);
         CliOutput.out();
-        CliOutput.out("Run "
+        CliOutput.out("The next "
+                + Theme.colorize("jk build", Theme.active().warning())
+                + " / "
                 + Theme.colorize("jk lock", Theme.active().warning())
-                + " to lock your dependencies to hard versions");
+                + " will pin versions automatically");
         return 0;
     }
 
@@ -240,13 +242,15 @@ public final class AddCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Add", e.getMessage()));
             return 1;
         }
-        CliOutput.out("Added "
-                + Coords.shortName(name)
-                + " ("
-                + Coords.gav(group, artifact, version)
-                + ") to ["
-                + scope.tomlSection()
-                + "]");
+        CommandWedge.printOk(
+                "Add",
+                "Added "
+                        + Coords.shortName(name)
+                        + " ("
+                        + Coords.gav(group, artifact, version)
+                        + ") to ["
+                        + scope.tomlSection()
+                        + "]");
 
         // 2. Register membership in the enclosing workspace root (cwd itself
         //    when cwd is the root).
@@ -354,10 +358,8 @@ public final class AddCommand implements CliCommand {
             return 1;
         }
 
-        String check = Theme.colorize(Glyphs.CHECK, Theme.active().success());
         String shortSha = sha256.substring(0, Math.min(12, sha256.length()));
-        CliOutput.out(check
-                + " Added "
+        String msg = "Added "
                 + Coords.shortName(library)
                 + " ("
                 + Coords.gav(group, artifact, version)
@@ -367,11 +369,14 @@ public final class AddCommand implements CliCommand {
                 + " to "
                 + Theme.colorize("dependency", Theme.active().cyan())
                 + "."
-                + Theme.colorize(scope.canonical(), Theme.active().cyan()));
+                + Theme.colorize(scope.canonical(), Theme.active().cyan());
+        CommandWedge.printOk("Add", msg);
         CliOutput.out();
-        CliOutput.out("Run "
+        CliOutput.out("The next "
+                + Theme.colorize("jk build", Theme.active().warning())
+                + " / "
                 + Theme.colorize("jk lock", Theme.active().warning())
-                + " to lock your dependencies to hard versions");
+                + " will pin versions automatically");
         return 0;
     }
 

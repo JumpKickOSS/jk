@@ -116,11 +116,14 @@ public final class FormatCommand implements CliCommand {
                 if ("changed".equals(status)) {
                     counts[0]++;
                     if (!global.outputIsJson()) {
-                        String mark =
-                                Theme.colorize(Glyphs.CHECK, Theme.active().success());
-                        String rel = Theme.colorize(
-                                PathDisplay.of(Path.of(path), projectDir),
-                                Theme.active().path());
+                        String mark = Theme.active().isAnsi()
+                                ? Theme.colorize(Glyphs.CHECK, Theme.active().success())
+                                : Glyphs.CHECK_PLAIN;
+                        String rel = Theme.active().isAnsi()
+                                ? Theme.colorize(
+                                        PathDisplay.of(Path.of(path), projectDir),
+                                        Theme.active().path())
+                                : PathDisplay.of(Path.of(path), projectDir);
                         CliOutput.out(mark + " " + (check ? "Would format: " : "Formatted: ") + rel);
                     }
                 } else if ("error".equals(status)) {
@@ -154,19 +157,29 @@ public final class FormatCommand implements CliCommand {
             }
             if (o.total() == 0) {
                 if (!global.outputIsJson())
-                    CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Format", "no Java or Kotlin sources found."));
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "no Java or Kotlin sources found.");
                 return 0;
             }
             if (!global.outputIsJson()) {
-                String mark = Theme.colorize(Glyphs.CHECK, Theme.active().success());
-                String command = Theme.colorize(
-                        check ? "Checked" : "Formatted", Theme.active().focused());
-                String body = check
-                        ? counts[0] + " to format, " + counts[1] + " already clean"
-                        : counts[0] + " file" + (counts[0] == 1 ? "" : "s") + ", " + counts[1] + " already clean";
-                if (counts[2] > 0) body += ", " + counts[2] + " error" + (counts[2] == 1 ? "" : "s");
-                String inTime = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
-                CliOutput.out(mark + " " + command + " " + body + " " + inTime);
+                String took = ConsoleSpec.took(Duration.ofMillis(System.currentTimeMillis() - startMs));
+                if (counts[2] > 0) {
+                    String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s") + " " + took;
+                    cc.jumpkick.cli.tui.CommandWedge.printFail("Format", errTail);
+                } else if (counts[0] == 0) {
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "Already formatted " + took);
+                } else if (check) {
+                    String body = counts[0] + " to format, " + counts[1] + " already clean " + took;
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", body);
+                } else {
+                    String body = "Formatted "
+                            + counts[0]
+                            + " file"
+                            + (counts[0] == 1 ? "" : "s")
+                            + (counts[1] > 0 ? ", " + counts[1] + " already clean" : "")
+                            + " "
+                            + took;
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", body);
+                }
             }
             return o.workerExit();
         }
@@ -238,7 +251,7 @@ public final class FormatCommand implements CliCommand {
                         + " file"
                         + (counts[0] == 1 ? "" : "s");
                 String clean = counts[1] > 0 ? ", " + counts[1] + " already clean" : "";
-                cm.finishPipelineSuccess(formatted + clean + "  " + took);
+                cm.finishPipelineSuccess(formatted + clean + " " + took);
             }
             return o.workerExit();
         }

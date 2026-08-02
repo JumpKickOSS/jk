@@ -120,13 +120,13 @@ public final class LibraryUpdateCommand implements CliCommand {
     private void printSummary(int total, Diff diff, Duration elapsed, boolean fetched) {
         // ✓ Library  Catalog updated — 745 entries cached took 146ms
         String head = fetched ? "Catalog updated" : "Catalog up to date";
-        CliOutput.out(CommandWedge.ok(
+        CommandWedge.printOk(
                 "Library",
                 head
                         + " — "
                         + Theme.colorize(String.valueOf(total), AttributedStyle.DEFAULT.bold())
                         + " entries cached "
-                        + ConsoleSpec.took(elapsed)));
+                        + ConsoleSpec.took(elapsed));
         if (diff.isEmpty()) {
             if (fetched) CliOutput.out("\n  (no changes from previous version)");
             return;

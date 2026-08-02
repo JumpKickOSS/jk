@@ -63,6 +63,20 @@ class ArgParserTest {
     }
 
     @Test
+    void alias_isAcceptedButNotPartOfPrimaryNames() throws Exception {
+        Opt redo = Opt.flag("Redo work", "-r", "--redo").alias("--rebuild");
+        assertThat(redo.names()).containsExactly("-r", "--redo");
+        assertThat(redo.aliases()).containsExactly("--rebuild");
+        assertThat(redo.canonicalName()).isEqualTo("redo");
+        Command c = cmd(List.of(redo), List.of());
+        assertThat(parse(c, "--redo").isSet("redo")).isTrue();
+        assertThat(parse(c, "-r").isSet("redo")).isTrue();
+        assertThat(parse(c, "--rebuild").isSet("redo")).isTrue();
+        // Unique prefix of either primary or alias still binds the same option.
+        assertThat(parse(c, "--reb").isSet("redo")).isTrue();
+    }
+
+    @Test
     void shortValueOption_attachedOrSeparate() throws Exception {
         Command c = cmd(List.of(Opt.value("<N>", "workers", "-w", "--workers")), List.of());
         assertThat(parse(c, "-w", "4").value("workers")).contains("4");

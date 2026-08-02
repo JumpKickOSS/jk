@@ -33,9 +33,18 @@ import java.util.zip.ZipEntry;
 final class ShrunkJarPackager {
 
     /** Fixed entry timestamp (zip's floor is 1980) — reproducible output, same as jk's packagers. */
-    private static final long ENTRY_MILLIS = java.time.LocalDateTime.of(1980, 2, 1, 0, 0)
-            .toInstant(java.time.ZoneOffset.UTC)
-            .toEpochMilli();
+    private static final java.time.LocalDateTime ENTRY_TIME = java.time.LocalDateTime.of(1980, 2, 1, 0, 0);
+
+    /**
+     * A pinned-time entry via {@link JarEntry#setTimeLocal} — NOT {@code setTime}, whose DOS-time
+     * conversion is timezone-sensitive and would make the bytes (and raw-jar fingerprints) vary
+     * with the build host's $TZ. Mirrors the engine's DeterministicJar.
+     */
+    private static JarEntry pinnedEntry(String name) {
+        JarEntry entry = new JarEntry(name);
+        entry.setTimeLocal(ENTRY_TIME);
+        return entry;
+    }
 
     private ShrunkJarPackager() {}
 
@@ -181,9 +190,7 @@ final class ShrunkJarPackager {
                     .toList();
             for (Path file : files) {
                 String name = classesDir.relativize(file).toString().replace('\\', '/');
-                JarEntry entry = new JarEntry(name);
-                entry.setTime(ENTRY_MILLIS);
-                jos.putNextEntry(entry);
+                jos.putNextEntry(pinnedEntry(name));
                 Files.copy(file, jos);
                 jos.closeEntry();
             }
@@ -204,9 +211,7 @@ final class ShrunkJarPackager {
         try (JarFile in = new JarFile(shrunk.toFile());
                 OutputStream out = Files.newOutputStream(artifact);
                 JarOutputStream jos = new JarOutputStream(out)) {
-            JarEntry manifestEntry = new JarEntry("META-INF/MANIFEST.MF");
-            manifestEntry.setTime(ENTRY_MILLIS);
-            jos.putNextEntry(manifestEntry);
+            jos.putNextEntry(pinnedEntry("META-INF/MANIFEST.MF"));
             manifest.write(jos);
             jos.closeEntry();
             List<JarEntry> entries = new ArrayList<>();
@@ -216,9 +221,7 @@ final class ShrunkJarPackager {
             entries.sort(Comparator.comparing(ZipEntry::getName));
             for (JarEntry entry : entries) {
                 if (entry.isDirectory() || entry.getName().equals("META-INF/MANIFEST.MF")) continue;
-                JarEntry copy = new JarEntry(entry.getName());
-                copy.setTime(ENTRY_MILLIS);
-                jos.putNextEntry(copy);
+                jos.putNextEntry(pinnedEntry(entry.getName()));
                 try (InputStream body = in.getInputStream(entry)) {
                     body.transferTo(jos);
                 }

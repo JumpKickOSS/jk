@@ -51,7 +51,7 @@ public final class TestCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"),
+                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "-p", "--profile"),
                 Opt.flag("Skip profile tag filters (incl. the auto ci profile).", "--no-profile"),
                 Opt.value(
                         "<N>",
@@ -62,15 +62,11 @@ public final class TestCommand implements CliCommand {
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(Opt.value(
-                "<git-ref>", "Test only modules (and dependents) changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value(
-                "<sel>",
-                "Test only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(Opt.value(
                         "<name>",
                         "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",
+                        "-s",
                         "--suite")
                 .repeat());
         opts.add(Opt.flag("Run every discovered test suite (test + integration + …).", "--all"));
@@ -142,11 +138,7 @@ public final class TestCommand implements CliCommand {
                 return finishSession(Exit.CONFIG);
             }
             if (selected != null && selected.moduleDirs().isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Test",
-                        cc.jumpkick.config.GlobalConfig.nerdfont(),
-                        "nothing selected for tests"));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }
@@ -155,11 +147,7 @@ public final class TestCommand implements CliCommand {
             }
             if (selected != null
                     && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Test",
-                        cc.jumpkick.config.GlobalConfig.nerdfont(),
-                        "nothing selected for tests"));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }

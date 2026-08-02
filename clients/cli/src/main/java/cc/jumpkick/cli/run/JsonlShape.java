@@ -89,7 +89,7 @@ public final class JsonlShape {
         return sb.toString();
     }
 
-    /** Command session opened under {@code target/.jk-cli/…/details.jsonl}. */
+    /** Command session opened (details under project run dir). */
     public static String sessionStart(String command, java.util.List<String> argv) {
         StringBuilder sb = open("session-start").append(",\"command\":").append(js(command));
         sb.append(",\"argv\":[");
@@ -100,6 +100,29 @@ public final class JsonlShape {
             }
         }
         return sb.append(']').append('}').toString();
+    }
+
+    /**
+     * Engine job binding — jid (cancel), buildNumber (run dir), ETA, details path. Written into
+     * details.jsonl so agents can diagnose a run without other files.
+     */
+    public static String jobMeta(long jid, long buildNumber, long etaMs, String detailsPath) {
+        StringBuilder sb = open("job");
+        if (jid > 0) sb.append(",\"jid\":").append(jid);
+        if (buildNumber > 0) sb.append(",\"buildNumber\":").append(buildNumber);
+        if (etaMs >= 0) sb.append(",\"etaMs\":").append(etaMs);
+        if (detailsPath != null && !detailsPath.isBlank())
+            sb.append(",\"detailsPath\":").append(js(detailsPath));
+        return sb.append('}').toString();
+    }
+
+    /** ETA estimate event (ms wall). */
+    public static String eta(long etaMs) {
+        return open("eta")
+                .append(",\"etaMs\":")
+                .append(Math.max(0, etaMs))
+                .append('}')
+                .toString();
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */

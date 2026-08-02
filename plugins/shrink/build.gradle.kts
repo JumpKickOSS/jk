@@ -12,12 +12,3 @@ description = "jk-shrink: the built-in shrink build plugin's code layer — R8 i
 dependencies {
     implementation(project(":plugin-sdk"))
 }
-
-// Fat JAR: bundle the runtime closure (plugin-api + model) so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}

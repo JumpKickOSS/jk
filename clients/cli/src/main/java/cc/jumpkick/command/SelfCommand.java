@@ -89,7 +89,7 @@ public final class SelfCommand extends GroupCommand {
             cc.jumpkick.config.UserConfigEditor.setNerdfont(cfg, nerd);
             // Invalidate any process-local config memo so subsequent calls see the write.
             String msg = "Nerd Font glyphs " + (nerd ? "enabled" : "disabled") + " (" + reason + ") → " + cfg;
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", msg));
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", msg);
             return 0;
         }
     }
@@ -195,7 +195,7 @@ public final class SelfCommand extends GroupCommand {
             Cas cas = JkStores.cas(JkDirs.cache());
             String running = cc.jumpkick.cli.Jk.VERSION;
             if (target.equals(running) && store.resolve(target).isPresent()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", target + " is already current"));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Self", target + " is already current");
                 return 0;
             }
 
@@ -205,7 +205,7 @@ public final class SelfCommand extends GroupCommand {
             }
 
             flipPointer(m);
-            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Self", target + " installed (" + m.root() + ")"));
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Self", target + " installed (" + m.root() + ")");
 
             // Hand the engine over: --now stops the old daemon (killing its jobs) first;
             // otherwise the NEW engine's startup drains it gracefully — zero interrupted builds.

@@ -13,6 +13,14 @@ import java.util.stream.Stream;
 /**
  * CAS mark-and-sweep against a live ref set. Never deletes objects newer than sweep start or younger
  * than {@link Sweep#MIN_AGE_FOR_SWEEP} (concurrent-write and stamp-race safety).
+ *
+ * <h2>Hard links and disk reclaim</h2>
+ * Repo materialization hard-links {@code repos/<name>/…} to the CAS blob (one inode). Deleting only
+ * the {@code sha256/…} path leaves a live hard link under {@code repos/} and <em>does not free
+ * bytes</em>. Every purge therefore drops <strong>both</strong> the CAS path and every matching
+ * repo entry ({@link RepoArtifactStore#removeShasFromAll}) so nlink hits zero and the space returns
+ * to the filesystem. Repo links are removed first so a crash mid-sweep leaves a recoverable CAS
+ * blob rather than an orphan repo-only inode.
  */
 public final class CasSweep {
 
@@ -33,9 +41,10 @@ public final class CasSweep {
             return new Report(0, 0L, 0);
         }
 
-        int deleted = 0;
-        long freedBytes = 0;
         int kept = 0;
+        // Collect first: unlink repos before CAS so reclaim is complete and crash-safe.
+        record Victim(Path file, String hex, long size) {}
+        java.util.ArrayList<Victim> victims = new java.util.ArrayList<>();
         Set<String> deletedShas = new HashSet<>();
         try (Stream<Path> stream = Files.walk(shaRoot)) {
             for (Path file : (Iterable<Path>) stream::iterator) {
@@ -62,16 +71,21 @@ public final class CasSweep {
                 if (sweepStartMillis - mtime < minAgeMillis) continue; // grace period
 
                 long size = Files.size(file);
-                if (!dryRun) {
-                    Files.deleteIfExists(file);
-                }
-                deleted++;
-                freedBytes += size;
+                victims.add(new Victim(file, hex, size));
                 deletedShas.add(hex);
             }
         }
-        // Keep every named repo store (repos/<name>/) in lock-step with the CAS.
+        // Drop every hard-link / copy under repos/<name>/ for these shas, then the CAS path.
         RepoArtifactStore.removeShasFromAll(cas.root(), deletedShas, dryRun);
-        return new Report(deleted, freedBytes, kept);
+        long freedBytes = 0;
+        if (!dryRun) {
+            for (Victim v : victims) {
+                Files.deleteIfExists(v.file());
+            }
+        }
+        for (Victim v : victims) {
+            freedBytes += v.size();
+        }
+        return new Report(victims.size(), freedBytes, kept);
     }
 }

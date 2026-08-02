@@ -8,8 +8,8 @@ default.
 | Artifact | How | Command | R8? |
 |---|---|---|---|
 | **Thin jar** | default | `jk build` | no |
-| **Assembly jar** | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` | no |
-| **Shrunk jar** | `[application] assembly = "shrink"` | `jk assembly` / `jk build` | yes (opt-in) |
+| **Assembly jar** | `[application] assembly = true` | `jk assemble` / `jk build` | no |
+| **Shrunk jar** | `[application] assembly = "shrink"` | `jk assemble` / `jk build` | yes (opt-in) |
 | **Spring Boot jar** | spring-boot plugin | `jk build` | plugin-owned |
 | **Quarkus fast-jar / uber-jar** | quarkus plugin | `jk build` | plugin-owned (augment) |
 | **Grails jar** (Boot layout) | grails plugin | `jk build` | plugin-owned |
@@ -36,7 +36,7 @@ assembly = true
 ```
 
 ```bash
-jk assembly   # alias: jk assemble — errors with a one-line fix if assembly is off
+jk assemble   # errors with a one-line fix if assembly is off
 jk build      # same packaging graph when assembly = true
 # → target/<name>-<version>-all.jar
 ```
@@ -46,10 +46,10 @@ jk build      # same packaging graph when assembly = true
 You can package without (or against) `jk.toml` for a single run:
 
 ```bash
-jk assembly --fat                 # fat jar this run only
-jk assembly --shrink              # R8 this run only
-jk assembly --shrink --write-config   # R8 + surgically set assembly = "shrink" in jk.toml
-jk assembly --fat --write-config      # fat + assembly = true
+jk assemble --fat                 # fat jar this run only
+jk assemble --shrink              # R8 this run only
+jk assemble --shrink --write-config   # R8 + surgically set assembly = "shrink" in jk.toml
+jk assemble --fat --write-config      # fat + assembly = true
 ```
 
 | Flag | Effect |
@@ -97,8 +97,8 @@ Optional keep rules / R8 version still live under `[shrink]` when you need them:
 A bare `[shrink]` table (without `assembly = "shrink"`) still enables the packager for
 backward compatibility. Prefer `assembly = "shrink"`. Build labels size before → after.
 
-Try without editing the file first: `jk assembly --shrink`. Persist with
-`jk assembly --shrink --write-config`.
+Try without editing the file first: `jk assemble --shrink`. Persist with
+`jk assemble --shrink --write-config`.
 
 Sample: [examples/shrunk-cli/](examples/shrunk-cli/).
 
@@ -145,7 +145,7 @@ not `assembly`. See the user guide “Grails” section.
 
 ```text
 thin      → package-jar
-assembly  → package-assembly   (jk assembly / jk assemble)
+assembly  → package-assembly   (jk assemble / alias: assembly)
 shrunk    → shrunk-jar packager (R8)
 boot      → spring-boot packager
 grails    → grails packager (Boot layout)

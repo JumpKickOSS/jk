@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.config.JkConfig;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import java.nio.file.Path;
@@ -11,8 +12,9 @@ import java.util.List;
  * cc.jumpkick.model.command.Invocation} via {@link #from(cc.jumpkick.model.command.Invocation)}.
  *
  * <p>Precedence for resolving each setting: explicit flag &gt; env var &gt; project {@code jk.toml}
- * &gt; user-global {@code ~/.jk/config.toml}. There is no {@code /etc/jk} system layer and jk never
- * reads {@code ~/.config} — see {@link cc.jumpkick.config.ConfigSources}.
+ * {@code [config]} &gt; user-global {@code ~/.jk/config.toml} {@code [config]}. There is no {@code
+ * /etc/jk} system layer and jk never reads {@code ~/.config} — see {@link
+ * cc.jumpkick.config.ConfigSources}.
  */
 public final class GlobalOptions {
     public boolean quiet;
@@ -20,20 +22,33 @@ public final class GlobalOptions {
     public String color;
     public boolean offline;
 
-    /** {@code --force}: bypass all of jk's caching for this invocation. */
+    /** {@code -F}/{@code --force}: bypass all of jk's caching for this invocation. */
     public boolean force;
 
     /**
-     * {@code --rebuild} — recompile/repackage/re-run tests (skip freshness stamps and the action
-     * cache, both directions) while still serving locked deps from the CAS: offline-safe cache
-     * distrust. {@code --force} implies it and additionally re-fetches.
+     * {@code -r}/{@code --redo} (hidden alias {@code --rebuild}) — recompile/repackage/re-run tests
+     * (skip freshness stamps and the action cache, both directions) while still serving locked deps
+     * from the CAS: offline-safe cache distrust. {@code --force} implies it and additionally
+     * re-fetches.
      */
     public boolean rebuild;
 
     public boolean noProgress;
 
-    /** {@code --no-ansi} — declared as a global; read here so command code never misses it. */
+    /** {@code --no-ansi} / {@code config.no-ansi} — strip ANSI; also implies no progress. */
     public boolean noAnsi;
+
+    /**
+     * {@code --no-osc} / {@code config.no-osc} — disable OSC capabilities (window title, taskbar
+     * progress, desktop notifications). Independent of {@link #noAnsi}.
+     */
+    public boolean noOsc;
+
+    /**
+     * Resolved desktop-notification policy ({@code config.notify} / {@code JK_NOTIFY} /
+     * {@code --notify}/{@code --no-notify}). Default {@link JkConfig.NotifyChoice#AUTO}.
+     */
+    public JkConfig.NotifyChoice notify = JkConfig.NotifyChoice.AUTO;
 
     /** {@code --no-timeline} — skip engine chrome-trace write under {@code target/}. */
     public boolean noTimeline;
@@ -47,9 +62,10 @@ public final class GlobalOptions {
 
     /**
      * True when the user asked for machine-readable <strong>live JSONL</strong> on stdout: {@code
-     * --output json}, {@code --output jsonl}, or env {@code JK_OUTPUT=json|jsonl}. Both names mean
-     * the same stream (one JSON object per line, flushed live) — see {@code docs/machine-output.md}.
-     * Commands should suppress human wedge/summary lines so the stream stays parseable.
+     * -O}/{@code --output json}, {@code jsonl}, or env {@code JK_OUTPUT=json|jsonl}. Both format
+     * names mean the same stream (one JSON object per line, flushed live) — see {@code
+     * docs/machine-output.md}. Commands should suppress human wedge/summary lines so the stream
+     * stays parseable.
      */
     public boolean outputIsJson() {
         String resolved = output;
@@ -66,8 +82,8 @@ public final class GlobalOptions {
     public Path directory;
 
     /**
-     * Resolve the working directory: explicit {@code --directory} if set (either on this mixin or via
-     * {@link cc.jumpkick.config.SessionContext}, which captures {@code -C} placed before the
+     * Resolve the working directory: explicit {@code -C}/{@code --dir} if set (either on this mixin
+     * or via {@link cc.jumpkick.config.SessionContext}, which captures {@code -C} placed before the
      * subcommand), otherwise the current working directory. Always returns an absolute normalised
      * path so callers can pass it into IO without worrying about whether {@code -C} was supplied.
      */
@@ -94,7 +110,7 @@ public final class GlobalOptions {
     public boolean help;
     public boolean version;
 
-    /** {@code --max-ram-percent}: per-JVM heap cap for jk's worker JVMs, or null. */
+    /** {@code --ram-percent}: per-JVM heap cap for jk's worker JVMs, or null. */
     public Double maxRamPercent;
 
     /**
@@ -123,23 +139,57 @@ public final class GlobalOptions {
      * body ({@code global.workingDir}, {@code global.offline}, …) is unchanged.
      */
     public static GlobalOptions from(Invocation in) {
+        // Session already holds file+env layers (and any early CLI overlays from Jk.applyCliOverrides).
+        JkConfig cfg = cc.jumpkick.config.SessionContext.current().config();
+
         GlobalOptions g = new GlobalOptions();
-        g.quiet = in.isSet("quiet");
-        g.verbose = in.isSet("verbose");
+        // Boolean flags: CLI set wins; otherwise inherit true from config/env when present.
+        g.quiet = in.isSet("quiet") || cfg.quietOr(false);
+        g.verbose = in.isSet("verbose") || cfg.verboseOr(false);
         g.color = in.value("color").orElse(null);
-        g.offline = in.isSet("offline");
-        g.force = in.isSet("force");
-        g.rebuild = in.isSet("rebuild");
-        g.noProgress = in.isSet("no-progress");
-        g.noAnsi = in.isSet("no-ansi");
+        g.offline = in.isSet("offline") || cfg.offlineOr(false);
+        g.force = in.isSet("force") || cfg.forceOr(false);
+        // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
+        g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
+        g.noAnsi = in.isSet("no-ansi") || cfg.noAnsiOr(false);
+        // Progress is independent of --no-ansi: plain multi-line chrome (JK-1379) still runs
+        // unless --no-progress / quiet / json mute it.
+        g.noProgress = in.isSet("no-progress") || cfg.noProgressOr(false);
+        g.noOsc = in.isSet("no-osc") || cfg.noOscOr(false);
+        // Notify: --no-notify > --notify > config/env (default AUTO).
+        if (in.isSet("no-notify")) {
+            g.notify = JkConfig.NotifyChoice.NEVER;
+        } else if (in.isSet("notify")) {
+            g.notify = JkConfig.NotifyChoice.ALWAYS;
+        } else {
+            g.notify = cfg.notifyOr(JkConfig.NotifyChoice.AUTO);
+        }
         g.noTimeline = in.isSet("no-timeline");
+        // Re-fold CLI/config OSC+notify into the session so mid-run readers see the same policy.
+        // (applyCliOverrides already merged early argv; this covers flags after the subcommand.)
+        JkConfig cliOverlay = new JkConfig(
+                java.util.Optional.empty(),
+                // offline + rebuild ride the overlay too (JK-1365): the engine reads them off the
+                // session wire, and Jk.applyCliOverrides only catches exact tokens — a bundled
+                // `-rq` or abbreviated `--red` / `--offl` lands here, in the parsed Invocation.
+                g.offline ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.rebuild ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.noProgress ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.quiet ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.verbose ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                g.force ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.noAnsi ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                g.noOsc ? java.util.Optional.of(true) : java.util.Optional.empty(),
+                java.util.Optional.of(g.notify));
+        cc.jumpkick.config.SessionContext.installConfig(cfg.mergedWith(cliOverlay));
         // Engine-owned chrome profile; CLI only forwards the preference on the wire.
         cc.jumpkick.cli.run.TimelineOpts.setNoTimeline(g.noTimeline);
         g.output = in.value("output").orElse(null);
         g.configFile = in.value("config-file").map(Path::of).orElse(null);
         g.noConfig = in.isSet("no-config");
-        g.directory = in.value("directory").map(Path::of).orElse(null);
-        g.maxRamPercent = in.value("max-ram-percent")
+        g.directory = in.value("dir").map(Path::of).orElse(null);
+        g.maxRamPercent = in.value("ram-percent")
                 .map(s -> {
                     try {
                         return Double.valueOf(s.trim());
@@ -176,38 +226,37 @@ public final class GlobalOptions {
     /**
      * The global options as {@link cc.jumpkick.model.command.Opt} data. The dispatcher merges these
      * into every command's option set so global flags are accepted everywhere and shown in the
-     * "Global options" help section.
+     * "Global options" help section. Order here is the help-screen order.
      */
     public static List<Opt> globalOpts() {
         return List.of(
+                Opt.flag("Bypass caching and redo this operation, re-fetching deps too", "-F", "--force"),
+                Opt.flag("Redo this build's work (skip caches) without re-fetching deps", "-r", "--redo")
+                        .alias("--rebuild"),
+                Opt.value("<FORMAT>", "Output format: text (default), or jsonl", "-O", "--output"),
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
-                Opt.value("<WHEN>", "When to colorize output: auto, always, never", "--color"),
-                Opt.flag("Disable network access for this run", "--offline"),
-                Opt.flag("Bypass jk's caching and redo this operation, re-fetching deps too", "--force"),
-                Opt.flag("Redo this build's work (skip jk's caches) without re-fetching deps", "--rebuild"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
-                Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
                 Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
-                Opt.value(
-                        "<FORMAT>",
-                        "Output format: text (default), or json/jsonl (identical live JSONL event stream for agents/CI)",
-                        "--output"),
+                Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
+                Opt.flag("Disable OSC (window title, taskbar progress, notifications)", "--no-osc"),
+                Opt.flag("Always notify when a build finishes", "--notify"),
+                Opt.flag("Never send desktop notifications for this run", "--no-notify"),
+                Opt.value("<WHEN>", "When to colorize output: auto, always, never", "--color"),
                 Opt.value("<FILE>", "Use this jk.toml for configuration", "--config-file"),
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
-                Opt.value("<DIR>", "Change to this directory before running", "-C", "--directory"),
-                Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--max-ram-percent"),
-                Opt.value(
-                        "<N>",
-                        "Concurrent modules/workers: 0=all cores (default), 1=serial, N=cap (JK_JOBS / [engine] jobs)",
-                        "-j",
-                        "--jobs"),
-                Opt.value("<ARG>", "Extra worker-JVM flag (repeatable)", "--jvm-arg")
-                        .repeat(),
+                Opt.value("<DIR>", "Change to this directory before running", "-C", "--dir")
+                        .alias("--directory"),
+                Opt.value("<N>", "Concurrent modules/workers: 0=max (default), 1=serial, N=cap", "-j", "--jobs"),
+                Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--ram-percent")
+                        .alias("--max-ram-percent"),
                 Opt.value("<spec>", "JDK for this run; overrides project pins", "--jdk"),
                 Opt.value("<spec>", "GraalVM for jk native / GRAALVM_HOME", "--graal"),
-                Opt.flag("Show this help message and exit", "-h", "--help"),
-                Opt.flag("Print version information and exit", "-V", "--version"));
+                Opt.value("<ARG>", "Extra worker-JVM flag (repeatable)", "--jvm-arg")
+                        .repeat(),
+                Opt.flag("Disable network access for this run", "--offline"),
+                Opt.flag("Print version information and exit", "-V", "--version"),
+                Opt.flag("Show this help message and exit", "-h", "--help"));
     }
 
     /**

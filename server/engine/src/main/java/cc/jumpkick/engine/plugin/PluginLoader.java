@@ -27,7 +27,7 @@ public final class PluginLoader {
     private PluginLoader() {}
 
     /** Fully-qualified main class every plugin jar runs under (vendored from plugin-api). */
-    static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
+    public static final String WORKER_MAIN = "cc.jumpkick.plugin.process.PluginMain";
 
     /**
      * Fork a plugin and stream its events. Returns the plugin's exit code.

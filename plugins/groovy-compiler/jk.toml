@@ -4,7 +4,6 @@ description = "jk-groovy-compiler: Groovy 5 in-process compiler worker (PluginMa
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 # Codec only in the assembly; the Groovy closure is resolved at runtime onto the worker CP.
 [dependencies]

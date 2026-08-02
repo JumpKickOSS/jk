@@ -1,0 +1,276 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.builds;
+
+import cc.jumpkick.util.AtomicWrites;
+import cc.jumpkick.util.JkDirs;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+/**
+ * Single serial worker that walks project run directories, reaps old runs, and writes host-metrics
+ * plus each project's project-metrics as scalar trimmed means and last-success values (no sample
+ * rings on disk).
+ *
+ * <p>Every build finish calls {@link #request()}; concurrent requests coalesce into one re-run.
+ */
+public final class MetricsHarvest {
+
+    /** Default: keep 50 runs per project. */
+    public static final int DEFAULT_MAX_RUNS = 50;
+
+    /** Default: drop runs older than 90 days. */
+    public static final int DEFAULT_MAX_AGE_DAYS = 90;
+
+    private static final Pattern KEY_EQ_NUM =
+            Pattern.compile("(?m)^([a-zA-Z0-9._:/-]+)\\s*=\\s*([0-9]+(?:\\.[0-9]+)?)\\s*$");
+
+    private static final MetricsHarvest INSTANCE = new MetricsHarvest();
+
+    private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicBoolean rerun = new AtomicBoolean(false);
+    private final Object startLock = new Object();
+
+    private volatile int maxRuns = DEFAULT_MAX_RUNS;
+    private volatile long maxAgeMillis = DEFAULT_MAX_AGE_DAYS * 86_400_000L;
+
+    private MetricsHarvest() {}
+
+    public static MetricsHarvest get() {
+        return INSTANCE;
+    }
+
+    public void configure(int maxRunsPerProject, int maxAgeDays) {
+        if (maxRunsPerProject > 0) this.maxRuns = maxRunsPerProject;
+        if (maxAgeDays > 0) this.maxAgeMillis = maxAgeDays * 86_400_000L;
+    }
+
+    /** Request a harvest pass; starts the worker if idle, else sets re-run. */
+    public void request() {
+        synchronized (startLock) {
+            if (running.get()) {
+                rerun.set(true);
+                return;
+            }
+            running.set(true);
+        }
+        Thread t = new Thread(this::loop, "jk-metrics-harvest");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void loop() {
+        try {
+            do {
+                rerun.set(false);
+                try {
+                    runOnce(JkDirs.builds());
+                } catch (Exception ignored) {
+                    // never fail the product over harvest
+                }
+            } while (rerun.get());
+        } finally {
+            running.set(false);
+            if (rerun.get()) {
+                request();
+            }
+        }
+    }
+
+    /** Exposed for tests. Uses live {@link JkDirs#builds()}. */
+    public void runOnce() throws IOException {
+        runOnce(JkDirs.builds());
+    }
+
+    /** Harvest under an explicit builds root (tests). */
+    public void runOnce(Path buildsRoot) throws IOException {
+        long now = System.currentTimeMillis();
+        Map<String, List<Double>> hostSamples = new LinkedHashMap<>();
+        for (Path home : ProjectBuilds.listProjectHomes(buildsRoot)) {
+            reapProject(home, now);
+            Map<String, Agg> project = new LinkedHashMap<>();
+            Map<String, Double> last = new LinkedHashMap<>();
+            Map<String, Long> counts = new LinkedHashMap<>();
+            for (Path run : ProjectBuilds.listRuns(home)) {
+                Path metrics = run.resolve(ProjectBuilds.METRICS);
+                if (!Files.isRegularFile(metrics)) continue;
+                parseRunMetrics(metrics, hostSamples, project, last, counts);
+            }
+            writeProjectMetrics(home.resolve(ProjectBuilds.PROJECT_METRICS), project, last, counts);
+        }
+        writeHostMetrics(ProjectBuilds.hostMetricsFile(buildsRoot), hostSamples);
+    }
+
+    private void reapProject(Path home, long now) {
+        List<Path> runs = new ArrayList<>(ProjectBuilds.listRuns(home));
+        for (Path run : List.copyOf(runs)) {
+            try {
+                BasicFileAttributes attrs = Files.readAttributes(run, BasicFileAttributes.class);
+                long created = attrs.creationTime().toMillis();
+                if (created <= 0) created = attrs.lastModifiedTime().toMillis();
+                if (now - created > maxAgeMillis) {
+                    deleteTree(run);
+                    runs.remove(run);
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        while (runs.size() > maxRuns) {
+            Path oldest = runs.get(runs.size() - 1);
+            deleteTree(oldest);
+            runs.remove(runs.size() - 1);
+        }
+    }
+
+    private static void parseRunMetrics(
+            Path metricsFile,
+            Map<String, List<Double>> hostSamples,
+            Map<String, Agg> project,
+            Map<String, Double> last,
+            Map<String, Long> counts) {
+        try {
+            String text = Files.readString(metricsFile, StandardCharsets.UTF_8);
+            Matcher m = KEY_EQ_NUM.matcher(text);
+            while (m.find()) {
+                String key = m.group(1);
+                double v = Double.parseDouble(m.group(2));
+                if (v < 0 || Double.isNaN(v) || Double.isInfinite(v)) continue;
+                project.computeIfAbsent(key, k -> new Agg()).add(v);
+                // Newest-first listing → first write wins as last-success.
+                last.putIfAbsent(key, v);
+                counts.merge(key, 1L, Long::sum);
+                if (isHostKey(key)) {
+                    hostSamples.computeIfAbsent(key, k -> new ArrayList<>()).add(v);
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Host-wide keys only (no per-module paths). Used for cold ETA on alien projects and
+     * lock/fetch/probe rates.
+     */
+    static boolean isHostKey(String key) {
+        if (key == null || key.isBlank()) return false;
+        if (key.startsWith("host.")) return true;
+        if (key.startsWith("lock.") || key.startsWith("fetch.") || key.startsWith("probe.")) return true;
+        if (key.startsWith("step.") && !key.contains("module.")) return true;
+        // Absolute host rate keys from continuous learning
+        return key.endsWith("-per-method-ms")
+                || key.endsWith("-per-source-ms")
+                || key.endsWith("-suite-startup-ms")
+                || key.equals("package-jar-ms")
+                || key.equals("package-assembly-ms")
+                || key.equals("ms-per-weight");
+    }
+
+    private static void writeProjectMetrics(
+            Path file, Map<String, Agg> means, Map<String, Double> last, Map<String, Long> counts) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# project-metrics — derived by MetricsHarvest (scalars only)\n");
+        sb.append("[mean]\n");
+        means.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(e.getValue().trimmedMean()))
+                .append('\n'));
+        sb.append("\n[last]\n");
+        last.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(e.getValue()))
+                .append('\n'));
+        sb.append("\n[count]\n");
+        counts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e ->
+                        sb.append(e.getKey()).append(" = ").append(e.getValue()).append('\n'));
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, sb.toString());
+    }
+
+    private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# host-metrics — derived by MetricsHarvest (scalars only)\n");
+        // Preserve bootstrap/probe/lock/fetch sections written by Calibration / other writers
+        String preserved = "";
+        if (Files.isRegularFile(file)) {
+            try {
+                String existing = Files.readString(file, StandardCharsets.UTF_8);
+                for (String section : List.of("probe", "bootstrap", "lock", "fetch", "calibration")) {
+                    int idx = existing.indexOf("\n[" + section + "]");
+                    if (idx < 0) idx = existing.startsWith("[" + section + "]") ? 0 : -1;
+                    if (idx >= 0) {
+                        int end = existing.indexOf("\n[", idx + 2);
+                        String block = end < 0 ? existing.substring(idx) : existing.substring(idx, end);
+                        if (!block.isBlank()) preserved += "\n" + block.strip() + "\n";
+                    }
+                }
+            } catch (IOException ignored) {
+            }
+        }
+        sb.append("[mean]\n");
+        samples.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(trimmedMean(e.getValue())))
+                .append('\n'));
+        if (!preserved.isBlank()) sb.append(preserved);
+        Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, sb.toString());
+    }
+
+    /** Trimmed mean: drop top/bottom 10% when n ≥ 10. */
+    public static double trimmedMean(List<Double> samples) {
+        if (samples == null || samples.isEmpty()) return 0;
+        List<Double> s = new ArrayList<>(samples);
+        s.sort(Comparator.naturalOrder());
+        if (s.size() >= 10) {
+            int drop = Math.max(1, s.size() / 10);
+            s = s.subList(drop, s.size() - drop);
+        }
+        double sum = 0;
+        for (double v : s) sum += v;
+        return sum / s.size();
+    }
+
+    private static String fmt(double v) {
+        if (Double.isNaN(v) || Double.isInfinite(v)) return "0";
+        if (Math.abs(v - Math.rint(v)) < 1e-6) return Long.toString(Math.round(v));
+        return String.format(Locale.ROOT, "%.3f", v);
+    }
+
+    private static void deleteTree(Path root) {
+        try (Stream<Path> walk = Files.walk(root)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.deleteIfExists(p);
+                } catch (IOException ignored) {
+                }
+            });
+        } catch (IOException ignored) {
+        }
+    }
+
+    private static final class Agg {
+        final List<Double> vals = new ArrayList<>();
+
+        void add(double v) {
+            vals.add(v);
+        }
+
+        double trimmedMean() {
+            return MetricsHarvest.trimmedMean(vals);
+        }
+    }
+}

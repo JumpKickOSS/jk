@@ -123,7 +123,8 @@ public final class NewScaffolder {
         params.put("simpleLayout", String.valueOf(inputs.isSimpleLayout()));
         params.put("sample", String.valueOf(inputs.sample()));
         params.put("baseToml", NewJkBuildRenderer.render(inputs));
-        var files = ExportSupport.generate(inputs.directory(), "scaffold", params, "jk new");
+        // Scaffold has no lock yet — skip EnsureFreshLock (global=null).
+        var files = ExportSupport.generate(inputs.directory(), "scaffold", params, "jk new", null);
         if (files == null) throw new IOException("jk new: plugin scaffold failed");
         return files;
     }

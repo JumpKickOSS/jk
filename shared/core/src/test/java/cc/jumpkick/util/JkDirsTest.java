@@ -19,6 +19,9 @@ class JkDirsTest {
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/home/me/.jk/state"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/home/me/.jk/data"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/home/me/.jk/bin"));
+        assertThat(dirs.storeDir()).isEqualTo(Path.of("/home/me/.jk/store"));
+        // lib is under store (not a separate ~/.jk/lib) — tools + plugin workers share it.
+        assertThat(dirs.libDir()).isEqualTo(Path.of("/home/me/.jk/store/lib"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/home/me/.jk/jdks"));
     }
 
@@ -28,6 +31,7 @@ class JkDirsTest {
         assertThat(dirs.homeDir()).isEqualTo(Path.of("/Users/me/.jk"));
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/Users/me/.jk/config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/Users/me/.jk/cache"));
+        assertThat(dirs.libDir()).isEqualTo(Path.of("/Users/me/.jk/store/lib"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/Users/me/.jk/jdks"));
     }
 
@@ -49,6 +53,8 @@ class JkDirsTest {
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/opt/jk/state"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/opt/jk/data"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/opt/jk/bin"));
+        assertThat(dirs.storeDir()).isEqualTo(Path.of("/opt/jk/store"));
+        assertThat(dirs.libDir()).isEqualTo(Path.of("/opt/jk/store/lib"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/opt/jk/jdks"));
     }
 
@@ -59,18 +65,30 @@ class JkDirsTest {
                 "JK_HOME", "/opt/jk",
                 "JK_CONFIG_FILE", "/etc/jk-config.toml",
                 "JK_CACHE_DIR", "/var/cache/jk",
+                "JK_STORE_DIR", "/var/lib/jk/store",
                 "JK_STATE_DIR", "/var/lib/jk/state",
                 "JK_DATA_DIR", "/var/lib/jk/data",
                 "JK_BIN_DIR", "/usr/local/bin",
+                "JK_LIB_DIR", "/opt/shared/lib",
                 "JK_JDKS_DIR", "/opt/jdks");
         JkDirs dirs = JkDirs.of(env::get, "/home/me");
         assertThat(dirs.homeDir()).isEqualTo(Path.of("/opt/jk"));
         assertThat(dirs.userConfigFilePath()).isEqualTo(Path.of("/etc/jk-config.toml"));
         assertThat(dirs.cacheDir()).isEqualTo(Path.of("/var/cache/jk"));
+        assertThat(dirs.storeDir()).isEqualTo(Path.of("/var/lib/jk/store"));
         assertThat(dirs.stateDir()).isEqualTo(Path.of("/var/lib/jk/state"));
         assertThat(dirs.dataDir()).isEqualTo(Path.of("/var/lib/jk/data"));
         assertThat(dirs.binDirectory()).isEqualTo(Path.of("/usr/local/bin"));
+        assertThat(dirs.libDir()).isEqualTo(Path.of("/opt/shared/lib"));
         assertThat(dirs.jdksDir()).isEqualTo(Path.of("/opt/jdks"));
+    }
+
+    @Test
+    void lib_follows_store_when_only_store_is_overridden() {
+        Map<String, String> env = Map.of("JK_STORE_DIR", "/data/jk-store");
+        JkDirs dirs = JkDirs.of(env::get, "/home/me");
+        assertThat(dirs.storeDir()).isEqualTo(Path.of("/data/jk-store"));
+        assertThat(dirs.libDir()).isEqualTo(Path.of("/data/jk-store/lib"));
     }
 
     @Test

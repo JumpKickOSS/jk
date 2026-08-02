@@ -61,6 +61,13 @@ public final class LockPipelines {
     public static final PipelineKey<Lockfile> LOCKFILE = PipelineKey.of("lockfile", Lockfile.class);
 
     /**
+     * Cross-step key: manifests digest captured at parse time — the write step stamps this instead
+     * of re-reading live files, so a manifest edited mid-resolution leaves a stale-reading lock
+     * (JK-1357).
+     */
+    public static final PipelineKey<String> MANIFESTS_SHA = PipelineKey.of("manifests-sha", String.class);
+
+    /**
      * Build the {@code jk lock} pipeline for one project directory: {@code parse-build} → {@code
      * resolve} (offline-aware, git-source materialization, PubGrub solve, kotlin pin) → {@code
      * lock-plugins} → {@code write-lockfile}. The offline flag is read off the ambient {@link
@@ -83,6 +90,28 @@ public final class LockPipelines {
             boolean sources,
             ResolveObserver observer,
             BiFunction<String, String, String> coordLabel) {
+        return lockPipeline(
+                dir, effective, cache, repoUrl, features, withDefaultFeatures, sources, false, observer, coordLabel);
+    }
+
+    /**
+     * As {@link #lockPipeline(Path, JkBuild, Path, URI, List, boolean, boolean, ResolveObserver,
+     * BiFunction)} with a {@code conservative} switch: an invisible freshen ({@code
+     * EnsureFreshLock}) keeps every pin from the existing lock as a solver preference — only
+     * coordinates a new or changed constraint rules out move. Explicit {@code jk lock} passes
+     * {@code false} and floats to latest.
+     */
+    public static Pipeline lockPipeline(
+            Path dir,
+            JkBuild effective,
+            Path cache,
+            URI repoUrl,
+            List<String> features,
+            boolean withDefaultFeatures,
+            boolean sources,
+            boolean conservative,
+            ResolveObserver observer,
+            BiFunction<String, String, String> coordLabel) {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         AtomicInteger resolveEstimate = new AtomicInteger(0);
 
@@ -91,6 +120,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     ctx.put(EFFECTIVE, effective);
+                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
                     ctx.progress(1);
                 })
                 .build();
@@ -122,13 +152,16 @@ public final class LockPipelines {
                         }
                     }
                     RepoGroup baseRepos = RepoGroupBuilder.buildFor(eff, repoUrl, cas);
-                    Map<String, String> lockedShas = Map.of();
+                    Lockfile existing = null;
                     if (Files.exists(lockFile)) {
                         try {
-                            lockedShas = GitSourceResolution.lockedImmutableShas(LockfileReader.read(lockFile));
+                            existing = LockfileReader.read(lockFile);
                         } catch (Exception ignored) {
+                            // unreadable lock — resolve fresh
                         }
                     }
+                    Map<String, String> lockedShas =
+                            existing != null ? GitSourceResolution.lockedImmutableShas(existing) : Map.of();
                     GitSourceResolution.Prepared prep;
                     PathSourceResolution.Prepared pathPrep;
                     try {
@@ -187,6 +220,7 @@ public final class LockPipelines {
                         }
                     };
                     try {
+                        boolean keepPins = conservative && !sources && existing != null;
                         Lockfile lock = sources
                                 ? orchestrator.lockWithSources(
                                         pathPrep.project(),
@@ -194,14 +228,24 @@ public final class LockPipelines {
                                         features,
                                         withDefaultFeatures,
                                         wrappedObserver)
-                                : orchestrator.lock(
-                                        pathPrep.project(),
-                                        JkVersion.VERSION,
-                                        features,
-                                        withDefaultFeatures,
-                                        wrappedObserver);
+                                : keepPins
+                                        ? orchestrator.lockConservative(
+                                                pathPrep.project(),
+                                                existing,
+                                                JkVersion.VERSION,
+                                                features,
+                                                withDefaultFeatures,
+                                                wrappedObserver)
+                                        : orchestrator.lock(
+                                                pathPrep.project(),
+                                                JkVersion.VERSION,
+                                                features,
+                                                withDefaultFeatures,
+                                                wrappedObserver);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
-                        String kotlinVersion = resolveKotlinVersion(eff, repos);
+                        String kotlinVersion = keepPins && existing.kotlin() != null
+                                ? existing.kotlin()
+                                : resolveKotlinVersion(eff, repos);
                         if (kotlinVersion != null) {
                             ctx.label("resolved kotlin " + kotlinVersion);
                             lock = lock.withKotlin(kotlinVersion);
@@ -328,7 +372,7 @@ public final class LockPipelines {
                     ctx.label("write " + lockFile.getFileName());
                     Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
                     ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile);
+                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
                     ctx.progress(1);
                 })
                 .build();
@@ -368,6 +412,7 @@ public final class LockPipelines {
                 .execute(ctx -> {
                     ctx.label("parse jk.toml");
                     ctx.put(EFFECTIVE, effective);
+                    ctx.put(MANIFESTS_SHA, cc.jumpkick.lock.LockManifestDigest.compute(dir));
                     ctx.progress(1);
                 })
                 .build();
@@ -397,6 +442,13 @@ public final class LockPipelines {
                                 .withUnmappedPolicy(pathPrep.project().build().unmappedPolicy())
                                 .lock(pathPrep.project(), JkVersion.VERSION, features, withDefaultFeatures);
                         lock = GitSourceResolution.stamp(lock, prep.gitInfoByKey());
+                        // jk update floats everything — including the Kotlin compiler pin, which
+                        // this pipeline used to drop from the lock entirely (JK-1371).
+                        String kotlinVersion = resolveKotlinVersion(eff, pathPrep.repos());
+                        if (kotlinVersion != null) {
+                            ctx.label("resolved kotlin " + kotlinVersion);
+                            lock = lock.withKotlin(kotlinVersion);
+                        }
                         ctx.put(LOCKFILE, lock);
                     } catch (Exception e) {
                         ctx.error(StepNames.RESOLVE_DEPS, e.getMessage());
@@ -413,7 +465,7 @@ public final class LockPipelines {
                     ctx.label("write " + lockFile.getFileName());
                     Lockfile stamped = cc.jumpkick.lock.LockfileModules.stamp(ctx.require(LOCKFILE), dir);
                     ctx.put(LOCKFILE, stamped);
-                    LockfileWriter.write(stamped, lockFile);
+                    LockfileWriter.write(stamped, lockFile, ctx.require(MANIFESTS_SHA));
                     ctx.progress(1);
                 })
                 .build();
@@ -508,6 +560,8 @@ public final class LockPipelines {
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(dir);
         Lockfile oldLock = Files.exists(lockFile) ? LockfileReader.read(lockFile) : null;
 
+        // Digest captured before resolving (JK-1357).
+        String manifestsSha = cc.jumpkick.lock.LockManifestDigest.compute(dir);
         Cas cas = JkStores.cas(cache);
         RepoGroup baseRepos = RepoGroupBuilder.buildFor(effective, repoUrl, cas);
         Path javaHome = JavaHomes.resolveJavaHome(dir);
@@ -544,18 +598,18 @@ public final class LockPipelines {
             spliced.add(old != null ? old : a);
         }
         Lockfile finalLock = new Lockfile(
-                        newLock.version(),
-                        newLock.generatedBy(),
-                        newLock.resolutionAlgorithm(),
-                        newLock.jdk(),
-                        newLock.kotlin(),
-                        spliced,
-                        oldLock != null ? oldLock.plugins() : newLock.plugins(),
-                        oldLock != null ? oldLock.sdk() : newLock.sdk(),
-                        List.of(),
-                        newLock.jk());
+                newLock.version(),
+                newLock.generatedBy(),
+                newLock.resolutionAlgorithm(),
+                newLock.jdk(),
+                newLock.kotlin(),
+                spliced,
+                oldLock != null ? oldLock.plugins() : newLock.plugins(),
+                oldLock != null ? oldLock.sdk() : newLock.sdk(),
+                List.of(),
+                newLock.jk());
         finalLock = cc.jumpkick.lock.LockfileModules.stamp(finalLock, dir);
-        LockfileWriter.write(finalLock, lockFile);
+        LockfileWriter.write(finalLock, lockFile, manifestsSha);
         return refreshed;
     }
 
@@ -633,7 +687,8 @@ public final class LockPipelines {
     public static LockScope lockScope(Path entryDir) throws java.io.IOException {
         // Ensure libs.global.toml exists before short-name expansion (closes race with the engine's
         // background StoreFeedRefresh on first start of a host).
-        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(SessionContext.current().offline());
+        cc.jumpkick.repo.LibraryRegistrySync.ensurePresent(
+                SessionContext.current().offline());
         JkBuild root = JkBuildParser.parse(entryDir.resolve("jk.toml"));
         if (root.isWorkspaceRoot()) {
             var modules = WorkspaceLoader.loadModules(entryDir, root);
@@ -689,9 +744,10 @@ public final class LockPipelines {
 
     /**
      * Resolve the project's {@code kotlin} version selector to a concrete Kotlin compiler release.
-     * Returns {@code null} for a Java project or when resolution can't complete.
+     * Returns {@code null} for a Java project or when resolution can't complete. Shared with
+     * {@link LockFlow} and the update pipeline so every lock-write path stamps the pin (JK-1371).
      */
-    private static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
+    static String resolveKotlinVersion(JkBuild effective, RepoGroup repos) {
         if (!effective.project().isKotlin()) return null;
         VersionSelector selector = effective.project().kotlin();
         if (selector instanceof VersionSelector.Exact exact) {

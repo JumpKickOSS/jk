@@ -15,8 +15,13 @@ class ProgressBarTest {
     @Test
     void renders_blocks_then_spaces_then_percent_without_a_count() {
         String visible = TestAnsi.strip(new ProgressBar().render(45, 100));
-        // 45% → 0.45 * 40 = 18.0 whole cells, no fraction, 22 unreached spaces.
-        assertThat(visible).startsWith("█".repeat(18) + " ".repeat(22));
+        // 45% → 0.45 * 40 = 18.0 whole cells, no fraction, 22 unreached.
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(visible).startsWith("█".repeat(18) + " ".repeat(22));
+        } else {
+            // Plain / CI: ASCII #/- (JK-1376)
+            assertThat(visible).startsWith("#".repeat(18) + "-".repeat(22));
+        }
         assertThat(visible).contains("45%");
         // The N-of-M count is gone.
         assertThat(visible).doesNotContain("[").doesNotContain(" of ");
@@ -26,26 +31,38 @@ class ProgressBarTest {
     void fractional_frontier_uses_an_eighth_block() {
         // 2% → 0.8 of a cell → round(0.8*8)=6 eighths → ▊ (¾ block) as the first cell.
         String visible = TestAnsi.strip(new ProgressBar().render(2, 100));
-        assertThat(visible).startsWith("▊");
-        assertThat(visible).doesNotContain("█"); // no whole cell yet
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(visible).startsWith("▊");
+            assertThat(visible).doesNotContain("█"); // no whole cell yet
+        } else {
+            assertThat(visible).startsWith("#"); // plain rounds frontier up to one cell
+            assertThat(visible).doesNotContain("▊");
+        }
         assertThat(visible).contains("2%");
     }
 
     @Test
     void zero_is_all_spaces_and_full_is_all_blocks() {
-        assertThat(TestAnsi.strip(new ProgressBar().render(0, 100)))
-                .startsWith(" ".repeat(40))
-                .contains("0%")
-                .doesNotContain("█");
-        assertThat(TestAnsi.strip(new ProgressBar().render(100, 100)))
-                .startsWith("█".repeat(40))
-                .contains("100%");
+        String zero = TestAnsi.strip(new ProgressBar().render(0, 100));
+        String full = TestAnsi.strip(new ProgressBar().render(100, 100));
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(zero).startsWith(" ".repeat(40)).contains("0%").doesNotContain("█");
+            assertThat(full).startsWith("█".repeat(40)).contains("100%");
+        } else {
+            assertThat(zero).startsWith("-".repeat(40)).contains("0%");
+            assertThat(full).startsWith("#".repeat(40)).contains("100%");
+        }
     }
 
     @Test
     void every_cell_is_underlined_including_the_unreached_spaces() {
         // 0% → 40 underlined spaces in the gradient's brightest (right-most) color.
         String line = new ProgressBar().render(0, 100);
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            // Plain: no SGR, just empty dashes.
+            assertThat(TestAnsi.strip(line)).startsWith("-".repeat(40));
+            return;
+        }
         // attribute-leading SGR: underline (4) before the truecolor group; the
         // gradient's right-most end is now neon violet #DD59FF → 221;89;255.
         assertThat(line).contains("\033[4;38;2;221;89;255m ");
@@ -62,6 +79,10 @@ class ProgressBarTest {
 
     @Test
     void moving_gradient_pins_the_frontier_to_the_bright_end() {
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            // Plain mode has no per-cell gradient SGR.
+            return;
+        }
         // The right-most filled block is pinned to the gradient end at every fill,
         // and at 100% the left-most block sits at the gradient start.
         assertThat(blockColors(new ProgressBar().render(50, 100)).getLast())

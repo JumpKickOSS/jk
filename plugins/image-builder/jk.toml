@@ -4,7 +4,6 @@ description = "jk-image-builder: OCI image (Jib) plugin worker."
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 [dependencies]
 jk-core.workspace = true

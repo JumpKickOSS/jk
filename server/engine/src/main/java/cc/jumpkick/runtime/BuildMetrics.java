@@ -117,14 +117,79 @@ public final class BuildMetrics {
         this.steps = steps;
     }
 
-    /** The default store location: state, beside {@code calibration.toml}, survives {@code jk clean}. */
+    /**
+     * Legacy path marker — production ETA hydrates from harvested project/host metrics (JK-1377).
+     * Hermetic tests still pass isolated temp files to {@link #load}/{@link #record}.
+     */
     public static Path defaultFile() {
         return JkDirs.builds().resolve("metrics.json");
     }
 
     /** Read-only store for {@code file}, memoized for the process. Missing/unreadable → empty. */
     public static BuildMetrics load(Path file) {
+        if (file != null && isDefaultMetricsPath(file)) {
+            // Prefer harvested aggregates; do not read legacy metrics.json.
+            return fromAggregates();
+        }
         return MEMO.computeIfAbsent(file, BuildMetrics::read);
+    }
+
+    private static boolean isDefaultMetricsPath(Path file) {
+        try {
+            return file.toAbsolutePath()
+                            .normalize()
+                            .equals(defaultFile().toAbsolutePath().normalize())
+                    || "metrics.json".equals(file.getFileName().toString())
+                            && file.getParent() != null
+                            && file.getParent().equals(JkDirs.builds());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Hydrate invocation/step stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
+    static BuildMetrics fromAggregates() {
+        cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        Map<String, Entry> inv = new LinkedHashMap<>();
+        Map<String, Entry> steps = new LinkedHashMap<>();
+        long now = System.currentTimeMillis();
+        for (var e : agg.meanMap().entrySet()) {
+            String key = e.getKey();
+            double ms = e.getValue();
+            if (!(ms > 0)) continue;
+            long count = Math.max(1, agg.count(key));
+            long avg = Math.round(ms);
+            Stats ok = new Stats(count, avg * count, avg, avg);
+            Double last = agg.lastMap().get(key);
+            if (last != null && last > 0) {
+                long l = Math.round(last);
+                ok = new Stats(count, avg * count, Math.min(avg, l), Math.max(avg, l));
+            }
+            if (key.startsWith("invocation.") && key.endsWith(".wall-ms")) {
+                // invocation.<kind>[.<dirKey>].wall-ms
+                String body = key.substring("invocation.".length(), key.length() - ".wall-ms".length());
+                int dot = body.indexOf('.');
+                String kind = dot < 0 ? body : body.substring(0, dot);
+                String dir = dot < 0 ? "" : body.substring(dot + 1);
+                inv.put(kind + SEP + dir, new Entry(kind, dir, null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+            } else if (key.equals("workspace.wall-ms")) {
+                inv.putIfAbsent(
+                        "build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+            } else if (key.startsWith("module.") && key.contains(".step.") && key.endsWith(".wall-ms")) {
+                // module.<dir>.step.<step>.wall-ms
+                String body = key.substring("module.".length(), key.length() - ".wall-ms".length());
+                int stepAt = body.indexOf(".step.");
+                if (stepAt > 0) {
+                    String dir = body.substring(0, stepAt);
+                    String step = body.substring(stepAt + ".step.".length());
+                    steps.put(dir + SEP + step, new Entry(null, dir, null, step, ok, Stats.EMPTY, Stats.EMPTY, now));
+                }
+            } else if (key.startsWith("step.") && key.endsWith(".wall-ms") && !key.contains("module.")) {
+                String step = key.substring("step.".length(), key.length() - ".wall-ms".length());
+                steps.put("" + SEP + step, new Entry(null, "", null, step, ok, Stats.EMPTY, Stats.EMPTY, now));
+            }
+        }
+        return new BuildMetrics(inv, steps);
     }
 
     /** True when nothing has been recorded yet. */
@@ -216,6 +281,10 @@ public final class BuildMetrics {
     /** As {@link #record(Path, Outcome, long)} with a start-time assigned build number. */
     public static long record(Path file, Outcome o, long nowMillis, long assignedBuildNumber) {
         if (o == null || o.kind() == null || o.dir() == null || o.dir().isEmpty()) return 0;
+        // Production path: per-run metrics.toml + MetricsHarvest own durable aggregates (JK-1377).
+        if (file != null && isDefaultMetricsPath(file)) {
+            return assignedBuildNumber > 0 ? assignedBuildNumber : 0;
+        }
         LOCK.lock();
         try {
             BuildMetrics cur = read(file);

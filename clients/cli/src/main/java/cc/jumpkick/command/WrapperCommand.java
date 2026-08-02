@@ -5,6 +5,7 @@ import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.cache.VersionStore;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -57,8 +58,15 @@ public final class WrapperCommand implements CliCommand {
         String target = in.positionals().isEmpty() ? null : in.positionals().get(0);
         if (target == null || in.isSet("emit")) {
             emit(projectDir);
-            CliOutput.out("wrote " + projectDir.resolve("jk") + " and " + projectDir.resolve("jk.bat") + " (jk "
-                    + cc.jumpkick.cli.Jk.VERSION + ")");
+            CommandWedge.printOk(
+                    "Wrapper",
+                    "wrote "
+                            + projectDir.resolve("jk")
+                            + " and "
+                            + projectDir.resolve("jk.bat")
+                            + " (jk "
+                            + cc.jumpkick.cli.Jk.VERSION
+                            + ")");
             return 0;
         }
 
@@ -79,7 +87,7 @@ public final class WrapperCommand implements CliCommand {
         if (m == null) {
             if (target.equals(cc.jumpkick.cli.Jk.VERSION)) {
                 emit(projectDir); // asked for the running version — no fetch, no exec
-                CliOutput.out("wrote wrapper scripts (jk " + target + ")");
+                CommandWedge.printOk("Wrapper", "wrote wrapper scripts (jk " + target + ")");
                 return 0;
             }
             m = SelfCommand.UpdateSub.fetchAndMaterialize(

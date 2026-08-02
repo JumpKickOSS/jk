@@ -13,19 +13,18 @@ import org.jline.utils.AttributedStyle;
  * #PULSE_GLYPH}) <em>pulses</em> by lerping its foreground between two colors and back — the same
  * breathing effect as the web dashboard's live indicators (no multi-glyph thrash).
  *
- * <p>Two pulse palettes:
+ * <p>Two pulse palettes / layouts:
  *
  * <ul>
- *   <li><b>Open</b> (bare terminal, no chip background) — brand blue ↔ almost-black blue
- *       ({@link #buildOpenPulseStyles}).
- *   <li><b>Chip</b> (CommandWedge / pipeline pill with a solid background) — white ↔ chip blue
- *       ({@link #buildChipPulseStyles}), so the glyph stays readable on the colored pill.
+ *   <li><b>Open</b> ({@link #show}) — brand blue ↔ almost-black blue on the terminal background:
+ *       {@code ● message}.
+ *   <li><b>Wedge / chip</b> ({@link #showWedge}) — white ↔ chip blue on the CommandWedge pill
+ *       (same chrome as {@link CommandManager}'s pipeline header): {@code ● Status  message}.
  * </ul>
  *
- * <p>Layout: {@code <circle> <message>} on the current line.
- *
- * <p>Cursor hidden between {@link #show} and {@link #close()}. Thread-safe {@link #update}/{@link
- * #close}.
+ * <p>Cursor hidden between {@link #show}/{@link #showWedge} and {@link #close()}. Thread-safe
+ * {@link #update}/{@link #close}. {@link #close()} clears the line so the caller can print a
+ * settled {@link CommandWedge} in the same place.
  */
 public final class Spinner implements AutoCloseable {
 
@@ -92,38 +91,99 @@ public final class Spinner implements AutoCloseable {
     private static final String SHOW_CURSOR = Ansi.SHOW_CURSOR;
     private static final String CLEAR_LINE = Ansi.CLEAR_LINE;
 
-    static final String OSC_INDETERMINATE = Ansi.TASKBAR_INDETERMINATE;
-    static final String OSC_CLEAR = Ansi.TASKBAR_CLEAR;
+    // Prefer gated helpers so --no-osc suppresses taskbar OSC without muting the spinner glyphs.
+    private static String oscIndeterminate() {
+        return Ansi.taskbarIndeterminate();
+    }
+
+    private static String oscClear() {
+        return Ansi.taskbarClear();
+    }
 
     private final PrintStream out;
     private final AttributedStyle[] frameColors;
     private final Object lock = new Object();
     private final boolean silent;
+    /** Non-null when painting as a CommandWedge chip ({@link #showWedge}). */
+    private final String wedgeCommand;
+
+    private final boolean nerdfont;
+
+    /** Plain-mode still-working heartbeat interval (JK-1379). */
+    public static final long PLAIN_HEARTBEAT_MS = 60_000L;
 
     private volatile String message;
     private int frame = 0;
     private String lastMessage = "";
     private volatile boolean closed = false;
     private Thread animator;
+    private boolean plainStarted;
+    private long plainLastBeatMs;
+    private java.util.function.LongSupplier clock = System::currentTimeMillis;
 
     public static Spinner show(PrintStream out, String message) {
-        Spinner s = new Spinner(out, message);
+        CommandWedge.envelopeStart(out); // open spinner is often first chrome for the command
+        Spinner s = new Spinner(out, message, null, false);
         s.start();
         return s;
     }
 
+    /** Test seam: wall clock for plain heartbeat cadence. */
+    void clockForTests(java.util.function.LongSupplier clock) {
+        if (clock != null) this.clock = clock;
+    }
+
+    /**
+     * Live CommandWedge: blue chip with a pulsing {@link #PULSE_GLYPH} icon and {@code message}
+     * after the powerline cap. Clears on {@link #close()} so the caller can print the settled
+     * wedge (e.g. {@code ≡ Status  …}) on the same line.
+     */
+    public static Spinner showWedge(PrintStream out, String command, String message) {
+        // analyzing() also calls envelopeStart — idempotent if both run.
+        CommandWedge.envelopeStart(out);
+        Spinner s = new Spinner(out, message, command == null ? "" : command, true);
+        s.start();
+        return s;
+    }
+
+    /** Package-private: open mode without starting the animator (tests). */
     Spinner(PrintStream out, String message) {
-        this.out = out;
+        this(out, message, null, false);
+    }
+
+    /** Package-private: wedge mode without starting the animator (tests). */
+    static Spinner wedge(PrintStream out, String command, String message) {
+        return new Spinner(out, message, command, true);
+    }
+
+    private Spinner(PrintStream out, String message, String wedgeCommand, boolean wedge) {
+        // PlainAscii.wrap is identity under ANSI; under --no-ansi rewrites …/•/● in messages.
+        this.out = PlainAscii.wrap(out);
         this.message = message == null ? "" : message;
-        // Standalone spinner sits on the terminal background — open blue↔dark-blue pulse.
-        this.frameColors = buildOpenPulseStyles(PULSE_FRAMES);
+        this.wedgeCommand = wedge ? (wedgeCommand == null ? "" : wedgeCommand) : null;
+        this.nerdfont = wedge && cc.jumpkick.config.GlobalConfig.nerdfont();
         this.silent = cc.jumpkick.config.SessionContext.current().config().noProgressOr(false);
+        if (wedge) {
+            // Glyph FG breathes white↔chip blue; BG applied per frame in step().
+            this.frameColors = buildChipPulseStyles(PULSE_FRAMES, Theme.active().planBadgeColor());
+        } else {
+            // Standalone spinner sits on the terminal background — open blue↔dark-blue pulse.
+            this.frameColors = buildOpenPulseStyles(PULSE_FRAMES);
+        }
     }
 
     private void start() {
         if (silent) return;
+        // Plain / --no-ansi: multi-line start + optional 60s heartbeats + done on close (JK-1379).
+        if (!Theme.active().isAnsi()) {
+            printPlainWorking(true);
+            animator = new Thread(this::plainHeartbeatLoop, "jk-spinner-plain");
+            animator.setDaemon(true);
+            animator.start();
+            return;
+        }
         out.print(HIDE_CURSOR);
-        out.print(OSC_INDETERMINATE);
+        out.print(oscIndeterminate());
         out.flush();
         animator = new Thread(this::loop, "jk-spinner");
         animator.setDaemon(true);
@@ -141,6 +201,18 @@ public final class Spinner implements AutoCloseable {
         }
     }
 
+    private void plainHeartbeatLoop() {
+        while (!closed) {
+            try {
+                Thread.sleep(Math.min(FRAME_MS * 10, 5_000L));
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (closed) return;
+            printPlainWorking(false);
+        }
+    }
+
     public void update(String message) {
         this.message = message == null ? "" : message;
     }
@@ -149,17 +221,91 @@ public final class Spinner implements AutoCloseable {
         synchronized (lock) {
             if (closed || silent) return;
             String currentMsg = message;
-            out.print(OSC_INDETERMINATE);
+            if (!Theme.active().isAnsi()) {
+                printPlainWorking(false);
+                lastMessage = currentMsg;
+                return;
+            }
+            out.print(oscIndeterminate());
             out.print("\r");
-            out.print(Theme.colorize(PULSE_GLYPH, frameColors[frame]));
-            out.print(" ");
-            out.print(currentMsg);
-            int shrink = lastMessage.length() - currentMsg.length();
-            if (shrink > 0) out.print(" ".repeat(shrink));
+            if (wedgeCommand != null) {
+                out.print(renderWedgeFrame(frame, wedgeCommand, currentMsg, nerdfont, frameColors));
+                out.print(Ansi.ERASE_LINE_TO_END);
+            } else {
+                out.print(Theme.colorize(PULSE_GLYPH, frameColors[frame]));
+                out.print(" ");
+                out.print(currentMsg);
+                int shrink = lastMessage.length() - currentMsg.length();
+                if (shrink > 0) out.print(" ".repeat(shrink));
+            }
             out.flush();
             lastMessage = currentMsg;
             frame = (frame + 1) % PULSE_FRAMES;
         }
+    }
+
+    /** Plain multi-line working frame (start or 60s heartbeat). */
+    private void printPlainWorking(boolean force) {
+        synchronized (lock) {
+            if (closed || silent) return;
+            long now = clock.getAsLong();
+            if (!force && plainStarted && now - plainLastBeatMs < PLAIN_HEARTBEAT_MS) return;
+            plainStarted = true;
+            plainLastBeatMs = now;
+            out.println(plainWorkingLine(wedgeCommand, message));
+            out.flush();
+        }
+    }
+
+    private void printPlainDone() {
+        synchronized (lock) {
+            if (silent) return;
+            out.println(plainDoneLine(wedgeCommand, message));
+            out.flush();
+        }
+    }
+
+    /** {@code " * Status > Message - working..."} (open spinner omits command when null). */
+    static String plainWorkingLine(String command, String message) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - working...";
+        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+    }
+
+    static String plainDoneLine(String command, String message) {
+        String msg = (message == null || message.isBlank()) ? "working" : message;
+        String tail = msg + " - done.";
+        if (command == null) return " " + Glyphs.PULSE_PLAIN + " " + tail;
+        return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, command, tail);
+    }
+
+    /**
+     * One frame of the live CommandWedge: pulse circle + command on the blue chip, powerline (or
+     * plain) cap, then the message. Package-private for tests.
+     */
+    static String renderWedgeFrame(
+            int frame, String command, String message, boolean nerdfont, AttributedStyle[] pulseFg) {
+        Theme t = Theme.active();
+        String name = command == null ? "" : command;
+        String msg = message == null ? "" : message;
+        if (!t.isAnsi()) {
+            // " * Status > Analyzing…"
+            return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
+        }
+        AttributedStyle chip = t.pipelineChip();
+        AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
+        // Nerd: " {●} {name} " + powerline; ansi-no-nerd: " {●} {name}  " (two trailing bg spaces).
+        StringBuilder h = new StringBuilder();
+        h.append(Theme.colorize(" ", chip)).append(Theme.colorize(PULSE_GLYPH, pulse));
+        if (nerdfont) {
+            h.append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
+            h.append(PipelineWedge.cap(t.planBadgeColor(), true));
+        } else {
+            h.append(Theme.colorize(name.isEmpty() ? "  " : " " + name + "  ", chip));
+        }
+        h.append(' ').append(msg);
+        return h.toString();
     }
 
     @Override
@@ -169,8 +315,12 @@ public final class Spinner implements AutoCloseable {
         if (animator != null) animator.interrupt();
         if (silent) return;
         synchronized (lock) {
+            if (!Theme.active().isAnsi()) {
+                printPlainDone();
+                return;
+            }
             out.print(CLEAR_LINE);
-            out.print(OSC_CLEAR);
+            out.print(oscClear());
             out.print(SHOW_CURSOR);
             out.flush();
         }

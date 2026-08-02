@@ -282,5 +282,4 @@ public final class LockCommand implements CliCommand {
     static String lockSuccessTail(int pkgs, long startNanos) {
         return lockSuccessTail(pkgs, startNanos, Path.of("."));
     }
-
 }

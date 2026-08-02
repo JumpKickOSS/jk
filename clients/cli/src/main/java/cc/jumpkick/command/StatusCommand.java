@@ -5,10 +5,10 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineClient;
+import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.cli.tui.PipelineWedge;
-import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceLoader;
 import cc.jumpkick.config.WorkspaceLocator;
@@ -61,8 +61,7 @@ public final class StatusCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
+        return List.of(Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
     }
 
     @Override
@@ -72,30 +71,53 @@ public final class StatusCommand implements CliCommand {
         Path cwd = Path.of("").toAbsolutePath().normalize();
         EnginePaths.Paths paths = EnginePaths.current();
 
-        List<String> rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
-                .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
-                .toList();
+        // Collect under a live CommandWedge spinner; settle when ready (same line chrome).
+        // JSON skips the wedge — structured metrics only.
+        boolean live = !global.outputIsJson()
+                && !global.quiet
+                && !global.noProgress
+                && PipelineConsole.isInteractiveTerminal();
 
-        if (global.outputIsJson()) {
-            CliOutput.out("[" + String.join(",", rows) + "]");
-            return 0;
-        }
-
-        // ── Header: ≡ Status  vX.Y.Z Engine is running (pid N) ───────────────
-        Optional<EngineClient.Status> engine = EngineClient.status(EnginePaths.activeSocket(paths));
-        String engineMsg = engine
-                .map(s -> "v" + Jk.VERSION + " Engine is running (pid " + s.pid() + ")")
-                .orElse("v" + Jk.VERSION + " Engine is not running");
-        CliOutput.out(PipelineWedge.chipLine(Glyphs.MENU, "Status", GlobalConfig.nerdfont(), engineMsg));
-        CliOutput.out("");
-
-        ProjectSnapshot project = globalOnly ? null : loadProject(cwd);
+        List<String> rows;
+        Optional<EngineClient.Status> engine = Optional.empty();
+        ProjectSnapshot project = null;
         Forecast forecast = null;
         String lastHistory = null;
-        if (!globalOnly && project != null) {
-            lastHistory = findLastHistory(paths, cwd);
-            forecast = tryForecast(paths, cwd);
+        CacheSnapshot cache = null;
+
+        // Fresh lock before forecast / module pins — never make the user run `jk lock` for status.
+        if (!globalOnly && Files.isRegularFile(cwd.resolve("jk.toml"))) {
+            int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(cwd, JkDirs.cache(), global, "Status");
+            if (lockCode != 0) return lockCode;
         }
+
+        try (var analyzing =
+                live ? CommandWedge.analyzing(CliOutput.stdout(), "Status", "Analyzing status...") : null) {
+            rows = EngineClient.metrics(paths, globalOnly ? null : cwd.toString()).stream()
+                    .filter(l -> EngineProtocol.METRICS_ENTRY.equals(EngineProtocol.typeOf(l)))
+                    .toList();
+
+            if (global.outputIsJson()) {
+                CliOutput.out("[" + String.join(",", rows) + "]");
+                return 0;
+            }
+
+            engine = EngineClient.status(EnginePaths.activeSocket(paths));
+            if (!globalOnly) {
+                project = loadProject(cwd);
+                if (project != null) {
+                    lastHistory = findLastHistory(paths, cwd);
+                    forecast = tryForecast(paths, cwd);
+                }
+            }
+            cache = loadCacheSnapshot();
+        }
+
+        // ── Header: ≡ Status  JumpKick Engine v[bold]X.Y.Z[/] is running (pid [yellow]N[/]) ─
+        // Prep lock / analyzing may already have opened the envelope; this is first chrome if not.
+        CommandWedge.envelopeStart();
+        CliOutput.out(CommandWedge.chip(Glyphs.MENU, "Status", engineStatusMessage(engine)));
+        CliOutput.out("");
 
         if (!globalOnly) {
             printProjectSection(project, forecast, lastHistory);
@@ -106,7 +128,7 @@ public final class StatusCommand implements CliCommand {
 
         printGlobalBuildSection(rows);
         CliOutput.out("");
-        printCacheSection();
+        printCacheSection(cache);
         return 0;
     }
 
@@ -220,41 +242,62 @@ public final class StatusCommand implements CliCommand {
         StringBuilder outcomes = new StringBuilder(formatCount(total));
         outcomes.append(" (");
         outcomes.append(formatCount(g.okCount)).append(" ok");
-        if (g.failCount > 0) outcomes.append(", ").append(formatCount(g.failCount)).append(" failed");
-        if (g.cancelCount > 0) outcomes.append(", ").append(formatCount(g.cancelCount)).append(" cancelled");
+        if (g.failCount > 0)
+            outcomes.append(", ").append(formatCount(g.failCount)).append(" failed");
+        if (g.cancelCount > 0)
+            outcomes.append(", ").append(formatCount(g.cancelCount)).append(" cancelled");
         outcomes.append(")");
         kv("Total Build Count", outcomes.toString());
         long wall = g.okTotalMillis + g.failTotalMillis + g.cancelTotalMillis;
         kv("Total Build Time", wall > 0 ? formatDuration(wall) : "—");
     }
 
-    private static void printCacheSection() {
-        sectionHeader("Cache", null);
+    /** Pre-collected cache footprint so the disk walk stays under the analyzing wedge. */
+    private record CacheSnapshot(String sizeOnDisk, String casEntries, String actionsCached) {}
+
+    private static CacheSnapshot loadCacheSnapshot() {
         Path root = JkDirs.cache();
         try {
-            if (!Files.isDirectory(root)) {
-                kv("Size on Disk", "—");
-                kv("CAS Entries", "0");
-                kv("Actions Cached", "0");
-                return;
+            Path storeRoot = cc.jumpkick.cache.JkStores.storeRootFor(root);
+            if (!Files.isDirectory(root) && !Files.isDirectory(storeRoot)) {
+                return new CacheSnapshot("—", "0", "0");
             }
-            CacheCommand.Stats sha = CacheCommand.statsOf(root.resolve("sha256"));
-            CacheCommand.Stats actions = CacheCommand.statsOf(root.resolve("actions"));
-            CacheCommand.Stats repos = CacheCommand.statsOf(root.resolve("repos"));
-            CacheCommand.Stats runs = CacheCommand.statsOf(root.resolve("runs"));
-            CacheCommand.Stats stamps = CacheCommand.statsOf(root.resolve("format-stamps"));
-            long totalBytes = sha.bytes() + actions.bytes() + repos.bytes() + runs.bytes() + stamps.bytes();
-            kv("Size on Disk", CacheCommand.fmtBytes(totalBytes));
-            kv("CAS Entries", formatCount(sha.files()));
-            kv("Actions Cached", formatCount(actions.files()));
+            // Exclusive sizes: hard-linked repos/ + sha256/ share one allocation (not 2×).
+            CacheCommand.SectionStats s = CacheCommand.sectionStats(root);
+            return new CacheSnapshot(
+                    CacheCommand.fmtBytes(s.totalBytes()),
+                    formatCount(s.cas().files()),
+                    formatCount(s.actions().files()));
         } catch (IOException e) {
-            kv("Size on Disk", "—");
-            kv("CAS Entries", "—");
-            kv("Actions Cached", "—");
+            return new CacheSnapshot("—", "—", "—");
         }
     }
 
+    private static void printCacheSection(CacheSnapshot cache) {
+        sectionHeader("Cache", null);
+        CacheSnapshot c = cache != null ? cache : new CacheSnapshot("—", "—", "—");
+        kv("Size on Disk", c.sizeOnDisk());
+        kv("CAS Entries", c.casEntries());
+        kv("Actions Cached", c.actionsCached());
+    }
+
     // ── rendering helpers ────────────────────────────────────────────────────
+
+    /**
+     * Status chip tail: {@code JumpKick Engine v}<bold version>{@code  is running (pid }<yellow
+     * pid>{@code )}. Version is theme focused (bold); pid matches engine start/stop yellow.
+     */
+    static String engineStatusMessage(Optional<EngineClient.Status> engine) {
+        Theme t = Theme.active();
+        // focused() is bold bright-white; plain terminals keep the bare version string.
+        String version = t.isAnsi() ? Theme.colorize(Jk.VERSION, t.focused()) : Jk.VERSION;
+        if (engine.isEmpty()) {
+            return "JumpKick Engine v" + version + " is not running";
+        }
+        String pid = Long.toString(engine.get().pid());
+        String pidStyled = t.isAnsi() ? Theme.colorize(pid, t.warning()) : pid;
+        return "JumpKick Engine v" + version + " is running (pid " + pidStyled + ")";
+    }
 
     private static void sectionHeader(String title, String suffix) {
         Theme t = Theme.active();
@@ -289,8 +332,7 @@ public final class StatusCommand implements CliCommand {
     private static void kv(String label, String value) {
         Theme t = Theme.active();
         String padded = padLeft(label + ":", LABEL_W);
-        CliOutput.out(
-                Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
+        CliOutput.out(Theme.colorize(padded, t.normalGray()) + " " + (value == null ? "—" : value));
     }
 
     static String padLeft(String s, int width) {
@@ -377,7 +419,8 @@ public final class StatusCommand implements CliCommand {
     record ProjectSnapshot(
             String coord, String languageLine, String jdk, int moduleCount, int sourceCount, int testCount) {}
 
-    record Forecast(long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
+    record Forecast(
+            long etaMillis, int moduleTotal, int modulesCached, int sourceCount, int testCount, int artifactsCached) {}
 
     private static ProjectSnapshot loadProject(Path cwd) {
         Path buildFile = cwd.resolve("jk.toml");
@@ -391,9 +434,8 @@ public final class StatusCommand implements CliCommand {
 
             var p = build.project();
             String group = sanitizeIdentity(p.group());
-            String name = p.name() == null || p.name().isBlank()
-                    ? cwd.getFileName().toString()
-                    : p.name();
+            String name =
+                    p.name() == null || p.name().isBlank() ? cwd.getFileName().toString() : p.name();
             String version = sanitizeIdentity(p.version());
             String coord = group.isEmpty()
                     ? name + (version.isEmpty() ? "" : ":" + version)
@@ -439,11 +481,14 @@ public final class StatusCommand implements CliCommand {
             Lockfile lock = LockfileReader.read(lockFile);
             if (lock.modules().isEmpty()) return build;
             Path owner = LockPaths.lockOwnerDir(cwd).toAbsolutePath().normalize();
-            String rel = owner.relativize(cwd.toAbsolutePath().normalize()).toString().replace('\\', '/');
+            String rel = owner.relativize(cwd.toAbsolutePath().normalize())
+                    .toString()
+                    .replace('\\', '/');
             if (rel.isEmpty()) rel = ".";
             final String pathKey = rel;
             Lockfile.ModuleEntry pin = lock.modules().stream()
-                    .filter(m -> pathKey.equals(m.path()) || build.project().name().equals(m.name()))
+                    .filter(m ->
+                            pathKey.equals(m.path()) || build.project().name().equals(m.name()))
                     .findFirst()
                     .orElse(null);
             if (pin == null) return build;
@@ -493,9 +538,7 @@ public final class StatusCommand implements CliCommand {
                     ? cwd
                     : WorkspaceLocator.findRoot(cwd).orElse(null);
             if (rootDir != null) {
-                JkBuild root = build.isWorkspaceRoot()
-                        ? build
-                        : JkBuildParser.parse(rootDir.resolve("jk.toml"));
+                JkBuild root = build.isWorkspaceRoot() ? build : JkBuildParser.parse(rootDir.resolve("jk.toml"));
                 if (root.isWorkspaceRoot()) {
                     for (var e : WorkspaceLoader.loadModules(rootDir, root).entrySet()) {
                         out.add(e.getKey());
@@ -597,16 +640,7 @@ public final class StatusCommand implements CliCommand {
             ExplainPlan plan = EngineClient.explain(
                     paths,
                     new EngineClient.ExplainRequest(
-                            cwd,
-                            JkDirs.cache(),
-                            1,
-                            false,
-                            null,
-                            null,
-                            true,
-                            false,
-                            false,
-                            false),
+                            cwd, JkDirs.cache(), 1, false, null, null, true, false, false, false),
                     etaOut);
             if (plan == null || plan.modules() == null) return null;
             int total = plan.modules().size();
@@ -615,8 +649,7 @@ public final class StatusCommand implements CliCommand {
             for (BuildPlan.Module m : plan.modules()) {
                 sources += m.sourceCount();
                 tests += m.testCount();
-                boolean allCached = !m.steps().isEmpty()
-                        && m.steps().stream().allMatch(BuildPlan.Step::cached);
+                boolean allCached = !m.steps().isEmpty() && m.steps().stream().allMatch(BuildPlan.Step::cached);
                 if (allCached) cached++;
                 for (BuildPlan.Step s : m.steps()) {
                     if (s.cached()) artifacts++;

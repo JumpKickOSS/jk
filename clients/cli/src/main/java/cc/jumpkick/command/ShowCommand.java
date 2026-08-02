@@ -31,9 +31,9 @@ public final class ShowCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.value("<sel>", "Module selector.", "--modules"),
-                Opt.value("<git-ref>", "Intersect with modules changed since ref.", "--affected-since"));
+        var opts = new java.util.ArrayList<Opt>();
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
+        return opts;
     }
 
     @Override

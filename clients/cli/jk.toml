@@ -34,8 +34,19 @@ bcpg-jdk18on            = "latest"
 main-class = "cc.jumpkick.cli.Jk"
 
 # Opt-in so `jk native` / workspace cascade actually run native-image (not just compile).
+# Size-first flags — parity with clients/cli/build.gradle.kts graalvmNative binaries.main.
 [native]
 always = true
+args = [
+  "-Os",
+  "--gc=serial",
+  "-R:MaxHeapSize=134217728",
+  "-R:MinHeapSize=25165824",
+  "-H:+SharedArenaSupport",
+  "--enable-native-access=ALL-UNNAMED",
+  "--initialize-at-run-time=org.jline",
+  "-H:ExcludeResources=org/jline/nativ/.*",
+]
 
 # Nested engines / shared sockets: keep within-module tests serial (Mill testParallelism=false).
 [test]

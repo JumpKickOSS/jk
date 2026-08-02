@@ -1,7 +1,8 @@
 version = 1
 generated-by = "jk 0.10.1"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.10.1", sha256 = "29e915386be8ad842846443d90e93f147daee5b32c6c250f32dd31d08c363c77" }
+jk = { version = "0.10.1", sha256 = "b5063157eda67a7961da36ea46533671e4b4528f96bb358ade96bf447235b09a" }
+manifests-sha256 = "39145749c0882a42edf03f7c2852d38ecb0ca6920491a3f7c305074ead7cc82d"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"
@@ -952,9 +953,9 @@ scopes   = ["main"]
 
 [[artifact]]
 name     = "org.apache.groovy:groovy:jar:"
-version  = "5.0.7"
+version  = "5.0.8"
 source   = "central+https://repo.maven.apache.org/maven2/"
-checksum = "sha256:82a6c00e293aeb98aa66aebfee716de3eb5f110f724471cecf6c306029c57452"
+checksum = "sha256:942993eee2a6a8f5fcbc1bc76c1ab18d179d598c9b29c8fc96a0138b162e0fa8"
 scopes   = ["provided", "test"]
 
 [[artifact]]

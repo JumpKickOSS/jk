@@ -25,7 +25,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -194,8 +193,9 @@ public final class BuildPlanForecast {
                     new BuildPlan.Step("compile-main", BuildPlan.Status.RUN, "not locked yet (run `jk build`)", null));
             return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
         }
-        // Two-tier lock check: mtime first (cheap), deep dep validation only when stale.
-        if (cc.jumpkick.runtime.AutoLock.needsRelocking(dir, lockFile)) {
+        // Digest-only staleness — the same predicate the build's freshen uses (JK-1358), so the
+        // forecast and the live build agree on whether a lock update runs.
+        if (cc.jumpkick.runtime.AutoLock.isStale(dir, lockFile)) {
             steps.add(new BuildPlan.Step(
                     "compile-main", BuildPlan.Status.RUN, "jk.toml changed — lock update needed", null));
             return new BuildPlan.Module(u.dir(), u.coord(), steps, 0, 0, false, false);
@@ -465,7 +465,8 @@ public final class BuildPlanForecast {
                             .map(Map.Entry::getValue)
                             .findFirst()
                             .or(() -> rec.outputs().values().stream().findFirst())
-                            .ifPresent(sha -> restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
+                            .ifPresent(sha ->
+                                    restoredJarShas.put(jar.toAbsolutePath().normalize(), sha)));
                 }
             }
 
@@ -477,7 +478,7 @@ public final class BuildPlanForecast {
                             "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
-                            dir, project, layout, lock, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
+                            dir, project, layout, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
                     steps.add(
                             hit
                                     ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)
@@ -530,8 +531,7 @@ public final class BuildPlanForecast {
                     outputsAbsent = !classesDirHasContent(layout.classesDir());
                 }
                 if (outputsAbsent) {
-                    steps.add(new BuildPlan.Step(
-                            "restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
+                    steps.add(new BuildPlan.Step("restore-outputs", BuildPlan.Status.RUN, "restore from cache", null));
                 }
             }
         } catch (Exception e) {
@@ -606,14 +606,16 @@ public final class BuildPlanForecast {
 
     /**
      * Whether {@code package-assembly}'s action cache holds a hit for the same key the live step
-     * computes (classes + dep jar content + main + manifest). Sibling jars missing after clean are
-     * fingerprinted via the CAS shas the walk recovered from each sibling's current package record.
+     * computes (classes + module runtime-closure deps + main + manifest + packaging:fat). Dep jars
+     * must come from {@link BuildPipelines#assemblyDependencyJars} (JK-1345) — never the whole
+     * workspace lock RUNTIME set, or explain permanently shows "repackage" after a warm assembly.
+     * Sibling jars missing after clean are fingerprinted via CAS shas recovered from each sibling's
+     * package record.
      */
     static boolean assemblyActionCached(
             Path dir,
             JkBuild project,
             BuildLayout layout,
-            Lockfile lock,
             Path lockFile,
             Cas cas,
             ActionCache actionCache,
@@ -623,26 +625,14 @@ public final class BuildPlanForecast {
             throws IOException {
         Path assemblyJar = layout.assemblyJar();
         String classesTok = classesTokenForPackage(
-                dir, CompileSupport.isSimpleLayout(project.project(), dir), layout, project, actionCache, compileMainKey);
-        List<Path> depJars = new ArrayList<>();
-        if (Files.exists(lockFile)) {
-            ClasspathResolver resolver = new ClasspathResolver(cas);
-            depJars.addAll(resolver.classpathFor(lock, ClasspathResolver.RUNTIME));
-            WorkspaceClasspath.Result siblings =
-                    WorkspaceClasspath.resolve(layout.moduleRoot(), project, Set.of(Scope.EXPORT, Scope.MAIN));
-            for (Path j : siblings.jars()) {
-                if (!depJars.contains(j)) depJars.add(j);
-            }
-            for (Path sibLock : siblings.siblingLockfiles()) {
-                try {
-                    for (Path p : resolver.classpathFor(LockfileReader.read(sibLock), ClasspathResolver.RUNTIME)) {
-                        if (!depJars.contains(p)) depJars.add(p);
-                    }
-                } catch (Exception ignored) {
-                    /* best-effort */
-                }
-            }
-        }
+                dir,
+                CompileSupport.isSimpleLayout(project.project(), dir),
+                layout,
+                project,
+                actionCache,
+                compileMainKey);
+        // Same jar set as BuildPipelines.assemblyStep (ModuleRuntimeClasspath / JK-1345).
+        List<Path> depJars = BuildPipelines.assemblyDependencyJars(dir, project, lockFile, cache);
         String depsTok = fingerprintDepJars(depJars, cas, restoredJarShas);
         List<String> tokens = List.of(
                 "classes:" + classesTok,
@@ -682,7 +672,10 @@ public final class BuildPlanForecast {
         if (sha != null) {
             Path blob = cas.pathFor(sha);
             if (Files.isRegularFile(blob)) {
-                return ClasspathFingerprint.entry(blob);
+                // The blob path would classify as "cas:<abs>", but the live step fingerprinted the
+                // on-disk sibling as "file:<content sha>" — return that form so a post-clean
+                // assembly forecast can match the stored key (JK-1369).
+                return "file:" + sha;
             }
         }
         return ClasspathFingerprint.entry(jar); // missing:…

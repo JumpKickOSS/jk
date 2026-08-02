@@ -4,7 +4,6 @@ description = "jk-kotlin-compiler: Kotlin Build Tools API worker (PluginMain)."
 
 [application]
 main     = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 # Codec only in the assembly; BTA impl is resolved at runtime onto the worker CP.
 [dependencies]

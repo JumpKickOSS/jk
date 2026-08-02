@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
-import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -52,7 +52,7 @@ public final class RepoLogoutCommand implements CliCommand {
                 credentialsDir != null ? new RepoCredentialStore(credentialsDir) : new RepoCredentialStore();
         store.clear(id);
         if (!global.quiet) {
-            CliOutput.out("Removed stored credentials for repository '" + id + "'.");
+            CommandWedge.printOk("Logout", "Removed stored credentials for repository '" + id + "'.");
         }
         return 0;
     }

@@ -114,9 +114,10 @@ public final class JkDirs {
 
     /**
      * Everything jk fetched from somewhere else: the CAS ({@code sha256/}), the per-repo views
-     * ({@code repos/}), {@code maven-metadata.xml} copies, git clones, the JDK catalog
-     * ({@code jdks.json}), and the library registry ({@code libs.global.toml}). Defaults to
-     * {@code ~/.jk/store/}; override via {@code JK_STORE_DIR}.
+     * ({@code repos/}), plugin/tool short classpaths under {@code lib/&lt;id&gt;/} (JK-1348),
+     * {@code maven-metadata.xml} copies, git clones, the JDK catalog ({@code jdks.json}), and the
+     * library registry ({@code libs.global.toml}). Defaults to {@code ~/.jk/store/}; override via
+     * {@code JK_STORE_DIR}.
      *
      * <h2>Why this is not under {@code cache/}</h2>
      *
@@ -186,14 +187,17 @@ public final class JkDirs {
     }
 
     /**
-     * Where jk keeps the jars its binaries need: the engine's {@code jk-engine-<version>.jar} and
-     * the jar(s) {@code jk install} places for an application — the app jar and its hard-linked
-     * runtime dependencies, or a single fat jar. Defaults to {@code ~/.jk/lib/}. Override via
-     * {@code JK_LIB_DIR}. Launchers in {@link #binDirectory} reference jars here by absolute
-     * path.
+     * Shared jar library for <strong>tools and plugin workers</strong>: {@code
+     * $JK_STORE_DIR/lib/} by default ({@code ~/.jk/store/lib/}). Each tool or plugin gets a
+     * subdirectory ({@code lib/&lt;id&gt;/}) of hard-linked jars for a short {@code -cp} (JK-1348).
+     *
+     * <p>Override via {@code JK_LIB_DIR} (absolute). When unset, always under {@link #storeDir()}
+     * — not a separate {@code ~/.jk/lib} tree.
      */
     public Path libDir() {
-        return resolve("JK_LIB_DIR", "lib");
+        String override = nonBlank(env.apply("JK_LIB_DIR"));
+        if (override != null) return Path.of(override);
+        return storeDir().resolve("lib");
     }
 
     /**

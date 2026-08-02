@@ -39,7 +39,7 @@ public final class GlobalCancel {
             // background thread so the user sees the cancelled settle immediately instead of a
             // still-animating spinner while a wedged engine eats socket watchdogs.
             cc.jumpkick.config.SessionContext.current().cancel().cancel();
-            // The session's working dir honors -C/--directory (the raw process CWD does not),
+            // The session's working dir honors -C/--dir (the raw process CWD does not),
             // and jobs register their workspace-root ENTRY dir — resolve to it so Ctrl-C from a
             // member dir cancels the covering workspace build.
             java.nio.file.Path invocationDir;

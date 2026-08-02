@@ -150,13 +150,14 @@ class EffortWeightsStepEtaTest {
         try {
             int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);
             long ms = (long) w * EffortWeights.MS_PER_WEIGHT;
-            // 100 methods × baseline × cold bias ≈ 14.5s + startup — well above 1s, well below
-            // legacy 1.2s/method (~2m).
-            assertThat(ms).isGreaterThan(10_000L);
-            assertThat(ms).isLessThan(40_000L);
-            // Cold ETA does not credit -w parallel (prefer over-estimate on cold explain).
+            // 100 methods × baseline (~45ms) + suite startup — seconds, not sub-second or minutes.
+            assertThat(ms).isGreaterThan(3_000L);
+            assertThat(ms).isLessThan(25_000L);
+            // Cold ETA caps within-module -w (COLD_MAX_TEST_PARALLEL), not full linear speedup.
             int w8 = EffortWeights.coldWorkWeight("run-tests", 100, 8);
-            assertThat((long) w8 * EffortWeights.MS_PER_WEIGHT).isEqualTo(ms);
+            long ms8 = (long) w8 * EffortWeights.MS_PER_WEIGHT;
+            assertThat(ms8).isLessThan(ms);
+            assertThat(ms8).isGreaterThan(ms / (Calibration.COLD_MAX_TEST_PARALLEL + 1L));
         } finally {
             Calibration.clearMemo();
         }
@@ -185,10 +186,10 @@ class EffortWeightsStepEtaTest {
                 Map.of());
         long withMs = (long) withCounts.weight() * EffortWeights.MS_PER_WEIGHT;
         long withoutMs = (long) withoutCounts.weight() * EffortWeights.MS_PER_WEIGHT;
-        // Count-aware cold pricing for ~884 tests is minutes; empty counts is seconds.
-        assertThat(withMs).isGreaterThan(60_000L);
+        // Count-aware cold pricing for ~884 tests is tens of seconds+; empty counts is seconds.
+        assertThat(withMs).isGreaterThan(20_000L);
         assertThat(withoutMs).isLessThan(15_000L);
-        assertThat(withMs).isGreaterThan(withoutMs * 10);
+        assertThat(withMs).isGreaterThan(withoutMs * 5);
     }
 
     @Test

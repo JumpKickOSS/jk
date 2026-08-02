@@ -10,58 +10,84 @@ import org.jline.utils.AttributedStyle;
  * Shared chrome for the build pipeline line and its settled result lines, so the live header ({@link
  * CommandManager#pipelineHeader}) and the buffered plain-scheduler println render identically.
  *
- * <p>The line is a powerline chip: {@code ✓ Build } painted on a colored chip, closed by a cap:
- * with a Nerd Font, U+E0B0 whose <em>foreground</em> is the chip color (solid body continues the
- * chip) and whose <em>background</em> is left unset (tapers into what follows); without a Nerd Font,
- * a trailing space painted with the chip color as <em>background</em> (same width idea, no PUA).
+ * <h2>Chip shapes</h2>
+ *
+ * <ul>
+ * <li><b>Nerd</b> — {@code " {glyph} {name} "} + powerline U+E0B0 cap (one trailing chip space
+ * before the PUA arrow).
+ * <li><b>ANSI, no nerd</b> — {@code " {glyph} {name}  "} with <strong>two</strong> trailing spaces
+ * on the chip background (visual end of the pill without a PUA glyph).
+ * <li><b>Plain ({@code --no-ansi})</b> — {@code " {ascii} {name} >"} then a space and the message
+ * (the {@code >} replaces a color transition).
+ * </ul>
  */
 public final class PipelineWedge {
 
     private PipelineWedge() {}
 
     /**
-     * {@code " {glyph} {name} "} painted on {@code chip}. A leading + trailing space pad the pill.
+     * Chip body + trailing pad on {@code chip} style. Trailing pad is one space when {@code
+     * nerdfont} (powerline follows) or two spaces when not (pill end without PUA).
      */
-    static String chip(String glyph, String name, AttributedStyle chip) {
-        String text = " " + glyph + (name.isEmpty() ? "" : " " + name) + " ";
-        return Theme.colorize(text, chip);
+    public static String chip(String glyph, String name, AttributedStyle chip, boolean nerdfont) {
+        String body = " " + glyph + (name == null || name.isEmpty() ? "" : " " + name);
+        String trail = nerdfont ? " " : "  ";
+        return Theme.colorize(body + trail, chip);
     }
 
     /**
-     * Cap closing a chip. Nerd Font: U+E0B0 with foreground = {@code chipColor} (continues the chip
-     * body; background unset so it tapers). Plain ANSI: a single space with background = {@code
-     * chipColor} (same visual end of the pill, no powerline glyph).
+     * Cap closing a chip. Nerd Font: U+E0B0 with foreground = {@code chipColor}. ANSI without nerd:
+     * empty — {@link #chip} already ends with two bg-colored spaces. Plain: empty (caller uses
+     * {@link #plainWedge}).
      */
-    static String cap(Rgb chipColor, boolean nerdfont) {
+    public static String cap(Rgb chipColor, boolean nerdfont) {
+        if (!nerdfont) return "";
         Theme t = Theme.active();
-        if (nerdfont) {
-            return Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(chipColor));
-        }
-        return Theme.colorize(" ", t.withBackground(AttributedStyle.DEFAULT, chipColor));
+        return Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(chipColor));
     }
 
     /**
-     * A generic settled chip line: {@code ✓ Clean ▶ <message>}. The {@code glyph} + {@code command} form
-     * the chip (closed by the powerline cap); {@code message} is caller-styled and follows the cap.
-     * For commands whose result reads as its own sentence (e.g. {@code jk clean}'s "Removed N files")
-     * rather than the "{pipeline} successful" phrasing of {@link #successLine}.
+     * Plain ({@code --no-ansi}) wedge: {@code " {ascii-icon} {command} >"} optionally followed by
+     * {@code " " + message}.
+     */
+    public static String plainWedge(String asciiIcon, String command, String message) {
+        String cmd = command == null ? "" : command;
+        String icon = asciiIcon == null || asciiIcon.isEmpty() ? Glyphs.BULLET_PLAIN : asciiIcon;
+        String head = " " + icon + " " + cmd + " >";
+        if (message == null || message.isEmpty()) return head;
+        // Messages often carry … / • from callers; always ASCII-clean on the plain path.
+        return head + " " + PlainAscii.transform(message);
+    }
+
+    /** ASCII icon for a Unicode wedge glyph (CHECK/CROSS/PLAY/MENU/PULSE/…). */
+    public static String plainIconFor(String glyph) {
+        if (Glyphs.CHECK.equals(glyph)) return Glyphs.CHECK_PLAIN;
+        if (Glyphs.CROSS.equals(glyph)) return Glyphs.CROSS_PLAIN;
+        if (Glyphs.PLAY.equals(glyph)) return Glyphs.PLAY_PLAIN;
+        if (Glyphs.MENU.equals(glyph)) return Glyphs.MENU_PLAIN;
+        if (Glyphs.PULSE.equals(glyph)) return Glyphs.PULSE_PLAIN;
+        if (Glyphs.STOP.equals(glyph)) return Glyphs.STOP_PLAIN;
+        if (Glyphs.BANG.equals(glyph)) return Glyphs.BANG_PLAIN;
+        return Glyphs.BULLET_PLAIN;
+    }
+
+    /**
+     * A generic settled chip line: {@code ✓ Clean ▶ <message>}. The {@code glyph} + {@code command}
+     * form the chip (closed by the powerline cap when nerd); {@code message} follows.
      *
-     * <p>No-ANSI: ASCII-only prefixes — {@code "+"} for {@link Glyphs#CHECK}, {@code "!"} for {@link
-     * Glyphs#CROSS}, {@code "*"} for anything else — with a {@code ": "} separator and no color.
+     * <p>No-ANSI: {@code " + Clean > <message>"}.
      */
     public static String chipLine(String glyph, String command, boolean nerdfont, String message) {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
-            String prefix = Glyphs.CHECK.equals(glyph) ? "+" : Glyphs.CROSS.equals(glyph) ? "!" : "*";
-            return prefix + " " + command + ": " + message;
+            return plainWedge(plainIconFor(glyph), command, message);
         }
-        // ✓ (done) and ▶ (running) read as positive → green chip; everything else (■ stop, spinner
-        // frames, …) uses the neutral blue chip.
+        // ✓ (done) and ▶ (running) read as positive → green chip; everything else uses blue.
         boolean green = Glyphs.CHECK.equals(glyph) || Glyphs.PLAY.equals(glyph);
         var chipStyle = green ? t.pipelineSuccessChip() : t.pipelineChip();
         var capColor = green ? t.pipelineChipColor() : t.planBadgeColor();
-        // Chip + cap (PUA arrow or plain bg-colored space) then message.
-        return chip(glyph, command, chipStyle) + cap(capColor, nerdfont) + " " + message;
+        String msg = message == null ? "" : message;
+        return chip(glyph, command, chipStyle, nerdfont) + cap(capColor, nerdfont) + " " + msg;
     }
 
     /** {@code group:name} with the group cyan and the name bright-cyan — for failure tails. */
@@ -76,72 +102,73 @@ public final class PipelineWedge {
     }
 
     /**
-     * Settled failure: {@code ✘ Build ▶ Failed to build <tail>} — "Failed" in red, then "to
-     * &lt;pipeline&gt;" (the pipeline name lower-cased: build, test, …) in the default color; tail pre-styled
-     * by the caller.
+     * Settled failure: {@code ✘ Build ▶ Failed to build <tail>}.
      *
-     * <p>No-ANSI: {@code "! <command> Failed: <tail>"} — ASCII only, no color.
+     * <p>No-ANSI: {@code " ! Build > Failed to build <tail>"}.
      */
     public static String failureLine(String name, boolean nerdfont, String tail) {
         Theme t = Theme.active();
-        if (!t.isAnsi()) {
-            return "! " + name + " Failed: " + tail;
-        }
         String command =
                 Theme.colorize("Failed", t.error()) + (name.isEmpty() ? "" : " to " + name.toLowerCase(Locale.ROOT));
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip())
+        String body = command + " " + tail;
+        if (!t.isAnsi()) {
+            String plainBody = "Failed" + (name.isEmpty() ? "" : " to " + name.toLowerCase(Locale.ROOT)) + " " + tail;
+            return plainWedge(Glyphs.CROSS_PLAIN, name, plainBody);
+        }
+        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
                 + cap(t.pipelineFailColor(), nerdfont)
                 + " "
-                + command
-                + " "
-                + tail;
+                + body;
     }
 
     /**
-     * Settled failure with a caller-composed sentence, skipping the "Failed to &lt;pipeline&gt;"
-     * derivation {@link #failureLine} does — for a result that settles by chip but whose message
-     * doesn't read as "Failed to {@code <command>}" (e.g. {@code jk run}: "Failed to run acme:api. No
-     * valid main method was specified or detected"). {@code sentence} is fully pre-styled by the
-     * caller, including its own leading "Failed" if wanted.
+     * Settled failure with a caller-composed sentence.
      *
-     * <p>No-ANSI: {@code "! <name>: <sentence>"} — ASCII only, no color; no separate "Failed:" since
-     * the caller-composed sentence already reads as one (unlike {@link #failureLine}'s {@code tail}).
+     * <p>No-ANSI: {@code " ! <name> > <sentence>"}.
      */
     public static String failureLineCustom(String name, boolean nerdfont, String sentence) {
         Theme t = Theme.active();
         if (!t.isAnsi()) {
-            return "! " + name + ": " + sentence;
+            return plainWedge(Glyphs.CROSS_PLAIN, name, sentence);
         }
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip()) + cap(t.pipelineFailColor(), nerdfont) + " "
+        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
+                + cap(t.pipelineFailColor(), nerdfont)
+                + " "
                 + sentence;
     }
 
     /**
-     * Settled cancel. Same red chip as a failure. The chip already names the pipeline,
-     * so the body does not repeat it
+     * Settled cancel. Same red chip as a failure.
      *
-     * <ul>
-     * <li>Ctrl-C ({@code byUser}): {@code ✘ Build job was cancelled by user took 1.6s}
-     * <li>Remote ({@code jk cancel} / web): {@code ✘ Build job was cancelled took 1.6s}
-     * </ul>
-     *
-     * {@code cancelled} is warning yellow; {@code tookTail} is caller-styled (e.g.
-     * {@link cc.jumpkick.cli.run.ConsoleSpec#took}) or empty.
-     *
-     * <p>No-ANSI: {@code "! <name> job was cancelled[ by user][ took …]"}
+     * <p>No-ANSI: {@code " ! <name> > job was cancelled[ by user][ took …]"}.
      */
     public static String cancelledJobLine(String name, boolean nerdfont, boolean byUser, String tookTail) {
         Theme t = Theme.active();
         String took = tookTail == null || tookTail.isBlank() ? "" : " " + tookTail;
         if (!t.isAnsi()) {
-            return "! " + name + " job was cancelled" + (byUser ? " by user" : "") + took;
+            return plainWedge(Glyphs.CROSS_PLAIN, name, "job was cancelled" + (byUser ? " by user" : "") + took);
         }
         String body = "job was " + Theme.colorize("cancelled", t.warning()) + (byUser ? " by user" : "") + took;
-        return chip(Glyphs.CROSS, name, t.pipelineFailureChip()) + cap(t.pipelineFailColor(), nerdfont) + " " + body;
+        return chip(Glyphs.CROSS, name, t.pipelineFailureChip(), nerdfont)
+                + cap(t.pipelineFailColor(), nerdfont)
+                + " "
+                + body;
     }
 
     /** Remote cancel — no "by user". */
     public static String cancelledJobLine(String name, boolean nerdfont, String tookTail) {
         return cancelledJobLine(name, nerdfont, false, tookTail);
+    }
+
+    /**
+     * Plan / menu style chip (always blue), e.g. {@code ≡ Build Plan}. Caller appends estimate text
+     * after the cap.
+     */
+    public static String planChip(String glyph, String title, boolean nerdfont) {
+        Theme t = Theme.active();
+        if (!t.isAnsi()) {
+            return plainWedge(plainIconFor(glyph), title, null);
+        }
+        return chip(glyph, title, t.planBadge(), nerdfont) + cap(t.planBadgeColor(), nerdfont);
     }
 }

@@ -12,8 +12,8 @@ import java.util.Set;
 
 /**
  * In-memory {@code jk-lock.toml} (schema {@code version = 1}). Optional fields ({@code jdk},
- * {@code kotlin}, plugins, SDK, modules, toolchain) may be null/empty for older lockfiles.
- * Additive only — schema stays at 1 until 1.0.
+ * {@code kotlin}, plugins, SDK, modules, toolchain, {@code manifests-sha256}) may be null/empty for
+ * older lockfiles. Additive only — schema stays at 1 until 1.0.
  */
 public record Lockfile(
         int version,
@@ -25,7 +25,9 @@ public record Lockfile(
         List<PluginEntry> plugins,
         List<SdkEntry> sdk,
         List<ModuleEntry> modules,
-        JkToolchain jk) {
+        JkToolchain jk,
+        /** SHA-256 of every {@code jk.toml} that fed this lock; null on legacy locks. */
+        String manifestsSha256) {
 
     /**
      * Pinned jk version and engine-jar sha256 (empty for -SNAPSHOT). The wrapper's contract for
@@ -83,7 +85,7 @@ public record Lockfile(
             List<Artifact> artifacts,
             List<PluginEntry> plugins,
             List<SdkEntry> sdk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), null);
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), null, null);
     }
 
     /** Back-compat constructor with toolchain pin but no module pins. */
@@ -97,13 +99,44 @@ public record Lockfile(
             List<PluginEntry> plugins,
             List<SdkEntry> sdk,
             JkToolchain jk) {
-        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), jk);
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, List.of(), jk, null);
+    }
+
+    /** Back-compat constructor with modules + toolchain, no manifests digest. */
+    public Lockfile(
+            int version,
+            String generatedBy,
+            String resolutionAlgorithm,
+            String jdk,
+            String kotlin,
+            List<Artifact> artifacts,
+            List<PluginEntry> plugins,
+            List<SdkEntry> sdk,
+            List<ModuleEntry> modules,
+            JkToolchain jk) {
+        this(version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, null);
     }
 
     /** This lock with the jk toolchain pin set. */
     public Lockfile withJk(JkToolchain toolchain) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, toolchain);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                modules,
+                toolchain,
+                manifestsSha256);
+    }
+
+    /** This lock with a content digest of the manifests used to produce it. */
+    public Lockfile withManifestsSha256(String digest) {
+        return new Lockfile(
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, digest);
     }
 
     /** Back-compat constructor without SDK entries. */
@@ -151,25 +184,56 @@ public record Lockfile(
                 plugins,
                 sdk,
                 modules,
-                jk);
+                jk,
+                manifestsSha256);
     }
 
     /** Return a copy with the given plugin entries (replaces any existing). */
     public Lockfile withPlugins(List<PluginEntry> newPlugins) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, newPlugins, sdk, modules, jk);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                newPlugins,
+                sdk,
+                modules,
+                jk,
+                manifestsSha256);
     }
 
     /** Return a copy with the given provisioned-SDK component pins (replaces any existing). */
     public Lockfile withSdk(List<SdkEntry> newSdk) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, newSdk, modules, jk);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                newSdk,
+                modules,
+                jk,
+                manifestsSha256);
     }
 
     /** Return a copy with resolved first-party module identity pins (replaces any existing). */
     public Lockfile withModules(List<ModuleEntry> newModules) {
         return new Lockfile(
-                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, newModules, jk);
+                version,
+                generatedBy,
+                resolutionAlgorithm,
+                jdk,
+                kotlin,
+                artifacts,
+                plugins,
+                sdk,
+                newModules,
+                jk,
+                manifestsSha256);
     }
 
     public static Lockfile empty(String jkVersion) {
@@ -188,6 +252,7 @@ public record Lockfile(
                 List.of(),
                 List.of(),
                 List.of(),
+                null,
                 null);
     }
 

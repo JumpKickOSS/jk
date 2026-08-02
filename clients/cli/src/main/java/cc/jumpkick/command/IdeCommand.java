@@ -74,7 +74,10 @@ public final class IdeCommand implements CliCommand {
         try {
             model = IdeSupport.build(in);
         } catch (IdeSupport.IdeException e) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
+            // null message = already reported (e.g. EnsureFreshLock failure wedge)
+            if (e.getMessage() != null && !e.getMessage().isBlank()) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
+            }
             return e.code();
         }
 

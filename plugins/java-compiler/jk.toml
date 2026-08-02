@@ -4,7 +4,6 @@ description = "jk-java-compiler: child-JVM worker that runs javac in-process and
 
 [application]
 main       = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 [dependencies]
 jk-plugin-sdk.workspace = true

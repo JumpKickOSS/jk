@@ -148,12 +148,13 @@ class InstallCommandTest {
         assertThat(exit).isEqualTo(0);
 
         Path launcher = bin.resolve("widget");
-        Path appJar = lib.resolve("widget-0.1.0.jar");
+        // Tools + plugins share JK_LIB_DIR/<id>/ (here --lib-dir is the root).
+        Path appJar = lib.resolve("widget/widget-0.1.0.jar");
         assertThat(launcher).exists();
         assertThat(appJar).exists();
         String script = Files.readString(launcher);
         assertThat(script).contains("com.example.Main");
-        assertThat(script).contains(appJar.toString()); // classpath points at lib
+        assertThat(script).contains(appJar.toString()); // classpath points at lib/<bin>/
     }
 
     @Test

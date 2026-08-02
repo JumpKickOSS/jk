@@ -57,11 +57,24 @@ public final class RepoArtifactResolver {
             // falls through to the local store / CAS instead of being served as-is.
             RepoArtifactStore store = RepoArtifactStore.forRepoName(cas.root(), repoName);
             Optional<Path> found = hex != null ? store.locate(relativePath, hex) : store.locate(relativePath);
-            if (found.isPresent()) return found.get();
+            if (found.isPresent()) {
+                // Reclaim a legacy byte-duplicate into a hard link when the CAS still has the blob.
+                if (hex != null && cas.contains(hex)) {
+                    store.materialize(relativePath, cas.pathFor(hex), hex);
+                    return store.locate(relativePath, hex).orElse(found.get());
+                }
+                return found.get();
+            }
         }
         RepoArtifactStore local = RepoArtifactStore.forRepoName(cas.root(), "local");
         Optional<Path> found = local.locate(relativePath);
-        if (found.isPresent()) return found.get();
+        if (found.isPresent()) {
+            if (hex != null && cas.contains(hex)) {
+                local.materialize(relativePath, cas.pathFor(hex), hex);
+                return local.locate(relativePath).orElse(found.get());
+            }
+            return found.get();
+        }
         if (hex != null && cas.contains(hex)) {
             local.materialize(relativePath, cas.pathFor(hex), hex);
             found = local.locate(relativePath);

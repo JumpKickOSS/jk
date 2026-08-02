@@ -64,8 +64,7 @@ class BuildPlanForecastCleanPackageTest {
     }
 
     @Test
-    void package_action_key_stable_when_classes_wiped_if_compile_record_present(@TempDir Path tmp)
-            throws Exception {
+    void package_action_key_stable_when_classes_wiped_if_compile_record_present(@TempDir Path tmp) throws Exception {
         Path classes = Files.createDirectories(tmp.resolve("classes"));
         Path classFile = classes.resolve("A.class");
         Files.writeString(classFile, "AA");
@@ -73,8 +72,7 @@ class BuildPlanForecastCleanPackageTest {
 
         Path jar = tmp.resolve("out/lib-1.0.jar");
         Files.createDirectories(jar.getParent());
-        List<String> tokensLive = List.of(
-                "classes:" + classesTokLive, "main:", "sbom:", "manifest:" + Map.of());
+        List<String> tokensLive = List.of("classes:" + classesTokLive, "main:", "sbom:", "manifest:" + Map.of());
         String task = ActionKey.qualifiedTaskId("package-jar", jar);
         String keyLive = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokensLive);
 
@@ -90,8 +88,7 @@ class BuildPlanForecastCleanPackageTest {
 
         Map<String, String> compileOut = ac.lookup("ck").orElseThrow().outputs();
         String classesTokClean = ClasspathFingerprint.entryFromCompileAndResources(compileOut, List.of());
-        List<String> tokensClean = List.of(
-                "classes:" + classesTokClean, "main:", "sbom:", "manifest:" + Map.of());
+        List<String> tokensClean = List.of("classes:" + classesTokClean, "main:", "sbom:", "manifest:" + Map.of());
         String keyClean = ActionKey.forArtifact(task, BuildIdentity.cacheKeyVersion(), tokensClean);
         assertThat(keyClean).isEqualTo(keyLive);
     }

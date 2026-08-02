@@ -13,18 +13,9 @@ description = "jk-android: the built-in Android build plugin's code layer — th
 
 dependencies {
     implementation(project(":plugin-sdk"))
-    // The plugin's own signing library — bundled into the worker fat jar exactly the way
+    // The plugin's own signing library — bundled into the worker jar exactly the way
     // a third-party plugin ships its private deps. Never touches the engine classpath.
     implementation("com.android.tools.build:apksig:8.7.3")
     // ASM, for the Hilt superclass transform (android-hilt-transform) — same bundling story.
     implementation("org.ow2.asm:asm:9.8")
-}
-
-// Fat JAR: bundle the runtime closure (plugin-api + model + apksig) so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) }) {
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

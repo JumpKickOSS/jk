@@ -273,7 +273,7 @@ public final class MavenRepo {
         // (warm mirror hits returned above), so every jar/pom/metadata byte off the network lands here.
         cc.jumpkick.config.SessionContext.current().io().remoteDown(stored.size());
         if (mirror) {
-            // Primary store: materialise a human-readable, hard-linked copy under repos/<name>/.
+            // Maven-layout name under repos/<name>/ — hard-linked to the CAS blob (one inode).
             repoStore.materialize(relativePath, stored.path(), stored.sha256());
             if (mirrorToM2) {
                 // Opt-in mirror: copy (never hard-link — jk doesn't control writes to ~/.m2).
@@ -284,7 +284,7 @@ public final class MavenRepo {
                     M2CompatWriter.writeRemoteRepositories(
                             m2Target.getParent(), name, m2Target.getFileName().toString());
                 } catch (IOException ignored) {
-                    // Best-effort: the CAS blob and repos/<name>/ copy are already written; a
+                    // Best-effort: the CAS blob and repos/<name>/ view are already written; a
                     // ~/.m2 mirror failure is non-fatal.
                 }
             }
@@ -398,23 +398,32 @@ public final class MavenRepo {
     /**
      * If {@code repos/<name>/} already has a fully materialised artifact (sidecar + bytes), return
      * it as a {@link Fetched} without network I/O. Empty when absent / unreadable.
+     *
+     * <p>When the CAS still holds the blob, re-run {@link RepoArtifactStore#materialize} so a
+     * legacy full-copy under {@code repos/} is reclaimed into a hard link (warm re-lock / sync
+     * free the duplicate without a dedicated GC pass).
      */
     private Optional<Fetched> tryLocalMirror(Coordinate coord, String relativePath) {
-        Optional<Path> path = repoStore.locate(relativePath);
-        if (path.isEmpty()) return Optional.empty();
+        Optional<Path> located = repoStore.locate(relativePath);
+        if (located.isEmpty()) return Optional.empty();
         try {
             // Prefer store sidecar when present; otherwise hash once (immutable GAV).
             String sha = repoStore.storedSha256(relativePath).orElseGet(() -> {
                 try {
-                    return Hashing.sha256Hex(Files.readAllBytes(path.get()));
+                    return Hashing.sha256Hex(Files.readAllBytes(located.get()));
                 } catch (IOException e) {
                     return "";
                 }
             });
             if (sha.isBlank()) return Optional.empty();
-            long size = Files.size(path.get());
+            // Reclaim legacy full-copies under repos/ into a hard link when the CAS blob exists.
+            if (cas.contains(sha)) {
+                repoStore.materialize(relativePath, cas.pathFor(sha), sha);
+            }
+            Path path = repoStore.locate(relativePath).orElse(located.get());
+            long size = Files.size(path);
             URI uri = baseUrl.resolve(relativePath);
-            return Optional.of(new Fetched(uri, path.get(), sha, size));
+            return Optional.of(new Fetched(uri, path, sha, size));
         } catch (IOException e) {
             return Optional.empty();
         }

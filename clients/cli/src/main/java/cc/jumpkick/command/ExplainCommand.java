@@ -2,16 +2,18 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
-import cc.jumpkick.cli.tui.CommandManager;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Spinner;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.ModuleDotGraph;
 import cc.jumpkick.config.ModuleSelection;
 import cc.jumpkick.config.WorkspaceLoader;
+import cc.jumpkick.lock.LockFreshness;
 import cc.jumpkick.model.JkBuild;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -31,9 +33,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk explain} — offline forecast of what a build would run (cache hit/miss per module/step).
- * Prefer this over Gradle build scans for "why will this rebuild?" questions. Alias: {@code
- * why-rebuilt}. {@code --verbose} expands all; {@code --run} executes the plan.
+ * {@code jk explain} — forecast of what a build would run (cache hit/miss per module/step). Prefer
+ * this over Gradle build scans for "why will this rebuild?" questions. Hidden aliases: {@code plan},
+ * {@code why-rebuilt}. Refreshes a stale/missing lock first (same as {@code jk build}) so the ETA
+ * matches the build countdown. {@code --verbose} expands all; {@code --run} executes the plan.
  */
 public final class ExplainCommand implements CliCommand {
 
@@ -41,6 +44,10 @@ public final class ExplainCommand implements CliCommand {
     public String name() {
         return "explain";
     }
+
+    // Hidden aliases plan / why-rebuilt live in Jk.VERB_ALIASES (exact-token rewrite before
+    // dispatch) — never here: dispatcher aliases join the unique-prefix candidate set and would
+    // make `jk pl` ambiguous with plugin and `jk wh` with why (JK-1364).
 
     @Override
     public String description() {
@@ -58,13 +65,12 @@ public final class ExplainCommand implements CliCommand {
         opts.add(Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
         opts.add(Opt.value(
                 "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
-        opts.add(Opt.flag("Forecast a build that skips compiling and running tests.", "--skip-tests"));
-        // --rebuild is a global flag (same as `jk build --rebuild`); see GlobalOptions.
+        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
+        // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
-        opts.add(Opt.value("<git-ref>", "Forecast only modules changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value("<sel>", "Forecast only selected modules (comma list, globs, braces).", "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.add(Opt.value(
                 "<fmt>",
                 "Emit a machine graph instead of the rebuild forecast. Supported: dot | mermaid (module DAG).",
@@ -115,7 +121,7 @@ public final class ExplainCommand implements CliCommand {
         boolean serial = jobs == 1;
         int workers = in.value("workers").map(Integer::parseInt).orElse(1);
         boolean skipTests = in.isSet("skip-tests");
-        // Global --rebuild / --force: forecast full work + rebuild ETA priors.
+        // Global --redo / --force: forecast full work + rebuild ETA priors.
         boolean rebuild = global.rebuild || global.force;
         String profile = in.value("profile").orElse(null);
         Path jdksDir = in.value("jdks-dir").map(Path::of).orElse(null);
@@ -129,7 +135,7 @@ public final class ExplainCommand implements CliCommand {
                 var selected =
                         cc.jumpkick.config.ModuleSelection.resolveOptional(startDir, entry, modulesSpec, affectedSince);
                 if (selected != null && !selected.ok()) {
-                    CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Explain", selected.errorMessage()));
+                    CliOutput.err(CommandWedge.fail("Explain", selected.errorMessage()));
                     return Exit.CONFIG;
                 }
                 if (selected != null) {
@@ -148,46 +154,34 @@ public final class ExplainCommand implements CliCommand {
                     }
                 }
             } catch (Exception e) {
-                CliOutput.err(
-                        cc.jumpkick.cli.tui.CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
+                CliOutput.err(CommandWedge.fail("Explain", "module selection failed: " + e.getMessage()));
                 return Exit.CONFIG;
             }
         }
 
-        // Forecast the build through the engine facade — resolve the graph and run the truthful
-        // per-step plan, returning a front-end-safe view (modules + edges + concurrency width).
-        // Engine-hosted like `jk build`/`jk test`, except in the fast unit-test suite (no real jk
-        // schedule-aware build-time estimate is computed engine-side alongside the plan
-        // (BuildService.estimateEtaMillis) and rides back as an `eta` event; 0 = unknown.
-        // When host calibration is still cold, show a live "Calibrating host…" wedge for the
-        // engine round-trip, then replace it with the normal build-plan tree below.
+        // Live prep wedge: Locking versions… → Calculating build plan… (or Calibrating host…),
+        // then clear and print the settled Build Plan tree.
+        boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
+        boolean needsLock = LockFreshness.needsRefresh(startDir);
+        boolean needsCalibrate = HostCalibrationStatus.needsBootstrapProbe();
+        String prepMsg =
+                needsLock ? "Locking versions…" : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";
+
         ExplainPlan plan;
         long etaMillis;
         long[] etaOut = new long[1];
-        boolean showCalibrating = HostCalibrationStatus.needsBootstrapProbe()
-                && PipelineConsole.isInteractiveTerminal()
-                && PipelineConsole.modeFor(global) == PipelineConsole.Mode.AUTO
-                && !global.outputIsJson();
-        if (showCalibrating) {
-            try (CommandManager view = CommandManager.pipeline(CliOutput.stdout(), "Explain", true)) {
-                view.solveLabel("Calibrating host…");
-                plan = cc.jumpkick.cli.engine.EngineClient.explain(
-                        cc.jumpkick.engine.EnginePaths.current(),
-                        new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
-                                startDir,
-                                cache,
-                                workers,
-                                skipTests,
-                                profile,
-                                jdksDir,
-                                serial,
-                                parallelTests,
-                                global.verbose,
-                                rebuild),
-                        etaOut);
-                // Closing the manager clears the live wedge; plan prints next.
+        try (Spinner prep = livePrep ? CommandWedge.analyzing(CliOutput.stdout(), "Explain", prepMsg) : null) {
+            // Same starting lock as `jk build` so the dirty plan and ETA match the countdown.
+            // Pass the prep spinner so a freshen failure settles it before writing stderr.
+            if (needsLock) {
+                if (prep != null) prep.update("Locking versions…");
+                int lockCode = EnsureFreshLock.ensure(startDir, cache, global, "Explain", prep, false);
+                if (lockCode != 0) return lockCode;
             }
-        } else {
+            if (prep != null) {
+                prep.update(needsCalibrate ? "Calibrating host…" : "Calculating build plan…");
+            }
+            // Forecast via engine: graph + per-step plan + schedule-aware ETA.
             plan = cc.jumpkick.cli.engine.EngineClient.explain(
                     cc.jumpkick.engine.EnginePaths.current(),
                     new cc.jumpkick.cli.engine.EngineClient.ExplainRequest(
@@ -224,21 +218,17 @@ public final class ExplainCommand implements CliCommand {
         List<BuildPlan.Module> modules = plan.modules();
         boolean all = in.isSet("verbose");
 
-        // Header: a dark royal blue (#0F4786) " ≡ Build Plan " chip, capped by a matching ▶
-        // segment arrow when nerdfont, then the build-time estimate (yellow).
-        String header = !ansi
-                ? " - Build Plan "
-                : (nerdfont
-                        ? Theme.colorize(" ≡ Build Plan ", t.planBadge())
-                                + Theme.colorize(
-                                        cc.jumpkick.cli.tui.Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()))
-                        : Theme.colorize(" ≡ Build Plan ", t.planBadge()));
+        // Header: plan chip (nerd powerline / ansi two-space trail / plain " = Build Plan >")
+        // then the build-time estimate.
+        String header =
+                cc.jumpkick.cli.tui.PipelineWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
         // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
         // a pure cache verify is sub-second. Only show "unknown" when there is real
         // work but no learned timings yet.
         boolean fullyCached = !modules.isEmpty() && modules.stream().noneMatch(BuildPlan.Module::dirty);
         String estimate = buildTimeEstimate(etaMillis, fullyCached, t);
-        CliOutput.out();
+        // Leading blank once per command (prep lock wedge may already have opened it).
+        CommandWedge.envelopeStart();
         CliOutput.out(header + " " + estimate);
         // Root node: ● bullet, then the entry project's group:artifact in bold.
         String rootBullet = ansi ? Theme.colorize("●", t.darkGray()) : "*";
@@ -275,7 +265,8 @@ public final class ExplainCommand implements CliCommand {
         if (!cachedIdx.isEmpty()) {
             boolean lastSection = dirtyIdx.isEmpty();
             String sectionConnector = lastSection ? "╰─" : "├─";
-            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : " [Fully Cached]";
+            // Plain: no space between connector and pill (`-[Fully Cached]`) — matches jk tree.
+            String sectionBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Fully Cached", nerdfont) : "[Fully Cached]";
             CliOutput.out(" "
                     + (ansi ? Theme.colorize(sectionConnector, t.darkGray()) : (lastSection ? "`-" : "+-"))
                     + sectionBadge);
@@ -303,7 +294,7 @@ public final class ExplainCommand implements CliCommand {
             }
         }
         if (!dirtyIdx.isEmpty()) {
-            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : " [Rebuild]";
+            String rebuildBadge = ansi ? cc.jumpkick.cli.tui.Badge.pill("Rebuild", nerdfont) : "[Rebuild]";
             CliOutput.out(" " + (ansi ? Theme.colorize("╰─", t.darkGray()) : "`-") + rebuildBadge);
             String secPfx = ansi ? "    " + Theme.colorize("│", t.darkGray()) + " · " : "    | - ";
             int dirtyModules = dirtyIdx.size();

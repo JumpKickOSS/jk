@@ -208,11 +208,20 @@ public final class BuildGraph {
         }
 
         Path canonical(Path p) {
-            try {
-                return p.toRealPath();
-            } catch (IOException e) {
-                return p.toAbsolutePath().normalize();
-            }
+            return canonicalPath(p);
+        }
+    }
+
+    /**
+     * The graph's node identity: real path when resolvable, else absolute-normalized. Callers
+     * looking nodes/edges up by client-supplied dirs must canonicalize with this same function —
+     * a normalize-only lookup silently misses under symlinked checkouts (JK-1362).
+     */
+    public static Path canonicalPath(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (IOException e) {
+            return p.toAbsolutePath().normalize();
         }
     }
 }

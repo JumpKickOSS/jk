@@ -340,7 +340,7 @@ public final class IdeOps {
 
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue; // path/git dep
-            if (siblingCoords.contains(pkg.name())) continue; // workspace sibling → module dep
+            if (isSibling(siblingCoords, pkg)) continue; // workspace sibling → module dep
             if (allLibs.containsKey(pkg.name() + ":" + pkg.version())) continue;
 
             if (pkg.name().indexOf(':') < 0) continue;
@@ -416,7 +416,7 @@ public final class IdeOps {
         List<String[]> result = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
-            if (siblingCoords.contains(pkg.name())) continue;
+            if (isSibling(siblingCoords, pkg)) continue;
             // Processor-only deps belong on the annotation-processor path, not the compile classpath.
             if (processorOnly(pkg.scopes())) continue;
             String libName = pkg.name() + ":" + pkg.version();
@@ -442,7 +442,7 @@ public final class IdeOps {
         List<String> out = new ArrayList<>();
         for (Lockfile.Artifact pkg : lock.artifacts()) {
             if (pkg.checksum() == null) continue;
-            if (siblingCoords.contains(pkg.name())) continue;
+            if (isSibling(siblingCoords, pkg)) continue;
             if (!pkg.inAnyScope(EnumSet.of(Scope.PROCESSOR))) continue;
             String[] def = allLibs.get(pkg.name() + ":" + pkg.version());
             if (def != null && def[1] != null) out.add(def[1]);
@@ -462,6 +462,15 @@ public final class IdeOps {
     }
 
     /** Coordinates of all workspace siblings that this module could declare as deps. */
+    /**
+     * Lock rows are keyed by full package id ({@code g:a:type:classifier}) while sibling coords
+     * are plain {@code group:artifact} — a raw contains(name()) never matches (JK-1343).
+     */
+    static boolean isSibling(Set<String> siblingCoords, Lockfile.Artifact pkg) {
+        return siblingCoords.contains(pkg.name())
+                || siblingCoords.contains(pkg.moduleGroup() + ":" + pkg.moduleArtifact());
+    }
+
     private static Set<String> siblingCoordinates(JkBuild module, Map<Path, JkBuild> allModules) {
         Set<String> coords = new LinkedHashSet<>();
         for (JkBuild sib : allModules.values()) {

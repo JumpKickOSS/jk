@@ -214,7 +214,7 @@ public final class PomExporter {
             if (!processors.isEmpty()) appendCompilerProcessorPlugin(sb, processors, p.javaRelease(), locked, report);
             if (toolchain) appendToolchainsPlugin(sb, p);
             if (jarManifest) appendJarPlugin(sb, jkBuild.mainClass(), jkBuild.manifest());
-            // Map jk assembly packaging onto maven-shade-plugin (export only).
+            // Map jk assemble packaging onto maven-shade-plugin (export only).
             if (assembly) appendShadePlugin(sb);
             if (nativeImg) appendNativePlugin(sb, jkBuild);
             sb.append("    </plugins>\n");

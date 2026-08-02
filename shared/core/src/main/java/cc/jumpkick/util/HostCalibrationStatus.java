@@ -9,7 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Client-safe (no engine classpath) probe of whether host {@code calibration.toml} still needs a
+ * Client-safe (no engine classpath) probe of whether host {@code host-metrics.toml} still needs a
  * bootstrap run. Used by {@code jk explain} to show a short "Calibrating host…" wedge before the
  * plan; the engine's {@code Calibration.ensure} performs the real work.
  */
@@ -17,7 +17,7 @@ public final class HostCalibrationStatus {
 
     private static final Pattern MEASURED = Pattern.compile("(?m)^\\s*measured\\s*=\\s*true\\s*$");
     private static final Pattern SCHEMA = Pattern.compile("(?m)^\\s*schema\\s*=\\s*(\\d+)\\s*$");
-    /** Match engine schema 3+ multi-probe files (schema 4 adds learned rings). */
+    /** Match engine schema 3+ multi-probe files. */
     private static final int MIN_SCHEMA = 3;
 
     private static final long FAILURE_BACKOFF_MS = TimeUnit.HOURS.toMillis(24);
@@ -25,7 +25,7 @@ public final class HostCalibrationStatus {
     private HostCalibrationStatus() {}
 
     static Path calibrationFile() {
-        return JkDirs.builds().resolve("calibration.toml");
+        return JkDirs.builds().resolve("host-metrics.toml");
     }
 
     static Path failureMarker() {

@@ -43,16 +43,33 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("assembly", "-C", dir.toString());
+            exit = Jk.execute("assemble", "-C", dir.toString());
         } finally {
             System.setErr(orig);
         }
         assertThat(exit).isEqualTo(2);
         String msg = err.toString(StandardCharsets.UTF_8);
+        assertThat(msg).contains("jk assemble");
         assertThat(msg).contains("assembly = true");
         assertThat(msg).contains("--fat");
         assertThat(msg).contains("--shrink");
         assertThat(msg).contains("--write-config");
+    }
+
+    @Test
+    void assembly_alias_dispatches_to_assemble(@TempDir Path dir) throws IOException {
+        Files.writeString(dir.resolve("jk.toml"), TOML);
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream orig = System.err;
+        System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+        int exit;
+        try {
+            exit = Jk.execute("assembly", "-C", dir.toString());
+        } finally {
+            System.setErr(orig);
+        }
+        assertThat(exit).isEqualTo(2);
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("jk assemble");
     }
 
     @Test
@@ -63,7 +80,7 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("assembly", "-C", dir.toString(), "--fat", "--shrink");
+            exit = Jk.execute("assemble", "-C", dir.toString(), "--fat", "--shrink");
         } finally {
             System.setErr(orig);
         }
@@ -79,7 +96,7 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            exit = Jk.execute("assembly", "-C", dir.toString(), "--write-config");
+            exit = Jk.execute("assemble", "-C", dir.toString(), "--write-config");
         } finally {
             System.setErr(orig);
         }
@@ -98,7 +115,7 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
         try {
-            Jk.execute("assembly", "-C", dir.toString(), "--shrink", "--write-config", "--skip-tests");
+            Jk.execute("assemble", "-C", dir.toString(), "--shrink", "--write-config", "--skip-tests");
         } catch (Exception ignored) {
             // engine/build may fail in unit env; config write happens first
         } finally {
@@ -122,7 +139,7 @@ class AssemblyCommandTest {
         System.setErr(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
         System.setOut(new PrintStream(new ByteArrayOutputStream(), true, StandardCharsets.UTF_8));
         try {
-            Jk.execute("assembly", "-C", dir.toString(), "--fat", "--write-config", "--skip-tests");
+            Jk.execute("assemble", "-C", dir.toString(), "--fat", "--write-config", "--skip-tests");
         } catch (Exception ignored) {
             // ignore build failures
         } finally {

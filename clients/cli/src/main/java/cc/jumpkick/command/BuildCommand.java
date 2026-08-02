@@ -8,6 +8,7 @@ import cc.jumpkick.cli.run.CliSessionTranscript;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BuildNotify;
 import cc.jumpkick.cli.tui.CommandManager;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
@@ -56,16 +57,11 @@ public final class BuildCommand implements CliCommand {
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(Opt.flag("Skip compiling and running tests.", "--skip-tests"));
+        opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         opts.add(Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"));
         // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
-        opts.add(Opt.value(
-                "<git-ref>", "Build only modules (and dependents) changed since this git ref.", "--affected-since"));
-        opts.add(Opt.value(
-                "<sel>",
-                "Build only selected modules (comma list, globs, braces). Intersects with --affected-since.",
-                "--modules"));
+        opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());
         return opts;
     }
@@ -154,6 +150,19 @@ public final class BuildCommand implements CliCommand {
             }
             return finishSession(buildWorkspace(root));
         }
+        // Single project: -m/--affected-since still validate (JK-1366) — `-m bogus` must not
+        // silently build; a matching selector is just this project.
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
+            Selection sel = resolveSelection(startDir, null);
+            if (sel.error() != null) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                return finishSession(Exit.CONFIG);
+            }
+            if (sel.empty()) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
+                return finishSession(0);
+            }
+        }
         int code = runForDir(startDir);
         if (code == 0 && aotCache) {
             // Post-build tail (like run's exec): extract layout + training run, client-side
@@ -223,11 +232,26 @@ public final class BuildCommand implements CliCommand {
         PipelineConsole.Mode mode = PipelineConsole.modeFor(global);
         boolean live = mode == PipelineConsole.Mode.AUTO || mode == PipelineConsole.Mode.QUIET;
 
+        // --modules / --affected-since resolve identically for live and headless paths (JK-1363):
+        // the CI-shaped `jk build -m api --output json` must not silently build everything.
+        Selection sel = null;
+        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
+            sel = resolveSelection(entryDir, entryBuild);
+        }
+
         if (!live) {
             // --output json / --verbose: buffered, non-animated path. The engine drives the whole
             // workspace build (BuildService.buildWorkspace — resolve graph, memory plan, schedule,
             // run each module's pipeline); this listener renders the append-only block + [k/N] line.
-            return runWorkspaceHeadless(entryDir, entryBuild, cache);
+            if (sel != null && sel.error() != null) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", sel.error()));
+                return Exit.CONFIG;
+            }
+            if (sel != null && sel.empty()) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
+                return 0;
+            }
+            return runWorkspaceHeadless(entryDir, entryBuild, cache, sel != null ? sel.dirtyDirs() : null);
         }
 
         // Live path (AUTO / QUIET): open the TUI immediately so forecast + engine preflight are never
@@ -250,33 +274,19 @@ public final class BuildCommand implements CliCommand {
         // live build uses a single engine request for Checking + Graph + Plan + execute.
         // No separate client forecast RPC — the engine emits checking preflight and (when all clean)
         // returns with an empty plan. --modules / --affected-since force-include those dirs as the
-        // dirty hint; --force/--rebuild leave the hint null so the engine marks everything dirty.
+        // dirty hint; --force/--redo leave the hint null so the engine marks everything dirty.
         Set<Path> dirtyDirs = null;
-        if ((affectedSince != null && !affectedSince.isBlank()) || (modulesSpec != null && !modulesSpec.isBlank())) {
-            JkBuild buildForSelect = entryBuild;
-            if (buildForSelect == null) {
-                try {
-                    buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
-                } catch (Exception e) {
-                    view.finishPipelineFailure(
-                            "cannot load jk.toml for module selection: " + e.getMessage(), List.of());
-                    return Exit.CONFIG;
-                }
-            }
-            var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                    entryDir, buildForSelect, modulesSpec, affectedSince);
-            if (selected != null && !selected.ok()) {
-                view.finishPipelineFailure(selected.errorMessage(), List.of());
+        if (sel != null) {
+            if (sel.error() != null) {
+                view.finishPipelineFailure(sel.error(), List.of());
                 return Exit.CONFIG;
             }
-            if (selected != null && selected.moduleDirs().isEmpty()) {
+            if (sel.empty()) {
                 view.finishPipelineSuccess(selectionEmptyMessage(), List.of());
                 return 0;
             }
-            if (selected != null) {
-                // Force-include selected modules (engine still respects action cache unless --force).
-                dirtyDirs = selected.moduleDirs();
-            }
+            // Force-include selected modules (engine still respects action cache unless --force).
+            dirtyDirs = sel.dirtyDirs();
         }
         if (System.getenv("JK_PERF") != null) {
             System.err.println("[jk-perf] client-forecast skipped (single-rpc preflight) "
@@ -285,6 +295,26 @@ public final class BuildCommand implements CliCommand {
         }
         // lockStale unused: engine freshenLock + internal forecast owns Checking.
         return runGraphLive(view, earlyAgg, entryDir, entryBuild, cache, buildStart, dirtyDirs, false);
+    }
+
+    /** Resolved {@code -m/--affected-since} selection: at most one of the fields is meaningful. */
+    private record Selection(String error, boolean empty, Set<Path> dirtyDirs) {}
+
+    private Selection resolveSelection(Path entryDir, JkBuild entryBuild) {
+        JkBuild buildForSelect = entryBuild;
+        if (buildForSelect == null) {
+            try {
+                buildForSelect = cc.jumpkick.config.JkBuildParser.parse(entryDir.resolve("jk.toml"));
+            } catch (Exception e) {
+                return new Selection("cannot load jk.toml for module selection: " + e.getMessage(), false, null);
+            }
+        }
+        var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                entryDir, buildForSelect, modulesSpec, affectedSince);
+        if (selected == null) return new Selection(null, false, null);
+        if (!selected.ok()) return new Selection(selected.errorMessage(), false, null);
+        if (selected.moduleDirs().isEmpty()) return new Selection(null, true, null);
+        return new Selection(null, false, selected.moduleDirs());
     }
 
     private String selectionEmptyMessage() {
@@ -303,7 +333,7 @@ public final class BuildCommand implements CliCommand {
      * [k/N]} line, then the summary chip — the same append-only output the CLI produced before, now a
      * pure renderer over the engine's events.
      */
-    private int runWorkspaceHeadless(Path entryDir, JkBuild entryBuild, Path cache) {
+    private int runWorkspaceHeadless(Path entryDir, JkBuild entryBuild, Path cache, Set<Path> dirtyDirs) {
         var request = new cc.jumpkick.runtime.WorkspaceRequest(
                         entryDir,
                         entryBuild,
@@ -314,7 +344,7 @@ public final class BuildCommand implements CliCommand {
                         buildOpts.skipTests,
                         global.verbose,
                         jobs, // -j / JK_JOBS / [engine] jobs (always ≥ 1)
-                        null, // headless: let the engine forecast dirty modules
+                        dirtyDirs, // -m/--affected-since hint; null → engine forecasts (JK-1363)
                         true, // single-process CLI: plan our own worker-JVM memory budget
                         true) // jk build: auto-freshen a stale workspace lock engine-side
                 .withVariant(variant, clientEnv);
@@ -416,14 +446,15 @@ public final class BuildCommand implements CliCommand {
                 CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
+            notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsed);
             return 1;
         } catch (java.io.IOException e) {
+            long elapsed = (System.nanoTime() - start) / 1_000_000;
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
-                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(
-                            false, (System.nanoTime() - start) / 1_000_000, total[0]),
-                    json);
+                    cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsed, total[0]), json);
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Build", e.getMessage()));
             if (session != null) session.error(e.getMessage());
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, 0, elapsed);
             return Exit.SOFTWARE;
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
@@ -439,6 +470,7 @@ public final class BuildCommand implements CliCommand {
                 CliOutput.out(PipelineWedge.cancelledJobLine("Build", GlobalConfig.nerdfont(), false, took));
             }
             if (session != null) session.wedge("Build job was cancelled");
+            notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, 0, elapsedMs);
             return 1;
         }
         if (!result.errors().isEmpty()) {
@@ -447,6 +479,7 @@ public final class BuildCommand implements CliCommand {
             if (!json) {
                 for (String err : result.errors()) CliOutput.err(ConsoleSpec.errorLine("composite", err));
             }
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, 0, elapsedMs);
             // exitCode carries the engine's verdict: 2 for graph errors, 6 for an unsatisfiable
             // workspace lock (the freshen guard) — preserved rather than flattened to CONFIG.
             return result.exitCode();
@@ -456,6 +489,7 @@ public final class BuildCommand implements CliCommand {
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, 0), json);
             if (!json) CliOutput.out("(workspace declares no modules)");
             if (session != null) session.wedge("workspace declares no modules");
+            notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
             return 0;
         }
         if (!result.success()) {
@@ -468,15 +502,20 @@ public final class BuildCommand implements CliCommand {
                     if (session != null) session.error(msg).wedge(msg);
                 });
             }
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, 0, elapsedMs);
             return result.exitCode();
         }
         cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                 cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), json);
         String okTail = successTail(result.modules(), total[0], null, start);
         if (session != null) session.wedge(okTail);
-        if (json) return 0;
-        CliOutput.out(
-                PipelineWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
+        if (json) {
+            notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
+            return 0;
+        }
+        // Headless path never opened CommandManager — printOk supplies the leading blank.
+        cc.jumpkick.cli.tui.CommandWedge.printOk("Build", okTail);
+        notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
         return 0;
     }
 
@@ -559,10 +598,10 @@ public final class BuildCommand implements CliCommand {
 
                 @Override
                 public void onEtaEstimate(long millis) {
-                    // Seed only (early + post-prepare). Engine no longer re-projects mid-execute;
-                    // CommandManager locks after the first module finishes so the clock stays pure
-                    // wall-clock for the whole command.
-                    view.setEtaEstimate(millis);
+                    // Engine reports remaining work (post-lock dirty schedule — same figure as
+                    // `jk explain`). Convert to run-wide total so preflight/lock elapsed is not
+                    // double-counted and the countdown finishes near 0 when the estimate holds.
+                    view.setRemainingWorkEstimate(millis);
                 }
 
                 @Override
@@ -611,15 +650,19 @@ public final class BuildCommand implements CliCommand {
             result = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
                     cc.jumpkick.engine.EnginePaths.current(), request, liveListener);
         } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
             view.finishPipelineCancelled(List.of());
             if (session != null) session.wedge("Build job was cancelled");
+            notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return 1;
         } catch (java.io.IOException e) {
             // finishPipelineFailure's own `tail` already gets wrapped in PipelineWedge.failureLine(pipelineName,
             // nerdfont, tail) internally — pass the plain message, not a pre-rendered failure line
             // (passing one double-wraps it into a garbled "‼ Build ‼ Build..." chip).
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
             view.finishPipelineFailure(String.valueOf(e.getMessage()), List.of());
             if (session != null) session.error(String.valueOf(e.getMessage()));
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, view.etaEstimateMs(), elapsedMs);
             return Exit.SOFTWARE;
         }
         if (session != null) {
@@ -630,12 +673,14 @@ public final class BuildCommand implements CliCommand {
             }
         }
         long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        long estimateMs = view.etaEstimateMs();
         if (result.cancelled()) {
             List<String> above = snapshot(deferredOutput);
             view.finishPipelineCancelled(above);
             if (session != null) session.wedge("Build job was cancelled");
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            notifyBuild(BuildNotify.Outcome.CANCELLED, entryDir, entryBuild, estimateMs, elapsedMs);
             return 1;
         }
         if (!result.errors().isEmpty()) {
@@ -645,6 +690,7 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge("dependency resolution failed");
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, estimateMs, elapsedMs);
             // 2 for graph errors, 6 for an unsatisfiable workspace lock (the engine's freshen guard).
             return result.exitCode();
         }
@@ -666,6 +712,7 @@ public final class BuildCommand implements CliCommand {
             if (session != null) session.wedge(failTail);
             cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                     cc.jumpkick.cli.run.JsonlShape.workspaceFinish(false, elapsedMs, total[0]), false);
+            notifyBuild(BuildNotify.Outcome.FAILED, entryDir, entryBuild, estimateMs, elapsedMs);
             return result.exitCode();
         }
         // Empty execute plan (total==0) = engine found nothing dirty single-RPC path).
@@ -675,6 +722,7 @@ public final class BuildCommand implements CliCommand {
         if (session != null) session.wedge(okTail);
         cc.jumpkick.cli.run.JsonlShape.emitJsonl(
                 cc.jumpkick.cli.run.JsonlShape.workspaceFinish(true, elapsedMs, total[0]), false);
+        notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, estimateMs, elapsedMs);
         return 0;
     }
 
@@ -742,18 +790,16 @@ public final class BuildCommand implements CliCommand {
 
         // Single-module fast path: skip the TUI entirely when the engine's forecast says every
         // work step is already cached (stat/CAS lookups engine-side, one round trip here).
-        // A distrusting build (--force/--rebuild) never takes the trust-the-cache shortcut.
+        // A distrusting build (--force/--redo) never takes the trust-the-cache shortcut.
         if (PipelineConsole.isInteractiveTerminal() && !global.outputIsJson() && !global.force && !global.rebuild) {
             try {
                 var forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
+                    // Fast path skips CommandManager (no live region) — must still printOk so the
+                    // leading blank matches the full build path (JK-1373).
                     String upToDate = buildOk() + ", project up to date " + elapsedSince(startNanos);
-                    CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                            cc.jumpkick.cli.tui.Glyphs.CHECK,
-                            "Build",
-                            cc.jumpkick.config.GlobalConfig.nerdfont(),
-                            upToDate));
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Build", upToDate);
                     if (session != null) session.module(target).wedge(upToDate);
                     return 0;
                 }
@@ -1076,5 +1122,35 @@ public final class BuildCommand implements CliCommand {
             // best-effort title only
         }
         return "project";
+    }
+
+    /**
+     * {@code group:name} for desktop notifications (no version). Soft-parses when {@code build} is
+     * null.
+     */
+    static String projectGaLabel(Path entryDir, JkBuild build) {
+        try {
+            JkBuild b = build;
+            if (b == null && entryDir != null) {
+                Path toml = entryDir.resolve("jk.toml");
+                if (Files.isRegularFile(toml)) b = cc.jumpkick.config.JkBuildParser.parse(toml);
+            }
+            if (b != null && b.project() != null) {
+                var p = b.project();
+                String g = p.group() == null || p.group().isBlank() ? "?" : p.group();
+                String a = p.name() == null || p.name().isBlank() ? "?" : p.name();
+                return g + ":" + a;
+            }
+        } catch (Exception ignored) {
+            // best-effort label only
+        }
+        return "project";
+    }
+
+    /** OSC desktop notify when estimate/elapsed ≥ 1m, or {@code --notify} forces it. */
+    private void notifyBuild(
+            BuildNotify.Outcome outcome, Path entryDir, JkBuild entryBuild, long estimateMs, long elapsedMs) {
+        BuildNotify.maybeNotify(
+                CliOutput.stdout(), global, outcome, projectGaLabel(entryDir, entryBuild), estimateMs, elapsedMs);
     }
 }

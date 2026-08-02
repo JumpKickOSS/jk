@@ -179,7 +179,7 @@ class JavaIncrementalCompileTest {
         Project p = new Project(dir);
         p.write("a/A.java", "package a; public class A {}");
 
-        // --rebuild: bypass reads but persist, so the next explain/build sees CACHE_HIT.
+        // --redo: bypass reads but persist, so the next explain/build sees CACHE_HIT.
         Run r = p.build(false, true);
 
         assertThat(r.outcome).isEqualTo("compiled");

@@ -163,10 +163,14 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void thin_worker_plugins_are_assembly_apps_with_plugin_main() throws Exception {
+    void thin_worker_plugins_have_plugin_main_without_fat_assembly() throws Exception {
+        // JK-1347: workers are thin jars + classpath sidecars, not assembly fat jars.
+        // Only the engine stays assembly = true for ship.
         for (String module : List.of("plugins/test-runner", "plugins/java-compiler")) {
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
-            assertThat(p.assembly()).as(module).isTrue();
+            assertThat(p.assemblyMode().isBundled())
+                    .as(module + " must not fat-assemble")
+                    .isFalse();
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
             assertThat(p.dependencies().of(Scope.MAIN).stream()
                             .map(d -> d.module())
@@ -183,13 +187,15 @@ class SelfHostingTomlTest {
     }
 
     @Test
-    void all_first_party_plugin_modules_are_plugin_main_assemblies() throws Exception {
+    void all_first_party_plugin_modules_are_thin_plugin_main_workers() throws Exception {
         JkBuild root = JkBuildParser.parse(REPO.resolve("jk.toml"));
         for (String module : root.workspace().modules()) {
             if (!module.startsWith("plugins/")) continue;
             JkBuild p = JkBuildParser.parse(REPO.resolve(module).resolve("jk.toml"));
             assertThat(p.mainClass()).as(module).isEqualTo("cc.jumpkick.plugin.process.PluginMain");
-            assertThat(p.assemblyMode().isBundled()).as(module).isTrue();
+            assertThat(p.assemblyMode().isBundled())
+                    .as(module + " must not set assembly (JK-1347 thin workers)")
+                    .isFalse();
         }
     }
 

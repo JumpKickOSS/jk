@@ -168,20 +168,12 @@ public final class EngineServer implements AutoCloseable {
     /** The running invocation/step aggregates every finished build/test folds into. */
     private Path metricsFile = BuildMetrics.defaultFile();
 
-    /** Durable start-time build numbers. */
-    private Path runNumbersFile = cc.jumpkick.runtime.BuildNumberAllocator.defaultFile();
-
     /** Exclusive same-fingerprint slots + in-flight holds. */
     private final InFlightBuilds inFlightBuilds = new InFlightBuilds();
 
     /** Test seam: point the metrics store at a sandbox file instead of the user's real state dir. */
     void metricsFileForTests(Path file) {
         this.metricsFile = file;
-    }
-
-    /** Test seam: isolate run-number counters. */
-    void runNumbersFileForTests(Path file) {
-        this.runNumbersFile = file;
     }
 
     /** Test seam: inspect exclusive holds. */
@@ -966,7 +958,7 @@ public final class EngineServer implements AutoCloseable {
                 new java.util.concurrent.atomic.AtomicReference<>();
         // Public jid surfaceclient tracks this for Ctrl-C / jk cancel.
         try {
-            send(writer, EngineProtocol.jobStart(eventRequestId, eventKind, eventDir, admit.buildNumber()));
+            send(writer, jobStartLine(eventRequestId, eventKind, eventDir, admit));
         } catch (IOException ignored) {
             // client gone before job body — still run cancel registration below
         }
@@ -1184,6 +1176,19 @@ public final class EngineServer implements AutoCloseable {
         }
     }
 
+    /** job-start wire line with buildNumber + details path for the CLI transcript. */
+    private String jobStartLine(long jid, String kind, String dir, AdmitResult admit) {
+        String detailsPath = null;
+        if (admit.buildNumber() > 0) {
+            detailsPath = journal.detailsFile(coordOf(dir), dir, admit.buildNumber())
+                    .map(Path::toString)
+                    .orElseGet(() -> journal.detailsFile(java.lang.Long.toString(admit.buildNumber()))
+                            .map(Path::toString)
+                            .orElse(null));
+        }
+        return EngineProtocol.jobStart(jid, kind, dir, admit.buildNumber(), detailsPath, -1);
+    }
+
     /**
      * Allocate a build number (journaled kinds), take an exclusive fingerprint slot when required,
      * and persist an in-flight journal stub.
@@ -1197,11 +1202,11 @@ public final class EngineServer implements AutoCloseable {
             if (existing.isPresent()) return AdmitResult.reject(existing.get());
         }
         String canonDir = BuildJobFingerprint.canonicalDir(dir);
+        String coord = coordOf(dir);
         long buildNumber = 0L;
         if (JOURNALED_KINDS.contains(kind) && canonDir != null && !canonDir.isBlank()) {
-            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(runNumbersFile, metricsFile, canonDir);
+            buildNumber = cc.jumpkick.runtime.BuildNumberAllocator.allocate(canonDir, coord);
         }
-        String coord = coordOf(dir);
         long startedAt = clockMillis.getAsLong();
         String journalId = null;
         if (JOURNALED_KINDS.contains(kind) && historyConfig.enabled() && buildNumber > 0) {
@@ -2039,6 +2044,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2143,6 +2150,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session =
                     Session.defaults().withConfig(config).withWorkingDir(dir).withCacheDir(cache);
@@ -2338,6 +2347,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2386,7 +2397,7 @@ public final class EngineServer implements AutoCloseable {
             String cacheStr = Jsonl.str(requestLine, "cache");
             Path entryDir = Path.of(entryDirStr);
             Path cache = Path.of(cacheStr);
-            // --rebuild rides the same session flag as jk build --rebuild so forecast
+            // --redo rides the same session flag as jk build --redo so forecast
             // (all steps RUN) and ETA (build:rebuild history) match the live rebuild path.
             boolean rebuild = Jsonl.bool(requestLine, "rebuild", false);
             boolean force = Jsonl.bool(requestLine, "force", false);
@@ -2401,6 +2412,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2502,6 +2515,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(force),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -2695,6 +2710,7 @@ public final class EngineServer implements AutoCloseable {
             java.util.List<String> features = Jsonl.strArray(requestLine, "features");
             boolean withDefaults = !Jsonl.bool(requestLine, "noDefaultFeatures", false);
             boolean sources = Jsonl.bool(requestLine, "sources", false);
+            boolean conservative = Jsonl.bool(requestLine, "conservative", false);
             Session session = resolveSession(requestLine, cancelToken, false);
             java.net.URI repoUrl = repoUrlOf(requestLine);
             SessionContext.where(session, () -> {
@@ -2706,6 +2722,8 @@ public final class EngineServer implements AutoCloseable {
                         withDefaults,
                         sources,
                         false,
+                        null,
+                        conservative,
                         writer);
                 return null;
             });
@@ -3003,6 +3021,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.of(verbose),
                     Optional.empty(),
                     Optional.of(Jsonl.bool(requestLine, "force", false)),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session = Session.defaults()
                     .withConfig(config)
@@ -3221,6 +3241,8 @@ public final class EngineServer implements AutoCloseable {
                     Optional.empty(),
                     Optional.empty(),
                     Optional.of(refresh),
+                    Optional.empty(),
+                    Optional.empty(),
                     Optional.empty());
             Session session =
                     Session.defaults().withConfig(config).withCacheDir(cache).withCancel(cancelToken);
@@ -3441,6 +3463,11 @@ public final class EngineServer implements AutoCloseable {
             java.util.List<String> extraArgs = Jsonl.strArray(requestLine, "extraArgs");
             java.util.Map<Path, Path> graalByDir = new java.util.HashMap<>();
             Jsonl.strMap(requestLine, "graalHomes").forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
+            java.util.List<Path> selectedDirs = new java.util.ArrayList<>();
+            for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
+                if (d != null && !d.isBlank())
+                    selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
+            }
             Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
             SessionContext.where(session, () -> {
                 nativeCascade(
@@ -3450,6 +3477,7 @@ public final class EngineServer implements AutoCloseable {
                         mainClass,
                         extraArgs,
                         graalByDir,
+                        selectedDirs,
                         skipTests,
                         verbose,
                         writer);
@@ -3468,6 +3496,7 @@ public final class EngineServer implements AutoCloseable {
             String mainClass,
             java.util.List<String> extraArgs,
             java.util.Map<Path, Path> graalByDir,
+            java.util.List<Path> selectedDirs,
             boolean skipTests,
             boolean verbose,
             BufferedWriter writer) {
@@ -3485,6 +3514,9 @@ public final class EngineServer implements AutoCloseable {
         }
 
         var scopes = new java.util.LinkedHashMap<Path, JkBuild>();
+        // Canonical (real-path) identities of the modules the CLIENT selected — engine-added
+        // prereqs are absent and build jar-only (JK-1361); null = no selection, all native-compile.
+        java.util.Set<Path> selectedCanonical = null;
         if (root.isWorkspaceRoot()) {
             java.util.Map<Path, JkBuild> modulesByDir;
             try {
@@ -3497,6 +3529,50 @@ public final class EngineServer implements AutoCloseable {
                                 cc.jumpkick.model.command.Exit.CONFIG,
                                 java.util.List.of(String.valueOf(e.getMessage()))));
                 return;
+            }
+            // -m / --modules: keep selected modules + transitive build prereqs. Identities are the
+            // graph's canonical (real) paths so symlinked checkouts do not silently drop prereqs,
+            // and an unresolvable graph fails the request instead of degrading (JK-1362).
+            if (selectedDirs != null && !selectedDirs.isEmpty()) {
+                java.util.Set<Path> want = new java.util.LinkedHashSet<>();
+                for (Path p : selectedDirs) want.add(cc.jumpkick.runtime.BuildGraph.canonicalPath(p));
+                selectedCanonical = java.util.Set.copyOf(want);
+                try {
+                    var graph = cc.jumpkick.runtime.BuildGraph.resolve(entryDir, root);
+                    if (graph.hasErrors()) {
+                        sendQuiet(
+                                writer,
+                                EngineProtocol.workspaceFinish(
+                                        false,
+                                        cc.jumpkick.model.command.Exit.CONFIG,
+                                        java.util.List.copyOf(graph.errors())));
+                        return;
+                    }
+                    java.util.Map<Path, java.util.Set<Path>> edges = graph.edges();
+                    java.util.ArrayDeque<Path> q = new java.util.ArrayDeque<>(want);
+                    while (!q.isEmpty()) {
+                        Path d = q.poll();
+                        for (Path pre : edges.getOrDefault(d, java.util.Set.of())) {
+                            Path n = cc.jumpkick.runtime.BuildGraph.canonicalPath(pre);
+                            if (want.add(n)) q.add(n);
+                        }
+                    }
+                } catch (IOException e) {
+                    sendQuiet(
+                            writer,
+                            EngineProtocol.workspaceFinish(
+                                    false,
+                                    cc.jumpkick.model.command.Exit.CONFIG,
+                                    java.util.List.of(
+                                            "module selection: cannot resolve the build graph — " + e.getMessage())));
+                    return;
+                }
+                java.util.Map<Path, JkBuild> filtered = new java.util.LinkedHashMap<>();
+                for (var e : modulesByDir.entrySet()) {
+                    Path d = cc.jumpkick.runtime.BuildGraph.canonicalPath(e.getKey());
+                    if (want.contains(d)) filtered.put(e.getKey(), e.getValue());
+                }
+                modulesByDir = filtered;
             }
             for (Path dir : cc.jumpkick.runtime.BuildGraph.orderModules(modulesByDir)) {
                 scopes.put(dir, modulesByDir.get(dir));
@@ -3511,6 +3587,8 @@ public final class EngineServer implements AutoCloseable {
         var coords = new java.util.LinkedHashMap<Path, String>();
         for (var scope : scopes.entrySet()) {
             Path dir = scope.getKey();
+            boolean allowNative = selectedCanonical == null
+                    || selectedCanonical.contains(cc.jumpkick.runtime.BuildGraph.canonicalPath(dir));
             cc.jumpkick.run.Pipeline pipeline = cc.jumpkick.runtime.NativePipelines.modulePipeline(
                     dir,
                     scope.getValue(),
@@ -3520,7 +3598,8 @@ public final class EngineServer implements AutoCloseable {
                     mainClass,
                     extraArgs,
                     skipTests,
-                    verbose);
+                    verbose,
+                    allowNative);
             pipelines.put(dir, pipeline);
             coords.put(dir, cc.jumpkick.runtime.LockPipelines.coordLabel(scope.getValue(), dir));
         }
@@ -3581,9 +3660,10 @@ public final class EngineServer implements AutoCloseable {
             boolean withDefaults,
             boolean sources,
             boolean update,
+            String platformOverride,
             BufferedWriter writer)
             throws Exception {
-        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, null, writer);
+        lockCascade(entryDir, cache, repoUrl, features, withDefaults, sources, update, platformOverride, false, writer);
     }
 
     private void lockCascade(
@@ -3595,6 +3675,7 @@ public final class EngineServer implements AutoCloseable {
             boolean sources,
             boolean update,
             String platformOverride,
+            boolean conservative,
             BufferedWriter writer)
             throws Exception {
         java.nio.file.Files.createDirectories(cache);
@@ -3619,7 +3700,15 @@ public final class EngineServer implements AutoCloseable {
             return;
         }
 
-        {
+        // Serialize per lock dir (JK-1356). A conservative freshen that waited here may find the
+        // lock already fresh — a concurrent job won the flight; the bare lock-finish is a complete
+        // stream (the client returns on the terminal without any pipeline events).
+        synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
+            if (conservative
+                    && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, cc.jumpkick.lock.LockPaths.lockFile(lockDir))) {
+                sendQuiet(writer, EngineProtocol.lockFinish(true, 0, java.util.List.of(), -1));
+                return;
+            }
             Path dir = lockDir;
             String dirTag = dir.toString();
             sendQuiet(writer, EngineProtocol.lockModule(dirTag, coord));
@@ -3641,7 +3730,16 @@ public final class EngineServer implements AutoCloseable {
                     ? cc.jumpkick.runtime.LockPipelines.updatePipeline(
                             dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
                     : cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                            dir, effective, cache, repoUrl, features, withDefaults, sources, observer, null);
+                            dir,
+                            effective,
+                            cache,
+                            repoUrl,
+                            features,
+                            withDefaults,
+                            sources,
+                            conservative,
+                            observer,
+                            null);
             for (Step p : pipeline.steps()) {
                 sendQuiet(
                         writer,
@@ -3700,6 +3798,8 @@ public final class EngineServer implements AutoCloseable {
                 Optional.of(Jsonl.bool(requestLine, "verbose", false)),
                 Optional.empty(),
                 Optional.of(Jsonl.bool(requestLine, "force", false) || refresh),
+                Optional.empty(),
+                Optional.empty(),
                 Optional.empty());
         return Session.defaults()
                 .withConfig(config)
@@ -4089,13 +4189,9 @@ public final class EngineServer implements AutoCloseable {
             // Estimate the cache's wall-clock benefit from baselines as of BEFORE this run's fold.
             CacheBenefit.Result benefit = computeBenefit(a, millis);
             BuildRecord record = a.toRecord(finishedAt, cancelledEffective, millis, version, commit, benefit);
-            // Prefer start-time number; metrics fold trains stats without minting a second #.
-            // rebuild/force must train build:rebuild priors even when SessionContext is
-            // already cleared (async runner finishes outside the request session).
-            long buildNumber =
-                    BuildMetrics.record(metricsFile, toOutcome(record, a.rebuild()), finishedAt, a.buildNumber());
-            if (buildNumber <= 0) buildNumber = a.buildNumber();
-            record = record.withBuildNumber(buildNumber);
+            // Start-time number only — per-run metrics.toml + MetricsHarvest train ETA aggregates.
+            long buildNumber = a.buildNumber();
+            if (buildNumber > 0) record = record.withBuildNumber(buildNumber);
             // Chrome timeline (web / late path): same step durations as metrics. Socket clients
             // usually already flushed via flushTimelineToClient before terminal events.
             a.flushTimeline().ifPresent(path -> {
@@ -4252,9 +4348,7 @@ public final class EngineServer implements AutoCloseable {
         for (BuildMetrics.Entry e : BuildMetrics.load(metricsFile).entries()) {
             // Project rows are stored as bare dir and dirty-count shapes (dir#dN). Match
             // the project's base path so `jk status` sees the folded project tier.
-            if (dirFilter != null
-                    && !e.dir().isEmpty()
-                    && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
+            if (dirFilter != null && !e.dir().isEmpty() && !BuildMetrics.sameBaseDir(dirFilter, e.dir())) {
                 continue;
             }
             send(writer, metricsEntryJson(e));
@@ -4307,12 +4401,19 @@ public final class EngineServer implements AutoCloseable {
             BuildRecord.CacheBenefit b = r.benefit();
             int failedModules =
                     (int) r.modules().stream().filter(m -> !m.success()).count();
-            // Live progress + jid for in-flight rows (Jobs feed) — match journal id to the hold.
+            // Live progress + jid for in-flight rows — match by build number + project dir.
             int progressPct = -1;
             long jid = 0;
             if (r.running()) {
                 for (InFlightBuilds.Hold h : inFlightBuilds.list()) {
-                    if (r.id() != null && r.id().equals(h.journalId())) {
+                    boolean sameRun = r.buildNumber() > 0
+                            && r.buildNumber() == h.buildNumber()
+                            && r.dir() != null
+                            && r.dir().equals(h.dir());
+                    boolean sameLocator = h.journalId() != null
+                            && (h.journalId().equals(Long.toString(r.buildNumber()))
+                                    || h.journalId().equals(r.id()));
+                    if (sameRun || sameLocator) {
                         jid = h.requestId();
                         Double p = lastProgressByRequest.get(h.requestId());
                         if (p != null && !Double.isNaN(p)) progressPct = (int) Math.round(p);
@@ -5045,7 +5146,11 @@ public final class EngineServer implements AutoCloseable {
                     ResolveObserver.NOOP,
                     null);
             pipeline.addListener(singlePipelineHubListener(lockDir.toString()));
-            cc.jumpkick.run.PipelineResult result = SessionContext.where(session, pipeline::run);
+            cc.jumpkick.run.PipelineResult result;
+            // Serialize per lock dir with every other lock entry point (JK-1356).
+            synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
+                result = SessionContext.where(session, pipeline::run);
+            }
             accOutcome(eventRequestId(), result.success(), result.success() ? 0 : 1);
             if (!result.success()) {
                 for (var d : result.errors().stream().limit(5).toList()) {
@@ -5435,7 +5540,7 @@ public final class EngineServer implements AutoCloseable {
         private final String trigger; // how the build was started: "cli" (socket) or "web" (dashboard)
         /** Per-request chrome timeline; null when disabled. Same step millis as metrics. */
         private final ChromeTimeline timeline;
-        /**request was {@code --rebuild}/{@code --force} — train {@code build:rebuild} metrics. */
+        /** request was {@code --redo}/{@code --force} — train {@code build:rebuild} metrics. */
         private final boolean rebuild;
 
         /**

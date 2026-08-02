@@ -74,6 +74,8 @@ public final class OutdatedCommand implements CliCommand {
         }
         Path cache = cacheDir != null ? cacheDir : JkDirs.cache();
         Files.createDirectories(cache);
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cache, global, "Outdated");
+        if (lockCode != 0) return lockCode;
 
         OutdatedReport report;
         report = cc.jumpkick.cli.engine.EngineClient.runOutdated(

@@ -71,10 +71,19 @@ public final class ProgressBar {
      * Append the {@link #SEGMENTS}-wide underlined bar: solid blocks for the whole cells, one
      * eighth-block at the fractional frontier, and brightest-color underlined spaces for the
      * unreached cells. Every cell is underlined.
+     *
+     * <p>Plain ({@code --no-ansi}): ASCII {@code #} filled / {@code -} empty, no underline SGR.
      */
     private void appendBar(StringBuilder sb, long numerator, long denominator) {
         int[] cells = cells(numerator, denominator);
         int full = cells[0], eighths = cells[1], fill = cells[2];
+        if (!Theme.active().isAnsi()) {
+            int filled = full + (eighths > 0 ? 1 : 0);
+            for (int i = 0; i < SEGMENTS; i++) {
+                sb.append(i < filled ? Glyphs.BAR_FULL_PLAIN : Glyphs.BAR_EMPTY_PLAIN);
+            }
+            return;
+        }
         AttributedStyle brightest = fillColors[SEGMENTS - 1];
         for (int i = 0; i < SEGMENTS; i++) {
             char c;

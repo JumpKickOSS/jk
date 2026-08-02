@@ -150,12 +150,16 @@ public final class BuildLayout {
      * re-hashes every {@code.class} under its own output dir.
      */
     public Path jdtClassesDir() {
-        return buildDir().resolve("jdt").resolve("classes").resolve("main");
+        // Module-LOCAL on purpose (unlike buildDir's Mill-style central tree): Eclipse JDT
+        // requires output folders inside the project, and a workspace member's central dir would
+        // render as an invalid "../target/…" entry in .classpath (JK-1344). jk's own outputs
+        // never live here, so the isolation contract holds either way.
+        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("main");
     }
 
     /** {@code target/jdt/classes/test/} — test class output for an external IDE language server. */
     public Path jdtTestClassesDir() {
-        return buildDir().resolve("jdt").resolve("classes").resolve("test");
+        return moduleRoot().resolve("target").resolve("jdt").resolve("classes").resolve("test");
     }
 
     /**

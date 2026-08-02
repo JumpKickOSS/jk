@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.PathDisplay;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -99,7 +100,8 @@ public final class ImportCommand implements CliCommand {
         // Renders the worker's progress notes as they stream — identical for both transports.
         HostedEvents.NoteObserver observer = (kind, text) -> {
             if ("wrote".equals(kind)) {
-                CliOutput.out("Wrote " + text);
+                // Settled-path chrome: one wedge per wrote note (engine may emit several).
+                CommandWedge.printOk("Import", "Wrote " + text);
             } else {
                 CliOutput.out(text);
             }

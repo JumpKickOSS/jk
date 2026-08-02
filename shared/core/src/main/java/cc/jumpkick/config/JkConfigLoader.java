@@ -22,6 +22,9 @@ public final class JkConfigLoader {
     private static final String ENV_QUIET = "JK_QUIET";
     private static final String ENV_VERBOSE = "JK_VERBOSE";
     private static final String ENV_NO_COLOR = "NO_COLOR";
+    private static final String ENV_NO_ANSI = "JK_NO_ANSI";
+    private static final String ENV_NO_OSC = "JK_NO_OSC";
+    private static final String ENV_NOTIFY = "JK_NOTIFY";
 
     private JkConfigLoader() {}
 
@@ -54,7 +57,10 @@ public final class JkConfigLoader {
                 "config.quiet",
                 "config.verbose",
                 "config.directory",
-                "config.force");
+                "config.force",
+                "config.no-ansi",
+                "config.no-osc",
+                "config.notify");
         return new JkConfig(
                 Optional.ofNullable(scan.get("config.color")).flatMap(JkConfig.ColorChoice::parse),
                 scanBool(scan, "config.offline"),
@@ -64,7 +70,9 @@ public final class JkConfigLoader {
                 scanBool(scan, "config.verbose"),
                 Optional.ofNullable(scan.get("config.directory")).map(Paths::get),
                 scanBool(scan, "config.force"),
-                Optional.empty()); // no-ansi is CLI-only, not config-file settable
+                scanBool(scan, "config.no-ansi"),
+                scanBool(scan, "config.no-osc"),
+                Optional.ofNullable(scan.get("config.notify")).flatMap(JkConfig.NotifyChoice::parse));
     }
 
     /** A scanned TOML boolean: strictly {@code true}/{@code false}, anything else = absent. */
@@ -87,6 +95,8 @@ public final class JkConfigLoader {
                             : Optional.empty();
                 });
         Optional<Boolean> force = EnvValues.bool(env, ENV_FORCE);
+        Optional<JkConfig.NotifyChoice> notify =
+                EnvValues.string(env, ENV_NOTIFY).flatMap(JkConfig.NotifyChoice::parse);
         return new JkConfig(
                 color,
                 EnvValues.bool(env, ENV_OFFLINE),
@@ -96,6 +106,8 @@ public final class JkConfigLoader {
                 EnvValues.bool(env, ENV_VERBOSE),
                 Optional.empty(), // directory isn't env-var-driven
                 force,
-                Optional.empty()); // no-ansi is CLI-only
+                EnvValues.bool(env, ENV_NO_ANSI),
+                EnvValues.bool(env, ENV_NO_OSC),
+                notify);
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.cli;
 
+import cc.jumpkick.cli.tui.PlainAscii;
 import java.io.PrintStream;
 
 /**
@@ -13,6 +14,9 @@ import java.io.PrintStream;
  *
  * <p>Convention, matching the streams it wraps: {@link #out} for machine/user <em>result</em> output
  * on stdout; {@link #err} for human-facing diagnostics, errors, and progress on stderr.
+ *
+ * <p>Under {@code --no-ansi}, string writes run through {@link PlainAscii} so ellipsis, bullets,
+ * and pulse circles in free-form messages become ASCII without each command hand-substituting.
  */
 public final class CliOutput {
 
@@ -20,7 +24,7 @@ public final class CliOutput {
 
     /** Print a line to stdout (result output). */
     public static void out(String line) {
-        System.out.println(line);
+        System.out.println(PlainAscii.apply(line));
     }
 
     /** Print a blank line to stdout. */
@@ -30,12 +34,12 @@ public final class CliOutput {
 
     /** Print to stdout with no trailing newline. */
     public static void outRaw(String s) {
-        System.out.print(s);
+        System.out.print(PlainAscii.apply(s));
     }
 
     /** Print a line to stderr (diagnostics, errors, progress). */
     public static void err(String line) {
-        System.err.println(line);
+        System.err.println(PlainAscii.apply(line));
     }
 
     /** Print a blank line to stderr. */
@@ -45,16 +49,22 @@ public final class CliOutput {
 
     /** Print to stderr with no trailing newline. */
     public static void errRaw(String s) {
-        System.err.print(s);
+        System.err.print(PlainAscii.apply(s));
     }
 
-    /** The raw stdout stream, for APIs that need a {@link PrintStream} (renderers, stack traces). */
+    /**
+     * Stdout for APIs that need a {@link PrintStream} (CommandManager, Spinner, renderers). Under
+     * plain mode the stream rewrites Unicode chrome via {@link PlainAscii#wrap}.
+     */
     public static PrintStream stdout() {
-        return System.out;
+        return PlainAscii.wrap(System.out);
     }
 
-    /** The raw stderr stream, for APIs that need a {@link PrintStream}. */
+    /**
+     * Stderr for APIs that need a {@link PrintStream}. Under plain mode the stream rewrites
+     * Unicode chrome via {@link PlainAscii#wrap}.
+     */
     public static PrintStream stderr() {
-        return System.err;
+        return PlainAscii.wrap(System.err);
     }
 }

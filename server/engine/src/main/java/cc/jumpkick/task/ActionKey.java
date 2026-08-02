@@ -185,11 +185,11 @@ public final class ActionKey {
             result.put(abs.toString(), FileHashMemo.contentHash(abs));
         }
         for (Path cp : request.classpath()) {
-            // For classpath jars we record the path; the CAS layout encodes content.
-            result.put("cp:" + cp.toAbsolutePath().normalize(), "");
+            // CAS path when possible so repos/ vs sha256/ dual views do not fork the key.
+            result.put("cp:" + FreshnessStamp.identityKey(cp), "");
         }
         for (Path pp : request.processorPath()) {
-            result.put("pp:" + pp.toAbsolutePath().normalize(), "");
+            result.put("pp:" + FreshnessStamp.identityKey(pp), "");
         }
         result.put("release", Integer.toString(request.release()));
         result.put("options", String.join(",", request.extraOptions()));
@@ -203,7 +203,7 @@ public final class ActionKey {
      * says nothing about its contents.
      */
     private static void appendCpToken(StringBuilder sb, String prefix, Path entry) throws IOException {
-        Path p = entry.toAbsolutePath().normalize();
+        Path p = FreshnessStamp.identityKey(entry);
         sb.append(prefix).append(p);
         if (java.nio.file.Files.isDirectory(p)) {
             sb.append('=').append(ClasspathFingerprint.entry(p));

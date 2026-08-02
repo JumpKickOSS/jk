@@ -28,7 +28,7 @@ import java.util.stream.Stream;
  * signatures and {@code module-info.class}, concat {@code META-INF/services/*} and common Spring
  * multi-entry META-INF files, sorted fixed-timestamp entries for reproducibility.
  *
- * <p>Enable with {@code [application] assembly = true} (or {@code jk assembly}). See
+ * <p>Enable with {@code [application] assembly = true} (or {@code jk assemble}). See
  * {@code docs/features/packaging.md}.
  */
 public final class AssemblyPackager {

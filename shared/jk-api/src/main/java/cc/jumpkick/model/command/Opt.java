@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.model.command;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -13,17 +14,22 @@ import java.util.List;
  * <p>Build instances with {@link #flag} / {@link #value} and the {@code with*} tweaks, so a
  * command's {@code options()} reads as a short declarative list.
  *
- * @param names option names, e.g. {@code ["-q", "--quiet"]}; the last is canonical
+ * <p>Primary {@link #names()} appear in help; {@link #aliases()} are accepted by the parser but
+ * never shown (aliases are always hidden).
+ *
+ * @param names primary option names, e.g. {@code ["-q", "--quiet"]}; the longest {@code --} form is
+ *     canonical
  * @param paramLabel label for the value in help, or {@code null} for a boolean flag
  * @param description help text
  * @param takesValue true when the option consumes a value (false ⇒ boolean flag)
  * @param repeatable true when the option may appear multiple times (List value)
  * @param split delimiter to split a single value into many (e.g. {@code ","}), or {@code null}
- * @param hidden true to omit from help
+ * @param hidden true to omit the whole option from help
  * @param negatable true when a {@code --no-<name>} form is also accepted
  * @param required true when the option must be present
  * @param fallbackValue value used when the option appears without an argument (optional-arg), or
  *     {@code null}
+ * @param aliases alternate names accepted by the parser but never shown in help
  */
 public record Opt(
         List<String> names,
@@ -35,20 +41,23 @@ public record Opt(
         boolean hidden,
         boolean negatable,
         boolean required,
-        String fallbackValue) {
+        String fallbackValue,
+        List<String> aliases) {
 
     public Opt {
         names = List.copyOf(names);
+        aliases = aliases == null ? List.of() : List.copyOf(aliases);
     }
 
     /** A boolean flag option (no value), e.g. {@code --skip-tests}. */
     public static Opt flag(String description, String... names) {
-        return new Opt(List.of(names), null, description, false, false, null, false, false, false, null);
+        return new Opt(List.of(names), null, description, false, false, null, false, false, false, null, List.of());
     }
 
     /** A value option, e.g. {@code --profile <name>}. */
     public static Opt value(String paramLabel, String description, String... names) {
-        return new Opt(List.of(names), paramLabel, description, true, false, null, false, false, false, null);
+        return new Opt(
+                List.of(names), paramLabel, description, true, false, null, false, false, false, null, List.of());
     }
 
     public Opt hide() {
@@ -62,22 +71,53 @@ public record Opt(
                 true,
                 negatable,
                 required,
-                fallbackValue);
+                fallbackValue,
+                aliases);
     }
 
     public Opt require() {
         return new Opt(
-                names, paramLabel, description, takesValue, repeatable, split, hidden, negatable, true, fallbackValue);
+                names,
+                paramLabel,
+                description,
+                takesValue,
+                repeatable,
+                split,
+                hidden,
+                negatable,
+                true,
+                fallbackValue,
+                aliases);
     }
 
     public Opt negate() {
         return new Opt(
-                names, paramLabel, description, takesValue, repeatable, split, hidden, true, required, fallbackValue);
+                names,
+                paramLabel,
+                description,
+                takesValue,
+                repeatable,
+                split,
+                hidden,
+                true,
+                required,
+                fallbackValue,
+                aliases);
     }
 
     public Opt repeat() {
         return new Opt(
-                names, paramLabel, description, takesValue, true, split, hidden, negatable, required, fallbackValue);
+                names,
+                paramLabel,
+                description,
+                takesValue,
+                true,
+                split,
+                hidden,
+                negatable,
+                required,
+                fallbackValue,
+                aliases);
     }
 
     public Opt splitOn(String delimiter) {
@@ -91,16 +131,60 @@ public record Opt(
                 hidden,
                 negatable,
                 required,
-                fallbackValue);
+                fallbackValue,
+                aliases);
     }
 
     /** Optional-argument option: present-without-value yields {@code fallback}. */
     public Opt withFallback(String fallback) {
         return new Opt(
-                names, paramLabel, description, takesValue, repeatable, split, hidden, negatable, required, fallback);
+                names,
+                paramLabel,
+                description,
+                takesValue,
+                repeatable,
+                split,
+                hidden,
+                negatable,
+                required,
+                fallback,
+                aliases);
     }
 
-    /** The canonical (longest {@code --}) name, used as the lookup key in {@link Invocation}. */
+    /**
+     * Alternate names accepted by the parser but never shown in help. Aliases bind to the same
+     * option identity (so unique-prefix resolution collapses them) and the same {@link
+     * #canonicalName()}.
+     */
+    public Opt alias(String... extra) {
+        if (extra.length == 0) return this;
+        List<String> combined = new ArrayList<>(aliases.size() + extra.length);
+        combined.addAll(aliases);
+        for (String a : extra) combined.add(a);
+        return new Opt(
+                names,
+                paramLabel,
+                description,
+                takesValue,
+                repeatable,
+                split,
+                hidden,
+                negatable,
+                required,
+                fallbackValue,
+                combined);
+    }
+
+    /** Primary names plus aliases — every token the parser should accept for this option. */
+    public List<String> allNames() {
+        if (aliases.isEmpty()) return names;
+        List<String> all = new ArrayList<>(names.size() + aliases.size());
+        all.addAll(names);
+        all.addAll(aliases);
+        return List.copyOf(all);
+    }
+
+    /** The canonical (longest primary {@code --}) name, used as the lookup key in {@link Invocation}. */
     public String canonicalName() {
         String best = names.get(names.size() - 1);
         for (String n : names) {
@@ -110,6 +194,6 @@ public record Opt(
     }
 
     public boolean matches(String token) {
-        return names.contains(token);
+        return names.contains(token) || aliases.contains(token);
     }
 }

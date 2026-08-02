@@ -6,7 +6,6 @@ java        = 17
 
 [application]
 main       = "cc.jumpkick.plugin.process.PluginMain"
-assembly = true
 
 [dependencies]
 jk-plugin-sdk.workspace = true

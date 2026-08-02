@@ -3,12 +3,18 @@ package cc.jumpkick.cli.run;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import cc.jumpkick.config.JkConfig;
+import cc.jumpkick.config.Session;
+import cc.jumpkick.config.SessionContext;
 import java.time.Duration;
+import java.util.Optional;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 /**
  * {@link ConsoleSpec#fmtDuration} is the one duration formatter in the CLI: bare millis below a
  * second, one-decimal seconds below a minute, then {@code m/h/d} compound forms — capping at days.
+ * Also covers plain-mode {@link ConsoleSpec#took} (JK-1378).
  */
 class ConsoleSpecTest {
 
@@ -57,5 +63,49 @@ class ConsoleSpecTest {
         // The last millisecond before each unit threshold still uses the lower unit's form.
         assertThat(ConsoleSpec.fmtDuration(Duration.ofMillis(999))).isEqualTo("999ms");
         assertThat(ConsoleSpec.fmtDuration(Duration.ofMillis(59_999))).isEqualTo("60.0s");
+    }
+
+    @Test
+    void took_plain_prefixes_dash_separator() throws Exception {
+        withNoAnsi(() -> {
+            assertThat(ConsoleSpec.took(Duration.ofMillis(547))).isEqualTo("- took 547ms");
+            assertThat(ConsoleSpec.took(Duration.ofMillis(1200))).isEqualTo("- took 1.2s");
+            // Callers keep a single space before took → "Already formatted - took 547ms"
+            assertThat("Already formatted " + ConsoleSpec.took(Duration.ofMillis(547)))
+                    .isEqualTo("Already formatted - took 547ms");
+            return null;
+        });
+    }
+
+    @Test
+    void took_ansi_is_dim_italic_without_dash() throws Exception {
+        // When ANSI is available the body is styled "took …" (no leading dash).
+        String took = ConsoleSpec.took(Duration.ofMillis(100));
+        if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
+            assertThat(took).contains("took 100ms");
+            assertThat(took).doesNotStartWith("- ");
+            assertThat(took).contains("\u001B["); // styled
+        }
+    }
+
+    private static <T> T withNoAnsi(Supplier<T> body) throws Exception {
+        JkConfig noAnsi = new JkConfig(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                Optional.of(true),
+                Optional.empty(),
+                Optional.empty());
+        Session original = SessionContext.current();
+        try {
+            return SessionContext.where(original.withConfig(noAnsi), body::get);
+        } finally {
+            SessionContext.install(original);
+        }
     }
 }

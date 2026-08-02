@@ -10,12 +10,6 @@ description = "jk-audit-runner: child-JVM worker that queries the OSV vulnerabil
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":plugin-sdk"))  // shared JSONL codec (bundled into the fat jar)
+    implementation(project(":plugin-sdk"))  // shared JSONL codec (on the worker runtime classpath (thin jar + sidecar))
     implementation(libs.jackson.databind)
-}
-
-// Fat JAR: bundle the full runtime closure so the worker runs as `java -jar`.
-tasks.jar {
-    dependsOn(configurations.runtimeClasspath)
-    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
 }

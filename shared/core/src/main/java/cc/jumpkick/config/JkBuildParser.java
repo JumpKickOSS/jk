@@ -110,6 +110,18 @@ public final class JkBuildParser {
         return parse(file);
     }
 
+    /**
+     * Raw structural probe: does {@code file} declare a non-empty {@code [workspace] modules}
+     * array? Reads the TOML directly — never builds a {@link JkBuild}, resolves plugins, or reads
+     * the lockfile. {@link cc.jumpkick.lock.LockPaths} calls this from lock-location discovery,
+     * which itself runs <em>inside</em> a full parse (plugin-manifest resolution needs the lock
+     * path); a full parse here would re-enter {@link #parseLocal} on the very file being parsed
+     * and recurse until the stack blows.
+     */
+    public static boolean declaresWorkspaceModules(Path file) throws IOException {
+        return hasWorkspaceModules(Toml.parse(Files.readString(file)));
+    }
+
     /** Drop memo and re-parse without workspace resolution. */
     public static JkBuild reparseLocal(Path file) throws IOException {
         Path key = file.toAbsolutePath().normalize();
@@ -202,9 +214,8 @@ public final class JkBuildParser {
         Variants variants = parseVariants(result, workspace, effective, installedManifests);
         // project.*.workspace = true is for members only — the root is the inheritance source.
         if (project.inheritsFromWorkspace() && workspace != null && !workspace.isEmpty()) {
-            throw new JkBuildParseException(
-                    "workspace root must set concrete [project] values"
-                            + " (`*.workspace = true` is only valid on workspace modules)");
+            throw new JkBuildParseException("workspace root must set concrete [project] values"
+                    + " (`*.workspace = true` is only valid on workspace modules)");
         }
         return new JkBuild(
                 project,
@@ -527,18 +538,7 @@ public final class JkBuildParser {
         }
 
         return new JkBuild.Project(
-                group,
-                name,
-                version,
-                jdk,
-                java,
-                kotlin,
-                groovy,
-                sourcesMode,
-                description,
-                m2install,
-                layout,
-                inherits);
+                group, name, version, jdk, java, kotlin, groovy, sourcesMode, description, m2install, layout, inherits);
     }
 
     /**
@@ -555,9 +555,8 @@ public final class JkBuildParser {
         String path = "project." + key;
         if (isWorkspaceInherit(project, key)) {
             if (workspaceRoot) {
-                throw new JkBuildParseException(
-                        "workspace root must set a concrete " + path + " (`" + key + ".workspace = true` is only valid"
-                                + " on workspace modules)");
+                throw new JkBuildParseException("workspace root must set a concrete " + path + " (`" + key
+                        + ".workspace = true` is only valid" + " on workspace modules)");
             }
             inherits.add(inherit);
             return JkBuild.VERSION_FROM_WORKSPACE;
@@ -577,8 +576,7 @@ public final class JkBuildParser {
         }
         String value = project.getString(key);
         if (value == null) {
-            throw new JkBuildParseException(
-                    path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
+            throw new JkBuildParseException(path + " must be a string (e.g. \"1.0.0\") or `{ workspace = true }`");
         }
         if (value.isBlank()) {
             throw new JkBuildParseException(path + " must not be blank");

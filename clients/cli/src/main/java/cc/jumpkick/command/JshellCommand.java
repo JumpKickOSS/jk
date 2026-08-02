@@ -107,8 +107,11 @@ public final class JshellCommand implements CliCommand {
             }
         }
 
-        if (!proj.isLocked()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("JShell", "no jk-lock.toml — run `jk lock` first"));
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cacheDir, global, "JShell");
+        if (lockCode != 0) return lockCode;
+        if (!Files.isRegularFile(proj.lockFile())) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "JShell", "no jk-lock.toml — lock refresh did not produce one"));
             return Exit.CONFIG;
         }
 

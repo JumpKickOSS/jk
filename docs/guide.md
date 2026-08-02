@@ -45,7 +45,7 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 | `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
 | `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
-| `target/.jk-cli/` | CLI session transcripts | Optional; not needed for speed |
+| `~/.jk/state/builds/projects/.../runs/` | Run history + `details.jsonl` transcripts | Optional for CI speed; useful for agents |
 | `jk-lock.toml` | Resolved coords | **Commit** this (not a cache) |
 
 **Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
@@ -120,7 +120,10 @@ Variants change *which product* you build (sources, deps, plugin config) — see
 
 ## Lockfile
 
-`jk-lock.toml` is **canonical**. Commit it.
+`jk-lock.toml` is **canonical**. Commit it. Day-to-day you should not think about it: any
+command that needs a current lock (build, explain, status, tree, sync, export, ide, …)
+auto-refreshes when the lock is missing or out of sync with manifests. Explicit `jk lock` /
+`jk update` remain for intentional re-resolve workflows.
 
 | Command | Role |
 |---|---|
@@ -412,13 +415,13 @@ Import that POM like any other platform BOM (`[platform-dependencies]`).
 | Artifact | Config | Command |
 |---|---|---|
 | Thin jar | default | `jk build` |
-| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assembly` / `jk assemble` / `jk build` |
-| Shrunk jar | `[application] assembly = "shrink"` | `jk assembly` / `jk build` (R8; size labels) |
-| Spring Boot jar | spring-boot plugin | `jk build` (not `assembly`) |
-| Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not `assembly`) |
-| Grails jar (Boot layout) | grails plugin | `jk build` (not `assembly`) |
+| Assembly jar (`target/<name>-<version>-all.jar`) | `[application] assembly = true` | `jk assemble` / `jk build` |
+| Shrunk jar | `[application] assembly = "shrink"` | `jk assemble` / `jk build` (R8; size labels) |
+| Spring Boot jar | spring-boot plugin | `jk build` (not assembly packaging) |
+| Quarkus fast-jar / uber-jar | `[quarkus]` (+ optional `package`) | `jk build` (augment; not assembly packaging) |
+| Grails jar (Boot layout) | grails plugin | `jk build` (not assembly packaging) |
 
-One-off without editing `jk.toml`: `jk assembly --fat` or `jk assembly --shrink`. Persist with
+One-off without editing `jk.toml`: `jk assemble --fat` or `jk assemble --shrink`. Persist with
 `--write-config` (surgical edit of `assembly` only). See [features/packaging.md](features/packaging.md).
 
 Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-info.class`):
@@ -428,7 +431,7 @@ Assembly merge/exclude rules (SPI, Spring META-INF, drop signatures / `module-in
 ```toml
 [application]
 main = "com.example.App"
-assembly = true       # fat jar — jk assembly / jk assemble
+assembly = true       # fat jar — jk assemble (or jk build)
 # assembly = "shrink" # R8 small fat jar — same commands
 ```
 
@@ -466,7 +469,7 @@ jk update --platform=floor   # opt-in soft BOM pins for this re-resolve (see pla
 jk export bom                # freeze lock scope as a Maven BOM POM
 jk compile                   # type-check
 jk build                     # package (thin, assembly, shrink, Boot, Quarkus, …)
-jk assembly                  # assembly/shrink jar (alias: assemble; or --fat/--shrink)
+jk assemble                  # assembly/shrink jar (alias: assembly; or --fat/--shrink)
 jk release                   # local ship layout (alias: dist) — build + workers + target/dist
 jk test
 jk run -- args…              # at workspace root: runs the module with [application] main
@@ -513,7 +516,8 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
 - Every line includes `"schema":1`, `"ts"`, `"type"`. Schema stays **1** until jk 1.0 (no pre-release
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
-- Session log (same JSONL shape, live append) lands in `target/.jk-cli/<ts>/details.jsonl`
+- Session log (same JSONL shape, live append) lands in the project run dir under
+  `~/.jk/state/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
   (below). Deep timings: `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
@@ -533,20 +537,53 @@ jk self setup-terminal --no-nerd   # force off
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
 
+Global CLI prefs live in the **`[config]`** table of `~/.jk/config.toml` and/or project
+`jk.toml` (CLI flags and `JK_*` env win). Precedence: **flag > env > project > machine**.
+
+```toml
+# ~/.jk/config.toml or project jk.toml
+[config]
+color = "auto"          # auto | always | never   (also JK_COLOR / NO_COLOR)
+offline = false
+quiet = false
+verbose = false
+no-progress = false     # hide bars/spinners; also suppresses build notifications
+no-ansi = false         # ASCII-only; implies no-progress
+no-osc = false          # no window title, taskbar progress, or desktop notifications
+notify = "auto"         # auto | always | never   (booleans: true=always, false=never)
+force = false
+# directory = "/path"   # optional default -C
+```
+
+| Setting | CLI | Env |
+|---------|-----|-----|
+| `color` | `--color` | `JK_COLOR`, `NO_COLOR` |
+| `no-progress` | `--no-progress` | `JK_NO_PROGRESS` |
+| `no-ansi` | `--no-ansi` | `JK_NO_ANSI` |
+| `no-osc` | `--no-osc` | `JK_NO_OSC` |
+| `notify` | `--notify` / `--no-notify` | `JK_NOTIFY` |
+| `quiet` / `verbose` / `offline` / `force` | `-q` / `-v` / `--offline` / `-F` | `JK_QUIET` / `JK_VERBOSE` / `JK_OFFLINE` / `JK_FORCE` |
+
+**`notify`:** `auto` (default) sends an OSC desktop notification when a build’s ETA **or**
+elapsed time is ≥ 1 minute; `always`/`true` always notifies; `never`/`false` never does.
+`--no-progress` and `--no-osc` also suppress notifications.
+
 ### Session transcripts (`details.jsonl`)
 
 `jk build` and `jk test` write a **live** JSONL session log by default (same event shape as
-`--output json`/`jsonl`):
+`--output json`/`jsonl`) into the project run directory:
 
 ```text
-target/.jk-cli/<yyyy-MM-dd'T'HHmmss.SSSZ>/details.jsonl
+~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
-One JSON object per line (`schema: 1`), appended as events arrive — safe to `tail -F` mid-run.
-Lines carry an aggregate `progress` percent (0–100) matching the human bar. Opens with
-`session-start`, ends with `session-finish` (`exit`, duration, optional wedge/modules). The
-terminal stays terse; with `-v` / `--verbose`, jk prints `Details: <path>` when the session
-opens (and again at finish).
+Alongside `record.json` and `metrics.toml` for that run (directory name is the project build
+number, e.g. `27`). One JSON object per line (`schema: 1`),
+appended as events arrive — safe to `tail -F` mid-run. Includes **jid** (cancel handle),
+**buildNumber**, and **etaMs** when known (from engine `job-start`) so an agent can diagnose
+the run from this file alone. Lines carry an aggregate `progress` percent (0–100) matching the
+human bar. Opens with `session-start`, a `job` meta line after admit, and ends with
+`session-finish`. With `-v` / `--verbose`, jk prints `Details: <path>` when the path is known.
 
 Writing is best-effort: a missing project, full disk, or permission error never fails the
 user command. Disable with `JK_CLI_DETAILS=off` (or `0`). See [machine-output.md](machine-output.md)
@@ -600,15 +637,15 @@ exist — for example `integration/src/` or `src/integration/java`.
 
 ```bash
 jk test                           # default suite ("test") only
-jk test --suite integration       # only that suite
-jk test --suite test --suite integration
+jk test --suite integration       # only that suite (-s is the short form)
+jk test -s test -s integration
 jk test --all                     # every discovered suite
 jk test --exclude-tag slow        # JUnit Platform tags (repeatable)
 jk test --include-tag smoke
 jk test --all --exclude-tag bench
 ```
 
-`--all` and `--suite` cannot be combined. Unknown suite names error with the available list.
+`--all` and `--suite`/`-s` cannot be combined. Unknown suite names error with the available list.
 
 Declarative defaults (CLI wins when you pass tags):
 
@@ -622,7 +659,7 @@ exclude-tags = ["bench"]
 include-tags = []   # optional
 ```
 
-`--profile` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
+`--profile`/`-p` (and CI auto-profile `ci`) merges profile tag filters. Suites and tags are part of
 the test stamp: changing selection re-runs tests even if sources are unchanged.
 
 ## Quality (format + lint)
@@ -649,15 +686,17 @@ We deliberately do **not** ship Mill’s full lint matrix as first-party plugins
 
 ### Why did this rebuild?
 
-Use **`jk explain`** (alias **`why-rebuilt`**) — offline, no network. It forecasts cache
-hit/miss per module and step (sources changed, dependency changed, options/classpath, lock
-stale). Prefer this over Gradle build scans for day-to-day rebuild questions.
+Use **`jk explain`**. It forecasts cache hit/miss per module and step (sources changed,
+dependency changed, options/classpath). When the lock is missing or stale it refreshes it first
+(same as `jk build`) so the plan and ETA match the live build countdown; a CommandWedge spinner
+shows while locking. Automatic refreshes are conservative — pinned versions stay put; only
+`jk lock` / `jk update` float to latest. Prefer this over Gradle build scans for day-to-day
+rebuild questions.
 
 ```bash
 jk explain                   # full plan: cached vs rebuild sections + ETA
-jk why-rebuilt               # same command (migration alias)
 jk explain --verbose         # expand every step
-jk explain --rebuild         # global flag: forecast full rebuild ETA (same as `jk build --rebuild`)
+jk explain --redo            # global flag: forecast full rebuild ETA (same as `jk build --redo`)
 
 # Module dependency DAG (no engine)
 jk explain --graph dot > modules.dot
@@ -859,13 +898,21 @@ Monorepo tip: rebuild or retest only what you need:
 jk build --affected-since=origin/main
 jk test --affected-since=origin/main
 
-# Explicit module selectors (comma list, globs, braces)
-jk build --modules api,worker
-jk test --modules 'libs/*'
-jk explain --modules '{api,worker}'
+# Explicit module selectors (comma list, globs, braces); -m is the short flag
+jk build -m api,worker
+jk test -m 'libs/*'
+jk explain -m '{api,worker}'
+
+# Selectors also accept [project] names and Gradle-style colon paths
+jk build -m jk-engine
+jk build -m :server:engine
+
+# The same -m/--modules and --affected-since flags work across the build family:
+# build, test, explain, native, compile, image, show, tasks, inspect.
+# jk native -m compiles only the selection to native; prereqs build to jars.
 
 # Intersection when both flags set
-jk build --modules 'libs/*' --affected-since=origin/main
+jk build -m 'libs/*' --affected-since=origin/main
 
 # CI prepare → run (writes .jk/selective-plan.json with content hashes)
 jk selective prepare --since=origin/main
@@ -874,7 +921,7 @@ jk selective resolve --modules 'api,worker'   # dry list
 ```
 
 `prepare` records per-module content fingerprints (`jk.toml` + `src/**`). A later
-`selective run` without `--force`/`--rebuild` skips modules that still match (prints
+`selective run` without `--force`/`--redo` skips modules that still match (prints
 “nothing changed” when the whole plan is clean). Hashes are content-based (not absolute
 paths) so plans are shareable when trees match. Generated/`target` trees are not fingerprinted.
 
