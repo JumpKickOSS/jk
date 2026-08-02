@@ -1444,7 +1444,8 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
             if (remaining <= 0) {
                 h.append(Theme.colorize("+" + fmtClock(-remaining), t.warning()));
             } else {
-                h.append(Theme.colorize("ETA ", dim)).append(Theme.colorize(fmtClock(remaining), t.blue()));
+                h.append(Theme.colorize("ETA ", dim.italic()))
+                        .append(Theme.colorize(fmtClock(remaining), t.blue()));
             }
         } else {
             h.append(Theme.colorize("+" + fmtClock(elapsedMillis), t.warning()));

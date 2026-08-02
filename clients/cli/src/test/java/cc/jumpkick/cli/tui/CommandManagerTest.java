@@ -381,7 +381,7 @@ class CommandManagerTest {
         down.setEtaEstimate(60_000);
         String downHeader = down.renderPipelineLines(120, 4_000).get(0);
         assertThat(TestAnsi.strip(downHeader)).contains("ETA 56s");
-        assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray()));
+        assertThat(downHeader).contains(Theme.colorize("ETA ", t.darkGray().italic()));
         assertThat(downHeader).contains(Theme.colorize("56s", t.blue()));
         assertThat(downHeader).doesNotContain(Theme.colorize("56s", t.warning()));
 
