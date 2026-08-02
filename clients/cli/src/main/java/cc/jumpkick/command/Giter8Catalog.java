@@ -28,7 +28,7 @@ import java.util.stream.Stream;
  * <li>Classpath resource tree {@code giter8/&lt;name&gt;/} bundled in the CLI jar
  * </ol>
  *
- * <p>Git/HTTPS remotes remain.
+ * <p>Git/HTTPS remotes: {@link Giter8Git} (JK-1203).
  */
 public final class Giter8Catalog {
 
@@ -37,7 +37,7 @@ public final class Giter8Catalog {
 
     static {
         DESCRIPTIONS.put("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)");
-        DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable");
+        DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
         DESCRIPTIONS.put("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)");
     }
 

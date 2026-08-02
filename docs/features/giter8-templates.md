@@ -29,9 +29,9 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — catalog entry (`java-cli`, `quarkus`, …) | **Shipped** locally (JK-1183/1188) |
-| 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | Deferred (JK-1203) |
-| 4 | **Full git/HTTPS URI** — optional `#branch` / `@tag` | Deferred (JK-1203) |
+| 2 | **Short name** — catalog entry (`java-cli`, `kotlin-cli`, `quarkus`, …) | **Shipped** (JK-1183) |
+| 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
+| 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 
 Invalid refs fail before any files are written.
 
@@ -47,13 +47,16 @@ When `<ref>` is a known short name (not a path):
 | Name | Intent |
 |------|--------|
 | `java-cli` | Simple Java 25 executable (Mill SIMPLE layout) |
-| `kotlin-cli` | Catalog entry reserved; template may land with JK-1183 |
+| `kotlin-cli` | Simple Kotlin executable (Mill SIMPLE layout) |
 | `quarkus` | Quarkus 3.x REST app (`[quarkus]` plugin, plain `Application` main, `@QuarkusTest`) |
 
 ```bash
 jk new --template quarkus my-api
 jk new --template java-cli my-tool
+jk new --template kotlin-cli my-kt
 jk new --template /path/to/local.g8 other
+jk new --template owner/cool-g8 my-app          # GitHub shorthand (JK-1203)
+jk new --template https://github.com/org/t.g8.git#main
 ```
 
 ## Props
@@ -69,7 +72,7 @@ jk new --template /path/to/local.g8 other
 | Constraint | Shipped today | Longer-term design |
 |------------|---------------|--------------------|
 | Native Graal CLI stays thin | **Pure-Java** `$key$` apply on the client (`Giter8LocalApply`) — no full Giter8 library | Optional engine-hosted worker for full Giter8 |
-| Template apply | Local path + catalog short name + classpath bundle | Git clone into `~/.jk/cache/templates/` (JK-1203) |
+| Template apply | Local path + short name + classpath + **git clone** into `~/.jk/cache/templates/` | Full Giter8 conditionals/includes |
 | Conditionals / includes | Not supported | If/when full Giter8 worker lands |
 
 Monorepo sources: `templates/<name>.g8/` (dogfood) and

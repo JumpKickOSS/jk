@@ -129,11 +129,35 @@ public final class NewJkBuildRenderer {
     private static Map<String, List<NewScaffolder.CuratedEntry>> resolvePicks(List<String> deps) {
         Map<String, Map<String, NewScaffolder.CuratedEntry>> byScope = new LinkedHashMap<>();
         for (var id : deps) {
-            var entries = NewScaffolder.CURATED_DEPS.get(id);
-            if (entries == null) continue;
-            for (var e : entries) {
-                String shortName = e.coord().substring(e.coord().indexOf(':') + 1);
-                byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>()).putIfAbsent(shortName, e);
+            if (id == null || id.isBlank()) continue;
+            var curated = NewScaffolder.CURATED_DEPS.get(id);
+            if (curated != null) {
+                for (var e : curated) {
+                    String shortName = e.coord().substring(e.coord().indexOf(':') + 1);
+                    byScope.computeIfAbsent(e.scope(), _ -> new LinkedHashMap<>()).putIfAbsent(shortName, e);
+                }
+                continue;
+            }
+            // Library catalog short name → main dep floating to latest (JK-1197).
+            var hit = LibraryCatalog.bundled().lookup(id.strip()).orElse(null);
+            if (hit != null) {
+                String coord = hit.group() + ":" + hit.artifact();
+                byScope.computeIfAbsent("main", _ -> new LinkedHashMap<>())
+                        .putIfAbsent(hit.artifact(), new NewScaffolder.CuratedEntry(coord, "latest", "main"));
+                continue;
+            }
+            // Free-form group:artifact or group:artifact:version
+            String raw = id.strip();
+            String[] parts = raw.split(":");
+            if (parts.length == 2 || parts.length == 3) {
+                String group = parts[0].strip();
+                String artifact = parts[1].strip();
+                String version = parts.length == 3 ? parts[2].strip() : "latest";
+                if (!group.isEmpty() && !artifact.isEmpty()) {
+                    byScope.computeIfAbsent("main", _ -> new LinkedHashMap<>())
+                            .putIfAbsent(
+                                    artifact, new NewScaffolder.CuratedEntry(group + ":" + artifact, version, "main"));
+                }
             }
         }
         Map<String, List<NewScaffolder.CuratedEntry>> out = new LinkedHashMap<>();

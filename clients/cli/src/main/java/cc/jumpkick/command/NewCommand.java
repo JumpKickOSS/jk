@@ -9,6 +9,7 @@ import cc.jumpkick.cli.tui.Answers;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
+import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
@@ -27,7 +28,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -75,7 +75,7 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value(
                         "<ref>",
-                        "Giter8-style template: local path (remote/git short names not yet supported).",
+                        "Giter8 template: local path, catalog short name, owner/repo, or git URL.",
                         "--template"),
                 Opt.value("<k=v>", "Template property override (repeatable; with --template).", "--param")
                         .repeat(),
@@ -269,8 +269,7 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path|short-name>} + catalog short names.
-     * Git/HTTPS remotes remain.
+     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} (JK-1182 / JK-1203).
      */
     private int runTemplatePipeline(Path cwd) {
         if (spring || grails || quarkus || plugin) {
@@ -293,6 +292,8 @@ public final class NewCommand implements CliCommand {
                 var shortResolved = Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch);
                 if (shortResolved.isPresent()) {
                     template = shortResolved.get();
+                } else if (Giter8Git.looksRemote(templateRef)) {
+                    template = Giter8Git.fetch(templateRef, Giter8Git.defaultCacheRoot());
                 } else {
                     String known =
                             String.join(", ", Giter8Catalog.descriptions().keySet());
@@ -305,7 +306,7 @@ public final class NewCommand implements CliCommand {
                                                     ? " (short name not in local catalog; known: "
                                                             + known
                                                             + "; see docs/features/giter8-templates.md)"
-                                                    : " (git/HTTPS remotes not implemented yet — see docs/features/giter8-templates.md)")));
+                                                    : " (use a path, catalog short name, owner/repo, or git URL — see docs/features/giter8-templates.md)")));
                     return Exit.USAGE;
                 }
             } catch (IOException e) {
@@ -1061,17 +1062,26 @@ public final class NewCommand implements CliCommand {
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
-        var javaOptions = WizardStep.MultiSelectStep.vertical("javaOptions", "Include common libraries:")
-                .choice("lombok", "Lombok (boilerplate reduction)")
-                .choice("jspecify", "JSpecify (null-safety)")
+        // Type-ahead library picker (JK-1197): catalog short names + free-form GAV.
+        var librariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
+                .choicesFn(a -> libraryPickerChoices())
+                .filterable(true)
+                .customOption("group:artifact or short-name (e.g. com.google.guava:guava)")
                 .defaults(java.util.Set.of("lombok", "jspecify"))
                 .when(a -> "java".equals(a.get("lang")))
                 .build();
 
-        var kotlinOptions = WizardStep.MultiSelectStep.vertical("kotlinOptions", "Include common libraries:")
+        var kotlinLibrariesStep = WizardStep.MultiSelectStep.vertical("libraries", "Libraries / dependencies:")
+                .choicesFn(a -> libraryPickerChoices())
+                .filterable(true)
+                .customOption("group:artifact or short-name")
+                .defaults(java.util.Set.of("kotest"))
+                .when(a -> "kotlin".equals(a.get("lang")))
+                .build();
+
+        var kotlinOptions = WizardStep.MultiSelectStep.vertical("kotlinOptions", "Kotlin options:")
                 .choice("module", "Set module name")
-                .choice("kotest", "Kotest (unit testing)")
-                .defaults(java.util.Set.of("module", "kotest"))
+                .defaults(java.util.Set.of("module"))
                 .when(a -> "kotlin".equals(a.get("lang")))
                 .build();
 
@@ -1175,9 +1185,28 @@ public final class NewCommand implements CliCommand {
                 .step(jdkStep.build())
                 .step(javaLayoutStep)
                 .step(kotlinLayoutStep)
-                .step(javaOptions)
+                .step(librariesStep)
+                .step(kotlinLibrariesStep)
                 .step(kotlinOptions)
                 .build();
+    }
+
+    /** Catalog short names as multi-select choices (bundled offline; type-to-filter in the wizard). */
+    static List<cc.jumpkick.cli.tui.Choice> libraryPickerChoices() {
+        var out = new ArrayList<cc.jumpkick.cli.tui.Choice>();
+        // Prefer curated scaffold ids first (stable defaults for new projects).
+        for (String id : CURATED_IDS) {
+            if (NewScaffolder.CURATED_DEPS.containsKey(id) || LibraryCatalog.bundled().lookup(id).isPresent()) {
+                out.add(new cc.jumpkick.cli.tui.Choice(id, id, "curated"));
+            }
+        }
+        for (String name : LibraryCatalog.bundled().names()) {
+            if (CURATED_IDS.contains(name)) continue;
+            var mod = LibraryCatalog.bundled().lookup(name).orElse(null);
+            String hint = mod == null ? "" : mod.group() + ":" + mod.artifact();
+            out.add(new cc.jumpkick.cli.tui.Choice(name, name, hint));
+        }
+        return out;
     }
 
     /**
@@ -1285,17 +1314,12 @@ public final class NewCommand implements CliCommand {
         String resolvedLayout =
                 answers.has("layout") && !answers.get("layout").isBlank() ? answers.get("layout") : "simple";
         Optional<String> resolvedKotlinModule = Optional.empty();
-        var deps = new ArrayList<String>();
-        if (resolvedLang == NewInputs.Language.JAVA) {
-            var javaOpts = answers.getList("javaOptions");
-            if (javaOpts.contains("lombok")) deps.add("lombok");
-            if (javaOpts.contains("jspecify")) deps.add("jspecify");
-        } else {
+        var deps = new ArrayList<String>(answers.getList("libraries"));
+        if (resolvedLang == NewInputs.Language.KOTLIN) {
             var kotlinOpts = answers.getList("kotlinOptions");
             if (kotlinOpts.contains("module")) {
                 resolvedKotlinModule = Optional.of(resolvedName);
             }
-            if (kotlinOpts.contains("kotest")) deps.add("kotest");
         }
 
         var resolvedMain = isExecutable
@@ -1348,8 +1372,6 @@ public final class NewCommand implements CliCommand {
                 cc.jumpkick.cli.tui.Glyphs.CHECK, chipCommand, nerdfont, message);
     }
 
-    // Suppress unused warning for the import we keep for clarity.
-    @SuppressWarnings("unused")
     private static final List<String> CURATED_IDS =
-            Arrays.asList("lombok", "jspecify", "kotest", "commons-lang", "commons-io", "guava");
+            List.of("lombok", "jspecify", "kotest", "commons-lang", "commons-io", "guava");
 }

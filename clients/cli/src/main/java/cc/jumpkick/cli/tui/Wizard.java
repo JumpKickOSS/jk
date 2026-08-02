@@ -421,7 +421,7 @@ public final class Wizard {
                 // stored list so selection order — including the appended
                 // custom value — is preserved.
                 var byId = new java.util.HashMap<String, String>();
-                for (var c : ms.choices()) {
+                for (var c : ms.choicesFor(Answers.of(answers))) {
                     byId.put(c.id(), c.label());
                 }
                 var labels = new ArrayList<AttributedString>();
@@ -467,6 +467,8 @@ public final class Wizard {
 
         private final WizardStep step;
         private final StringBuilder input;
+        /** Type-to-filter buffer for filterable multi-select steps (JK-1197). */
+        private final StringBuilder filter = new StringBuilder();
         private int focus;
         private final LinkedHashSet<String> selected;
         private final Answers snapshot;
@@ -502,6 +504,21 @@ public final class Wizard {
                 }
                 case WizardStep.OutputStep os -> {}
             }
+        }
+
+        /** Visible multi-select rows after optional type-to-filter (JK-1197). */
+        private List<Choice> multiVisible(WizardStep.MultiSelectStep ms) {
+            List<Choice> all = ms.choicesFor(snapshot);
+            if (!ms.filterable() || filter.isEmpty()) return all;
+            String q = filter.toString().toLowerCase(java.util.Locale.ROOT);
+            var out = new ArrayList<Choice>();
+            for (var c : all) {
+                if (c.id().toLowerCase(java.util.Locale.ROOT).contains(q)
+                        || c.label().toLowerCase(java.util.Locale.ROOT).contains(q)) {
+                    out.add(c);
+                }
+            }
+            return out;
         }
 
         private static int indexOf(List<Choice> choices, String id) {
@@ -620,9 +637,11 @@ public final class Wizard {
         }
 
         private boolean handleMulti(WizardStep.MultiSelectStep ms, KeyReader.Key key) {
-            int choiceCount = ms.choices().size();
+            List<Choice> visible = multiVisible(ms);
+            int choiceCount = visible.size();
             boolean customEnabled = ms.hasCustomOption() && ms.orientation() == Orientation.VERTICAL;
             int size = choiceCount + (customEnabled ? 1 : 0);
+            if (size > 0 && focus >= size) focus = size - 1;
             boolean onCustom = customEnabled && focus == choiceCount;
             return switch (key) {
                 case KeyReader.Key.Enter e -> true;
@@ -634,11 +653,16 @@ public final class Wizard {
                     if (input.length() > 0) input.deleteCharAt(input.length() - 1);
                     yield false;
                 }
+                case KeyReader.Key.Backspace b when ms.filterable() && !onCustom && filter.length() > 0 -> {
+                    filter.deleteCharAt(filter.length() - 1);
+                    focus = 0;
+                    yield false;
+                }
                 case KeyReader.Key.Space s -> {
                     if (onCustom) {
                         input.append(' ');
-                    } else {
-                        var c = ms.choices().get(focus);
+                    } else if (!visible.isEmpty()) {
+                        var c = visible.get(focus);
                         if (!selected.add(c.id())) {
                             selected.remove(c.id());
                         }
@@ -648,11 +672,16 @@ public final class Wizard {
                 case KeyReader.Key.Char(char ch) -> {
                     if (onCustom) {
                         input.append(ch);
+                    } else if (ms.filterable()) {
+                        // Type-to-filter (JK-1197); do not hijack 'a' for select-all.
+                        filter.append(ch);
+                        focus = 0;
                     } else if (ch == 'a') {
-                        if (selected.size() == choiceCount) {
+                        List<Choice> all = ms.choicesFor(snapshot);
+                        if (selected.size() == all.size()) {
                             selected.clear();
                         } else {
-                            for (var c : ms.choices()) {
+                            for (var c : all) {
                                 selected.add(c.id());
                             }
                         }
@@ -681,7 +710,7 @@ public final class Wizard {
                 }
                 case WizardStep.MultiSelectStep ms -> {
                     var ordered = new ArrayList<String>();
-                    for (var c : ms.choices()) {
+                    for (var c : ms.choicesFor(snapshot)) {
                         if (selected.contains(c.id())) {
                             ordered.add(c.id());
                         }
@@ -817,9 +846,27 @@ public final class Wizard {
 
         private List<AttributedString> renderMulti(WizardStep.MultiSelectStep ms) {
             var lines = new ArrayList<AttributedString>();
+            List<Choice> visible = multiVisible(ms);
+            if (ms.filterable() && ms.orientation() == Orientation.VERTICAL) {
+                var fsb = new AttributedStringBuilder()
+                        .append("filter: ", Theme.active().darkGray())
+                        .append(
+                                filter.length() == 0 ? "(type to search)" : filter.toString(),
+                                filter.length() == 0
+                                        ? Theme.active().darkGray().italic()
+                                        : Theme.active().focused());
+                if (!selected.isEmpty()) {
+                    fsb.append("  ·  ", Theme.active().darkGray())
+                            .append(selected.size() + " selected", Theme.active().completedStep());
+                }
+                lines.add(fsb.toAttributedString());
+            }
             if (ms.orientation() == Orientation.VERTICAL) {
-                for (var i = 0; i < ms.choices().size(); i++) {
-                    var c = ms.choices().get(i);
+                // Cap rows so tall catalogs stay usable under type-to-filter.
+                int maxShow = ms.filterable() ? 12 : Integer.MAX_VALUE;
+                int shown = 0;
+                for (var i = 0; i < visible.size() && shown < maxShow; i++) {
+                    var c = visible.get(i);
                     var isFocused = i == focus;
                     var isChecked = selected.contains(c.id());
                     var glyph = isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF;
@@ -841,9 +888,17 @@ public final class Wizard {
                     }
                     appendHint(sb, c.hintFor(snapshot));
                     lines.add(sb.toAttributedString());
+                    shown++;
+                }
+                if (visible.size() > maxShow) {
+                    lines.add(new AttributedStringBuilder()
+                            .append(
+                                    "  … +" + (visible.size() - maxShow) + " more (type to filter)",
+                                    Theme.active().darkGray().italic())
+                            .toAttributedString());
                 }
                 if (ms.hasCustomOption()) {
-                    var isFocused = focus == ms.choices().size();
+                    var isFocused = focus == visible.size();
                     var isChecked = input.length() > 0; // checked while it holds text
                     var glyph = isChecked ? Rail.CHECKBOX_ON : Rail.CHECKBOX_OFF;
                     var glyphStyle = isChecked
@@ -859,8 +914,8 @@ public final class Wizard {
                 }
             } else {
                 var sb = new AttributedStringBuilder();
-                for (var i = 0; i < ms.choices().size(); i++) {
-                    var c = ms.choices().get(i);
+                for (var i = 0; i < visible.size(); i++) {
+                    var c = visible.get(i);
                     var isFocused = i == focus;
                     var isChecked = selected.contains(c.id());
                     var glyphStyle = isChecked
@@ -875,7 +930,7 @@ public final class Wizard {
                     sb.append("  ");
                     sb.append(c.label(), labelStyle);
                     appendHint(sb, c.hintFor(snapshot));
-                    if (i < ms.choices().size() - 1) {
+                    if (i < visible.size() - 1) {
                         sb.append("  ");
                     }
                 }

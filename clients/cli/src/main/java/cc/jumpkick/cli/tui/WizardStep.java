@@ -220,9 +220,11 @@ public sealed interface WizardStep
             String key,
             String prompt,
             List<Choice> choices,
+            Function<Answers, List<Choice>> choicesFn,
             Set<String> defaults,
             Orientation orientation,
             String customPlaceholder,
+            boolean filterable,
             Predicate<Answers> shouldRun)
             implements WizardStep {
 
@@ -239,6 +241,11 @@ public sealed interface WizardStep
          */
         public boolean hasCustomOption() {
             return !customPlaceholder.isEmpty();
+        }
+
+        /** Dynamic choice list when {@code choicesFn} was set; otherwise static {@code choices}. */
+        public List<Choice> choicesFor(Answers answers) {
+            return choicesFn != null ? List.copyOf(choicesFn.apply(answers)) : choices;
         }
 
         public static Builder horizontal(String key, String prompt) {
@@ -258,8 +265,10 @@ public sealed interface WizardStep
             private final String prompt;
             private final Orientation orientation;
             private final List<Choice> choices = new ArrayList<>();
+            private Function<Answers, List<Choice>> choicesFn;
             private final Set<String> defaults = new LinkedHashSet<>();
             private String customPlaceholder = "";
+            private boolean filterable;
             private Predicate<Answers> shouldRun = ALWAYS;
 
             private Builder(String key, String prompt, Orientation orientation) {
@@ -289,6 +298,14 @@ public sealed interface WizardStep
                 return this;
             }
 
+            /**
+             * Dynamic choices from prior answers / live catalog (wins over static {@code .choice()}).
+             */
+            public Builder choicesFn(Function<Answers, List<Choice>> fn) {
+                this.choicesFn = fn;
+                return this;
+            }
+
             public Builder defaults(Set<String> defaults) {
                 this.defaults.clear();
                 this.defaults.addAll(defaults);
@@ -305,13 +322,23 @@ public sealed interface WizardStep
                 return this;
             }
 
+            /**
+             * Type-to-filter the choice list (vertical). Characters edit a filter line; Space still
+             * toggles the focused row (JK-1197 library picker).
+             */
+            public Builder filterable(boolean filterable) {
+                this.filterable = filterable;
+                return this;
+            }
+
             public Builder when(Predicate<Answers> shouldRun) {
                 this.shouldRun = shouldRun;
                 return this;
             }
 
             public MultiSelectStep build() {
-                return new MultiSelectStep(key, prompt, choices, defaults, orientation, customPlaceholder, shouldRun);
+                return new MultiSelectStep(
+                        key, prompt, choices, choicesFn, defaults, orientation, customPlaceholder, filterable, shouldRun);
             }
         }
     }

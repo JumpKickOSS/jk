@@ -12,10 +12,11 @@ import org.junit.jupiter.api.io.TempDir;
 class Giter8CatalogTest {
 
     @Test
-    void short_names_include_quarkus_and_java_cli() {
-        assertThat(Giter8Catalog.descriptions()).containsKeys("quarkus", "java-cli");
+    void short_names_include_quarkus_java_and_kotlin_cli() {
+        assertThat(Giter8Catalog.descriptions()).containsKeys("quarkus", "java-cli", "kotlin-cli");
         assertThat(Giter8Catalog.isShortName("quarkus")).isTrue();
         assertThat(Giter8Catalog.isShortName("java-cli")).isTrue();
+        assertThat(Giter8Catalog.isShortName("kotlin-cli")).isTrue();
         assertThat(Giter8Catalog.isShortName("../x")).isFalse();
         assertThat(Giter8Catalog.isShortName("owner/repo")).isFalse();
     }
