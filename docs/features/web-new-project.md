@@ -2,8 +2,9 @@
 
 ## Status
 
-**Design frozen; engine RPC not yet wired.** CLI scaffolding (`jk new` / Giter8 host JK-1182+)
-is the source of truth. Web should call the same backend — no second scaffolder.
+**Implemented (JK-1193).** Engine `POST /api/projects` + `GET /api/templates`; dashboard
+**New project** modal. Scaffold path is shared with CLI via `cc.jumpkick.scaffold.NewScaffolder`
+(in `:core`). CLI `jk new` remains the full-featured entry (framework flags, remote Giter8 git).
 
 ## UX
 
@@ -32,7 +33,9 @@ jk new --template java-cli my-tool
 
 | Criterion | State |
 |-----------|--------|
-| E2E create from web | Blocked on engine RPC |
-| Template picker | Catalog short names from `Giter8Catalog` + config sources (JK-1380) |
-| Errors | dir exists, invalid name, template fetch failed |
-| Shared scaffold path | Required — extract when implementing RPC |
+| E2E create from web | **Done** — modal → `POST /api/projects` → open project + build |
+| Template picker | Short names via `GET /api/templates`; local/classpath apply on engine |
+| Errors | 400/409 with `error` message (exists, invalid name, parent outside home) |
+| Shared scaffold path | **Done** — `cc.jumpkick.scaffold.*` used by CLI + engine |
+| Framework scaffolds from web | Deferred — use CLI `jk new --spring` (clear error if attempted) |
+| Remote Giter8 short names | Engine uses local/classpath; full git resolve remains CLI (`Giter8Git`) |

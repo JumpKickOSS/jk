@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.scaffold;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -95,11 +95,11 @@ public final class Giter8LocalApply {
         return count[0];
     }
 
-    static String substitute(String input, Map<String, String> props) {
+    public static String substitute(String input, Map<String, String> props) {
         return substitute(input, props, false);
     }
 
-    static String substitute(String input, Map<String, String> props, boolean pathMode) {
+    public static String substitute(String input, Map<String, String> props, boolean pathMode) {
         Matcher m = TOKEN.matcher(input);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
@@ -115,14 +115,14 @@ public final class Giter8LocalApply {
     }
 
     /** Giter8 name normalization: lowercase, runs of non-alphanumerics collapse to '-'. */
-    static String normalize(String name) {
+    public static String normalize(String name) {
         return name.toLowerCase(java.util.Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-|-$)", "");
     }
 
     /** The template's own {@code default.properties} {@code name}, when present. */
-    static java.util.Optional<String> defaultName(Path templateRoot) {
+    public static java.util.Optional<String> defaultName(Path templateRoot) {
         Path g8 = templateRoot.resolve("src/main/g8");
         Path contentRoot = Files.isDirectory(g8) ? g8 : templateRoot;
         for (Path propsFile :

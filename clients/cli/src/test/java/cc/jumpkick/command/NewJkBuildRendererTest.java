@@ -7,6 +7,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import cc.jumpkick.scaffold.NewInputs;
+import cc.jumpkick.scaffold.NewJkBuildRenderer;
 
 class NewJkBuildRendererTest {
 

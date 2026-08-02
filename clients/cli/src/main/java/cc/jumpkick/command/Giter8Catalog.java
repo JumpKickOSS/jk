@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
+import cc.jumpkick.scaffold.Giter8LocalApply;
 
 /**
  * Giter8 short-name catalog and resolution (JK-1182 / JK-1380).

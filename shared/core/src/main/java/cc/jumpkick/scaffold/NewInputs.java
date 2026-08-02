@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.scaffold;
 
 import java.nio.file.Path;
 import java.util.List;

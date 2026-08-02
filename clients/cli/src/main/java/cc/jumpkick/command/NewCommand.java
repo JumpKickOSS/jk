@@ -33,6 +33,9 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import org.jline.terminal.Terminal;
+import cc.jumpkick.scaffold.NewInputs;
+import cc.jumpkick.scaffold.NewJkBuildRenderer;
+import cc.jumpkick.scaffold.Giter8LocalApply;
 
 /**
  * {@code jk new} — scaffold a project or workspace module (aliases: {@code init}, {@code create}).

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-package cc.jumpkick.command;
+package cc.jumpkick.scaffold;
 
 import cc.jumpkick.library.LibraryCatalog;
+import cc.jumpkick.model.ToolDefaults;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,10 +14,10 @@ public final class NewJkBuildRenderer {
      * Default Kotlin compiler version selector when language=kotlin. Floating (caret) so {@code jk
      * lock} pins it to the latest compatible release.
      */
-    private static final String DEFAULT_KOTLIN_VERSION = cc.jumpkick.kotlin.KotlinResolver.DEFAULT_VERSION;
+    private static final String DEFAULT_KOTLIN_VERSION = ToolDefaults.KOTLIN_DEFAULT_VERSION;
 
     /** Default Groovy compiler version selector when language=groovy. */
-    private static final String DEFAULT_GROOVY_VERSION = cc.jumpkick.groovy.GroovyResolver.DEFAULT_VERSION;
+    private static final String DEFAULT_GROOVY_VERSION = ToolDefaults.GROOVY_DEFAULT_VERSION;
 
     /**
      * Groovy for {@code --grails} scaffoldsGrails 8.0.0-M4's own members require a

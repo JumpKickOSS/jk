@@ -139,6 +139,8 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/metrics", this::handleMetrics);
         api.register("GET", "/api/cache", this::handleCache);
         api.register("GET", "/api/project", this::handleProject);
+        api.register("POST", "/api/projects", this::handleNewProject);
+        api.register("GET", "/api/templates", this::handleTemplates);
     }
 
     /**
@@ -668,6 +670,69 @@ public final class HttpEngineServer implements AutoCloseable {
                         .put("truncated", truncated)
                         .putStrings("dirs", subdirs)
                         .toString());
+    }
+
+    /**
+     * {@code POST /api/projects} — scaffold a new project under {@code parentDir} (JK-1193). Same
+     * {@link cc.jumpkick.scaffold.NewScaffolder} path as {@code jk new}. Body: name, parentDir,
+     * group?, lang?, layout?, template?, executable?.
+     */
+    private void handleNewProject(HttpExchange exchange) throws IOException {
+        String body = new String(exchange.getRequestBody().readNBytes(MAX_BODY_BYTES), StandardCharsets.UTF_8);
+        String name = cc.jumpkick.plugin.protocol.Jsonl.str(body, "name");
+        String parentDir = cc.jumpkick.plugin.protocol.Jsonl.str(body, "parentDir");
+        String group = cc.jumpkick.plugin.protocol.Jsonl.str(body, "group");
+        String lang = cc.jumpkick.plugin.protocol.Jsonl.str(body, "lang");
+        String layout = cc.jumpkick.plugin.protocol.Jsonl.str(body, "layout");
+        String template = cc.jumpkick.plugin.protocol.Jsonl.str(body, "template");
+        String framework = cc.jumpkick.plugin.protocol.Jsonl.str(body, "framework");
+        boolean executable = cc.jumpkick.plugin.protocol.Jsonl.bool(body, "executable", true);
+        try {
+            var result = cc.jumpkick.engine.runtime.NewProjectOps.create(
+                    new cc.jumpkick.engine.runtime.NewProjectOps.Request(
+                            name, parentDir, group, lang, layout, template, executable, framework));
+            sendJson(
+                    exchange,
+                    201,
+                    JsonOut.object()
+                            .put("path", result.path().toString())
+                            .put("dir", result.path().toString())
+                            .toString());
+        } catch (IllegalArgumentException e) {
+            sendJson(
+                    exchange, 400, JsonOut.object().put("error", e.getMessage()).toString());
+        } catch (IllegalStateException e) {
+            sendJson(
+                    exchange, 409, JsonOut.object().put("error", e.getMessage()).toString());
+        } catch (IOException e) {
+            sendJson(
+                    exchange,
+                    500,
+                    JsonOut.object()
+                            .put("error", e.getMessage() == null ? "scaffold failed" : e.getMessage())
+                            .toString());
+        }
+    }
+
+    /** {@code GET /api/templates} — short-name catalog for the new-project picker. */
+    private void handleTemplates(HttpExchange exchange) throws IOException {
+        var desc = new java.util.LinkedHashMap<String, String>();
+        desc.put("java-cli", "Simple Java executable (Mill SIMPLE layout)");
+        desc.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
+        desc.put("quarkus", "Quarkus REST application ([quarkus] plugin)");
+        // Flat list for the SPA: [{id, description}, ...]
+        var arr = new StringBuilder("[");
+        boolean first = true;
+        for (var e : desc.entrySet()) {
+            if (!first) arr.append(',');
+            first = false;
+            arr.append(JsonOut.object()
+                    .put("id", e.getKey())
+                    .put("description", e.getValue())
+                    .toString());
+        }
+        arr.append(']');
+        sendJson(exchange, 200, arr.toString());
     }
 
     /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
