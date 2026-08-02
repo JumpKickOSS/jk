@@ -388,13 +388,15 @@ public final class Wizard {
      */
     private String headerLine(Terminal terminal) {
         Theme t = Theme.active();
-        String chipStr = PipelineWedge.chip("≡", command, t.pipelineChip());
-        if (GlobalConfig.nerdfont()) {
-            // Solid right-pointer tapers the chip; subtitle is bold-white with no background.
-            String cap = Theme.colorize(Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()));
-            return chipStr + cap + " " + Theme.colorize(subtitle, t.focused());
+        if (!t.isAnsi()) {
+            return PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, command, subtitle);
         }
-        return chipStr + "  " + Theme.colorize(subtitle, t.focused());
+        boolean nerd = GlobalConfig.nerdfont();
+        // Nerd: " ≡ New " + powerline; ansi: " ≡ New  " (two trailing chip spaces).
+        return PipelineWedge.chip(Glyphs.MENU, command, t.pipelineChip(), nerd)
+                + PipelineWedge.cap(t.planBadgeColor(), nerd)
+                + " "
+                + Theme.colorize(subtitle, t.focused());
     }
 
     /** Returns the visible (print-column) length of {@code s} by stripping CSI escape sequences. */

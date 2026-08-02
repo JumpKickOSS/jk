@@ -220,15 +220,10 @@ public final class ExplainCommand implements CliCommand {
         List<BuildPlan.Module> modules = plan.modules();
         boolean all = in.isSet("verbose");
 
-        // Header: a dark royal blue (#0F4786) " ≡ Build Plan " chip, capped by a matching ▶
-        // segment arrow when nerdfont, then the build-time estimate (yellow).
-        String header = !ansi
-                ? " - Build Plan "
-                : (nerdfont
-                        ? Theme.colorize(" ≡ Build Plan ", t.planBadge())
-                                + Theme.colorize(
-                                        cc.jumpkick.cli.tui.Glyphs.SEGMENT_END_NERD, t.bright(t.planBadgeColor()))
-                        : Theme.colorize(" ≡ Build Plan ", t.planBadge()));
+        // Header: plan chip (nerd powerline / ansi two-space trail / plain " = Build Plan >")
+        // then the build-time estimate.
+        String header = cc.jumpkick.cli.tui.PipelineWedge.planChip(
+                cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
         // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
         // a pure cache verify is sub-second. Only show "unknown" when there is real
         // work but no learned timings yet.

@@ -1407,7 +1407,16 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
         // Pulse glyph: FG lerps white→chip blue; BG stays chip blue so it sits in the pill.
         AttributedStyle pulse =
                 t.withBackground(chipPulseColors[Math.floorMod(frame, chipPulseColors.length)], t.planBadgeColor());
-        if (nerdfont) {
+        if (!t.isAnsi()) {
+            // " * Build >" then bar/clock plain text.
+            h.append(PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, null));
+            if (phase1) {
+                h.append(' ').append(sl);
+            } else {
+                h.append(barStr);
+            }
+        } else if (nerdfont) {
+            // " {●} {name} " + powerline
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
                     .append(Theme.colorize(" ", chip))
@@ -1424,10 +1433,10 @@ public final class CommandManager implements AutoCloseable, LiveRegion {
                 h.append(Theme.colorize(Glyphs.SEGMENT_END_NERD, cap)).append(barStr);
             }
         } else {
+            // " {●} {name}  " — two trailing spaces on the chip bg (no PUA).
             h.append(Theme.colorize(" ", chip))
                     .append(Theme.colorize(PULSE, pulse))
-                    .append(Theme.colorize(" " + name + " ", chip))
-                    .append(Theme.colorize(" ", chip)); // plain trailing cap space
+                    .append(Theme.colorize(" " + name + "  ", chip));
             if (phase1) {
                 h.append(' ').append(Theme.colorize(sl, t.brightWhite()));
             } else {

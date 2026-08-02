@@ -231,18 +231,24 @@ public final class Spinner implements AutoCloseable {
     static String renderWedgeFrame(
             int frame, String command, String message, boolean nerdfont, AttributedStyle[] pulseFg) {
         Theme t = Theme.active();
+        String name = command == null ? "" : command;
+        String msg = message == null ? "" : message;
         if (!t.isAnsi()) {
-            return "* " + command + ": " + (message == null ? "" : message);
+            // " * Status > Analyzing…"
+            return PipelineWedge.plainWedge(Glyphs.PULSE_PLAIN, name, msg);
         }
         AttributedStyle chip = t.pipelineChip();
         AttributedStyle pulse = t.withBackground(pulseFg[Math.floorMod(frame, pulseFg.length)], t.planBadgeColor());
-        String name = command == null ? "" : command;
+        // Nerd: " {●} {name} " + powerline; ansi-no-nerd: " {●} {name}  " (two trailing bg spaces).
         StringBuilder h = new StringBuilder();
-        h.append(Theme.colorize(" ", chip))
-                .append(Theme.colorize(PULSE_GLYPH, pulse))
-                .append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
-        h.append(PipelineWedge.cap(t.planBadgeColor(), nerdfont));
-        h.append(' ').append(message == null ? "" : message);
+        h.append(Theme.colorize(" ", chip)).append(Theme.colorize(PULSE_GLYPH, pulse));
+        if (nerdfont) {
+            h.append(Theme.colorize(name.isEmpty() ? " " : " " + name + " ", chip));
+            h.append(PipelineWedge.cap(t.planBadgeColor(), true));
+        } else {
+            h.append(Theme.colorize(name.isEmpty() ? "  " : " " + name + "  ", chip));
+        }
+        h.append(' ').append(msg);
         return h.toString();
     }
 

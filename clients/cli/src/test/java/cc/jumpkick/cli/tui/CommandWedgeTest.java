@@ -7,7 +7,6 @@ import cc.jumpkick.cli.theme.Theme;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
-import org.jline.utils.AttributedStyle;
 import org.junit.jupiter.api.Test;
 
 class CommandWedgeTest {
@@ -19,9 +18,9 @@ class CommandWedgeTest {
         String ok = PipelineWedge.chipLine(Glyphs.CHECK, "Build", false, "done");
         String fail = PipelineWedge.failureLineCustom("Build", false, "boom");
         // Under CI (this suite), isAnsi is typically false → plain
-        if (ok.startsWith("+")) {
-            assertThat(ok).isEqualTo("+ Build: done");
-            assertThat(fail).startsWith("! Build:").contains("boom");
+        if (ok.startsWith(" +") || ok.startsWith("+")) {
+            assertThat(ok).isEqualTo(" + Build > done");
+            assertThat(fail).isEqualTo(" ! Build > boom");
         } else {
             // ANSI-enabled developer machine: still must carry command + message
             assertThat(ok).contains("Build").contains("done");
@@ -31,23 +30,19 @@ class CommandWedgeTest {
 
     @Test
     void nerd_cap_only_when_nerdfont_flag() {
-        // With ANSI on: nerdfont uses U+E0B0; plain uses a bg-colored trailing space (no PUA).
-        // Skip assertion when suite runs without ANSI (plain mode has no colored cap either way).
+        // With ANSI on: nerdfont uses U+E0B0; ansi-no-nerd uses two trailing chip spaces (no PUA).
         String nerd = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", true, "ok");
-        String plain = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
-        if (!nerd.startsWith("+")) {
+        String ansi = PipelineWedge.chipLine(Glyphs.CHECK, "Clean", false, "ok");
+        if (!nerd.contains(" > ")) {
             assertThat(nerd).contains(Glyphs.SEGMENT_END_NERD);
-            assertThat(plain).doesNotContain(Glyphs.SEGMENT_END_NERD);
-            // Plain cap is a space on the chip background (pipeline green for success).
-            String plainCap = Theme.colorize(
-                    " ",
-                    Theme.active()
-                            .withBackground(
-                                    AttributedStyle.DEFAULT, Theme.active().pipelineChipColor()));
-            assertThat(plain).contains(plainCap);
+            assertThat(ansi).doesNotContain(Glyphs.SEGMENT_END_NERD);
+            // Non-nerd chip ends with two spaces on the success chip bg (before the message).
+            String body = Theme.colorize(
+                    " " + Glyphs.CHECK + " Clean  ", Theme.active().pipelineSuccessChip());
+            assertThat(ansi).contains(body);
         }
         assertThat(nerd).contains("Clean").contains("ok");
-        assertThat(plain).contains("Clean").contains("ok");
+        assertThat(ansi).contains("Clean").contains("ok");
     }
 
     @Test

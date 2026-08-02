@@ -209,7 +209,7 @@ class SpinnerTest {
         if (cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
             assertThat(painted).contains(Spinner.PULSE_GLYPH);
         } else {
-            assertThat(painted).startsWith("* Status:");
+            assertThat(painted).isEqualTo(" * Status > Analyzing status...");
         }
         buf.reset();
         s.close();

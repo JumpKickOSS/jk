@@ -92,12 +92,7 @@ public final class CommandWedge {
      * ≡ Title} on the pipeline-blue chip. Prefer {@link BoxTable#titleBar} for full table chrome.
      */
     public static String menu(String title) {
-        Theme t = Theme.active();
-        if (!t.isAnsi()) {
-            return "= " + (title == null ? "" : title);
-        }
-        return PipelineWedge.chip(Glyphs.MENU, title == null ? "" : title, t.pipelineChip())
-                + PipelineWedge.cap(t.planBadgeColor(), GlobalConfig.nerdfont());
+        return PipelineWedge.planChip(Glyphs.MENU, title == null ? "" : title, GlobalConfig.nerdfont());
     }
 
     /** Generic chip with caller-chosen glyph. */

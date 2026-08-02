@@ -27,9 +27,9 @@ class TuiModeFixturesTest {
             String ok = CommandWedge.ok("Build", "done", false);
             String fail = CommandWedge.fail("Build", "boom", false);
             String table = BoxTable.titleBar("Installed JDKs", 40);
-            assertThat(ok).isEqualTo("+ Build: done");
-            assertThat(fail).isEqualTo("! Build: boom");
-            assertThat(table).startsWith("= Installed JDKs ").endsWith("+");
+            assertThat(ok).isEqualTo(" + Build > done");
+            assertThat(fail).isEqualTo(" ! Build > boom");
+            assertThat(table).startsWith(" = Installed JDKs > ").endsWith("+");
             assertThat(ok + fail + table).doesNotContain(CSI).doesNotContain(PUA);
             assertThat(ok + fail + table).doesNotContain(Glyphs.CHECK).doesNotContain(Glyphs.CROSS);
             return null;
@@ -65,8 +65,8 @@ class TuiModeFixturesTest {
                 Spinner.PULSE_FRAMES, cc.jumpkick.cli.theme.Theme.active().planBadgeColor());
         // Force plain path inside renderWedgeFrame via Theme — under CI isAnsi is often false already.
         String frame = Spinner.renderWedgeFrame(0, "Status", "working", false, colors);
-        if (frame.startsWith("*")) {
-            assertThat(frame).isEqualTo("* Status: working");
+        if (frame.contains("Status") && !frame.contains(CSI)) {
+            assertThat(frame).isEqualTo(" * Status > working");
             assertThat(frame).doesNotContain(Glyphs.PULSE).doesNotContain(PUA).doesNotContain(CSI);
         }
     }

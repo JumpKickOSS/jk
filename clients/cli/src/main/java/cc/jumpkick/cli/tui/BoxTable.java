@@ -34,16 +34,18 @@ public final class BoxTable {
     public static String titleBar(String title, int totalWidth) {
         String name = title == null ? "" : title;
         Theme t = Theme.active();
+        boolean nerdfont = GlobalConfig.nerdfont();
         if (!t.isAnsi()) {
-            String head = "= " + name + " ";
+            // " = Title >" then dashes to width.
+            String head = PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, name, null) + " ";
             int fill = Math.max(1, totalWidth - head.length() - 1);
             return head + "-".repeat(fill) + "+";
         }
-        boolean nerdfont = GlobalConfig.nerdfont();
         // Always blue (table chrome), never green — unlike success/play wedges.
-        String wedge = PipelineWedge.chip(Glyphs.MENU, name, t.pipelineChip())
+        // Nerd: body + one trail + PUA; ansi: body + two trails (no PUA).
+        String wedge = PipelineWedge.chip(Glyphs.MENU, name, t.pipelineChip(), nerdfont)
                 + PipelineWedge.cap(t.planBadgeColor(), nerdfont);
-        // Visible chip: " " + glyph + " " + name + " " → name.length() + 4; cap → +1.
+        // " ≡ name " + PUA (nerd) or " ≡ name  " (ansi) — both name.length()+5 visible cols
         int wedgeVisible = name.length() + 5;
         int fill = Math.max(1, totalWidth - wedgeVisible - 1); // -1 for the closing ╮
         return wedge + Theme.colorize("─".repeat(fill) + "╮", t.darkGray());
