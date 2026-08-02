@@ -40,7 +40,7 @@ public final class LibrarySearchCommand implements CliCommand {
                 Opt.flag("Group results under a heading per source layer.", "--group-by-layer"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide());
     }

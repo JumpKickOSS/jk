@@ -10,11 +10,11 @@
 #   # or:  irm https://jumpkick.build/install.ps1 | iex   (not yet)
 #
 # Environment:
-#   JK_HOME          Install home (default: $HOME\.jk)
-#   JK_INSTALL_DIR   Bin dir (default: $JK_HOME\bin)
-#   JK_NONINTERACTIVE  Non-zero to skip interactive activate prompts
+#   JK_INSTALL_DIR / JK_BIN_DIR   Bin dir (default: $HOME\.local\bin)
+#   JK_HOME                       Optional single-tree product umbrella (tests/CI)
+#   JK_NONINTERACTIVE             Non-zero to skip interactive activate prompts
 #
-# See install.sh for the Unix sibling. JK-1073.
+# See install.sh for the Unix sibling.
 
 [CmdletBinding()]
 param(
@@ -31,8 +31,14 @@ function Write-Info([string] $msg) { Write-Host "* $msg" }
 function Write-Note([string] $msg) { Write-Host "  $msg" }
 function Die([string] $msg) { Write-Error $msg; exit 1 }
 
-$JkHome = if ($env:JK_HOME) { $env:JK_HOME } else { Join-Path $HOME ".jk" }
-$InstallDir = if ($env:JK_INSTALL_DIR) { $env:JK_INSTALL_DIR } else { Join-Path $JkHome "bin" }
+# PATH entrypoints outside product data (uv-style).
+if ($env:JK_INSTALL_DIR) {
+    $InstallDir = $env:JK_INSTALL_DIR
+} elseif ($env:JK_BIN_DIR) {
+    $InstallDir = $env:JK_BIN_DIR
+} else {
+    $InstallDir = Join-Path $HOME ".local\bin"
+}
 
 if (-not $LocalPath) {
     Die @"

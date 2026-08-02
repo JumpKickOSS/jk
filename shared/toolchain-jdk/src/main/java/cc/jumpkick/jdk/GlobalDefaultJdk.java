@@ -22,7 +22,7 @@ public final class GlobalDefaultJdk {
     private static final String DEFAULT_KEY = "default-jdk";
     private static final String GRAAL_KEY = "default-graal-jdk";
     // The home path uniquely identifies WHICH install is the default, so two
-    // installs that share a vendor-major identifier (e.g. one under ~/.jk/jdks
+    // installs that share a vendor-major identifier (e.g. one under the managed JDK root
     // and one under ~/.jdks) don't both look like the default.
     private static final String DEFAULT_HOME_KEY = "default-jdk-home";
     private static final String GRAAL_HOME_KEY = "default-graal-jdk-home";

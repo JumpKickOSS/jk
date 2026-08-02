@@ -65,7 +65,7 @@ to Cloud Storage — either is fine as long as the URL layout above is public HT
 - Public key: baked into `ReleaseVerifier.BUILT_IN_KEY` (base64 X.509/SPKI).
 - Private key: GitHub Actions secret **`JK_RELEASE_SIGNING_KEY`** (PKCS#8 DER, base64).
 - Local sign: `JK_RELEASE_SIGNING_KEY=… scripts/sign-release.sh path/to/SHA256SUMS`
-- Additional host keys: `[release] trusted-keys` in `~/.jk/config.toml`.
+- Additional host keys: `[release] trusted-keys` in `~/.config/jk/config.toml`.
 
 Verification is **fail-closed** for release installs/self-update when a signature is present
 or required. Do not ship releases without `.sig` once the baked-in key is non-empty.

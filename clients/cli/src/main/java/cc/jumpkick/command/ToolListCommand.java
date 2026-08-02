@@ -33,7 +33,7 @@ public final class ToolListCommand implements CliCommand {
         return List.of(
                 Opt.value("<dir>", "Override the tool state directory. Default: $JK_STATE_DIR.", "--state-dir")
                         .hide(),
-                Opt.value("<dir>", "Override the bin directory. Default: $JK_BIN_DIR or ~/.jk/bin.", "--bin-dir")
+                Opt.value("<dir>", "Override the bin directory. Default: $JK_BIN_DIR or ~/.local/bin.", "--bin-dir")
                         .hide());
     }
 

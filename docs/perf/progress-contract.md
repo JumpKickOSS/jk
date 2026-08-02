@@ -80,7 +80,7 @@ per-module step walls for the next estimate.
 ## Learning layout (JK-1377)
 
 ```
-~/.jk/state/builds/
+~/.local/state/jk/builds/
   host-metrics.toml              # probe [calibration] + harvested [mean] host rates
   projects/<hash(coord+\0+path)>/
     identity.toml
@@ -100,7 +100,7 @@ per-module step walls for the next estimate.
 | Retention | 50 runs/project, 90 days | Harvest reaper (plus history disk budget) |
 
 **No sample rings** on aggregate files. **No** `timings.toml` / `metrics.json` / `run-numbers.json` /
-`calibration.toml` (wipe `~/.jk` is fine).
+`calibration.toml` (clearing the state dir is fine).
 
 **Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
 the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
@@ -131,7 +131,7 @@ job concurrency and a thin contention margin. Baselines/schedule are provisional
 monorepo); re-fit when multi-project OSS ports exist.
 
 **Continuous learning** folds successful-build absolute walls into trimmed-mean rings; those win
-over baselines when present. Stored in `~/.jk/state/builds/` next to step timings and metrics
+over baselines when present. Stored in `~/.local/state/jk/builds/` next to step timings and metrics
 (survives `jk clean` and cache GC):
 
 | Field | What it stands for |
@@ -151,7 +151,7 @@ over baselines when present. Stored in `~/.jk/state/builds/` next to step timing
 **Lock ETA is size-aware, not a single whole-lock average.** Bootstrap calibration does **not** run
 PubGrub or lock a real project — only a micro HTTP probe (`resolve-ms`) for network scale. Real lock
 learning is continuous: every successful `jk lock` / auto-freshen / conservative re-lock records
-atomized rates into `~/.jk/state/builds/lock-timings.toml`. Estimate:
+atomized rates into `~/.local/state/jk/builds/lock-timings.toml`. Estimate:
 
 ```
 overhead + packages × graph_per_package + packages × materialize_per_package

@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.function.Function;
 
 /**
- * Machine-scoped {@code [cache]} policy from {@code ~/.jk/config.toml} (not project-overridable).
+ * Machine-scoped {@code [cache]} policy from {@code ~/.config/jk/config.toml} (not project-overridable).
  * Precedence: {@code JK_*} env &gt; user file &gt; defaults ({@link #DEFAULTS}: auto-prune on).
  * Malformed values fall back to defaults.
  */

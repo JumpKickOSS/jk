@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Side-by-side materialized jk versions under {@code ~/.jk/versions/<v>/} (client, engine jar,
+ * Side-by-side materialized jk versions under {@code ~/.local/share/jk/versions/<v>/} (client, engine jar,
  * {@code manifest.toml}). Immutable bytes live in {@link Cas}; materialization is copy-then-atomic-
  * rename (no manifest → incomplete, ignored by readers).
  */
@@ -30,7 +30,7 @@ public final class VersionStore {
         this.root = versionsDir;
     }
 
-    /** Rooted at the live {@code ~/.jk/versions} (honors {@code JK_HOME}). */
+    /** Rooted at the live {@code ~/.local/share/jk/versions} (honors {@code JK_HOME}). */
     public static VersionStore current() {
         return new VersionStore(JkDirs.versions());
     }

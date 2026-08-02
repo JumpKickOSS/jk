@@ -241,6 +241,7 @@ class JdkInstallerTest {
         assertThat(installed.identifier()).isEqualTo("temurin-21.0.5");
         assertThat(installed.home()).isEqualTo(jdksRoot.resolve("temurin-21.0.5"));
         assertThat(installed.home().resolve("bin/java")).exists();
+        assertThat(JdkOwnership.isJkOwned(jdksRoot.resolve("temurin-21.0.5"))).isTrue();
     }
 
     @Test

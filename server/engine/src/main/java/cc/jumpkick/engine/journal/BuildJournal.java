@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 /**
  * Best-effort build history under
- * {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
+ * {@code ~/.local/state/jk/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
  * {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
  *
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a

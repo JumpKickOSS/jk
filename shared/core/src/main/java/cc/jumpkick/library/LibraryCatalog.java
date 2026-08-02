@@ -44,8 +44,8 @@ public final class LibraryCatalog {
     }
 
     /**
-     * Downloaded registry mirror: {@code ~/.jk/store/libs.global.toml} (falls back to the pre-split
-     * {@code ~/.jk/cache/} path until {@link cc.jumpkick.util.StoreMigration} moves it).
+     * Downloaded registry mirror: {@code ~/.local/share/jk/store/libs.global.toml} (falls back to the pre-split
+     * {@code ~/.cache/jk/} path until {@link cc.jumpkick.util.StoreMigration} moves it).
      */
     public static Path downloadedFile() {
         return cc.jumpkick.util.StoreMigration.resolveForRead(DOWNLOADED_BASENAME);

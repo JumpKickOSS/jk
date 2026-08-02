@@ -19,7 +19,7 @@ import java.util.stream.Stream;
  * Stable short classpaths for thin plugin/tool workers (JK-1348).
  *
  * <p>On install, each worker's main jar and runtime deps are hard-linked into {@link
- * JkDirs#lib()}{@code /&lt;id&gt;/} (default {@code ~/.jk/store/lib/&lt;id&gt;/} — same tree as
+ * JkDirs#lib()}{@code /&lt;id&gt;/} (default {@code ~/.local/share/jk/store/lib/&lt;id&gt;/} — same tree as
  * installed tools). Launch prefers those paths so {@code ps} shows compact {@code -cp
  * …/store/lib/&lt;id&gt;/…} entries instead of long CAS/repos absolute paths.
  *

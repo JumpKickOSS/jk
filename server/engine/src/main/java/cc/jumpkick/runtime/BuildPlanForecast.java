@@ -103,7 +103,7 @@ public final class BuildPlanForecast {
      * explain}'s ETA use, so the two can't drift in what they feed the effort-weight prediction.
      * The {@code jdksDir} default of {@code null} is load-bearing: it routes {@link
      * cc.jumpkick.runtime.EffortWeights#jdkWeight} through the full JDK probe chain (PATH /
-     * JAVA_HOME / GraalVM / SDKMAN / …) instead of the empty {@code ~/.jk/jdks}, so an
+     * JAVA_HOME / GraalVM / SDKMAN / …) instead of the empty {@code the managed JDK root}, so an
      * already-installed JDK predicts a zero-cost {@code ensure-jdk} rather than a phantom download.
      */
     public static BuildPipelines.Inputs inputsFor(

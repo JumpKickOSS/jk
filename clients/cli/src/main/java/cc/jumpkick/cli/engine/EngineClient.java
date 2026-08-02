@@ -1392,7 +1392,7 @@ public final class EngineClient {
     /**
      * Resolve a Maven-published CLI tool against the engine (the POM walk + jar fetches run
      * engine-side; see {@code ToolPipelines}). The launcher write / inheritIO exec stays in the calling
-     * command — it owns the user's {@code ~/.jk/bin} and terminal.
+     * command — it owns the user's {@code ~/.local/bin} and terminal.
      */
     public static ToolResolveOutcome runToolResolve(
             EnginePaths.Paths paths,
@@ -1884,7 +1884,7 @@ public final class EngineClient {
     /**
      * Which engine artifact a spawn chose. {@code EXE}: {@code path} is an executable whose {@code
      * main} IS the engine loop. {@code JAR}: {@code path} is the engine's fat jar ({@code
-     * ~/.jk/versions/<v>/lib/jk-engine.jar}), launched as {@code <managed-jdk>/bin/java … -cp <path>
+     * ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}), launched as {@code <managed-jdk>/bin/java … -cp <path>
      * cc.jumpkick.engine.EngineMain} — the engine is a plain JVM app, never a native image. There is
      * no client-binary FALLBACK: the slim client never hosts the engine.
      */
@@ -1897,7 +1897,7 @@ public final class EngineClient {
 
     /**
      * Engine artifact resolution: (a) {@code JK_ENGINE_EXE}; (b) {@code
-     * ~/.jk/versions/<v>/lib/jk-engine.jar}. Empty when neither is available (caller may download /
+     * ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}. Empty when neither is available (caller may download /
      * materialize, then retry).
      */
     static Optional<EngineArtifact> resolveEngineArtifact(String envOverride, String version) {
@@ -1952,7 +1952,7 @@ public final class EngineClient {
                                 ? "no-jdk"
                                 : jdk.version() + "|" + jdk.vendor().name());
         String hash = cc.jumpkick.util.Hashing.sha256Hex(signature.toString()).substring(0, 16);
-        // ONE home for every AOT cache — engine and workers alike live in ~/.jk/state/aot/ so a
+        // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or a future `jk cache info`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: VersionStore.prune retires a version's caches with the version, and
@@ -2115,7 +2115,7 @@ public final class EngineClient {
      *
      * <p>A daemon does not inherit the client's environment, so anything set only in the caller's shell
      * is invisible to it. That is why {@code JK_STORE_DIR} did nothing beforethe engine
-     * resolved its own {@code ~/.jk/store} regardless. Paired with the store being part of the engine
+     * resolved its own {@code ~/.local/share/jk/store} regardless. Paired with the store being part of the engine
      * identity ({@link cc.jumpkick.engine.EnginePaths}), a different store now both spawns its own
      * engine and reaches it.
      */

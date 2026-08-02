@@ -32,7 +32,7 @@ class EngineServerTest {
 
     // Unix domain socket paths are capped at ~104 bytes (macOS/BSD) / ~108 (Linux) — JUnit's
     // @TempDir nests deep enough under Gradle's build dir to blow past that. Use a short-path temp
-    // dir under the system temp root instead, mirroring the short paths ~/.jk/state/engine/ has in
+    // dir under the system temp root instead, mirroring the short paths ~/.local/state/jk/engine/ has in
     // real use.
     private final List<Path> tempDirs = new ArrayList<>();
 

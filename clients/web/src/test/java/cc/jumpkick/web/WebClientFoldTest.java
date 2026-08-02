@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
  * so Node treats it as the ES module it is.
  *
  * <p>Paths are resolved against the module root (not {@code user.dir}): workspace builds run tests
- * with the engine CWD at {@code ~/.jk/state/engine}, so bare {@code src/...} relatives miss
+ * with the engine CWD at {@code ~/.local/state/jk/engine}, so bare {@code src/...} relatives miss
  * {@code clients/web/...}. Classpath output may live under {@code <workspace>/target/clients/web/}
  * (Mill-style) rather than {@code clients/web/target/}.
  */

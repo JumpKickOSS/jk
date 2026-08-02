@@ -1,6 +1,6 @@
 # Resolve / lock I/O (JK-1088)
 
-## Measuring cold lock without wiping `~/.jk/cache`
+## Measuring cold lock without wiping `~/.cache/jk`
 
 Use an isolated CAS (works with the resident engine):
 
@@ -18,7 +18,7 @@ See [guide.md](../guide.md) (`JK_HOME` / `JK_CACHE_DIR` / `--cache-dir`).
 | Cold CAS (`--cache-dir` empty temp), pre POM-prefetch | `spring-boot-web` (90 deps) | **~52 s** |
 | Cold CAS + POM prefetch for pinned children | same | **~29 s** |
 | Cold CAS + concurrent POM/BOM expand (JK-1090) | same | **~19 s** |
-| Warm local CAS (`~/.jk/cache`) | same | **~1 s** |
+| Warm local CAS (`~/.cache/jk`) | same | **~1 s** |
 | Metadata cache wiped, POMs/jars warm | same | **~0.5–1 s** |
 
 Pre-1088 dogfood (same laptop, first-ish cache): multi-minute Spring Boot locks with sparse progress.
@@ -29,7 +29,7 @@ Pre-1088 dogfood (same laptop, first-ish cache): multi-minute Spring Boot locks 
 starters — often **200+** packages on first lock. Expect multi-minute cold materialize on a
 laptop if the CAS is empty; warm re-lock is seconds. Tips:
 
-- Prefer a warm `~/.jk/cache` (or CI cache of `repos/central/`) for dogfood/CI.
+- Prefer a warm `~/.cache/jk` (or CI cache of `repos/central/`) for dogfood/CI.
 - Engine heap defaults were raised for large BOMs; if lock thrashs, check engine memory flags
   in the guide / architecture notes.
 - Residual: further cold-materialize wall-clock work is tracked as product polish (not a

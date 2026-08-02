@@ -2302,7 +2302,7 @@ public final class BuildPipelines {
                     // Nested-engine suites (jk-cli): isolate JK_STATE_DIR so EngineTestExtension
                     // cannot kill the host engine running this test step. Sandboxed JK_HOME/JK_M2_LOCAL
                     // plus this module's [test] env — without it a forked test JVM inherits the
-                    // engine's environment and runs against the developer's real ~/.jk.
+                    // engine's environment and runs against the developer's real product layout.
                     // Nested-engine isolation layers on top and wins on any key both set.
                     Map<String, String> testEnv = new java.util.LinkedHashMap<>(
                             TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
@@ -4275,8 +4275,8 @@ public final class BuildPipelines {
 
     /**
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
-     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real {@code
-     * JK_CACHE_DIR} / {@code ~/.jk/cache} so install-local workers remain visible.
+     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real host
+     * cache so install-local workers remain visible.
      */
     static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
         Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
@@ -4287,6 +4287,7 @@ public final class BuildPipelines {
         Files.createDirectories(stateDir);
         Map<String, String> env = new LinkedHashMap<>();
         env.put("JK_HOME", jkHome.toAbsolutePath().toString());
+        env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
         // Prefer the host CAS so plugins/deps materialize once; VersionStore still uses JK_HOME.
         Path hostCache = cc.jumpkick.util.JkDirs.cache();

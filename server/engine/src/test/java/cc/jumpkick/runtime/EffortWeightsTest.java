@@ -171,7 +171,7 @@ class EffortWeightsTest {
     @Test
     void learned_prefers_module_history_then_cross_module_median_then_static(@TempDir Path cache) throws Exception {
         int staticWeight = EffortWeights.runTestsWeight(100); // 15 + 100*8 = 815
-        // Isolate from the host's real ~/.jk metrics history (dogfood pollutes defaultFile).
+        // Isolate from the host's real product layout metrics history (dogfood pollutes defaultFile).
         Path metricsFile = cache.resolve("metrics-empty.json");
         Files.writeString(metricsFile, "{}");
         BuildMetrics.clearMemo();

@@ -545,7 +545,7 @@ public final class ExecPlans {
         List<String> linkSrcs = new ArrayList<>();
         List<String> linkDests = new ArrayList<>();
 
-        // Native binary → ~/.jk/bin/<bin> directly; no launcher script.
+        // Native binary → ~/.local/bin/<bin> directly; no launcher script.
         if (project.nativeMode() == JkBuild.NativeMode.ALWAYS) {
             Path dest = binDir.resolve(bin);
             linkSrcs.add(layout.nativeBinary().toAbsolutePath().toString());
@@ -698,7 +698,7 @@ public final class ExecPlans {
     /** The project-pinned JDK when resolvable; the engine's own JVM home otherwise. */
     private static Path projectJavaHome(Path dir) {
         try {
-            return cc.jumpkick.jdk.JdkResolver.forProject(dir, JkDirs.home().resolve("jdks"))
+            return cc.jumpkick.jdk.JdkResolver.forProject(dir, JkDirs.jdks())
                     .map(cc.jumpkick.jdk.InstalledJdk::home)
                     .orElseGet(JavaHomes::runningJavaHome);
         } catch (IOException e) {

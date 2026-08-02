@@ -12,19 +12,20 @@ import java.util.Map;
  * whatever the module declares in {@code [test] env}.
  *
  * <p>The default matters more than the knob. A forked test JVM inherits the engine's environment, so
- * before this existed jk's own suite ran against the developer's real {@code ~/.jk} — reading the
- * real library catalog and able to write the real local m2. jk's Gradle build redirects those per
- * module for exactly that reason, with the comment "must not leak between modules or into the user's
- * real home"; a build tool should not make every project remember to do that itself.
+ * without sandboxing it would read the developer's real product layout and write the real local m2.
+ * jk's Gradle build redirects those per module for exactly that reason.
  *
- * <p>So {@code JK_HOME} and {@code JK_M2_LOCAL} point at throwaway directories under the module's
- * build output unless the module says otherwise. Anything a suite genuinely needs from the real
- * environment it can name explicitly — the sandbox is a default, not a wall.
+ * <p>So {@code JK_HOME}, {@code JK_JDKS_DIR}, and {@code JK_M2_LOCAL} point at throwaway directories
+ * under the module's build output unless the module says otherwise. Anything a suite genuinely needs
+ * from the real environment it can name explicitly — the sandbox is a default, not a wall.
  */
 public final class TestEnv {
 
-    /** {@code jk}'s own home, and the local m2 derived from it — the two that hold real user state. */
+    /** Product single-tree umbrella (config, cache, store, state, …). */
     static final String JK_HOME = "JK_HOME";
+
+    /** Managed JDK write root — not relocated by {@code JK_HOME} alone. */
+    static final String JK_JDKS_DIR = "JK_JDKS_DIR";
 
     static final String JK_M2_LOCAL = "JK_M2_LOCAL";
 
@@ -46,7 +47,9 @@ public final class TestEnv {
         Path target = layout.moduleTargetDir();
         Map<String, String> out = new LinkedHashMap<>();
         // Sandbox first so a declared value replaces it.
-        out.put(JK_HOME, target.resolve("test-jk-home").toAbsolutePath().toString());
+        Path sandboxHome = target.resolve("test-jk-home").toAbsolutePath();
+        out.put(JK_HOME, sandboxHome.toString());
+        out.put(JK_JDKS_DIR, sandboxHome.resolve("jdks").toString());
         out.put(JK_M2_LOCAL, target.resolve("test-m2").toAbsolutePath().toString());
         for (Map.Entry<String, String> e : project.build().testEnv().entrySet()) {
             String withPaths = expand(e.getValue(), moduleDir, target);

@@ -22,7 +22,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /**
- * {@code jk self} — self-update: download a verified release into {@code ~/.jk/versions/<v>/},
+ * {@code jk self} — self-update: download a verified release into {@code ~/.local/share/jk/versions/<v>/},
  * flip {@code bin/jk}, start the new engine (graceful drain). {@code --now} stops the old engine
  * first.
  */
@@ -45,7 +45,7 @@ public final class SelfCommand extends GroupCommand {
 
     /**
      * {@code jk self setup-terminal} — detect Nerd Font capability and persist {@code
-     * [global].nerdfont} in {@code ~/.jk/config.toml}. Also invoked from install.sh.
+     * [global].nerdfont} in {@code ~/.config/jk/config.toml}. Also invoked from install.sh.
      */
     static final class SetupTerminalSub implements CliCommand {
 
@@ -56,7 +56,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Detect terminal/Nerd Font support and write [global].nerdfont in ~/.jk/config.toml";
+            return "Detect terminal/Nerd Font support and write [global].nerdfont in ~/.config/jk/config.toml";
         }
 
         @Override
@@ -288,12 +288,11 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * Flip {@code ~/.jk/bin/jk} to the materialized client; {@code jkx} follows. Pointer
-         * strategy is a ladder: symlink (POSIX; on Windows it needs Developer Mode /
-         * SeCreateSymbolicLinkPrivilege) → hard link (NTFS allows it unprivileged, same-volume
-         * only — bin/ and versions/ share ~/.jk — and it costs zero disk) → byte copy (last
-         * resort: cross-volume {@code JK_INSTALL_DIR}, FAT-family filesystems). Every rung stages
-         * at a temp sibling and renames into place, so readers never see a partial pointer.
+         * Flip PATH entrypoints under {@link JkDirs#binDir()} to the materialized client;
+         * {@code jkx} follows. Prefer a hard link (zero disk; survives deletion of the
+         * versions tree while the inode remains), then a real byte copy. Symlinks are not
+         * used: they dangle when product data is wiped and defeat the "CLI outlives state"
+         * layout. Stages at a temp sibling and renames into place.
          */
         private static void flipPointer(VersionStore.Materialized m) throws IOException {
             Path client = m.clientBin()
@@ -308,13 +307,9 @@ public final class SelfCommand extends GroupCommand {
             Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
             Files.deleteIfExists(tmp);
             try {
-                Files.createSymbolicLink(tmp, client);
-            } catch (IOException | UnsupportedOperationException noSymlink) {
-                try {
-                    Files.createLink(tmp, client);
-                } catch (IOException | UnsupportedOperationException noHardlink) {
-                    Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING);
-                }
+                Files.createLink(tmp, client);
+            } catch (IOException | UnsupportedOperationException noHardlink) {
+                Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING);
             }
             try {
                 Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);

@@ -18,7 +18,7 @@ import java.util.List;
  *
  * <p>Deliberately paired with a read fallback rather than trusted on its own. If this is interrupted
  * halfway — or the two directories turn out to be on different filesystems, or the process cannot
- * write to {@code ~/.jk} — some entries stay behind, and a build that then silently re-downloaded
+ * write to {@code JK_HOME} / platform product layout — some entries stay behind, and a build that then silently re-downloaded
  * them would trip exactly the rate limit the split exists to avoid. Callers resolve through {@link
  * #resolveForRead} so a straggler is still found where it actually is.
  */

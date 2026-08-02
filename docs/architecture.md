@@ -27,7 +27,7 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   native image.
 - **Engine** — dependency resolution, action graph, CAS, toolchains, compiler/test workers,
   hosted verbs (`build`, `test`, `lock`, `publish`, …). Default heap ceiling **256 MiB**
-  (`~/.jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
+  (`~/.config/jk/config.toml` → `[engine] max-heap-mb`, or `JK_ENGINE_MAX_HEAP_MB`).
   **Three budgets:** (1) engine heap = thin coordinator (JK-1075 measured ~36 MiB peak on a
   200-module build); (2) worker JVM heaps from free RAM via `HeapPlan`; (3) concurrency via
   **`-j` / `--jobs` / `JK_JOBS` / `[engine] jobs`** (Mill-shaped: `0`=effective cores via
@@ -45,7 +45,7 @@ How jk is structured today. For day-to-day usage see [guide.md](guide.md).
   identity hash because two invocations can share a state dir while disagreeing about where downloads
   belong; without it, `JK_STORE_DIR` silently did nothing. A machine can therefore hold several
   engines: `jk engine status` lists them, `jk engine stop --all` stops all of them.
-- **Versioning** — side-by-side installs under `~/.jk/versions/<v>/`; client and engine jar
+- **Versioning** — side-by-side installs under `~/.local/share/jk/versions/<v>/`; client and engine jar
   share a version; handshake detects skew and takes over.
 - **Liveness** — a listening socket alone is not proof the engine is healthy (ticket-1043):
 
@@ -93,8 +93,8 @@ refresh without reinstalling.
 | Source | Key |
 |---|---|
 | Env | `JK_HTTP_WEB_ROOT` (absolute path preferred) |
-| Config | `~/.jk/config.toml` → `[http] web-root` |
-| Default | `~/.jk/state/web` (relative to `JK_HOME`) |
+| Config | `~/.config/jk/config.toml` → `[http] web-root` |
+| Default | `~/.local/state/jk/web` (under the platform state dir) |
 
 Point at the worktree for UI iteration:
 
@@ -105,12 +105,12 @@ jk engine start
 # edit style.css / index.html / *.webp → hard-refresh the browser
 ```
 
-Relative `web-root` values resolve against `~/.jk`. Only files present under the root are
-overridden; anything missing still falls through to the jar.
+Relative `web-root` values resolve against the product home (data root, or `$JK_HOME` when set).
+Only files present under the root are overridden; anything missing still falls through to the jar.
 
 ### HTTP server knobs
 
-`~/.jk/config.toml`; env wins over the file (`env > file > default`):
+`~/.config/jk/config.toml`; env wins over the file (`env > file > default`):
 
 | Config key | Env | Default | Meaning |
 |---|---|---|---|
@@ -213,13 +213,13 @@ and exclusions stay GA-scoped.
 3. **Action cache** hit → restore outputs from the **CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
-**Store** (`~/.jk/store/`, or `JK_STORE_DIR`): CAS blobs under `sha256/…` plus Maven-layout
+**Store** (`~/.local/share/jk/store/`, or `JK_STORE_DIR`): CAS blobs under `sha256/…` plus Maven-layout
 views under `repos/<name>/…`. Repo materialization **hard-links** to the CAS blob when the
 filesystem allows (one allocation, no double disk) via portable NIO `Files.createLink` —
 `link(2)` on Linux/macOS, `CreateHardLinkW` on Windows NTFS (no elevation; not a symlink).
 Copy only as a fallback (FAT/exFAT, cross-volume, or providers without hard links). GC unlinks
 **both** the CAS path and matching `repos/` entries so space is reclaimed. Action-cache
-mappings live under `~/.jk/cache/`. CAS **ingest** from build outputs / `~/.m2` is copy (or
+mappings live under `~/.cache/jk/`. CAS **ingest** from build outputs / `~/.m2` is copy (or
 opt-in link for m2) so non-store trees never share identity with a hashed blob; writers inside
 the store must temp + atomic-replace, never truncate a hard-linked path in place.
 

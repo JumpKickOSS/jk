@@ -8,7 +8,7 @@ import java.nio.file.Path;
 /**
  * Durable monotonic per-project build numbers allocated at <em>request-start</em>.
  *
- * <p>Numbers live in {@code ~/.jk/state/builds/projects/&lt;key&gt;/run-number.txt}. Finish-time
+ * <p>Numbers live in {@code ~/.local/state/jk/builds/projects/&lt;key&gt;/run-number.txt}. Finish-time
  * metrics harvest must <strong>not</strong> mint a second number.
  */
 public final class BuildNumberAllocator {

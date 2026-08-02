@@ -28,7 +28,7 @@ import java.util.Set;
 /**
  * App-install pipeline used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.jk/bin}.
+ * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.local/bin}.
  */
 public final class InstallCommand {
 

@@ -17,7 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * cancelled / failed downloads never train. Outliers are dropped by trimming the top and bottom 10%
  * of samples before averaging.
  *
- * <p>Stored at {@code ~/.jk/state/builds/fetch-timings.toml} so it survives {@code jk clean}.
+ * <p>Stored at {@code ~/.local/state/jk/builds/fetch-timings.toml} so it survives {@code jk clean}.
  */
 public final class FetchTimings {
 

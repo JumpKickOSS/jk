@@ -12,7 +12,7 @@ import java.util.List;
  * cc.jumpkick.model.command.Invocation} via {@link #from(cc.jumpkick.model.command.Invocation)}.
  *
  * <p>Precedence for resolving each setting: explicit flag &gt; env var &gt; project {@code jk.toml}
- * {@code [config]} &gt; user-global {@code ~/.jk/config.toml} {@code [config]}. There is no {@code
+ * {@code [config]} &gt; user-global {@code ~/.config/jk/config.toml} {@code [config]}. There is no {@code
  * /etc/jk} system layer and jk never reads {@code ~/.config} — see {@link
  * cc.jumpkick.config.ConfigSources}.
  */

@@ -67,5 +67,6 @@ class JdkResolverTest {
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
     }
 }

@@ -13,7 +13,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Fetch remote Giter8 templates via {@code git clone} into {@code ~/.jk/cache/templates/} (JK-1203).
+ * Fetch remote Giter8 templates via {@code git clone} into {@code ~/.cache/jk/templates/} (JK-1203).
  *
  * <p>Supported refs:
  *
@@ -118,7 +118,7 @@ public final class Giter8Git {
         return Optional.empty();
     }
 
-    /** Default cache: {@code ~/.jk/cache/templates}. */
+    /** Default cache: {@code ~/.cache/jk/templates}. */
     public static Path defaultCacheRoot() {
         return Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
     }

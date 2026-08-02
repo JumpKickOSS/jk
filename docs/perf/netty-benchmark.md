@@ -21,7 +21,7 @@ not multi-hour unit suites).
 | Cold | wipe project outputs every run; **jk uses `--redo`** so CAS cannot restore classfiles; Mill wipes `out/` |
 | Warm | leave outputs; no-op rebuild |
 | Dirty | touch one `common` source; rebuild that module / dependents as the tool decides |
-| Dep caches | warm (`~/.jk` / coursier) unless noted |
+| Dep caches | warm (jk store / coursier) unless noted |
 | Workers | document `-j 1` vs default parallel separately |
 
 Shared JDK major preferred; this machine’s Mill launcher pulled **Azul 25.0.2** while PATH java is **25.0.3** (Graal/Oracle) — note on every row.

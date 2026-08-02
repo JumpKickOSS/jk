@@ -44,7 +44,7 @@ public final class CachePipelines {
 
     /**
      * Prune pipeline for the cache at {@code root}: expire stale entries, GC sidecar files, optional
-     * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code ~/.jk/tmp} only for the default
+     * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code state/tmp} only for the default
      * cache dir.
      */
     public static Pipeline prunePipeline(

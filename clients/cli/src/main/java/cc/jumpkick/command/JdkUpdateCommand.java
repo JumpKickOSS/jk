@@ -37,7 +37,7 @@ import java.util.Optional;
  * {@code jk jdk update [spec]} (alias {@code upgrade}) — refresh jk-managed JDKs to the latest
  * point release of their own family and major.
  *
- * <p>Only installs jk owns (under {@code ~/.jk/jdks}, source {@code "jk"}) are touched; SDKMAN /
+ * <p>Only installs jk owns (under {@code the managed JDK root}, source {@code "jk"}) are touched; SDKMAN /
  * IntelliJ / system / {@code $JAVA_HOME} JDKs are left alone. With no spec every managed JDK is
  * considered; a spec narrows the set with the usual flexible matcher ({@code 25} = major 25 of any
  * vendor, {@code temurin} = all Temurin, {@code temurin-25} = Temurin 25).

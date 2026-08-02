@@ -223,7 +223,7 @@ public final class CacheCommand extends GroupCommand {
             long totalBytes = s.totalBytes();
 
             // Utilization denominator: the configured LRU ceiling ([cache]
-            // max-size-gb in ~/.jk/config.toml), or the documented 20 GiB default
+            // max-size-gb in ~/.config/jk/config.toml), or the documented 20 GiB default
             // when unset, so the bar is always meaningful.
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
             long maxBytes = (long) cfg.maxSizeGb().orElse(20) * 1024L * 1024L * 1024L;

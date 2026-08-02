@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Every engine running under this {@code ~/.jk}, and the one reliable way to stop them.
+ * Every engine running under this {@code JK_HOME} / platform product layout, and the one reliable way to stop them.
  *
  * <p>There can be several. The engine identity is a hash of the state directory <em>and</em> the
  * artifact store, so one machine holds one engine per {@code (state dir, store)} pair — which is what
@@ -110,7 +110,7 @@ public final class EngineFleet {
      * alternative for the user is {@code kill}, or Task Manager on Windows.
      *
      * <p>Matching is deliberately narrow: the command line must reference {@code jk-engine.jar} <em>under
-     * this {@code ~/.jk}</em>, so another user's engine, another installation, or an unrelated JVM is never
+     * this {@code JK_HOME} / platform product layout</em>, so another user's engine, another installation, or an unrelated JVM is never
      * a candidate. AOT training sidecars are excluded — they are bounded and self-halting, and killing one
      * mid-recording would discard work for no benefit.
      */

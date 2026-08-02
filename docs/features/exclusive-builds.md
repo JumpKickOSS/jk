@@ -44,7 +44,7 @@ MVP is **engine-local** (not multi-engine / multi-host).
 ## Build numbers
 
 `BuildNumberAllocator` assigns a monotonic per-project number at **request-start** from
-`~/.jk/state/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
+`~/.local/state/jk/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
 does **not** mint a second number. The journal and SSE `request-start` carry the same `#N`.
 
 ## Durable in-flight

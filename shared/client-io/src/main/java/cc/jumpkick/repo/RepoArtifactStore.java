@@ -26,7 +26,7 @@ import java.util.stream.Stream;
  * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>materialized</em> from the CAS via
  * {@link #materialize}: a <strong>hard link</strong> to the CAS blob when the filesystem allows it
  * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
- * {@code ~/.jk/store}); writers must use temp + atomic replace, never in-place truncation of a
+ * {@code ~/.local/share/jk/store}); writers must use temp + atomic replace, never in-place truncation of a
  * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
  * for Maven/Gradle interop — see {@code project.m2install} — but that mirror is not this store and
  * is never hard-linked from the CAS by default.)

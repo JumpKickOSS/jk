@@ -16,14 +16,14 @@ public final class CommonOpts {
 
     /**
      * Download / action cache (CAS) override. Default is {@code $JK_CACHE_DIR}, else {@code
-     * $JK_HOME/cache} ({@code ~/.jk/cache}). Engine-hosted commands pass the resolved path on the
-     * wire so the resident engine uses the same tree — no need to wipe {@code ~/.jk/cache} for cold
+     * $JK_HOME/cache} ({@code ~/.cache/jk}). Engine-hosted commands pass the resolved path on the
+     * wire so the resident engine uses the same tree — no need to wipe {@code ~/.cache/jk} for cold
      * resolve tests.
      */
     public static Opt cacheDir() {
         return Opt.value(
                 "<dir>",
-                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                 "--cache-dir");
     }
 

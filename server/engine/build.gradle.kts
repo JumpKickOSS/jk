@@ -59,7 +59,7 @@ tasks.shadowJar {
 }
 
 /**
- * JK-1194: materialize the freshly-built engine fat jar into ~/.jk/versions/<v>/ and bounce the
+ * JK-1194: materialize the freshly-built engine fat jar into ~/.local/share/jk/versions/<v>/ and bounce the
  * resident daemon so local dogfood picks up engine-side first-party plugin tables without a hand
  * copy. Prefers the installDist thin client when present; falls back to PATH `jk`.
  */

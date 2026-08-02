@@ -14,12 +14,24 @@
 #                    machine's OS/arch and available extractor.
 #   JK_RELEASES_URL  Override the release site root (mirrors).
 #   JK_VERSION       Install a specific version instead of the latest.
-#   JK_INSTALL_DIR   Override the install directory (default: ~/.jk/bin).
+#   JK_INSTALL_DIR   Override the install directory (default: ~/.local/bin,
+#                    or $XDG_BIN_HOME / $JK_BIN_DIR when set).
+#   JK_BIN_DIR       Same as JK_INSTALL_DIR (product layout env).
+#   JK_HOME          Optional single-tree umbrella for product data (tests/CI).
 #
 set -euo pipefail
 
-JK_HOME="${JK_HOME:-$HOME/.jk}"
-INSTALL_DIR="${JK_INSTALL_DIR:-$JK_HOME/bin}"
+# PATH entrypoints live outside product data so wiping cache/state/data does not
+# uninstall the CLI. Prefer XDG bin / ~/.local/bin (uv-style).
+if [ -n "${JK_INSTALL_DIR:-}" ]; then
+  INSTALL_DIR="$JK_INSTALL_DIR"
+elif [ -n "${JK_BIN_DIR:-}" ]; then
+  INSTALL_DIR="$JK_BIN_DIR"
+elif [ -n "${XDG_BIN_HOME:-}" ]; then
+  INSTALL_DIR="$XDG_BIN_HOME"
+else
+  INSTALL_DIR="${HOME}/.local/bin"
+fi
 # One immutable directory per version (jk-<os>-<arch>[.xz] + jk-engine-<version>.jar
 # + SHA256SUMS); `latest/VERSION` is the only mutable pointer. The version is
 # resolved ONCE and both artifacts come from the frozen directory, so a release
@@ -172,9 +184,7 @@ info "Installing JumpKick into $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 
 JK_BIN="$INSTALL_DIR/jk"
-# A prior install leaves bin/jk as a symlink into ~/.jk/versions/<v>/ — remove
-# it first so decompress writes a fresh file instead of THROUGH the link into
-# the immutable versions tree.
+# Remove any prior pointer (symlink or file) so decompress writes a real binary.
 rm -f "$JK_BIN"
 decompress "$ARCHIVE_FILE" "$JK_BIN" \
   || die "failed to install jk"
@@ -195,9 +205,9 @@ fi
 
 # The engine ships as a single fat jar, jk-engine-<version>.jar (see
 # docs/architecture.md "Ship layout" / client+engine split; the engine is a JVM app,
-# not a second native binary). It lives ONLY in the side-by-side version layout,
-# ~/.jk/versions/<v>/lib/jk-engine.jar — materialized below for local dists;
-# download installs self-fetch it on first engine spawn.
+# not a second native binary). It lives in the side-by-side version layout under
+# the product data root (…/versions/<v>/lib/jk-engine.jar) — materialized below
+# for local dists; download installs self-fetch it on first engine spawn.
 if [ -n "$LOCAL_FILE" ]; then
   SRC_LIB="$(cd "$(dirname "$LOCAL_FILE")" && pwd)/lib"
 fi
@@ -205,12 +215,10 @@ fi
 # ---- side-by-side version layout (docs/architecture.md "Versioning") --------
 #
 # Local dist installs (binary + engine jar together) also materialize
-# ~/.jk/versions/<v>/ — through the client itself (`jk self materialize`), which
-# ingests both artifacts into the CAS first. The CAS stays the single source of
-# truth: a pruned version re-materializes from its blobs, offline. (A hand-rolled
-# shell copy here once skipped the CAS and left pruned local installs
-# unrecoverable.) Download installs skip this: the client self-fetches its
-# engine jar on first spawn and materializes then. Best-effort by design.
+# versions/<v>/ under the product data root — through the client itself
+# (`jk self materialize`), which ingests both artifacts into the CAS first.
+# Download installs skip this: the client self-fetches its engine jar on first
+# spawn and materializes then. Best-effort by design.
 if [ -n "$LOCAL_FILE" ]; then
   ENGINE_JAR=""
   for f in "$SRC_LIB"/jk-engine-*.jar; do
@@ -220,7 +228,7 @@ if [ -n "$LOCAL_FILE" ]; then
     run_jk self materialize "$JK_BIN" "$ENGINE_JAR" >/dev/null 2>&1 \
       || note "versions/ materialization skipped (jk self materialize failed; the client re-fetches on demand)"
   fi
-  # Nerd Font probe → ~/.jk/config.toml [global].nerdfont; never fail install.
+  # Nerd Font probe → user config [global].nerdfont; never fail install.
   run_jk self setup-terminal >/dev/null 2>&1 \
     || note "terminal setup skipped (run 'jk self setup-terminal' later)"
 fi
@@ -239,48 +247,23 @@ run_jk activate --yes || note "'jk activate --yes' failed; run 'jk activate' (or
 # Pre-pay the engine's cold-start costs now so the first real build doesn't:
 # `jk engine start` installs the JDK that hosts the engine when none
 # qualifies, and on a download install triggers the client's own engine-jar
-# fetch (which also completes ~/.jk/versions/<v>/ — jar, manifest, AND this
-# client binary). The engine serves immediately and manages its own AOT
-# training sidecar off to the side (docs/architecture.md), so ONE start is the
-# whole warm-up — no stop/restart dance. Best-effort by design: a failed
-# warm-up never fails the install (the engine starts lazily on first use
-# either way). Skipped only for a local dist install that carried no engine
-# jar — a -SNAPSHOT client won't self-fetch.
+# fetch (which also completes versions/<v>/ — jar, manifest, AND this client
+# binary under the data root). The engine serves immediately and manages its
+# own AOT training sidecar off to the side (docs/architecture.md), so ONE start
+# is the whole warm-up. Best-effort by design: a failed warm-up never fails the
+# install. Skipped only for a local dist install that carried no engine jar.
 if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
-  # Local dogfood reinstalls keep the same version string (e.g. 0.10.1) while replacing the
-  # engine jar. A still-running engine would keep serving the old jar until stop — so always
-  # stop first, then start the freshly materialized engine.
+  # Local dogfood reinstalls keep the same version string while replacing the
+  # engine jar. A still-running engine would keep serving the old jar until stop.
   run_jk engine stop --force >/dev/null 2>&1 || true
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
-  # Host calibration: multi-probe once so the first explain/build ETA is grounded.
-  # Best-effort — network may be unavailable; --offline still leaves static floors / later ensure.
   run_jk engine calibrate >/dev/null 2>&1 \
     || note "Host calibration deferred; it will run on first explain/build"
 fi
 
-# ---- one home for the bits ---------------------------------------------------
-#
-# Every installed jk — including this one — lives in ~/.jk/versions/<v>/
-# (materialized above for local dists, by the engine-jar fetch during warm-up
-# for downloads). bin/jk and bin/jkx become SYMLINKS to the current version's
-# binary — the same end state `jk self update` leaves with its atomic symlink
-# flip, so the initial install, a pin, and an update are one consistent story.
-# Falls back to keeping the real copies when versions/ didn't materialize or
-# the filesystem refuses symlinks; the first `jk self update` converges it.
-VERSION="$(run_jk --version 2>/dev/null | awk '{print $2}')"
-VBIN="$JK_HOME/versions/${VERSION:-none}/bin/jk"
-if [ -n "$VERSION" ] && [ -x "$VBIN" ]; then
-  if ln -sfn "$VBIN" "$INSTALL_DIR/.jk-new" 2>/dev/null \
-      && mv -f "$INSTALL_DIR/.jk-new" "$JK_BIN" 2>/dev/null \
-      && ln -sfn "$VBIN" "$INSTALL_DIR/.jkx-new" 2>/dev/null \
-      && mv -f "$INSTALL_DIR/.jkx-new" "$JKX_BIN" 2>/dev/null; then
-    :
-  else
-    rm -f "$INSTALL_DIR/.jk-new" "$INSTALL_DIR/.jkx-new"
-    note "bin/ kept as real copies (no symlink support); 'jk self update' converges it"
-  fi
-fi
+# PATH entrypoints stay real files (or hardlinks from self update) — not
+# symlinks into versions/ — so deleting product data does not uninstall jk.
 
 printf '\n'
 

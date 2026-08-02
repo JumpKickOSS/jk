@@ -15,7 +15,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 /**
- * Machine-scoped preferences from {@code ~/.jk/config.toml}: {@code [global]} UI flags (e.g.
+ * Machine-scoped preferences from {@code ~/.config/jk/config.toml}: {@code [global]} UI flags (e.g.
  * {@code nerdfont}) and global {@code [repositories]}. Not project-overridable; env overrides
  * apply. Project {@code [repositories]} win on name collision; global fills gaps.
  */
@@ -25,7 +25,7 @@ public final class GlobalConfig {
 
     /**
      * Whether Nerd Font glyphs may be used. Precedence: env {@code JK_NERDFONT} → {@code
-     * ~/.jk/config.toml} {@code [global].nerdfont} → default {@code false} (safer than PUA tofu;
+     * ~/.config/jk/config.toml} {@code [global].nerdfont} → default {@code false} (safer than PUA tofu;
      * set via {@code jk self setup-terminal} / install —. Forced false when color is
      * disabled.
      */
@@ -156,7 +156,7 @@ public final class GlobalConfig {
         return CONFIG_CACHE.computeIfAbsent(key, k -> TomlValues.parse(file));
     }
 
-    /** Clear the memoized config parse. For tests that rewrite {@code ~/.jk/config.toml} in one JVM. */
+    /** Clear the memoized config parse. For tests that rewrite {@code ~/.config/jk/config.toml} in one JVM. */
     static void clearCache() {
         CONFIG_CACHE.clear();
     }
@@ -164,7 +164,7 @@ public final class GlobalConfig {
     // Repositories
 
     /**
-     * Repositories declared in the {@code [repositories]} table of {@code ~/.jk/config.toml}.
+     * Repositories declared in the {@code [repositories]} table of {@code ~/.config/jk/config.toml}.
      * Returns an empty list when the file is absent, the table is missing, or any entry is
      * malformed (lenient — global config must never fail a build).
      */

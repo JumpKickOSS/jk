@@ -73,8 +73,8 @@ Precedence **high → low** (first hit wins on lookup):
 | Layer | Source | Owner | Scope |
 |---|---|---|---|
 | **project** | `jk.toml` `[libraries]` | Repo | One project / workspace |
-| **local** | `~/.jk/libs.toml` (layer name `"local"`) | Human / host | All projects on this machine |
-| **global** | `~/.jk/store/libs.global.toml` | engine (quiet 12 h revalidation) + `jk library update` | Downloaded registry |
+| **local** | `~/.local/share/jk/libs.toml` (layer name `"local"`) | Human / host | All projects on this machine |
+| **global** | `~/.local/share/jk/store/libs.global.toml` | engine (quiet 12 h revalidation) + `jk library update` | Downloaded registry |
 | **bundled** | classpath `libraries.toml` | Ship with the binary | Offline cold start |
 
 ### 5.1 Schema (all layers)

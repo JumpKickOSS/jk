@@ -165,7 +165,7 @@ JumpKick:
 **Improvement to capture**
 
 - Default to aggressive parallel module builds when memory budget allows; publish the decision in `jk explain`.  
-- Always write a **trace file** (`~/.jk/...` or project `out/`) loadable in `chrome://tracing` or Perfetto.  
+- Always write a **trace file** (under platform state, or project `out/`) loadable in `chrome://tracing` or Perfetto.  
 - Sandbox guarantees for plugin workers comparable to Mill’s `Task.dest` purity story (document + enforce).
 
 ---

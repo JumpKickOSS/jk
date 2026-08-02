@@ -518,7 +518,7 @@ public final class JkBuildParser {
             inherits.add(JkBuild.ProjectInherit.M2INSTALL);
             m2install = false;
         } else {
-            // m2install defaults to false: ~/.jk/cache is primary. true mirrors into ~/.m2.
+            // m2install defaults to false: ~/.cache/jk is primary. true mirrors into ~/.m2.
             m2install = Boolean.TRUE.equals(project.getBoolean("m2install"));
         }
 

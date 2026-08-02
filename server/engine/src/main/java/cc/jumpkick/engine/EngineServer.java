@@ -2702,7 +2702,7 @@ public final class EngineServer implements AutoCloseable {
      * events, ending in a {@link EngineProtocol#LOCK_FINISH} terminal. Per-package resolution
      * streams as {@link EngineProtocol#LOCK_PACKAGE} (plain structured text; the client formats and
      * colorizes). Forge tokens for git-source materialization resolve exactly as in the CLI — the
-     * same {@code ~/.jk} token store and environment, which this engine process inherits from its
+     * same {@code JK_HOME} / platform product layout token store and environment, which this engine process inherits from its
      * spawner.
      */
     private void runLock(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {

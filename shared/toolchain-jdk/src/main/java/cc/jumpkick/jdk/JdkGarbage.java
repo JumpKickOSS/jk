@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Deferred JDK deletion queue ({@code ~/.jk/jdks/.to-be-removed}) for Windows file locks after
+ * Deferred JDK deletion queue ({@code <jdks-root>/.to-be-removed}) for Windows file locks after
  * {@link StableJdkPointer} repoint. Best-effort {@link #enqueue}/{@link #drain}.
  */
 public final class JdkGarbage {
@@ -33,7 +33,7 @@ public final class JdkGarbage {
     /** Record {@code dir} for later deletion. No-op if it's not under the JDK root. */
     public void enqueue(Path dir) {
         Path abs = canonical(dir);
-        if (!abs.startsWith(canonicalRoot())) return; // never queue anything outside ~/.jk/jdks
+        if (!abs.startsWith(canonicalRoot())) return; // never queue anything outside the managed JDK root
         try {
             Files.createDirectories(jdksRoot);
             Files.writeString(
@@ -63,7 +63,7 @@ public final class JdkGarbage {
             String trimmed = line.trim();
             if (trimmed.isEmpty()) continue;
             Path dir = canonical(Path.of(trimmed));
-            if (!dir.startsWith(root)) continue; // defensive: never wander outside ~/.jk/jdks
+            if (!dir.startsWith(root)) continue; // defensive: never wander outside the managed JDK root
             if (!Files.exists(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue; // already gone
             deleteRecursively(dir);
             if (Files.exists(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {

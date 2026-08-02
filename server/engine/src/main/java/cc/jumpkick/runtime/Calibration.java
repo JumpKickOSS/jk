@@ -24,7 +24,7 @@ import org.tomlj.TomlParseResult;
  * Machine-scoped cold ETA priors + continuous host learning).
  *
  * <p><b>Bootstrap:</b> {@link #ensure} runs a multi-phase {@link HardwareProbe} when no usable
- * {@code ~/.jk/state/builds/calibration.toml} exists (or on {@code --force}). Network probes
+ * {@code ~/.local/state/jk/builds/calibration.toml} exists (or on {@code --force}). Network probes
  * (JUnit jar fetch + resolve micro-GET) are <strong>on by default</strong>; opt out with global
  * {@code --offline}.
  *

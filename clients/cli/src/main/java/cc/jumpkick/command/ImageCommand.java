@@ -45,7 +45,7 @@ public final class ImageCommand implements CliCommand {
                 Opt.value("<exe>", "Docker/Podman executable (default: auto-detect).", "--docker-executable"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")

@@ -49,7 +49,8 @@ Bootstrap pins: [`.sdkmanrc`](.sdkmanrc). Prefer `./gradlew` for builds. One Gra
 
 ## Reinstall from this checkout
 
-After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made (native client + engine jar under `~/.jk`):
+After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made
+(native client on PATH under `~/.local/bin`, engine jar under the product data root):
 
 ```bash
 ./gradlew clean dist installLocal && ./install.sh build/dist/jk
@@ -59,7 +60,7 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 |---|---|
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
 | `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`, JK-1194) |
-| `./install.sh build/dist/jk` | Installs that dist into `~/.jk` (bin + version layout via CAS materialize) |
+| `./install.sh build/dist/jk` | Installs that dist into `~/.local/bin` + data `versions/` via CAS materialize |
 
 Thin JVM dogfood without Graal: `./gradlew :cli:installDist installLocal` then put `clients/cli/build/install/jk/bin` on `PATH`.
 

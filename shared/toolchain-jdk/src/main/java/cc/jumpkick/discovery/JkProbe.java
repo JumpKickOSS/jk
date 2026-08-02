@@ -13,8 +13,10 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * Surfaces JDKs that {@code jk jdk install} placed under {@link JkDirs#jdks()} (default {@code
- * ~/.jk/jdks/}; overridable via {@code JK_JDKS_DIR} or {@code JK_HOME}).
+ * Surfaces JDKs that {@code jk jdk install} placed under {@link JkDirs#jdks()} (IntelliJ shared
+ * root by default; overridable via {@code JK_JDKS_DIR}). Only directories marked with
+ * {@link cc.jumpkick.jdk.JdkOwnership#MARKER} are attributed to jk — other trees in the same
+ * root remain IntelliJ/shared installs ({@link IntellijProbe}).
  *
  * <p>The macOS {@code Contents/Home} bundle unwrap is applied via {@link IntellijJdkDir#javaHome}
  * before the path is handed to {@link ProbeSupport#discoverJdk}, so jk-installed macOS tarballs
@@ -44,6 +46,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             return entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .filter(cc.jumpkick.jdk.JdkOwnership::isJkOwned)
                     .map(IntellijJdkDir::javaHome)
                     .filter(home -> ToolHealth.isHealthy(spec, home))
                     .findFirst()
@@ -58,6 +61,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
+                    .filter(cc.jumpkick.jdk.JdkOwnership::isJkOwned)
                     .map(IntellijJdkDir::javaHome)
                     .forEach(home -> ProbeSupport.discoverJdk(home, name()).ifPresent(hits::add));
         }

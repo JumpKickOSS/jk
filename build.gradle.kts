@@ -24,7 +24,7 @@ tasks.register("checkAll") {
 // The shippable native-dist layout (docs/architecture.md "Ship layout"): the size-tuned native jk
 // client next to the engine's fat jar. The engine is a JVM app, never a native image — the
 // installed client spawns it on the jk-managed JDK as
-// `java -cp ~/.jk/versions/<v>/lib/jk-engine.jar EngineMain`. dist/lib carries the jar the
+// `java -cp ~/.local/share/jk/versions/<v>/lib/jk-engine.jar EngineMain`. dist/lib carries the jar the
 // installer materializes into the version layout (via `jk self materialize`).
 val dist by tasks.registering(Sync::class) {
     description = "Assembles build/dist: the native jk client + lib/jk-engine-<version>.jar"

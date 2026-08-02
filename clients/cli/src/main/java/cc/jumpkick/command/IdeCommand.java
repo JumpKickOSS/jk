@@ -55,7 +55,7 @@ public final class IdeCommand implements CliCommand {
         }
         opts.add(Opt.value(
                         "<dir>",
-                        "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                        "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                         "--cache-dir")
                 .hide());
         opts.add(Opt.value("<dir>", "Override the JDK install root (for tests).", "--jdks-dir")

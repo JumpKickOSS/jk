@@ -153,9 +153,9 @@ tasks.named<Test>("integrationTest") {
     doFirst {
         cliTestStateDirShort.mkdirs()
         environment("JK_STATE_DIR", cliTestStateDirShort.absolutePath)
-        environment(
-                "JK_HOME",
-                layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
+        val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
+        environment("JK_HOME", testJkHome)
+        environment("JK_JDKS_DIR", "$testJkHome/jdks")
 
         val engineJar = project(":engine").tasks.named("shadowJar", org.gradle.jvm.tasks.Jar::class.java)
                 .get().archiveFile.get().asFile

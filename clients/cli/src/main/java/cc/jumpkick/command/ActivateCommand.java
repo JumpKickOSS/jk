@@ -276,7 +276,7 @@ public final class ActivateCommand implements CliCommand {
     }
 
     /**
-     * Path embedded in shell hooks as {@code __JK_EXE}. Prefer the stable {@code ~/.jk/bin/jk}
+     * Path embedded in shell hooks as {@code __JK_EXE}. Prefer the stable {@code ~/.local/bin/jk}
      * shim (do <em>not</em> {@code toRealPath}) so a later {@code install.sh} / {@code self update}
      * that flips the symlink is picked up without re-running activate. Falling back to the running
      * process path used to pin hooks at a frozen {@code versions/<v>/bin/jk}, so dogfood reinstalls

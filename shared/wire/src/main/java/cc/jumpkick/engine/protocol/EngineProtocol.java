@@ -2619,7 +2619,7 @@ public final class EngineProtocol {
      * Run a cache maintenance operation (see {@link #CACHE_PRUNE_REQUEST}). {@code op} is {@code
      * prune}/{@code purge}/{@code gc}; {@code olderThanDays}/{@code sweep}/{@code maxSize} apply to
      * {@code prune} only ({@code maxSize} may be {@code null}); {@code includeJkTmp} asks the prune
-     * to also sweep {@code ~/.jk/tmp} (only when the default cache dir is in use, mirroring the
+     * to also sweep {@code state/tmp} (only when the default cache dir is in use, mirroring the
      * in-process command's behavior).
      */
     public static String cachePruneRequest(

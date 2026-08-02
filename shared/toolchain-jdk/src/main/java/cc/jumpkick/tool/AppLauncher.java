@@ -27,7 +27,7 @@ public final class AppLauncher {
     private AppLauncher() {}
 
     /**
-     * Write {@code ~/.jk/bin/<binName>} (POSIX) or {@code <binName>.cmd} (Windows) launching {@code
+     * Write {@code ~/.local/bin/<binName>} (POSIX) or {@code <binName>.cmd} (Windows) launching {@code
      * mainClass} with {@code classpathJars} on the classpath. Returns the launcher path.
      */
     public static Path install(Path binDir, Path javaHome, String binName, String mainClass, List<Path> classpathJars)

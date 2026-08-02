@@ -40,14 +40,13 @@ val slowTags = listOf("integration", "slow", "bench")
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
-    // Isolate tests from the developer's real ~/.jk. JkDirs.home honours
-    // JK_HOME, and everything derived from it (the downloaded global library
-    // catalog, cache, credentials, …) follows — so without this a machine
-    // that has run `jk library update` would feed its real
-    // ~/.jk/cache/libs.global.toml into tests and shadow the bundled layer
-    // (e.g. LibrarySearchCommandTest). Point JK_HOME at a throwaway per-module
-    // dir to keep tests hermetic.
-    environment("JK_HOME", layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath)
+    // Isolate tests from the developer's real product layout. JK_HOME is a
+    // single-tree umbrella for product dirs (config, cache, store, state, …).
+    // Managed JDKs default to the shared IntelliJ root and are *not* relocated
+    // by JK_HOME — set JK_JDKS_DIR for hermetic JDK isolation.
+    val testJkHome = layout.buildDirectory.dir("test-jk-home").get().asFile.absolutePath
+    environment("JK_HOME", testJkHome)
+    environment("JK_JDKS_DIR", "$testJkHome/jdks")
     // Same isolation for the Maven local repository (M2Dirs honours JK_M2_LOCAL):
     // tests that exercise the real fetch pipeline against a mock Maven server would
     // otherwise mirror their stub artifacts into the developer's real ~/.m2
@@ -72,7 +71,7 @@ tasks.withType<Test>().configureEach {
     systemProperty("junit.jupiter.execution.timeout.mode", "disabled_on_debug")
     // Per-host rate-limit cooldowns are keyed by host, and every in-process HTTP test serves from
     // 127.0.0.1 — so without a throwaway store one test's simulated 429 cools down loopback for every
-    // other test, and the record lands in the developer's real ~/.jk.
+    // other test, and the record lands in the developer's real product layout.
     systemProperty("jk.http.cooldown.dir", layout.buildDirectory.dir("test-http-cooldown").get().asFile.absolutePath)
 }
 

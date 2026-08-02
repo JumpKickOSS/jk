@@ -24,7 +24,7 @@ import java.util.Optional;
  * <li>If the engine is not running (or {@code --force} + stop), time a cold engine spawn.
  * <li>Ask the engine to run the multi-probe suite (JVM fork, javac, disk, hash CPU, synthetic
  * test-worker, JUnit Platform + resolve when online) and store timings under {@code
- * ~/.jk/state/builds/calibration.toml}.
+ * ~/.local/state/jk/builds/calibration.toml}.
  * </ol>
  *
  * <p>Network is <strong>on by default</strong> (fetch Jupiter jars if missing + Maven Central

@@ -56,10 +56,10 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
 ```bash
-# 1) Produce a local JumpKick + side-load worker jars into ~/.jk/cache
+# 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/versions/0.10.1/bin:$PATH"   # or your install layout
+export PATH="$HOME/.local/bin:$PATH"   # install.sh default; or versions/<v>/bin
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
@@ -90,7 +90,7 @@ jk release --skip-tests --skip-native
 ```
 
 The client never embeds the engine (ticket-1020). Spawning uses
-`~/.jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
+`~/.local/share/jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|

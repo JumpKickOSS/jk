@@ -81,7 +81,7 @@ Implementation: `JsonlListener` + `JsonlShape` (stdout); `EventLogListener` and
 ### Session log: `details.jsonl` (JK-1116)
 
 ```text
-~/.jk/state/builds/projects/<key>/runs/<run-id>/details.jsonl
+~/.local/state/jk/builds/projects/<key>/runs/<run-id>/details.jsonl
 ```
 
 - Default **on**; disable with `JK_CLI_DETAILS=off` (or `0`).
@@ -157,7 +157,7 @@ Same HTTP server and lifecycle as the web UI:
 | Auth | `Authorization: Bearer <token>` (always required) |
 | CLI | `jk engine status` shows **MCP**; JSON includes `mcpUrl` |
 
-MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.jk/config.toml`
+MCP can be disabled machine-wide with `[mcp] enabled = false` in `~/.config/jk/config.toml`
 (404s `/mcp`; web dashboard unaffected — `mcpUrl` reports `null`).
 
 **Tools:** `jk_status`, `jk_build`, `jk_test` (true test-only pipelines — no package), `jk_lock`
@@ -180,7 +180,7 @@ Unfiltered `GET /mcp` still receives every job. Dashboard alias: **`GET /api/eve
 uses `schema` + `type` like the rest of the machine model.
 
 ```bash
-# Example: list tools (token from ~/.jk/state/…/http-token or status URL fragment)
+# Example: list tools (token from ~/.local/state/jk/…/http-token or status URL fragment)
 curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   "$MCP_URL"

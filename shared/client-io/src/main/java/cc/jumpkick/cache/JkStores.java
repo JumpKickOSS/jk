@@ -17,7 +17,7 @@ import java.nio.file.Path;
  * <h2>Why this is a function of the cache root rather than a constant</h2>
  *
  * Resolving the store statically everywhere would make every test that passes its own temporary cache
- * directory start writing into the developer's real {@code ~/.jk/store}. So the ambient cache root gets
+ * directory start writing into the developer's real {@code ~/.local/share/jk/store}. So the ambient cache root gets
  * redirected to the store, and an explicitly-supplied one is left exactly where it is:
  *
  * <ul>
@@ -59,7 +59,7 @@ public final class JkStores {
      * they matched, so that a caller supplying its own directory kept full isolation. That cannot work
      * across the client/engine boundary and was measured failing: the client resolves {@code
      * JK_CACHE_DIR} to a concrete path and sends it, but the engine is a daemon that does not inherit
-     * the client's environment, so its idea of "ambient" is {@code ~/.jk/cache} and the supplied path
+     * the client's environment, so its idea of "ambient" is {@code ~/.cache/jk} and the supplied path
      * never matches. Every request looked caller-supplied and the store stayed isolated — precisely the
      * behaviour the split exists to remove.
      *

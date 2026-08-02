@@ -91,7 +91,7 @@ public enum PluginJar {
                     "-D" + jarProperty + " is set to '" + override + "' but no file exists there.");
         }
 
-        Path cacheRoot = cas.root(); // cas root is the jk cache directory (e.g. ~/.jk/cache)
+        Path cacheRoot = cas.root(); // cas root is the jk cache directory (e.g. ~/.cache/jk)
         String relPath = relativePath();
         String coordinate = "cc.jumpkick:" + artifactId + ":" + JkVersion.VERSION;
         List<Path> checked = new ArrayList<>();

@@ -27,8 +27,8 @@ import java.util.function.Supplier;
  * the engine for a queued cache GC.
  *
  * <ul>
- * <li>{@code ~/.jk/store/libs.global.toml} — library short-name registry
- * <li>{@code ~/.jk/store/jdks.json} — JetBrains JDK catalog
+ * <li>{@code ~/.local/share/jk/store/libs.global.toml} — library short-name registry
+ * <li>{@code ~/.local/share/jk/store/jdks.json} — JetBrains JDK catalog
  * <li>cache prune / GC — via {@code afterTick} (engine queues at the idle boundary; runs now when
  * already idle)
  * </ul>

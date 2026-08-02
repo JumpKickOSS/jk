@@ -3,7 +3,7 @@
 // Shared conventions for jk's child-JVM worker modules (the "runner" plugins).
 // Each worker jar is published to the local Maven repo so `jk sync` can pull it
 // into the CAS, is launchable as thin jar + classpath sidecar (JK-1347), and ships
-// an `installLocal` task that side-loads the freshly-built jar into ~/.jk/store.
+// an `installLocal` task that side-loads the freshly-built jar into ~/.local/share/jk/store.
 // What stays in each worker's build.gradle.kts: its `description`, its
 // `dependencies`, and optional codec-vendoring. The artifactId is always `jk-<projectName>`.
 
@@ -113,11 +113,11 @@ tasks.register("writeWorkerClasspath") {
 tasks.named("jar") { finalizedBy("writeWorkerClasspath") }
 
 // Side-load the freshly-built worker jar into the developer's local Maven repo at
-// ~/.jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
+// ~/.local/share/jk/store/repos/local/cc/jumpkick/<artifact>/<version>/<artifact>-<version>.jar
 // so PluginJar.locate finds the worker without requiring -Djk.<x>.plugin.jar.
 // Also writes a .sha256 sidecar and the .classpath sidecar for thin launch.
 tasks.register("installLocal") {
-    description = "Side-load the freshly-built $workerArtifact jar into ~/.jk/store/repos/local/ (m2 layout)"
+    description = "Side-load the freshly-built $workerArtifact jar into ~/.local/share/jk/store/repos/local/ (m2 layout)"
     group = "jk"
     dependsOn(tasks.jar, "writeWorkerClasspath")
     val jarProvider = tasks.named<Jar>("jar").flatMap { it.archiveFile }

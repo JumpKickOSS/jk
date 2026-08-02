@@ -28,7 +28,7 @@ public record JkHttpConfig(
     /** Web-UI SSE budget ({@code GET /api/events}); a separate cap from RPC admission. */
     public static final int DEFAULT_MAX_EVENT_STREAMS = 16;
 
-    /** Relative to the resolved {@code ~/.jk} home — i.e. {@code ~/.jk/state/web} by default. */
+    /** Relative to the resolved {@code JK_HOME} / platform product layout home — i.e. {@code ~/.local/state/jk/web} by default. */
     public static final String DEFAULT_WEB_ROOT = "state/web";
 
     /** The {@code [mcp]} table: surface toggle + its own SSE budget ({@code GET /mcp}). */

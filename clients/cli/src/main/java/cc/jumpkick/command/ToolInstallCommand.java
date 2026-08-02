@@ -53,7 +53,7 @@ public final class ToolInstallCommand implements CliCommand {
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
