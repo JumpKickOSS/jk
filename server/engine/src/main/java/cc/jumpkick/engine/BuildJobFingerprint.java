@@ -14,18 +14,13 @@ import java.util.TreeSet;
 /**
  * Stable exclusivity key for concurrent build-like jobs.
  *
- * <p>Two admissions with the same fingerprint must not run at once on one engine. Different
- * worktrees (different real paths), kinds, or request flags that change work yield different
- * fingerprints and may run concurrently.
+ * <p>Two admissions with the same fingerprint must not run at once on one engine. For {@code
+ * build} and {@code test}, the key is <strong>project directory only</strong> (JK-1291):
+ * overlapping builds that share a {@code target/} tree must not interleave, even when flags
+ * differ ({@code --rebuild}, {@code -m}, …). Other exclusive kinds may still incorporate flags.
  *
- * <p><strong>Inputs</strong> (order-independent hash of a canonical form):
- *
- * <ul>
- * <li>canonical project directory (real path when resolvable)
- * <li>kind ({@code build}, {@code test}, …)
- * <li>flags that change the job: rebuild/force, offline, modules selection, variant,
- * skipTests/testOnly, assembly override
- * </ul>
+ * <p>Different worktrees (different real paths) yield different fingerprints and may run
+ * concurrently.
  */
 public final class BuildJobFingerprint {
 
@@ -44,6 +39,10 @@ public final class BuildJobFingerprint {
      */
     public static String ofRequest(String kind, String requestLine) {
         String dir = Jsonl.str(requestLine, "dir");
+        // build/test: dir-only exclusivity so concurrent rebuild/modules cannot race target/.
+        if ("build".equals(kind) || "test".equals(kind)) {
+            return ofProject(kind, dir);
+        }
         return of(
                 kind,
                 dir,
@@ -58,7 +57,23 @@ public final class BuildJobFingerprint {
 
     /** Fingerprint for HTTP/MCP workspace jobs (absolute dir + kind + test-only shape). */
     public static String ofHttp(String kind, Path dir, boolean skipTests, boolean testOnly) {
+        if ("build".equals(kind) || "test".equals(kind)) {
+            return ofProject(kind, dir != null ? dir.toString() : "");
+        }
         return of(kind, dir != null ? dir.toString() : "", false, false, skipTests, testOnly, null, null, null);
+    }
+
+    /**
+     * Project-scoped exclusivity for build/test: same canonical dir cannot run two jobs at once
+     * (JK-1291).
+     */
+    public static String ofProject(String kind, String dir) {
+        String canon = canonicalDir(dir);
+        StringBuilder sb = new StringBuilder(128);
+        sb.append("kind=").append(kind == null ? "" : kind).append('\n');
+        sb.append("dir=").append(canon).append('\n');
+        sb.append("scope=project\n");
+        return sha256Hex(sb.toString());
     }
 
     public static String of(

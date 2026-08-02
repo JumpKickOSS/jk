@@ -68,12 +68,14 @@ jk release --skip-tests
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
 
 ```bash
-# 1) Slim client installDist + server-only engine fat jar + worker jars
-./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+# 1) Slim client + workers + engine materialize + daemon bounce (JK-1194)
+./gradlew :cli:installDist installLocal --no-daemon
+# Root installLocal side-loads every plugin worker, then :engine:installLocal
+# (shadowJar → jk self materialize → engine stop/start).
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+
+# Engine-only refresh after an engine code change:
+# ./gradlew :cli:installDist :engine:installLocal --no-daemon
 
 # 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
@@ -90,7 +92,7 @@ The client never embeds the engine (ticket-1020). Spawning uses
 |---|---|
 | `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI source of truth for the test suite (Linux; unit on every push/PR, integration on `main` pushes + heavy-path PRs) — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
-| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
+| `./gradlew installLocal` | Workers + **engine materialize/bounce** (JK-1194); or `jk plugin install-local` after `jk build` for workers only |
 
 Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
 

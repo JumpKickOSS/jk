@@ -229,6 +229,18 @@ class GroovyCompilationTest {
             assertThat(jf.stream().anyMatch(e -> e.getName().startsWith("BOOT-INF/lib/spring-")))
                     .as("spring libs nested in the boot jar")
                     .isTrue();
+            // JK-1173: language runtime must nest so standalone java -jar can load Groovy classes.
+            assertThat(jf.stream()
+                            .anyMatch(e -> {
+                                String n = e.getName();
+                                return n.startsWith("BOOT-INF/lib/") && n.contains("groovy-");
+                            }))
+                    .as("groovy runtime nested in BOOT-INF/lib (lock-injected language runtime)")
+                    .isTrue();
+        }
+        Path lock = tempDir.resolve("jk-lock.toml");
+        if (Files.isRegularFile(lock)) {
+            assertThat(Files.readString(lock)).contains("org.apache.groovy:groovy");
         }
     }
 

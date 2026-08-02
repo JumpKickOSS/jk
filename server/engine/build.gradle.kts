@@ -58,6 +58,54 @@ tasks.shadowJar {
     mergeServiceFiles()
 }
 
+/**
+ * JK-1194: materialize the freshly-built engine fat jar into ~/.jk/versions/<v>/ and bounce the
+ * resident daemon so local dogfood picks up engine-side first-party plugin tables without a hand
+ * copy. Prefers the installDist thin client when present; falls back to PATH `jk`.
+ */
+tasks.register("installLocal") {
+    group = "distribution"
+    description =
+        "Materialize shadowJar into the versioned layout and restart the engine (JK-1194 dogfood)"
+    dependsOn(tasks.named("shadowJar"))
+    doLast {
+        val engineJar =
+            tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar").get().archiveFile
+                .get()
+                .asFile
+        val installDistJk =
+            rootProject.project(":cli").layout.buildDirectory.file("install/jk/bin/jk").get().asFile
+        val client =
+            when {
+                installDistJk.canExecute() || installDistJk.exists() -> installDistJk.absolutePath
+                else -> "jk"
+            }
+        fun runJk(vararg args: String) {
+            val cmd = listOf(client) + args.toList()
+            val pb = ProcessBuilder(cmd)
+            pb.inheritIO()
+            pb.directory(rootProject.projectDir)
+            val code = pb.start().waitFor()
+            if (code != 0) {
+                throw GradleException("command failed ($code): ${cmd.joinToString(" ")}")
+            }
+        }
+        logger.lifecycle("jk self materialize {} {}", client, engineJar)
+        runJk("self", "materialize", client, engineJar.absolutePath)
+        // Best-effort bounce — ignore failures if no daemon was running.
+        try {
+            runJk("engine", "stop", "--force")
+        } catch (_: Exception) {
+            logger.lifecycle("engine stop skipped (not running or client unavailable)")
+        }
+        try {
+            runJk("engine", "start")
+        } catch (_: Exception) {
+            logger.lifecycle("engine start skipped (will spawn on next command)")
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Worker jar paths for tests (WorkerJavacTest, KotlinWorkerSetupTest, etc.)
 val testRunnerJarCfg by configurations.creating {
