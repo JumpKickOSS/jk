@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.GlobalDefaultJdk;
+import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileWriter;
@@ -46,6 +47,7 @@ class JkEnvTest {
         Files.writeString(jdkHome.resolve("bin").resolve("java"), "#!/fake\n");
         Files.writeString(jdkHome.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(jdkHome.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(jdkHome);
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
@@ -77,6 +79,7 @@ class JkEnvTest {
         Files.writeString(
                 jdkHome.resolve("release"),
                 "JAVA_VERSION=\"25.0.0\"\nIMPLEMENTOR=\"Oracle Corporation\"\nIMPLEMENTOR_VERSION=\"Oracle GraalVM 25\"\n");
+        JdkOwnership.mark(jdkHome);
 
         var project = tempDir.resolve("project");
         Files.createDirectories(project);
@@ -196,6 +199,7 @@ class JkEnvTest {
         Files.writeString(home.resolve("bin").resolve("java"), "#!/fake\n");
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake\n");
         Files.writeString(home.resolve("release"), "JAVA_VERSION=\"25.0.3\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
         return home;
     }
 }
