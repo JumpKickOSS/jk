@@ -23,6 +23,7 @@ import cc.jumpkick.command.DenyCommand;
 import cc.jumpkick.command.DevCommand;
 import cc.jumpkick.command.DoctorCommand;
 import cc.jumpkick.command.EngineCommand;
+import cc.jumpkick.command.EnvCommand;
 import cc.jumpkick.command.ExplainCommand;
 import cc.jumpkick.command.ExportCommand;
 import cc.jumpkick.command.FormatCommand;
@@ -110,6 +111,7 @@ public final class CommandDispatch {
             new DeactivateCommand(),
             new ShellCommand(),
             new HookEnvCommand(),
+            new EnvCommand(),
             new LockCommand(),
             new SyncCommand(),
             new AddCommand(),

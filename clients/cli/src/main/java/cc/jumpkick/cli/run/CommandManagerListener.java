@@ -161,7 +161,13 @@ public final class CommandManagerListener implements PipelineListener {
         // command discovered afterward that it can't proceed (e.g. jk run found no runnable entry
         // point). Rendered as the red failure chip with the caller's exact sentence — no "Failed to
         // <command>" derivation — so a genuine build failure (below) keeps its normal phrasing.
-        String soft = spec.softFailure() != null ? spec.softFailure().apply(result) : null;
+        // Only probe softFailure when the build succeeded (JK-1162): on a failed pipeline, execPlan
+        // / entry-point scans can emit red diagnostics that flash under the live region before the
+        // real failure settle.
+        String soft = null;
+        if (result.success() && spec.softFailure() != null) {
+            soft = spec.softFailure().apply(result);
+        }
         if (soft != null) {
             cm.finishPipelineFailureCustom(soft + suffix, above);
         } else if (result.success()) {

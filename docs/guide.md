@@ -34,6 +34,21 @@ jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
 
 The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
 
+### `jk env` — where values come from
+
+Build-visible environment is layered (lowest → highest): workspace `.env`, module `.env`, then
+the real process environment (your shell). The shell always wins over files.
+
+```bash
+jk env                 # .env keys + JK_* from the process
+jk env -v              # also show file values shadowed by the shell
+jk env --all           # every process env key (noisy)
+jk env --output json   # machine-readable
+```
+
+Values that came from a `.env` file are treated as secrets: shown as `***` and labeled
+`secret`. Use this when `FOO=x jk build` does not match what you put in `.env`.
+
 ### CI: what to cache between jobs
 
 jk’s correctness does **not** depend on local caches — a cold machine with a valid

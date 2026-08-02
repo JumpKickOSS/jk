@@ -43,7 +43,7 @@ public final class UsageGroups {
                             "audit", "verify")),
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate", "deactivate")),
             new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp")),
-            new CommandGroup("System commands:", List.of("doctor", "cache")));
+            new CommandGroup("System commands:", List.of("doctor", "cache", "env", "jobs", "engine")));
 
     /**
      * Curated subset of commands shown when the user runs bare {@code jk}. Pipeline: cover the day-to-day
