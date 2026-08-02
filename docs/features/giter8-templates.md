@@ -37,7 +37,7 @@ paths and before the official monorepo. One-shot CLI sources:
 jk new --template my-starter --template-source https://github.com/acme/jk-g8
 ```
 
-Complex multi-module dogfood also lives in **jk-examples** (e.g. `java/quarkus-petshop`).
+Complex multi-module dogfood also lives in **[jk-examples](https://github.com/jkbuild/jk-examples)** (e.g. `spring-boot/petshop`, `kotlin/ktor-petshop`).
 
 ## CLI surface
 

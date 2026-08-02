@@ -4,7 +4,7 @@
 
 | Deliverable | Status |
 |-------------|--------|
-| **netty-echo** sample (`jk-examples/jvm/netty-echo`) | JumpKick arm for cold/warm/no-op (published Netty jars) |
+| **netty-echo** sample ([jk-examples](https://github.com/jkbuild/jk-examples)/`jvm/netty-echo`) | JumpKick arm for cold/warm/no-op (published Netty jars) |
 | Full multi-module Netty **source** port (~50 Maven modules) | Not in-tree; Mill’s port is the reference graph |
 | Three-way Maven vs Mill vs jk table | Run locally with script below; check results into this doc when measured |
 

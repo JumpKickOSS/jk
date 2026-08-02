@@ -8,6 +8,8 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md), [docs/features/](docs/features/) (packaging, Giter8, BOMs). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+**Out-of-tree black-box suite / adopter examples:** [jkbuild/jk-examples](https://github.com/jkbuild/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.

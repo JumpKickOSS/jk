@@ -31,6 +31,10 @@ foojay resolver on first use.
 ./install.sh build/dist/jk                      # optional local install
 ```
 
+### Black-box examples (sibling repo)
+
+End-to-end scenarios and early-adopter samples live in **[jkbuild/jk-examples](https://github.com/jkbuild/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
+
 `dist` builds the slim GraalVM native `jk` client and the engine fat jar
 (`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
 jk-managed JDK — never as a native image. `nativeCompile` needs a GraalVM-capable
