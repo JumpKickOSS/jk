@@ -11,8 +11,15 @@ Giter8 does **not** replace the wizard for “hello app” cases. Plugin-declare
 remains the built-in path for Spring / Grails / Quarkus flags. The **`quarkus`** short name
 is an alternate G8 shape of the same single-module app (not a multi-module workspace).
 
-Complex multi-module dogfood lives in **jk-examples** (e.g. `java/quarkus-petshop`), not in
-first-party G8 yet.
+### Official templates repo
+
+First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**.
+In-tree `templates/*.g8` and classpath `giter8/*` are dogfood / offline bootstrap only.
+
+Third-party git sources (extra orgs/repos) belong in user config (`config.toml`) and on the
+CLI (`jk new|init --template`); see kanartist **JK-1380**.
+
+Complex multi-module dogfood also lives in **jk-examples** (e.g. `java/quarkus-petshop`).
 
 ## CLI surface
 
@@ -29,7 +36,7 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — catalog entry (`java-cli`, `kotlin-cli`, `quarkus`, …) | **Shipped** (JK-1183) |
+| 2 | **Short name** — official catalog + configured third-party sources | Partial (classpath/local today; **[jk-templates](https://github.com/jkbuild/jk-templates)** + config sources → JK-1380) |
 | 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
 | 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 
