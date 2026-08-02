@@ -131,9 +131,7 @@ tasks.register("installLocal") {
         val jar = jarProvider.get().asFile
         val digest = MessageDigest.getInstance("SHA-256").digest(jar.readBytes())
         val hex = digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
-        val storeRoot: File = System.getenv("JK_STORE_DIR")?.let { File(it) }
-                ?: System.getenv("JK_HOME")?.let { File(it).resolve("store") }
-                ?: File(System.getProperty("user.home"), ".jk/store")
+        val storeRoot: File = JkLayoutPaths.storeRoot()
         // Engine also probes cache/repos/local — write both when store != cache layouts differ.
         // Primary: store/repos/local (see JkDirs / RepoArtifactStore).
         val repoDir = storeRoot.resolve("repos/local/cc/jumpkick/$artifact/$ver")

@@ -59,9 +59,12 @@ tasks.shadowJar {
 }
 
 /**
- * JK-1194: materialize the freshly-built engine fat jar into ~/.local/share/jk/versions/<v>/ and bounce the
- * resident daemon so local dogfood picks up engine-side first-party plugin tables without a hand
- * copy. Prefers the installDist thin client when present; falls back to PATH `jk`.
+ * JK-1194: materialize the freshly-built engine fat jar into the versioned data layout
+ * (`…/share/jk/versions/<v>/` or `$JK_HOME/versions`) and bounce the resident daemon so local
+ * dogfood picks up engine-side first-party plugin tables without a hand copy.
+ *
+ * Client resolution (first hit wins): `:cli:installDist` bin, `build/dist/jk`, platform bin dir
+ * (`~/.local/bin/jk`), then PATH `jk`.
  */
 tasks.register("installLocal") {
     group = "distribution"
@@ -76,16 +79,23 @@ tasks.register("installLocal") {
         val installDistJk =
             rootProject.project(":cli").layout.buildDirectory.file("install/jk/bin/jk").get().asFile
         val client =
-            when {
-                installDistJk.canExecute() || installDistJk.exists() -> installDistJk.absolutePath
-                else -> "jk"
-            }
+            JkLayoutPaths.resolveClient(rootProject.projectDir, installDistJk)
+                ?: "jk"
         fun runJk(vararg args: String) {
             val cmd = listOf(client) + args.toList()
             val pb = ProcessBuilder(cmd)
             pb.inheritIO()
             pb.directory(rootProject.projectDir)
-            val code = pb.start().waitFor()
+            val code =
+                try {
+                    pb.start().waitFor()
+                } catch (e: java.io.IOException) {
+                    throw GradleException(
+                        "cannot run jk client '$client' (${e.message}). " +
+                            "Build a client first: ./gradlew :cli:installDist  or  ./gradlew dist  " +
+                            "or install to ${JkLayoutPaths.binDir()}",
+                        e)
+                }
             if (code != 0) {
                 throw GradleException("command failed ($code): ${cmd.joinToString(" ")}")
             }

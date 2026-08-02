@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: Apache-2.0
+
+import java.io.File
+
+/**
+ * Gradle-side mirrors of [cc.jumpkick.util.JkDirs] platform defaults (buildSrc cannot depend on
+ * :core). Keep in sync when layout resolution changes.
+ *
+ * Resolution order for product dirs: role env → JK_HOME umbrella → XDG / Known Folders.
+ */
+object JkLayoutPaths {
+
+    fun storeRoot(): File {
+        nonBlank(System.getenv("JK_STORE_DIR"))?.let { return File(it) }
+        nonBlank(System.getenv("JK_HOME"))?.let { return File(it).resolve("store") }
+        nonBlank(System.getenv("JK_DATA_DIR"))?.let { return File(it).resolve("store") }
+        return dataRoot().resolve("store")
+    }
+
+    fun dataRoot(): File {
+        nonBlank(System.getenv("JK_DATA_DIR"))?.let { return File(it) }
+        nonBlank(System.getenv("JK_HOME"))?.let { return File(it).resolve("data") }
+        if (isWindows()) {
+            val local = nonBlank(System.getenv("LOCALAPPDATA"))
+                    ?: File(userHome(), "AppData/Local").path
+            return File(local, "jk/data")
+        }
+        val xdg = nonBlank(System.getenv("XDG_DATA_HOME"))
+        if (xdg != null) return File(xdg, "jk")
+        return File(userHome(), ".local/share/jk")
+    }
+
+    fun binDir(): File {
+        nonBlank(System.getenv("JK_BIN_DIR"))?.let { return File(it) }
+        nonBlank(System.getenv("JK_INSTALL_DIR"))?.let { return File(it) }
+        nonBlank(System.getenv("JK_HOME"))?.let { return File(it).resolve("bin") }
+        if (isWindows()) {
+            return File(userHome(), ".local/bin")
+        }
+        nonBlank(System.getenv("XDG_BIN_HOME"))?.let { return File(it) }
+        nonBlank(System.getenv("XDG_DATA_HOME"))?.let { xdg ->
+            File(xdg).parentFile?.let { return File(it, "bin") }
+        }
+        return File(userHome(), ".local/bin")
+    }
+
+    /**
+     * Preferred client binaries for dogfood tasks (installLocal materialize). First existing /
+     * executable wins; callers may still fall back to bare {@code "jk"} on PATH.
+     */
+    fun clientCandidates(rootProjectDir: File, cliInstallDistJk: File?): List<File> {
+        val list = mutableListOf<File>()
+        if (cliInstallDistJk != null) list.add(cliInstallDistJk)
+        list.add(File(rootProjectDir, "build/dist/jk"))
+        list.add(File(rootProjectDir, "build/dist/jk.exe"))
+        list.add(File(binDir(), if (isWindows()) "jk.exe" else "jk"))
+        list.add(File(binDir(), "jk"))
+        return list
+    }
+
+    fun resolveClient(rootProjectDir: File, cliInstallDistJk: File?): String? {
+        for (c in clientCandidates(rootProjectDir, cliInstallDistJk)) {
+            if (c.isFile && (c.canExecute() || c.name.endsWith(".exe", ignoreCase = true) || c.name.endsWith(".bat", ignoreCase = true))) {
+                return c.absolutePath
+            }
+        }
+        // PATH fallback — ProcessBuilder("jk") when available
+        return null
+    }
+
+    private fun userHome(): String = System.getProperty("user.home")
+
+    private fun isWindows(): Boolean {
+        val os = System.getProperty("os.name", "").lowercase()
+        return os.contains("win")
+    }
+
+    private fun nonBlank(s: String?): String? = if (s.isNullOrBlank()) null else s
+}
