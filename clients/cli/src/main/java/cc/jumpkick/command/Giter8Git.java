@@ -47,23 +47,15 @@ public final class Giter8Git {
     }
 
     /**
-     * Clone or reuse a cached clone for {@code ref}. Returns the template root (directory with
-     * {@code default.properties} / {@code src/main/g8}).
+     * Clone or reuse a cached clone for {@code ref}, then return a Giter8 template root under it.
+     * Single-template repos return the clone (or its only nested {@code *.g8}); multi-template
+     * monorepos return the first nested template found (prefer {@link #findNamedTemplate} for short
+     * names).
      */
     public static Path fetch(String ref, Path cacheRoot) throws IOException {
-        Parsed p = parse(ref);
-        Files.createDirectories(cacheRoot);
-        Path dest = cacheRoot.resolve(p.cacheKey());
-        if (!Giter8Catalog.isTemplateRoot(dest)) {
-            if (Files.exists(dest)) {
-                deleteRecursively(dest);
-            }
-            Files.createDirectories(dest.getParent());
-            runGit(p.cloneArgs(dest));
-        }
-        // Prefer nested .g8 if the clone is a multi-template monorepo (src/main/g8 at root is fine).
-        if (Giter8Catalog.isTemplateRoot(dest)) return dest.toAbsolutePath().normalize();
-        try (var stream = Files.list(dest)) {
+        Path clone = ensureClone(ref, cacheRoot);
+        if (Giter8Catalog.isTemplateRoot(clone)) return clone.toAbsolutePath().normalize();
+        try (var stream = Files.list(clone)) {
             Optional<Path> nested = stream
                     .filter(Files::isDirectory)
                     .filter(d -> d.getFileName().toString().endsWith(".g8") || Giter8Catalog.isTemplateRoot(d))
@@ -72,12 +64,69 @@ public final class Giter8Git {
             if (nested.isPresent()) return nested.get().toAbsolutePath().normalize();
         }
         throw new IOException(
-                "git clone succeeded but no Giter8 layout (default.properties / src/main/g8) under " + dest);
+                "git clone succeeded but no Giter8 layout (default.properties / src/main/g8) under " + clone);
+    }
+
+    /**
+     * Ensure {@code ref} is shallow-cloned under {@code cacheRoot}; return the clone directory (not
+     * necessarily a single-template root — monorepos keep all nested {@code *.g8} trees).
+     */
+    public static Path ensureClone(String ref, Path cacheRoot) throws IOException {
+        Parsed p = parse(ref);
+        Files.createDirectories(cacheRoot);
+        Path dest = cacheRoot.resolve(p.cacheKey());
+        // Reuse cache when present and non-empty; re-clone if missing.
+        if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
+            if (Files.exists(dest)) deleteRecursively(dest);
+            Files.createDirectories(dest.getParent());
+            runGit(p.cloneArgs(dest));
+        }
+        return dest.toAbsolutePath().normalize();
+    }
+
+    /**
+     * Locate {@code shortName} inside a monorepo clone: {@code name.g8/}, {@code templates/name.g8/},
+     * {@code name/}, {@code templates/name/}, or a one-level walk for matching {@code *.g8}.
+     */
+    public static Optional<Path> findNamedTemplate(Path cloneRoot, String shortName) throws IOException {
+        if (cloneRoot == null || shortName == null || shortName.isBlank()) return Optional.empty();
+        String name = shortName.strip();
+        String dirG8 = name + ".g8";
+        List<Path> candidates = List.of(
+                cloneRoot.resolve(dirG8),
+                cloneRoot.resolve("templates").resolve(dirG8),
+                cloneRoot.resolve(name),
+                cloneRoot.resolve("templates").resolve(name));
+        for (Path c : candidates) {
+            if (Giter8Catalog.isTemplateRoot(c)) {
+                return Optional.of(c.toAbsolutePath().normalize());
+            }
+        }
+        if (!Files.isDirectory(cloneRoot)) return Optional.empty();
+        try (var stream = Files.list(cloneRoot)) {
+            for (Path child : (Iterable<Path>) stream::iterator) {
+                if (!Files.isDirectory(child)) continue;
+                String fn = child.getFileName().toString();
+                if (fn.equals(dirG8) || fn.equals(name)) {
+                    if (Giter8Catalog.isTemplateRoot(child)) {
+                        return Optional.of(child.toAbsolutePath().normalize());
+                    }
+                }
+            }
+        }
+        // Nested templates/ only (already tried exact path; walk for deeper layouts is out of scope).
+        return Optional.empty();
     }
 
     /** Default cache: {@code ~/.jk/cache/templates}. */
     public static Path defaultCacheRoot() {
         return Path.of(System.getProperty("user.home"), ".jk", "cache", "templates");
+    }
+
+    private static boolean isEmptyDir(Path dir) throws IOException {
+        try (var s = Files.list(dir)) {
+            return s.findAny().isEmpty();
+        }
     }
 
     static Parsed parse(String ref) throws IOException {

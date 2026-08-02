@@ -13,11 +13,29 @@ is an alternate G8 shape of the same single-module app (not a multi-module works
 
 ### Official templates repo
 
-First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**.
-In-tree `templates/*.g8` and classpath `giter8/*` are dogfood / offline bootstrap only.
+First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**
+(overridable via config). Layout: monorepo with nested `*.g8` directories (or `templates/*.g8`).
 
-Third-party git sources (extra orgs/repos) belong in user config (`config.toml`) and on the
-CLI (`jk new|init --template`); see kanartist **JK-1380**.
+In-tree `templates/*.g8` and classpath `giter8/*` are **dogfood / offline bootstrap** only.
+
+### Third-party sources (`~/.jk/config.toml`)
+
+```toml
+[templates]
+# optional; default is https://github.com/jkbuild/jk-templates
+official = "https://github.com/jkbuild/jk-templates"
+
+[templates.sources]
+acme = "https://github.com/acme/jk-g8"
+corp = { url = "https://git.example/corp/jk-templates.git", rev = "main" }
+```
+
+Short names are looked up in each source (nested `name.g8` / `templates/name.g8`) after local
+paths and before the official monorepo. One-shot CLI sources:
+
+```bash
+jk new --template my-starter --template-source https://github.com/acme/jk-g8
+```
 
 Complex multi-module dogfood also lives in **jk-examples** (e.g. `java/quarkus-petshop`).
 
@@ -36,7 +54,7 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — official catalog + configured third-party sources | Partial (classpath/local today; **[jk-templates](https://github.com/jkbuild/jk-templates)** + config sources → JK-1380) |
+| 2 | **Short name** — `$JK_TEMPLATES`, `~/.jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/jkbuild/jk-templates)**, classpath | **Shipped** (JK-1380; requires `git` for remote) |
 | 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
 | 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 
@@ -79,7 +97,7 @@ jk new --template https://github.com/org/t.g8.git#main
 | Constraint | Shipped today | Longer-term design |
 |------------|---------------|--------------------|
 | Native Graal CLI stays thin | **Pure-Java** `$key$` apply on the client (`Giter8LocalApply`) — no full Giter8 library | Optional engine-hosted worker for full Giter8 |
-| Template apply | Local path + short name + classpath + **git clone** into `~/.jk/cache/templates/` | Full Giter8 conditionals/includes |
+| Template apply | Local + short name (official monorepo + `[templates.sources]` + `--template-source`) + git URI | Full Giter8 conditionals/includes |
 | Conditionals / includes | Not supported | If/when full Giter8 worker lands |
 
 Monorepo sources: `templates/<name>.g8/` (dogfood) and

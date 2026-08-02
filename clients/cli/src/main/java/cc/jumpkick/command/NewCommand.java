@@ -75,9 +75,14 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
                 Opt.value(
                         "<ref>",
-                        "Giter8 template: local path, catalog short name, owner/repo, or git URL.",
+                        "Giter8 template: local path, short name, owner/repo, or git URL.",
                         "--template"),
                 Opt.value("<k=v>", "Template property override (repeatable; with --template).", "--param")
+                        .repeat(),
+                Opt.value(
+                                "<url>",
+                                "Extra git template source for this run (repeatable; short-name lookup).",
+                                "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),
@@ -105,6 +110,8 @@ public final class NewCommand implements CliCommand {
     boolean plugin;
     String templateRef;
     java.util.List<String> templateParams = java.util.List.of();
+    /** One-shot third-party git sources for short-name lookup (JK-1380). */
+    java.util.List<String> templateSources = java.util.List.of();
     String depsCsv;
     String layoutFlag;
     String kotlinModule;
@@ -226,6 +233,7 @@ public final class NewCommand implements CliCommand {
         this.plugin = in.isSet("plugin");
         this.templateRef = in.value("template").orElse(null);
         this.templateParams = in.values("param");
+        this.templateSources = in.values("template-source");
         this.depsCsv = in.value("deps").orElse(null);
         this.layoutFlag = in.value("layout").orElse(null);
         this.kotlinModule = in.value("kotlin-module").orElse(null);
@@ -269,7 +277,8 @@ public final class NewCommand implements CliCommand {
     }
 
     /**
-     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} (JK-1182 / JK-1203).
+     * {@code jk new --template <local-path|short-name|git-uri|owner/repo>} (JK-1182 / JK-1203 /
+     * JK-1380).
      */
     private int runTemplatePipeline(Path cwd) {
         if (spring || grails || quarkus || plugin) {
@@ -289,24 +298,24 @@ public final class NewCommand implements CliCommand {
         if (!localTemplate) {
             try {
                 extractScratch = Files.createTempDirectory("jk-g8-");
-                var shortResolved = Giter8Catalog.resolveShortName(templateRef, cwd, extractScratch);
+                var cfg = cc.jumpkick.config.JkTemplatesConfig.resolve();
+                var shortResolved = Giter8Catalog.resolveShortName(
+                        templateRef, cwd, extractScratch, cfg, templateSources);
                 if (shortResolved.isPresent()) {
                     template = shortResolved.get();
                 } else if (Giter8Git.looksRemote(templateRef)) {
                     template = Giter8Git.fetch(templateRef, Giter8Git.defaultCacheRoot());
                 } else {
-                    String known =
-                            String.join(", ", Giter8Catalog.descriptions().keySet());
                     CliOutput.err(
                             cc.jumpkick.cli.tui.CommandWedge.fail(
                                     "New",
-                                    "template not found as a local directory: "
-                                            + template
+                                    "template not found: "
+                                            + templateRef
                                             + (Giter8Catalog.isShortName(templateRef)
-                                                    ? " (short name not in local catalog; known: "
-                                                            + known
+                                                    ? " ("
+                                                            + Giter8Catalog.helpKnown(cfg)
                                                             + "; see docs/features/giter8-templates.md)"
-                                                    : " (use a path, catalog short name, owner/repo, or git URL — see docs/features/giter8-templates.md)")));
+                                                    : " (use a path, short name, owner/repo, or git URL — see docs/features/giter8-templates.md)")));
                     return Exit.USAGE;
                 }
             } catch (IOException e) {
