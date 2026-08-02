@@ -142,11 +142,7 @@ public final class TestCommand implements CliCommand {
                 return finishSession(Exit.CONFIG);
             }
             if (selected != null && selected.moduleDirs().isEmpty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Test",
-                        cc.jumpkick.config.GlobalConfig.nerdfont(),
-                        "nothing selected for tests"));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }
@@ -155,11 +151,7 @@ public final class TestCommand implements CliCommand {
             }
             if (selected != null
                     && !selected.moduleDirs().contains(dir.toAbsolutePath().normalize())) {
-                CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                        cc.jumpkick.cli.tui.Glyphs.CHECK,
-                        "Test",
-                        cc.jumpkick.config.GlobalConfig.nerdfont(),
-                        "nothing selected for tests"));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Test", "nothing selected for tests");
                 if (session != null) session.wedge("nothing selected for tests");
                 return finishSession(0);
             }

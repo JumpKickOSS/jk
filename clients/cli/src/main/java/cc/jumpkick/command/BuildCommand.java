@@ -248,7 +248,7 @@ public final class BuildCommand implements CliCommand {
                 return Exit.CONFIG;
             }
             if (sel != null && sel.empty()) {
-                CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.ok("Build", selectionEmptyMessage()));
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Build", selectionEmptyMessage());
                 return 0;
             }
             return runWorkspaceHeadless(entryDir, entryBuild, cache, sel != null ? sel.dirtyDirs() : null);
@@ -513,8 +513,8 @@ public final class BuildCommand implements CliCommand {
             notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
             return 0;
         }
-        CliOutput.out(
-                PipelineWedge.chipLine(cc.jumpkick.cli.tui.Glyphs.CHECK, "Build", GlobalConfig.nerdfont(), okTail));
+        // Headless path never opened CommandManager — printOk supplies the leading blank.
+        cc.jumpkick.cli.tui.CommandWedge.printOk("Build", okTail);
         notifyBuild(BuildNotify.Outcome.COMPLETE, entryDir, entryBuild, 0, elapsedMs);
         return 0;
     }
@@ -796,12 +796,10 @@ public final class BuildCommand implements CliCommand {
                 var forecast = cc.jumpkick.cli.engine.EngineClient.forecast(
                         cc.jumpkick.engine.EnginePaths.current(), dir, cache, buildOpts.skipTests);
                 if (!forecast.hasErrors() && !forecast.empty() && forecast.fullyCached()) {
+                    // Fast path skips CommandManager (no live region) — must still printOk so the
+                    // leading blank matches the full build path (JK-1373).
                     String upToDate = buildOk() + ", project up to date " + elapsedSince(startNanos);
-                    CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
-                            cc.jumpkick.cli.tui.Glyphs.CHECK,
-                            "Build",
-                            cc.jumpkick.config.GlobalConfig.nerdfont(),
-                            upToDate));
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Build", upToDate);
                     if (session != null) session.module(target).wedge(upToDate);
                     return 0;
                 }
