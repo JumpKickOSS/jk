@@ -300,8 +300,7 @@ public final class JavaIncrementalCompile {
 
     private static boolean processorPathUnchanged(CompileRequest request, Map<String, String> in) {
         Set<String> now = new TreeSet<>();
-        for (Path pp : request.processorPath())
-            now.add("pp:" + FreshnessStamp.identityKey(pp));
+        for (Path pp : request.processorPath()) now.add("pp:" + FreshnessStamp.identityKey(pp));
         Set<String> prior = new TreeSet<>();
         for (String k : in.keySet()) {
             if (!k.startsWith("pp:")) continue;

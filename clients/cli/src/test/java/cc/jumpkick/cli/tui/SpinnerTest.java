@@ -223,8 +223,7 @@ class SpinnerTest {
         s.close();
         String closed = buf.toString(StandardCharsets.UTF_8);
         if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) {
-            assertThat(TestAnsi.strip(closed).trim())
-                    .isEqualTo("* Status > Analyzing status... - done.");
+            assertThat(TestAnsi.strip(closed).trim()).isEqualTo("* Status > Analyzing status... - done.");
             return;
         }
         assertThat(closed).contains("\r\033[K"); // clear current line on close
@@ -237,8 +236,7 @@ class SpinnerTest {
                 .isEqualTo(" * Format > Examining source files - working...");
         assertThat(Spinner.plainDoneLine("Format", "Examining source files"))
                 .isEqualTo(" * Format > Examining source files - done.");
-        assertThat(Spinner.plainWorkingLine(null, "Cleaning"))
-                .isEqualTo(" * Cleaning - working...");
+        assertThat(Spinner.plainWorkingLine(null, "Cleaning")).isEqualTo(" * Cleaning - working...");
     }
 
     @Test
@@ -249,13 +247,16 @@ class SpinnerTest {
             var s = Spinner.wedge(stream(buf), "Format", "Examining");
             s.clockForTests(clock::get);
             s.step(); // start
-            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(1);
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
+                    .isEqualTo(1);
             clock.addAndGet(30_000L);
             s.step(); // still within 60s — no second line
-            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(1);
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
+                    .isEqualTo(1);
             clock.addAndGet(30_000L); // total +60s
             s.step();
-            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working...")).isEqualTo(2);
+            assertThat(countOccurrences(buf.toString(StandardCharsets.UTF_8), "working..."))
+                    .isEqualTo(2);
             s.close();
             assertThat(buf.toString(StandardCharsets.UTF_8)).contains("done.");
             assertThat(buf.toString(StandardCharsets.UTF_8)).doesNotContain("\u001B[");

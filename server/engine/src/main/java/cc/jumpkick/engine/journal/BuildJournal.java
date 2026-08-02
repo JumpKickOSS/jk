@@ -167,12 +167,9 @@ public final class BuildJournal {
                 long stampMillis = finished.finishedAt() > 0
                         ? finished.finishedAt()
                         : (finished.startedAt() > 0 ? finished.startedAt() : System.currentTimeMillis());
-                timestamp = ID_TS.format(
-                        LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
+                timestamp = ID_TS.format(LocalDateTime.ofInstant(Instant.ofEpochMilli(stampMillis), ZoneOffset.UTC));
             }
-            long n = finished.buildNumber() > 0
-                    ? finished.buildNumber()
-                    : ProjectBuilds.runNumberOf(target);
+            long n = finished.buildNumber() > 0 ? finished.buildNumber() : ProjectBuilds.runNumberOf(target);
             BuildRecord toWrite = withId(finished.withBuildNumber(n), timestamp);
             Files.writeString(tmp.resolve(RECORD), Json.write(toWrite), StandardCharsets.UTF_8);
             writeSnapshot(tmp, snapshot);
@@ -225,7 +222,11 @@ public final class BuildJournal {
             }
             for (HostSampleLine s : samples) {
                 if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
-                sb.append("host.").append(sanitize(s.key())).append(" = ").append(Math.round(s.ms())).append('\n');
+                sb.append("host.")
+                        .append(sanitize(s.key()))
+                        .append(" = ")
+                        .append(Math.round(s.ms()))
+                        .append('\n');
             }
             Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
         } catch (IOException ignored) {
@@ -500,7 +501,9 @@ public final class BuildJournal {
             String id = r.get().id();
             if (id != null) {
                 try {
-                    return LocalDateTime.parse(id, ID_TS).toInstant(ZoneOffset.UTC).toEpochMilli();
+                    return LocalDateTime.parse(id, ID_TS)
+                            .toInstant(ZoneOffset.UTC)
+                            .toEpochMilli();
                 } catch (RuntimeException ignored) {
                 }
             }

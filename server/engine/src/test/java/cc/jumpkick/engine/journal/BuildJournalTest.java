@@ -62,7 +62,7 @@ class BuildJournalTest {
         assertThat(j.get(locator).orElseThrow().running()).isFalse();
         assertThat(j.get(locator).orElseThrow().buildNumber()).isEqualTo(27);
         assertThat(j.get(locator).orElseThrow().success()).isTrue();
-        assertThat(j.runDir(locator).map(p -> p.resolve("metrics.toml")).filter(java.nio.file.Files::isRegularFile))
+        assertThat(j.runDir(locator).map(p -> p.resolve("metrics.toml")).filter(Files::isRegularFile))
                 .isPresent();
     }
 

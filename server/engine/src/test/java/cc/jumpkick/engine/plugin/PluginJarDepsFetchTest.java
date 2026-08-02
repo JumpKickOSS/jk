@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cache.Cas;
 import cc.jumpkick.compile.WorkerClasspath;
-import cc.jumpkick.model.JkVersion;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;

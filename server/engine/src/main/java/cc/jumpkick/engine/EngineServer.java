@@ -1180,11 +1180,9 @@ public final class EngineServer implements AutoCloseable {
     private String jobStartLine(long jid, String kind, String dir, AdmitResult admit) {
         String detailsPath = null;
         if (admit.buildNumber() > 0) {
-            detailsPath = journal
-                    .detailsFile(coordOf(dir), dir, admit.buildNumber())
+            detailsPath = journal.detailsFile(coordOf(dir), dir, admit.buildNumber())
                     .map(Path::toString)
-                    .orElseGet(() -> journal
-                            .detailsFile(java.lang.Long.toString(admit.buildNumber()))
+                    .orElseGet(() -> journal.detailsFile(java.lang.Long.toString(admit.buildNumber()))
                             .map(Path::toString)
                             .orElse(null));
         }
@@ -3467,7 +3465,8 @@ public final class EngineServer implements AutoCloseable {
             Jsonl.strMap(requestLine, "graalHomes").forEach((d, h) -> graalByDir.put(Path.of(d), Path.of(h)));
             java.util.List<Path> selectedDirs = new java.util.ArrayList<>();
             for (String d : Jsonl.strArray(requestLine, "moduleDirs")) {
-                if (d != null && !d.isBlank()) selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
+                if (d != null && !d.isBlank())
+                    selectedDirs.add(Path.of(d).toAbsolutePath().normalize());
             }
             Session session = resolveSession(requestLine, cancelToken, false).withJdksDir(jdksDir);
             SessionContext.where(session, () -> {
@@ -3564,8 +3563,8 @@ public final class EngineServer implements AutoCloseable {
                             EngineProtocol.workspaceFinish(
                                     false,
                                     cc.jumpkick.model.command.Exit.CONFIG,
-                                    java.util.List.of("module selection: cannot resolve the build graph — "
-                                            + e.getMessage())));
+                                    java.util.List.of(
+                                            "module selection: cannot resolve the build graph — " + e.getMessage())));
                     return;
                 }
                 java.util.Map<Path, JkBuild> filtered = new java.util.LinkedHashMap<>();
@@ -3706,8 +3705,7 @@ public final class EngineServer implements AutoCloseable {
         // stream (the client returns on the terminal without any pipeline events).
         synchronized (cc.jumpkick.runtime.LockGate.monitorFor(lockDir)) {
             if (conservative
-                    && !cc.jumpkick.lock.LockFreshness.isStale(
-                            lockDir, cc.jumpkick.lock.LockPaths.lockFile(lockDir))) {
+                    && !cc.jumpkick.lock.LockFreshness.isStale(lockDir, cc.jumpkick.lock.LockPaths.lockFile(lockDir))) {
                 sendQuiet(writer, EngineProtocol.lockFinish(true, 0, java.util.List.of(), -1));
                 return;
             }
@@ -3732,7 +3730,15 @@ public final class EngineServer implements AutoCloseable {
                     ? cc.jumpkick.runtime.LockPipelines.updatePipeline(
                             dir, effective, cache, repoUrl, features, withDefaults, platformOverride)
                     : cc.jumpkick.runtime.LockPipelines.lockPipeline(
-                            dir, effective, cache, repoUrl, features, withDefaults, sources, conservative, observer,
+                            dir,
+                            effective,
+                            cache,
+                            repoUrl,
+                            features,
+                            withDefaults,
+                            sources,
+                            conservative,
+                            observer,
                             null);
             for (Step p : pipeline.steps()) {
                 sendQuiet(

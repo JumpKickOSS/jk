@@ -2,8 +2,8 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.http.Http;

@@ -135,8 +135,7 @@ public final class CliSessionTranscript {
                     // Fallback: resolve runs/<N>/details.jsonl for this project under the live builds root.
                     try {
                         String coord = coordOf(projectDir);
-                        Path run = ProjectBuilds.runDir(
-                                ProjectBuilds.buildsRoot(), coord, projectDir, buildNumber);
+                        Path run = ProjectBuilds.runDir(ProjectBuilds.buildsRoot(), coord, projectDir, buildNumber);
                         openFile(run.resolve(ProjectBuilds.DETAILS));
                     } catch (IOException ignored) {
                     }

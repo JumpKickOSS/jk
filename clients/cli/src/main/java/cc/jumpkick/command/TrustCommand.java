@@ -237,8 +237,7 @@ public final class TrustCommand extends GroupCommand {
             }
             if (!GlobalOptions.from(in).outputIsJson()) {
                 CommandWedge.printOk(
-                        "Trust",
-                        "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
+                        "Trust", "Imported " + added + " trusted source" + (added == 1 ? "" : "s") + " from " + source);
             }
             return 0;
         }

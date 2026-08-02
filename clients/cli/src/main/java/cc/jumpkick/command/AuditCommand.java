@@ -60,8 +60,7 @@ public final class AuditCommand implements CliCommand {
                     "Audit", "no jk.toml in " + cc.jumpkick.cli.PathDisplay.styledRaw(projectDir)));
             return Exit.CONFIG;
         }
-        int lockCode =
-                cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, JkDirs.cache(), global, "Audit");
+        int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(projectDir, JkDirs.cache(), global, "Audit");
         if (lockCode != 0) return lockCode;
         Path lockPath = cc.jumpkick.lock.LockPaths.lockFile(projectDir);
         if (!Files.exists(lockPath)) {

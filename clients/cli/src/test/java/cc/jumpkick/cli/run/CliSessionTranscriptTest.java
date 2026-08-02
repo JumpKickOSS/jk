@@ -52,9 +52,8 @@ class CliSessionTranscriptTest {
         // session-start + job meta
         assertTrue(early.stream().anyMatch(l -> l.contains("\"type\":\"session-start\"")));
         assertTrue(early.stream()
-                .anyMatch(l -> l.contains("\"type\":\"job\"")
-                        && l.contains("\"jid\":42")
-                        && l.contains("\"buildNumber\":7")));
+                .anyMatch(l ->
+                        l.contains("\"type\":\"job\"") && l.contains("\"jid\":42") && l.contains("\"buildNumber\":7")));
         assertTrue(early.stream().anyMatch(l -> l.contains("\"etaMs\":12000")));
         assertTrue(early.stream().noneMatch(l -> l.contains("historyId")));
 

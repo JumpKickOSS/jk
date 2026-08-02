@@ -478,15 +478,7 @@ public final class BuildPlanForecast {
                             "package-assembly", BuildPlan.Status.RUN, "repackage · compile changed", null));
                 } else {
                     boolean hit = assemblyActionCached(
-                            dir,
-                            project,
-                            layout,
-                            lockFile,
-                            cas,
-                            actionCache,
-                            cache,
-                            compileMainKey,
-                            restoredJarShas);
+                            dir, project, layout, lockFile, cas, actionCache, cache, compileMainKey, restoredJarShas);
                     steps.add(
                             hit
                                     ? new BuildPlan.Step("package-assembly", BuildPlan.Status.CACHED, "", null)

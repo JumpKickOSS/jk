@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -96,7 +97,7 @@ class WorkerLibTest {
 
     private static void deleteTree(Path dir) {
         try (var walk = Files.walk(dir)) {
-            walk.sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                 try {
                     Files.deleteIfExists(p);
                 } catch (Exception ignored) {
@@ -177,8 +178,7 @@ class WorkerLibTest {
             Files.writeString(d.resolve("some-tool.jar"), "tool-bytes");
             assertThat(WorkerLib.pathsIfPresent(id)).isNull(); // no order file → not a worker dir
 
-            Files.writeString(
-                    d.resolve(WorkerLib.ORDER_FILE), "# header\nsome-tool.jar\nmissing-dep.jar\n");
+            Files.writeString(d.resolve(WorkerLib.ORDER_FILE), "# header\nsome-tool.jar\nmissing-dep.jar\n");
             assertThat(WorkerLib.pathsIfPresent(id)).isNull(); // listed entry absent → partial
         } finally {
             try {

@@ -51,11 +51,7 @@ public final class TestCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value(
-                        "<name>",
-                        "Apply a build profile. Default: auto (ci on CI).",
-                        "-p",
-                        "--profile"),
+                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "-p", "--profile"),
                 Opt.flag("Skip profile tag filters (incl. the auto ci profile).", "--no-profile"),
                 Opt.value(
                         "<N>",

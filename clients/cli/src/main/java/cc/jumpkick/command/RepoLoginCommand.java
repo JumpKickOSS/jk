@@ -79,11 +79,7 @@ public final class RepoLoginCommand implements CliCommand {
         if (!global.quiet) {
             CommandWedge.printOk(
                     "Login",
-                    "Stored "
-                            + (username != null ? "basic" : "token")
-                            + " credentials for repository '"
-                            + id
-                            + "'.");
+                    "Stored " + (username != null ? "basic" : "token") + " credentials for repository '" + id + "'.");
         }
         return 0;
     }

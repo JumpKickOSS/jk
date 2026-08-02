@@ -30,8 +30,7 @@ class EnsureFreshLockTest {
         Files.writeString(tmp.resolve("jk.toml"), "[project]\nname = \"demo\"\n");
         Files.writeString(tmp.resolve("jk-lock.toml"), "version = 1\n");
 
-        int code = EnsureFreshLock.failSoftOrHard(
-                tmp, "Explain", "‼ Cannot resolve dependencies:\n  │ …", 6, null);
+        int code = EnsureFreshLock.failSoftOrHard(tmp, "Explain", "‼ Cannot resolve dependencies:\n  │ …", 6, null);
 
         assertThat(code).isEqualTo(6);
     }

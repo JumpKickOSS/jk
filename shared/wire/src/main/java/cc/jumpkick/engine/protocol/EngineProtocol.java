@@ -2446,8 +2446,7 @@ public final class EngineProtocol {
      * @param detailsPath absolute path to {@code runs/<buildNumber>/details.jsonl} (may be null)
      * @param etaMs estimated wall ms at admit (-1 omit)
      */
-    public static String jobStart(
-            long jid, String kind, String dir, long buildNumber, String detailsPath, long etaMs) {
+    public static String jobStart(long jid, String kind, String dir, long buildNumber, String detailsPath, long etaMs) {
         StringBuilder b = new StringBuilder("{\"type\":\"")
                 .append(JOB_START)
                 .append("\",\"jid\":")

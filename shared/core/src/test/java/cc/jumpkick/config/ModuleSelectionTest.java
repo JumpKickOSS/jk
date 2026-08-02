@@ -120,7 +120,10 @@ class ModuleSelectionTest {
 
         var r = ModuleSelection.resolve(root, build, "cli");
         assertThat(r.ok()).isFalse();
-        assertThat(r.errorMessage()).contains("ambiguous").contains("clients/cli").contains("tools/cli");
+        assertThat(r.errorMessage())
+                .contains("ambiguous")
+                .contains("clients/cli")
+                .contains("tools/cli");
 
         // Full path, glob, and brace forms still select.
         assertThat(ModuleSelection.resolve(root, build, "clients/cli").ok()).isTrue();

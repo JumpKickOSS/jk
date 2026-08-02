@@ -309,8 +309,8 @@ public final class BuildCommand implements CliCommand {
                 return new Selection("cannot load jk.toml for module selection: " + e.getMessage(), false, null);
             }
         }
-        var selected =
-                cc.jumpkick.config.ModuleSelection.resolveOptional(entryDir, buildForSelect, modulesSpec, affectedSince);
+        var selected = cc.jumpkick.config.ModuleSelection.resolveOptional(
+                entryDir, buildForSelect, modulesSpec, affectedSince);
         if (selected == null) return new Selection(null, false, null);
         if (!selected.ok()) return new Selection(selected.errorMessage(), false, null);
         if (selected.moduleDirs().isEmpty()) return new Selection(null, true, null);

@@ -136,7 +136,9 @@ public final class BuildMetrics {
 
     private static boolean isDefaultMetricsPath(Path file) {
         try {
-            return file.toAbsolutePath().normalize().equals(defaultFile().toAbsolutePath().normalize())
+            return file.toAbsolutePath()
+                            .normalize()
+                            .equals(defaultFile().toAbsolutePath().normalize())
                     || "metrics.json".equals(file.getFileName().toString())
                             && file.getParent() != null
                             && file.getParent().equals(JkDirs.builds());
@@ -147,8 +149,7 @@ public final class BuildMetrics {
 
     /** Hydrate invocation/step stats from {@code project-metrics.toml} / {@code host-metrics.toml}. */
     static BuildMetrics fromAggregates() {
-        cc.jumpkick.builds.AggregatedMetrics agg =
-                cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
+        cc.jumpkick.builds.AggregatedMetrics agg = cc.jumpkick.builds.AggregatedMetrics.loadAll(JkDirs.builds());
         Map<String, Entry> inv = new LinkedHashMap<>();
         Map<String, Entry> steps = new LinkedHashMap<>();
         long now = System.currentTimeMillis();
@@ -172,7 +173,8 @@ public final class BuildMetrics {
                 String dir = dot < 0 ? "" : body.substring(dot + 1);
                 inv.put(kind + SEP + dir, new Entry(kind, dir, null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
             } else if (key.equals("workspace.wall-ms")) {
-                inv.putIfAbsent("build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
+                inv.putIfAbsent(
+                        "build" + SEP + "", new Entry("build", "", null, null, ok, Stats.EMPTY, Stats.EMPTY, now));
             } else if (key.startsWith("module.") && key.contains(".step.") && key.endsWith(".wall-ms")) {
                 // module.<dir>.step.<step>.wall-ms
                 String body = key.substring("module.".length(), key.length() - ".wall-ms".length());

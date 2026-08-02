@@ -994,8 +994,7 @@ public final class Calibration {
             if (!Files.isRegularFile(f)) return absent;
             TomlParseResult t = Toml.parse(f);
             // Prefer [calibration] table in host-metrics.toml; fall back to root keys.
-            org.tomlj.TomlTable cal =
-                    t.getTable("calibration") != null ? t.getTable("calibration") : t;
+            org.tomlj.TomlTable cal = t.getTable("calibration") != null ? t.getTable("calibration") : t;
             double mpw = cal.getDouble("ms-per-weight") != null ? cal.getDouble("ms-per-weight") : 0;
             long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
             String version = cal.getString("jk-version");
@@ -1126,7 +1125,8 @@ public final class Calibration {
         if (c.learned != null && !c.learned.isEmpty()) {
             for (var e : c.learned.samples().entrySet()) {
                 double m = HostLearnedRates.trimmedMean(e.getValue());
-                if (m > 0) out.append(e.getKey()).append(" = ").append(round3(m)).append('\n');
+                if (m > 0)
+                    out.append(e.getKey()).append(" = ").append(round3(m)).append('\n');
             }
         }
         out.append('\n').append(c.renderCalibrationSection());
@@ -1159,28 +1159,28 @@ public final class Calibration {
                 resolve-used         = %s
                 updated              = %d
                 """.formatted(
-                schema <= 0 ? SCHEMA : schema,
-                round3(msPerWeight),
-                jvmForkMs,
-                javacMs,
-                diskIoMs,
-                hashCpuMs,
-                junitForkMs,
-                junitRunMs,
-                junitPlatformMs,
-                resolveMs,
-                engineColdStartMs,
-                probeTestSuiteStartupMs,
-                probeTestMethodMs,
-                probeCompilePerSourceMs,
-                round3(loadAtCalibration),
-                cores,
-                quote(jdk == null ? "" : jdk),
-                quote(jkVersion == null ? "" : jkVersion),
-                measured,
-                junitPlatformUsed,
-                resolveUsed,
-                updated);
+                        schema <= 0 ? SCHEMA : schema,
+                        round3(msPerWeight),
+                        jvmForkMs,
+                        javacMs,
+                        diskIoMs,
+                        hashCpuMs,
+                        junitForkMs,
+                        junitRunMs,
+                        junitPlatformMs,
+                        resolveMs,
+                        engineColdStartMs,
+                        probeTestSuiteStartupMs,
+                        probeTestMethodMs,
+                        probeCompilePerSourceMs,
+                        round3(loadAtCalibration),
+                        cores,
+                        quote(jdk == null ? "" : jdk),
+                        quote(jkVersion == null ? "" : jkVersion),
+                        measured,
+                        junitPlatformUsed,
+                        resolveUsed,
+                        updated);
     }
 
     public String summary() {

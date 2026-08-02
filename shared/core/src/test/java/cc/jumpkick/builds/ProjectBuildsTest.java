@@ -27,8 +27,10 @@ class ProjectBuildsTest {
         assertThat(run.buildNumber()).isEqualTo(1);
         assertThat(run.runDir().getFileName().toString()).isEqualTo("1");
         assertThat(Files.isDirectory(run.runDir())).isTrue();
-        assertThat(Files.isRegularFile(run.projectHome().resolve(ProjectBuilds.IDENTITY))).isTrue();
-        assertThat(Files.readString(run.projectHome().resolve(ProjectBuilds.RUN_NUMBER)).trim())
+        assertThat(Files.isRegularFile(run.projectHome().resolve(ProjectBuilds.IDENTITY)))
+                .isTrue();
+        assertThat(Files.readString(run.projectHome().resolve(ProjectBuilds.RUN_NUMBER))
+                        .trim())
                 .isEqualTo("1");
 
         ProjectBuilds.RunDir run2 = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));

@@ -21,9 +21,7 @@ class MetricsHarvestTest {
     @Test
     void harvest_writes_project_and_host_metrics(@TempDir Path root) throws Exception {
         ProjectBuilds.RunDir run = ProjectBuilds.openRun(root, "g:demo", root.resolve("proj"));
-        Files.writeString(
-                run.metricsFile(),
-                """
+        Files.writeString(run.metricsFile(), """
                 workspace.wall-ms = 1000
                 step.compile-java.wall-ms = 200
                 host.run-tests-per-method-ms = 12
@@ -34,7 +32,11 @@ class MetricsHarvestTest {
         Path projectMetrics = run.projectHome().resolve(ProjectBuilds.PROJECT_METRICS);
         assertThat(Files.isRegularFile(projectMetrics)).isTrue();
         String pm = Files.readString(projectMetrics);
-        assertThat(pm).contains("[mean]").contains("workspace.wall-ms").contains("[last]").contains("[count]");
+        assertThat(pm)
+                .contains("[mean]")
+                .contains("workspace.wall-ms")
+                .contains("[last]")
+                .contains("[count]");
 
         Path host = ProjectBuilds.hostMetricsFile(root);
         assertThat(Files.isRegularFile(host)).isTrue();

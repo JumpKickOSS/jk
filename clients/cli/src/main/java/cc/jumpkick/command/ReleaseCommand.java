@@ -120,8 +120,7 @@ public final class ReleaseCommand implements CliCommand {
 
         // 2) Ensure a native CLI when the module is native-eligible and none is staged yet
         if (!skipNative && cliDir != null && findNativeClient(cliDir) == null && isNativeEligible(cliDir)) {
-            cc.jumpkick.cli.tui.CommandWedge.printOk(
-                    "Release", "no native CLI yet — running `jk native --skip-tests`");
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "no native CLI yet — running `jk native --skip-tests`");
             code = runNative(dir, cacheDir);
             if (code != 0) {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
@@ -149,8 +148,7 @@ public final class ReleaseCommand implements CliCommand {
         }
         Path stagedEngine = out.resolve("lib").resolve("jk-engine-" + version + ".jar");
         Files.copy(engineJar, stagedEngine, StandardCopyOption.REPLACE_EXISTING);
-        cc.jumpkick.cli.tui.CommandWedge.printOk(
-                "Release", "engine (JVM) → " + PathDisplay.styledRaw(stagedEngine));
+        cc.jumpkick.cli.tui.CommandWedge.printOk("Release", "engine (JVM) → " + PathDisplay.styledRaw(stagedEngine));
 
         Path clientBin = resolveClientBinary(cliDir);
         if (clientBin == null || !Files.isRegularFile(clientBin)) {

@@ -6,7 +6,6 @@ import cc.jumpkick.cli.EnsureFreshLock;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.ProjectContext;
 import cc.jumpkick.cli.run.ConsoleSpec;
-import cc.jumpkick.cli.run.PipelineConsole;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Spinner;
@@ -165,9 +164,8 @@ public final class ExplainCommand implements CliCommand {
         boolean livePrep = EnsureFreshLock.isInteractiveAuto(global) && !global.outputIsJson();
         boolean needsLock = LockFreshness.needsRefresh(startDir);
         boolean needsCalibrate = HostCalibrationStatus.needsBootstrapProbe();
-        String prepMsg = needsLock
-                ? "Locking versions…"
-                : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";
+        String prepMsg =
+                needsLock ? "Locking versions…" : needsCalibrate ? "Calibrating host…" : "Calculating build plan…";
 
         ExplainPlan plan;
         long etaMillis;
@@ -222,8 +220,8 @@ public final class ExplainCommand implements CliCommand {
 
         // Header: plan chip (nerd powerline / ansi two-space trail / plain " = Build Plan >")
         // then the build-time estimate.
-        String header = cc.jumpkick.cli.tui.PipelineWedge.planChip(
-                cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
+        String header =
+                cc.jumpkick.cli.tui.PipelineWedge.planChip(cc.jumpkick.cli.tui.Glyphs.MENU, "Build Plan", nerdfont);
         // Fully-cached plans report eta 0 from the engine ("no work") — that is not unknown;
         // a pure cache verify is sub-second. Only show "unknown" when there is real
         // work but no learned timings yet.

@@ -72,9 +72,7 @@ public final class ProjectBuilds {
     /** Stable directory name for {@code coord} + {@code projectDir}. */
     public static String key(String coord, Path projectDir) {
         String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord.strip();
-        Path p = projectDir == null
-                ? Path.of(".")
-                : projectDir.toAbsolutePath().normalize();
+        Path p = projectDir == null ? Path.of(".") : projectDir.toAbsolutePath().normalize();
         String raw = c + "\0" + p;
         try {
             byte[] dig = MessageDigest.getInstance("SHA-256").digest(raw.getBytes(StandardCharsets.UTF_8));
@@ -139,11 +137,7 @@ public final class ProjectBuilds {
     public static void writeIdentity(Path home, String coord, Path projectDir) throws IOException {
         Path p = projectDir.toAbsolutePath().normalize();
         String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord.strip();
-        String body = "coord = "
-                + quote(c)
-                + "\npath = "
-                + quote(p.toString())
-                + "\n";
+        String body = "coord = " + quote(c) + "\npath = " + quote(p.toString()) + "\n";
         AtomicWrites.replace(home.resolve(IDENTITY), body);
     }
 
@@ -154,7 +148,9 @@ public final class ProjectBuilds {
             long next = 1;
             if (Files.isRegularFile(f)) {
                 try {
-                    next = Long.parseLong(Files.readString(f, StandardCharsets.UTF_8).trim()) + 1;
+                    next = Long.parseLong(
+                                    Files.readString(f, StandardCharsets.UTF_8).trim())
+                            + 1;
                 } catch (NumberFormatException ignored) {
                     next = 1;
                 }
@@ -273,8 +269,7 @@ public final class ProjectBuilds {
         return true;
     }
 
-    public record RunDir(
-            String key, Path projectHome, Path runDir, long buildNumber, String coord, Path projectPath) {
+    public record RunDir(String key, Path projectHome, Path runDir, long buildNumber, String coord, Path projectPath) {
         public Path detailsFile() {
             return runDir.resolve(DETAILS);
         }

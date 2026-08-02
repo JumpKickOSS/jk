@@ -263,8 +263,7 @@ class LockFreshenConservativeTest {
                 </project>
                 """.formatted(group, artifact, version);
         served.put(
-                prefix + "/" + version + "/" + artifact + "-" + version + ".pom",
-                pom.getBytes(StandardCharsets.UTF_8));
+                prefix + "/" + version + "/" + artifact + "-" + version + ".pom", pom.getBytes(StandardCharsets.UTF_8));
     }
 
     private void serveLib(String... versions) {

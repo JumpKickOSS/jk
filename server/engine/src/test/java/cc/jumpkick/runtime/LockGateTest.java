@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,7 +45,7 @@ class LockGateTest {
                     .start();
         }
         start.countDown();
-        assertThat(done.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
         assertThat(maxInside.get()).isEqualTo(1);
     }
 }

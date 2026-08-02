@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.nio.file.attribute.FileTime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,9 +13,7 @@ class LockFreshnessTest {
 
     @Test
     void needsRefresh_when_lock_missing(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
@@ -27,9 +25,7 @@ class LockFreshnessTest {
     @Test
     void digest_mismatch_is_stale(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "g"
                 name = "n"
@@ -46,9 +42,7 @@ class LockFreshnessTest {
 
     @Test
     void missing_digest_is_always_stale(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
@@ -68,9 +62,7 @@ class LockFreshnessTest {
 
     @Test
     void invalid_digest_is_stale(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"
@@ -86,9 +78,7 @@ class LockFreshnessTest {
     @Test
     void matching_digest_is_fresh(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "g"
                 name = "n"
@@ -99,8 +89,7 @@ class LockFreshnessTest {
         Lockfile lock = Lockfile.empty("test").withManifestsSha256(digest);
         Files.writeString(lockFile, LockfileWriter.render(lock));
         // Mtime of toml newer is irrelevant — only digest matters.
-        Files.setLastModifiedTime(
-                toml, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+        Files.setLastModifiedTime(toml, FileTime.fromMillis(System.currentTimeMillis() + 60_000));
 
         assertThat(LockFreshness.isValidDigest(digest)).isTrue();
         assertThat(LockFreshness.isStale(dir, lockFile)).isFalse();
@@ -109,9 +98,7 @@ class LockFreshnessTest {
 
     @Test
     void writer_stamps_digest_on_write(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "g"
                 name = "n"

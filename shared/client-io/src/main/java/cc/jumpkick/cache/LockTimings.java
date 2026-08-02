@@ -125,9 +125,8 @@ public final class LockTimings {
      * @param knownPackages packages from an existing lock (0 if none)
      */
     public static long estimateMillis(int declaredRoots, int knownPackages) {
-        int packages = knownPackages > 0
-                ? knownPackages
-                : Math.max(1, Math.max(declaredRoots, 1) * COLD_PACKAGES_PER_ROOT);
+        int packages =
+                knownPackages > 0 ? knownPackages : Math.max(1, Math.max(declaredRoots, 1) * COLD_PACKAGES_PER_ROOT);
         // Graph usually sees ~final package count; use the same N for both legs.
         long g = graphPerPackageMs();
         if (g <= 0) g = COLD_GRAPH_PER_PACKAGE_MS;

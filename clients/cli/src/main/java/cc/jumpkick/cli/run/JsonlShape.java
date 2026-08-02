@@ -111,13 +111,18 @@ public final class JsonlShape {
         if (jid > 0) sb.append(",\"jid\":").append(jid);
         if (buildNumber > 0) sb.append(",\"buildNumber\":").append(buildNumber);
         if (etaMs >= 0) sb.append(",\"etaMs\":").append(etaMs);
-        if (detailsPath != null && !detailsPath.isBlank()) sb.append(",\"detailsPath\":").append(js(detailsPath));
+        if (detailsPath != null && !detailsPath.isBlank())
+            sb.append(",\"detailsPath\":").append(js(detailsPath));
         return sb.append('}').toString();
     }
 
     /** ETA estimate event (ms wall). */
     public static String eta(long etaMs) {
-        return open("eta").append(",\"etaMs\":").append(Math.max(0, etaMs)).append('}').toString();
+        return open("eta")
+                .append(",\"etaMs\":")
+                .append(Math.max(0, etaMs))
+                .append('}')
+                .toString();
     }
 
     /** Command session finished — exit code + wall duration (+ optional summary fields). */

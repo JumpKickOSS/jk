@@ -4,8 +4,8 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.Answers;
-import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
 import cc.jumpkick.cli.tui.PipelineWedge;
 import cc.jumpkick.cli.tui.Wizard;
 import cc.jumpkick.cli.tui.WizardStep;
@@ -141,7 +141,7 @@ public final class ActivateCommand implements CliCommand {
         appendActivationLine(rcFile, activationLine);
         JkxLink.Result jkx = ensureJkxLauncher();
         CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(PipelineWedge.chipLine(
                 Glyphs.CHECK,
                 "Activate",
                 nerdfont,
@@ -183,7 +183,7 @@ public final class ActivateCommand implements CliCommand {
 
         ensureJkxLauncher();
         CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
+        CliOutput.out(PipelineWedge.chipLine(
                 Glyphs.BANG,
                 "Activate",
                 nerdfont,
@@ -204,7 +204,7 @@ public final class ActivateCommand implements CliCommand {
                 ensureJkxLauncher();
                 Theme t = Theme.active();
                 CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
+                CliOutput.out(PipelineWedge.chipLine(
                         Glyphs.CHECK,
                         "Activate",
                         nerdfont,

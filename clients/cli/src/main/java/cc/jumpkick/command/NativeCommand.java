@@ -75,6 +75,7 @@ public final class NativeCommand implements CliCommand {
     cc.jumpkick.cli.GraalResolver graal;
     /** Optional {@code -m}/{@code --affected-since} filter; null = whole workspace. */
     String modulesSpec;
+
     String affectedSince;
 
     @Override
@@ -189,8 +190,7 @@ public final class NativeCommand implements CliCommand {
 
         // -m / --affected-since: same ModuleSelection as jk build/test (paths, names, :gradle).
         List<Path> selectedDirs = null;
-        if ((modulesSpec != null && !modulesSpec.isBlank())
-                || (affectedSince != null && !affectedSince.isBlank())) {
+        if ((modulesSpec != null && !modulesSpec.isBlank()) || (affectedSince != null && !affectedSince.isBlank())) {
             cc.jumpkick.model.JkBuild rootBuild;
             try {
                 rootBuild = cc.jumpkick.config.JkBuildParser.parse(wsRoot.resolve("jk.toml"));
@@ -198,8 +198,7 @@ public final class NativeCommand implements CliCommand {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Native", String.valueOf(e.getMessage())));
                 return Exit.CONFIG;
             }
-            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(
-                    wsRoot, rootBuild, modulesSpec, affectedSince);
+            var sel = cc.jumpkick.config.ModuleSelection.resolveOptional(wsRoot, rootBuild, modulesSpec, affectedSince);
             if (sel == null) {
                 // neither set — whole workspace
             } else if (!sel.ok()) {

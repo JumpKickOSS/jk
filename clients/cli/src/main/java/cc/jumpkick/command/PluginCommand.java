@@ -85,8 +85,7 @@ public final class PluginCommand extends GroupCommand {
         public int run(Invocation in) throws Exception {
             String artifactId = in.positionals().get(0);
             boolean isolated = in.value("cache-dir").isPresent();
-            Path installRoot =
-                    isolated ? in.value("cache-dir").map(Path::of).orElseThrow() : JkDirs.store();
+            Path installRoot = isolated ? in.value("cache-dir").map(Path::of).orElseThrow() : JkDirs.store();
             boolean removed = false;
             // The shared lib dir belongs to the global store; leave it alone under --cache-dir.
             if (!isolated && Files.isDirectory(WorkerLib.dir(artifactId))) {
@@ -96,7 +95,8 @@ public final class PluginCommand extends GroupCommand {
             Path repoDir = installRoot.resolve("repos/local/cc/jumpkick").resolve(artifactId);
             if (Files.isDirectory(repoDir)) {
                 try (var walk = Files.walk(repoDir)) {
-                    for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    for (Path p :
+                            walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
                         Files.deleteIfExists(p);
                     }
                 }

@@ -101,7 +101,9 @@ public final class BuildService {
         try {
             Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(entryDir);
             if (Files.isRegularFile(lockFile)) {
-                packages = cc.jumpkick.lock.LockfileReader.read(lockFile).artifacts().size();
+                packages = cc.jumpkick.lock.LockfileReader.read(lockFile)
+                        .artifacts()
+                        .size();
             }
         } catch (Exception ignored) {
             // unknown package count
@@ -126,7 +128,9 @@ public final class BuildService {
         // Soft floor from this project's prior whole-lock walls (same dir) — only when composition
         // under-shoots a stable measured average by a wide margin (never pull a large monorepo down).
         try {
-            String dir = entryDir == null ? "" : entryDir.toAbsolutePath().normalize().toString();
+            String dir = entryDir == null
+                    ? ""
+                    : entryDir.toAbsolutePath().normalize().toString();
             BuildMetrics.Stats hist = BuildMetrics.load(BuildMetrics.defaultFile())
                     .invocation("lock", dir)
                     .map(BuildMetrics.Entry::ok)

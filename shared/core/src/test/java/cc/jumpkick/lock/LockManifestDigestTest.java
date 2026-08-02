@@ -3,8 +3,10 @@ package cc.jumpkick.lock;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -32,9 +34,7 @@ class LockManifestDigestTest {
 
     @Test
     void compute_stable_for_standalone_project(@TempDir Path dir) throws Exception {
-        Files.writeString(
-                dir.resolve("jk.toml"),
-                """
+        Files.writeString(dir.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name = "app"
@@ -107,17 +107,16 @@ class LockManifestDigestTest {
                 name = "app"
                 version = "1.0.0"
                 """);
-        var none = java.nio.file.attribute.PosixFilePermissions.fromString("---------");
+        var none = PosixFilePermissions.fromString("---------");
         Files.setPosixFilePermissions(toml, none);
         try {
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> LockManifestDigest.compute(dir))
-                    .isInstanceOf(java.io.IOException.class);
+                    .isInstanceOf(IOException.class);
             org.assertj.core.api.Assertions.assertThatThrownBy(
                             () -> LockfileWriter.write(Lockfile.empty("test"), dir.resolve("jk-lock.toml")))
-                    .isInstanceOf(java.io.IOException.class);
+                    .isInstanceOf(IOException.class);
         } finally {
-            Files.setPosixFilePermissions(
-                    toml, java.nio.file.attribute.PosixFilePermissions.fromString("rw-r--r--"));
+            Files.setPosixFilePermissions(toml, PosixFilePermissions.fromString("rw-r--r--"));
         }
     }
 
@@ -148,18 +147,14 @@ class LockManifestDigestTest {
     @Test
     void compute_changes_when_manifest_edited(@TempDir Path dir) throws Exception {
         Path toml = dir.resolve("jk.toml");
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "com.example"
                 name = "app"
                 version = "1.0.0"
                 """);
         String before = LockManifestDigest.compute(dir);
-        Files.writeString(
-                toml,
-                """
+        Files.writeString(toml, """
                 [project]
                 group = "com.example"
                 name = "app"

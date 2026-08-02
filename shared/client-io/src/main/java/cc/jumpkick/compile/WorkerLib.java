@@ -94,7 +94,8 @@ public final class WorkerLib {
                     if (dep == null) continue;
                     Path abs = dep.toAbsolutePath().normalize();
                     if (!Files.isRegularFile(abs)) continue;
-                    if (workerJar != null && abs.equals(workerJar.toAbsolutePath().normalize())) continue;
+                    if (workerJar != null
+                            && abs.equals(workerJar.toAbsolutePath().normalize())) continue;
                     linkInto(tmp, abs, order);
                 }
             }

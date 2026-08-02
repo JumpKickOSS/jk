@@ -9,6 +9,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -107,14 +108,14 @@ class PluginInstallLocalTest {
                 cc.jumpkick.lock.Lockfile.CURRENT_VERSION,
                 "jk test",
                 cc.jumpkick.lock.Lockfile.RESOLUTION_ALGORITHM,
-                java.util.List.of(new cc.jumpkick.lock.Lockfile.Artifact(
+                List.of(new cc.jumpkick.lock.Lockfile.Artifact(
                         "com.google.code.gson:gson",
                         "2.11.0",
                         "https://repo.example/gson",
                         "sha256:" + gsonSha,
                         null,
-                        java.util.List.of(cc.jumpkick.model.Scope.MAIN),
-                        java.util.List.of(),
+                        List.of(cc.jumpkick.model.Scope.MAIN),
+                        List.of(),
                         null,
                         null)));
         cc.jumpkick.lock.LockfileWriter.write(lock, dir.resolve("jk-lock.toml"));

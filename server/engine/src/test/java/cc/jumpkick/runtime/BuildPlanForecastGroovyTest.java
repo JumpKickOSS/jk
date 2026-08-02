@@ -50,15 +50,12 @@ class BuildPlanForecastGroovyTest {
         // manifests-sha256 or LockFreshness treats the lock as always-stale and the forecast
         // short-circuits to a single "compile-main" step (no compile-groovy).
         String manifestsSha = LockManifestDigest.compute(tmp);
-        Files.writeString(
-                tmp.resolve("jk-lock.toml"),
-                """
+        Files.writeString(tmp.resolve("jk-lock.toml"), """
                 version = 1
                 generated-by = "test"
                 resolution-algorithm = "pubgrub-v1"
                 manifests-sha256 = "%s"
-                """
-                        .formatted(manifestsSha));
+                """.formatted(manifestsSha));
 
         BuildGraph.Result graph = BuildGraph.resolve(tmp, JkBuildParser.parse(tmp.resolve("jk.toml")));
         assertThat(graph.hasErrors()).isFalse();

@@ -166,8 +166,7 @@ public final class FormatCommand implements CliCommand {
                     String errTail = counts[2] + " error" + (counts[2] == 1 ? "" : "s") + " " + took;
                     cc.jumpkick.cli.tui.CommandWedge.printFail("Format", errTail);
                 } else if (counts[0] == 0) {
-                    cc.jumpkick.cli.tui.CommandWedge.printOk(
-                            "Format", "Already formatted " + took);
+                    cc.jumpkick.cli.tui.CommandWedge.printOk("Format", "Already formatted " + took);
                 } else if (check) {
                     String body = counts[0] + " to format, " + counts[1] + " already clean " + took;
                     cc.jumpkick.cli.tui.CommandWedge.printOk("Format", body);

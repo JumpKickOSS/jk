@@ -81,23 +81,11 @@ public final class EnsureFreshLock {
         String chip = wedgeCommand == null || wedgeCommand.isBlank() ? "Lock" : wedgeCommand;
 
         EnginePrewarm.ensure();
-        boolean showOwn = ownSpinner
-                && spinner == null
-                && isInteractiveAuto(global)
-                && !global.outputIsJson();
+        boolean showOwn = ownSpinner && spinner == null && isInteractiveAuto(global) && !global.outputIsJson();
         try {
             // Conservative: a freshen must never float pinned versions — that is `jk lock`'s job.
             EngineClient.LockRequest req = new EngineClient.LockRequest(
-                    dir,
-                    cache,
-                    List.of(),
-                    false,
-                    false,
-                    null,
-                    global.offline,
-                    global.force,
-                    global.verbose,
-                    true);
+                    dir, cache, List.of(), false, false, null, global.offline, global.force, global.verbose, true);
 
             EngineClient.LockHandler quiet = new EngineClient.LockHandler() {
                 @Override

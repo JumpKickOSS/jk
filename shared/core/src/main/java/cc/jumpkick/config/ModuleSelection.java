@@ -115,9 +115,8 @@ public final class ModuleSelection {
             // A literal token naming several modules is a collision (e.g. clients/cli vs
             // tools/cli both answering to `cli`) — fan-out is for globs/braces only (JK-1366).
             if (!isGlob(t) && hits.size() > 1) {
-                return Result.fail(
-                        "`" + token + "` is ambiguous — matches " + String.join(", ", hits)
-                                + " (use the full path, a glob, or a brace list)");
+                return Result.fail("`" + token + "` is ambiguous — matches " + String.join(", ", hits)
+                        + " (use the full path, a glob, or a brace list)");
             }
             matched.addAll(hits);
         }

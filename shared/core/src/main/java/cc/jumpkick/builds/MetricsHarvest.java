@@ -182,20 +182,20 @@ public final class MetricsHarvest {
         StringBuilder sb = new StringBuilder();
         sb.append("# project-metrics — derived by MetricsHarvest (scalars only)\n");
         sb.append("[mean]\n");
-        means.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> sb.append(e.getKey())
-                        .append(" = ")
-                        .append(fmt(e.getValue().trimmedMean()))
-                        .append('\n'));
+        means.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(e.getValue().trimmedMean()))
+                .append('\n'));
         sb.append("\n[last]\n");
-        last.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> sb.append(e.getKey()).append(" = ").append(fmt(e.getValue())).append('\n'));
+        last.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(e.getValue()))
+                .append('\n'));
         sb.append("\n[count]\n");
         counts.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> sb.append(e.getKey()).append(" = ").append(e.getValue()).append('\n'));
+                .forEach(e ->
+                        sb.append(e.getKey()).append(" = ").append(e.getValue()).append('\n'));
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
     }
@@ -221,12 +221,10 @@ public final class MetricsHarvest {
             }
         }
         sb.append("[mean]\n");
-        samples.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> sb.append(e.getKey())
-                        .append(" = ")
-                        .append(fmt(trimmedMean(e.getValue())))
-                        .append('\n'));
+        samples.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> sb.append(e.getKey())
+                .append(" = ")
+                .append(fmt(trimmedMean(e.getValue())))
+                .append('\n'));
         if (!preserved.isBlank()) sb.append(preserved);
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());

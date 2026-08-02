@@ -741,8 +741,7 @@ public final class CacheCommand extends GroupCommand {
             boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
             Path root = resolveCacheRoot(cacheDir);
             if (!Files.isDirectory(root)) {
-                cc.jumpkick.cli.tui.CommandWedge.printOk(
-                        "Cache", "Nothing to purge — cache directory does not exist.");
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — cache directory does not exist.");
                 return 0;
             }
             Stats stats = statsOf(root);

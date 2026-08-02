@@ -7,7 +7,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.regex.Matcher;
@@ -29,10 +28,7 @@ public final class AggregatedMetrics {
     private final Map<String, Double> hostMean;
 
     private AggregatedMetrics(
-            Map<String, Double> mean,
-            Map<String, Double> last,
-            Map<String, Long> count,
-            Map<String, Double> hostMean) {
+            Map<String, Double> mean, Map<String, Double> last, Map<String, Long> count, Map<String, Double> hostMean) {
         this.mean = mean;
         this.last = last;
         this.count = count;
@@ -207,7 +203,10 @@ public final class AggregatedMetrics {
                 if (!km.matches()) continue;
                 String key = km.group(1);
                 double v = Double.parseDouble(km.group(2));
-                if ("mean".equals(section) || section.isEmpty() || "probe".equals(section) || "calibration".equals(section)) {
+                if ("mean".equals(section)
+                        || section.isEmpty()
+                        || "probe".equals(section)
+                        || "calibration".equals(section)) {
                     hostMean.putIfAbsent(key, v);
                 }
             }

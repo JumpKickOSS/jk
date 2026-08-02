@@ -42,8 +42,8 @@ public final class WhyCommand implements CliCommand {
         Path dir = global.workingDir();
         Path buildFile = dir.resolve("jk.toml");
         if (!Files.exists(buildFile)) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Why", "project must have jk.toml (run `jk init` first)"));
+            CliOutput.err(
+                    cc.jumpkick.cli.tui.CommandWedge.fail("Why", "project must have jk.toml (run `jk init` first)"));
             return Exit.CONFIG;
         }
         int lockCode = cc.jumpkick.cli.EnsureFreshLock.ensure(dir, cc.jumpkick.util.JkDirs.cache(), global, "Why");

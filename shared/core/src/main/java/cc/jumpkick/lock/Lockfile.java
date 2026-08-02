@@ -136,17 +136,7 @@ public record Lockfile(
     /** This lock with a content digest of the manifests used to produce it. */
     public Lockfile withManifestsSha256(String digest) {
         return new Lockfile(
-                version,
-                generatedBy,
-                resolutionAlgorithm,
-                jdk,
-                kotlin,
-                artifacts,
-                plugins,
-                sdk,
-                modules,
-                jk,
-                digest);
+                version, generatedBy, resolutionAlgorithm, jdk, kotlin, artifacts, plugins, sdk, modules, jk, digest);
     }
 
     /** Back-compat constructor without SDK entries. */

@@ -3,16 +3,16 @@ package cc.jumpkick.cache;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Files;
 import java.util.List;
+import java.util.stream.LongStream;
 import org.junit.jupiter.api.Test;
 
 class LockTimingsTest {
 
     @Test
     void trimmed_mean_drops_deciles() {
-        List<Long> samples = java.util.stream.LongStream.rangeClosed(1, 10)
-                .boxed()
-                .toList();
+        List<Long> samples = LongStream.rangeClosed(1, 10).boxed().toList();
         assertThat(LockTimings.trimmedMean(samples)).isEqualTo(5);
     }
 
@@ -41,6 +41,6 @@ class LockTimingsTest {
         assertThat(LockTimings.graphPerPackageMs()).isEqualTo(100);
         assertThat(LockTimings.materializePerPackageMs()).isEqualTo(20);
         assertThat(LockTimings.overheadMs()).isEqualTo(300);
-        assertThat(java.nio.file.Files.isRegularFile(LockTimings.defaultFile())).isTrue();
+        assertThat(Files.isRegularFile(LockTimings.defaultFile())).isTrue();
     }
 }
