@@ -23,7 +23,8 @@ class TasksCommandTest {
         String out = captureStdout(() -> run("tasks", "-C", tempDir.toString()));
         assertThat(out).contains("package-jar");
         assertThat(out).contains("compile-java");
-        assertThat(out).contains("PHASE");
+        // JK-1375: plain uppercase headers became BoxTable title-case columns.
+        assertThat(out).contains("Phase");
     }
 
     @Test
@@ -107,7 +108,8 @@ class TasksCommandTest {
         String out = captureStdout(() -> run("tasks", "-C", tempDir.toString()));
         assertThat(out).contains("build-logic:gen-tokens");
         assertThat(out).contains("build-logic:LineCountBuild");
-        assertThat(out).contains("project build logic");
+        // JK-1375: build-logic rows ride the main table (phase cell "logic"), no separate heading.
+        assertThat(out).contains("logic");
     }
 
     private static int run(String... args) {
