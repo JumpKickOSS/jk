@@ -111,6 +111,30 @@ Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates th
 Also set `JK_AOT_TRAIN=off` on short-lived CI engines (see table above). After restoring
 cache, a normal `jk build` should hit action cache for unchanged modules.
 
+### Managing local storage
+
+| Command | Scope |
+|---------|--------|
+| **`jk cache storage`** | Action cache only (`actions/` under the cache dir): file count, size, utilization |
+| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the action-cache root |
+| **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
+| **`jk repo search`** | Offline search of locally mirrored coordinates |
+| **`jk repo login` / `logout`** | Artifact-repository credentials |
+
+Utilization bars:
+
+| Report | Cap (config) | Default |
+|--------|--------------|---------|
+| `jk cache storage` | `[cache] action-max-size-mb` / `JK_ACTION_MAX_SIZE_MB` | **1024** (1 GiB) |
+| `jk repo storage` | `[cache] max-size-gb` / `JK_MAX_SIZE_GB` | **20** GiB when unset |
+
+```toml
+# ~/.config/jk/config.toml
+[cache]
+action-max-size-mb = 1024   # action-cache utilization denominator
+max-size-gb = 20            # store / CAS prune budget + repo utilization
+```
+
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
 

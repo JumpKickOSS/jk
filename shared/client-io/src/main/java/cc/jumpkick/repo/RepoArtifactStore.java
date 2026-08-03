@@ -236,7 +236,7 @@ public final class RepoArtifactStore {
 
     /**
      * Every {@code group:artifact} tracked by this store, with the versions held for each. Powers
-     * offline cache search ({@code jk cache search}, {@code jk library search --offline}). Empty
+     * offline cache search ({@code jk repo search}, {@code jk library search --offline}). Empty
      * for {@link #NONE} or a cold store. Versions are in directory-listing order — callers wanting
      * newest-first should sort.
      */
@@ -295,7 +295,7 @@ public final class RepoArtifactStore {
 
     /**
      * Every {@code group:artifact} cached under any named repo in {@code cacheRoot}, merged by
-     * module key — the repo-agnostic view {@code jk cache search} and {@code jk library search
+     * module key — the repo-agnostic view {@code jk repo search} and {@code jk library search
      * --offline} want, since neither is scoped to one particular declared repository.
      */
     public static List<Module> allModules(Path cacheRoot) {

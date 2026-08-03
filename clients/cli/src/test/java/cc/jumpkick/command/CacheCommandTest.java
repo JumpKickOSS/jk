@@ -31,55 +31,27 @@ class CacheCommandTest {
     }
 
     @Test
-    void info_summarizes_an_empty_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
+    void storage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
         assertThat(Files.exists(cache)).isFalse();
     }
 
     @Test
-    void info_reports_blob_counts_and_sizes(@TempDir Path tempDir) throws Exception {
+    void storage_reports_action_cache_only(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Explicit --cache-dir isolates all sections under that root (not the ambient store).
+        // CAS under the same root must not appear in action-cache storage.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
 
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
-        // Boxed table: title, the two metric rows with compact sizes, a total, and
-        // the utilization bar. (Sizes are compact: 5 bytes → "5B", 2048 → "2.0K".)
-        assertThat(stdout).contains("Cache Directory Information");
-        assertThat(stdout).contains("CAS Blobs").contains("5B");
-        assertThat(stdout).contains("Action Cache").contains("2.0K");
-        assertThat(stdout).contains("Total");
-        assertThat(stdout).contains("Utilization");
-    }
-
-    @Test
-    void info_does_not_double_count_hardlinked_repos_and_cas(@TempDir Path tempDir) throws Exception {
-        Path cache = tempDir.resolve("cache");
-        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
-        byte[] payload = new byte[8192];
-        writeBlob(casBlob, payload);
-        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
-        Files.createDirectories(repoJar.getParent());
-        try {
-            Files.createLink(repoJar, casBlob);
-        } catch (UnsupportedOperationException | FileSystemException e) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
-        }
-        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
-
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
-        // Strip ANSI so compact sizes are easy to match.
-        String plain = TestAnsi.strip(stdout);
-        // Total storage = 8192 blob + 64 sidecar ≈ 8.1K, not 8192×2 + 64 ≈ 16K.
-        assertThat(plain).contains("Total");
-        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
-        assertThat(plain).containsPattern("CAS Blobs\\s+.*8\\.0K");
-        // Worker JARs row should only show the sidecar (~64B), not another 8K for the hard link.
-        assertThat(plain).containsPattern("Worker JARs\\s+.*64B");
-        assertThat(plain).doesNotContain("16.0K");
+        String plain = TestAnsi.strip(capture(() -> run("cache", "storage", "--cache-dir", cache.toString())));
+        assertThat(plain).contains("Action Cache Storage");
+        assertThat(plain).containsPattern("File Count:\\s*1");
+        assertThat(plain).contains("2.0 KiB");
+        assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("CAS Blobs");
+        assertThat(plain).doesNotContain("Worker JARs");
     }
 
     @Test
@@ -173,7 +145,7 @@ class CacheCommandTest {
     }
 
     @Test
-    void search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
+    void repo_search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
         seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
         seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
@@ -181,7 +153,7 @@ class CacheCommandTest {
 
         // Coordinates print in color; strip ANSI to assert on the visible text.
         String stdout =
-                TestAnsi.strip(capture(() -> run("cache", "search", "jackson", "--cache-dir", cache.toString())));
+                TestAnsi.strip(capture(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering
@@ -191,10 +163,40 @@ class CacheCommandTest {
     }
 
     @Test
-    void search_with_no_matches_returns_nonzero(@TempDir Path tempDir) {
+    void repo_search_with_no_matches_returns_nonzero(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
-        int exit = run("cache", "search", "nonexistent", "--cache-dir", cache.toString());
+        int exit = run("repo", "search", "nonexistent", "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(1);
+    }
+
+    @Test
+    void repo_storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
+        byte[] payload = new byte[8192];
+        writeBlob(casBlob, payload);
+        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
+        Files.createDirectories(repoJar.getParent());
+        try {
+            Files.createLink(repoJar, casBlob);
+        } catch (UnsupportedOperationException | FileSystemException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
+        }
+        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
+        writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
+
+        String plain =
+                TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
+        assertThat(plain).contains("Repo Storage");
+        assertThat(plain).contains("CAS Blobs");
+        assertThat(plain).contains("Worker JARs");
+        assertThat(plain).contains("Run Logs");
+        assertThat(plain).contains("Total");
+        assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("Action Cache");
+        // Hard-linked jar must not double-count: Total ≈ 8.1K not 16K.
+        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
+        assertThat(plain).doesNotContain("16.0K");
     }
 
     @Test
