@@ -51,11 +51,21 @@ public final class EngineMaintenance implements AutoCloseable {
      *     warmup (AOT/cal). Must not throw.
      */
     public EngineMaintenance(Consumer<String> log, StoreFeedRefresh feeds, Runnable onMaintenanceDue) {
+        this(log, feeds, onMaintenanceDue, JkDirs.state().resolve("engine-maintenance.stamp"), JkDirs.userConfigFile());
+    }
+
+    /** Test seam: injectable stamp + config paths. */
+    EngineMaintenance(
+            Consumer<String> log,
+            StoreFeedRefresh feeds,
+            Runnable onMaintenanceDue,
+            Path stampFile,
+            Path configFile) {
         this.log = log != null ? log : s -> {};
         this.feeds = Objects.requireNonNull(feeds, "feeds");
         this.onMaintenanceDue = onMaintenanceDue != null ? onMaintenanceDue : () -> {};
-        this.stampFile = JkDirs.state().resolve("engine-maintenance.stamp");
-        this.configFile = JkDirs.userConfigFile();
+        this.stampFile = stampFile;
+        this.configFile = configFile;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "jk-engine-maintenance");
             t.setDaemon(true);
@@ -83,26 +93,42 @@ public final class EngineMaintenance implements AutoCloseable {
         }
     }
 
-    private void maybeReloadConfig() throws IOException {
+    /** Tracked config state: {@code -1} unknown (first tick), {@code 0} known-absent, else mtime. */
+    void maybeReloadConfig() throws IOException {
         if (!Files.isRegularFile(configFile)) {
-            configMtimeMillis = -1L;
+            long prev = configMtimeMillis;
+            configMtimeMillis = 0L;
+            if (prev > 0) {
+                // Deleting config.toml is "back to defaults" — as much a change as an edit.
+                configChanged("jk engine: user config removed (defaults apply)");
+            }
             return;
         }
         long mtime = Files.getLastModifiedTime(configFile).toMillis();
-        if (configMtimeMillis < 0) {
-            configMtimeMillis = mtime;
+        long prev = configMtimeMillis;
+        if (prev < 0) {
+            configMtimeMillis = mtime; // first tick: baseline only
             return;
         }
-        if (mtime != configMtimeMillis) {
+        if (prev == 0) {
             configMtimeMillis = mtime;
-            // Callers re-resolve JkCacheConfig / HostWarmup.enabled / templates each use.
-            // Invalidate calibration memo so a changed probe policy can re-read host-metrics.
-            try {
-                cc.jumpkick.runtime.Calibration.invalidateMemo();
-            } catch (Throwable ignored) {
-            }
-            log.accept("jk engine: reloaded user config (mtime changed)");
+            configChanged("jk engine: user config created (reloaded)");
+            return;
         }
+        if (mtime != prev) {
+            configMtimeMillis = mtime;
+            configChanged("jk engine: reloaded user config (mtime changed)");
+        }
+    }
+
+    private void configChanged(String message) {
+        // Callers re-resolve JkCacheConfig / HostWarmup.enabled / templates each use.
+        // Invalidate calibration memo so a changed probe policy can re-read host-metrics.
+        try {
+            cc.jumpkick.runtime.Calibration.invalidateMemo();
+        } catch (Throwable ignored) {
+        }
+        log.accept(message);
     }
 
     private boolean maintenanceDue() {
