@@ -18,6 +18,7 @@ import cc.jumpkick.command.CacheCommand;
 import cc.jumpkick.command.CancelCommand;
 import cc.jumpkick.command.CleanCommand;
 import cc.jumpkick.command.CompileCommand;
+import cc.jumpkick.command.CompletionCommand;
 import cc.jumpkick.command.DeactivateCommand;
 import cc.jumpkick.command.DenyCommand;
 import cc.jumpkick.command.DevCommand;
@@ -153,6 +154,7 @@ public final class CommandDispatch {
             new MvnCommand(),
             new GradleCommand(),
             new ActivateCommand(),
+            new CompletionCommand(),
             new NewCommand(),
             new InitCommand());
 

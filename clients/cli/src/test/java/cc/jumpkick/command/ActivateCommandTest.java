@@ -16,30 +16,26 @@ import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk activate --yes} must write the rc line without opening the interactive wizard (installers
- * hang otherwise waiting for a keypress).
+ * {@code jk activate --yes} writes a marker-bounded installer block without the interactive wizard.
  */
 @DisabledOnOs(OS.WINDOWS)
 @Tag("integration")
 class ActivateCommandTest {
 
     @Test
-    void yes_writes_rc_without_prompt(@TempDir Path home) throws Exception {
+    void yes_writes_marker_block_without_prompt(@TempDir Path home) throws Exception {
         String prevHome = System.getProperty("user.home");
-        String prevShell = System.getenv("SHELL"); // may be null in some CI; we only need detectable
         PrintStream origOut = System.out;
         PrintStream origErr = System.err;
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
         System.setProperty("user.home", home.toString());
+        // Isolate product dirs under the temp home so completions land in the fixture tree.
+        String prevJkHome = System.getenv("JK_HOME"); // may be set by gradle test isolation
         System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8));
         System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
         int exit;
         try {
-            // Prefer zsh if $SHELL is unset so detect() still works in minimal envs.
-            if (prevShell == null || prevShell.isBlank()) {
-                // Can't set env easily; skip path if detect fails — assert non-zero then.
-            }
             exit = Jk.execute("activate", "--yes");
         } finally {
             System.setProperty("user.home", prevHome);
@@ -56,7 +52,9 @@ class ActivateCommandTest {
         Path rc = shell.get().rcFile(home);
         assertThat(rc).exists();
         String content = Files.readString(rc);
-        assertThat(content).contains("jk activate");
+        assertThat(content).contains(ShellInstallerBlock.BEGIN);
+        assertThat(content).contains(ShellInstallerBlock.END);
+        assertThat(content).contains("command jk activate");
         assertThat(out.toString(StandardCharsets.UTF_8) + err.toString(StandardCharsets.UTF_8))
                 .contains("configured");
 
@@ -69,7 +67,6 @@ class ActivateCommandTest {
             System.setProperty("user.home", prevHome);
             System.setOut(origOut);
         }
-        // One install block: comment mentions `jk activate` and the eval line does too — not doubled.
-        assertThat(Files.readString(rc).split("# Added by", -1)).hasSize(2);
+        assertThat(Files.readString(rc).split(ShellInstallerBlock.BEGIN, -1)).hasSize(2);
     }
 }

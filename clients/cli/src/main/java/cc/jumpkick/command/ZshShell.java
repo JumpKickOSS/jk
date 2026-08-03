@@ -45,7 +45,18 @@ public final class ZshShell implements Shell {
     }
 
     @Override
-    public String activationLine(String jkExe) {
-        return "eval \"$(" + jkExe + " activate zsh)\"";
+    public String activationLine(String jkCommand) {
+        return "eval \"$(command jk activate zsh)\"";
+    }
+
+    @Override
+    public String pathEnsureSnippet(String binDir) {
+        return "case \":$PATH:\" in *\":" + binDir + ":\"*) ;; *) export PATH=\"" + binDir + ":$PATH\" ;; esac\n";
+    }
+
+    @Override
+    public String completionWiring(String dataDir) {
+        String dir = dataDir + "/completions/zsh";
+        return "fpath=(\"" + dir + "\" $fpath)\n";
     }
 }

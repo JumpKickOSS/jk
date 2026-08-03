@@ -16,16 +16,19 @@ import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.model.command.Param;
+import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Optional;
 import org.jline.terminal.Terminal;
 
-/** {@code jk activate [<shell>]} — wire jk into the user's shell. */
+/**
+ * {@code jk activate [<shell>]} — print hook scripts or install a grok-style rc block (PATH +
+ * hook-env eval + completions).
+ */
 public final class ActivateCommand implements CliCommand {
 
     @Override
@@ -35,7 +38,7 @@ public final class ActivateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Print shell integration (bash, zsh, fish, pwsh)";
+        return "Install shell integration (PATH, hooks, completions) or print hooks";
     }
 
     @Override
@@ -43,7 +46,9 @@ public final class ActivateCommand implements CliCommand {
         return List.of(Param.of(
                 "shell",
                 Arity.ZERO_OR_ONE,
-                "Target shell: bash, zsh, fish, pwsh.\n" + "Omit to launch the interactive installer."));
+                "Target shell: bash, zsh, fish, pwsh.\n"
+                        + "With a name: print hook-env script (for eval/source).\n"
+                        + "Omit to install the rc marker block."));
     }
 
     @Override
@@ -55,7 +60,6 @@ public final class ActivateCommand implements CliCommand {
     public int run(Invocation in) throws IOException {
         String shellName = in.positionals().isEmpty() ? null : in.positionals().get(0);
         if (shellName != null && !shellName.isBlank()) {
-            // Named shell always prints the eval script (rc hooks call this every startup).
             return printScript(shellName);
         }
         return runInstaller(in.isSet("yes"));
@@ -64,71 +68,55 @@ public final class ActivateCommand implements CliCommand {
     private int printScript(String shellName) {
         var shell = Shell.byName(shellName);
         if (shell.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            CliOutput.err(CommandWedge.fail(
                     "Activate", "unsupported shell `" + shellName + "` (supported: bash, zsh, fish, pwsh)"));
             return Exit.USAGE;
         }
-        // Runs on every shell startup (the rc line evals this command), so jkx
-        // self-heals — and must stay silent: stdout here is eval'd shell code.
         ensureJkxLauncher();
+        // stdout is eval'd shell code — keep it silent aside from the script.
         CliOutput.outRaw(shell.get().activateScript(resolveJkExe()));
         return 0;
     }
 
-    /**
-     * Best-effort {@code $JK_BIN_DIR/jkx} launcher (hardlink → symlink → shim; see {@link
-     * JkxLink}). {@code jkx} is a real binary so shebangs/CI work without shell integration; the
-     * happy path is two stats. Foreign files under the {@code jkx} name are left alone.
-     */
     private static JkxLink.Result ensureJkxLauncher() {
         String exe = resolveJkExe();
         Path jkExe = exe.startsWith("/") || exe.contains(":\\") ? Path.of(exe) : null;
-        return JkxLink.ensure(cc.jumpkick.util.JkDirs.binDir(), jkExe);
+        return JkxLink.ensure(JkDirs.binDir(), jkExe);
     }
 
     private int runInstaller(boolean assumeYes) throws IOException {
         var shell = Shell.detect();
         if (shell.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+            CliOutput.err(CommandWedge.fail(
                     "Activate",
                     "couldn't detect your shell from $SHELL (value: `" + System.getenv("SHELL")
                             + "`). Pass an explicit shell, e.g. `jk activate zsh`."));
             return Exit.USAGE;
         }
         if (assumeYes) {
-            // install.sh / scripts: write the rc line with no wizard (no keypress). Idempotent.
             return writeActivation(shell.get());
         }
         if (!isInteractiveTerminal()) {
-            // Genuinely non-interactive: no controlling terminal (CI, cron, a headless daemon) or
-            // forced off via JK_NONINTERACTIVE. We can't prompt for consent to edit a dotfile, and
-            // launching a shell would hang. Don't touch the rc file — just print the one line to add
-            // (and where), self-heal jkx, and succeed. Idempotent: if the rc file already carries the
-            // line, say so instead. This is not an error.
-            //
-            // Note `curl | bash` does NOT land here: the user's controlling terminal is reachable via
-            // /dev/tty even though stdin is the piped script (install.sh routes it to us), so
-            // canPrompt() is true and the interactive wizard runs below — unless the installer passes
-            // --yes (preferred).
             return printManualInstructions(shell.get());
         }
         return runWizard(shell.get());
     }
 
-    /**
-     * Write the activation line to the detected shell's rc file without prompting. Used by {@code
-     * --yes} (installers) and by the wizard after consent.
-     */
     private int writeActivation(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        String activationLine = shell.activationLine(resolveJkExe());
+        Path binDir = JkDirs.binDir();
+        Path dataDir = JkDirs.data();
+        String block = ShellInstallerBlock.render(shell, binDir, dataDir);
         boolean nerdfont = GlobalConfig.nerdfont();
         Theme t = Theme.active();
 
-        if (Files.exists(rcFile)
-                && Files.readString(rcFile, StandardCharsets.UTF_8).contains(activationLine)) {
+        String previous = Files.exists(rcFile) ? Files.readString(rcFile, StandardCharsets.UTF_8) : "";
+        boolean hadBlock = ShellInstallerBlock.present(previous);
+        String next = ShellInstallerBlock.upsert(previous, block);
+        if (hadBlock && previous.equals(next)) {
             ensureJkxLauncher();
+            ShellCompletions.writeAll();
             CommandWedge.envelopeStart();
             CliOutput.out(PipelineWedge.chipLine(
                     Glyphs.CHECK,
@@ -138,16 +126,21 @@ public final class ActivateCommand implements CliCommand {
             return 0;
         }
 
-        appendActivationLine(rcFile, activationLine);
+        if (rcFile.getParent() != null) Files.createDirectories(rcFile.getParent());
+        Files.writeString(rcFile, next.endsWith("\n") ? next : next + "\n", StandardCharsets.UTF_8);
         JkxLink.Result jkx = ensureJkxLauncher();
+        ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
         CliOutput.out(PipelineWedge.chipLine(
                 Glyphs.CHECK,
                 "Activate",
                 nerdfont,
                 "Shell integration configured in " + Theme.colorize(rcDisplay, t.path())));
+        CliOutput.out("  PATH ← " + Theme.colorize(binDir.toString(), t.path()) + "  (real jk / jkx)");
+        CliOutput.out("  hooks ← directory JAVA_HOME via hook-env");
+        CliOutput.out("  completions ← " + Theme.colorize(dataDir.resolve("completions").toString(), t.path()));
         if (jkx.status() == JkxLink.Status.CREATED) {
-            CliOutput.out("Installed " + Theme.colorize("jkx", t.shell()) + " (uvx-style `jk tool run`) → "
+            CliOutput.out("Installed " + Theme.colorize("jkx", t.shell()) + " → "
                     + Theme.colorize(jkx.path().toString(), t.path()));
         } else if (jkx.status() == JkxLink.Status.SKIPPED_FOREIGN) {
             CliOutput.out("Note: " + Theme.colorize(jkx.path().toString(), t.path())
@@ -157,51 +150,52 @@ public final class ActivateCommand implements CliCommand {
         return 0;
     }
 
-    /**
-     * Non-interactive activation: never edits the rc file (no consent possible without a TTY) and
-     * never launches a shell. Prints the exact line to add and where, ensures {@code jkx}, and
-     * exits 0 — or reports "already configured" when the rc file already carries the line.
-     */
     private int printManualInstructions(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        String activationLine = shell.activationLine(resolveJkExe());
+        String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
         boolean nerdfont = GlobalConfig.nerdfont();
         Theme t = Theme.active();
 
-        if (Files.exists(rcFile)
-                && Files.readString(rcFile, StandardCharsets.UTF_8).contains(activationLine)) {
-            ensureJkxLauncher();
-            CommandWedge.envelopeStart();
-            CliOutput.out(PipelineWedge.chipLine(
-                    Glyphs.CHECK,
-                    "Activate",
-                    nerdfont,
-                    "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
-            return 0;
+        if (Files.exists(rcFile)) {
+            String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
+            if (ShellInstallerBlock.present(existing)) {
+                ensureJkxLauncher();
+                ShellCompletions.writeAll();
+                CommandWedge.envelopeStart();
+                CliOutput.out(PipelineWedge.chipLine(
+                        Glyphs.CHECK,
+                        "Activate",
+                        nerdfont,
+                        "Shell integration is already configured in " + Theme.colorize(rcDisplay, t.path())));
+                return 0;
+            }
         }
 
         ensureJkxLauncher();
+        ShellCompletions.writeAll();
         CommandWedge.envelopeStart();
         CliOutput.out(PipelineWedge.chipLine(
                 Glyphs.BANG,
                 "Activate",
                 nerdfont,
-                "Add this to " + Theme.colorize(rcDisplay, t.path()) + " to finish activation:"));
-        CliOutput.out("  " + Theme.colorize(activationLine, t.shell()));
+                "Add this block to " + Theme.colorize(rcDisplay, t.path()) + " to finish activation:"));
+        for (String line : block.split("\n", -1)) {
+            CliOutput.out("  " + Theme.colorize(line, t.shell()));
+        }
         return 0;
     }
 
     private int runWizard(Shell shell) throws IOException {
         Path rcFile = shell.rcFile(home());
         String rcDisplay = shell.rcFileDisplay();
-        String activationLine = shell.activationLine(resolveJkExe());
         boolean nerdfont = GlobalConfig.nerdfont();
 
         if (Files.exists(rcFile)) {
             String existing = Files.readString(rcFile, StandardCharsets.UTF_8);
-            if (existing.contains(activationLine)) {
+            if (ShellInstallerBlock.present(existing)) {
                 ensureJkxLauncher();
+                ShellCompletions.writeAll();
                 Theme t = Theme.active();
                 CommandWedge.envelopeStart();
                 CliOutput.out(PipelineWedge.chipLine(
@@ -235,28 +229,19 @@ public final class ActivateCommand implements CliCommand {
         }
         if (result.isEmpty() || "no".equals(result.get().get("modify"))) {
             Theme t = Theme.active();
+            String block = ShellInstallerBlock.render(shell, JkDirs.binDir(), JkDirs.data());
             CommandWedge.envelopeStart();
             CliOutput.out(PipelineWedge.chipLine(
                     Glyphs.BANG,
                     "Activate",
                     nerdfont,
-                    "Skipped — add this to " + Theme.colorize(rcDisplay, t.path()) + " manually:"));
-            CliOutput.out("  " + Theme.colorize(activationLine, t.shell()));
+                    "Skipped — add this block to " + Theme.colorize(rcDisplay, t.path()) + " manually:"));
+            for (String line : block.split("\n", -1)) {
+                CliOutput.out("  " + Theme.colorize(line, t.shell()));
+            }
             return 0;
         }
         return writeActivation(shell);
-    }
-
-    private static void appendActivationLine(Path rcFile, String line) throws IOException {
-        if (rcFile.getParent() != null) Files.createDirectories(rcFile.getParent());
-        String block =
-                "\n# Added by `jk activate` — keep this at the end of the file so jk's\n# JAVA_HOME / PATH overrides land after any other tool's edits.\n"
-                        + line
-                        + "\n";
-        if (Files.exists(rcFile)) Files.writeString(rcFile, block, StandardCharsets.UTF_8, StandardOpenOption.APPEND);
-        else
-            Files.writeString(
-                    rcFile, block, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     }
 
     private static String sourceHint(Shell shell, String rcDisplay, Theme t) {
@@ -276,19 +261,14 @@ public final class ActivateCommand implements CliCommand {
     }
 
     /**
-     * Path embedded in shell hooks as {@code __JK_EXE}. Prefer the stable {@code ~/.local/bin/jk}
-     * shim (do <em>not</em> {@code toRealPath}) so a later {@code install.sh} / {@code self update}
-     * that flips the symlink is picked up without re-running activate. Falling back to the running
-     * process path used to pin hooks at a frozen {@code versions/<v>/bin/jk}, so dogfood reinstalls
-     * left shells serving yesterday's binary (and missing TUI fixes).
+     * Path embedded in hook scripts as {@code __JK_EXE}. Prefer the stable platform bin
+     * {@code jk} (do not {@code toRealPath}) so self-update is picked up without re-activate.
      */
     private static String resolveJkExe() {
         var envOverride = System.getenv("JK_EXE");
         if (envOverride != null && !envOverride.isBlank()) return envOverride;
         try {
-            Path shim = cc.jumpkick.util.JkDirs.binDir().resolve("jk");
-            // isExecutable follows the symlink target; isSymbolicLink catches a freshly written
-            // link whose target is still being materialized.
+            Path shim = JkDirs.binDir().resolve("jk");
             if (Files.isSymbolicLink(shim) || Files.isExecutable(shim)) {
                 return shim.toAbsolutePath().normalize().toString();
             }

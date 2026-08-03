@@ -49,7 +49,20 @@ public final class FishShell implements Shell {
     }
 
     @Override
-    public String activationLine(String jkExe) {
-        return jkExe + " activate fish | source";
+    public String activationLine(String jkCommand) {
+        return "command jk activate fish | source";
+    }
+
+    @Override
+    public String pathEnsureSnippet(String binDir) {
+        // fish_add_path is idempotent and prepends when missing.
+        return "fish_add_path -g " + PosixQuote.quote(binDir) + "\n";
+    }
+
+    @Override
+    public String completionWiring(String dataDir) {
+        String dir = dataDir + "/completions/fish";
+        return "if test -d " + PosixQuote.quote(dir) + "\n    set -gp fish_complete_path " + PosixQuote.quote(dir)
+                + "\nend\n";
     }
 }

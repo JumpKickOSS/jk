@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class ShellTest {
@@ -97,13 +98,17 @@ class ShellTest {
     }
 
     @Test
-    void activate_scripts_no_longer_define_a_jkx_function() {
-        // `jkx` is a real binary in $JK_BIN_DIR (hardlink to jk, argv[0] dispatch
-        // in Jk.main) — a shell function here would shadow it.
-        assertThat(new BashShell().activateScript("/opt/jk/bin/jk")).doesNotContain("jkx()");
-        assertThat(new ZshShell().activateScript("/opt/jk/bin/jk")).doesNotContain("jkx()");
-        assertThat(new FishShell().activateScript("/opt/jk/bin/jk")).doesNotContain("function jkx");
-        assertThat(new PwshShell().activateScript("/opt/jk/bin/jk")).doesNotContain("function global:jkx");
+    void activate_scripts_do_not_define_jk_or_jkx_wrappers() {
+        // Real binaries live on PATH; hooks call __JK_EXE, not a shell function.
+        for (Shell sh : List.of(new BashShell(), new ZshShell(), new FishShell(), new PwshShell())) {
+            String out = sh.activateScript("/opt/jk/bin/jk");
+            assertThat(out).doesNotContain("jkx()");
+            assertThat(out).doesNotContain("function jkx");
+            assertThat(out).doesNotContain("function global:jkx");
+            assertThat(out).doesNotContain("function global:jk");
+            assertThat(out).doesNotContain("jk() {");
+            assertThat(out).doesNotContain("function jk");
+        }
     }
 
     @Test
@@ -130,15 +135,34 @@ class ShellTest {
     }
 
     @Test
-    void activation_lines_use_the_right_idiom_per_shell() {
-        assertThat(new BashShell().activationLine("/opt/jk/bin/jk"))
-                .isEqualTo("eval \"$(/opt/jk/bin/jk activate bash)\"");
-        assertThat(new ZshShell().activationLine("/opt/jk/bin/jk"))
-                .isEqualTo("eval \"$(/opt/jk/bin/jk activate zsh)\"");
-        assertThat(new FishShell().activationLine("/opt/jk/bin/jk")).isEqualTo("/opt/jk/bin/jk activate fish | source");
-        assertThat(new PwshShell().activationLine("/opt/jk/bin/jk"))
+    void activation_lines_use_command_jk_path_idioms() {
+        assertThat(new BashShell().activationLine("ignored"))
+                .isEqualTo("eval \"$(command jk activate bash)\"");
+        assertThat(new ZshShell().activationLine("ignored"))
+                .isEqualTo("eval \"$(command jk activate zsh)\"");
+        assertThat(new FishShell().activationLine("ignored")).isEqualTo("command jk activate fish | source");
+        assertThat(new PwshShell().activationLine("ignored"))
                 .contains("Invoke-Expression")
                 .contains("activate pwsh");
+    }
+
+    @Test
+    void installer_block_has_markers_path_and_hooks() {
+        String block = ShellInstallerBlock.render(
+                new ZshShell(), Path.of("/home/u/.local/bin"), Path.of("/home/u/.local/share/jk"));
+        assertThat(block).contains(ShellInstallerBlock.BEGIN).contains(ShellInstallerBlock.END);
+        assertThat(block).contains("/home/u/.local/bin");
+        assertThat(block).contains("command jk activate zsh");
+        assertThat(block).contains("completions/zsh");
+    }
+
+    @Test
+    void installer_block_upsert_is_idempotent() {
+        String block = ShellInstallerBlock.render(
+                new BashShell(), Path.of("/b"), Path.of("/d"));
+        String once = ShellInstallerBlock.upsert("", block);
+        String twice = ShellInstallerBlock.upsert(once, block);
+        assertThat(twice.split(ShellInstallerBlock.BEGIN, -1)).hasSize(2);
     }
 
     @Test

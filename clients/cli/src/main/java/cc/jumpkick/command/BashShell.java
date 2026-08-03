@@ -45,7 +45,18 @@ public final class BashShell implements Shell {
     }
 
     @Override
-    public String activationLine(String jkExe) {
-        return "eval \"$(" + jkExe + " activate bash)\"";
+    public String activationLine(String jkCommand) {
+        return "eval \"$(command jk activate bash)\"";
+    }
+
+    @Override
+    public String pathEnsureSnippet(String binDir) {
+        return "case \":$PATH:\" in *\":" + binDir + ":\"*) ;; *) export PATH=\"" + binDir + ":$PATH\" ;; esac\n";
+    }
+
+    @Override
+    public String completionWiring(String dataDir) {
+        String file = dataDir + "/completions/bash/jk";
+        return "[ -f \"" + file + "\" ] && . \"" + file + "\"\n";
     }
 }

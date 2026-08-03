@@ -1008,9 +1008,24 @@ The lock pins the resolved git SHA. Tag moves fail loudly until `jk update`.
 jk jdk install temurin-25
 jk jdk pin temurin-25          # writes .jdk-version
 jk jdk list
-eval "$(jk activate bash)"     # directory-aware JAVA_HOME (bash/zsh/fish/pwsh)
+jk activate --yes              # PATH + hooks + completions in your shell rc
 jk shell                       # subshell with project JDK
 ```
+
+**Shell integration** (`jk activate` / installer) writes a marker block to your rc:
+
+```text
+# >>> jk installer >>>
+# PATH ← platform bin (~/.local/bin) so real jk / jkx resolve
+eval "$(command jk activate zsh)"   # bash/zsh; fish: command jk activate fish | source
+# completions under ~/.local/share/jk/completions/…
+# <<< jk installer <<<
+```
+
+- **PATH** — real `jk` / `jkx` on the platform bin dir (no shell function wrapper).
+- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you cd (SDKMAN-like).
+- **Completions** — bash, zsh, fish, pwsh (`jk completion` refreshes files under data).
+- **`jk deactivate`** — prints how to drop session env (new shell) or remove the marker block.
 
 jk discovers existing installs (IntelliJ, SDKMAN, mise, asdf, Homebrew, system, …)
 and can install from the JetBrains JDK feed. Supported project floor: **JDK 17+**.
