@@ -25,13 +25,25 @@ import java.util.stream.Stream;
 public final class JkProbe implements LocalToolProbe {
 
     private final Path jdksRoot;
+    private final boolean requireOwnership;
 
+    /** Default shared IntelliJ root: only {@code .jk-owned} trees are attributed to jk. */
     public JkProbe() {
-        this(JkDirs.jdks());
+        this(JkDirs.jdks(), true);
     }
 
+    /**
+     * Explicit root ({@code --jdks-dir} / {@link cc.jumpkick.jdk.JdkRegistry#JdkRegistry(Path)}):
+     * the caller declared this whole directory as the JDK root, so every valid install in it is
+     * in scope — the ownership marker only disambiguates the <em>shared</em> root (JK-1444).
+     */
     public JkProbe(Path jdksRoot) {
+        this(jdksRoot, false);
+    }
+
+    private JkProbe(Path jdksRoot, boolean requireOwnership) {
         this.jdksRoot = jdksRoot;
+        this.requireOwnership = requireOwnership;
     }
 
     @Override
@@ -46,7 +58,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             return entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(cc.jumpkick.jdk.JdkOwnership::isJkOwned)
+                    .filter(p -> !requireOwnership || cc.jumpkick.jdk.JdkOwnership.isJkOwned(p))
                     .map(IntellijJdkDir::javaHome)
                     .filter(home -> ToolHealth.isHealthy(spec, home))
                     .findFirst()
@@ -61,7 +73,7 @@ public final class JkProbe implements LocalToolProbe {
         try (Stream<Path> entries = Files.list(jdksRoot)) {
             entries.filter(Files::isDirectory)
                     .filter(p -> !p.getFileName().toString().startsWith("."))
-                    .filter(cc.jumpkick.jdk.JdkOwnership::isJkOwned)
+                    .filter(p -> !requireOwnership || cc.jumpkick.jdk.JdkOwnership.isJkOwned(p))
                     .map(IntellijJdkDir::javaHome)
                     .forEach(home -> ProbeSupport.discoverJdk(home, name()).ifPresent(hits::add));
         }
