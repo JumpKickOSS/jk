@@ -68,7 +68,6 @@ public final class JdkUpdateCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
                 Opt.value("<dir>", "Override the install root. Default: the jk JDK directory.", "--jdks-dir")
                         .hide(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")

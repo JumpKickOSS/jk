@@ -279,7 +279,13 @@ public final class CommandDispatch {
         try {
             // One leading chrome blank per leaf command (prep spinner + settle share it).
             cc.jumpkick.cli.tui.CommandWedge.resetEnvelope();
-            return cmd.run(in);
+            // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
+            cc.jumpkick.cli.tui.Confirm.setAssumeYes(in.isSet("yes"));
+            try {
+                return cmd.run(in);
+            } finally {
+                cc.jumpkick.cli.tui.Confirm.clearAssumeYes();
+            }
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
             printWorkerJarError(e, ansi);

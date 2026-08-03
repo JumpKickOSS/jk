@@ -298,7 +298,6 @@ public final class CacheCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     Opt.flag("Print what would be invalidated; touch nothing.", "--dry-run"),
-                    Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
@@ -327,11 +326,10 @@ public final class CacheCommand extends GroupCommand {
             }
 
             boolean dryRun = in.isSet("dry-run");
-            boolean assumeYes = in.isSet("yes");
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             Path root = resolveCacheRoot(cacheDir);
 
-            if (!dryRun && !assumeYes && !confirmClear()) {
+            if (!dryRun && !confirmClear()) {
                 CliOutput.out(
                         cc.jumpkick.cli.tui.PipelineWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Clear aborted."));
                 return 1;
@@ -530,15 +528,13 @@ public final class CacheCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Skip the confirmation prompt.", "-y", "--yes"));
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             boolean dryRun = in.isSet("dry-run");
-            boolean assumeYes = in.isSet("yes");
             GlobalOptions global = GlobalOptions.from(in);
             boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
             Path root = resolveCacheRoot(cacheDir);
@@ -553,7 +549,7 @@ public final class CacheCommand extends GroupCommand {
                         "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + ".");
                 return 0;
             }
-            if (!assumeYes && !confirmPurge(root, stats)) {
+            if (!confirmPurge(root, stats)) {
                 cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CROSS, "Cache", nerdfont, "Purge aborted."));

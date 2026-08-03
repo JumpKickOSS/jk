@@ -22,6 +22,12 @@ public final class GlobalOptions {
     public String color;
     public boolean offline;
 
+    /**
+     * Hidden global {@code -y}/{@code --yes}: skip y/n confirmation prompts for this invocation.
+     * Not shown in help; accepted on every command.
+     */
+    public boolean yes;
+
     /** {@code -F}/{@code --force}: bypass all of jk's caching for this invocation. */
     public boolean force;
 
@@ -148,6 +154,9 @@ public final class GlobalOptions {
         g.verbose = in.isSet("verbose") || cfg.verboseOr(false);
         g.color = in.value("color").orElse(null);
         g.offline = in.isSet("offline") || cfg.offlineOr(false);
+        g.yes = in.isSet("yes");
+        // Confirm prompts read this for the rest of the command.
+        cc.jumpkick.cli.tui.Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
@@ -255,6 +264,8 @@ public final class GlobalOptions {
                 Opt.value("<ARG>", "Extra worker-JVM flag (repeatable)", "--jvm-arg")
                         .repeat(),
                 Opt.flag("Disable network access for this run", "--offline"),
+                // Hidden: assume-yes for every Confirm prompt (also covers former per-command -y/--yes).
+                Opt.flag("Assume yes for all confirmation prompts", "-y", "--yes").hide(),
                 Opt.flag("Print version information and exit", "-V", "--version"),
                 Opt.flag("Show this help message and exit", "-h", "--help"));
     }

@@ -53,7 +53,8 @@ public final class ActivateCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Write shell integration without prompting (for installers / CI).", "-y", "--yes"));
+        // Global -y/--yes skips the interactive installer prompt (see Confirm / GlobalOptions).
+        return List.of();
     }
 
     @Override
