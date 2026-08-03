@@ -1150,31 +1150,23 @@ public final class Calibration {
             TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
         if (rings.containsKey(rateKey)) return;
         // Nested table [mean.by_language.<lang>] — prefer dotted path (tomlj), then table walk.
-        double ms = 0;
-        Long dotted = t.getLong("mean.by_language." + lang + ".compile_per_source_ms");
-        if (dotted != null) {
-            ms = dotted.doubleValue();
-        } else {
-            Double d = t.getDouble("mean.by_language." + lang + ".compile_per_source_ms");
-            if (d != null) ms = d;
-            else {
+        // Reads are type-tolerant per key: a mistyped value skips this bucket only, never the
+        // whole calibration (readFrom's blanket catch would otherwise return absent).
+        double ms = numberOr(t, "mean.by_language." + lang + ".compile_per_source_ms", 0);
+        if (ms <= 0) {
+            try {
                 org.tomlj.TomlTable mean = t.getTable("mean");
                 org.tomlj.TomlTable byLang = mean != null ? mean.getTable("by_language") : null;
                 org.tomlj.TomlTable tbl = byLang != null ? byLang.getTable(lang) : null;
-                if (tbl != null) {
-                    Long l = tbl.getLong("compile_per_source_ms");
-                    if (l != null) ms = l.doubleValue();
-                    else {
-                        Double dd = tbl.getDouble("compile_per_source_ms");
-                        if (dd != null) ms = dd;
-                    }
-                }
+                if (tbl != null) ms = numberOr(tbl, "compile_per_source_ms", 0);
+            } catch (RuntimeException ignored) {
             }
         }
         // Sanity: fixture walls used to write wall/10 (thousands of ms) — reject poison.
         if (!(ms >= 1 && ms <= 500)) return;
         rings.put(rateKey, List.of(ms));
     }
+
 
     static void writeTo(Path file, Calibration c) throws IOException {
         // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.

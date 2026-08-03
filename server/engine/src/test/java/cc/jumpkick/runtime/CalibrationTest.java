@@ -125,6 +125,34 @@ class CalibrationTest {
     }
 
     @Test
+    void language_bucket_type_mismatch_never_poisons_the_whole_read(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        // Float and string values in by_language buckets (tomlj getLong throws on both):
+        // the bad bucket is skipped, the float bucket folds, and calibration stays present.
+        Files.writeString(
+                f,
+                """
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                measured = true
+                jk-version = "%s"
+                updated = %d
+
+                [mean.by_language.java]
+                compile_per_source_ms = 22.5
+                [mean.by_language.kotlin]
+                compile_per_source_ms = "oops"
+                """
+                        .formatted(JkVersion.VERSION, NOW));
+        Calibration read = Calibration.readFrom(f, NOW);
+        assertThat(read.present()).isTrue();
+        assertThat(read.measured()).isTrue();
+        assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(23L); // 22.5 rounded up
+        assertThat(read.compilePerSourceMs("compile-kotlin")).isLessThan(500L); // baseline fallback
+    }
+
+    @Test
     void refine_replaces_a_probe_bootstrap_on_the_first_real_measurement() {
         Calibration probe = Calibration.testInstance(19.0, false, JkVersion.VERSION, NOW); // measured=false
         Calibration refined = Calibration.foldRefine(probe, 158.0, NOW + 1);
