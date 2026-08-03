@@ -56,7 +56,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Detect terminal/Nerd Font support and write [global].nerdfont in ~/.config/jk/config.toml";
+            return "Detect Nerd Fonts; write [global].nerdfont";
         }
 
         @Override
@@ -110,7 +110,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Materialize versions/<running> from local artifacts (install-time seam)";
+            return "Materialize versions/<running> from local artifacts";
         }
 
         @Override
@@ -219,7 +219,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Update jk to the latest (or a specific) release, taking over without killing builds";
+            return "Update jk to latest (or a given) release";
         }
 
         @Override
@@ -227,7 +227,7 @@ public final class SelfCommand extends GroupCommand {
             // No --version option: the global -V/--version flag owns that name (the dispatcher
             // rejects duplicates), so the target rides as a positional.
             return List.of(
-                    Opt.flag("Stop the running engine (and its jobs) immediately instead of draining.", "--now"));
+                    Opt.flag("Stop the engine immediately (no drain)", "--now"));
         }
 
         @Override

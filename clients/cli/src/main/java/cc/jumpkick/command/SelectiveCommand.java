@@ -56,14 +56,10 @@ public final class SelectiveCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<git-ref>", "Select modules changed since this git ref.", "--since", "--affected-since"),
-                Opt.value(
-                        "<sel>",
-                        "Module selector (comma list, globs, braces). Intersects with --since.",
-                        "-m",
-                        "--modules"),
-                Opt.flag("Machine-readable module list (one path per line).", "--json"),
-                Opt.value("<file>", "Plan file path (default: .jk/selective-plan.json).", "--plan"));
+                Opt.value("<git-ref>", "Modules changed since this git ref", "--since", "--affected-since"),
+                Opt.value("<sel>", "Module selector (list/globs)", "-m", "--modules"),
+                Opt.flag("Machine-readable module list", "--json"),
+                Opt.value("<file>", "Plan file path (selective)", "--plan"));
     }
 
     @Override

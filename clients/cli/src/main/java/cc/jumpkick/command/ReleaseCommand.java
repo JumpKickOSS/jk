@@ -54,21 +54,17 @@ public final class ReleaseCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Assemble a local distribution (native CLI + JVM engine + workers)";
+        return "Assemble a local dist (CLI + engine + workers)";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.value("<dir>", "Output directory. Default: target/dist (workspace or module).", "--out"),
+                Opt.value("<dir>", "Output dir (default: target/dist)", "--out"),
                 Opt.flag("Skip tests during the build step.", "--skip-tests"),
-                Opt.flag("Do not run `jk native` when no native CLI binary is present yet.", "--skip-native"),
+                Opt.flag("Skip jk native when no native CLI exists", "--skip-native"),
                 Opt.flag("Print the plan; build nothing and write nothing.", "--dry-run"),
-                Opt.value(
-                        "<sel>",
-                        "Build only selected modules (passed to jk build). Default: whole workspace.",
-                        "-m",
-                        "--modules"),
+                Opt.value("<sel>", "Only these modules (default: whole workspace)", "-m", "--modules"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 

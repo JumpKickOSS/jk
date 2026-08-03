@@ -66,7 +66,7 @@ public final class JdkListCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag(
-                        "Also list downloadable JDKs from the JetBrains feed (including newer point releases of installed majors).",
+                        "Also list downloadable JDKs from the feed",
                         "--all"),
                 Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
                         .hide(),

@@ -32,14 +32,14 @@ public final class EngineStopCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Stop the build engine (drains running jobs first; --now to skip the drain)";
+        return "Stop the engine (drain jobs; --now skips drain)";
     }
 
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Stop now, abandoning in-flight jobs (still assembles the AOT cache).", "--now"),
-                Opt.flag("Stop every engine under this ~/.jk, not just the one this directory uses.", "--all"),
+                Opt.flag("Stop now (abandon jobs; still finish AOT)", "--now"),
+                Opt.flag("Stop every engine (not only this dir's)", "--all"),
                 Opt.value("<pid>", "Stop the engine with this pid (see `jk engine status`).", "--pid"));
     }
 

@@ -94,7 +94,7 @@ public final class TrustCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Trust a build plugin's coordinate (group:artifact, or group: for the whole group)";
+            return "Trust a plugin coord (group:artifact or group:)";
         }
 
         @Override

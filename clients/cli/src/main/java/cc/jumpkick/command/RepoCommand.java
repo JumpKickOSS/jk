@@ -113,7 +113,7 @@ public final class RepoCommand extends GroupCommand {
         @Override
         public List<Opt> options() {
             return List.of(
-                    Opt.value("<N>", "Cap the number of coordinates displayed (default: no cap).", "--limit"),
+                    Opt.value("<N>", "Cap coordinates shown (default: no cap)", "--limit"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 

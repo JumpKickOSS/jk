@@ -73,19 +73,12 @@ public final class NewCommand implements CliCommand {
                 Opt.flag("Assembly (fat) jar. Implies --executable.", "--assembly"),
                 Opt.flag("Wire a GraalVM native-image build.", "--native"),
                 Opt.flag("Spring Boot application (implies --executable).", "--spring"),
-                Opt.flag("Grails application (implies --executable, --lang groovy).", "--grails"),
+                Opt.flag("Grails app (--executable, --lang groovy)", "--grails"),
                 Opt.flag("Quarkus application (implies --executable).", "--quarkus"),
                 Opt.flag("Scaffold a jk build-plugin authoring project.", "--plugin"),
-                Opt.value(
-                        "<ref>",
-                        "Giter8 template: local path, short name, owner/repo, or git URL.",
-                        "--template"),
-                Opt.value("<k=v>", "Template property override (repeatable; with --template).", "--param")
-                        .repeat(),
-                Opt.value(
-                                "<url>",
-                                "Extra git template source for this run (repeatable; short-name lookup).",
-                                "--template-source")
+                Opt.value("<ref>", "Giter8 template path, short name, or URL", "--template"),
+                Opt.value("<k=v>", "Template property k=v (repeatable)", "--param").repeat(),
+                Opt.value("<url>", "Extra git template source (repeatable)", "--template-source")
                         .repeat(),
                 Opt.value("<deps>", "Curated deps, comma-separated.", "--deps"),
                 Opt.value("<layout>", "Layout: simple | traditional.", "--layout"),

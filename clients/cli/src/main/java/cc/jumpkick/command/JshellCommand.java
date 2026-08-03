@@ -43,7 +43,7 @@ public final class JshellCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Open jshell with this module's compile classpath (after build unless --no-build)";
+        return "jshell on this module's compile classpath";
     }
 
     @Override

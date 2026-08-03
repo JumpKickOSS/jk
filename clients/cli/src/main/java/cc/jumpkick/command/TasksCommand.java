@@ -50,7 +50,7 @@ public final class TasksCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "List pipeline tasks; show output paths; inspect a step (Mill resolve-lite)";
+        return "List tasks, output paths, or inspect a step";
     }
 
     @Override

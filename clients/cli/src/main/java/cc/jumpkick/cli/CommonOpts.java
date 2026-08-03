@@ -23,7 +23,7 @@ public final class CommonOpts {
     public static Opt cacheDir() {
         return Opt.value(
                 "<dir>",
-                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
+                "Override action-cache directory",
                 "--cache-dir");
     }
 
@@ -44,14 +44,10 @@ public final class CommonOpts {
         return List.of(
                 Opt.value(
                         "<sel>",
-                        "Only selected modules (paths, project names, or Gradle :name; comma/globs/braces)."
-                                + " Intersects with --affected-since. Siblings are not rebuilt.",
+                        "Only selected modules (paths/globs)",
                         "-m",
                         "--modules"),
-                Opt.value(
-                        "<git-ref>",
-                        "Only modules (and dependents) changed since this git ref. Intersects with --modules.",
-                        "--affected-since"));
+                Opt.value("<git-ref>", "Modules changed since this git ref", "--affected-since"));
     }
 
     /** Skip compiling and running tests — shared by build / native / install-style verbs. */

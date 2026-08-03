@@ -17,7 +17,7 @@ public final class ExportCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Export a jk project to Gradle, Maven, IntelliJ IDEA, or a Maven BOM";
+        return "Export to Gradle, Maven, IntelliJ IDEA, or a BOM";
     }
 
     @Override

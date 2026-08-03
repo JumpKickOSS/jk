@@ -414,14 +414,11 @@ public final class CacheCommand extends GroupCommand {
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
                     Opt.value(
                             "<days>",
-                            "Prune action-cache entries with mtime older than N days. Default: 30.",
+                            "Drop action-cache entries older than N days",
                             "--older-than"),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Mark-and-sweep unreferenced CAS objects after expiring stale records.", "--sweep"),
-                    Opt.value(
-                            "<size>",
-                            "Evict oldest CAS objects to <size> (e.g. 20G, 500M). Implies --sweep.",
-                            "--max-size"),
+                    Opt.flag("Sweep unreferenced CAS objects after prune", "--sweep"),
+                    Opt.value("<size>", "Cap CAS size (e.g. 20G); implies --sweep", "--max-size"),
                     Opt.flag("Internal: opportunistic prune.", "--background").hide());
         }
 

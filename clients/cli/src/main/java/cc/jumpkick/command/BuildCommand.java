@@ -48,17 +48,13 @@ public final class BuildCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = new java.util.ArrayList<>();
-        opts.add(Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"));
-        opts.add(Opt.value(
-                "<N>",
-                "Test-runner JVMs per module when tests run. 0=auto min(jobs,classes) (default); 1=serial.",
-                "-w",
-                "--workers"));
+        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
+        opts.add(Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
-        opts.add(Opt.flag("Package an extracted layout + trained JVM startup cache.", "--aot-cache"));
+        opts.add(Opt.flag("Package with JVM startup AOT cache", "--aot-cache"));
         // Module concurrency is global -j/--jobs. Cross-module tests default on (C2).
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());

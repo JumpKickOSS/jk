@@ -46,7 +46,7 @@ public final class NativeCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>();
-        opts.add(Opt.value("<class>", "Main class. Default: jk.toml image.main or project.main.", "--main"));
+        opts.add(Opt.value("<class>", "Main class (jk.toml image.main / main)", "--main"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());

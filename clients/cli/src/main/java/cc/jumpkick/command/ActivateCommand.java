@@ -38,7 +38,7 @@ public final class ActivateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Install shell integration (PATH, hooks, completions) or print hooks";
+        return "Install shell integration or print hook script";
     }
 
     @Override

@@ -37,7 +37,7 @@ public final class AssemblyCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Build an assembly/shrink jar (jk.toml assembly, or --fat / --shrink for one-off)";
+        return "Build an assembly or shrink jar (see --fat / --shrink)";
     }
 
     @Override
@@ -48,10 +48,9 @@ public final class AssemblyCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         List<Opt> opts = new ArrayList<>(build.options());
-        opts.add(Opt.flag("One-off fat assembly jar (overrides jk.toml for this run only).", "--fat"));
-        opts.add(Opt.flag("One-off R8 shrunk jar (overrides jk.toml for this run only).", "--shrink"));
-        opts.add(Opt.flag(
-                "Surgically set [application].assembly in jk.toml to match --fat or --shrink.", "--write-config"));
+        opts.add(Opt.flag("One-off fat jar (this run only)", "--fat"));
+        opts.add(Opt.flag("One-off shrunk jar (this run only)", "--shrink"));
+        opts.add(Opt.flag("Write assembly mode into jk.toml", "--write-config"));
         return opts;
     }
 

@@ -51,8 +51,8 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Add a Tip column for the non-stable frontier (prerelease / git HEAD).", "--show-tip"),
-                Opt.flag("Hide dependencies already on the newest compatible version.", "--exclude-up-to-date"),
+                Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
+                Opt.flag("Hide deps already on newest compatible", "--exclude-up-to-date"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 cc.jumpkick.cli.CommonOpts.cacheDir());

@@ -26,7 +26,7 @@ public final class DeactivateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Explain how to clear jk shell session env / remove installer block";
+        return "How to clear shell env / remove installer block";
     }
 
     @Override

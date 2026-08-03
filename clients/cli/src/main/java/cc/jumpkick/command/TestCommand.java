@@ -51,30 +51,17 @@ public final class TestCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>(List.of(
-                Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "-p", "--profile"),
-                Opt.flag("Skip profile tag filters (incl. the auto ci profile).", "--no-profile"),
-                Opt.value(
-                        "<N>",
-                        "Test-runner JVMs per module (class pull-queue). 0=auto min(jobs,classes) (default); 1=serial.",
-                        "-w",
-                        "--workers")));
+                Opt.value("<name>", "Build profile (default auto)", "-p", "--profile"),
+                Opt.flag("Skip profile tag filters", "--no-profile"),
+                Opt.value("<N>", "Test JVMs per module (0=auto)", "-w", "--workers")));
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
-        opts.add(Opt.value(
-                        "<name>",
-                        "Test suite directory name (repeatable). Default: only the 'test' suite. Sibling suites e.g. integration/.",
-                        "-s",
-                        "--suite")
-                .repeat());
-        opts.add(Opt.flag("Run every discovered test suite (test + integration + …).", "--all"));
-        opts.add(Opt.value(
-                        "<tag>",
-                        "JUnit tag to include (repeatable). Empty include list = all tags not excluded.",
-                        "--include-tag")
-                .repeat());
+        opts.add(Opt.value("<name>", "Test suite directory (repeatable)", "-s", "--suite").repeat());
+        opts.add(Opt.flag("Run every discovered test suite", "--all"));
+        opts.add(Opt.value("<tag>", "JUnit tag to include (repeatable)", "--include-tag").repeat());
         opts.add(Opt.value("<tag>", "JUnit tag to exclude (repeatable).", "--exclude-tag")
                 .repeat());
         opts.addAll(VariantSelection.options());

@@ -41,7 +41,7 @@ public final class SelfPurgeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Delete all JumpKick data and state (keeps jk/jkx binaries and JDKs)";
+        return "Wipe all data/state (keeps jk/jkx and JDKs)";
     }
 
     @Override
