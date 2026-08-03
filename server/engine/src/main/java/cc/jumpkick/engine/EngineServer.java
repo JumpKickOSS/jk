@@ -247,6 +247,9 @@ public final class EngineServer implements AutoCloseable {
      */
     private StoreFeedRefresh storeFeedRefresh;
 
+    /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
+    private EngineMaintenance engineMaintenance;
+
     public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
         this(paths, config, null, version, cc.jumpkick.model.BuildIdentity.buildId(), log);
     }
@@ -395,10 +398,13 @@ public final class EngineServer implements AutoCloseable {
         if (abandoned > 0) {
             log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
         }
-        // Non-blocking: first tick immediately (feeds if stale + queue cache GC), then every 12 h.
-        storeFeedRefresh = new StoreFeedRefresh(log, this::enqueueScheduledCacheGc);
-        storeFeedRefresh.start();
-        // Self-heal worker AOT + host calibration when missing (no user-facing optimize/calibrate).
+        // Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep).
+        storeFeedRefresh = new StoreFeedRefresh(log, null);
+        // 1-minute loop: config.toml mtime reload + wall-clock 12 h maintenance (feeds, templates,
+        // GC, AOT/cal). Laptop suspend-safe — due work runs on the next minute tick after resume.
+        engineMaintenance = new EngineMaintenance(log, storeFeedRefresh, this::enqueueScheduledCacheGc);
+        engineMaintenance.start();
+        // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
         scheduleHostWarmupIfNeeded(false);
         startDisplacementWatchdog();
         acceptLoop();
@@ -5548,6 +5554,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void cleanup() {
+        if (engineMaintenance != null) {
+            engineMaintenance.close();
+            engineMaintenance = null;
+        }
         if (storeFeedRefresh != null) {
             storeFeedRefresh.close();
             storeFeedRefresh = null;

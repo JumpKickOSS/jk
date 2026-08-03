@@ -639,6 +639,11 @@ public final class Calibration {
         return read;
     }
 
+    /** Drop the process memo (e.g. after user config.toml mtime change). Next {@link #load} re-reads disk. */
+    public static void invalidateMemo() {
+        MEMO.set(null);
+    }
+
     /**
      * Ensure a usable calibration is on disk. Network is allowed unless the ambient session is
      * {@code --offline}. Cheap when a current measured file already exists.

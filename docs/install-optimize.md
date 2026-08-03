@@ -7,9 +7,12 @@ engine** — there is no user-facing `jk optimize` or `jk engine calibrate` comm
 
 | Trigger | Behavior |
 |---------|----------|
-| **First engine start** (install, first build, `jk self update` / new engine jar) | If worker AOT or calibration is missing for this host, queue idle-boundary warmup |
-| **Every ~12 h** (same cadence as store-feed refresh / cache GC) | Re-check; regenerate only what is missing |
-| **JDK change** | Calibration is keyed to jk version + host JDK id; a new JDK re-probes |
+| **First engine start** | Queue idle warmup (feeds → templates → AOT → cal) |
+| **Every minute** | Poll `config.toml` mtime (reload policy); check wall-clock 12 h stamp |
+| **Every ~12 h wall-clock** (laptop-safe) | Feeds + `jk-templates` freshen + cache GC enqueue + AOT/cal if still missing |
+| **JDK / jk version change** | Calibration re-probes when host JDK id or jk version no longer matches |
+
+The 12 h interval is **wall-clock since last stamp**, checked each minute — a laptop that never stays up 12 hours continuously still refreshes after resume once 12 h have elapsed.
 
 Disable with user config:
 
@@ -19,6 +22,16 @@ auto-warmup = false
 ```
 
 Or env: `JK_AUTO_WARMUP=off`. Worker AOT also respects `JK_AOT_TRAIN=off` / `JK_WORKER_AOT=off`.
+
+## Warmup order (idle worker)
+
+1. **`libs.global.toml`** — conditional GET / ETag (skip if fresh)
+2. **`jdks.json`** — TTL + If-Modified-Since
+3. **Official `jk-templates` shallow clone** — `git fetch --depth 1` / clone (includes future AOT fixtures)
+4. **java-compiler + kotlinc AOT** — only if missing for this host
+5. **Host calibration** — only if missing/stale for this jk version + JDK
+
+Network errors are **fail-fast and quiet** (no retries). The next minute/12 h cycle or engine restart tries again.
 
 ## What is trained
 
@@ -37,9 +50,7 @@ Work runs on a **daemon idle thread** when `activePipelines == 0` so client buil
 
 | Step | Behavior |
 |------|----------|
-| **`libs.global.toml`** | `StoreFeedRefresh` on start and ~12 h |
 | **Engine AOT** | Sidecar train via `-Djk.aot.train.output` (flags match serving spawn, including `--enable-native-access=ALL-UNNAMED`) |
-
 ## Install
 
 ```text

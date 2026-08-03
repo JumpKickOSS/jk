@@ -15,28 +15,22 @@ import java.nio.file.attribute.FileTime;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * Quiet background chores on a fixed cadence: revalidate long-lived store feeds, then hand off to
- * the engine for a queued cache GC.
+ * Quiet store-feed revalidation (libs registry + JDK catalog). Driven by {@link
+ * EngineMaintenance} on a wall-clock 12 h cadence (checked every minute) — not a 12 h process
+ * sleep, so laptop suspend/resume still refreshes.
  *
  * <ul>
- * <li>{@code ~/.local/share/jk/store/libs.global.toml} — library short-name registry
- * <li>{@code ~/.local/share/jk/store/jdks.json} — JetBrains JDK catalog
- * <li>cache prune / GC — via {@code afterTick} (engine queues at the idle boundary; runs now when
- * already idle)
+ * <li>{@code store/libs.global.toml} — conditional GET / ETag
+ * <li>{@code store/jdks.json} — TTL + If-Modified-Since
+ * <li>optional {@code afterTick} — e.g. queue cache GC + host warmup
  * </ul>
  *
- * <p>On the resident engine's first start (and every {@link #INTERVAL} thereafter) a daemon thread
- * checks each feed: missing or mtime ≥ 12 h → conditional GET; otherwise skip. Failures never
- * surface to builds — offline / 5xx leave the on-disk copy alone. {@code afterTick} always runs
- * after the feed pass (success or skip) so GC still fires when catalogs are warm.
+ * <p>Failures never surface to builds — offline / 5xx leave the on-disk copy alone; no retries.
  */
 public final class StoreFeedRefresh implements AutoCloseable {
 
@@ -56,7 +50,6 @@ public final class StoreFeedRefresh implements AutoCloseable {
     private final Runnable afterTick;
 
     private final AtomicBoolean closed = new AtomicBoolean();
-    private final ScheduledExecutorService scheduler;
 
     public StoreFeedRefresh(Consumer<String> log) {
         this(log, null);
@@ -64,7 +57,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
 
     /**
      * @param afterTick optional hook run after each feed pass (e.g. enqueue cache prune). Exceptions
-     *     are logged and swallowed so a GC failure never aborts the scheduler.
+     *     are logged and swallowed so a GC failure never aborts the tick.
      */
     public StoreFeedRefresh(Consumer<String> log, Runnable afterTick) {
         this(
@@ -93,41 +86,43 @@ public final class StoreFeedRefresh implements AutoCloseable {
         this.librariesSource = Objects.requireNonNull(librariesSource, "librariesSource");
         this.jdkFeed = Objects.requireNonNull(jdkFeed, "jdkFeed");
         this.afterTick = afterTick;
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "jk-store-feed-refresh");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     /**
-     * Schedule an immediate first pass, then repeat every {@link #INTERVAL}. Idempotent with respect
-     * to concurrent ticks (one at a time on the single scheduler thread).
+     * No-op scheduler. {@link EngineMaintenance} calls {@link #tickQuietly()} on the wall-clock 12 h
+     * cadence (checked every minute). Kept for call sites / tests that still invoke {@code start()}.
      */
     public void start() {
-        long hours = INTERVAL.toHours();
-        scheduler.scheduleWithFixedDelay(this::tickQuietly, 0, hours, TimeUnit.HOURS);
+        // scheduling lives in EngineMaintenance
     }
 
-    /** One pass over both feeds (used by tests and the scheduled tick), then {@code afterTick}. */
-    void tickQuietly() {
+    /**
+     * One pass over store feeds only (no afterTick). Used by {@link HostWarmup} before AOT/cal so
+     * catalogs are warm without enqueueing GC twice.
+     */
+    public void refreshFeedsQuietly() {
         if (closed.get()) return;
         try {
             refreshLibraries();
         } catch (Throwable t) {
-            // Quiet: never fail the engine for a hygiene refresh.
-            log.accept("jk engine: library registry refresh skipped (" + brief(t) + ")");
+            // Quiet: never fail the engine for a hygiene refresh. No retries.
         }
         try {
             refreshJdks();
         } catch (Throwable t) {
-            log.accept("jk engine: jdk catalog refresh skipped (" + brief(t) + ")");
+            // Quiet — leave on-disk copy.
         }
+    }
+
+    /** Feeds + optional afterTick (GC / warmup enqueue). */
+    void tickQuietly() {
+        if (closed.get()) return;
+        refreshFeedsQuietly();
         if (afterTick != null && !closed.get()) {
             try {
                 afterTick.run();
             } catch (Throwable t) {
-                log.accept("jk engine: scheduled cache GC enqueue skipped (" + brief(t) + ")");
+                // Quiet
             }
         }
     }
@@ -197,7 +192,6 @@ public final class StoreFeedRefresh implements AutoCloseable {
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) return;
-        scheduler.shutdownNow();
+        closed.set(true);
     }
 }

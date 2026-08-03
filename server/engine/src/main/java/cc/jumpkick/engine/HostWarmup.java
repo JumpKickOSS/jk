@@ -15,11 +15,11 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 /**
- * Engine self-heal for worker AOT caches + host calibration (install / first start / 12 h GC).
+ * Engine self-heal: store feeds → official templates → worker AOT → host calibration.
  *
- * <p>Not a user-facing command: the resident engine queues idle-boundary work when caches or
- * calibration are missing for the current HotSpot host + jk version. Disable with {@code
- * [engine] auto-warmup = false} in the user config, or {@code JK_AUTO_WARMUP=off}.
+ * <p>Not a user-facing command. Queued on the idle-boundary worker after first start and each
+ * wall-clock 12 h maintenance cycle ({@link EngineMaintenance}). Disable with {@code [engine]
+ * auto-warmup = false} or {@code JK_AUTO_WARMUP=off}.
  */
 public final class HostWarmup {
 
@@ -117,13 +117,21 @@ public final class HostWarmup {
     }
 
     /**
-     * Run worker AOT train (if needed) then calibration (if needed). Best-effort; never throws.
-     * Intended for the engine idle daemon thread only.
+     * Full warmup pass on the idle daemon: store feeds + templates first, then AOT/cal if needed.
+     * Best-effort; never throws. Network errors are quiet (no retries).
      */
     public static void runIdle(boolean forceAot, java.util.function.Consumer<String> log) {
         if (log == null) log = s -> {};
+        // Always attempt cheap feed/template refresh first (etag/mtime gated; fail quiet).
+        try {
+            new StoreFeedRefresh(log).refreshFeedsQuietly();
+        } catch (Throwable ignored) {
+        }
+        try {
+            cc.jumpkick.templates.OfficialTemplatesFreshen.refreshQuiet(log);
+        } catch (Throwable ignored) {
+        }
         if (!enabled() && !forceAot) {
-            log.accept("jk engine: host warmup skipped (auto-warmup disabled)");
             return;
         }
         try {
