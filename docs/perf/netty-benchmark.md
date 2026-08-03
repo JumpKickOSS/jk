@@ -77,6 +77,45 @@ Commands:
 
 These numbers are **not** a full-test-suite comparison. Unit-test head-to-heads need a shared include/exclude list (see `jvm/netty/PARITY.md`).
 
+### 2026-08-03 — BocaBox, after install-optimize / engine self-heal AOT (JK-1392)
+
+Re-run after the install optimize path landed (worker AOT pre-train + host calibration via
+engine self-heal, JK-1385..1400): fresh `state/aot` worker caches were cleared, the engine
+self-healed `java-compiler-*`/`kotlinc-*` caches on start, then the same bench as above.
+
+| Field | Value |
+|-------|--------|
+| Host | BocaBox · Linux 7.1.5-201.fc44.x86_64 · 24 threads |
+| Engine java | openjdk 25.0.4 (Temurin, jk-managed) |
+| jk | **0.10.1** (native client, tree @ a0474dbe) |
+| mill | **1.2.0-RC1** (same workspace pin as 2026-08-02) |
+| Netty | `netty-4.1.115.Final` @ `04f9b4a827` |
+| Runs | 3 · median reported · serial `-j 1` |
+
+| Scenario | JumpKick median | Mill median | runs (jk) | runs (mill) |
+|----------|----------------:|------------:|-----------|-------------|
+| **Cold** full main recompile | **16 462 ms** | **24 791 ms** | 19562 16462 16090 | 24422 24832 24791 |
+| **Warm** no-op | **209 ms** | **454 ms** | 209 211 201 | 655 454 413 |
+| **Dirty** one `common` source | **201 ms** | **122 ms** | 199 201 204 | 137 81 122 |
+
+Deltas vs 2026-08-02 baseline:
+
+- **Warm no-op: 404 → 209 ms (−48%)** — jk now clearly ahead of Mill's 454 ms.
+- **Dirty one file: 411 → 201 ms (−51%)** — the gap to Mill narrowed from ~3× to ~1.6×.
+- **Cold: ~unchanged** (16.9 → 16.5 s; still ~1.5× faster than Mill).
+
+**Did AOT map on dirty Java?** No — and by design. Netty's dirty path is the plain
+subprocess-javac backend (`JavaIncrementalCompile`): no source-generating annotation
+processors, so the ToolProvider worker (the thing that maps `java-compiler-*.aot`) is not
+forked. The bare `javac` launcher deliberately neither trains nor maps AOT (measured: no
+win — see `PluginAot` javadoc). The warm/dirty improvement comes from the engine-side work
+in the same batch (engine AOT cache on start, idle-boundary GC discipline, journal/metrics
+paths), not from worker AOT on this benchmark's hot path.
+
+**Remaining gap vs Mill on dirty:** Mill's resident Zinc keeps a warm compiler JVM; jk
+re-forks javac per dirty build. Closing the last ~80 ms needs a resident/warm javac worker
+pool — follow-up filed as JK-1416.
+
 ## Earlier / other arms
 
 | Date | Tool | Notes |
