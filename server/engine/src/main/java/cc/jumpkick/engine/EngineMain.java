@@ -100,10 +100,13 @@ public final class EngineMain {
             String javaExe = ProcessHandle.current().info().command().orElseGet(() -> java.nio.file.Path.of(
                             System.getProperty("java.home"), "bin", "java")
                     .toString());
+            // --enable-native-access must match the serving spawn line (EngineClient.spawn): JEP 514
+            // rejects mapping when dump-time and runtime property sets differ (JK-1399).
             ProcessBuilder pb = new ProcessBuilder(
                     javaExe,
                     "-XX:+UseSerialGC",
                     "-XX:AOTCacheOutput=" + aotOut,
+                    "--enable-native-access=ALL-UNNAMED",
                     "-cp",
                     System.getProperty("java.class.path"),
                     EngineMain.class.getName(),

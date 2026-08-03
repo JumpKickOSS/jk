@@ -246,3 +246,12 @@ graalvmNative {
 // at src/main/resources/META-INF/native-image/org.jline/jline-terminal-ffm/
 // with reflection-config.json and resource-config.json bootstrapped via the
 // GraalVM tracing agent against the JVM wizard (see plan §8d).
+
+// Optimize fixtures (JK-1387 / JK-1400): monorepo templates/optimize is the source of truth;
+// processResources copies them into the CLI jar / native-image resource tree so remote installs
+// can extract to JkDirs.cache()/templates/optimize without a monorepo checkout.
+tasks.named<ProcessResources>("processResources") {
+    from(rootProject.file("templates/optimize")) {
+        into("templates/optimize")
+    }
+}

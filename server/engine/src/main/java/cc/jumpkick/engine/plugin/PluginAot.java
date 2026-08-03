@@ -63,7 +63,7 @@ public final class PluginAot {
     }
 
     /** Where plugin AOT caches live: {@code <state>/aot/}. */
-    static Path dir() {
+    public static Path dir() {
         return JkDirs.state().resolve("aot");
     }
 
@@ -430,7 +430,8 @@ public final class PluginAot {
     }
 
     /** Sticky "training failed for this key" marker — swept with its cache by {@link #sweepSiblings}. */
-    static Path noaotMarker(Path cache) {
+    /** Marker sibling written when a train attempt fails (skip retrain-on-miss until cleared). */
+    public static Path noaotMarker(Path cache) {
         return cache.resolveSibling(cache.getFileName() + ".noaot");
     }
 

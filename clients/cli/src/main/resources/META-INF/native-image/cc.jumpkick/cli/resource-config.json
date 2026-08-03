@@ -18,6 +18,9 @@
       },
       {
         "pattern": "cc/jumpkick/plugin/manifest/.*"
+      },
+      {
+        "pattern": "templates/optimize/.*"
       }
     ]
   }

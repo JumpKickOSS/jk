@@ -3,7 +3,7 @@ name = "kotlin-train"
 group = "cc.jumpkick.optimize"
 version = "0.0.1"
 java = "17"
-kotlin = "2.1.10"
+kotlin = "2.4.10"
 
 [dependencies]
 

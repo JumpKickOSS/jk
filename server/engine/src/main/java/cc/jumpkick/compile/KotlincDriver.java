@@ -173,12 +173,15 @@ public final class KotlincDriver {
         }
         Path spec = scratch.resolve("train.spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
-        List<String> rest = new ArrayList<>();
-        rest.add("-XX:AOTCacheOutput=" + aotOutput);
-        rest.addAll(List.of(
-                "--enable-native-access=ALL-UNNAMED", "-cp", classpath, WORKER_MAIN, "@" + spec.toAbsolutePath()));
-        return cc.jumpkick.engine.plugin.JvmOptions.javaCommand(
-                hostJavaHome.resolve("bin").resolve("java").toString(), 1, rest);
+        // Match ForkedJavac / real PluginLoader forks so GC + classpath key the same as production
+        // (JK-1397: dedicated train key must match real kotlinc worker keys).
+        List<String> jvmFlags = new ArrayList<>();
+        jvmFlags.add("-XX:AOTCacheOutput=" + aotOutput);
+        jvmFlags.addAll(cc.jumpkick.engine.plugin.JvmOptions.batchFlags(1));
+        jvmFlags.add("--enable-native-access=ALL-UNNAMED");
+        Path javaExe = hostJavaHome.resolve("bin").resolve("java");
+        return cc.jumpkick.engine.plugin.PluginLoader.command(
+                javaExe, classpath, jvmFlags, List.of("@" + spec.toAbsolutePath()));
     }
 
     /** Render the request into the unified JSONL plugin spec. */

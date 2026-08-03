@@ -4,15 +4,21 @@ package cc.jumpkick.compile;
 import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jdk.JavaHomes;
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 /**
- * Synchronous PluginAot training for install {@code jk optimize}: pre-create {@code
- * java-compiler-*.aot} and {@code kotlinc-*.aot} under the engine host HotSpot JVM so first user
- * builds map caches instead of training mid-build.
+ * PluginAot training for install {@code jk optimize}: pre-create {@code java-compiler-*.aot} and
+ * {@code kotlinc-*.aot} under the engine host HotSpot JVM so first user builds map caches instead
+ * of training mid-build. Invoked from the engine idle-boundary worker (not the request thread).
+ *
+ * <p>Pins training to the <em>current</em> shipping plugin classpaths (latest Kotlin/Groovy
+ * workers). Older language versions train on-demand via PluginAot train-on-miss.
  */
 public final class WorkerAotBootstrap {
 
@@ -47,7 +53,9 @@ public final class WorkerAotBootstrap {
         }
         trainOne("java-compiler", host, PluginJar.JAVA_COMPILER, timeoutMs, force, trained, skipped, notes, true);
         trainOne("kotlinc", host, PluginJar.KOTLIN_COMPILER, timeoutMs, force, trained, skipped, notes, false);
-        skipped.add("test-runner (fixture tests exercise the worker; no dedicated AOT trainer yet)");
+        // test-runner: forked via PluginLoader without PluginAot keys today (suite JVM also sets
+        // -Djk.aot.train=off). Fixture `jk test` warms process/JIT only — no dedicated trainer (JK-1398).
+        skipped.add("test-runner (no PluginAot path; fixtures warm the process only)");
         return new Result(trained, skipped, notes);
     }
 
@@ -73,9 +81,15 @@ public final class WorkerAotBootstrap {
             // train-on-miss keeps the marker; install/optimize is a deliberate re-attempt).
             if (cache != null) {
                 try {
-                    Files.deleteIfExists(Path.of(cache.toString() + ".noaot"));
+                    Files.deleteIfExists(PluginAot.noaotMarker(cache));
                 } catch (Exception ignored) {
                 }
+            }
+            // kotlinc: if fixture builds already produced any kotlinc-*.aot for this host, count as
+            // success even when the dedicated bootstrap key still fails (JK-1397).
+            if (!force && "kotlinc".equals(tool) && anyToolCache("kotlinc")) {
+                trained.add(tool + " (cached)");
+                return;
             }
             PluginAot.TrainerCommand trainer;
             if (javaCompiler) {
@@ -84,11 +98,51 @@ public final class WorkerAotBootstrap {
                 trainer = (aotOut, scratch) -> KotlincDriver.trainerCommandForOptimize(host, cp, aotOut, scratch);
             }
             boolean ok = PluginAot.ensureTrained(tool, host, cp, trainer, timeoutMs, force);
-            if (ok) trained.add(force ? tool + " (retrained)" : tool);
-            else skipped.add(tool + " (ineligible host, train disabled, or train failed)");
+            if (ok) {
+                trained.add(force ? tool + " (retrained)" : tool);
+                return;
+            }
+            // After a failed dedicated train, still accept sibling caches from real compiles.
+            if ("kotlinc".equals(tool) && anyToolCache("kotlinc")) {
+                trained.add(tool + " (cached)");
+                // Clear sticky noaot on the dedicated key so map path can retry later.
+                if (cache != null) {
+                    try {
+                        Files.deleteIfExists(PluginAot.noaotMarker(cache));
+                    } catch (Exception ignored) {
+                    }
+                }
+                notes.add("kotlinc: dedicated bootstrap key missed; using existing kotlinc-*.aot from compiles");
+                return;
+            }
+            skipped.add(tool + " (ineligible host, train disabled, or train failed)");
         } catch (Exception e) {
             skipped.add(tool + " (" + e.getMessage() + ")");
             notes.add(tool + ": " + e.getMessage());
+        }
+    }
+
+    /** True when any {@code <tool>-*.aot} file exists under the PluginAot dir (complete caches only). */
+    static boolean anyToolCache(String tool) {
+        if (tool == null || tool.isBlank()) return false;
+        Path dir = PluginAot.dir();
+        if (!Files.isDirectory(dir)) return false;
+        String prefix = tool + "-";
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, prefix + "*.aot")) {
+            for (Path p : stream) {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".aot") && !name.contains(".tmp-") && Files.size(p) > 0) return true;
+            }
+        } catch (IOException ignored) {
+        }
+        // Fallback walk for odd FS implementations
+        try (Stream<Path> walk = Files.list(dir)) {
+            return walk.anyMatch(p -> {
+                String n = p.getFileName().toString();
+                return n.startsWith(prefix) && n.endsWith(".aot") && !n.contains(".tmp-");
+            });
+        } catch (IOException e) {
+            return false;
         }
     }
 }

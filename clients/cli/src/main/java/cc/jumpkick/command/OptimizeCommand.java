@@ -77,15 +77,19 @@ public final class OptimizeCommand implements CliCommand {
             view.solveLabel("Starting engine…");
             EngineClient.ensureRunning(paths, Jk.VERSION);
 
-            view.solveLabel("Optimizing workers (AOT)…");
+            // Materialize fixtures into cache first (classpath / monorepo) so remote installs work.
+            ensureFixturesInCache();
+
+            view.solveLabel("Scheduling worker AOT…");
             Optional<String> ack = EngineClient.optimize(paths, force);
             if (ack.isEmpty()) {
                 view.finishPipelineFailure("engine did not return optimize-ack");
                 return Exit.SOFTWARE;
             }
+            // Engine ACKs immediately and trains on the idle-boundary worker (JK-1396).
+            String ackSummary = nullToEmpty(Jsonl.str(ack.get(), "summary"));
             if (!Jsonl.bool(ack.get(), "ok", false)) {
-                // Soft: still run fixtures for calibration metrics
-                CliOutput.err("  note: worker AOT train incomplete: " + nullToEmpty(Jsonl.str(ack.get(), "summary")));
+                CliOutput.err("  note: worker AOT schedule failed: " + ackSummary);
             }
 
             scratchRoot = Files.createTempDirectory("jk-optimize-");
@@ -102,6 +106,8 @@ public final class OptimizeCommand implements CliCommand {
                         continue;
                     }
                     long t0 = System.nanoTime();
+                    // Latest pinned language only (kotlin 2.4.10 / groovy 5.0.8); other versions
+                    // train on-demand via PluginAot train-on-miss during real builds.
                     int code = runJkIn(dest, List.of("build", "--skip-tests"));
                     if (code != 0) {
                         CliOutput.err("  note: " + lang + " build exited " + code);
@@ -113,7 +119,7 @@ public final class OptimizeCommand implements CliCommand {
                             CliOutput.err("  note: " + lang + " rebuild exited " + code);
                         }
                     }
-                    // Tests warm test-runner + language-specific test cost
+                    // One test pass warms test-runner process (no dedicated AOT trainer — JK-1398).
                     runJkIn(dest, List.of("test"));
                     long wall = Math.max(1L, (System.nanoTime() - t0) / 1_000_000L);
                     langWallMs.put(lang, wall);
@@ -125,9 +131,8 @@ public final class OptimizeCommand implements CliCommand {
 
             writeLanguageBuckets(langWallMs);
             view.finishPipelineSuccess("Done optimizing JumpKick! Hi-yah!");
-            String summary = ack.map(a -> Jsonl.str(a, "summary")).orElse("");
-            if (summary != null && !summary.isBlank()) {
-                for (String row : summary.split("\n")) {
+            if (!ackSummary.isBlank()) {
+                for (String row : ackSummary.split("\n")) {
                     if (!row.isBlank()) CliOutput.out("  " + row);
                 }
             }
@@ -164,7 +169,88 @@ public final class OptimizeCommand implements CliCommand {
             Path cand = p.resolve("templates").resolve("optimize").resolve(name);
             if (isFixture(cand)) return cand;
         }
+        // 4) Classpath resources (shipped with CLI jar / native image — JK-1400)
+        if (extractClasspathFixture(name, cached)) return cached;
         return null;
+    }
+
+    /**
+     * Copy all optimize fixtures from the CLI classpath into the cache root so subsequent
+     * installs and out-of-tree {@code jk optimize} runs find them without a monorepo checkout.
+     */
+    static void ensureFixturesInCache() {
+        for (String name : FIXTURES) {
+            Path dest = JkDirs.cache().resolve("templates").resolve("optimize").resolve(name);
+            if (isFixture(dest)) continue;
+            extractClasspathFixture(name, dest);
+        }
+    }
+
+    /**
+     * Extract {@code templates/optimize/<name>/…} from the classloader into {@code dest}. Returns
+     * true when a usable fixture tree is present after the call.
+     */
+    static boolean extractClasspathFixture(String name, Path dest) {
+        if (name == null || dest == null) return false;
+        String prefix = "templates/optimize/" + name + "/";
+        ClassLoader cl = OptimizeCommand.class.getClassLoader();
+        try {
+            // Prefer a single known file to probe packaging
+            var probe = cl.getResource(prefix + "jk.toml");
+            if (probe == null) return false;
+            // Walk known layout (not a full jar scan — fixtures are tiny and fixed shape).
+            List<String> rels = List.of(
+                    "jk.toml",
+                    "src/main/java/train/T0.java",
+                    "src/main/java/train/T1.java",
+                    "src/main/java/train/T2.java",
+                    "src/main/java/train/T3.java",
+                    "src/main/java/train/T4.java",
+                    "src/main/java/train/T5.java",
+                    "src/main/java/train/T6.java",
+                    "src/main/java/train/T7.java",
+                    "src/main/java/train/T8.java",
+                    "src/main/java/train/T9.java",
+                    "src/test/java/train/T0Test.java",
+                    "src/test/java/train/T1Test.java",
+                    "src/main/kotlin/train/T0.kt",
+                    "src/main/kotlin/train/T1.kt",
+                    "src/main/kotlin/train/T2.kt",
+                    "src/main/kotlin/train/T3.kt",
+                    "src/main/kotlin/train/T4.kt",
+                    "src/main/kotlin/train/T5.kt",
+                    "src/main/kotlin/train/T6.kt",
+                    "src/main/kotlin/train/T7.kt",
+                    "src/main/kotlin/train/T8.kt",
+                    "src/main/kotlin/train/T9.kt",
+                    "src/test/kotlin/train/T0Test.kt",
+                    "src/test/kotlin/train/T1Test.kt",
+                    "src/main/groovy/train/T0.groovy",
+                    "src/main/groovy/train/T1.groovy",
+                    "src/main/groovy/train/T2.groovy",
+                    "src/main/groovy/train/T3.groovy",
+                    "src/main/groovy/train/T4.groovy",
+                    "src/main/groovy/train/T5.groovy",
+                    "src/main/groovy/train/T6.groovy",
+                    "src/main/groovy/train/T7.groovy",
+                    "src/main/groovy/train/T8.groovy",
+                    "src/main/groovy/train/T9.groovy",
+                    "src/test/groovy/train/T0Test.groovy",
+                    "src/test/groovy/train/T1Test.groovy");
+            int copied = 0;
+            for (String rel : rels) {
+                try (var in = cl.getResourceAsStream(prefix + rel)) {
+                    if (in == null) continue;
+                    Path out = dest.resolve(rel);
+                    Files.createDirectories(out.getParent());
+                    Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
+                    copied++;
+                }
+            }
+            return copied > 0 && isFixture(dest);
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static boolean isFixture(Path cand) {

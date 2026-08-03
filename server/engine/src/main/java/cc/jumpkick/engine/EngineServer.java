@@ -202,6 +202,18 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.atomic.AtomicReference<Path> pendingPruneCache =
             new java.util.concurrent.atomic.AtomicReference<>();
 
+    /**
+     * Queued {@code jk optimize} worker AOT train (JK-1388 / idle boundary). {@code null} = none
+     * pending; otherwise the force flag for the next drain. Drained on a daemon thread so the
+     * client ACK is not blocked by multi-second training.
+     */
+    private final java.util.concurrent.atomic.AtomicReference<Boolean> pendingOptimizeForce =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** Serializes idle-boundary optimize trains (never overlap two train passes). */
+    private final java.util.concurrent.atomic.AtomicBoolean optimizeTrainRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private volatile boolean shuttingDown;
     // Graceful-drain pre-state: the listener stays open and quick commands (hello/ping/status) keep
     // answering, but new jobs are refused and the engine exits cleanly once in-flight jobs finish.
@@ -1840,6 +1852,7 @@ public final class EngineServer implements AutoCloseable {
         drainPendingPrune();
         pruneJournal();
         pruneMetrics();
+        kickPendingOptimize();
         maybeIdleGc();
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
@@ -4301,38 +4314,77 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Pre-train worker AOT caches for install {@code jk optimize} (JK-1388). Best-effort; never
-     * fails the install hard path.
+     * Queue worker AOT train for the idle boundary (JK-1388). Never blocks the client on multi-second
+     * training — ACK is immediate; {@link #kickPendingOptimize} runs the work on a daemon thread
+     * when {@link #activePipelines} is zero (or the next time a pipeline finishes).
      */
     private void handleOptimizeRequest(String requestLine, BufferedWriter writer) {
         try {
             boolean force = Jsonl.bool(requestLine, "force", false);
-            var result = cc.jumpkick.compile.WorkerAotBootstrap.trainCommonWorkers(90_000L, force);
-            String trained = String.join(", ", result.trained());
-            String skipped = String.join(", ", result.skipped());
-            StringBuilder summary = new StringBuilder();
-            if (!result.trained().isEmpty()) {
-                summary.append("trained: ").append(trained);
-            }
-            if (!result.skipped().isEmpty()) {
-                if (summary.length() > 0) summary.append('\n');
-                summary.append("skipped: ").append(skipped);
-            }
-            for (String n : result.notes()) {
-                if (summary.length() > 0) summary.append('\n');
-                summary.append(n);
-            }
-            if (summary.length() == 0) summary.append("no workers trained");
-            sendQuiet(
-                    writer,
-                    EngineProtocol.optimizeAck(
-                            !result.trained().isEmpty() || result.skipped().stream().anyMatch(s -> s.contains("cached")),
-                            trained,
-                            skipped,
-                            summary.toString()));
+            enqueueOptimize(force);
+            boolean idle = activePipelines.get() == 0;
+            String summary = idle
+                    ? "scheduled: worker AOT train starting on idle worker"
+                    : "scheduled: worker AOT train queued for idle boundary";
+            sendQuiet(writer, EngineProtocol.optimizeAck(true, "", "scheduled", summary));
         } catch (RuntimeException e) {
             sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
         }
+    }
+
+    /** Remember a train request; force sticky until the next drain. */
+    private void enqueueOptimize(boolean force) {
+        pendingOptimizeForce.updateAndGet(prev -> {
+            if (prev == null) return force;
+            return prev || force;
+        });
+        kickPendingOptimize();
+    }
+
+    /**
+     * If a train is queued and no pipeline is in flight, drain it on a background thread (alongside
+     * prune / journal hygiene at the idle boundary).
+     */
+    private void kickPendingOptimize() {
+        if (shuttingDown || draining) return;
+        if (activePipelines.get() != 0) return;
+        Boolean force = pendingOptimizeForce.getAndSet(null);
+        if (force == null) return;
+        if (!optimizeTrainRunning.compareAndSet(false, true)) {
+            // Already training — re-queue so a follow-up force is not lost.
+            pendingOptimizeForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+            return;
+        }
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        if (activePipelines.get() != 0) {
+                            // A pipeline raced in — put the request back.
+                            pendingOptimizeForce.updateAndGet(
+                                    prev -> prev == null ? force : (prev || force));
+                            return;
+                        }
+                        var result = cc.jumpkick.compile.WorkerAotBootstrap.trainCommonWorkers(90_000L, force);
+                        String trained = String.join(", ", result.trained());
+                        String skipped = String.join(", ", result.skipped());
+                        log.accept("jk engine: idle optimize trained=["
+                                + trained
+                                + "] skipped=["
+                                + skipped
+                                + "]");
+                    } catch (RuntimeException e) {
+                        log.accept("jk engine: idle optimize failed: " + e.getMessage());
+                    } finally {
+                        optimizeTrainRunning.set(false);
+                        // Another request may have arrived while we ran.
+                        if (pendingOptimizeForce.get() != null && activePipelines.get() == 0) {
+                            kickPendingOptimize();
+                        }
+                    }
+                },
+                "jk-idle-optimize");
+        t.setDaemon(true);
+        t.start();
     }
 
     /**

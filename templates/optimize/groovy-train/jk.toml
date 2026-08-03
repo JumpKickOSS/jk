@@ -3,7 +3,7 @@ name = "groovy-train"
 group = "cc.jumpkick.optimize"
 version = "0.0.1"
 java = "17"
-groovy = "5.0.7"
+groovy = "5.0.8"
 
 [dependencies]
 
