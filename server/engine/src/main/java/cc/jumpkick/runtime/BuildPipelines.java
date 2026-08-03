@@ -2883,17 +2883,14 @@ public final class BuildPipelines {
         ClasspathResolver resolver = new ClasspathResolver(cas);
         String startClass = resolvedMain(project, in.dir(), classes);
 
-        // Coordinate-named runtime entries + the SBOM components they imply.
-        record Entry(String fileName, Path jar, boolean snapshot, Path container) {}
-        List<Entry> entries = new ArrayList<>();
+        // Coordinate-named runtime entries: lock artifacts + workspace sibling jars — the SAME
+        // set steps see via In.runtimeEntries(). Packaging from the lock alone drops sibling
+        // module jars and ships a Boot/assembly artifact that cannot start (JK-1415).
+        List<PluginBuild.ProdEntry> entries =
+                PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project);
         List<CycloneDxSbom.Component> sbomComponents = new ArrayList<>();
         for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
             Lockfile.Artifact a = entry.artifact();
-            entries.add(new Entry(
-                    a.moduleArtifact() + "-" + a.version() + (entry.container() != null ? ".aar" : ".jar"),
-                    entry.jar(),
-                    a.version().contains("SNAPSHOT"),
-                    entry.container()));
             sbomComponents.add(
                     new CycloneDxSbom.Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex()));
         }
@@ -2907,7 +2904,7 @@ public final class BuildPipelines {
         // Action key from the declared inputs + facts — any config, classes, dependency-set,
         // step-output, extra-artifact, or manifest change re-packages; nothing else does.
         List<Path> entryJars = new ArrayList<>(entries.size());
-        for (Entry e : entries) {
+        for (PluginBuild.ProdEntry e : entries) {
             if (e.jar() != null) entryJars.add(e.jar());
         }
         List<String> tokens = new ArrayList<>();
@@ -2918,7 +2915,7 @@ public final class BuildPipelines {
                     tokens.add("libs:" + cc.jumpkick.task.ClasspathFingerprint.of(entryJars));
                     // Container content (an AAR's res/assets/jni) is packaged input too — an
                     // assets-only AAR bump must re-package even though no classes jar changed.
-                    for (Entry e : entries) {
+                    for (PluginBuild.ProdEntry e : entries) {
                         if (e.container() != null) {
                             tokens.add("container:" + e.fileName() + ":"
                                     + cc.jumpkick.task.ClasspathFingerprint.entry(e.container()));
@@ -2984,7 +2981,7 @@ public final class BuildPipelines {
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
-        for (Entry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
+        for (PluginBuild.ProdEntry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);
