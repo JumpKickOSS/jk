@@ -63,6 +63,19 @@ jk engine aot              # summary table + per-cache details
 jk engine aot -O json      # machine-readable
 ```
 
+### Training failure and retry semantics
+
+Worker training failures back off, but never permanently:
+
+- **Trainer fails** (nonzero exit): a sticky `.noaot` marker sibling is written and the key is
+  skipped — no retry storm from retrying on every compile.
+- **Trainer overruns** (120 s watchdog): **no** sticky marker — an overrun is usually transient
+  (first Kotlin compile on a loaded machine). The training claim file is kept instead, which
+  blocks retrains for ~10 minutes; the next compile after that retries.
+- **Marker TTL**: a `.noaot` marker older than **7 days** is treated as absent at read time and
+  removed, giving a once-failed key a fresh training attempt. (A JDK/Kotlin/GC bump mints a new
+  key and retries immediately, marker or not.)
+
 Work runs on a **daemon idle thread** when `activePipelines == 0` so client builds are not blocked.
 Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics
 retention, metrics harvest, feeds/templates, AOT train, and calibration — so the heap is not

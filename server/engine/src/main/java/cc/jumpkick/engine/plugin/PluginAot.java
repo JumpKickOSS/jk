@@ -30,8 +30,20 @@ public final class PluginAot {
 
     private PluginAot() {}
 
-    /** Ceiling for one training run (fork + synthetic compile + assembly); typical is ~2s. */
-    private static final long TRAINING_TIMEOUT_SECONDS = 120;
+    /**
+     * Ceiling for one training run (fork + synthetic compile + assembly); typical is ~2s.
+     * Non-final for tests only (simulated overrun without a two-minute wait).
+     */
+    static volatile long trainingTimeoutMillis = TimeUnit.SECONDS.toMillis(120);
+
+    /**
+     * A sticky {@code .noaot} marker older than this is treated as absent at read time and
+     * removed, giving the key a fresh training attempt. Failures within the window still back
+     * off (no retry storm); without an expiry, the sole key of a tool that once failed would
+     * never retrain — {@link #sweepTool}'s orphan sweep only runs from a <em>successful</em>
+     * train of a sibling key.
+     */
+    static final long NOAOT_RETRY_MILLIS = 7L * 24 * 60 * 60 * 1_000;
 
     /** A claim file older than this is a crashed trainer's leftover — reclaimable. */
     private static final long CLAIM_STALE_MILLIS = 10 * 60 * 1_000;
@@ -110,7 +122,7 @@ public final class PluginAot {
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
-            if (eligible(id) && trainingEnabled() && !Files.exists(noaotMarker(cache))) {
+            if (eligible(id) && trainingEnabled() && !noAotBlocked(cache)) {
                 trainAsync(
                         prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
             }
@@ -208,7 +220,7 @@ public final class PluginAot {
             } else {
                 deleteIfEmpty(cache); // truncated leftover: retrain below
             }
-            if (!trainingEnabled() || Files.exists(noaotMarker(cache))) return false;
+            if (!trainingEnabled() || noAotBlocked(cache)) return false;
             String what = prefix + " worker (" + id.vendor() + " " + id.version() + ")";
             trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs), meta);
             return usableCache(cache);
@@ -406,6 +418,7 @@ public final class PluginAot {
     private static void runTrainer(
             String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
         Path scratch = null;
+        boolean keepClaim = false;
         Path tmp = cache.resolveSibling(
                 cache.getFileName() + ".tmp-" + ProcessHandle.current().pid());
         try {
@@ -417,10 +430,15 @@ public final class PluginAot {
                     .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
             System.err.println("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
-            if (!p.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!p.waitFor(trainingTimeoutMillis, TimeUnit.MILLISECONDS)) {
                 p.destroyForcibly();
-                markNoAot(cache, meta); // don't re-attempt on every subsequent compile
-                System.err.println("jk engine: AOT training for " + what + " overran; killed");
+                // NO sticky marker: an overrun is usually transient (first Kotlin compile on a
+                // loaded machine), and a sticky .noaot here would disable AOT for the key
+                // permanently (JK-1431). Refresh and KEEP the claim file instead — fresh claims
+                // block retrains until CLAIM_STALE_MILLIS, a bounded backoff, not a life sentence.
+                touch(claim);
+                keepClaim = true;
+                System.err.println("jk engine: AOT training for " + what + " overran; killed (will retry later)");
                 return;
             }
             if (p.exitValue() == 0 && Files.exists(tmp)) {
@@ -441,7 +459,7 @@ public final class PluginAot {
         } finally {
             deleteQuietly(tmp);
             deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
-            deleteQuietly(claim);
+            if (!keepClaim) deleteQuietly(claim);
             if (scratch != null) deleteRecursivelyQuietly(scratch);
             TRAINING.remove(cache);
         }
@@ -525,6 +543,26 @@ public final class PluginAot {
     /** Sticky "training failed for this key" marker sibling (skip retrain-on-miss until cleared). */
     public static Path noaotMarker(Path cache) {
         return cache.resolveSibling(cache.getFileName() + ".noaot");
+    }
+
+    /**
+     * Is training for {@code cache} blocked by its {@code .noaot} marker? Markers older than
+     * {@link #NOAOT_RETRY_MILLIS} are expired at read time — deleted, and the key retrains. The
+     * sweep-side expiry ({@link #sweepTool}) only runs from a successful sibling train, so a
+     * tool whose sole key failed would otherwise never retry.
+     */
+    static boolean noAotBlocked(Path cache) {
+        Path marker = noaotMarker(cache);
+        try {
+            if (!Files.exists(marker)) return false;
+            long age = System.currentTimeMillis()
+                    - Files.getLastModifiedTime(marker).toMillis();
+            if (age <= NOAOT_RETRY_MILLIS) return true;
+            deleteQuietly(marker); // expired: one bad day must not disable AOT forever
+            return false;
+        } catch (IOException e) {
+            return true; // unreadable marker: skip training, never fail the build
+        }
     }
 
     private static void markNoAot(Path cache) {

@@ -172,6 +172,33 @@ class PluginAotTest {
     }
 
     @Test
+    void trainer_timeout_leaves_no_sticky_marker_and_backs_off_via_the_claim_file() throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("aot4")).resolve("javac-timeout0000000000.aot");
+        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        long prevTimeout = PluginAot.trainingTimeoutMillis;
+        PluginAot.trainingTimeoutMillis = 200;
+        try {
+            PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "sleep 30"));
+            long claimedAt = Files.getLastModifiedTime(claim).toMillis();
+            // The timeout branch refreshes the claim's mtime — the observable "overran" signal.
+            waitUntil(Duration.ofSeconds(10), () -> {
+                try {
+                    return Files.getLastModifiedTime(claim).toMillis() > claimedAt;
+                } catch (IOException e) {
+                    return false;
+                }
+            });
+            // One transient overrun must NOT permanently disable AOT for the key: no sticky
+            // .noaot — only the (staleness-bounded) claim file paces the retry.
+            assertThat(PluginAot.noaotMarker(cache)).doesNotExist();
+            assertThat(cache).doesNotExist();
+            assertThat(claim).exists();
+        } finally {
+            PluginAot.trainingTimeoutMillis = prevTimeout;
+        }
+    }
+
+    @Test
     void a_fresh_claim_file_from_another_process_blocks_training() throws Exception {
         Path cache = Files.createDirectories(tmp.resolve("aot3")).resolve("javac-claimed000000000.aot");
         Files.createFile(cache.resolveSibling(cache.getFileName() + ".training")); // fresh foreign claim
