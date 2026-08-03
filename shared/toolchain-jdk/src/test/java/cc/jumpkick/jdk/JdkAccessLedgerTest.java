@@ -7,6 +7,12 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -100,6 +106,106 @@ class JdkAccessLedgerTest {
         }
         new JdkAccessLedger(bogus).touch(tempDir.resolve("jdk"), "21", "Eclipse");
         // No assertion — just "didn't throw."
+    }
+
+    @Test
+    void concurrent_touches_lose_no_rows(@TempDir Path tempDir) throws Exception {
+        Path file = tempDir.resolve(".jk-access.log");
+        int jdks = 8;
+        int touchesPerJdk = 5;
+        List<Path> homes = new ArrayList<>();
+        for (int i = 0; i < jdks; i++) {
+            Path home = tempDir.resolve("jdk-" + i);
+            Files.createDirectories(home);
+            homes.add(home);
+        }
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(jdks)) {
+            CountDownLatch start = new CountDownLatch(1);
+            List<Future<?>> futures = new ArrayList<>();
+            for (Path home : homes) {
+                futures.add(
+                        pool.submit(
+                                () -> {
+                                    start.await();
+                                    // Fresh instance per touch — same file, no shared state.
+                                    for (int t = 0; t < touchesPerJdk; t++) {
+                                        new JdkAccessLedger(file).touch(home, "21.0.5", "Eclipse Temurin");
+                                    }
+                                    return null;
+                                }));
+            }
+            start.countDown();
+            for (Future<?> f : futures) f.get();
+        }
+
+        var map = new JdkAccessLedger(file).byJavaHome();
+        assertThat(map).hasSize(jdks);
+        for (Path home : homes) {
+            JdkAccessLedger.Entry e = map.get(home.toRealPath().toString());
+            assertThat(e).as("row for %s", home).isNotNull();
+            assertThat(e.accessCount()).isEqualTo(touchesPerJdk);
+        }
+    }
+
+    @Test
+    void symlinked_home_and_real_home_share_one_row(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
+        Path real = Files.createDirectories(tempDir.resolve("temurin-21.0.5"));
+        Path link = tempDir.resolve("temurin-21");
+        Files.createSymbolicLink(link, real);
+
+        JdkAccessLedger ledger = new JdkAccessLedger(file);
+        ledger.touch(real, "21.0.5", "Eclipse Temurin");
+        ledger.touch(link, "21.0.5", "Eclipse Temurin");
+
+        var map = ledger.byJavaHome();
+        assertThat(map).hasSize(1);
+        JdkAccessLedger.Entry e = map.get(real.toRealPath().toString());
+        assertThat(e).isNotNull();
+        assertThat(e.accessCount()).isEqualTo(2);
+    }
+
+    @Test
+    void old_journal_is_folded_and_removed_on_first_touch(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
+        Path old = tempDir.resolve(".access.log");
+        Path existing = Files.createDirectories(tempDir.resolve("temurin-21.0.5"));
+        // Old TSV journal: two events for a still-installed JDK, one for a gone JDK.
+        Files.writeString(
+                old,
+                """
+                100\tinstall\ttemurin-21.0.5
+                300\tresolve\ttemurin-21.0.5
+                200\tresolve\tcorretto-17.0.9
+                """,
+                StandardCharsets.UTF_8);
+
+        Path other = Files.createDirectories(tempDir.resolve("zulu-25.0.1"));
+        new JdkAccessLedger(file).touch(other, "25.0.1", "Azul Zulu");
+
+        assertThat(Files.exists(old)).as("old journal removed").isFalse();
+        var map = new JdkAccessLedger(file).byJavaHome();
+        assertThat(map).hasSize(2); // folded temurin row + fresh zulu row; gone corretto dropped
+        JdkAccessLedger.Entry folded = map.get(existing.toRealPath().toString());
+        assertThat(folded).isNotNull();
+        assertThat(folded.timestampMillis()).isEqualTo(300);
+        assertThat(folded.accessCount()).isEqualTo(2);
+        assertThat(folded.version()).isEqualTo("21.0.5");
+    }
+
+    @Test
+    void display_name_from_feed_is_the_single_vendor_form() {
+        // Raw feed strings ("Eclipse" + "Temurin") and the discovery path (JdkVendor.displayName)
+        // must land the same ledger cell.
+        assertThat(JdkVendor.displayNameFromFeed("Eclipse", "Temurin"))
+                .isEqualTo(JdkVendor.TEMURIN.displayName())
+                .isEqualTo("Eclipse Temurin");
+        assertThat(JdkVendor.displayNameFromFeed("GraalVM Community", "GraalVM CE"))
+                .isEqualTo(JdkVendor.GRAALVM_CE.displayName());
+        // Unrecognised feeds keep their raw strings instead of collapsing to "Unknown".
+        assertThat(JdkVendor.displayNameFromFeed("Acme", "SuperJDK")).isEqualTo("Acme SuperJDK");
+        assertThat(JdkVendor.displayNameFromFeed("Acme", "")).isEqualTo("Acme");
     }
 
     @Test

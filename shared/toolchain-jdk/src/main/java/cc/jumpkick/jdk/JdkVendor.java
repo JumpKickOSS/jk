@@ -141,6 +141,24 @@ public enum JdkVendor {
         return UNKNOWN;
     }
 
+    /**
+     * Display-form vendor for raw feed {@code vendor}+{@code product} strings — the one vendor
+     * string form the {@link JdkAccessLedger} records everywhere (e.g. {@code "Eclipse"} +
+     * {@code "Temurin"} → {@code "Eclipse Temurin"}). Unrecognised feeds fall back to joining the
+     * raw strings the same way {@link #displayName()} does, never to {@code "Unknown"}.
+     */
+    public static String displayNameFromFeed(String vendor, String product) {
+        JdkVendor v = fromFeed(vendor, product);
+        if (v != UNKNOWN) return v.displayName();
+        String ven = vendor == null ? "" : vendor.trim();
+        String prod = product == null ? "" : product.trim();
+        if (ven.isEmpty()) return prod;
+        if (prod.isEmpty() || ven.toLowerCase(Locale.ROOT).startsWith(prod.toLowerCase(Locale.ROOT))) {
+            return ven;
+        }
+        return ven + " " + prod;
+    }
+
     /** Read {@code home/release} and detect the vendor; missing/unknown → {@link #UNKNOWN}. */
     public static JdkVendor fromRelease(Path home) {
         Path release = home.resolve("release");
