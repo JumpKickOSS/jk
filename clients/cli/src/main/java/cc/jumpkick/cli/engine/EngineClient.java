@@ -1764,15 +1764,38 @@ public final class EngineClient {
     /**
      * AOT mode for a target: only a JAR engine on a HotSpot JDK with no {@code.noaot} marker uses
      * AOT. Train-on-miss is skipped when {@link cc.jumpkick.util.AotSettings#trainingEnabled} is
-     * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache.
+     * false ({@code JK_AOT_TRAIN=off}) — still maps an existing cache. USE requires a
+     * <em>non-empty</em> cache (mirror of {@code PluginAot.usableCache}): a zero-byte leftover from
+     * a crashed trainer would otherwise map "forever" while never accelerating anything — it is
+     * deleted here so the key can retrain.
      */
     static AotMode chooseAotMode(EngineTarget t) {
         if (t.engine().kind() != EngineArtifact.Kind.JAR) return AotMode.NONE;
         if (!t.hotspot()) return AotMode.NONE; // GraalVM host: its Graal JIT breaks the cache — skip cleanly
         if (t.noAotMarker()) return AotMode.NONE;
-        if (t.aotCache() != null && Files.exists(t.aotCache())) return AotMode.USE;
+        if (usableAotCache(t.aotCache())) return AotMode.USE;
+        deleteIfEmptyCache(t.aotCache()); // torn/zero-byte leftover: treat as missing so it retrains
         if (!cc.jumpkick.util.AotSettings.trainingEnabled()) return AotMode.NONE;
         return AotMode.TRAIN;
+    }
+
+    /** The one definition of "engine cache present": a non-empty regular file. */
+    private static boolean usableAotCache(Path cache) {
+        try {
+            return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static void deleteIfEmptyCache(Path cache) {
+        try {
+            if (cache != null && Files.isRegularFile(cache) && Files.size(cache) == 0) {
+                Files.deleteIfExists(cache);
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
     }
 
     /**
@@ -2004,9 +2027,10 @@ public final class EngineClient {
     /**
      * Best-effort {@code aot.toml} row for the engine cache key (even before the file exists, so a
      * pending train is still documented). Updates size/status when the cache or {@code .noaot}
-     * marker is present.
+     * marker is present. {@code ready} means size &gt; 0 — the same predicate {@link
+     * #chooseAotMode} maps by, so the manifest and the engine never disagree about one file.
      */
-    private static void recordEngineAotManifest(
+    static void recordEngineAotManifest(
             Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
         if (cache == null) return;
         Path aotDir = cache.getParent();

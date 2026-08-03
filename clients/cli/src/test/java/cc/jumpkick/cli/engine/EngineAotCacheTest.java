@@ -128,6 +128,68 @@ class EngineAotCacheTest {
     }
 
     @Test
+    void choose_mode_treats_a_zero_byte_cache_as_missing_and_deletes_it(@TempDir Path dir) throws IOException {
+        EngineArtifact jar = new EngineArtifact(EngineArtifact.Kind.JAR, "j", "lib");
+        Path torn = dir.resolve("engine-0.1.0-0123456789abcdef.aot");
+        Files.createFile(torn); // a killed trainer's zero-byte leftover
+
+        String prev = System.getProperty("jk.aot.train");
+        try {
+            System.setProperty("jk.aot.train", "on");
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, torn, false)))
+                    .isEqualTo(AotMode.TRAIN); // never USE — an empty cache maps nothing, forever
+            assertThat(torn).doesNotExist(); // removed so the retrain can land cleanly
+
+            Files.createFile(torn);
+            System.setProperty("jk.aot.train", "off");
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jar, dir, true, torn, false)))
+                    .isEqualTo(AotMode.NONE); // no train-on-miss, but the torn file still goes
+            assertThat(torn).doesNotExist();
+        } finally {
+            if (prev == null) System.clearProperty("jk.aot.train");
+            else System.setProperty("jk.aot.train", prev);
+        }
+    }
+
+    @Test
+    void manifest_status_agrees_with_the_mode_decision_for_the_same_file(@TempDir Path dir) throws IOException {
+        EngineArtifact jarArtifact = new EngineArtifact(EngineArtifact.Kind.JAR, "j", "lib");
+        Path engineJar = jar(dir, "jk-engine-1.jar", "jarbytes");
+        Path cache = dir.resolve("engine-0.1.0-0123456789abcdef.aot");
+
+        String prev = System.getProperty("jk.aot.train");
+        try {
+            System.setProperty("jk.aot.train", "on");
+            // Zero-byte file: the engine must NOT map it — and the manifest must not call it ready.
+            Files.createFile(cache);
+            EngineClient.recordEngineAotManifest(
+                    cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
+            assertThat(statusOf(dir, cache)).isEqualTo("pending");
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jarArtifact, dir, true, cache, false)))
+                    .isEqualTo(AotMode.TRAIN);
+
+            // Complete file: manifest says ready, engine maps it.
+            Files.writeString(cache, "assembled-cache");
+            EngineClient.recordEngineAotManifest(
+                    cache, engineJar, temurin("25.0.3"), "0.1.0", "0123456789abcdef");
+            assertThat(statusOf(dir, cache)).isEqualTo("ready");
+            assertThat(EngineClient.chooseAotMode(new EngineTarget(jarArtifact, dir, true, cache, false)))
+                    .isEqualTo(AotMode.USE);
+        } finally {
+            if (prev == null) System.clearProperty("jk.aot.train");
+            else System.setProperty("jk.aot.train", prev);
+        }
+    }
+
+    private static String statusOf(Path aotDir, Path cache) {
+        return cc.jumpkick.util.AotManifest.load(aotDir).stream()
+                .filter(e -> e.file().equals(cache.getFileName().toString()))
+                .findFirst()
+                .orElseThrow()
+                .status();
+    }
+
+    @Test
     void log_scan_detects_aot_markers(@TempDir Path dir) throws IOException {
         assertThat(EngineClient.scanLogForAotError(write(dir, "a.log", "[0.0s][error][aot] boom\n")))
                 .isTrue();
