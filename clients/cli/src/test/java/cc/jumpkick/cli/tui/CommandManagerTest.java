@@ -297,10 +297,10 @@ class CommandManagerTest {
     void setWindowTitle_emits_osc0_and_clears_on_settle() {
         var buf = new ByteArrayOutputStream();
         var cm = CommandManager.pipeline(stream(buf), "Build", true);
-        cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.10.1...");
+        cm.setWindowTitle("JumpKick - Building cc.jumpkick:jk:0.11.0...");
         String set = buf.toString(StandardCharsets.UTF_8);
         // OSC 0: fill-circle glyph + base, terminated with ST (ESC \), not BEL.
-        String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.10.1...\033\\";
+        String expected = "\033]0;" + Spinner.fillGlyph(0) + " JumpKick - Building cc.jumpkick:jk:0.11.0...\033\\";
         assertThat(set).contains(expected);
         buf.reset();
         cm.finishPipelineSuccess("ok", List.of());
@@ -665,10 +665,10 @@ class CommandManagerTest {
     @Test
     void package_detail_uses_path_color_for_jar_name() {
         Theme t = Theme.active();
-        String painted = CommandManager.colorDetail("Package", "package jk-engine-0.10.1.jar", t);
-        assertThat(TestAnsi.strip(painted)).isEqualTo("package jk-engine-0.10.1.jar");
+        String painted = CommandManager.colorDetail("Package", "package jk-engine-0.11.0.jar", t);
+        assertThat(TestAnsi.strip(painted)).isEqualTo("package jk-engine-0.11.0.jar");
         assertThat(painted).contains(Theme.colorize("package", t.midGray()));
-        assertThat(painted).contains(Theme.colorize("jk-engine-0.10.1.jar", t.path()));
+        assertThat(painted).contains(Theme.colorize("jk-engine-0.11.0.jar", t.path()));
     }
 
     @Test

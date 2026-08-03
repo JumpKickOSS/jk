@@ -15,12 +15,12 @@ class WorkerLibTest {
     @Test
     void id_from_m2_layout_and_filename() {
         Path m2 = Path.of(
-                "/home/u/.jk/store/repos/local/cc/jumpkick/jk-kotlin-compiler/0.10.1/jk-kotlin-compiler-0.10.1.jar");
+                "/home/u/.jk/store/repos/local/cc/jumpkick/jk-kotlin-compiler/0.11.0/jk-kotlin-compiler-0.11.0.jar");
         assertThat(WorkerLib.idFromWorkerJar(m2)).isEqualTo("jk-kotlin-compiler");
-        assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-test-runner-0.10.1.jar")))
+        assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-test-runner-0.11.0.jar")))
                 .isEqualTo("jk-test-runner");
         assertThat(WorkerLib.stripJarVersion("plugin-sdk-0.1.0.jar")).isEqualTo("plugin-sdk");
-        assertThat(WorkerLib.looksLikeVersion("0.10.1")).isTrue();
+        assertThat(WorkerLib.looksLikeVersion("0.11.0")).isTrue();
         assertThat(WorkerLib.looksLikeVersion("libs")).isFalse();
     }
 
@@ -28,11 +28,11 @@ class WorkerLibTest {
     void snapshot_style_versions_parse_consistently() {
         // JK-1368: one parser for jar-name versions — id derivation and m2 placement agree on
         // multi-segment qualifiers.
-        assertThat(WorkerLib.stripJarVersion("jk-foo-0.10.1-SNAPSHOT.jar")).isEqualTo("jk-foo");
-        assertThat(WorkerLib.jarVersion("jk-foo-0.10.1-SNAPSHOT.jar")).isEqualTo("0.10.1-SNAPSHOT");
-        assertThat(WorkerLib.jarVersion("jk-plugin-sdk-0.10.1.jar")).isEqualTo("0.10.1");
+        assertThat(WorkerLib.stripJarVersion("jk-foo-0.11.0-SNAPSHOT.jar")).isEqualTo("jk-foo");
+        assertThat(WorkerLib.jarVersion("jk-foo-0.11.0-SNAPSHOT.jar")).isEqualTo("0.11.0-SNAPSHOT");
+        assertThat(WorkerLib.jarVersion("jk-plugin-sdk-0.11.0.jar")).isEqualTo("0.11.0");
         assertThat(WorkerLib.jarVersion("plain-name.jar")).isNull();
-        assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-foo-0.10.1-SNAPSHOT.jar")))
+        assertThat(WorkerLib.idFromWorkerJar(Path.of("/tmp/jk-foo-0.11.0-SNAPSHOT.jar")))
                 .isEqualTo("jk-foo");
     }
 

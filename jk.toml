@@ -5,7 +5,7 @@ catalog = "bundled"
 [project]
 group    = "cc.jumpkick"
 name     = "jk"
-version  = "0.10.1"
+version  = "0.11.0"
 description = "JumpKick - the modern build tool for the JVM"
 jdk      = 25
 java     = 25

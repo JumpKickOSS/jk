@@ -231,7 +231,7 @@ class HttpEngineServerTest {
                 webRoot,
                 stateDir.resolve("snap.http-token"),
                 stateDir.resolve("snap.log"),
-                "0.10.1-SNAPSHOT",
+                "0.11.0-SNAPSHOT",
                 () -> SNAPSHOT,
                 new HttpEvents(),
                 stubJobs,

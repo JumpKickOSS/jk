@@ -52,7 +52,7 @@ class WorkerClasspathTest {
         Files.createDirectories(workerDir);
         Files.createDirectories(sdkDir);
         Path worker = workerDir.resolve("jk-kotlin-compiler-1.jar");
-        Path sdk = sdkDir.resolve("jk-plugin-sdk-0.10.1.jar");
+        Path sdk = sdkDir.resolve("jk-plugin-sdk-0.11.0.jar");
         Files.writeString(worker, "w");
         Files.writeString(sdk, "sdk");
         assertThat(WorkerClasspath.findPluginSdk(worker))

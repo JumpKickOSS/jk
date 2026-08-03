@@ -89,11 +89,11 @@ class VersionStoreTest {
         Path clientV2 = dir.resolve("jk-v2");
         Files.writeString(clientV2, "client bytes v2 (new dist)");
 
-        var first = store.materializeFromFiles("0.10.1", cas, jar, clientV1);
+        var first = store.materializeFromFiles("0.11.0", cas, jar, clientV1);
         assertThat(first.clientBin()).isPresent();
         assertThat(first.clientBin().get()).hasContent("client bytes v1");
 
-        var second = store.materializeFromFiles("0.10.1", cas, jar, clientV2);
+        var second = store.materializeFromFiles("0.11.0", cas, jar, clientV2);
         assertThat(second.clientBin()).isPresent();
         assertThat(second.clientBin().get()).hasContent("client bytes v2 (new dist)");
     }

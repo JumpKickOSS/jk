@@ -61,7 +61,7 @@ class EngineAotCommandTest {
     void json_output_includes_directory_and_caches() throws Exception {
         Path aot = JkDirs.state().resolve("aot");
         Files.createDirectories(aot);
-        String name = "engine-0.10.1-deadbeefdeadbeef.aot";
+        String name = "engine-0.11.0-deadbeefdeadbeef.aot";
         Path cache = aot.resolve(name);
         try {
             Files.writeString(cache, "eng");

@@ -57,7 +57,7 @@ class QuarkusLockPerfTest {
         MavenRepo central = new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas);
         long t0 = System.nanoTime();
         Lockfile lock =
-                new LockOrchestrator(RepoGroup.of(central)).withProjectDir(tmp).lock(project, "0.10.1-test");
+                new LockOrchestrator(RepoGroup.of(central)).withProjectDir(tmp).lock(project, "0.11.0-test");
         long ms = (System.nanoTime() - t0) / 1_000_000L;
         System.out.println(
                 "quarkus-rest lock ms=" + ms + " packages=" + lock.artifacts().size());
