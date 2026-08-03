@@ -121,10 +121,21 @@ class AotManifestTest {
         assertThat(e.key()).isEqualTo("178d424d005e0594");
         assertThat(e.jkVersion()).isEqualTo("0.11.0");
 
-        AotManifest.Entry.Builder w = AotManifest.Entry.builder("java-compiler-0ce11dbb0a66be53.aot");
-        AotManifest.fillToolKey(w, "java-compiler-0ce11dbb0a66be53.aot");
-        assertThat(w.build().tool()).isEqualTo("java-compiler");
-        assertThat(w.build().key()).isEqualTo("0ce11dbb0a66be53");
+        // Versioned worker (JK-1452): java-compiler-<jk-version>-<16hex>
+        AotManifest.Entry.Builder w =
+                AotManifest.Entry.builder("java-compiler-0.11.0-0ce11dbb0a66be53.aot");
+        AotManifest.fillToolKey(w, "java-compiler-0.11.0-0ce11dbb0a66be53.aot");
+        AotManifest.Entry we = w.build();
+        assertThat(we.tool()).isEqualTo("java-compiler");
+        assertThat(we.key()).isEqualTo("0ce11dbb0a66be53");
+        assertThat(we.jkVersion()).isEqualTo("0.11.0");
+
+        // Legacy unversioned worker name still parses tool+key
+        AotManifest.Entry.Builder legacy =
+                AotManifest.Entry.builder("java-compiler-0ce11dbb0a66be53.aot");
+        AotManifest.fillToolKey(legacy, "java-compiler-0ce11dbb0a66be53.aot");
+        assertThat(legacy.build().tool()).isEqualTo("java-compiler");
+        assertThat(legacy.build().key()).isEqualTo("0ce11dbb0a66be53");
     }
 
     @Test

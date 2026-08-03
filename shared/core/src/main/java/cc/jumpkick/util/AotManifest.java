@@ -755,6 +755,13 @@ public final class AotManifest {
      * Derive tool + key from a cache file name ({@code tool-16hex.aot} or
      * {@code engine-version-16hex.aot}).
      */
+    /**
+     * Known worker tool tags (may contain hyphens). Used to split
+     * {@code <tool>-<jk-version>-<16hex>.aot} for the human index.
+     */
+    private static final List<String> WORKER_TOOLS =
+            List.of("java-compiler", "kotlinc", "groovy", "plugin");
+
     public static void fillToolKey(Entry.Builder b, String fileName) {
         if (fileName == null || !fileName.endsWith(".aot")) return;
         String stem = fileName.substring(0, fileName.length() - ".aot".length());
@@ -768,12 +775,25 @@ public final class AotManifest {
                 return;
             }
         }
-        // <tool>-<16hex>
+        // <tool>-[<jk-version>-]<16hex>
         if (stem.length() > 17 && stem.charAt(stem.length() - 17) == '-') {
             String key = stem.substring(stem.length() - 16);
-            if (key.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
-                b.tool(stem.substring(0, stem.length() - 17)).key(key);
+            if (!key.chars().allMatch(c -> (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+                return;
             }
+            String head = stem.substring(0, stem.length() - 17); // tool or tool-version
+            for (String tool : WORKER_TOOLS) {
+                if (head.equals(tool)) {
+                    b.tool(tool).key(key);
+                    return;
+                }
+                if (head.startsWith(tool + "-")) {
+                    b.tool(tool).key(key).jkVersion(head.substring(tool.length() + 1));
+                    return;
+                }
+            }
+            // Unknown tool tag — treat whole head as tool (legacy / third-party).
+            b.tool(head).key(key);
         }
     }
 
