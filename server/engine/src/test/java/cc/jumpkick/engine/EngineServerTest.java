@@ -658,7 +658,10 @@ class EngineServerTest {
         Path cache = shortTempDir();
 
         EnginePaths.Paths p = paths(shortTempDir());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        // Real version, not a synthetic one: the first build freshens the stub lock and stamps
+        // jk = { version = JkVersion.VERSION }; a differing server version would make request #2
+        // delegate to a non-materialized install instead of exercising the fast path (JK-1446).
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {

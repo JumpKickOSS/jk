@@ -178,9 +178,10 @@ class BuildCommandTest {
         assertThat(exit).isEqualTo(0);
 
         // All three modules produced their jars (parallel default).
-        assertThat(tempDir.resolve("liba/target/lib/liba-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("libb/target/lib/libb-1.0.0.jar")).exists();
-        assertThat(tempDir.resolve("app/target/lib/app-1.0.0.jar")).exists();
+        // Mill layout (JK-1198): workspace members build into <workspace>/target/<module>/.
+        assertThat(tempDir.resolve("target/liba/lib/liba-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("target/libb/lib/libb-1.0.0.jar")).exists();
+        assertThat(tempDir.resolve("target/app/lib/app-1.0.0.jar")).exists();
 
         // -j1 still builds the workspace (serial module concurrency).
         int serial = run(
