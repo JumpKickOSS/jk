@@ -453,17 +453,27 @@ public final class AotManifest {
         try {
             String text = Files.readString(file, StandardCharsets.UTF_8);
             return parse(text);
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            // Unreadable or corrupt (e.g. hand-edit gone wrong): start over — the next write
+            // regenerates a valid file, which is the recovery the header comment promises.
             return new LinkedHashMap<>();
         }
     }
 
-    /** Minimal parser for the format we write (schema 1 [[cache]] tables). */
+    /**
+     * Minimal parser for the format we write (schema 1 [[cache]] tables), hardened for the
+     * hand-edits the header invites: trailing {@code #} comments, inline multi-item arrays, and
+     * fields placed before {@code file =} inside a table all parse; anything genuinely corrupt
+     * makes {@link #loadMap} start over rather than wedging writes.
+     */
     static Map<String, Entry> parse(String text) {
         Map<String, Entry> out = new LinkedHashMap<>();
         if (text == null || text.isBlank()) return out;
         String[] lines = text.split("\n", -1);
         Entry.Builder cur = null;
+        boolean inTable = false;
+        List<String[]> pendingScalars = new ArrayList<>();
+        Map<String, List<String>> pendingArrays = new LinkedHashMap<>();
         String arrayField = null;
         List<String> arrayBuf = null;
         for (String raw : lines) {
@@ -478,23 +488,23 @@ public final class AotManifest {
                     out.put(e.file(), e);
                 }
                 cur = null; // set when file= arrives
-                continue;
-            }
-            if (cur == null && !line.startsWith("file ") && !line.startsWith("file=")) {
-                // top-level schema/updated — ignore
-                if (line.startsWith("[[")) {
-                    // unknown table
-                }
+                inTable = true;
+                pendingScalars.clear();
+                pendingArrays.clear();
                 continue;
             }
             // array continuation
             if (arrayBuf != null) {
-                if (line.equals("]")) {
+                String v = stripTrailingComment(line);
+                if (v.equals("]")) {
                     finishArray(cur, arrayField, arrayBuf);
+                    if (cur == null && arrayField != null) {
+                        pendingArrays.put(arrayField, new ArrayList<>(arrayBuf));
+                    }
                     arrayField = null;
                     arrayBuf = null;
                 } else {
-                    String v = stripComma(line);
+                    v = stripComma(v);
                     if (v.startsWith("\"")) arrayBuf.add(unquote(v));
                 }
                 continue;
@@ -502,29 +512,38 @@ public final class AotManifest {
             int eq = line.indexOf('=');
             if (eq <= 0) continue;
             String key = line.substring(0, eq).strip();
-            String val = line.substring(eq + 1).strip();
+            String val = stripTrailingComment(line.substring(eq + 1).strip());
             if (key.equals("file")) {
                 cur = Entry.builder(unquote(val));
+                // Replay any fields that appeared before file= in this table.
+                for (String[] kv : pendingScalars) applyScalar(cur, kv[0], kv[1]);
+                for (Map.Entry<String, List<String>> a : pendingArrays.entrySet()) {
+                    applyArray(cur, a.getKey(), a.getValue());
+                }
+                pendingScalars.clear();
+                pendingArrays.clear();
                 continue;
             }
-            if (cur == null) continue;
+            if (cur == null && !inTable) continue; // top-level schema/updated — ignore
             if (val.equals("[")) {
                 arrayField = key;
                 arrayBuf = new ArrayList<>();
                 continue;
             }
             if (val.startsWith("[") && val.endsWith("]")) {
-                // single-line empty or inline array — rare; support empty
-                String inner = val.substring(1, val.length() - 1).strip();
-                List<String> items = new ArrayList<>();
-                if (!inner.isEmpty()) {
-                    // only handle empty / simple; multi-line is the normal form
-                    if (inner.startsWith("\"")) items.add(unquote(stripComma(inner)));
+                List<String> items = parseInlineArray(val.substring(1, val.length() - 1));
+                if (cur != null) {
+                    applyArray(cur, key, items);
+                } else {
+                    pendingArrays.put(key, items);
                 }
-                applyArray(cur, key, items);
                 continue;
             }
-            applyScalar(cur, key, val);
+            if (cur != null) {
+                applyScalar(cur, key, val);
+            } else {
+                pendingScalars.add(new String[] {key, val});
+            }
         }
         finishArray(cur, arrayField, arrayBuf);
         if (cur != null) {
@@ -532,6 +551,50 @@ public final class AotManifest {
             out.put(e.file(), e);
         }
         return out;
+    }
+
+    /** Items of an inline array body: every quoted string, escapes respected. */
+    private static List<String> parseInlineArray(String inner) {
+        List<String> items = new ArrayList<>();
+        int i = 0;
+        while (i < inner.length()) {
+            if (inner.charAt(i) == '"') {
+                int close = closingQuote(inner, i);
+                if (close < 0) break;
+                items.add(unquote(inner.substring(i, close + 1)));
+                i = close + 1;
+            } else {
+                i++;
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Drop a trailing {@code # comment}. For quoted values the string ends at its closing quote;
+     * for bare values everything from the first {@code #} goes.
+     */
+    private static String stripTrailingComment(String val) {
+        String t = val.strip();
+        if (t.startsWith("\"")) {
+            int close = closingQuote(t, 0);
+            return close < 0 ? t : t.substring(0, close + 1);
+        }
+        int hash = t.indexOf('#');
+        return hash < 0 ? t : t.substring(0, hash).strip();
+    }
+
+    /** Index of the quote closing the one at {@code open}, honoring backslash escapes; -1 if none. */
+    private static int closingQuote(String s, int open) {
+        for (int i = open + 1; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '\\') {
+                i++;
+            } else if (c == '"') {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static void finishArray(Entry.Builder cur, String field, List<String> buf) {
@@ -579,6 +642,13 @@ public final class AotManifest {
         }
     }
 
+    private static boolean isHex(String s) {
+        for (int i = 0; i < s.length(); i++) {
+            if (Character.digit(s.charAt(i), 16) < 0) return false;
+        }
+        return true;
+    }
+
     private static String stripComma(String s) {
         String t = s.strip();
         if (t.endsWith(",")) t = t.substring(0, t.length() - 1).strip();
@@ -600,10 +670,14 @@ public final class AotManifest {
                         case '"' -> sb.append('"');
                         case '\\' -> sb.append('\\');
                         case 'u' -> {
-                            if (i + 4 < t.length() - 1) {
-                                String hex = t.substring(i + 1, i + 5);
+                            // A hand-edited Windows path like "C:{backslash}upgrade" puts non-hex
+                            // after the unicode escape; treat it as literal text, don't throw.
+                            String hex = i + 4 < t.length() - 1 ? t.substring(i + 1, i + 5) : null;
+                            if (hex != null && isHex(hex)) {
                                 sb.append((char) Integer.parseInt(hex, 16));
                                 i += 4;
+                            } else {
+                                sb.append('u');
                             }
                         }
                         default -> sb.append(n);

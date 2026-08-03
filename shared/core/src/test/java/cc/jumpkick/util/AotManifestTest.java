@@ -186,6 +186,46 @@ class AotManifestTest {
     }
 
     @Test
+    void corrupt_manifest_with_bad_unicode_escape_recovers_on_next_upsert() throws Exception {
+        // A unicode escape followed by non-hex — the classic hand-edited Windows path.
+        Files.writeString(AotManifest.path(dir), """
+                schema = 1
+                [[cache]]
+                file = "java-compiler-abc.aot"
+                jdk_home = "C:\\upgrade\\jdk"
+                status = "ready"
+                """);
+
+        AotManifest.upsert(dir, AotManifest.Entry.builder("kotlinc-def.aot").tool("kotlinc").build());
+
+        var listed = AotManifest.load(dir);
+        assertThat(listed).extracting(AotManifest.Entry::file).contains("kotlinc-def.aot");
+        // The bad escape parses as literal text rather than wedging every future write.
+        var recovered = listed.stream().filter(e -> e.file().startsWith("java-compiler")).findFirst();
+        assertThat(recovered).isPresent();
+        assertThat(recovered.orElseThrow().jdkHome()).contains("upgrade");
+    }
+
+    @Test
+    void hand_edited_toml_variants_round_trip() throws Exception {
+        AotManifest.upsert(dir, AotManifest.Entry.builder("seed.aot").build());
+        Files.writeString(AotManifest.path(dir), """
+                schema = 1
+                [[cache]]
+                status = "ready"  # field placed before file=, with a trailing comment
+                file = "javac-1.aot"
+                classpath = ["/a.jar", "/b.jar"]
+                """);
+
+        var byFile = AotManifest.load(dir).stream()
+                .collect(java.util.stream.Collectors.toMap(AotManifest.Entry::file, e -> e));
+        AotManifest.Entry e = byFile.get("javac-1.aot");
+        assertThat(e).isNotNull();
+        assertThat(e.status()).isEqualTo("ready");
+        assertThat(e.classpath()).containsExactly("/a.jar", "/b.jar");
+    }
+
+    @Test
     void concurrent_upserts_from_many_threads_all_land() throws Exception {
         int n = 16;
         var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
