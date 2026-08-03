@@ -51,6 +51,7 @@ public final class Giter8Catalog {
         DESCRIPTIONS.put("java-cli-native", "Interactive Java CLI with JLine (jk native ready)");
         DESCRIPTIONS.put("spring-boot-webmvc", "Spring Boot WebMVC + JPA/H2 + Actuator");
         DESCRIPTIONS.put("spring-boot-webmvc-kotlin", "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator");
+        DESCRIPTIONS.put("ktor-3", "Ktor 3 service with Koin DI and Exposed/H2");
     }
 
     private Giter8Catalog() {}

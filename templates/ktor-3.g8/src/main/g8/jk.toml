@@ -1,0 +1,28 @@
+[project]
+group   = "$organization$"
+name    = "$name$"
+version = "0.1.0"
+jdk     = $jdk$
+java    = $jdk$
+kotlin  = "$kotlin$"
+layout  = "simple"
+
+[application]
+main = "$package$.MainKt"
+
+# Bare versions are caret ranges — the lock resolves the newest compatible line
+# (e.g. "3.0.0" -> latest Ktor 3.x). `jk lock` pins exact versions afterwards.
+[dependencies]
+ktor-server-core                = { group = "io.ktor", name = "ktor-server-core", version = "$ktor$" }
+ktor-server-netty               = { group = "io.ktor", name = "ktor-server-netty", version = "$ktor$" }
+ktor-server-content-negotiation = { group = "io.ktor", name = "ktor-server-content-negotiation", version = "$ktor$" }
+ktor-serialization-jackson      = { group = "io.ktor", name = "ktor-serialization-jackson", version = "$ktor$" }
+koin-ktor                       = { group = "io.insert-koin", name = "koin-ktor", version = "$koin$" }
+exposed-core                    = { group = "org.jetbrains.exposed", name = "exposed-core", version = "$exposed$" }
+exposed-jdbc                    = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version = "$exposed$" }
+h2                              = { group = "com.h2database", name = "h2", version = "2.3.232" }
+logback                         = { group = "ch.qos.logback", name = "logback-classic", version = "1.5.18" }
+
+[test-dependencies]
+ktor-server-test-host = { group = "io.ktor", name = "ktor-server-test-host", version = "$ktor$" }
+junit-jupiter         = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }
