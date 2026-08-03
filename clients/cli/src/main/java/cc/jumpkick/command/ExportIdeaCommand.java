@@ -22,7 +22,7 @@ public final class ExportIdeaCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Generate IntelliJ IDEA project files and .bsp/ (alias of `jk ide --idea`)";
+        return "Generate IntelliJ IDEA project files + .bsp/ (jk ide --idea)";
     }
 
     @Override
