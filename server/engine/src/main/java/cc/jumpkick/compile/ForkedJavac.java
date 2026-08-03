@@ -137,6 +137,18 @@ public final class ForkedJavac {
      */
     private static List<String> trainerCommand(
             Request req, String workerCp, Path hostJavaHome, Path aotOutput, Path scratch) throws IOException {
+        return trainerCommandForOptimize(
+                hostJavaHome, workerCp, aotOutput, scratch, req.release() > 0 ? req.release() : 25);
+    }
+
+    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}. */
+    public static List<String> trainerCommandForOptimize(
+            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch) throws IOException {
+        return trainerCommandForOptimize(hostJavaHome, workerCp, aotOutput, scratch, 25);
+    }
+
+    private static List<String> trainerCommandForOptimize(
+            Path hostJavaHome, String workerCp, Path aotOutput, Path scratch, int release) throws IOException {
         Path src = scratch.resolve("Hello.java");
         Files.writeString(src, """
                 package demo;
@@ -150,7 +162,7 @@ public final class ForkedJavac {
         Files.createDirectories(classes);
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-java-compiler")
-                .configInt("release", req.release() > 0 ? req.release() : 25)
+                .configInt("release", release)
                 .layout(Map.of("classesDir", classes, "sourceOutput", scratch.resolve("gen")))
                 .source(src);
         Path trainSpec = scratch.resolve("train.spec");

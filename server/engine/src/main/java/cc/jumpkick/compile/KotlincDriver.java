@@ -120,6 +120,22 @@ public final class KotlincDriver {
     private static List<String> trainerCommand(
             List<Path> compileClasspath, String classpath, Path hostJavaHome, Path aotOutput, Path scratch)
             throws IOException {
+        return trainerCommandForOptimize(hostJavaHome, classpath, aotOutput, scratch, compileClasspath);
+    }
+
+    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}. */
+    public static List<String> trainerCommandForOptimize(
+            Path hostJavaHome, String classpath, Path aotOutput, Path scratch) throws IOException {
+        return trainerCommandForOptimize(hostJavaHome, classpath, aotOutput, scratch, List.of());
+    }
+
+    private static List<String> trainerCommandForOptimize(
+            Path hostJavaHome,
+            String classpath,
+            Path aotOutput,
+            Path scratch,
+            List<Path> compileClasspath)
+            throws IOException {
         Path source = scratch.resolve("Hello.kt");
         Files.writeString(source, """
                 package demo
@@ -148,9 +164,13 @@ public final class KotlincDriver {
                 .layout(java.util.Map.of("classesDir", scratch.resolve("out")))
                 .arg("-jdk-home")
                 .arg(hostJavaHome.toAbsolutePath().toString())
-                .arg("-no-stdlib")
                 .source(source);
-        for (Path cp : compileClasspath) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
+        // Real compiles pass version-matched kotlin-stdlib and use -no-stdlib; bare optimize
+        // train has no project classpath, so leave the plugin's embedded stdlib resolution alone.
+        if (compileClasspath != null && !compileClasspath.isEmpty()) {
+            sw.arg("-no-stdlib");
+            for (Path cp : compileClasspath) sw.cp(cp, PluginProtocol.ROLE_COMPILE);
+        }
         Path spec = scratch.resolve("train.spec");
         Files.write(spec, sw.lines(), StandardCharsets.UTF_8);
         List<String> rest = new ArrayList<>();

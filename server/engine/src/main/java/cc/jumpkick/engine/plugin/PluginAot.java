@@ -118,6 +118,84 @@ public final class PluginAot {
         return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, trainer);
     }
 
+    /**
+     * Cache path for a tool/host/classpath key, or {@code null} when the host is ineligible / unreadable.
+     */
+    public static Path cachePath(String tool, Path javaHome, String workerClasspath) {
+        if (javaHome == null) return null;
+        try {
+            JdkId id = jdkId(javaHome);
+            if (id == null) return null;
+            String gc = effectiveGc(JvmOptions.batchFlags(1));
+            String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
+            return dir().resolve(prefix + "-" + key(id, gc, workerClasspath) + ".aot");
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Ensure a worker AOT cache exists for {@code tool}: if missing and the host is HotSpot 25+,
+     * train <em>synchronously</em> (install {@code jk optimize} path). Returns whether a cache file
+     * is present after this call. Never throws.
+     */
+    public static boolean ensureTrained(
+            String tool, Path javaHome, String workerClasspath, TrainerCommand trainer, long timeoutMs) {
+        return ensureTrained(tool, javaHome, workerClasspath, trainer, timeoutMs, false);
+    }
+
+    /**
+     * Like {@link #ensureTrained(String, Path, String, TrainerCommand, long)} with optional
+     * {@code force} retrain (delete existing cache / noaot marker first).
+     */
+    public static boolean ensureTrained(
+            String tool,
+            Path javaHome,
+            String workerClasspath,
+            TrainerCommand trainer,
+            long timeoutMs,
+            boolean force) {
+        if (!enabled() || javaHome == null || trainer == null) return false;
+        try {
+            JdkId id = jdkId(javaHome);
+            if (id == null || !eligible(id)) return false;
+            Path cache = cachePath(tool, javaHome, workerClasspath);
+            if (cache == null) return false;
+            if (force) {
+                try {
+                    Files.deleteIfExists(cache);
+                    Files.deleteIfExists(noaotMarker(cache));
+                } catch (IOException ignored) {
+                }
+            } else if (Files.exists(cache)) {
+                touch(cache);
+                return true;
+            }
+            if (!trainingEnabled() || Files.exists(noaotMarker(cache))) return false;
+            String what = (tool == null ? "plugin" : tool) + " worker (" + id.vendor() + " " + id.version() + ")";
+            trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs));
+            return Files.exists(cache);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    /** Wait until {@code cache} exists or {@code timeoutMs} elapses (async train join). */
+    public static boolean waitForCache(Path cache, long timeoutMs) {
+        if (cache == null) return false;
+        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
+        while (System.currentTimeMillis() < deadline) {
+            if (Files.exists(cache)) return true;
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Files.exists(cache);
+            }
+        }
+        return Files.exists(cache);
+    }
+
     // ---- keying ---------------------------------------------------------------------------
 
     /** What the release file says a JDK is; {@code null} when it can't be read. */
@@ -200,6 +278,37 @@ public final class PluginAot {
         Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer), "jk-worker-aot-train");
         t.setDaemon(true);
         t.start();
+    }
+
+    /** Synchronous train for {@link #ensureTrained} (install optimize). */
+    private static void trainBlocking(String what, Path cache, TrainerCommand trainer, long timeoutMs) {
+        if (trainer == null || !TRAINING.add(cache)) {
+            // Another train in flight — wait for the cache file.
+            waitForCache(cache, timeoutMs);
+            return;
+        }
+        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        try {
+            Files.createDirectories(cache.getParent());
+            if (!claimed(claim)) {
+                TRAINING.remove(cache);
+                waitForCache(cache, timeoutMs);
+                return;
+            }
+        } catch (IOException e) {
+            TRAINING.remove(cache);
+            return;
+        }
+        Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer), "jk-worker-aot-train-sync");
+        t.start();
+        try {
+            t.join(timeoutMs);
+            if (t.isAlive()) {
+                // Trainer still running; leave it daemon-like by not interrupting (runTrainer has its own timeout).
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /** Atomically create the claim file; a fresh existing claim loses, a stale one is replaced. */

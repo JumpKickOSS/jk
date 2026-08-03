@@ -1,0 +1,11 @@
+[project]
+name = "java-train"
+group = "cc.jumpkick.optimize"
+version = "0.0.1"
+java = "17"
+
+[dependencies]
+# none for main
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }

@@ -74,8 +74,10 @@ the CLI seeds the clock as `elapsed + remaining` so preflight/lock time is not d
 
 Cold machine with zero step history: bootstrap `Calibration.ensure` (multi-method JUnit Platform
 when online) then price dirty steps as **product baseline × host scale × cold bias**. Uncalibrated
-hosts use scale=1 (baselines alone). Successful builds refine continuous `learned-*` rates and
-per-module step walls for the next estimate.
+hosts use scale=1 (baselines alone). After `jk optimize`, language-specific compile priors from
+fixture walls land in `[mean.by_language.<lang>]` and seed `[mean] compile-*-per-source-ms` so
+cold ETA distinguishes Java / Kotlin / Groovy before continuous harvest has samples (JK-1389).
+Successful builds refine continuous rates and per-module step walls for the next estimate.
 
 ## Learning layout (JK-1377)
 
@@ -96,7 +98,7 @@ per-module step walls for the next estimate.
 |---|---|---|
 | Per-run `metrics.toml` | Successful step/module/workspace walls (+ host rate samples) | Written on journal complete |
 | `project-metrics.toml` | Trimmed means + last-success ladder | Serial `MetricsHarvest` after each finish |
-| `host-metrics.toml` | Host-wide rates + bootstrap probe | Harvest `[mean]` + `Calibration` `[calibration]` |
+| `host-metrics.toml` | Host-wide rates + bootstrap probe | Harvest `[mean]` + `Calibration` `[calibration]` + optimize `[mean.by_language.*]` (JK-1389) |
 | Retention | 50 runs/project, 90 days | Harvest reaper (plus history disk budget) |
 
 **No sample rings** on aggregate files. **No** `timings.toml` / `metrics.json` / `run-numbers.json` /

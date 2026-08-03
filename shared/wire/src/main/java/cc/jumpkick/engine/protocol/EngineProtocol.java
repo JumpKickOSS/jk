@@ -46,6 +46,12 @@ public final class EngineProtocol {
      */
     public static final String CALIBRATE_REQUEST = "calibrate-request";
 
+    /** Client → server: pre-train worker AOT caches ({@code jk optimize}). */
+    public static final String OPTIMIZE_REQUEST = "optimize-request";
+
+    /** Server → client: optimize finished. */
+    public static final String OPTIMIZE_ACK = "optimize-ack";
+
     /** Server → client: calibration finished ({@code ok}, component timings, summary text). */
     public static final String CALIBRATE_ACK = "calibrate-ack";
 
@@ -501,6 +507,29 @@ public final class EngineProtocol {
         return b.append('}').toString();
     }
 
+    /** {@code jk optimize}: train worker AOT caches (java-compiler, kotlinc). */
+    public static String optimizeRequest(boolean force) {
+        return "{\"type\":\"" + OPTIMIZE_REQUEST + "\",\"force\":" + force + "}";
+    }
+
+    /**
+     * Optimize result. {@code summary} is multi-line human text; {@code trained}/{@code skipped}
+     * are comma-separated tool tags for machine consumers.
+     */
+    public static String optimizeAck(boolean ok, String trained, String skipped, String summary) {
+        return "{\"type\":\""
+                + OPTIMIZE_ACK
+                + "\",\"ok\":"
+                + ok
+                + ",\"trained\":"
+                + Jsonl.quote(trained == null ? "" : trained)
+                + ",\"skipped\":"
+                + Jsonl.quote(skipped == null ? "" : skipped)
+                + ",\"summary\":"
+                + Jsonl.quote(summary == null ? "" : summary)
+                + "}";
+    }
+
     /**
      * calibration result. Component ms fields are 0 when not measured; {@code summary} is
      * human-readable multi-line text for the CLI.
@@ -775,7 +804,21 @@ public final class EngineProtocol {
                 + ",\"freshenLock\":"
                 + freshenLock
                 + (ephemeralActions ? ",\"ephemeralActions\":true" : "")
+                + triggerJsonSuffix()
                 + "}";
+    }
+
+    /**
+     * Optional {@code trigger} for journal classification ({@code cli}/{@code web}/
+     * {@code optimize}/{@code calibrate}). Taken from {@code -Djk.build.trigger} or env
+     * {@code JK_BUILD_TRIGGER} so install optimize can mark synthetic runs without a new
+     * overload on every call site.
+     */
+    static String triggerJsonSuffix() {
+        String t = System.getProperty("jk.build.trigger");
+        if (t == null || t.isBlank()) t = System.getenv("JK_BUILD_TRIGGER");
+        if (t == null || t.isBlank()) return "";
+        return ",\"trigger\":" + Jsonl.quote(t.trim());
     }
 
     public static String buildCancel() {
@@ -849,6 +892,7 @@ public final class EngineProtocol {
                 + ",\"parallelTests\":"
                 + parallelTests
                 + testSelectionFields(selection)
+                + triggerJsonSuffix()
                 + "}";
     }
 

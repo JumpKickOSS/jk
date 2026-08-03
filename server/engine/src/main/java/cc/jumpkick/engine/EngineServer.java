@@ -657,6 +657,7 @@ public final class EngineServer implements AutoCloseable {
                     }
                     case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
                     case EngineProtocol.CALIBRATE_REQUEST -> handleCalibrateRequest(line, writer);
+                    case EngineProtocol.OPTIMIZE_REQUEST -> handleOptimizeRequest(line, writer);
                     case EngineProtocol.STATUS -> {
                         cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
                         send(
@@ -928,9 +929,16 @@ public final class EngineServer implements AutoCloseable {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
+        // How the build was started: default "cli"; optimize/calibrate mark synthetic history.
+        String trigger = Jsonl.str(requestLine, "trigger");
+        if (trigger == null || trigger.isBlank()) trigger = "cli";
         // exclusive fingerprint + start-time build number for journaled kinds.
         AdmitResult admit = admitJob(
-                eventRequestId, eventKind, eventDir, BuildJobFingerprint.ofRequest(eventKind, requestLine), "cli");
+                eventRequestId,
+                eventKind,
+                eventDir,
+                BuildJobFingerprint.ofRequest(eventKind, requestLine),
+                trigger);
         if (admit.rejected() != null) {
             try {
                 InFlightBuilds.Hold h = admit.rejected();
@@ -947,7 +955,7 @@ public final class EngineServer implements AutoCloseable {
                 eventRequestId,
                 eventKind,
                 eventDir,
-                "cli",
+                trigger,
                 Jsonl.bool(requestLine, "noTimeline", false),
                 rebuildRun,
                 admit.buildNumber(),
@@ -4205,6 +4213,15 @@ public final class EngineServer implements AutoCloseable {
                     dir.resolve("target").resolve("reports").resolve("test-results.md"),
                     cc.jumpkick.lock.LockPaths.lockFile(dir),
                     a.diagnosticsText());
+            // Synthetic optimize/calibrate: do not leave a durable project home (JK-1390).
+            if (record.synthetic()) {
+                String jid = a.journalId();
+                if (jid != null && !jid.isBlank()) {
+                    journal.delete(jid);
+                }
+                journal.purgeProject(record.coord(), record.dir());
+                return;
+            }
             String jid = a.journalId();
             if (jid != null && !jid.isBlank()) {
                 // Complete the in-flight stub (same history id / build number) —.
@@ -4281,6 +4298,41 @@ public final class EngineServer implements AutoCloseable {
             if (!dir.isEmpty()) dir = shape.dirKey(Path.of(dir));
         }
         return new BuildMetrics.Outcome(kind, dir, r.coord(), r.success(), r.cancelled(), r.millis(), steps);
+    }
+
+    /**
+     * Pre-train worker AOT caches for install {@code jk optimize} (JK-1388). Best-effort; never
+     * fails the install hard path.
+     */
+    private void handleOptimizeRequest(String requestLine, BufferedWriter writer) {
+        try {
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            var result = cc.jumpkick.compile.WorkerAotBootstrap.trainCommonWorkers(90_000L, force);
+            String trained = String.join(", ", result.trained());
+            String skipped = String.join(", ", result.skipped());
+            StringBuilder summary = new StringBuilder();
+            if (!result.trained().isEmpty()) {
+                summary.append("trained: ").append(trained);
+            }
+            if (!result.skipped().isEmpty()) {
+                if (summary.length() > 0) summary.append('\n');
+                summary.append("skipped: ").append(skipped);
+            }
+            for (String n : result.notes()) {
+                if (summary.length() > 0) summary.append('\n');
+                summary.append(n);
+            }
+            if (summary.length() == 0) summary.append("no workers trained");
+            sendQuiet(
+                    writer,
+                    EngineProtocol.optimizeAck(
+                            !result.trained().isEmpty() || result.skipped().stream().anyMatch(s -> s.contains("cached")),
+                            trained,
+                            skipped,
+                            summary.toString()));
+        } catch (RuntimeException e) {
+            sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
+        }
     }
 
     /**
@@ -4393,7 +4445,10 @@ public final class EngineServer implements AutoCloseable {
     /** {@code history-list-request} → one flat {@code history-entry} per entry, then {@code history-done}. */
     private void handleHistoryList(String requestLine, BufferedWriter writer) throws IOException {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
-        java.util.List<BuildRecord> records = journal.list();
+        // Skip optimize/calibrate synthetic fixtures (JK-1390).
+        java.util.List<BuildRecord> records = journal.list().stream()
+                .filter(r -> r != null && !r.synthetic())
+                .toList();
         int n = Math.min(records.size(), limit);
         for (int i = 0; i < n; i++) {
             BuildRecord r = records.get(i);

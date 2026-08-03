@@ -258,6 +258,21 @@ if [ -z "$LOCAL_FILE" ] || [ -n "${ENGINE_JAR:-}" ]; then
   run_jk engine stop --force >/dev/null 2>&1 || true
   run_jk engine start >/dev/null 2>&1 \
     || note "Engine warm-up skipped; it will start on first build"
+  # Materialize optimize fixtures for offline / installed-binary use (JK-1387).
+  # Path matches OptimizeCommand: JkDirs.cache()/templates/optimize/
+  if [ -d "$SCRIPT_DIR/templates/optimize" ]; then
+    OPT_CACHE="${JK_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/jk}"
+    mkdir -p "$OPT_CACHE/templates"
+    cp -a "$SCRIPT_DIR/templates/optimize" "$OPT_CACHE/templates/" 2>/dev/null \
+      || note "optimize fixtures not copied into cache"
+  fi
+  # Pre-train compiler worker AOT + language fixtures (JK-1388), then calibrate with
+  # warm caches and language buckets (JK-1389). Best-effort: never fail install.
+  if run_jk optimize 2>/dev/null; then
+    :
+  else
+    note "Worker optimize skipped; run 'jk optimize' later for faster cold compiles"
+  fi
   run_jk engine calibrate >/dev/null 2>&1 \
     || note "Host calibration deferred; it will run on first explain/build"
 fi

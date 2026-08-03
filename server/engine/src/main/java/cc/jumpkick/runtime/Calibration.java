@@ -995,7 +995,7 @@ public final class Calibration {
             TomlParseResult t = Toml.parse(f);
             // Prefer [calibration] table in host-metrics.toml; fall back to root keys.
             org.tomlj.TomlTable cal = t.getTable("calibration") != null ? t.getTable("calibration") : t;
-            double mpw = cal.getDouble("ms-per-weight") != null ? cal.getDouble("ms-per-weight") : 0;
+            double mpw = numberOr(cal, "ms-per-weight", 0);
             long updated = cal.getLong("updated") != null ? cal.getLong("updated") : 0L;
             String version = cal.getString("jk-version");
             HostLearnedRates learned = HostLearnedRates.readFrom(t);
@@ -1011,6 +1011,9 @@ public final class Calibration {
                 }
                 if (!rings.isEmpty()) learned = new HostLearnedRates(rings);
             }
+            // Language buckets from jk optimize (JK-1389): mean.by_language.<lang>.compile_per_source_ms
+            // seeds cold compile priors when continuous harvest has not yet measured that language.
+            learned = foldLanguageBuckets(t, learned);
             if (mpw <= 0 && learned.isEmpty()) return absent;
             if (mpw <= 0) mpw = EffortWeights.MS_PER_WEIGHT;
             if (stale(version, updated, nowMillis) && learned.isEmpty()) return absent;
@@ -1066,6 +1069,22 @@ public final class Calibration {
         return v != null ? v : dflt;
     }
 
+    /** tomlj is type-strict: bare integers are Long, so {@code getDouble} throws. */
+    private static double numberOr(org.tomlj.TomlTable t, String key, double dflt) {
+        if (t == null || key == null) return dflt;
+        try {
+            Double d = t.getDouble(key);
+            if (d != null) return d;
+        } catch (RuntimeException ignored) {
+        }
+        try {
+            Long l = t.getLong(key);
+            if (l != null) return l.doubleValue();
+        } catch (RuntimeException ignored) {
+        }
+        return dflt;
+    }
+
     private static Calibration absent() {
         return new Calibration(
                 0,
@@ -1100,8 +1119,52 @@ public final class Calibration {
         }
     }
 
+    /**
+     * Fold {@code [mean.by_language.<lang>].compile_per_source_ms} into HostLearnedRates compile
+     * keys when continuous means are still cold (JK-1389).
+     */
+    static HostLearnedRates foldLanguageBuckets(TomlParseResult t, HostLearnedRates learned) {
+        if (t == null) return learned == null ? new HostLearnedRates() : learned;
+        Map<String, List<Double>> rings = new java.util.LinkedHashMap<>(
+                learned == null ? Map.of() : learned.samples());
+        foldLang(t, "java", HostLearnedRates.COMPILE_JAVA_PER_SOURCE_MS, rings);
+        foldLang(t, "kotlin", HostLearnedRates.COMPILE_KOTLIN_PER_SOURCE_MS, rings);
+        foldLang(t, "groovy", HostLearnedRates.COMPILE_GROOVY_PER_SOURCE_MS, rings);
+        return rings.isEmpty() ? (learned == null ? new HostLearnedRates() : learned) : new HostLearnedRates(rings);
+    }
+
+    private static void foldLang(
+            TomlParseResult t, String lang, String rateKey, Map<String, List<Double>> rings) {
+        if (rings.containsKey(rateKey)) return;
+        // Nested table [mean.by_language.<lang>] — prefer dotted path (tomlj), then table walk.
+        double ms = 0;
+        Long dotted = t.getLong("mean.by_language." + lang + ".compile_per_source_ms");
+        if (dotted != null) {
+            ms = dotted.doubleValue();
+        } else {
+            Double d = t.getDouble("mean.by_language." + lang + ".compile_per_source_ms");
+            if (d != null) ms = d;
+            else {
+                org.tomlj.TomlTable mean = t.getTable("mean");
+                org.tomlj.TomlTable byLang = mean != null ? mean.getTable("by_language") : null;
+                org.tomlj.TomlTable tbl = byLang != null ? byLang.getTable(lang) : null;
+                if (tbl != null) {
+                    Long l = tbl.getLong("compile_per_source_ms");
+                    if (l != null) ms = l.doubleValue();
+                    else {
+                        Double dd = tbl.getDouble("compile_per_source_ms");
+                        if (dd != null) ms = dd;
+                    }
+                }
+            }
+        }
+        // Sanity: fixture walls used to write wall/10 (thousands of ms) — reject poison.
+        if (!(ms >= 1 && ms <= 500)) return;
+        rings.put(rateKey, List.of(ms));
+    }
+
     static void writeTo(Path file, Calibration c) throws IOException {
-        // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch] from harvest.
+        // Merge [calibration] into host-metrics.toml; preserve [mean]/ [lock], [fetch], language buckets.
         StringBuilder out = new StringBuilder();
         out.append("# host-metrics — probe + continuous means (JK-1377)\n");
         if (Files.isRegularFile(file)) {
@@ -1117,6 +1180,8 @@ public final class Calibration {
                         if (!block.isBlank()) out.append(block.strip()).append('\n');
                     }
                 }
+                // Preserve mean.by_language.* tables written by jk optimize (JK-1389).
+                out.append(extractByLanguageBlocks(existing));
             } catch (IOException ignored) {
             }
         }
@@ -1131,6 +1196,29 @@ public final class Calibration {
         }
         out.append('\n').append(c.renderCalibrationSection());
         AtomicWrites.replace(file, out.toString());
+    }
+
+    /** Extract contiguous {@code [mean.by_language.*]} tables from an existing host-metrics file. */
+    static String extractByLanguageBlocks(String existing) {
+        if (existing == null || existing.isBlank()) return "";
+        StringBuilder lang = new StringBuilder();
+        boolean in = false;
+        for (String line : existing.split("\n", -1)) {
+            String t = line.trim();
+            if (t.startsWith("[mean.by_language.")) {
+                in = true;
+                lang.append(line).append('\n');
+                continue;
+            }
+            if (in) {
+                if (t.startsWith("[")) {
+                    in = false;
+                } else {
+                    lang.append(line).append('\n');
+                }
+            }
+        }
+        return lang.isEmpty() ? "" : "\n" + lang;
     }
 
     private String renderCalibrationSection() {

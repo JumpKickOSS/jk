@@ -11,6 +11,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and
 | [**Plugins**](plugins.md) | Authoring first-party-style build plugins (Spring Boot, Quarkus, Grails, …) |
 | [**Feature PRDs**](features/README.md) | Design freezes (catalogs, BOMs, packaging, Giter8, …) |
 | [**Releases**](releases.md) | Versioning, install layout, Ed25519 signing, tag CI (JK-1066) |
+| [**Install optimize**](install-optimize.md) | `jk optimize`, worker AOT train, language calibration (JK-1385) |
 | [**Hosting & CDN**](hosting.md) | Firebase Hosting + GCS releases, DNS for jumpkick.build |
 | [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`); exclusive routing for `cc`/`build.jumpkick` |
 

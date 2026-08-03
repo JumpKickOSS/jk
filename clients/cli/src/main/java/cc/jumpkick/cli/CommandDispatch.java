@@ -43,6 +43,7 @@ import cc.jumpkick.command.LockCommand;
 import cc.jumpkick.command.MvnCommand;
 import cc.jumpkick.command.NativeCommand;
 import cc.jumpkick.command.NewCommand;
+import cc.jumpkick.command.OptimizeCommand;
 import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PluginCommand;
 import cc.jumpkick.command.PublishCommand;
@@ -156,7 +157,8 @@ public final class CommandDispatch {
             new ActivateCommand(),
             new CompletionCommand(),
             new NewCommand(),
-            new InitCommand());
+            new InitCommand(),
+            new OptimizeCommand());
 
     private static final Map<String, CliCommand> BY_NAME = index();
 
