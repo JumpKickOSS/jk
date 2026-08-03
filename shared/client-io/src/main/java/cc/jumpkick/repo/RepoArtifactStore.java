@@ -446,10 +446,11 @@ public final class RepoArtifactStore {
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
      * Cas.putByLink} — no network).
      */
-    public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        // Route through the store root (JK-1445): the resolver reads repos/local/ from the store
-        // since the cache/store split; writing to the raw cache root strands the artifact.
-        Path target = cc.jumpkick.cache.JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath);
+    public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
+        // The caller picks the root deliberately (JK-1445): the engine install pipeline passes the
+        // store (where resolvers read since the cache/store split); plugin install-local may pass
+        // an isolated --cache-dir root on purpose.
+        Path target = artifactRoot.resolve("repos/local/" + relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
         Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);

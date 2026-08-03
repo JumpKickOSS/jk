@@ -221,9 +221,14 @@ public final class InstallPipelines {
         }
     }
 
-    /** See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared local-install write. */
+    /**
+     * See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared
+     * local-install write, routed to the store root (JK-1445): the resolver reads
+     * {@code repos/local/} from the store since the cache/store split, so writing to the raw
+     * cache root strands the artifact.
+     */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(cacheDir, relativePath, source);
+        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cacheDir), relativePath, source);
     }
 
     /** Write byte content directly into {@code repos/local/} as a full-store entry. */
