@@ -2,7 +2,8 @@
 name = "java-train"
 group = "cc.jumpkick.optimize"
 version = "0.0.1"
-java = "17"
+java = "25"
+layout = "simple"
 
 [dependencies]
 # none for main

@@ -32,21 +32,26 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * {@code jk optimize} — pre-train common worker AOT caches and exercise tiny language fixtures so
- * cold ETAs / first builds are warm (JK-1388).
+ * {@code jk optimize} — schedule java-compiler/kotlinc AOT on the engine idle worker and exercise
+ * tiny Java/Kotlin fixtures so cold ETAs / first builds are warmer (JK-1388).
  *
  * <ol>
- *   <li>Ensure the engine is running.
- *   <li>Engine-side train of java-compiler + kotlinc AOT (HotSpot 25+).
- *   <li>Copy optimize fixtures → temp; build (and Java touch-rebuild); measure language walls.
+ *   <li>Ensure the engine is running; materialize Mill-style fixtures into the cache.
+ *   <li>Schedule engine-side java-compiler + kotlinc AOT (idle boundary; HotSpot 25+).
+ *   <li>Build Java/Kotlin fixtures (Java touch-rebuild for worker path); measure language walls.
  *   <li>Write {@code [mean.by_language.*]} into host-metrics.toml.
  *   <li>Delete temps; synthetic journal entries are purged by the engine (JK-1390).
  * </ol>
+ *
+ * <p>Groovy is not in the pre-train battery — it trains on-demand. Test-runner AOT is not
+ * attempted (per-project suite classpath; JK-1398).
  */
 public final class OptimizeCommand implements CliCommand {
 
-    private static final String[] LANGS = {"java", "kotlin", "groovy"};
-    private static final String[] FIXTURES = {"java-train", "kotlin-train", "groovy-train"};
+    /** Pre-train battery: Java + Kotlin only. Groovy and other langs train on-demand (JK-1396). */
+    private static final String[] LANGS = {"java", "kotlin"};
+
+    private static final String[] FIXTURES = {"java-train", "kotlin-train"};
 
     @Override
     public String name() {
@@ -106,8 +111,8 @@ public final class OptimizeCommand implements CliCommand {
                         continue;
                     }
                     long t0 = System.nanoTime();
-                    // Latest pinned language only (kotlin 2.4.10 / groovy 5.0.8); other versions
-                    // train on-demand via PluginAot train-on-miss during real builds.
+                    // Latest pinned workers only (Java 25 + Kotlin 2.4.10). Groovy / older
+                    // versions train on-demand via PluginAot train-on-miss on real builds.
                     int code = runJkIn(dest, List.of("build", "--skip-tests"));
                     if (code != 0) {
                         CliOutput.err("  note: " + lang + " build exited " + code);
@@ -119,7 +124,8 @@ public final class OptimizeCommand implements CliCommand {
                             CliOutput.err("  note: " + lang + " rebuild exited " + code);
                         }
                     }
-                    // One test pass warms test-runner process (no dedicated AOT trainer — JK-1398).
+                    // Test wall for language calibration only — does not produce reusable
+                    // test-runner AOT (classpath includes project classes; see JK-1398).
                     runJkIn(dest, List.of("test"));
                     long wall = Math.max(1L, (System.nanoTime() - t0) / 1_000_000L);
                     langWallMs.put(lang, wall);
@@ -198,45 +204,18 @@ public final class OptimizeCommand implements CliCommand {
             // Prefer a single known file to probe packaging
             var probe = cl.getResource(prefix + "jk.toml");
             if (probe == null) return false;
-            // Walk known layout (not a full jar scan — fixtures are tiny and fixed shape).
-            List<String> rels = List.of(
-                    "jk.toml",
-                    "src/main/java/train/T0.java",
-                    "src/main/java/train/T1.java",
-                    "src/main/java/train/T2.java",
-                    "src/main/java/train/T3.java",
-                    "src/main/java/train/T4.java",
-                    "src/main/java/train/T5.java",
-                    "src/main/java/train/T6.java",
-                    "src/main/java/train/T7.java",
-                    "src/main/java/train/T8.java",
-                    "src/main/java/train/T9.java",
-                    "src/test/java/train/T0Test.java",
-                    "src/test/java/train/T1Test.java",
-                    "src/main/kotlin/train/T0.kt",
-                    "src/main/kotlin/train/T1.kt",
-                    "src/main/kotlin/train/T2.kt",
-                    "src/main/kotlin/train/T3.kt",
-                    "src/main/kotlin/train/T4.kt",
-                    "src/main/kotlin/train/T5.kt",
-                    "src/main/kotlin/train/T6.kt",
-                    "src/main/kotlin/train/T7.kt",
-                    "src/main/kotlin/train/T8.kt",
-                    "src/main/kotlin/train/T9.kt",
-                    "src/test/kotlin/train/T0Test.kt",
-                    "src/test/kotlin/train/T1Test.kt",
-                    "src/main/groovy/train/T0.groovy",
-                    "src/main/groovy/train/T1.groovy",
-                    "src/main/groovy/train/T2.groovy",
-                    "src/main/groovy/train/T3.groovy",
-                    "src/main/groovy/train/T4.groovy",
-                    "src/main/groovy/train/T5.groovy",
-                    "src/main/groovy/train/T6.groovy",
-                    "src/main/groovy/train/T7.groovy",
-                    "src/main/groovy/train/T8.groovy",
-                    "src/main/groovy/train/T9.groovy",
-                    "src/test/groovy/train/T0Test.groovy",
-                    "src/test/groovy/train/T1Test.groovy");
+            // Mill-style simple layout (src/, test/src/) — fixed tiny shape, not a jar walk.
+            List<String> rels = new ArrayList<>();
+            rels.add("jk.toml");
+            if (name.startsWith("java")) {
+                for (int i = 0; i < 10; i++) rels.add("src/train/T" + i + ".java");
+                rels.add("test/src/train/T0Test.java");
+                rels.add("test/src/train/T1Test.java");
+            } else if (name.startsWith("kotlin")) {
+                for (int i = 0; i < 10; i++) rels.add("src/T" + i + ".kt");
+                rels.add("test/src/T0Test.kt");
+                rels.add("test/src/T1Test.kt");
+            }
             int copied = 0;
             for (String rel : rels) {
                 try (var in = cl.getResourceAsStream(prefix + rel)) {
@@ -351,10 +330,9 @@ public final class OptimizeCommand implements CliCommand {
                 sb.append("[mean]\n");
                 Long j = perSource.get("java");
                 Long k = perSource.get("kotlin");
-                Long g = perSource.get("groovy");
                 if (j != null) sb.append("compile-java-per-source-ms = ").append(j).append('\n');
                 if (k != null) sb.append("compile-kotlin-per-source-ms = ").append(k).append('\n');
-                if (g != null) sb.append("compile-groovy-per-source-ms = ").append(g).append('\n');
+                // Groovy is not in the optimize battery — rates come from harvest on real projects.
             }
 
             sb.append("\n# language fixture walls from jk optimize (JK-1389)\n");

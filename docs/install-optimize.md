@@ -13,16 +13,16 @@ Plugin workers (**kotlinc**, **java-compiler**) are **not** trained at engine st
 
 1. Ensures engine is up; materializes fixtures into `JkDirs.cache()/templates/optimize/` (classpath or monorepo).
 2. Engine `optimize-request` **schedules** worker AOT train on the **idle-boundary worker** and ACKs immediately (does not block the CLI on multi-second training). Training runs when `activePipelines == 0`, same chore path as cache prune / journal hygiene.
-3. Materializes `templates/optimize/{java,kotlin,groovy}-train` to a temp dir.
+3. Materializes `templates/optimize/{java,kotlin}-train` (Mill-style `src/` + `test/src/`) to a temp dir.
 4. Builds each fixture with `JK_BUILD_TRIGGER=optimize` (synthetic journal; purged).
 5. Java: touch all `.java` + rebuild with `JK_JAVA_FORCE_WORKER=1` so the ToolProvider worker + PluginAot path runs.
-6. Runs `jk test` on fixtures (warms test-runner **process**; no dedicated test-runner AOT trainer).
+6. Runs `jk test` on fixtures for **language-wall calibration only** (not reusable test-runner AOT — see below).
 7. Writes `[mean.by_language.<lang>]` and seeds `[mean] compile-*-per-source-ms` for cold ETA.
 8. Deletes temp trees.
 
-**Pinned languages (pre-train):** Kotlin **2.4.10**, Groovy **5.0.8**, Java via current java-compiler worker. Other language versions train **on-demand** (PluginAot train-on-miss) the first time a real project uses them.
+**Pre-train battery:** Java **25** + Kotlin **2.4.10** (current java-compiler / kotlinc plugin classpaths). **Groovy is not pre-trained** — first Groovy project pays train-on-miss like any older language version. That avoids a large dormant `*.aot` on nearly all installs.
 
-**Wall time:** First optimize often spends most of its wall on fixture resolve/fetch (network + CAS). A second warm run is much shorter; worker AOT itself is idle-scheduled and does not pad the CLI ACK. Prefer slight over-estimate on cold ETA over under-estimate.
+**Wall time:** First optimize often spends most of its wall on fixture resolve/fetch (network + CAS). A second warm run is much shorter; worker AOT itself is idle-scheduled and does not pad the CLI ACK.
 
 TTY: PipelineWedge stages → settle **Done optimizing JumpKick! Hi-yah!**
 
@@ -30,9 +30,17 @@ TTY: PipelineWedge stages → settle **Done optimizing JumpKick! Hi-yah!**
 
 ```text
 jk engine start
-jk optimize              # schedules idle AOT + runs language fixtures
+jk optimize              # schedules idle AOT + runs Java/Kotlin fixtures
 jk engine calibrate
 ```
+
+## Test-runner AOT (JK-1398)
+
+The suite worker classpath is **module test classes + runtime deps + jk-test-runner**. PluginAot (and JEP 514) key the cache on host JDK + GC + **full classpath**. Because every project’s test classes differ, a cache trained on fixture tests **cannot map** onto another project’s suite JVM — and training a cache per project would thrash disk with large, one-shot files.
+
+That is why suite JVMs set `-Djk.aot.train=off`: train-on-miss would never pay off. Fixture `jk test` also does **not** leave a warm JIT for the next project (each suite is a short-lived fork that exits). It only contributes wall time for language calibration metrics.
+
+Compiler workers (**java-compiler**, **kotlinc**) are different: their classpath is the **plugin jar** (stable), so one install train serves every project.
 
 ## Synthetic history (JK-1390)
 
@@ -48,3 +56,5 @@ Builds with `trigger` ∈ {`optimize`,`calibrate`,`synthetic`} are omitted from 
 2. Data root templates
 3. Monorepo walk from CWD
 4. Classpath resources shipped in the CLI jar / native image (`templates/optimize/…`)
+
+Fixtures use **simple (Mill-style) layout**: `src/`, `test/src/`, `layout = "simple"`, `java = "25"`.

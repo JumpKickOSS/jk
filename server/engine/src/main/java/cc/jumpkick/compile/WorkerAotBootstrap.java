@@ -17,8 +17,9 @@ import java.util.stream.Stream;
  * {@code kotlinc-*.aot} under the engine host HotSpot JVM so first user builds map caches instead
  * of training mid-build. Invoked from the engine idle-boundary worker (not the request thread).
  *
- * <p>Pins training to the <em>current</em> shipping plugin classpaths (latest Kotlin/Groovy
- * workers). Older language versions train on-demand via PluginAot train-on-miss.
+ * <p>Pins training to the shipping <strong>java-compiler</strong> and <strong>kotlinc</strong>
+ * plugin classpaths. Groovy and older language versions train on-demand via PluginAot train-on-miss
+ * (not pre-trained — smaller install footprint).
  */
 public final class WorkerAotBootstrap {
 
@@ -53,9 +54,11 @@ public final class WorkerAotBootstrap {
         }
         trainOne("java-compiler", host, PluginJar.JAVA_COMPILER, timeoutMs, force, trained, skipped, notes, true);
         trainOne("kotlinc", host, PluginJar.KOTLIN_COMPILER, timeoutMs, force, trained, skipped, notes, false);
-        // test-runner: forked via PluginLoader without PluginAot keys today (suite JVM also sets
-        // -Djk.aot.train=off). Fixture `jk test` warms process/JIT only — no dedicated trainer (JK-1398).
-        skipped.add("test-runner (no PluginAot path; fixtures warm the process only)");
+        // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
+        // project would need its own AOT key; caches would not transfer and would thrash disk.
+        // -Djk.aot.train=off on suite JVMs avoids pointless train-on-miss. Short-lived suite forks
+        // also discard any JIT warm-up — fixture tests do not leave a warm runner for the next project.
+        skipped.add("test-runner (per-project classpath; AOT not reusable — JK-1398)");
         return new Result(trained, skipped, notes);
     }
 
