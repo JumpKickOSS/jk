@@ -46,6 +46,18 @@ public final class PluginAot {
     /** Caches (and failure markers) untouched this long are dead keys — reclaim the disk. */
     private static final long UNUSED_TTL_MILLIS = 30L * 24 * 60 * 60 * 1_000;
 
+    /**
+     * Relatime-style window for the manifest {@code last_used} refresh: a cache hit inside this
+     * window skips the {@code aot.toml} lock/read/rewrite entirely. The cache file's own mtime
+     * ({@link #touch}) is what retention reads and is refreshed on <em>every</em> hit; the
+     * manifest timestamp is a human index and hour granularity is plenty.
+     */
+    static final long LAST_USED_REFRESH_MILLIS = 60L * 60 * 1_000;
+
+    /** When this JVM last rewrote a cache's manifest {@code last_used} (throttle memory). */
+    private static final java.util.concurrent.ConcurrentMap<Path, Long> LAST_USED_WRITTEN =
+            new ConcurrentHashMap<>();
+
     /** In-JVM double-spawn guard (the claim file guards across processes). */
     private static final Set<Path> TRAINING = ConcurrentHashMap.newKeySet();
 
@@ -94,7 +106,7 @@ public final class PluginAot {
             CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
             if (usableCache(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
-                recordReady(cache, meta, /* touchLastUsed */ true);
+                recordUse(cache, meta);
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
@@ -191,7 +203,7 @@ public final class PluginAot {
                 }
             } else if (usableCache(cache)) {
                 touch(cache);
-                recordReady(cache, meta, true);
+                recordUse(cache, meta);
                 return true;
             } else {
                 deleteIfEmpty(cache); // truncated leftover: retrain below
@@ -530,6 +542,44 @@ public final class PluginAot {
 
     // ---- aot.toml -------------------------------------------------------------------------
 
+    /**
+     * Record a cache hit in the manifest, throttled: the full {@code aot.toml} lock/read/rewrite
+     * runs at most once per {@link #LAST_USED_REFRESH_MILLIS} per cache (per javac/kotlinc fork
+     * would mean once per module compile — pure churn, and the main source of concurrent-write
+     * collisions). First hit after an engine restart consults the manifest's recorded
+     * {@code last_used} so a fresh value on disk is not rewritten either.
+     */
+    static void recordUse(Path cache, CacheMeta meta) {
+        if (cache == null || meta == null) return;
+        long now = System.currentTimeMillis();
+        Long prev = LAST_USED_WRITTEN.get(cache);
+        if (prev != null && now - prev < LAST_USED_REFRESH_MILLIS) return;
+        if (prev == null && manifestLastUsedFresh(cache, now)) {
+            LAST_USED_WRITTEN.putIfAbsent(cache, now);
+            return;
+        }
+        recordReady(cache, meta, true);
+    }
+
+    /** Does the manifest already carry a {@code last_used} inside the refresh window? */
+    private static boolean manifestLastUsedFresh(Path cache, long now) {
+        Path aotDir = cache.getParent();
+        if (aotDir == null) return false;
+        String name = cache.getFileName().toString();
+        for (AotManifest.Entry e : AotManifest.load(aotDir)) {
+            if (!name.equals(e.file())) continue;
+            String lastUsed = e.lastUsed();
+            if (lastUsed == null || lastUsed.isBlank()) return false;
+            try {
+                long t = java.time.OffsetDateTime.parse(lastUsed).toInstant().toEpochMilli();
+                return now - t < LAST_USED_REFRESH_MILLIS;
+            } catch (RuntimeException parse) {
+                return false;
+            }
+        }
+        return false;
+    }
+
     private static void recordReady(Path cache, CacheMeta meta, boolean touchLastUsed) {
         if (cache == null || meta == null) return;
         Path aotDir = cache.getParent();
@@ -549,6 +599,7 @@ public final class PluginAot {
         if (touchLastUsed) b.lastUsed(now);
         else b.created(now).lastUsed(now);
         AotManifest.upsert(aotDir, b.build());
+        LAST_USED_WRITTEN.put(cache, System.currentTimeMillis()); // seed the recordUse throttle
     }
 
     private static void recordReadyBare(Path cache) {
