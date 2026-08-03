@@ -454,29 +454,6 @@ public final class EngineClient {
         return Optional.empty();
     }
 
-    /**
-     * Pre-train worker AOT caches on the engine host ({@code jk optimize}). Returns the
-     * {@code optimize-ack} line, or empty on protocol failure.
-     */
-    public static Optional<String> optimize(EnginePaths.Paths paths, boolean force) throws IOException {
-        ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
-        try (SocketChannel ch = connect(EnginePaths.activeSocket(paths))) {
-            BufferedWriter writer =
-                    new BufferedWriter(new OutputStreamWriter(Channels.newOutputStream(ch), StandardCharsets.UTF_8));
-            writer.write(EngineProtocol.optimizeRequest(force));
-            writer.write('\n');
-            writer.flush();
-            BufferedReader reader = protocolReader(ch);
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String type = EngineProtocol.typeOf(line);
-                if (EngineProtocol.OPTIMIZE_ACK.equals(type)) return Optional.of(line);
-                if (EngineProtocol.ERROR.equals(type)) return Optional.empty();
-            }
-        }
-        return Optional.empty();
-    }
-
     /** Send a history/metrics request, collect the flat reply lines up to (not including) the terminal. */
     private static List<String> streamHistory(EnginePaths.Paths paths, String request) throws IOException {
         ensureRunning(paths, cc.jumpkick.cli.Jk.VERSION);
