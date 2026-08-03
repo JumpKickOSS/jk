@@ -362,12 +362,10 @@ public final class AotManifest {
                 } else if (name.endsWith(".aot.noaot") && Files.isRegularFile(p)) {
                     // worker sticky marker: <file>.aot.noaot
                     String primary = name.substring(0, name.length() - ".noaot".length());
-                    if (!map.containsKey(primary) || "pending".equals(map.get(primary).status())) {
-                        Entry.Builder b = Entry.builder(primary).status("noaot");
-                        fillToolKey(b, primary);
-                        map.put(primary, b.build());
-                    } else if (map.containsKey(primary) && !Files.exists(aotDir.resolve(primary))) {
-                        map.put(primary, map.get(primary).toBuilder().status("noaot").build());
+                    if (!map.containsKey(primary)
+                            || "pending".equals(map.get(primary).status())
+                            || !Files.exists(aotDir.resolve(primary))) {
+                        map.put(primary, noaotRow(map.get(primary), primary));
                     }
                 } else if (name.endsWith(".noaot")
                         && !name.endsWith(".aot.noaot")
@@ -377,9 +375,7 @@ public final class AotManifest {
                     String stem = name.substring(0, name.length() - ".noaot".length());
                     String primary = stem.endsWith(".aot") ? stem : stem + ".aot";
                     if (!map.containsKey(primary) || !Files.exists(aotDir.resolve(primary))) {
-                        Entry.Builder b = Entry.builder(primary).status("noaot");
-                        fillToolKey(b, primary);
-                        map.put(primary, b.build());
+                        map.put(primary, noaotRow(map.get(primary), primary));
                     }
                 }
             }
@@ -389,6 +385,17 @@ public final class AotManifest {
         List<Entry> out = new ArrayList<>(map.values());
         out.sort(Comparator.comparing(Entry::file, String.CASE_INSENSITIVE_ORDER));
         return out;
+    }
+
+    /**
+     * A {@code noaot} row that keeps whatever the manifest already recorded (JDK home/vendor,
+     * GC, flags — the diagnostic detail explaining <em>which</em> setup failed) rather than
+     * flattening to a bare file name.
+     */
+    private static Entry noaotRow(Entry prev, String primary) {
+        Entry.Builder b = prev != null ? prev.toBuilder() : Entry.builder(primary);
+        if (prev == null || blank(prev.tool()) || blank(prev.key())) fillToolKey(b, primary);
+        return b.status("noaot").build();
     }
 
     private static long usableSize(Path p) {

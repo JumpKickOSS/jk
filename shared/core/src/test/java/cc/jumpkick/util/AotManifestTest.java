@@ -261,6 +261,29 @@ class AotManifestTest {
         assertThat(dir.resolve(AotManifest.FILE_NAME + ".lock")).exists();
     }
 
+    @Test
+    void engine_noaot_row_keeps_recorded_manifest_details() throws Exception {
+        AotManifest.upsert(dir, AotManifest.Entry.builder("engine-0.10.1-ab12.aot")
+                .status("pending")
+                .jdkHome("/opt/jdk-25")
+                .jdkVendor("TEMURIN")
+                .jdkVersion("25.0.3")
+                .gc("serial")
+                .build());
+        // Sticky marker present, .aot file absent — the exact state after a failed engine train.
+        Files.writeString(dir.resolve("engine-0.10.1-ab12.noaot"), "");
+
+        var listed = AotManifest.list(dir);
+        AotManifest.Entry e = listed.stream()
+                .filter(x -> x.file().equals("engine-0.10.1-ab12.aot"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(e.status()).isEqualTo("noaot");
+        assertThat(e.jdkHome()).isEqualTo("/opt/jdk-25");
+        assertThat(e.jdkVendor()).isEqualTo("TEMURIN");
+        assertThat(e.gc()).isEqualTo("serial");
+    }
+
     private static String read(Path p) {
         try {
             return Files.readString(p);
