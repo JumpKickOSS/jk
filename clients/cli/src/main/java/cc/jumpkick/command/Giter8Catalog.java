@@ -48,6 +48,7 @@ public final class Giter8Catalog {
         DESCRIPTIONS.put("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)");
         DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
         DESCRIPTIONS.put("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)");
+        DESCRIPTIONS.put("java-cli-native", "Interactive Java CLI with JLine (jk native ready)");
     }
 
     private Giter8Catalog() {}
