@@ -92,6 +92,25 @@ class PluginAotTest {
         assertThat(PluginAot.usableCache(tmp)).isFalse(); // directory
     }
 
+    @Test
+    void sweep_prefix_is_the_full_tool_tag_not_up_to_the_first_hyphen() throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("aot-prefix"));
+        long day = 24L * 60 * 60 * 1_000;
+        // Six old java-runner keys: a first-hyphen prefix ("java-") would sweep them as
+        // overflow of the java-compiler pool; the full tag ("java-compiler-") must not.
+        Path[] runner = new Path[6];
+        for (int i = 0; i < 6; i++) {
+            runner[i] = Files.writeString(dir.resolve("java-runner-000000000000000" + i + ".aot"), "r" + i);
+            Files.setLastModifiedTime(runner[i], FileTime.fromMillis(System.currentTimeMillis() - (i + 1) * day));
+        }
+        Path cache = dir.resolve("java-compiler-0000000000000000.aot");
+        PluginAot.trainAsync(
+                "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
+        waitUntil(Duration.ofSeconds(10), () -> Files.exists(cache));
+        Thread.sleep(100); // let the publish sweep finish
+        for (Path p : runner) assertThat(p).exists();
+    }
+
     // ---- training lifecycle -------------------------------------------------------------------
 
     private static void waitUntil(Duration timeout, BooleanSupplier cond) throws InterruptedException {

@@ -418,8 +418,13 @@ public final class PluginAot {
      * are version-lifecycle-owned (EngineClient sweep + VersionStore.prune) — never touched here.
      */
     private static void sweepTool(Path cache) {
-        String tool = cache.getFileName().toString();
-        tool = tool.substring(0, tool.indexOf('-') + 1); // "kotlinc-" / "java-compiler-"
+        // "<tool>-<16 hex>.aot" → "<tool>-". Strip the fixed-width key suffix, not up to the
+        // first hyphen: tool tags may themselves contain hyphens (java-compiler), and a
+        // first-hyphen cut would lump every "java-*" tool into one retention pool.
+        String name = cache.getFileName().toString();
+        if (!name.endsWith(".aot") || name.length() < 22) return;
+        String tool = name.substring(0, name.length() - 20); // 16-hex key + ".aot"
+        if (!tool.endsWith("-")) return;
         long now = System.currentTimeMillis();
         List<Path> primaries = new ArrayList<>();
         List<Path> markers = new ArrayList<>();
@@ -466,8 +471,7 @@ public final class PluginAot {
         }
     }
 
-    /** Sticky "training failed for this key" marker — swept with its cache by {@link #sweepSiblings}. */
-    /** Marker sibling written when a train attempt fails (skip retrain-on-miss until cleared). */
+    /** Sticky "training failed for this key" marker sibling (skip retrain-on-miss until cleared). */
     public static Path noaotMarker(Path cache) {
         return cache.resolveSibling(cache.getFileName() + ".noaot");
     }
