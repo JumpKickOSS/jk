@@ -137,6 +137,19 @@ public final class SelfCommand extends GroupCommand {
             }
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
+            Path distLib = distLibFor(client);
+            if (distLib != null) {
+                // Dev dogfood (JK-1412): the client is a Gradle start script whose classpath is
+                // "$APP_HOME/../lib/*.jar". Alone in the store it cannot start — sync its dist
+                // jars beside it and repoint PATH entrypoints as symlinks (a hardlinked script
+                // resolves APP_HOME to the bin dir of the LINK and dies the same way).
+                syncDistLibs(distLib, m.root().resolve("lib"));
+                Path storeClient = m.clientBin().orElse(null);
+                if (storeClient != null) {
+                    repointDevScript(JkDirs.binDir().resolve("jk"), storeClient);
+                    repointDevScript(JkDirs.binDir().resolve("jkx"), storeClient);
+                }
+            }
             CliOutput.out("materialized " + m.root());
             // Best-effort install-time terminal probe; never fail materialize.
             try {
@@ -145,6 +158,55 @@ public final class SelfCommand extends GroupCommand {
                 // ignore
             }
             return 0;
+        }
+
+        /**
+         * The installDist {@code lib/} sibling when {@code client} is a start script inside a
+         * {@code bin/} + {@code lib/} dist tree, else {@code null} (native image client).
+         */
+        static Path distLibFor(Path client) {
+            try {
+                if (client == null || !Files.isRegularFile(client)) return null;
+                Path bin = client.toAbsolutePath().normalize().getParent();
+                if (bin == null || !"bin".equals(String.valueOf(bin.getFileName()))) return null;
+                Path lib = bin.resolveSibling("lib");
+                if (!Files.isDirectory(lib)) return null;
+                byte[] head = new byte[2];
+                try (var is = Files.newInputStream(client)) {
+                    if (is.read(head) < 2) return null;
+                }
+                return (head[0] == '#' && head[1] == '!') ? lib : null;
+            } catch (IOException e) {
+                return null;
+            }
+        }
+
+        /** Copy the dist client jars into the store version's lib (engine jar name never clashes). */
+        static void syncDistLibs(Path distLib, Path storeLib) throws IOException {
+            Files.createDirectories(storeLib);
+            try (var jars = Files.newDirectoryStream(distLib, "*.jar")) {
+                for (Path jar : jars) {
+                    Files.copy(jar, storeLib.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+
+        /**
+         * Dev-only entrypoint flip: symlink so the start script resolves {@code APP_HOME} to the
+         * store version dir (where its lib now lives). Release/native installs keep the
+         * hard-link/copy policy in {@link UpdateSub}. Best-effort — a failed link leaves the
+         * existing entrypoint alone.
+         */
+        private static void repointDevScript(Path pointer, Path storeClient) {
+            try {
+                Files.createDirectories(pointer.getParent());
+                Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
+                Files.deleteIfExists(tmp);
+                Files.createSymbolicLink(tmp, storeClient);
+                Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException | UnsupportedOperationException e) {
+                CliOutput.out("note: could not repoint " + pointer + " (" + e.getMessage() + ")");
+            }
         }
     }
 
