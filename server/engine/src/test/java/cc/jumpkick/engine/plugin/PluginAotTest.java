@@ -66,6 +66,20 @@ class PluginAotTest {
         assertThat(PluginAot.jdkId(tmp.resolve("no-such-jdk"))).isNull(); // no release file
     }
 
+    @Test
+    void hostEligible_wraps_jdk_id_and_eligibility() throws IOException {
+        Path jdk = Files.createDirectories(tmp.resolve("he-jdk25"));
+        Files.writeString(jdk.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"25.0.3\"\n");
+        assertThat(PluginAot.hostEligible(jdk)).isTrue();
+
+        Path old = Files.createDirectories(tmp.resolve("he-jdk21"));
+        Files.writeString(old.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"21.0.2\"\n");
+        assertThat(PluginAot.hostEligible(old)).isFalse();
+
+        assertThat(PluginAot.hostEligible(null)).isFalse();
+        assertThat(PluginAot.hostEligible(tmp.resolve("he-none"))).isFalse();
+    }
+
     // ---- training lifecycle -------------------------------------------------------------------
 
     private static void waitUntil(Duration timeout, BooleanSupplier cond) throws InterruptedException {

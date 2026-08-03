@@ -56,18 +56,28 @@ public final class HostWarmup {
         if (!AotSettings.workerAotEnabled() || !AotSettings.trainingEnabled()) return false;
         Path host = JavaHomes.runningJavaHome();
         if (host == null || !Files.isDirectory(host)) return false;
+        // Graal / pre-25 hosts can never record caches — asking for work would re-queue a
+        // warmup pass every idle boundary that trainCommonWorkers then skips.
+        if (!PluginAot.hostEligible(host)) return false;
         try {
-            if (!workerCachePresent("java-compiler", host, PluginJar.JAVA_COMPILER)) return true;
+            if (!workerCachePresent("java-compiler", host, PluginJar.JAVA_COMPILER)) {
+                // Sticky noaot: a permanently failing key must not re-queue warmup every cycle.
+                Path javacCache = cachePath("java-compiler", host, PluginJar.JAVA_COMPILER);
+                if (missingKeyNeedsTrain(javacCache)) return true;
+            }
             // kotlinc: dedicated key, or any existing kotlinc-*.aot from real compiles
             if (workerCachePresent("kotlinc", host, PluginJar.KOTLIN_COMPILER)) return false;
             if (WorkerAotBootstrap.anyToolCache("kotlinc")) return false;
             // Prior dedicated train failed (noaot) and no sibling cache — don't thrash every start.
-            Path kotlincCache = cachePath("kotlinc", host, PluginJar.KOTLIN_COMPILER);
-            if (kotlincCache != null && Files.exists(PluginAot.noaotMarker(kotlincCache))) return false;
-            return true;
+            return missingKeyNeedsTrain(cachePath("kotlinc", host, PluginJar.KOTLIN_COMPILER));
         } catch (Exception e) {
             return true;
         }
+    }
+
+    /** Pure decision: a missing cache still needs train unless a sticky noaot marker blocks it. */
+    static boolean missingKeyNeedsTrain(Path cache) {
+        return cache == null || !Files.exists(PluginAot.noaotMarker(cache));
     }
 
     private static Path cachePath(String tool, Path host, PluginJar jar) {

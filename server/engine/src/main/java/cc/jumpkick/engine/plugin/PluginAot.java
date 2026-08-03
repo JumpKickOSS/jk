@@ -118,6 +118,17 @@ public final class PluginAot {
         return pluginWorkerFlags("java-compiler", javaHome, workerClasspath, trainer);
     }
 
+    /** True when this host JDK can record AOT caches (HotSpot 25+, not Graal). */
+    public static boolean hostEligible(Path javaHome) {
+        if (javaHome == null) return false;
+        try {
+            JdkId id = jdkId(javaHome);
+            return id != null && eligible(id);
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /**
      * Cache path for a tool/host/classpath key, or {@code null} when the host is ineligible / unreadable.
      */
