@@ -297,15 +297,18 @@ public final class AotManifest {
     }
 
     /**
-     * Drop entries whose on-disk file (and optional {@code .noaot} marker) no longer exist. Never
-     * throws.
+     * Drop entries whose on-disk file (and optional {@code .noaot} marker) no longer exist. A
+     * {@code pending} row is the documented state of a train still running (its {@code .aot}
+     * intentionally doesn't exist yet) — those stay. Never throws.
      */
     public static void reconcile(Path aotDir) {
         if (aotDir == null || !Files.isDirectory(aotDir)) return;
         withLock(aotDir, () -> {
             Map<String, Entry> map = loadMap(aotDir);
             List<String> gone = new ArrayList<>();
-            for (String file : map.keySet()) {
+            for (Map.Entry<String, Entry> me : map.entrySet()) {
+                if ("pending".equals(me.getValue().status())) continue;
+                String file = me.getKey();
                 Path p = aotDir.resolve(file);
                 Path noaotSibling = aotDir.resolve(file + ".noaot");
                 Path noaotAlt = stemNoaot(aotDir, file);

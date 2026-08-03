@@ -284,6 +284,19 @@ class AotManifestTest {
         assertThat(e.gc()).isEqualTo("serial");
     }
 
+    @Test
+    void reconcile_keeps_pending_rows_and_drops_dead_ones() throws Exception {
+        // Pending = train in flight; its .aot deliberately doesn't exist yet.
+        AotManifest.upsert(dir, AotManifest.Entry.builder("engine-0.10.1-cd34.aot").status("pending").build());
+        AotManifest.upsert(dir, AotManifest.Entry.builder("stale.aot").status("ready").build());
+
+        AotManifest.reconcile(dir);
+
+        var files = AotManifest.load(dir).stream().map(AotManifest.Entry::file).toList();
+        assertThat(files).contains("engine-0.10.1-cd34.aot");
+        assertThat(files).doesNotContain("stale.aot");
+    }
+
     private static String read(Path p) {
         try {
             return Files.readString(p);
