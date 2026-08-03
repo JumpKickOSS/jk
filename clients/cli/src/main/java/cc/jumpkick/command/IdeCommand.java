@@ -11,6 +11,7 @@ import cc.jumpkick.command.ide.VscodeIdeGenerator;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -18,7 +19,8 @@ import java.util.Set;
 
 /**
  * {@code jk ide} — generate IntelliJ + VS Code project files ({@code --idea}/{@code --vscode}
- * narrow to one). Dependency sync is engine-hosted; model + file generation stay client-side.
+ * narrow to one) and always refresh {@code .bsp/jk.json} for BSP clients. Dependency sync is
+ * engine-hosted; model + file generation stay client-side.
  */
 public final class IdeCommand implements CliCommand {
 
@@ -43,7 +45,7 @@ public final class IdeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Generate IDE project files (IntelliJ + VS Code)";
+        return "Generate IDE project files (IntelliJ + VS Code) and .bsp/";
     }
 
     @Override
@@ -89,6 +91,15 @@ public final class IdeCommand implements CliCommand {
                 CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("IDE", e.getMessage()));
                 return e.code();
             }
+        }
+        // BSP discovery is part of "IDE ready" — Metals / JetBrains BSP spawn via .bsp/jk.json.
+        try {
+            Path bsp = BspCommand.writeConnectionFile(model.wsRoot());
+            cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + bsp);
+        } catch (Exception e) {
+            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
+                    "BSP", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
+            return 1;
         }
         return 0;
     }

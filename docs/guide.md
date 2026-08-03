@@ -870,10 +870,15 @@ Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reu
 ### IDE / BSP
 
 ```bash
-jk bsp install               # write .bsp/jk.json
+jk ide                       # .idea + .vscode + .bsp/jk.json (IDE-ready)
+jk ide --idea                # IntelliJ only + .bsp/
+jk ide --vscode              # VS Code only + .bsp/
+jk bsp install               # .bsp/jk.json only
 # IDE launches: jk bsp serve  (stdio BSP — no engine jars in the IDE process)
-jk ide                       # offline .idea / .vscode files (export path)
 ```
+
+`jk ide` / `jk idea` / `jk vscode` always refresh `.bsp/jk.json` so Metals and JetBrains BSP
+can discover JumpKick without a separate `bsp install` step.
 
 **Multi-suite tests (JK-1139–1142 / JK-1198):** `jk ide` registers **every discovered test suite**
 (`test/src/`, `integration/src/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
