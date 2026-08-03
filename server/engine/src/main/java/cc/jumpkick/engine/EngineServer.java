@@ -203,15 +203,14 @@ public final class EngineServer implements AutoCloseable {
             new java.util.concurrent.atomic.AtomicReference<>();
 
     /**
-     * Queued {@code jk optimize} worker AOT train (JK-1388 / idle boundary). {@code null} = none
-     * pending; otherwise the force flag for the next drain. Drained on a daemon thread so the
-     * client ACK is not blocked by multi-second training.
+     * Queued host warmup (worker AOT + calibration) for the idle boundary. {@code null} = none;
+     * otherwise force-AOT flag. Self-heal on first start and every 12 h feed/GC tick.
      */
-    private final java.util.concurrent.atomic.AtomicReference<Boolean> pendingOptimizeForce =
+    private final java.util.concurrent.atomic.AtomicReference<Boolean> pendingWarmupForce =
             new java.util.concurrent.atomic.AtomicReference<>();
 
-    /** Serializes idle-boundary optimize trains (never overlap two train passes). */
-    private final java.util.concurrent.atomic.AtomicBoolean optimizeTrainRunning =
+    /** Serializes idle-boundary warmup (never overlap two passes). */
+    private final java.util.concurrent.atomic.AtomicBoolean warmupRunning =
             new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private volatile boolean shuttingDown;
@@ -399,6 +398,8 @@ public final class EngineServer implements AutoCloseable {
         // Non-blocking: first tick immediately (feeds if stale + queue cache GC), then every 12 h.
         storeFeedRefresh = new StoreFeedRefresh(log, this::enqueueScheduledCacheGc);
         storeFeedRefresh.start();
+        // Self-heal worker AOT + host calibration when missing (no user-facing optimize/calibrate).
+        scheduleHostWarmupIfNeeded(false);
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -1852,7 +1853,7 @@ public final class EngineServer implements AutoCloseable {
         drainPendingPrune();
         pruneJournal();
         pruneMetrics();
-        kickPendingOptimize();
+        kickPendingWarmup();
         maybeIdleGc();
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
@@ -1950,13 +1951,16 @@ public final class EngineServer implements AutoCloseable {
     private void enqueueScheduledCacheGc() {
         if (shuttingDown) return;
         var config = cc.jumpkick.config.JkCacheConfig.resolve();
-        if (!config.autoPrune()) return;
-        Path cache = cc.jumpkick.util.JkDirs.cache();
-        // compareAndSet: already queued → leave the existing entry alone (never double-queue).
-        pendingPruneCache.compareAndSet(null, cache);
-        if (activePipelines.get() == 0) {
-            drainPendingPrune();
+        if (config.autoPrune()) {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            // compareAndSet: already queued → leave the existing entry alone (never double-queue).
+            pendingPruneCache.compareAndSet(null, cache);
+            if (activePipelines.get() == 0) {
+                drainPendingPrune();
+            }
         }
+        // Same 12 h cadence: re-check worker AOT + calibration if missing.
+        scheduleHostWarmupIfNeeded(false);
     }
 
     /**
@@ -4314,75 +4318,66 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Queue worker AOT train for the idle boundary (JK-1388). Never blocks the client on multi-second
-     * training — ACK is immediate; {@link #kickPendingOptimize} runs the work on a daemon thread
-     * when {@link #activePipelines} is zero (or the next time a pipeline finishes).
+     * Legacy wire path (no public CLI): queue host warmup. Prefer engine self-heal on start / 12 h.
      */
     private void handleOptimizeRequest(String requestLine, BufferedWriter writer) {
         try {
             boolean force = Jsonl.bool(requestLine, "force", false);
-            enqueueOptimize(force);
-            boolean idle = activePipelines.get() == 0;
-            String summary = idle
-                    ? "scheduled: worker AOT train starting on idle worker"
-                    : "scheduled: worker AOT train queued for idle boundary";
-            sendQuiet(writer, EngineProtocol.optimizeAck(true, "", "scheduled", summary));
+            scheduleHostWarmupIfNeeded(force);
+            sendQuiet(
+                    writer,
+                    EngineProtocol.optimizeAck(
+                            true, "", "scheduled", "scheduled: host warmup on idle worker"));
         } catch (RuntimeException e) {
             sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
         }
     }
 
-    /** Remember a train request; force sticky until the next drain. */
-    private void enqueueOptimize(boolean force) {
-        pendingOptimizeForce.updateAndGet(prev -> {
+    /**
+     * If worker AOT or host calibration is missing (or {@code force}), queue idle-boundary warmup.
+     */
+    private void scheduleHostWarmupIfNeeded(boolean force) {
+        if (shuttingDown || draining) return;
+        if (!force && !HostWarmup.needsWork()) return;
+        pendingWarmupForce.updateAndGet(prev -> {
             if (prev == null) return force;
             return prev || force;
         });
-        kickPendingOptimize();
+        kickPendingWarmup();
     }
 
     /**
-     * If a train is queued and no pipeline is in flight, drain it on a background thread (alongside
-     * prune / journal hygiene at the idle boundary).
+     * Drain queued host warmup on a daemon thread when no pipeline is in flight (start path, idle
+     * boundary, or 12 h feed/GC tick).
      */
-    private void kickPendingOptimize() {
+    private void kickPendingWarmup() {
         if (shuttingDown || draining) return;
         if (activePipelines.get() != 0) return;
-        Boolean force = pendingOptimizeForce.getAndSet(null);
+        Boolean force = pendingWarmupForce.getAndSet(null);
         if (force == null) return;
-        if (!optimizeTrainRunning.compareAndSet(false, true)) {
-            // Already training — re-queue so a follow-up force is not lost.
-            pendingOptimizeForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+        if (!warmupRunning.compareAndSet(false, true)) {
+            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
             return;
         }
         Thread t = new Thread(
                 () -> {
                     try {
                         if (activePipelines.get() != 0) {
-                            // A pipeline raced in — put the request back.
-                            pendingOptimizeForce.updateAndGet(
+                            pendingWarmupForce.updateAndGet(
                                     prev -> prev == null ? force : (prev || force));
                             return;
                         }
-                        var result = cc.jumpkick.compile.WorkerAotBootstrap.trainCommonWorkers(90_000L, force);
-                        String trained = String.join(", ", result.trained());
-                        String skipped = String.join(", ", result.skipped());
-                        log.accept("jk engine: idle optimize trained=["
-                                + trained
-                                + "] skipped=["
-                                + skipped
-                                + "]");
+                        HostWarmup.runIdle(force, log);
                     } catch (RuntimeException e) {
-                        log.accept("jk engine: idle optimize failed: " + e.getMessage());
+                        log.accept("jk engine: idle host warmup failed: " + e.getMessage());
                     } finally {
-                        optimizeTrainRunning.set(false);
-                        // Another request may have arrived while we ran.
-                        if (pendingOptimizeForce.get() != null && activePipelines.get() == 0) {
-                            kickPendingOptimize();
+                        warmupRunning.set(false);
+                        if (pendingWarmupForce.get() != null && activePipelines.get() == 0) {
+                            kickPendingWarmup();
                         }
                     }
                 },
-                "jk-idle-optimize");
+                "jk-idle-warmup");
         t.setDaemon(true);
         t.start();
     }

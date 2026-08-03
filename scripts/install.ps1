@@ -132,9 +132,8 @@ if ($engineJar) {
 
 if (-not $SkipEngineWarm -and $engineJar) {
     Write-Info "Warming engine (best-effort)..."
+    # Engine self-heals missing worker AOT + host calibration on idle (and every 12h).
     try { & $jkBin engine start 2>$null | Out-Null } catch { Write-Note "Engine warm-up skipped" }
-    try { & $jkBin optimize 2>$null | Out-Null } catch { Write-Note "Worker optimize skipped" }
-    try { & $jkBin engine calibrate 2>$null | Out-Null } catch { Write-Note "Host calibration deferred" }
 }
 
 Write-Info "Installed. Add to PATH if needed:"

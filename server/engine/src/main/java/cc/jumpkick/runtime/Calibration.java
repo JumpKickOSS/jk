@@ -266,6 +266,14 @@ public final class Calibration {
         return jdk;
     }
 
+    public String jkVersion() {
+        return jkVersion;
+    }
+
+    public int schema() {
+        return schema;
+    }
+
     public long updated() {
         return updated;
     }
@@ -977,7 +985,7 @@ public final class Calibration {
         }
     }
 
-    static boolean stale(String version, long updated, long nowMillis) {
+    public static boolean stale(String version, long updated, long nowMillis) {
         if (!JkVersion.VERSION.equals(version)) return true;
         return updated > 0 && nowMillis - updated > MAX_AGE_MILLIS;
     }

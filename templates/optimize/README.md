@@ -1,6 +1,7 @@
-# Optimize training fixtures
+# Training fixtures (historical / optional)
 
-Tiny projects used by `jk optimize` and language-aware host calibration.
+Tiny Mill-style projects once used for install-time language calibration. The engine now
+self-heals **java-compiler** / **kotlinc** AOT and host calibration without these fixtures
+(see `docs/install-optimize.md`). Kept for manual smoke and regression.
 
-**Not for end users.** Prefers Mill-style layout (`src/`, `test/src/`). Pins **Java 25** and
-**Kotlin 2.4.10** only — Groovy and other language versions train on-demand during real builds.
+Pins **Java 25** + **Kotlin 2.4.10**. Groovy is not pre-trained.

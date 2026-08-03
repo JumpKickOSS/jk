@@ -750,12 +750,6 @@ jk explain --graph mermaid > build.mmd
 jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 
-# Host calibration for cold ETAs (JK-1180)
-jk engine calibrate                   # host probes (network on); skip if already measured
-jk engine calibrate --force           # re-run + retime cold engine start
-jk engine calibrate --offline         # probes only; no Jupiter fetch / resolve HTTP
-
-
 # Pipeline tasks (Mill resolve-lite)
 jk tasks                         # list first-party steps
 jk show package-jar              # primary jar path for this module

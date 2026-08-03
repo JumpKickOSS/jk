@@ -80,18 +80,27 @@ public final class WorkerAotBootstrap {
                 trained.add(tool + " (cached)");
                 return;
             }
-            // Explicit optimize should retry past a prior failed-train noaot marker (lazy
-            // train-on-miss keeps the marker; install/optimize is a deliberate re-attempt).
-            if (cache != null) {
+            // Force retrain clears a prior failed-train noaot marker; otherwise leave it so
+            // engine self-heal does not thrash a permanently-failing key every start.
+            if (force && cache != null) {
                 try {
                     Files.deleteIfExists(PluginAot.noaotMarker(cache));
                 } catch (Exception ignored) {
                 }
             }
-            // kotlinc: if fixture builds already produced any kotlinc-*.aot for this host, count as
+            // kotlinc: if real compiles already produced any kotlinc-*.aot for this host, count as
             // success even when the dedicated bootstrap key still fails (JK-1397).
             if (!force && "kotlinc".equals(tool) && anyToolCache("kotlinc")) {
                 trained.add(tool + " (cached)");
+                return;
+            }
+            // Sticky noaot: skip until force or 12h path with force (self-heal uses force=false).
+            if (!force && cache != null && Files.exists(PluginAot.noaotMarker(cache))) {
+                if ("kotlinc".equals(tool) && anyToolCache("kotlinc")) {
+                    trained.add(tool + " (cached)");
+                    return;
+                }
+                skipped.add(tool + " (prior train failed; will not retry until force)");
                 return;
             }
             PluginAot.TrainerCommand trainer;
@@ -126,7 +135,7 @@ public final class WorkerAotBootstrap {
     }
 
     /** True when any {@code <tool>-*.aot} file exists under the PluginAot dir (complete caches only). */
-    static boolean anyToolCache(String tool) {
+    public static boolean anyToolCache(String tool) {
         if (tool == null || tool.isBlank()) return false;
         Path dir = PluginAot.dir();
         if (!Files.isDirectory(dir)) return false;
