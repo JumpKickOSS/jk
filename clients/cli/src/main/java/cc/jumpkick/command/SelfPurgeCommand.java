@@ -124,10 +124,19 @@ public final class SelfPurgeCommand implements CliCommand {
             return 1;
         }
 
-        // Engines hold sockets under state — stop when state (or all) is selected.
-        if (!dryRun && selected.contains(Target.STATE)) {
+        // Engines hold sockets under state and read/write the store mid-build — stop them
+        // before deleting either tree, and say so when one refuses to die.
+        if (!dryRun && (selected.contains(Target.STATE) || selected.contains(Target.STORE))) {
             try {
-                EngineFleet.stopAll(true);
+                for (EngineFleet.StopResult r : EngineFleet.stopAll(true)) {
+                    if (r.outcome() == EngineFleet.Outcome.SURVIVED) {
+                        Theme t = Theme.active();
+                        CliOutput.err(Theme.colorize(Glyphs.BANG, t.warning())
+                                + " Engine pid "
+                                + r.member().pid()
+                                + " did not stop; purging around it may leave it orphaned.");
+                    }
+                }
             } catch (RuntimeException ignored) {
                 // best-effort
             }
@@ -235,7 +244,10 @@ public final class SelfPurgeCommand implements CliCommand {
                 for (Path p : stream) {
                     String name = p.getFileName().toString();
                     if (name.startsWith(".")) {
-                        // stale .0.10.1.lock etc. — safe to drop
+                        // Stale .0.9.0.lock etc. — safe to drop. The active version's lock file
+                        // stays: VersionStore.materialize holds a flock on it, and unlinking a
+                        // held lock lets a racing materializer lock a fresh inode (two winners).
+                        if (name.equals("." + active + ".lock")) continue;
                         if (Files.isRegularFile(p)) {
                             addRow(byPath, p, "Version lock/marker", Target.STORE, guards);
                         }

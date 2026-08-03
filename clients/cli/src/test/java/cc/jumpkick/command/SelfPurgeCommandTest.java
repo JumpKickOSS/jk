@@ -218,6 +218,22 @@ class SelfPurgeCommandTest {
         assertThat(roots).contains(dataAbs.resolve("store").resolve("sha256"));
     }
 
+    @Test
+    void store_sweep_keeps_active_version_lock_file() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-lock");
+        Path home = root.resolve("home");
+        Path versions = home.resolve("versions");
+        Files.createDirectories(versions);
+        Files.writeString(versions.resolve("." + Jk.VERSION + ".lock"), "");
+        Files.writeString(versions.resolve(".0.9.0.lock"), "");
+        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString()), root.resolve("userhome").toString());
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path versionsAbs = versions.toAbsolutePath().normalize();
+        assertThat(roots).contains(versionsAbs.resolve(".0.9.0.lock"));
+        assertThat(roots).doesNotContain(versionsAbs.resolve("." + Jk.VERSION + ".lock"));
+    }
+
     private static java.util.function.Function<String, String> env(String... kv) {
         java.util.Map<String, String> map = new java.util.HashMap<>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
