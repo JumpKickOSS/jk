@@ -38,13 +38,15 @@ import java.util.Set;
  *
  * <ul>
  *   <li>{@code --cache} — action cache
- *   <li>{@code --store} — CAS, repo mirrors, old {@code versions/*} (keeps active version + {@code store/lib})
- *   <li>{@code --state} — engine sockets, AOT, builds
+ *   <li>{@code --store} — CAS, repo mirrors, store catalogs, shell completions, old
+ *       {@code versions/*} (keeps active version + {@code store/lib})
+ *   <li>{@code --state} — engine sockets, AOT, builds, scratch tmp
  *   <li>{@code --config} — user config
  *   <li>{@code --all} — every target above (default when none are named)
  * </ul>
  *
- * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}).
+ * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}),
+ * and never removes forge/repo credentials — logging out is {@code jk repo logout}'s job.
  */
 public final class SelfPurgeCommand implements CliCommand {
 
@@ -97,8 +99,8 @@ public final class SelfPurgeCommand implements CliCommand {
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                 Opt.flag("Purge every target (default when none named).", "--all"),
                 Opt.flag("Purge the action cache only.", "--cache"),
-                Opt.flag("Purge CAS/repos and old engines (keeps active + plugins).", "--store"),
-                Opt.flag("Purge engine state, AOT caches, and builds.", "--state"),
+                Opt.flag("Purge CAS/repos, old engines (keeps active, plugins, logins).", "--store"),
+                Opt.flag("Purge engine state, AOT caches, builds, and tmp.", "--state"),
                 Opt.flag("Purge user config.", "--config"));
     }
 
@@ -278,7 +280,14 @@ public final class SelfPurgeCommand implements CliCommand {
                     String name = p.getFileName().toString();
                     if ("versions".equals(name) || "store".equals(name)) continue;
                     if (name.startsWith(".")) continue;
-                    addRow(byPath, p, "Data: " + name, Target.STORE, guards);
+                    // Auth outlives every purge target: removing logins is jk repo logout /
+                    // jk forge logout territory, never implied by "CAS/repos and old engines".
+                    if ("credentials".equals(name) || "repo-credentials".equals(name)) continue;
+                    String what =
+                            "completions".equals(name)
+                                    ? "Shell completions (re-run jk activate)"
+                                    : "Data: " + name;
+                    addRow(byPath, p, what, Target.STORE, guards);
                 }
             } catch (IOException ignored) {
             }
@@ -353,6 +362,7 @@ public final class SelfPurgeCommand implements CliCommand {
                     + "  and  "
                     + pathStyled(lib)
                     + "  (latest plugins)");
+            CliOutput.out("  Kept:  forge/repo credentials  (remove via jk repo logout)");
         }
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");

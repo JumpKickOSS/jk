@@ -153,11 +153,11 @@ jk self purge --store --config
 |------|---------|-------|
 | `--all` | Every target below (default when none named) | — |
 | `--cache` | Action cache (`~/.cache/jk`) | — |
-| `--store` | CAS blobs, repo mirrors, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins) |
-| `--state` | Engine sockets, AOT, builds (`~/.local/state/jk`) | — |
-| `--config` | User config (`~/.config/jk`) | — |
+| `--store` | CAS blobs, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
+| `--state` | Engine sockets, AOT, builds, scratch tmp (`~/.local/state/jk`) | — |
+| `--config` | User config (`~/.config/jk`; under `JK_HOME`, only `config.toml`) | — |
 
-Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install.
+Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them). Purged shell completions come back with `jk activate`.
 
 Utilization bars:
 

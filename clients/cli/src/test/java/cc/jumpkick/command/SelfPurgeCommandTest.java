@@ -197,6 +197,27 @@ class SelfPurgeCommandTest {
         assertThat(roots).noneMatch(p -> p.equals(realBinAbs) || realBinAbs.startsWith(p));
     }
 
+    @Test
+    void store_sweep_keeps_credentials_and_sweeps_completions_in_default_layout() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-cred");
+        Path userHome = root.resolve("userhome");
+        // Default (no JK_HOME) layout: home() == dataDir() == ~/.local/share/jk, where
+        // credentials/, repo-credentials/, and completions/ live as data-dir siblings.
+        JkDirs dirs = JkDirs.of(env(), userHome.toString());
+        Path data = dirs.dataDir();
+        Files.createDirectories(data.resolve("credentials"));
+        Files.createDirectories(data.resolve("repo-credentials"));
+        Files.createDirectories(data.resolve("completions"));
+        Files.createDirectories(data.resolve("store").resolve("sha256"));
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path dataAbs = data.toAbsolutePath().normalize();
+        assertThat(roots).doesNotContain(dataAbs.resolve("credentials"));
+        assertThat(roots).doesNotContain(dataAbs.resolve("repo-credentials"));
+        assertThat(roots).contains(dataAbs.resolve("completions"));
+        assertThat(roots).contains(dataAbs.resolve("store").resolve("sha256"));
+    }
+
     private static java.util.function.Function<String, String> env(String... kv) {
         java.util.Map<String, String> map = new java.util.HashMap<>();
         for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
