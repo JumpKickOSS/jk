@@ -48,16 +48,103 @@ class BoxTableRenderTest {
         assertThat(plain).doesNotContain("ignored");
     }
 
-    @Test
-    void body_lines_share_one_visible_width() {
-        List<String> out = BoxTable.render("T", List.of("A"), List.of(List.of("wide-cell-content"), List.of("x")));
+    /** Visible terminal columns of a line once ANSI chrome is stripped (wcwidth-aware). */
+    private static int visibleColumns(String s) {
+        return new org.jline.utils.AttributedString(stripAnsi(s)).columnLength();
+    }
+
+    private static void assertUniformWidth(List<String> out) {
+        // Title bar included: JK-1437 widens the table when the chip would overhang.
         var widths = out.stream()
-                .skip(1) // title bar has its own chrome accounting
-                .map(BoxTableRenderTest::stripAnsi)
-                .map(String::length)
+                .map(BoxTableRenderTest::visibleColumns)
                 .distinct()
                 .toList();
         assertThat(widths).hasSize(1);
+    }
+
+    @Test
+    void body_lines_share_one_visible_width() {
+        List<String> out = BoxTable.render("T", List.of("A"), List.of(List.of("wide-cell-content"), List.of("x")));
+        assertUniformWidth(out);
+    }
+
+    @Test
+    void plain_mode_ellipsis_cells_stay_aligned() throws Exception {
+        // PlainAscii expands … → ... at the print boundary; render must account for the
+        // expanded width up front so rows with truncated cells keep the rails aligned.
+        withNoAnsi(() -> {
+            List<String> out = BoxTable.render(
+                    "Build history",
+                    List.of("Id", "Project"),
+                    List.of(List.of("1", "very-long-project…"), List.of("2", "ok")));
+            assertUniformWidth(out);
+            assertThat(String.join("\n", out)).contains("very-long-project...");
+            return null;
+        });
+    }
+
+    @Test
+    void cjk_cells_stay_aligned_under_wcwidth() {
+        // CJK chars are 1 UTF-16 unit but 2 terminal columns; width accounting must be
+        // column-aware or the row overflows its rails.
+        List<String> out = BoxTable.render(
+                "T", List.of("Project", "Took"), List.of(List.of("构建工具", "1s"), List.of("app", "2s")));
+        assertUniformWidth(out);
+    }
+
+    @Test
+    void long_title_widens_table_instead_of_overhanging() {
+        List<String> out = BoxTable.render(
+                "Tasks — some:very-long-module-name (deep/relative/path)", List.of("A"), List.of(List.of("x")));
+        assertUniformWidth(out);
+    }
+
+    @Test
+    void zero_rows_render_without_stray_divider() {
+        List<String> out = BoxTable.render("Empty", List.of("A", "B"), List.of());
+        // title + top divider + header + close — no ├┼┤ between header and bottom border
+        assertThat(out).hasSize(4);
+        assertThat(stripAnsi(String.join("\n", out))).doesNotContain("┼");
+        assertUniformWidth(out);
+    }
+
+    @Test
+    void no_ansi_output_is_pure_ascii_for_history_tasks_library_glyphs() throws Exception {
+        // ⊛ (history cancelled), — (Tasks/Library-search titles + n/a durations), … (truncation)
+        // must all be rewritten before the "ASCII-only" plain output leaves the renderer.
+        withNoAnsi(() -> {
+            List<String> out = BoxTable.render(
+                    "Tasks — g:n (path)",
+                    List.of("", "Id", "Took"),
+                    List.of(List.of("⊛", "42", "—"), List.of("✓", "43", "1.2s…")));
+            String joined = String.join("\n", out);
+            assertThat(joined.chars().allMatch(c -> c < 0x80))
+                    .as("plain output must be pure ASCII: %s", joined)
+                    .isTrue();
+            assertUniformWidth(out);
+            return null;
+        });
+    }
+
+    private static <T> T withNoAnsi(java.util.function.Supplier<T> body) throws Exception {
+        cc.jumpkick.config.JkConfig noAnsi = new cc.jumpkick.config.JkConfig(
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.empty(),
+                java.util.Optional.of(true),
+                java.util.Optional.empty(),
+                java.util.Optional.empty());
+        cc.jumpkick.config.Session original = cc.jumpkick.config.SessionContext.current();
+        try {
+            return cc.jumpkick.config.SessionContext.where(original.withConfig(noAnsi), body::get);
+        } finally {
+            cc.jumpkick.config.SessionContext.install(original);
+        }
     }
 
     @Test

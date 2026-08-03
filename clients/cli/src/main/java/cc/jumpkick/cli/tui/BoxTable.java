@@ -75,8 +75,8 @@ public final class BoxTable {
             capColor = t.planBadgeColor();
         }
         String wedge = PipelineWedge.chip(glyph, name, chipStyle, nerdfont) + PipelineWedge.cap(capColor, nerdfont);
-        // " ≡/‼ name " + PUA (nerd) or " ≡/‼ name  " (ansi) — name.length()+5 visible cols
-        int wedgeVisible = name.length() + 5;
+        // " ≡/‼ name " + PUA (nerd) or " ≡/‼ name  " (ansi) — name columns + 5 visible cols
+        int wedgeVisible = visibleWidth(name) + 5;
         int fill = Math.max(1, totalWidth - wedgeVisible - 1); // -1 for the closing ╮
         return wedge + Theme.colorize("─".repeat(fill) + "╮", t.darkGray());
     }
@@ -107,28 +107,47 @@ public final class BoxTable {
             java.util.List<? extends java.util.List<String>> rows,
             boolean warning,
             boolean rowSeparators) {
+        // Plain mode expands some glyphs at the print boundary (… → ..., — → --, □ → [ ]);
+        // transform cells up front so width accounting matches what actually prints.
+        boolean plain = !Theme.active().isAnsi();
         int cols = headers.size();
-        int[] widths = new int[cols];
-        for (int i = 0; i < cols; i++) widths[i] = visibleWidth(cell(headers.get(i)));
+        java.util.List<String> heads = new java.util.ArrayList<>(cols);
+        for (String h : headers) heads.add(plain ? PlainAscii.transform(cell(h)) : cell(h));
+        java.util.List<java.util.List<String>> cells = new java.util.ArrayList<>(rows.size());
         for (var row : rows) {
+            java.util.List<String> r = new java.util.ArrayList<>(cols);
             for (int i = 0; i < cols; i++) {
-                widths[i] = Math.max(widths[i], visibleWidth(cell(i < row.size() ? row.get(i) : "")));
+                String c = cell(i < row.size() ? row.get(i) : "");
+                r.add(plain ? PlainAscii.transform(c) : c);
             }
+            cells.add(r);
+        }
+        int[] widths = new int[cols];
+        for (int i = 0; i < cols; i++) widths[i] = visibleWidth(heads.get(i));
+        for (var r : cells) {
+            for (int i = 0; i < cols; i++) widths[i] = Math.max(widths[i], visibleWidth(r.get(i)));
         }
         int inner = 0;
         for (int w : widths) inner += w + 2;
         inner += cols - 1;
+        // A title chip wider than the body would overhang the right rail; widen the last
+        // column so the top border always closes on the rail.
+        int deficit = minTitleWidth(title, plain) - (inner + 2);
+        if (deficit > 0 && cols > 0) {
+            widths[cols - 1] += deficit;
+            inner += deficit;
+        }
 
         java.util.List<String> out = new java.util.ArrayList<>();
         out.add(warning ? titleBarWarning(title, inner + 2) : titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", widths));
         java.util.List<String> styledHeaders = new java.util.ArrayList<>(cols);
-        for (int i = 0; i < cols; i++) styledHeaders.add(headerCell(cell(headers.get(i))));
+        for (String h : heads) styledHeaders.add(headerCell(h));
         out.add(row(styledHeaders, widths));
-        out.add(divider("├", "┼", "┤", widths));
-        for (int i = 0; i < rows.size(); i++) {
-            out.add(row(rows.get(i), widths));
-            if (rowSeparators && i < rows.size() - 1) {
+        if (!cells.isEmpty()) out.add(divider("├", "┼", "┤", widths));
+        for (int i = 0; i < cells.size(); i++) {
+            out.add(row(cells.get(i), widths));
+            if (rowSeparators && i < cells.size() - 1) {
                 out.add(divider("├", "┼", "┤", widths));
             }
         }
@@ -136,18 +155,34 @@ public final class BoxTable {
         return out;
     }
 
+    /**
+     * Smallest table width (rails included) whose title bar still closes on the right rail:
+     * the wedge, at least one fill dash, and the closing corner. Both plain glyphs ({@code =}
+     * / {@code !}) are one column, so the plain accounting holds for warning chips too.
+     */
+    private static int minTitleWidth(String title, boolean plain) {
+        String name = title == null ? "" : title;
+        if (plain) {
+            // " = Title > " + at least one '-' + closing '+'
+            return PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, name, null).length() + 3;
+        }
+        return visibleWidth(name) + 7; // chip (name + 5 cols) + one '─' + '╮'
+    }
+
     private static String cell(String s) {
         return s == null ? "" : s;
     }
 
     /**
-     * Visible column width, ignoring CSI/OSC sequences so colored cells pad correctly. Public so
-     * custom tables that share this chrome (e.g. {@code jk repo storage}'s spanning utilization
-     * footer) pad with the same rule instead of raw {@code String.length()}.
+     * Visible terminal-column width: CSI/OSC sequences are ignored and each code point counts
+     * its wcwidth (CJK wide chars are 2 columns, astral chars 1 code point each) so colored and
+     * non-ASCII cells pad correctly. Public so custom tables that share this chrome (e.g. {@code
+     * jk repo storage}'s spanning utilization footer) pad with the same rule instead of raw
+     * {@code String.length()}.
      */
     public static int visibleWidth(String s) {
         if (s == null || s.isEmpty()) return 0;
-        return org.jline.utils.AttributedString.stripAnsi(s).length();
+        return new org.jline.utils.AttributedString(org.jline.utils.AttributedString.stripAnsi(s)).columnLength();
     }
 
     private static String divider(String left, String junction, String right, int[] widths) {

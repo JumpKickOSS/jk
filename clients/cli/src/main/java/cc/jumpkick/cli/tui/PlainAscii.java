@@ -22,6 +22,8 @@ import java.nio.charset.StandardCharsets;
  * <tr><td>● (black circle / pulse)</td><td>{@code *}</td></tr>
  * <tr><td>· (middle dot)</td><td>{@code -}</td></tr>
  * <tr><td>□ (unchecked box)</td><td>{@code [ ]}</td></tr>
+ * <tr><td>⊛ (circled asterisk / cancelled)</td><td>{@code *}</td></tr>
+ * <tr><td>— (em dash)</td><td>{@code --}</td></tr>
  * <tr><td>✓ / ✘ / ‼ / ▶ / ■ / ≡</td><td>{@code +} / {@code !} / {@code !} / {@code >} /
  * {@code x} / {@code =}</td></tr>
  * </table>
@@ -67,6 +69,8 @@ public final class PlainAscii {
                 case 0x2261 -> sb.append(Glyphs.MENU_PLAIN); // ≡
                 case 0x25A1 -> sb.append(Glyphs.PENDING_PLAIN); // □ → [ ]
                 case 0x00B7 -> sb.append('-'); // · middle dot (header separators)
+                case 0x229B -> sb.append('*'); // ⊛ circled asterisk (history: cancelled)
+                case 0x2014 -> sb.append("--"); // — em dash (table titles, n/a durations)
                 default -> sb.appendCodePoint(cp);
             }
         }

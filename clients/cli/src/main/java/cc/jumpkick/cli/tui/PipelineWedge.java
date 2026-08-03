@@ -51,7 +51,8 @@ public final class PipelineWedge {
      * {@code " " + message}.
      */
     public static String plainWedge(String asciiIcon, String command, String message) {
-        String cmd = command == null ? "" : command;
+        // Titles can carry Unicode too (em dash in "Tasks — g:n"); ASCII-clean the whole wedge.
+        String cmd = PlainAscii.transform(command == null ? "" : command);
         String icon = asciiIcon == null || asciiIcon.isEmpty() ? Glyphs.BULLET_PLAIN : asciiIcon;
         String head = " " + icon + " " + cmd + " >";
         if (message == null || message.isEmpty()) return head;
