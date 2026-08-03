@@ -27,7 +27,7 @@ public final class LibraryCatalog {
 
     private static final String BUNDLED_RESOURCE = "/cc/jumpkick/library/libraries.toml";
 
-    /** Basename under {@link JkDirs#store()}. */
+    /** Basename under {@link JkDirs#store()} (and legacy {@code cache/} until migration). */
     public static final String DOWNLOADED_BASENAME = "libs.global.toml";
 
     private static volatile LibraryCatalog bundled;
@@ -43,9 +43,13 @@ public final class LibraryCatalog {
         return JkDirs.home().resolve("libs.toml");
     }
 
-    /** Downloaded registry mirror: {@code <store>/libs.global.toml}. */
+    /**
+     * Downloaded registry mirror: {@code <store>/libs.global.toml} (falls back to the pre-split
+     * {@code ~/.cache/jk/} path until {@link cc.jumpkick.util.StoreMigration} moves it; the
+     * fallback goes away with that shim — delete after 0.11, JK-1425).
+     */
     public static Path downloadedFile() {
-        return JkDirs.store().resolve(DOWNLOADED_BASENAME);
+        return cc.jumpkick.util.StoreMigration.resolveForRead(DOWNLOADED_BASENAME);
     }
 
     /** ETag sidecar next to {@code cacheFile} for conditional-GET revalidation. */

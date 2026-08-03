@@ -19,6 +19,11 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
+        // Relocate the fetched-artifact set out of cache/ if this is the first run since the split.
+        // A directory rename, so ~1.6 GB moves in milliseconds; never throws, and anything left
+        // behind is still found via StoreMigration.resolveForRead. Compatibility shim for installs
+        // upgrading from pre-2026-07-29 builds — delete after 0.11 (JK-1425).
+        cc.jumpkick.util.StoreMigration.migrateIfNeeded();
         // --job: one-shot child — serve exactly one request over stdio, then exit.
         if (args.length > 0 && "--job".equals(args[0])) {
             System.exit(runJob());
