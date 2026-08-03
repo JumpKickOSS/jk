@@ -16,7 +16,7 @@ import java.util.List;
 
 /**
  * {@code jk history} — browse and prune the persisted build-history journal
- * ({@code ~/.jk/state/builds/journal/}). The journal is owned by the engine; these commands are thin
+ * ({@code ~/.local/state/jk/builds/journal/}). The journal is owned by the engine; these commands are thin
  * RPCs (spawning the engine if it isn't running), rendering the flat JSONL the engine streams back.
  */
 public final class HistoryCommand extends GroupCommand {
@@ -113,29 +113,35 @@ public final class HistoryCommand extends GroupCommand {
                 return 0;
             }
             long now = System.currentTimeMillis();
+            List<List<String>> rows = new java.util.ArrayList<>();
             for (String e : entries) {
                 boolean success = Jsonl.bool(e, "success", false);
                 boolean cancelled = Jsonl.bool(e, "cancelled", false);
-                String id = Jsonl.str(e, "id");
                 String label = truncate(label(Jsonl.str(e, "coord"), Jsonl.str(e, "dir")), 34);
                 String kind = Jsonl.str(e, "kind");
                 long failed = Jsonl.longValue(e, "failedModules", 0);
-                String note = failed > 0 ? "  (" + failed + " failed)" : "";
                 long savedMillis = Jsonl.longValue(e, "savedMillis", -1);
                 long estMillis = Jsonl.longValue(e, "estimatedUncachedMillis", -1);
                 String saved = savedMillis >= 0 && estMillis > 0
-                        ? "  saved " + duration(savedMillis) + " (" + pctString(savedMillis, estMillis) + ")"
+                        ? duration(savedMillis) + " (" + pctString(savedMillis, estMillis) + ")"
                         : "";
-                CliOutput.out(String.format(
-                        "%s  %-20s  %-34s  %-6s  %8s  %s%s%s",
+                String note = failed > 0 ? failed + " failed" : "";
+                rows.add(List.of(
                         glyph(success, cancelled),
-                        id,
+                        String.valueOf(Jsonl.str(e, "id")),
                         label,
                         kind == null ? "" : kind,
                         duration(Jsonl.longValue(e, "millis", -1)),
                         ago(Jsonl.longValue(e, "finishedAt", 0), now),
                         saved,
                         note));
+            }
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+            for (String line : cc.jumpkick.cli.tui.BoxTable.render(
+                    "Build history",
+                    List.of("", "Id", "Project", "Kind", "Took", "When", "Saved", "Notes"),
+                    rows)) {
+                CliOutput.out(line);
             }
             return 0;
         }
@@ -184,6 +190,8 @@ public final class HistoryCommand extends GroupCommand {
             }
             boolean success = Jsonl.bool(record, "success", false);
             boolean cancelled = Jsonl.bool(record, "cancelled", false);
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+            CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Build " + Jsonl.str(record, "id")));
             CliOutput.out(glyph(success, cancelled) + " " + Jsonl.str(record, "id"));
             CliOutput.out("  status:   " + outcome(success, cancelled) + " (exit "
                     + Jsonl.longValue(record, "exitCode", 0) + ")");
@@ -280,7 +288,7 @@ public final class HistoryCommand extends GroupCommand {
             }
             String id = in.positionals().get(0);
             if (EngineClient.historyDelete(EnginePaths.current(), id)) {
-                CliOutput.out("Deleted build " + id);
+                cc.jumpkick.cli.tui.CommandWedge.printOk("History", "Deleted build " + id);
                 return 0;
             }
             CliOutput.err("No such build: " + id);

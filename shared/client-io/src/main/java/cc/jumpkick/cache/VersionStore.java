@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Side-by-side materialized jk versions under {@code ~/.jk/versions/<v>/} (client, engine jar,
+ * Side-by-side materialized jk versions under {@code ~/.local/share/jk/versions/<v>/} (client, engine jar,
  * {@code manifest.toml}). Immutable bytes live in {@link Cas}; materialization is copy-then-atomic-
  * rename (no manifest → incomplete, ignored by readers).
  */
@@ -30,7 +30,7 @@ public final class VersionStore {
         this.root = versionsDir;
     }
 
-    /** Rooted at the live {@code ~/.jk/versions} (honors {@code JK_HOME}). */
+    /** Rooted at the live {@code ~/.local/share/jk/versions} (honors {@code JK_HOME}). */
     public static VersionStore current() {
         return new VersionStore(JkDirs.versions());
     }
@@ -92,15 +92,26 @@ public final class VersionStore {
      */
     private static void deleteEngineAotFiles(Path aotDir, String v) {
         String prefix = "engine-" + v + "-";
+        List<String> removed = new ArrayList<>();
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
             for (Path p : entries) {
                 String name = p.getFileName().toString();
                 if (name.startsWith(prefix) && name.substring(prefix.length()).matches("[0-9a-f]{16}\\..*")) {
+                    if (name.endsWith(".aot")) removed.add(name);
+                    else if (name.endsWith(".noaot") && name.length() > ".noaot".length()) {
+                        // engine uses engine-<ver>-<key>.noaot (no ".aot" in the stem)
+                        String stem = name.substring(0, name.length() - ".noaot".length());
+                        removed.add(stem.endsWith(".aot") ? stem : stem + ".aot");
+                    }
                     Files.deleteIfExists(p);
                 }
             }
         } catch (IOException ignored) {
             // best-effort maintenance
+        }
+        if (!removed.isEmpty()) {
+            cc.jumpkick.util.AotManifest.remove(aotDir, removed);
+            cc.jumpkick.util.AotManifest.reconcile(aotDir);
         }
     }
 

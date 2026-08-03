@@ -26,7 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * wall-time breakdown of warm Quarkus locks (graph vs materialize). Uses the developer's
- * {@code ~/.jk/cache} so re-runs measure CAS-local materialize, not cold downloads.
+ * {@code ~/.cache/jk} so re-runs measure CAS-local materialize, not cold downloads.
  */
 @Tag("integration")
 class QuarkusLockPhaseTimingTest {

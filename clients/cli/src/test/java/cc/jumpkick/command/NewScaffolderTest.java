@@ -11,6 +11,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import cc.jumpkick.scaffold.NewInputs;
 
 @Tag("integration")
 class NewScaffolderTest {

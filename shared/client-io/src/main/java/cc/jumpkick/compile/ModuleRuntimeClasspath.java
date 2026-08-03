@@ -5,6 +5,7 @@ import cc.jumpkick.cache.Cas;
 import cc.jumpkick.config.JkBuildParser;
 import cc.jumpkick.config.WorkspaceClasspath;
 import cc.jumpkick.config.WorkspaceLocator;
+import cc.jumpkick.layout.Languages;
 import cc.jumpkick.lock.LockPaths;
 import cc.jumpkick.lock.Lockfile;
 import cc.jumpkick.lock.LockfileReader;
@@ -55,6 +56,9 @@ public final class ModuleRuntimeClasspath {
 
         LinkedHashSet<String> roots = new LinkedHashSet<>();
         roots.addAll(ClasspathResolver.declaredExternalRoots(project, ClasspathResolver.RUNTIME));
+        // Language runtimes are lock-injected (LockOrchestrator) but not always declared in
+        // jk.toml — seed them so assembly/fat jars nest groovy/kotlin-stdlib (JK-1173).
+        seedLanguageRuntimeRoots(moduleDir, project, roots);
         for (JkBuild sib : siblingBuilds(moduleDir, project, siblings.siblingCoords())) {
             roots.addAll(
                     ClasspathResolver.declaredExternalRoots(sib, EnumSet.of(Scope.EXPORT, Scope.MAIN, Scope.RUNTIME)));
@@ -69,6 +73,17 @@ public final class ModuleRuntimeClasspath {
     /** Convenience when the lock path should be derived via {@link LockPaths#lockFile}. */
     public static List<Path> jars(Path moduleDir, JkBuild project, Cas cas) throws IOException {
         return jars(moduleDir, project, LockPaths.lockFile(moduleDir), cas);
+    }
+
+    /**
+     * Seed lock GAs for language runtimes when the module uses that language (inject-only deps).
+     * Missing lock rows are skipped by {@link ClasspathResolver#classpathClosure}.
+     */
+    static void seedLanguageRuntimeRoots(Path moduleDir, JkBuild project, Set<String> roots) {
+        if (project == null || roots == null) return;
+        Languages langs = Languages.resolve(project.project(), moduleDir);
+        if (langs.groovy()) roots.add("org.apache.groovy:groovy");
+        if (langs.kotlin()) roots.add("org.jetbrains.kotlin:kotlin-stdlib");
     }
 
     static List<JkBuild> siblingBuilds(Path moduleDir, JkBuild project, List<String> siblingCoords) throws IOException {

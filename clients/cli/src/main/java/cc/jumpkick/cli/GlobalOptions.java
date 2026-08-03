@@ -12,7 +12,7 @@ import java.util.List;
  * cc.jumpkick.model.command.Invocation} via {@link #from(cc.jumpkick.model.command.Invocation)}.
  *
  * <p>Precedence for resolving each setting: explicit flag &gt; env var &gt; project {@code jk.toml}
- * {@code [config]} &gt; user-global {@code ~/.jk/config.toml} {@code [config]}. There is no {@code
+ * {@code [config]} &gt; user-global {@code ~/.config/jk/config.toml} {@code [config]}. There is no {@code
  * /etc/jk} system layer and jk never reads {@code ~/.config} — see {@link
  * cc.jumpkick.config.ConfigSources}.
  */
@@ -21,6 +21,12 @@ public final class GlobalOptions {
     public boolean verbose;
     public String color;
     public boolean offline;
+
+    /**
+     * Hidden global {@code -y}/{@code --yes}: skip y/n confirmation prompts for this invocation.
+     * Not shown in help; accepted on every command.
+     */
+    public boolean yes;
 
     /** {@code -F}/{@code --force}: bypass all of jk's caching for this invocation. */
     public boolean force;
@@ -148,6 +154,9 @@ public final class GlobalOptions {
         g.verbose = in.isSet("verbose") || cfg.verboseOr(false);
         g.color = in.value("color").orElse(null);
         g.offline = in.isSet("offline") || cfg.offlineOr(false);
+        g.yes = in.isSet("yes");
+        // Confirm prompts read this for the rest of the command.
+        cc.jumpkick.cli.tui.Confirm.setAssumeYes(g.yes);
         g.force = in.isSet("force") || cfg.forceOr(false);
         // rebuild is CLI --redo only (not implied here from force; force is a separate flag).
         g.rebuild = in.isSet("redo") || cfg.rebuild().orElse(false);
@@ -230,16 +239,15 @@ public final class GlobalOptions {
      */
     public static List<Opt> globalOpts() {
         return List.of(
-                Opt.flag("Bypass caching and redo this operation, re-fetching deps too", "-F", "--force"),
-                Opt.flag("Redo this build's work (skip caches) without re-fetching deps", "-r", "--redo")
-                        .alias("--rebuild"),
+                Opt.flag("Redo work and re-fetch deps (bypass caches)", "-F", "--force"),
+                Opt.flag("Redo work without re-fetching deps", "-r", "--redo").alias("--rebuild"),
                 Opt.value("<FORMAT>", "Output format: text (default), or jsonl", "-O", "--output"),
                 Opt.flag("Suppress informational output", "-q", "--quiet"),
                 Opt.flag("Print additional diagnostic output", "-v", "--verbose"),
                 Opt.flag("Disable all progress bars and spinners", "--no-progress"),
                 Opt.flag("Skip writing target/jk-chrome-profile.json", "--no-timeline"),
                 Opt.flag("Disable all ANSI/color/Unicode; ASCII-only output", "--no-ansi"),
-                Opt.flag("Disable OSC (window title, taskbar progress, notifications)", "--no-osc"),
+                Opt.flag("Disable OSC (title, taskbar, notifications)", "--no-osc"),
                 Opt.flag("Always notify when a build finishes", "--notify"),
                 Opt.flag("Never send desktop notifications for this run", "--no-notify"),
                 Opt.value("<WHEN>", "When to colorize output: auto, always, never", "--color"),
@@ -247,7 +255,7 @@ public final class GlobalOptions {
                 Opt.flag("Skip jk.toml discovery; use defaults", "--no-config"),
                 Opt.value("<DIR>", "Change to this directory before running", "-C", "--dir")
                         .alias("--directory"),
-                Opt.value("<N>", "Concurrent modules/workers: 0=max (default), 1=serial, N=cap", "-j", "--jobs"),
+                Opt.value("<N>", "Module/worker concurrency (0=max, 1=serial)", "-j", "--jobs"),
                 Opt.value("<PCT>", "Worker-JVM max heap as % of RAM", "--ram-percent")
                         .alias("--max-ram-percent"),
                 Opt.value("<spec>", "JDK for this run; overrides project pins", "--jdk"),
@@ -255,6 +263,8 @@ public final class GlobalOptions {
                 Opt.value("<ARG>", "Extra worker-JVM flag (repeatable)", "--jvm-arg")
                         .repeat(),
                 Opt.flag("Disable network access for this run", "--offline"),
+                // Hidden: assume-yes for every Confirm prompt (also covers former per-command -y/--yes).
+                Opt.flag("Assume yes for all confirmation prompts", "-y", "--yes").hide(),
                 Opt.flag("Print version information and exit", "-V", "--version"),
                 Opt.flag("Show this help message and exit", "-h", "--help"));
     }

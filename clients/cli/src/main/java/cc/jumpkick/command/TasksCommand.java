@@ -50,7 +50,7 @@ public final class TasksCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "List pipeline tasks; show output paths; inspect a step (Mill resolve-lite)";
+        return "List tasks, output paths, or inspect a step";
     }
 
     @Override
@@ -117,29 +117,31 @@ public final class TasksCommand implements CliCommand {
             return Exit.CONFIG;
         }
         boolean multi = modules.size() > 1;
+        boolean first = true;
         for (var e : modules.entrySet()) {
+            String title = "Tasks";
             if (multi) {
-                String label = e.getValue().project().group() + ":"
-                        + e.getValue().project().name();
-                CliOutput.out("# " + label + "  (" + rel(startDir, e.getKey()) + ")");
+                title = "Tasks — " + e.getValue().project().group() + ":"
+                        + e.getValue().project().name() + " (" + rel(startDir, e.getKey()) + ")";
             }
-            CliOutput.out(String.format("%-28s %-10s %s", "NAME", "PHASE", "DESCRIPTION"));
+            if (!first) CliOutput.out("");
+            first = false;
+            List<List<String>> rows = new java.util.ArrayList<>();
             for (TaskCatalog.TaskDef t : TaskCatalog.buildTasks()) {
-                CliOutput.out(String.format("%-28s %-10s %s", t.name(), t.phase(), t.description()));
+                rows.add(List.of(t.name(), t.phase(), t.description()));
             }
-            List<String> logicTasks = BuildLogicTaskScan.discoverNames(e.getKey());
-            if (!logicTasks.isEmpty()) {
-                CliOutput.out("");
-                CliOutput.out("# project build logic (.jk-build SPI / *Build — offline scan)");
-                for (String name : logicTasks) {
-                    CliOutput.out(String.format(
-                            "%-28s %-10s %s",
-                            "build-logic:" + name,
-                            "logic",
-                            "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
-                }
+            // Project build logic (.jk-build SPI / *Build — offline scan) rides the same table.
+            for (String name : BuildLogicTaskScan.discoverNames(e.getKey())) {
+                rows.add(List.of(
+                        "build-logic:" + name,
+                        "logic",
+                        "Project build-logic task (anchor via SPI or AFTER_RESOURCES for *Build)"));
             }
-            if (multi) CliOutput.out("");
+            cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+            for (String line :
+                    cc.jumpkick.cli.tui.BoxTable.render(title, List.of("Name", "Phase", "Description"), rows)) {
+                CliOutput.out(line);
+            }
         }
         // Table is the wedge substitute; tip is post-table detail.
         CliOutput.err("tip: jk show package-jar · jk inspect compile-java · jk tasks show <step>");

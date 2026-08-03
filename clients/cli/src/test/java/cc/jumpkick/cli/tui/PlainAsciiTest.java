@@ -34,6 +34,8 @@ class PlainAsciiTest {
         assertThat(PlainAscii.transform("≡ menu")).isEqualTo("= menu");
         assertThat(PlainAscii.transform("□")).isEqualTo("[ ]");
         assertThat(PlainAscii.transform("·")).isEqualTo("-");
+        assertThat(PlainAscii.transform("⊛ cancelled")).isEqualTo("* cancelled");
+        assertThat(PlainAscii.transform("Tasks — g:n")).isEqualTo("Tasks -- g:n");
     }
 
     @Test

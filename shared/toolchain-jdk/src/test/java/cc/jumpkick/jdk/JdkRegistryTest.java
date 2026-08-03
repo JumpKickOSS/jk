@@ -44,6 +44,7 @@ class JdkRegistryTest {
         Files.writeString(macHome.resolve("bin").resolve("java"), "#!/fake");
         Files.writeString(macHome.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(macHome.resolve("release"), "JAVA_VERSION=\"21\"\n");
+        JdkOwnership.mark(bundle);
 
         JdkRegistry registry = isolatedRegistry(tempDir);
         assertThat(registry.list()).singleElement().satisfies(jdk -> {
@@ -296,6 +297,7 @@ class JdkRegistryTest {
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"" + implementor + "\"\n");
+        JdkOwnership.mark(home);
     }
 
     private static void makeGraalvmInstall(Path home, String version) throws IOException {
@@ -307,5 +309,6 @@ class JdkRegistryTest {
                 home.resolve("release"),
                 "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Oracle Corporation\"\n"
                         + "IMPLEMENTOR_VERSION=\"Oracle GraalVM " + version + "\"\n");
+        JdkOwnership.mark(home);
     }
 }

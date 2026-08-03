@@ -66,6 +66,51 @@ class PluginAotTest {
         assertThat(PluginAot.jdkId(tmp.resolve("no-such-jdk"))).isNull(); // no release file
     }
 
+    @Test
+    void hostEligible_wraps_jdk_id_and_eligibility() throws IOException {
+        Path jdk = Files.createDirectories(tmp.resolve("he-jdk25"));
+        Files.writeString(jdk.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"25.0.3\"\n");
+        assertThat(PluginAot.hostEligible(jdk)).isTrue();
+
+        Path old = Files.createDirectories(tmp.resolve("he-jdk21"));
+        Files.writeString(old.resolve("release"), "IMPLEMENTOR=\"Eclipse Adoptium\"\nJAVA_VERSION=\"21.0.2\"\n");
+        assertThat(PluginAot.hostEligible(old)).isFalse();
+
+        assertThat(PluginAot.hostEligible(null)).isFalse();
+        assertThat(PluginAot.hostEligible(tmp.resolve("he-none"))).isFalse();
+    }
+
+    @Test
+    void usableCache_requires_a_non_empty_regular_file() throws IOException {
+        Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
+        assertThat(PluginAot.usableCache(cache)).isFalse(); // missing
+        Files.createFile(cache);
+        assertThat(PluginAot.usableCache(cache)).isFalse(); // zero-byte truncation leftover
+        Files.writeString(cache, "aot");
+        assertThat(PluginAot.usableCache(cache)).isTrue();
+        assertThat(PluginAot.usableCache(null)).isFalse();
+        assertThat(PluginAot.usableCache(tmp)).isFalse(); // directory
+    }
+
+    @Test
+    void sweep_prefix_is_the_full_tool_tag_not_up_to_the_first_hyphen() throws Exception {
+        Path dir = Files.createDirectories(tmp.resolve("aot-prefix"));
+        long day = 24L * 60 * 60 * 1_000;
+        // Six old java-runner keys: a first-hyphen prefix ("java-") would sweep them as
+        // overflow of the java-compiler pool; the full tag ("java-compiler-") must not.
+        Path[] runner = new Path[6];
+        for (int i = 0; i < 6; i++) {
+            runner[i] = Files.writeString(dir.resolve("java-runner-000000000000000" + i + ".aot"), "r" + i);
+            Files.setLastModifiedTime(runner[i], FileTime.fromMillis(System.currentTimeMillis() - (i + 1) * day));
+        }
+        Path cache = dir.resolve("java-compiler-0000000000000000.aot");
+        PluginAot.trainAsync(
+                "test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "echo trained > '" + aotOutput + "'"));
+        waitUntil(Duration.ofSeconds(10), () -> Files.exists(cache));
+        Thread.sleep(100); // let the publish sweep finish
+        for (Path p : runner) assertThat(p).exists();
+    }
+
     // ---- training lifecycle -------------------------------------------------------------------
 
     private static void waitUntil(Duration timeout, BooleanSupplier cond) throws InterruptedException {
@@ -124,6 +169,33 @@ class PluginAotTest {
         PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "exit 1"));
         waitUntil(Duration.ofSeconds(10), () -> Files.exists(PluginAot.noaotMarker(cache)));
         assertThat(cache).doesNotExist();
+    }
+
+    @Test
+    void trainer_timeout_leaves_no_sticky_marker_and_backs_off_via_the_claim_file() throws Exception {
+        Path cache = Files.createDirectories(tmp.resolve("aot4")).resolve("javac-timeout0000000000.aot");
+        Path claim = cache.resolveSibling(cache.getFileName() + ".training");
+        long prevTimeout = PluginAot.trainingTimeoutMillis;
+        PluginAot.trainingTimeoutMillis = 200;
+        try {
+            PluginAot.trainAsync("test", cache, (aotOutput, scratch) -> List.of("bash", "-c", "sleep 30"));
+            long claimedAt = Files.getLastModifiedTime(claim).toMillis();
+            // The timeout branch refreshes the claim's mtime — the observable "overran" signal.
+            waitUntil(Duration.ofSeconds(10), () -> {
+                try {
+                    return Files.getLastModifiedTime(claim).toMillis() > claimedAt;
+                } catch (IOException e) {
+                    return false;
+                }
+            });
+            // One transient overrun must NOT permanently disable AOT for the key: no sticky
+            // .noaot — only the (staleness-bounded) claim file paces the retry.
+            assertThat(PluginAot.noaotMarker(cache)).doesNotExist();
+            assertThat(cache).doesNotExist();
+            assertThat(claim).exists();
+        } finally {
+            PluginAot.trainingTimeoutMillis = prevTimeout;
+        }
     }
 
     @Test

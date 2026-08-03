@@ -22,7 +22,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 
 /**
- * {@code jk self} — self-update: download a verified release into {@code ~/.jk/versions/<v>/},
+ * {@code jk self} — self-update: download a verified release into {@code ~/.local/share/jk/versions/<v>/},
  * flip {@code bin/jk}, start the new engine (graceful drain). {@code --now} stops the old engine
  * first.
  */
@@ -35,17 +35,17 @@ public final class SelfCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage this jk installation (update)";
+        return "Manage this jk installation (update, purge)";
     }
 
     @Override
     public List<CliCommand> subcommands() {
-        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub());
+        return List.of(new UpdateSub(), new MaterializeSub(), new SetupTerminalSub(), new SelfPurgeCommand());
     }
 
     /**
      * {@code jk self setup-terminal} — detect Nerd Font capability and persist {@code
-     * [global].nerdfont} in {@code ~/.jk/config.toml}. Also invoked from install.sh.
+     * [global].nerdfont} in {@code ~/.config/jk/config.toml}. Also invoked from install.sh.
      */
     static final class SetupTerminalSub implements CliCommand {
 
@@ -56,7 +56,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Detect terminal/Nerd Font support and write [global].nerdfont in ~/.jk/config.toml";
+            return "Detect Nerd Fonts; write [global].nerdfont";
         }
 
         @Override
@@ -110,7 +110,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Materialize versions/<running> from local artifacts (install-time seam)";
+            return "Materialize versions/<running> from local artifacts";
         }
 
         @Override
@@ -137,6 +137,19 @@ public final class SelfCommand extends GroupCommand {
             }
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
+            Path distLib = distLibFor(client);
+            if (distLib != null) {
+                // Dev dogfood (JK-1412): the client is a Gradle start script whose classpath is
+                // "$APP_HOME/../lib/*.jar". Alone in the store it cannot start — sync its dist
+                // jars beside it and repoint PATH entrypoints as symlinks (a hardlinked script
+                // resolves APP_HOME to the bin dir of the LINK and dies the same way).
+                syncDistLibs(distLib, m.root().resolve("lib"));
+                Path storeClient = m.clientBin().orElse(null);
+                if (storeClient != null) {
+                    repointDevScript(JkDirs.binDir().resolve("jk"), storeClient);
+                    repointDevScript(JkDirs.binDir().resolve("jkx"), storeClient);
+                }
+            }
             CliOutput.out("materialized " + m.root());
             // Best-effort install-time terminal probe; never fail materialize.
             try {
@@ -145,6 +158,55 @@ public final class SelfCommand extends GroupCommand {
                 // ignore
             }
             return 0;
+        }
+
+        /**
+         * The installDist {@code lib/} sibling when {@code client} is a start script inside a
+         * {@code bin/} + {@code lib/} dist tree, else {@code null} (native image client).
+         */
+        static Path distLibFor(Path client) {
+            try {
+                if (client == null || !Files.isRegularFile(client)) return null;
+                Path bin = client.toAbsolutePath().normalize().getParent();
+                if (bin == null || !"bin".equals(String.valueOf(bin.getFileName()))) return null;
+                Path lib = bin.resolveSibling("lib");
+                if (!Files.isDirectory(lib)) return null;
+                byte[] head = new byte[2];
+                try (var is = Files.newInputStream(client)) {
+                    if (is.read(head) < 2) return null;
+                }
+                return (head[0] == '#' && head[1] == '!') ? lib : null;
+            } catch (IOException e) {
+                return null;
+            }
+        }
+
+        /** Copy the dist client jars into the store version's lib (engine jar name never clashes). */
+        static void syncDistLibs(Path distLib, Path storeLib) throws IOException {
+            Files.createDirectories(storeLib);
+            try (var jars = Files.newDirectoryStream(distLib, "*.jar")) {
+                for (Path jar : jars) {
+                    Files.copy(jar, storeLib.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+        }
+
+        /**
+         * Dev-only entrypoint flip: symlink so the start script resolves {@code APP_HOME} to the
+         * store version dir (where its lib now lives). Release/native installs keep the
+         * hard-link/copy policy in {@link UpdateSub}. Best-effort — a failed link leaves the
+         * existing entrypoint alone.
+         */
+        private static void repointDevScript(Path pointer, Path storeClient) {
+            try {
+                Files.createDirectories(pointer.getParent());
+                Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
+                Files.deleteIfExists(tmp);
+                Files.createSymbolicLink(tmp, storeClient);
+                Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException | UnsupportedOperationException e) {
+                CliOutput.out("note: could not repoint " + pointer + " (" + e.getMessage() + ")");
+            }
         }
     }
 
@@ -157,7 +219,7 @@ public final class SelfCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Update jk to the latest (or a specific) release, taking over without killing builds";
+            return "Update jk to latest (or a given) release";
         }
 
         @Override
@@ -165,7 +227,7 @@ public final class SelfCommand extends GroupCommand {
             // No --version option: the global -V/--version flag owns that name (the dispatcher
             // rejects duplicates), so the target rides as a positional.
             return List.of(
-                    Opt.flag("Stop the running engine (and its jobs) immediately instead of draining.", "--now"));
+                    Opt.flag("Stop the engine immediately (no drain)", "--now"));
         }
 
         @Override
@@ -288,12 +350,11 @@ public final class SelfCommand extends GroupCommand {
         }
 
         /**
-         * Flip {@code ~/.jk/bin/jk} to the materialized client; {@code jkx} follows. Pointer
-         * strategy is a ladder: symlink (POSIX; on Windows it needs Developer Mode /
-         * SeCreateSymbolicLinkPrivilege) → hard link (NTFS allows it unprivileged, same-volume
-         * only — bin/ and versions/ share ~/.jk — and it costs zero disk) → byte copy (last
-         * resort: cross-volume {@code JK_INSTALL_DIR}, FAT-family filesystems). Every rung stages
-         * at a temp sibling and renames into place, so readers never see a partial pointer.
+         * Flip PATH entrypoints under {@link JkDirs#binDir()} to the materialized client;
+         * {@code jkx} follows. Prefer a hard link (zero disk; survives deletion of the
+         * versions tree while the inode remains), then a real byte copy. Symlinks are not
+         * used: they dangle when product data is wiped and defeat the "CLI outlives state"
+         * layout. Stages at a temp sibling and renames into place.
          */
         private static void flipPointer(VersionStore.Materialized m) throws IOException {
             Path client = m.clientBin()
@@ -308,13 +369,9 @@ public final class SelfCommand extends GroupCommand {
             Path tmp = pointer.resolveSibling("." + pointer.getFileName() + "-new");
             Files.deleteIfExists(tmp);
             try {
-                Files.createSymbolicLink(tmp, client);
-            } catch (IOException | UnsupportedOperationException noSymlink) {
-                try {
-                    Files.createLink(tmp, client);
-                } catch (IOException | UnsupportedOperationException noHardlink) {
-                    Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING);
-                }
+                Files.createLink(tmp, client);
+            } catch (IOException | UnsupportedOperationException noHardlink) {
+                Files.copy(client, tmp, StandardCopyOption.REPLACE_EXISTING);
             }
             try {
                 Files.move(tmp, pointer, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);

@@ -61,7 +61,7 @@ public final class StatusCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Show only machine-wide build totals and cache (skip project sections).", "--global"));
+        return List.of(Opt.flag("Only machine-wide totals and cache", "--global"));
     }
 
     @Override

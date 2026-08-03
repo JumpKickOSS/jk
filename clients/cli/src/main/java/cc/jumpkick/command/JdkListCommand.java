@@ -66,7 +66,7 @@ public final class JdkListCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.flag(
-                        "Also list downloadable JDKs from the JetBrains feed (including newer point releases of installed majors).",
+                        "Also list downloadable JDKs from the feed",
                         "--all"),
                 Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
                         .hide(),
@@ -510,7 +510,7 @@ public final class JdkListCommand implements CliCommand {
         var sb = new StringBuilder(bar);
         for (int i = 0; i < HEADERS.length; i++) {
             sb.append(" ");
-            sb.append(pad(HEADERS[i], widths[i], i == 0));
+            sb.append(cc.jumpkick.cli.tui.BoxTable.headerCell(pad(HEADERS[i], widths[i], i == 0)));
             sb.append(" ");
             sb.append(bar);
         }

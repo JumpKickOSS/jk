@@ -42,6 +42,7 @@ class IdeCommandTest {
         assertThat(ws.resolve("widget.iml")).exists();
         assertThat(ws.resolve(".vscode/settings.json")).exists();
         assertThat(ws.resolve(".classpath")).exists();
+        assertBspConnection(ws);
     }
 
     @Test
@@ -68,6 +69,7 @@ class IdeCommandTest {
         assertThat(ws.resolve(".idea/misc.xml")).exists();
         assertThat(Files.exists(ws.resolve(".vscode"))).isFalse();
         assertThat(Files.exists(ws.resolve(".classpath"))).isFalse();
+        assertBspConnection(ws);
     }
 
     @Test
@@ -90,6 +92,16 @@ class IdeCommandTest {
 
         assertThat(ws.resolve(".vscode/settings.json")).exists();
         assertThat(Files.exists(ws.resolve(".idea"))).isFalse();
+        assertBspConnection(ws);
+    }
+
+    private static void assertBspConnection(Path ws) throws IOException {
+        Path bsp = ws.resolve(".bsp/jk.json");
+        assertThat(bsp).exists();
+        String json = Files.readString(bsp);
+        assertThat(json).contains("\"bspVersion\"");
+        assertThat(json).contains("\"bsp\"");
+        assertThat(json).contains("\"serve\"");
     }
 
     private static Path simpleProject(Path tmp) throws IOException {

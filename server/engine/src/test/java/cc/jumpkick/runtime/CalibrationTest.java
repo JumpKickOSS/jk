@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.within;
 
 import cc.jumpkick.model.JkVersion;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -72,6 +73,83 @@ class CalibrationTest {
         Path f = dir.resolve("calibration.toml");
         Calibration.writeTo(f, Calibration.testInstance(42.5, true, "0.0.0-OLD", NOW));
         assertThat(Calibration.readFrom(f, NOW).present()).isFalse();
+    }
+
+    @Test
+    void language_buckets_seed_compile_priors_when_mean_is_cold(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        Files.writeString(
+                f,
+                """
+                # host-metrics
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                measured = true
+                jk-version = "%s"
+                updated = %d
+
+                [mean.by_language.java]
+                fixture_wall_ms = 2000
+                compile_per_source_ms = 22
+                [mean.by_language.kotlin]
+                fixture_wall_ms = 4000
+                compile_per_source_ms = 40
+                """
+                        .formatted(JkVersion.VERSION, NOW));
+        Calibration read = Calibration.readFrom(f, NOW);
+        assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(22L);
+        assertThat(read.compilePerSourceMs("compile-kotlin")).isEqualTo(40L);
+    }
+
+    @Test
+    void language_bucket_poison_values_are_rejected(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        Files.writeString(
+                f,
+                """
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                measured = true
+                jk-version = "%s"
+                updated = %d
+
+                [mean.by_language.java]
+                compile_per_source_ms = 5291
+                """
+                        .formatted(JkVersion.VERSION, NOW));
+        Calibration read = Calibration.readFrom(f, NOW);
+        // Falls back to product baseline × scale (not the multi-second poison).
+        assertThat(read.compilePerSourceMs("compile-java")).isLessThan(500L);
+    }
+
+    @Test
+    void language_bucket_type_mismatch_never_poisons_the_whole_read(@TempDir Path dir) throws Exception {
+        Path f = dir.resolve("host-metrics.toml");
+        // Float and string values in by_language buckets (tomlj getLong throws on both):
+        // the bad bucket is skipped, the float bucket folds, and calibration stays present.
+        Files.writeString(
+                f,
+                """
+                [calibration]
+                schema = 4
+                ms-per-weight = 150
+                measured = true
+                jk-version = "%s"
+                updated = %d
+
+                [mean.by_language.java]
+                compile_per_source_ms = 22.5
+                [mean.by_language.kotlin]
+                compile_per_source_ms = "oops"
+                """
+                        .formatted(JkVersion.VERSION, NOW));
+        Calibration read = Calibration.readFrom(f, NOW);
+        assertThat(read.present()).isTrue();
+        assertThat(read.measured()).isTrue();
+        assertThat(read.compilePerSourceMs("compile-java")).isEqualTo(23L); // 22.5 rounded up
+        assertThat(read.compilePerSourceMs("compile-kotlin")).isLessThan(500L); // baseline fallback
     }
 
     @Test

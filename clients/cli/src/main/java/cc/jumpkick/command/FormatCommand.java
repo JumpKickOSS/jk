@@ -49,7 +49,7 @@ public final class FormatCommand implements CliCommand {
                 Opt.value("<preset>", "Cross-language preset for both: standard.", "--style"),
                 Opt.flag("Shorten FQCNs and add imports (default on).", "--optimize-imports"),
                 Opt.flag("Skip FQCN-to-import optimization.", "--no-optimize-imports"),
-                Opt.value("<file>", "OpenRewrite YAML config; overrides/extends recipes.", "--rewrite-config"));
+                Opt.value("<file>", "OpenRewrite YAML config for recipes", "--rewrite-config"));
     }
 
     /** A format run's summary — the same fields whichever transport ran the pipeline. */

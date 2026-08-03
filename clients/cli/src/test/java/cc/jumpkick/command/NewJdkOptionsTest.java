@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.jdk.JdkHit;
+import cc.jumpkick.jdk.JdkOwnership;
 import cc.jumpkick.jdk.JdkRegistry;
 import cc.jumpkick.jdk.JdkVendor;
 import java.io.IOException;
@@ -100,5 +101,6 @@ class NewJdkOptionsTest {
         Files.writeString(home.resolve("bin").resolve("javac"), "#!/fake");
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
     }
 }

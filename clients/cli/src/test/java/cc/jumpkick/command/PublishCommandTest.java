@@ -69,7 +69,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 21
+                jdk      = 25
                 sources  = true
                 """);
         writeJar(tempDir.resolve("target/lib/widget-1.0.0.jar"));
@@ -102,7 +102,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
-                jdk      = 21
+                jdk      = 25
                 """);
         writeJar(tempDir.resolve("target/lib/widget-1.0.0-SNAPSHOT.jar"));
 
@@ -118,7 +118,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0-SNAPSHOT"
-                jdk      = 21
+                jdk      = 25
                 """);
         writeJar(tempDir.resolve("target/lib/widget-1.0.0-SNAPSHOT.jar"));
 
@@ -249,7 +249,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 21
+                jdk      = 25
                 """);
     }
 
@@ -260,7 +260,7 @@ class PublishCommandTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 21
+                jdk      = 25
 
                 [dependencies]
                 lib = { path = "../lib" }

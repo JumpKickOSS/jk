@@ -40,7 +40,7 @@ public final class WatchCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Re-run a verb (or the app) when sources change (`jk dev` = watch run)";
+        return "Re-run a verb when sources change (jk dev = watch run)";
     }
 
     @Override
@@ -51,9 +51,7 @@ public final class WatchCommand implements CliCommand {
                         .hide(),
                 Opt.value(
                         "<ms>",
-                        "Debounce window for change bursts (editor save storms). Default "
-                                + SourceWatch.DEBOUNCE_MILLIS
-                                + ".",
+                        "Debounce source changes (default " + SourceWatch.DEBOUNCE_MILLIS + " ms)",
                         "--debounce-ms")));
         opts.addAll(VariantSelection.options());
         return opts;

@@ -106,26 +106,38 @@ public final class RunCommand {
                                 true,
                                 true)
                         .withVariant(session.variant(), session.clientEnv());
-                // Not a silent build: surface per-module completions while the graph runs.
-                java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
-                int[] total = {0};
-                var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
-                    @Override
-                    public void onPlan(java.util.List<cc.jumpkick.runtime.ModulePlan> plan) {
-                        total[0] = plan.size();
-                    }
+                boolean liveWorkspace = mode == PipelineConsole.Mode.AUTO
+                        && PipelineConsole.isInteractiveTerminal()
+                        && !global.outputIsJson();
+                cc.jumpkick.runtime.WorkspaceResult wr;
+                if (liveWorkspace) {
+                    // Same live chrome as `jk build` at a root (JK-1201): aggregate bar + module
+                    // chips from the engine tracker, completions collapse into the region.
+                    wr = runWorkspaceLive(request);
+                    if (wr == null) return 1; // failure already settled on the view
+                } else {
+                    // Quiet / JSON / non-tty: append-only per-module completions (unchanged).
+                    java.util.concurrent.atomic.AtomicInteger done = new java.util.concurrent.atomic.AtomicInteger();
+                    int[] total = {0};
+                    var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
+                        @Override
+                        public void onPlan(java.util.List<cc.jumpkick.runtime.ModulePlan> plan) {
+                            total[0] = plan.size();
+                        }
 
-                    @Override
-                    public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
-                        String glyph =
-                                o.success() ? cc.jumpkick.cli.tui.Glyphs.CHECK : cc.jumpkick.cli.tui.Glyphs.CROSS;
-                        CliOutput.out(
-                                glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] " + o.coord());
-                    }
-                };
-                var wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
-                        cc.jumpkick.engine.EnginePaths.current(), request, listener);
-                if (!wr.success()) {
+                        @Override
+                        public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                            String glyph = o.success()
+                                    ? cc.jumpkick.cli.tui.Glyphs.CHECK
+                                    : cc.jumpkick.cli.tui.Glyphs.CROSS;
+                            CliOutput.out(glyph + " [" + done.incrementAndGet() + "/" + Math.max(total[0], 1) + "] "
+                                    + o.coord());
+                        }
+                    };
+                    wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                            cc.jumpkick.engine.EnginePaths.current(), request, listener);
+                }
+                if (wr != null && !wr.success()) {
                     CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Run", "workspace build failed"));
                     return 1;
                 }
@@ -324,6 +336,93 @@ public final class RunCommand {
             CliOutput.errRaw(Ansi.RESET);
             CliOutput.stderr().flush();
         }
+    }
+
+    /**
+     * Workspace pre-build with the same live chrome as {@code jk build} at a root (JK-1201):
+     * engine-tracked aggregate bar, per-module step chips, buffered module output, completion
+     * lines. Settles the region itself on failure/cancel and returns {@code null}; on success the
+     * region settles to an exec-style chip so the run banner follows cleanly.
+     */
+    private cc.jumpkick.runtime.WorkspaceResult runWorkspaceLive(cc.jumpkick.runtime.WorkspaceRequest request) {
+        var view = cc.jumpkick.cli.tui.CommandManager.pipeline(CliOutput.stdout(), "Run", true);
+        var agg = new cc.jumpkick.cli.run.AggregateContext(view);
+        java.util.Map<Path, List<String>> buffers = new java.util.concurrent.ConcurrentHashMap<>();
+        List<String> deferredOutput = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        int[] total = {0};
+        var listener = new cc.jumpkick.runtime.WorkspaceBuildListener() {
+            @Override
+            public void onPreflight(String stage, int done, int totalUnits, String label) {
+                agg.preflight(stage, done, totalUnits, label);
+            }
+
+            @Override
+            public void onWorkspaceProgress(cc.jumpkick.runtime.WorkspaceProgressTracker.Snapshot snap) {
+                agg.applySnapshot(snap);
+            }
+
+            @Override
+            public void onEtaEstimate(long millis) {
+                view.setRemainingWorkEstimate(millis);
+            }
+
+            @Override
+            public void onPlan(List<cc.jumpkick.runtime.ModulePlan> plan) {
+                total[0] = plan.size();
+            }
+
+            @Override
+            public cc.jumpkick.run.PipelineListener onModuleStart(cc.jumpkick.runtime.ModulePlan m) {
+                var log = cc.jumpkick.cli.run.EventLogListener.open(
+                        m.cache(), m.pipeline().name());
+                List<String> buf = java.util.Collections.synchronizedList(new ArrayList<String>());
+                buffers.put(m.dir(), buf);
+                var lis = new cc.jumpkick.cli.run.AggregateModuleListener(
+                        agg, m.coord(), m.pipeline().steps(), m.weight());
+                lis.bufferOutputInto(buf);
+                return cc.jumpkick.cli.run.CompositePipelineListener.of(lis, log);
+            }
+
+            @Override
+            public void onModuleFinish(cc.jumpkick.runtime.ModuleOutcome o) {
+                List<String> buf = buffers.getOrDefault(o.dir(), List.of());
+                String completion = BuildCommand.completionLine(
+                        o.success(), completed.incrementAndGet(), total[0], o.coord(), o.millis());
+                if (view.animating()) {
+                    view.addCompletion(completion);
+                    synchronized (buf) {
+                        if (!buf.isEmpty()) deferredOutput.addAll(buf);
+                    }
+                } else {
+                    StringBuilder block = new StringBuilder();
+                    synchronized (buf) {
+                        for (String l : buf) block.append(l).append('\n');
+                    }
+                    block.append(completion);
+                    view.writeAbove(block.toString());
+                }
+            }
+        };
+        cc.jumpkick.runtime.WorkspaceResult wr;
+        try {
+            wr = cc.jumpkick.cli.engine.EngineClient.buildWorkspace(
+                    cc.jumpkick.engine.EnginePaths.current(), request, listener);
+        } catch (cc.jumpkick.cli.engine.JobCancelledException e) {
+            view.finishPipelineCancelled(deferredOutput);
+            return null;
+        } catch (IOException e) {
+            view.finishPipelineFailure(String.valueOf(e.getMessage()), deferredOutput);
+            return null;
+        }
+        if (!wr.success()) {
+            String tail = wr.errors().isEmpty() ? "workspace build failed" : wr.errors().get(0);
+            view.finishPipelineFailure(tail, deferredOutput);
+            return null;
+        }
+        int n = Math.max(total[0], wr.modules().size());
+        view.finishPipelineExec(n + (n == 1 ? " module ready" : " modules ready"), deferredOutput);
+        return wr;
     }
 
     private Path cacheDir() {

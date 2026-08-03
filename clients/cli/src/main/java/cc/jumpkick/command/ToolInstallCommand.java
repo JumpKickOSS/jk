@@ -44,16 +44,15 @@ public final class ToolInstallCommand implements CliCommand {
     public List<Opt> options() {
         return List.of(
                 Opt.value("<name>", "Launcher name under $JK_BIN_DIR. Default: the artifact id.", "--bin"),
-                Opt.value("<class>", "Override the Main-Class (default: read from the jar manifest).", "--main"),
-                Opt.value("<coord>", "Add an extra dependency to the tool's classpath (repeatable).", "--with")
-                        .repeat(),
-                Opt.value("<group>", "Maven groupId — switches a file target to a local-cache install.", "--group"),
+                Opt.value("<class>", "Override Main-Class (from jar manifest)", "--main"),
+                Opt.value("<coord>", "Extra dependency on tool classpath", "--with").repeat(),
+                Opt.value("<group>", "Maven groupId (local-cache install mode)", "--group"),
                 Opt.value("<name>", "Maven artifactId for a local-cache file install.", "--name"),
                 Opt.value("<ver>", "Version for a local-cache file install.", "--ver"),
                 Opt.flag("Skip compiling and running tests (project targets).", "--skip-tests"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the tool state directory.", "--state-dir")
@@ -230,7 +229,7 @@ public final class ToolInstallCommand implements CliCommand {
                 aliasJavaOptions);
 
         if (!global.outputIsJson()) {
-            CliOutput.out("Installed " + Coords.gav(env.primary()) + " → " + launcher);
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + Coords.gav(env.primary()) + " → " + launcher);
             CliOutput.out("Add to PATH if needed:");
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }
@@ -348,7 +347,7 @@ public final class ToolInstallCommand implements CliCommand {
             Path ktsLauncher = ToolLauncher.installKotlinScript(
                     envsRoot, binDir, JavaHomes.runningJavaHome(), prep.kotlincBin(), scriptCopy, ktsEnv, provenance);
             if (!global.outputIsJson()) {
-                CliOutput.out("Installed " + file.getFileName() + " → " + ktsLauncher);
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + ktsLauncher);
                 CliOutput.out("Add to PATH if needed:");
                 CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
             }
@@ -372,7 +371,7 @@ public final class ToolInstallCommand implements CliCommand {
         ToolEnv env = new ToolEnv(bin, Coordinate.of("script", bin, "local"), prep.mainClass(), classpath);
         Path launcher = ToolLauncher.install(envsRoot, binDir, JavaHomes.runningJavaHome(), env, provenance, jvmArgs);
         if (!global.outputIsJson()) {
-            CliOutput.out("Installed " + file.getFileName() + " → " + launcher);
+            cc.jumpkick.cli.tui.CommandWedge.printOk("Tool", "Installed " + file.getFileName() + " → " + launcher);
             CliOutput.out("Add to PATH if needed:");
             CliOutput.out("  export PATH=\"" + binDir + ":$PATH\"");
         }

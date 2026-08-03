@@ -10,6 +10,7 @@ import cc.jumpkick.repo.MavenLayout;
 import cc.jumpkick.repo.RepoArtifactStore;
 import cc.jumpkick.util.Hashing;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.Files;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -38,24 +39,31 @@ class LibrarySearchCommandTest {
     }
 
     @Test
-    void search_matches_substring_of_name_in_bundled_catalog(@TempDir Path tempHome) {
-        // Isolate JkDirs.home() to an empty dir so only the bundled layer loads —
-        // otherwise a developer's downloaded ~/.jk/store/libs.global.toml shadows the
-        // curated rows as [global] and the [bundled] assertion fails. (Under Gradle
-        // the java-conventions plugin already points JK_HOME at a throwaway dir; this
-        // makes the test self-contained under any runner, including jk build itself.)
-        String prevHome = System.getProperty("user.home");
-        System.setProperty("user.home", tempHome.toString());
+    void search_matches_substring_of_name_in_bundled_catalog(@TempDir Path tempHome) throws Exception {
+        // Only the bundled layer may load: a downloaded store/libs.global.toml shadows the
+        // curated rows as "global". user.home no longer isolates anything (JkDirs resolves via
+        // JK_HOME env since the platform-native layout), so move the downloaded catalog aside.
+        Path downloaded = cc.jumpkick.library.LibraryCatalog.downloadedFile();
+        Path aside = downloaded.resolveSibling(downloaded.getFileName() + ".test-aside");
+        boolean moved = false;
         try {
+            if (Files.exists(downloaded)) {
+                Files.move(downloaded, aside, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                moved = true;
+            }
             int exit = Jk.execute("library", "search", "junit", "--show-layer");
             assertThat(exit).isZero();
             String stdout = out.toString(StandardCharsets.UTF_8);
             assertThat(stdout).contains("junit-jupiter");
             assertThat(stdout).contains("junit-platform-launcher");
-            // The layer tag is opt-in via --show-layer; with it, bundled rows are tagged.
-            assertThat(stdout).contains("[bundled]");
+            // The layer is opt-in via --show-layer; with it, a Layer column tags bundled rows
+            // (JK-1375 table form — the old inline [bundled] suffix is gone).
+            assertThat(stdout).contains("Layer");
+            assertThat(stdout).contains("bundled");
         } finally {
-            System.setProperty("user.home", prevHome);
+            if (moved) {
+                Files.move(aside, downloaded, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
         }
     }
 
@@ -108,8 +116,8 @@ class LibrarySearchCommandTest {
         int exit = Jk.execute("library", "search", "junit", "--offline", "--cache-dir", cache.toString());
         assertThat(exit).isZero();
         String stdout = out.toString(StandardCharsets.UTF_8);
-        // The cached coord is shown, annotated with its local version...
-        assertThat(stdout).contains("junit-jupiter").contains("(cached: 6.1.0)");
+        // The cached coord is shown with its local version in the Cached column (JK-1375)...
+        assertThat(stdout).contains("junit-jupiter").contains("6.1.0");
         // ...the uncached sibling is filtered out under --offline.
         assertThat(stdout).doesNotContain("junit-platform-launcher");
     }

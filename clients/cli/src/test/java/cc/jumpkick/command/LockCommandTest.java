@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+@cc.jumpkick.cli.engine.IsolatedStore
 @Tag("integration")
 class LockCommandTest {
 

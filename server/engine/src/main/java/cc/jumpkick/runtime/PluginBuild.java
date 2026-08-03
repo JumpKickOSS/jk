@@ -784,19 +784,28 @@ public final class PluginBuild {
             throws IOException, InterruptedException {
         Path jar = workerJarFor(active, cache);
         List<String> collected = new ArrayList<>();
+        // Non-protocol output (stack traces land here — stderr is merged by PluginProcess).
+        // Kept so a worker that dies without reporting a protocol error is still diagnosable.
+        java.util.ArrayDeque<String> tail = new java.util.ArrayDeque<>();
         String[] error = new String[1];
         PluginClient client = new PluginClient(active.manifest().code().protocolPrefix())
                 .on("label", line -> {
                     if (onLabel != null) onLabel.accept(Jsonl.str(line, "text"));
                 })
                 .on("error", line -> error[0] = Jsonl.str(line, "message"))
-                .onOther(collected::add);
-        int exit = client.run(PluginLaunch.javaCommand(jar, spec));
+                .onOther(collected::add)
+                .passthrough(line -> {
+                    if (tail.size() >= 20) tail.removeFirst();
+                    tail.addLast(line);
+                });
+        int exit = client.run(PluginLaunch.javaCommand(jar, spec, active.manifest().code().protocolPrefix()));
         if (error[0] != null) {
             throw new IOException(error[0]);
         }
         if (exit != 0) {
-            throw new IOException("plugin worker " + active.manifest().id() + " failed (exit " + exit + ")");
+            String detail = tail.isEmpty() ? "" : "\n" + String.join("\n", tail);
+            throw new IOException(
+                    "plugin worker " + active.manifest().id() + " failed (exit " + exit + ")" + detail);
         }
         return collected;
     }

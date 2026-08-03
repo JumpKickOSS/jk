@@ -31,55 +31,27 @@ class CacheCommandTest {
     }
 
     @Test
-    void info_summarizes_an_empty_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
+    void storage_summarizes_an_empty_action_cache_without_creating_it(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> run("cache", "storage", "--cache-dir", cache.toString()));
         assertThat(stdout).contains("not yet created");
         assertThat(Files.exists(cache)).isFalse();
     }
 
     @Test
-    void info_reports_blob_counts_and_sizes(@TempDir Path tempDir) throws Exception {
+    void storage_reports_action_cache_only(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Explicit --cache-dir isolates all sections under that root (not the ambient store).
+        // CAS under the same root must not appear in action-cache storage.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
 
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
-        // Boxed table: title, the two metric rows with compact sizes, a total, and
-        // the utilization bar. (Sizes are compact: 5 bytes → "5B", 2048 → "2.0K".)
-        assertThat(stdout).contains("Cache Directory Information");
-        assertThat(stdout).contains("CAS Blobs").contains("5B");
-        assertThat(stdout).contains("Action Cache").contains("2.0K");
-        assertThat(stdout).contains("Total");
-        assertThat(stdout).contains("Utilization");
-    }
-
-    @Test
-    void info_does_not_double_count_hardlinked_repos_and_cas(@TempDir Path tempDir) throws Exception {
-        Path cache = tempDir.resolve("cache");
-        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
-        byte[] payload = new byte[8192];
-        writeBlob(casBlob, payload);
-        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
-        Files.createDirectories(repoJar.getParent());
-        try {
-            Files.createLink(repoJar, casBlob);
-        } catch (UnsupportedOperationException | FileSystemException e) {
-            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
-        }
-        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
-
-        String stdout = capture(() -> run("cache", "info", "--cache-dir", cache.toString()));
-        // Strip ANSI so compact sizes are easy to match.
-        String plain = TestAnsi.strip(stdout);
-        // Total storage = 8192 blob + 64 sidecar ≈ 8.1K, not 8192×2 + 64 ≈ 16K.
-        assertThat(plain).contains("Total");
-        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
-        assertThat(plain).containsPattern("CAS Blobs\\s+.*8\\.0K");
-        // Worker JARs row should only show the sidecar (~64B), not another 8K for the hard link.
-        assertThat(plain).containsPattern("Worker JARs\\s+.*64B");
-        assertThat(plain).doesNotContain("16.0K");
+        String plain = TestAnsi.strip(capture(() -> run("cache", "storage", "--cache-dir", cache.toString())));
+        assertThat(plain).contains("Action Cache Storage");
+        assertThat(plain).containsPattern("File Count:\\s*1");
+        assertThat(plain).contains("2.0 KiB");
+        assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("CAS Blobs");
+        assertThat(plain).doesNotContain("Worker JARs");
     }
 
     @Test
@@ -118,51 +90,59 @@ class CacheCommandTest {
     }
 
     @Test
-    void purge_with_yes_wipes_contents_but_keeps_root(@TempDir Path tempDir) throws Exception {
+    void purge_wipes_action_cache_but_keeps_store_side_trees(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
+        // Explicit --cache-dir layout: CAS, repo mirrors, and run logs share the root. The confirm
+        // says they are kept — purge must only delete actions/ + format-stamps/ (JK-1435).
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
+        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
 
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
 
         assertThat(stdout).contains("Purged 2 files");
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
+        assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar")))
+                .isTrue();
+        assertThat(Files.exists(cache.resolve("runs/build-1.jsonl"))).isTrue();
         assertThat(Files.exists(cache)).isTrue();
-        try (var stream = Files.list(cache)) {
-            assertThat(stream).isEmpty();
-        }
     }
 
     @Test
     void purge_aborts_when_not_confirmed(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = withStdin("n\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("aborted");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 
     @Test
     void purge_proceeds_on_yes_at_the_prompt(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = withStdin("y\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("Purged 1 files");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
     }
 
     @Test
     void purge_dry_run_reports_without_deleting_or_prompting(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(stdout).contains("Dry run: would remove");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 
     @Test
@@ -173,7 +153,31 @@ class CacheCommandTest {
     }
 
     @Test
-    void search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
+    void purge_with_only_store_side_content_is_a_noop(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        // Store-side only — nothing action-cache to purge; no prompt, nothing deleted.
+        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+
+        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString()));
+
+        assertThat(stdout).contains("Nothing to purge");
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+    }
+
+    @Test
+    void repo_prune_dry_run_sweeps_the_store_side(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
+
+        String stdout = capture(() -> run("repo", "prune", "--cache-dir", cache.toString(), "--dry-run"));
+
+        // op "sweep" round-trips the engine; dry run must not touch the action cache.
+        assertThat(stdout).contains("Dry run");
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
+    }
+
+    @Test
+    void repo_search_lists_cached_coordinates_with_versions(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
         seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.18.2");
         seedRepo(cache, "com.fasterxml.jackson.core", "jackson-databind", "2.17.1");
@@ -181,7 +185,7 @@ class CacheCommandTest {
 
         // Coordinates print in color; strip ANSI to assert on the visible text.
         String stdout =
-                TestAnsi.strip(capture(() -> run("cache", "search", "jackson", "--cache-dir", cache.toString())));
+                TestAnsi.strip(capture(() -> run("repo", "search", "jackson", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("com.fasterxml.jackson.core:jackson-databind");
         // newest-first version ordering
@@ -191,10 +195,40 @@ class CacheCommandTest {
     }
 
     @Test
-    void search_with_no_matches_returns_nonzero(@TempDir Path tempDir) {
+    void repo_search_with_no_matches_returns_nonzero(@TempDir Path tempDir) {
         Path cache = tempDir.resolve("cache");
-        int exit = run("cache", "search", "nonexistent", "--cache-dir", cache.toString());
+        int exit = run("repo", "search", "nonexistent", "--cache-dir", cache.toString());
         assertThat(exit).isEqualTo(1);
+    }
+
+    @Test
+    void repo_storage_reports_cas_and_repos_without_action_cache(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        Path casBlob = cache.resolve("sha256/ab/cd/sharedblob");
+        byte[] payload = new byte[8192];
+        writeBlob(casBlob, payload);
+        Path repoJar = cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar");
+        Files.createDirectories(repoJar.getParent());
+        try {
+            Files.createLink(repoJar, casBlob);
+        } catch (UnsupportedOperationException | FileSystemException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "hard links required");
+        }
+        Files.writeString(Path.of(repoJar + ".sha256"), "d".repeat(64));
+        writeBlob(cache.resolve("actions/keys/task"), new byte[4096]);
+
+        String plain =
+                TestAnsi.strip(capture(() -> run("repo", "storage", "--cache-dir", cache.toString())));
+        assertThat(plain).contains("Repo Storage");
+        assertThat(plain).contains("CAS Blobs");
+        assertThat(plain).contains("Worker JARs");
+        assertThat(plain).contains("Run Logs");
+        assertThat(plain).contains("Total");
+        assertThat(plain).contains("Utilization");
+        assertThat(plain).doesNotContain("Action Cache");
+        // Hard-linked jar must not double-count: Total ≈ 8.1K not 16K.
+        assertThat(plain).containsPattern("Total\\s+.*8\\.1K");
+        assertThat(plain).doesNotContain("16.0K");
     }
 
     @Test

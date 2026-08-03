@@ -48,11 +48,24 @@ public sealed interface Shell permits BashShell, ZshShell, FishShell, PwshShell 
     String rcFileDisplay();
 
     /**
-     * Line to append to {@link #rcFile} so the shell sources the activation script on startup. Each
-     * shell has its own idiom — {@code eval} for POSIX shells, pipe-to-source for fish, {@code
-     * Invoke-Expression} for PowerShell.
+     * Hook line inside the installer block: eval/source {@code jk activate &lt;shell&gt;} so
+     * directory-aware {@code hook-env} is registered. Prefer {@code command jk} (PATH) over a
+     * frozen absolute path so self-update is picked up without rewriting the rc.
+     *
+     * @param jkCommand unused legacy param; implementations use {@code command jk}
      */
-    String activationLine(String jkExe);
+    String activationLine(String jkCommand);
+
+    /**
+     * Snippet that ensures {@code binDir} is on PATH when missing (idempotent). Ends with newline.
+     */
+    String pathEnsureSnippet(String binDir);
+
+    /**
+     * Snippet that wires completions from {@code dataDir}/completions/&lt;shell&gt;. Ends with
+     * newline; empty when unsupported.
+     */
+    String completionWiring(String dataDir);
 
     /** Resolve a shell from its name (case-insensitive). */
     static Optional<Shell> byName(String name) {

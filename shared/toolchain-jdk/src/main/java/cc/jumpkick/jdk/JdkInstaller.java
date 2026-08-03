@@ -63,6 +63,7 @@ public final class JdkInstaller {
             return new InstalledJdk(identifier, target);
         }
         downloadAndExtractBuffered(pkg.downloadUri(), pkg.sha256(), pkg.filename(), pkg.archiveType(), target);
+        JdkOwnership.mark(target);
         return new InstalledJdk(identifier, target);
     }
 
@@ -148,6 +149,7 @@ public final class JdkInstaller {
             // a child out. If it returned stagingDir itself, the move
             // consumed the dir and this is a no-op.
             deleteRecursively(stagingDir);
+            JdkOwnership.mark(target);
         } finally {
             Files.deleteIfExists(dl.path());
         }
@@ -242,6 +244,7 @@ public final class JdkInstaller {
                 throw e;
             }
             deleteRecursively(stagingDir);
+            JdkOwnership.mark(target);
         } finally {
             Files.deleteIfExists(archive);
         }

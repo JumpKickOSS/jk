@@ -39,6 +39,7 @@ const ICON_PATHS = {
   database: 'M12 3c-4.4 0-8 1.3-8 3s3.6 3 8 3 8-1.3 8-3-3.6-3-8-3zM4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6',
   cpu: 'M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3',
   'folder-open': 'M6 14l1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2',
+  plus: 'M12 5v14M5 12h14',
 };
 // Icons that read better as a solid shape than an outline at small sizes.
 const ICON_SOLID = {
@@ -332,7 +333,21 @@ Vue.createApp({
     buildDir: '',
     buildError: null,
     browser: null, // the /api/fs payload while the workspace picker is open, else null
+    browserMode: 'workspace', // 'workspace' | 'parent' (new-project parent dir)
     help: false, // the header Help/About modal
+    newProjectOpen: false,
+    newProjectBusy: false,
+    newProjectError: null,
+    newProject: {
+      name: '',
+      group: 'com.example',
+      lang: 'java',
+      layout: 'simple',
+      template: '',
+      parentDir: '',
+      executable: true,
+    },
+    templates: [],
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
   }),
 
@@ -867,7 +882,17 @@ Vue.createApp({
     // ---- the workspace picker (Browse…) ----
     async openBrowser() {
       // Start from the typed path when it looks absolute; the server defaults to $HOME otherwise.
+      this.browserMode = 'workspace';
       const seed = this.buildDir.trim().startsWith('/') ? this.buildDir.trim() : null;
+      await this.browseTo(seed);
+    },
+
+    async openParentBrowser() {
+      this.browserMode = 'parent';
+      const seed =
+        this.newProject.parentDir && this.newProject.parentDir.trim().startsWith('/')
+          ? this.newProject.parentDir.trim()
+          : null;
       await this.browseTo(seed);
     },
 
@@ -888,12 +913,83 @@ Vue.createApp({
     },
 
     chooseBrowsed() {
-      this.buildDir = this.browser.dir;
+      if (this.browserMode === 'parent') {
+        this.newProject.parentDir = this.browser.dir;
+      } else {
+        this.buildDir = this.browser.dir;
+      }
       this.browser = null;
+      this.browserMode = 'workspace';
     },
 
     closeBrowser() {
       this.browser = null;
+      this.browserMode = 'workspace';
+    },
+
+    // ---- New project (JK-1193 → POST /api/projects) ----
+    async openNewProject() {
+      this.newProjectOpen = true;
+      this.newProjectError = null;
+      this.newProjectBusy = false;
+      if (!this.newProject.parentDir) {
+        // Prefer $HOME from a fresh fs listing
+        try {
+          const fs = await get('/api/fs');
+          this.newProject.parentDir = fs.dir || '';
+        } catch (_) {
+          /* leave blank */
+        }
+      }
+      try {
+        this.templates = await get('/api/templates');
+      } catch (_) {
+        this.templates = [
+          { id: 'java-cli', description: 'Simple Java executable' },
+          { id: 'kotlin-cli', description: 'Simple Kotlin executable' },
+        ];
+      }
+    },
+
+    closeNewProject() {
+      this.newProjectOpen = false;
+      this.newProjectError = null;
+      this.newProjectBusy = false;
+    },
+
+    async submitNewProject() {
+      this.newProjectError = null;
+      this.newProjectBusy = true;
+      const body = {
+        name: this.newProject.name.trim(),
+        group: this.newProject.group.trim() || 'com.example',
+        lang: this.newProject.lang,
+        layout: this.newProject.layout,
+        parentDir: this.newProject.parentDir.trim(),
+        executable: !!this.newProject.executable,
+      };
+      if (this.newProject.template && this.newProject.template.trim()) {
+        body.template = this.newProject.template.trim();
+      }
+      try {
+        const res = await post('/api/projects', body);
+        const path = res.path || res.dir;
+        this.closeNewProject();
+        this.newProject.name = '';
+        this.newProject.template = '';
+        if (path) {
+          this.openProject(path);
+          await this.triggerBuild(path);
+          this.setView('activity');
+        }
+      } catch (e) {
+        this.newProjectError =
+          e.status === 401
+            ? 'Unauthorized — open the tokenized URL printed by `jk engine status`'
+            : e.error || 'Could not create project';
+      } finally {
+        this.newProjectBusy = false;
+      }
     },
 
     joinPath(dir, name) {

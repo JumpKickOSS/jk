@@ -46,11 +46,11 @@ public final class NativeCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>();
-        opts.add(Opt.value("<class>", "Main class. Default: jk.toml image.main or project.main.", "--main"));
+        opts.add(Opt.value("<class>", "Main class (jk.toml image.main / main)", "--main"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDirHidden());
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
-        opts.add(Opt.flag("Install Oracle GraalVM if native-image is missing.", "--yes", "-y"));
+        // Global -y/--yes: install Oracle GraalVM without prompting when native-image is missing.
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());

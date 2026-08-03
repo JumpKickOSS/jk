@@ -45,7 +45,7 @@ class GroovyBuildE2eTest {
                 name    = "gapp"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 21
+                jdk     = 25
                 groovy  = "5.0.4"
                 layout  = "simple"
 
@@ -83,8 +83,8 @@ class GroovyBuildE2eTest {
                 name    = "mixed"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 groovy  = "5.0.4"
                 layout  = "simple"
 

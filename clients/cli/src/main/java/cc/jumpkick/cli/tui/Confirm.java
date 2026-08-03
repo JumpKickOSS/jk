@@ -27,6 +27,12 @@ public final class Confirm {
     /** Visible columns to overwrite when settling: "[Y/n]" (5) + trailing space (1). */
     private static final int HINT_WIDTH = 6;
 
+    /**
+     * Set by {@link cc.jumpkick.cli.GlobalOptions#from} from the hidden global {@code -y}/{@code
+     * --yes}. When true, every {@link #ask()} returns true without prompting.
+     */
+    private static final ThreadLocal<Boolean> ASSUME_YES = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private final String question;
     private final boolean defaultYes;
 
@@ -37,6 +43,21 @@ public final class Confirm {
 
     public static Confirm of(String question, boolean defaultYes) {
         return new Confirm(question, defaultYes);
+    }
+
+    /** Enable/disable assume-yes for this thread (reset each leaf command). */
+    public static void setAssumeYes(boolean yes) {
+        ASSUME_YES.set(yes);
+    }
+
+    /** Clear the assume-yes flag for this thread. */
+    public static void clearAssumeYes() {
+        ASSUME_YES.remove();
+    }
+
+    /** True when global {@code -y}/{@code --yes} is in effect. */
+    public static boolean assumeYes() {
+        return Boolean.TRUE.equals(ASSUME_YES.get());
     }
 
     /**
@@ -53,6 +74,7 @@ public final class Confirm {
      * instead (EOF → {@code false}).
      */
     public boolean ask() {
+        if (assumeYes()) return true;
         if (!isInteractiveTerminal()) {
             return cookedFallback();
         }
@@ -73,6 +95,7 @@ public final class Confirm {
      * {@code System.in} reads still work).
      */
     public boolean ask(Terminal terminal) {
+        if (assumeYes()) return true;
         // Render the prompt to stderr, not stdout: a y/n the user can't see (because stdout is piped
         // to `less` / a file) would be an invisible block. stderr is the terminal's own channel by
         // convention (git/apt/ssh prompt there too). Use the terminal only to capture the single

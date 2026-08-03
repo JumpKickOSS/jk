@@ -8,8 +8,6 @@ import cc.jumpkick.lock.LockfileWriter;
 import cc.jumpkick.resolver.ResolveObserver;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.FileTime;
-import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -73,8 +71,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core", "app"]
@@ -86,8 +84,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 util = { group = "com.acme", name = "util", version = "1.0.0" }
@@ -98,19 +96,27 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
+                """);
+
+        // An existing root lock; contents only feed conservative preferences. write() stamps a
+        // live manifests-sha256, so staleness must come from a real manifest edit — mtimes are
+        // irrelevant since the invisible-freshen change (LockFreshness digest regime).
+        Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(ws);
+        LockfileWriter.write(new Lockfile(1, "test", "jk-test", List.of()), rootLock);
+        // Now app grows a dep: the workspace digest no longer matches the stamp → stale.
+        Files.writeString(ws.resolve("app/jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "app"
+                version = "1.0.0"
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 extra = { group = "com.acme", name = "extra", version = "1.0.0" }
                 """);
-
-        // An existing (soon stale) root lock; contents only feed conservative preferences.
-        Path rootLock = cc.jumpkick.lock.LockPaths.lockFile(ws);
-        LockfileWriter.write(new Lockfile(1, "test", "jk-test", List.of()), rootLock);
-        // app/jk.toml newer than the root lock → stale from app's perspective.
-        Files.setLastModifiedTime(rootLock, FileTime.from(Instant.now().minusSeconds(120)));
-        Files.setLastModifiedTime(ws.resolve("app/jk.toml"), FileTime.from(Instant.now()));
 
         Lockfile existing = cc.jumpkick.lock.LockfileReader.read(rootLock);
         Lockfile updated = AutoLock.maybeReLock(
@@ -142,25 +148,32 @@ class AutoLockWorkspaceTest {
 
         Path proj = tmp.resolve("proj");
         Files.createDirectories(proj);
-        // The current jk.toml already carries the bumped version…
         Files.writeString(proj.resolve("jk.toml"), """
                 [project]
                 group = "com.example"
                 name  = "solo"
-                version = "2.0.0"
-                jdk = 21
-                java = 21
+                version = "1.0.0"
+                jdk = 25
+                java = 25
                 """);
 
-        // …while the stale on-disk lock still pins 1.0.0 identity. Auto-relock fires exactly
-        // in this state (jk.toml newer than the lock) and must not persist the old pin.
+        // The on-disk lock pins 1.0.0 identity (digest stamped against the 1.0.0 manifest).
         Path lockFile = cc.jumpkick.lock.LockPaths.lockFile(proj);
         Lockfile stale = new Lockfile(1, "test", "jk-test", List.of())
                 .withModules(List.of(new Lockfile.ModuleEntry(
                         ".", "com.example", "solo", "1.0.0", "21", 21, null, null, null, null, null, null)));
         LockfileWriter.write(stale, lockFile);
-        Files.setLastModifiedTime(lockFile, FileTime.from(Instant.now().minusSeconds(120)));
-        Files.setLastModifiedTime(proj.resolve("jk.toml"), FileTime.from(Instant.now()));
+
+        // Then the project bumps its version: content digest diverges (mtimes are irrelevant
+        // under the LockFreshness digest regime) and auto-relock must restamp identity.
+        Files.writeString(proj.resolve("jk.toml"), """
+                [project]
+                group = "com.example"
+                name  = "solo"
+                version = "2.0.0"
+                jdk = 25
+                java = 25
+                """);
 
         Lockfile updated = AutoLock.maybeReLock(
                 proj,

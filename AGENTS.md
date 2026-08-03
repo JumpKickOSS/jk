@@ -8,6 +8,8 @@ Guidance for anyone (human or agent) working in this repository.
 
 Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/architecture.md](docs/architecture.md), [docs/features/](docs/features/) (packaging, Giter8, BOMs). Build/layout: [CONTRIBUTING.md](CONTRIBUTING.md).
 
+**Out-of-tree black-box suite / adopter examples:** [jkbuild/jk-examples](https://github.com/jkbuild/jk-examples) (sibling checkout `../jk-examples`). Real multi-module and plugin scenarios used to validate and benchmark product changes and to show idiomatic JumpKick to early adopters. Not a substitute for `./gradlew test` — re-run the scenarios that touch surfaces you change (workspaces, Boot, Kotlin, packaging, resolve, …).
+
 ## Goals
 
 - Fast, predictable builds: lockfile is law; skip work the cache can prove is done.
@@ -15,6 +17,38 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 - Small mental model: declarative `jk.toml`, no build-script programming language.
 - Adoption path: run existing Maven/Gradle builds; import/export when ready.
 - Client/engine split: thin native client, heavy work in a capped engine process.
+- **Newest stable by default** — examples, scaffolds, and fixtures prefer the **latest stable**
+  of libraries, language features, and platforms unless a test/scenario explicitly needs an
+  older line. Use `jk update` to re-lock within declared ranges; do not freeze mid-LTS
+  library stacks out of habit.
+
+## `java =` vs `jdk =` (toolchain philosophy)
+
+JumpKick **requires JDK 25+ to run** (`jk` installs it if needed). Once `jk` works, the
+user already has a modern JDK. Prefer **language level**, not extra JDK downloads.
+
+| Field | Meaning | Prefer |
+|-------|---------|--------|
+| **`java = N`** | Language + bytecode target (`--release N`) | **Yes** — default 25; 17/21 fine (host JDK 25 cross-compiles) |
+| **`jdk = …`** | Which JDK install to use / provision | **Rare** — only when the user truly needs that runtime |
+
+Rules of thumb:
+
+- **`java = 25`** — default; host LTS, no extra install.
+- **`java = 21` / `17`** — still build with the host JDK 25, emit older bytecode. **Do not**
+  write `jdk = 21` or `jdk = 17` for that; it forces a download of an obsolete runtime.
+- **`java = 26`** (newer than LTS) — may provision e.g. `temurin-26` so the toolchain can
+  compile/run that level.
+- **`jdk = "temurin-…"` / vendor pin** — only when deliberately selecting a specific install
+  (Graal, Corretto, exact major). Not the default teaching path.
+
+**Examples and docs:** use `java = 25` (or omit if inherited). Avoid `jdk = 17` / `jdk = 21`
+almost always; avoid casual `jdk = 25` in samples so users do not learn to pin runtimes.
+Containers / packaging can ship a matching JRE — stop teaching legacy JDK pins.
+
+**Tests:** `jdk = 17` / `21` only in fixtures that **must** exercise provisioning / first-run
+pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java = N` alone
+(or `java = 25` + no `jdk` line).
 
 ## Anti-goals
 
@@ -47,7 +81,8 @@ Bootstrap pins: [`.sdkmanrc`](.sdkmanrc). Prefer `./gradlew` for builds. One Gra
 
 ## Reinstall from this checkout
 
-After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made (native client + engine jar under `~/.jk`):
+After code changes, reinstall the **local** JumpKick so dogfood uses the build you just made
+(native client on PATH under `~/.local/bin`, engine jar under the product data root):
 
 ```bash
 ./gradlew clean dist installLocal && ./install.sh build/dist/jk
@@ -56,8 +91,10 @@ After code changes, reinstall the **local** JumpKick so dogfood uses the build y
 | Step | What it does |
 |---|---|
 | `clean dist` | Fresh `build/dist/jk` (native CLI) + `build/dist/lib/jk-engine-*.jar` |
-| `installLocal` | Side-loads plugin/worker jars into the local cache so the new engine can find them |
-| `./install.sh build/dist/jk` | Installs that dist into `~/.jk` (bin + version layout via CAS materialize) |
+| `installLocal` | Side-loads plugin/worker jars **and** materializes the engine jar + bounces the daemon (`:engine:installLocal`, JK-1194) |
+| `./install.sh build/dist/jk` | Installs that dist into `~/.local/bin` + data `versions/` via CAS materialize |
+
+Thin JVM dogfood without Graal: `./gradlew :cli:installDist installLocal` then put `clients/cli/build/install/jk/bin` on `PATH`.
 
 Then verify on PATH (or the install dir):
 

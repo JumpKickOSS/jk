@@ -33,10 +33,38 @@ class JarPackagerTest {
         new JarPackager().packageJar(JarPackager.JarRequest.of(input, jar));
 
         List<String> entries = listEntries(jar);
-        // META-INF/* entries come first (jar plumbing), then our files alphabetized.
-        List<String> ours =
-                entries.stream().filter(e -> !e.startsWith("META-INF/")).toList();
+        // META-INF/* entries come first (jar plumbing), then our files alphabetized
+        // (directory entries interleave right before their first file).
+        List<String> ours = entries.stream()
+                .filter(e -> !e.startsWith("META-INF/") && !e.endsWith("/"))
+                .toList();
         assertThat(ours).containsExactly("Root.class", "a/A.class", "z/sub/Z.class");
+    }
+
+    @Test
+    void writes_directory_entries_for_resource_dir_scans(@TempDir Path tempDir) throws IOException {
+        // Micronaut's SoftServiceLoader resolves META-INF/micronaut/<service>/ as a directory
+        // resource; a jar with file entries only makes that lookup come back empty (JK-1414).
+        Path input = tempDir.resolve("classes");
+        Files.createDirectories(input.resolve("META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference"));
+        Files.writeString(
+                input.resolve("META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/com.example.$X"), "");
+        Files.createDirectories(input.resolve("com/example"));
+        Files.writeString(input.resolve("com/example/X.class"), "x");
+
+        Path jar = tempDir.resolve("out.jar");
+        new JarPackager().packageJar(JarPackager.JarRequest.of(input, jar));
+
+        List<String> entries = listEntries(jar);
+        assertThat(entries)
+                .contains(
+                        "META-INF/",
+                        "META-INF/micronaut/",
+                        "META-INF/micronaut/io.micronaut.inject.BeanDefinitionReference/",
+                        "com/",
+                        "com/example/");
+        // Each directory appears exactly once.
+        assertThat(entries.stream().filter("com/"::equals)).hasSize(1);
     }
 
     @Test

@@ -67,7 +67,10 @@ public final class AuthLogoutCommand implements CliCommand {
         }
 
         AuthCommand.authFor(credentialsDir).logout(kind, resolvedHost);
-        if (!global.quiet) CliOutput.out("Logged out of " + kind.displayName() + " (" + resolvedHost + ").");
+        if (!global.quiet) {
+            cc.jumpkick.cli.tui.CommandWedge.printOk(
+                    "Auth", "Logged out of " + kind.displayName() + " (" + resolvedHost + ")");
+        }
         return 0;
     }
 }

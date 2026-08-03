@@ -16,7 +16,7 @@ import org.junit.jupiter.api.io.TempDir;
  * what a forked test JVM sees.
  *
  * <p>The default is the point. A test JVM inherits the engine's environment, so jk's own suite ran
- * against the developer's real {@code ~/.jk} — reading the real library catalog and able to write the
+ * against the developer's real {@code JK_HOME} / platform product layout — reading the real library catalog and able to write the
  * real local m2. That is what jk's Gradle build redirects per module, and it should not be something
  * each project has to remember.
  */
@@ -27,12 +27,13 @@ class TestEnvTest {
         JkBuild project = project(tmp, "");
         var env = TestEnv.forModule(project, tmp, BuildLayout.of(tmp, project));
 
-        assertThat(env.get("JK_HOME"))
-                .isEqualTo(tmp.resolve("target/test-jk-home").toAbsolutePath().toString());
+        Path sandbox = tmp.resolve("target/test-jk-home").toAbsolutePath();
+        assertThat(env.get("JK_HOME")).isEqualTo(sandbox.toString());
+        assertThat(env.get("JK_JDKS_DIR")).isEqualTo(sandbox.resolve("jdks").toString());
         assertThat(env.get("JK_M2_LOCAL"))
                 .isEqualTo(tmp.resolve("target/test-m2").toAbsolutePath().toString());
-        // Never the real home.
-        assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.jk");
+        // Never the real product data root.
+        assertThat(env.get("JK_HOME")).doesNotContain(System.getProperty("user.home") + "/.local/share/jk");
     }
 
     @Test

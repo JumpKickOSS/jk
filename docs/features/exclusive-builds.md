@@ -5,17 +5,29 @@ are rejected; running builds survive a dashboard refresh.
 
 ## Fingerprint (exclusivity key)
 
-Computed by `BuildJobFingerprint` for kinds `build` and `test` only:
+Computed by `BuildJobFingerprint` for kinds `build` and `test` only.
+
+**JK-1291:** for `build` and `test`, the key is **project directory + kind only** (canonical
+`toRealPath()` when resolvable). Flags such as `--rebuild`, `-m`, `skipTests`, or variant do
+**not** open a second concurrent slot — they share the same `target/` tree and would race.
 
 | Input | Notes |
 |-------|--------|
 | Canonical project dir | `toRealPath()` when the tree exists; else absolute normalized path — **worktrees differ** |
-| Kind | `build` vs `test` |
-| rebuild/force | changes the job |
-| offline, modules, variant, assemblyOverride | session/wire flags that change work |
-| skipTests / testOnly | HTTP shape |
+| Kind | `build` vs `test` (separate slots: you can test while building only if kinds differ) |
 
 SHA-256 of a canonical multiline form. Non-exclusive kinds (`lock`, `sync`, …) do not take a slot.
+
+## Client exit while building
+
+| Client event | Engine |
+|--------------|--------|
+| Ctrl-C / SIGINT | cancel path (`BUILD_CANCEL` / cooperative halt) |
+| SIGPIPE (`jk build \| head`) | socket EOF → same cancel path as disconnect |
+| Client kill -9 | OS closes socket → EOF → cancel |
+
+The exclusive hold stays until the engine finishes cancel / workers die (grace then force). A
+second identical-dir `jk build` during that window receives **already-running**.
 
 ## Admission
 
@@ -32,7 +44,7 @@ MVP is **engine-local** (not multi-engine / multi-host).
 ## Build numbers
 
 `BuildNumberAllocator` assigns a monotonic per-project number at **request-start** from
-`~/.jk/state/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
+`~/.local/state/jk/builds/projects/<key>/run-number.txt` (JK-1377). Finish harvest trains metrics but
 does **not** mint a second number. The journal and SSE `request-start` carry the same `#N`.
 
 ## Durable in-flight

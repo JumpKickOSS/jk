@@ -2,6 +2,10 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
+import cc.jumpkick.cli.tui.CommandWedge;
+import cc.jumpkick.cli.tui.Glyphs;
+import cc.jumpkick.cli.tui.PipelineWedge;
+import cc.jumpkick.config.GlobalConfig;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Exit;
 import cc.jumpkick.model.command.Invocation;
@@ -9,9 +13,9 @@ import cc.jumpkick.model.command.Opt;
 import java.util.List;
 
 /**
- * {@code jk deactivate} — emit the shell script that undoes {@code jk activate}. The
- * activation-side {@code jk()} proxy intercepts this call and runs the output through {@code eval}
- * / {@code source} so the current shell loses its hooks immediately.
+ * {@code jk deactivate} — explain how session env and installer blocks work. Session {@code
+ * JAVA_HOME}/{@code PATH} from hook-env clear when you open a new shell; permanent integration is
+ * the marker block in the shell rc.
  */
 public final class DeactivateCommand implements CliCommand {
 
@@ -22,28 +26,24 @@ public final class DeactivateCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Tear down jk's shell integration";
+        return "How to clear shell env / remove installer block";
     }
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.value("<shell>", "Shell to emit for. Defaults to $__JK_SHELL.", "-s", "--shell"));
+        return List.of(Opt.value("<shell>", "Ignored (kept for older scripts).", "-s", "--shell"));
     }
 
     @Override
     public int run(Invocation in) {
-        String name = in.value("shell").orElseGet(() -> System.getenv("__JK_SHELL"));
-        if (name == null || name.isBlank()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail(
-                    "Deactivate", "no active shell (re-run from a `jk activate`'d shell)"));
-            return Exit.USAGE;
-        }
-        var shell = Shell.byName(name);
-        if (shell.isEmpty()) {
-            CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Deactivate", "unsupported shell `" + name + "`"));
-            return Exit.USAGE;
-        }
-        CliOutput.outRaw(shell.get().deactivateScript());
-        return 0;
+        boolean nerdfont = GlobalConfig.nerdfont();
+        CommandWedge.envelopeStart();
+        CliOutput.out(PipelineWedge.chipLine(
+                Glyphs.BANG, "Deactivate", nerdfont, "jk shell integration is not a session wrapper"));
+        CliOutput.out("  • Directory JAVA_HOME / PATH from hook-env apply only in this shell.");
+        CliOutput.out("  • Open a new terminal (or `exec $SHELL`) to drop session env.");
+        CliOutput.out("  • To stop auto-hooks permanently, remove the block between");
+        CliOutput.out("    `# >>> jk installer >>>` and `# <<< jk installer <<<` from your shell rc.");
+        return Exit.SUCCESS;
     }
 }

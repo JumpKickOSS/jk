@@ -32,7 +32,7 @@ class EngineServerTest {
 
     // Unix domain socket paths are capped at ~104 bytes (macOS/BSD) / ~108 (Linux) — JUnit's
     // @TempDir nests deep enough under Gradle's build dir to blow past that. Use a short-path temp
-    // dir under the system temp root instead, mirroring the short paths ~/.jk/state/engine/ has in
+    // dir under the system temp root instead, mirroring the short paths ~/.local/state/jk/engine/ has in
     // real use.
     private final List<Path> tempDirs = new ArrayList<>();
 
@@ -422,8 +422,8 @@ class EngineServerTest {
                     group   = "com.example"
                     name    = "app"
                     version = "1.0.0"
-                    jdk     = 21
-                    java    = 21
+                    jdk     = 25
+                    java    = 25
 
                     [dependencies]
                     leaf = { group = "com.foo", name = "leaf", version = "1.0" }
@@ -638,7 +638,7 @@ class EngineServerTest {
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
-                java    = 21
+                java    = 25
                 """);
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
@@ -658,7 +658,10 @@ class EngineServerTest {
         Path cache = shortTempDir();
 
         EnginePaths.Paths p = paths(shortTempDir());
-        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, "1.0", null);
+        // Real version, not a synthetic one: the first build freshens the stub lock and stamps
+        // jk = { version = JkVersion.VERSION }; a differing server version would make request #2
+        // delegate to a non-materialized install instead of exercising the fast path (JK-1446).
+        EngineServer server = new EngineServer(p, JkEngineConfig.DEFAULTS, cc.jumpkick.model.JkVersion.VERSION, null);
         Thread serverThread = runInBackground(server);
         waitUntil(Duration.ofSeconds(5), () -> Files.exists(EnginePaths.endpoint(p)));
         try {
@@ -702,7 +705,7 @@ class EngineServerTest {
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
-                java    = 21
+                java    = 25
                 """);
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());

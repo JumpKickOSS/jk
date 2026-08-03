@@ -67,7 +67,7 @@ public final class PluginCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Remove a side-loaded worker's store/lib dir and local repo entries";
+            return "Remove a side-loaded worker from store/lib";
         }
 
         @Override
@@ -124,7 +124,7 @@ public final class PluginCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Side-load workspace plugin jars (+ .classpath) into local repos store";
+            return "Side-load workspace plugin jars into local store";
         }
 
         @Override
@@ -132,7 +132,7 @@ public final class PluginCommand extends GroupCommand {
             return List.of(
                     Opt.value(
                             "<sel>",
-                            "Only these modules (comma list / path fragments). Default: all PluginMain workers.",
+                            "Only these modules (default: all workers)",
                             "-m",
                             "--modules"),
                     Opt.flag("Print what would be installed; write nothing.", "--dry-run"),

@@ -27,8 +27,8 @@ class ExplainCommandTest {
                 group   = "com.example"
                 name    = "%s"
                 version = "1.0.0"
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """.formatted(name));
         if (deps.length > 0) {
             // Sibling modules are declared by coordinate (inline path deps were removed); the

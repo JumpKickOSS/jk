@@ -14,28 +14,38 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The promised JDK 17 project floor (requirements.md): a {@code jdk = 17}-pinned Kotlin
- * project must build AND run its tests. Two rules under test — workers host on jk's own
- * runtime with the pinned JDK as an input ({@code -jdk-home} for kotlinc, {@code --release}
- * for javac), and everything that rides the user's test JVM (jk-test-runner + the vendored
- * plugin-api SPI/codec) is compiled at {@code --release 17} so the pinned JVM can load it.
+ * Explicit {@code jdk = N} provisioning (rare in product examples — prefer {@code java = N}
+ * so the host JDK 25 cross-compiles). These tests <em>must</em> pin {@code jdk = 17} /
+ * {@code jdk = 21} to prove workers use that install as the forked test JVM.
  *
- * <p>Network test (Maven Central; provisions temurin-17 on first run); the CAS persists
- * under build/ so repeats are warm.
+ * <p>Network tests (Maven Central; provisions the pin on first run); the CAS under build/
+ * keeps repeats warm.
  */
 class JdkFloorTest {
 
     @Test
     void jdk17_pinned_kotlin_project_builds_and_runs_tests(@TempDir Path tmp) throws Exception {
-        Path project = Files.createDirectories(tmp.resolve("app"));
-        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        runPinnedFloor(tmp, 17);
+    }
 
-        Files.writeString(project.resolve("jk.toml"), """
+    @Test
+    void jdk21_pinned_kotlin_project_builds_and_runs_tests(@TempDir Path tmp) throws Exception {
+        runPinnedFloor(tmp, 21);
+    }
+
+    private static void runPinnedFloor(Path tmp, int major) throws Exception {
+        Path project = Files.createDirectories(tmp.resolve("app" + major));
+        Path cache = Path.of(System.getProperty("user.dir"), "build", "android-spike-cache");
+        String majorStr = Integer.toString(major);
+
+        Files.writeString(
+                project.resolve("jk.toml"),
+                """
                 [project]
-                name    = "floor17"
+                name    = "floor%s"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 17
+                jdk     = %s
                 kotlin  = "^2.4.0"
                 layout  = "simple"
 
@@ -45,16 +55,21 @@ class JdkFloorTest {
 
                 [repositories]
                 central = "https://repo.maven.apache.org/maven2/"
-                """);
+                """
+                        .formatted(majorStr, majorStr));
         Files.createDirectories(project.resolve("src"));
-        Files.writeString(project.resolve("src/Floor.kt"), """
+        Files.writeString(
+                project.resolve("src/Floor.kt"),
+                """
                 package com.example.floor
                 class Floor {
                     fun jvm(): String = System.getProperty("java.specification.version")
                 }
                 """);
         Files.createDirectories(project.resolve("test").resolve("src"));
-        Files.writeString(project.resolve("test/src/FloorTest.kt"), """
+        Files.writeString(
+                project.resolve("test/src/FloorTest.kt"),
+                """
                 package com.example.floor
 
                 import org.junit.jupiter.api.Assertions.assertEquals
@@ -64,10 +79,11 @@ class JdkFloorTest {
                     @Test
                     fun tests_run_on_the_pinned_jdk() {
                         // The forked test JVM IS the pinned JDK — that's the point of pinning.
-                        assertEquals("17", Floor().jvm())
+                        assertEquals("%s", Floor().jvm())
                     }
                 }
-                """);
+                """
+                        .formatted(majorStr));
 
         var parsed = cc.jumpkick.config.JkBuildParser.parse(project.resolve("jk.toml"));
         // Isolated session — see FirstBuildJdkTest (do not inherit monorepo jdk pin from jk test).
@@ -100,7 +116,7 @@ class JdkFloorTest {
             }
             assertThat(result.errors()).isEmpty();
             assertThat(result.success())
-                    .as("jdk=17 pinned Kotlin project builds and its test passes")
+                    .as("jdk=" + major + " pinned Kotlin project builds and its test passes")
                     .isTrue();
         });
     }

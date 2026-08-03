@@ -44,18 +44,18 @@ public final class ToolRunCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Run the current project, a tool, script, directory, git repo, or URL";
+        return "Run a project, tool, script, path, git repo, or URL";
     }
 
     @Override
     public List<Opt> options() {
         List<Opt> opts = List.of(
-                Opt.value("<class>", "Override the Main-Class to exec (coordinate targets only).", "--main"),
-                Opt.value("<coord>", "Add an extra dependency to the tool's classpath (repeatable).", "--with")
+                Opt.value("<class>", "Override Main-Class (coordinate targets)", "--main"),
+                Opt.value("<coord>", "Extra dependency on tool classpath", "--with")
                         .repeat(),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the jk state directory.", "--state-dir")

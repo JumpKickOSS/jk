@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: Apache-2.0
+package cc.jumpkick.templates;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.util.EnumSet;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+import org.junit.jupiter.api.io.TempDir;
+
+class OfficialTemplatesFreshenTest {
+
+    @TempDir
+    Path tmp;
+
+    /** A subprocess that never exits must be killed within the timeout, not awaited to EOF. */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitKillsHungSubprocessWithinTimeout() throws Exception {
+        // Holds stdout open and sleeps forever — the old readAllBytes() path would block here.
+        Path script = script("#!/bin/sh\nsleep 600\n");
+        long start = System.nanoTime();
+        IOException e = assertThrows(
+                IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 2));
+        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+        assertEquals("git timed out", e.getMessage());
+        assertTrue(elapsedMs < 30_000, "timeout not enforced: took " + elapsedMs + "ms");
+    }
+
+    /** Large output must not deadlock the pipe (discarded at the OS level). */
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitDiscardsLargeOutputWithoutDeadlock() throws Exception {
+        // 8 MB of output overflows any pipe buffer if unread.
+        Path script = script("#!/bin/sh\ndd if=/dev/zero bs=1024 count=8192 2>/dev/null\nexit 0\n");
+        OfficialTemplatesFreshen.runGit(List.of(script.toString()), 30);
+    }
+
+    @Test
+    @DisabledOnOs(OS.WINDOWS)
+    void runGitSurfacesNonZeroExit() throws Exception {
+        Path script = script("#!/bin/sh\nexit 3\n");
+        IOException e = assertThrows(
+                IOException.class, () -> OfficialTemplatesFreshen.runGit(List.of(script.toString()), 10));
+        assertEquals("git exit 3", e.getMessage());
+    }
+
+    private Path script(String body) throws IOException {
+        Path script = tmp.resolve("fake-git.sh");
+        Files.writeString(script, body);
+        Files.setPosixFilePermissions(
+                script,
+                EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE));
+        return script;
+    }
+}

@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** {@code [global].nerdfont} reading from ~/.jk/config.toml, leniently. */
+/** {@code [global].nerdfont} reading from ~/.config/jk/config.toml, leniently. */
 class GlobalConfigTest {
 
     @Test

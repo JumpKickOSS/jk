@@ -66,7 +66,7 @@ public final class PluginMain {
      * plugin-api}, this class loads from the plain plugin-api jar, whose code source bundles no
      * plugin at all.
      */
-    private static Plugin select(List<Plugin> plugins) {
+    static Plugin select(List<Plugin> plugins) {
         String wanted = System.getProperty("jk.plugin.class");
         if (wanted != null && !wanted.isBlank()) {
             for (Plugin p : plugins) {
@@ -74,6 +74,18 @@ public final class PluginMain {
             }
             System.err.println(
                     "jk-plugin-host: requested plugin " + wanted + " not found among " + classNames(plugins));
+            return null;
+        }
+        // A worker lib dir may carry a sibling plugin jar as a plain dependency (grails ships the
+        // spring-boot plugin for its Boot packaging), so ServiceLoader can see both. The engine
+        // names the intended plugin by its protocol prefix — stable on both sides of the fork.
+        String prefix = System.getProperty("jk.plugin.prefix");
+        if (prefix != null && !prefix.isBlank()) {
+            for (Plugin p : plugins) {
+                if (prefix.equals(p.manifest().protocolPrefix())) return p;
+            }
+            System.err.println("jk-plugin-host: no plugin with protocol prefix " + prefix + " among "
+                    + classNames(plugins));
             return null;
         }
         if (plugins.size() == 1) return plugins.get(0);

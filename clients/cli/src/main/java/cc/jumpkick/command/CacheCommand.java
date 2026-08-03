@@ -7,28 +7,26 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.run.ConsoleSpec;
 import cc.jumpkick.cli.run.PipelineConsole;
-import cc.jumpkick.cli.theme.Coords;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Glyphs;
-import cc.jumpkick.model.command.Arity;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.GroupCommand;
 import cc.jumpkick.model.command.Invocation;
 import cc.jumpkick.model.command.Opt;
-import cc.jumpkick.model.command.Param;
-import cc.jumpkick.repo.RepoArtifactStore;
-import cc.jumpkick.resolver.Versions;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
-/** {@code jk cache} — manage the on-disk cache at {@code $JK_CACHE_DIR}. */
+/**
+ * {@code jk cache} — manage the <strong>action cache</strong> under {@code $JK_CACHE_DIR}
+ * ({@code actions/}). CAS blobs and Maven/repo mirrors live under the store ({@code JK_STORE_DIR});
+ * see {@code jk repo storage} / {@code jk repo search}.
+ */
 public final class CacheCommand extends GroupCommand {
 
     @Override
@@ -38,18 +36,18 @@ public final class CacheCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage the jk download / action cache";
+        return "Manage the action cache (build results)";
     }
 
     @Override
     public List<CliCommand> subcommands() {
         return List.of(
                 new CacheDirCommand(),
-                new CacheInfoCommand(),
-                new CacheSearchCommand(),
+                new CacheStorageCommand(),
                 new CacheClearCommand(),
                 new CachePruneCommand(),
-                new CachePurgeCommand());
+                new CachePurgeCommand(),
+                new CacheSearchRedirect());
     }
 
     // --- shared helpers (accessed by Cache*Command classes) ---------------------------
@@ -73,12 +71,11 @@ public final class CacheCommand extends GroupCommand {
     }
 
     /**
-     * Cache/store section sizes for {@code jk cache info} / {@code jk status} / dashboard parity.
+     * Cache/store section sizes for {@code jk cache storage}, {@code jk repo storage}, {@code jk
+     * status}, and dashboard parity.
      *
-     * <p>Default (ambient cache root): CAS ({@code sha256/}) and {@code repos/} are under the
-     * artifact store; action/run/stamp trees stay under the cache root. Explicit {@code
-     * --cache-dir} (not ambient) reports trees under that directory alone — test isolation and
-     * alternate cache roots.
+     * <p>CAS ({@code sha256/}) and {@code repos/} resolve via {@link JkStores}; action/run/stamp
+     * trees stay under the cache root.
      *
      * <p>Byte sizes are exclusive across sections (CAS first), so hard-linked repo jars do not
      * inflate "Size on Disk" or the utilization bar.
@@ -88,6 +85,8 @@ public final class CacheCommand extends GroupCommand {
         Path repos;
         Path abs = cacheRoot.toAbsolutePath().normalize();
         Path ambient = JkDirs.cache().toAbsolutePath().normalize();
+        // Explicit --cache-dir (tests / alternate roots): keep trees under that directory.
+        // Ambient: CAS + repos live in the artifact store (JkStores), not under the cache root.
         if (abs.equals(ambient)) {
             cas = JkStores.resolve(cacheRoot, "sha256");
             repos = JkStores.resolve(cacheRoot, "repos");
@@ -108,7 +107,7 @@ public final class CacheCommand extends GroupCommand {
                 Stats.from(parts[4]));
     }
 
-    /** Breakdown used by info / status — fields ordered for the info table. */
+    /** Breakdown used by storage / status — fields ordered for the reports. */
     record SectionStats(Stats cas, Stats actions, Stats repos, Stats runs, Stats stamps) {
         long totalFiles() {
             return cas.files + actions.files + repos.files + runs.files + stamps.files;
@@ -116,6 +115,32 @@ public final class CacheCommand extends GroupCommand {
 
         long totalBytes() {
             return cas.bytes + actions.bytes + repos.bytes + runs.bytes + stamps.bytes;
+        }
+
+        /** Store-side footprint for {@code jk repo storage} (CAS + worker jars + run logs). */
+        long repoFiles() {
+            return cas.files + repos.files + runs.files;
+        }
+
+        long repoBytes() {
+            return cas.bytes + repos.bytes + runs.bytes;
+        }
+    }
+
+    /** Relative "last pruned" label from {@code .last-pruned} under {@code root}. */
+    static String lastPrunedLabel(Path root) {
+        Path stamp = root.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE);
+        if (!Files.isRegularFile(stamp)) return "never";
+        try {
+            long millis = Long.parseLong(
+                    Files.readString(stamp, StandardCharsets.UTF_8).trim());
+            long ageMs = System.currentTimeMillis() - millis;
+            long days = ageMs / (24L * 60 * 60 * 1000);
+            if (days == 0) return "today";
+            if (days == 1) return "1 day ago";
+            return days + " days ago";
+        } catch (Exception e) {
+            return "unknown";
         }
     }
 
@@ -190,15 +215,32 @@ public final class CacheCommand extends GroupCommand {
         }
     }
 
-    public static final class CacheInfoCommand implements CliCommand {
+    /**
+     * {@code jk cache storage} — action-cache footprint only (file count, size, utilization vs
+     * {@code [cache] action-max-size-mb}, last pruned).
+     */
+    public static final class CacheStorageCommand implements CliCommand {
+        /**
+         * Widest label (<code>Storage Size</code>) <em>plus its colon</em> — the format is applied
+         * to {@code label + ":"}, so the field must count the colon or the widest row's value
+         * lands one column right of the rest (JK-1441).
+         */
+        private static final int LABEL_FIELD = "Storage Size".length() + 1;
+
         @Override
         public String name() {
-            return "info";
+            return "storage";
+        }
+
+        /** Hidden pre-split name ({@code jk cache info}) — see docs/aliases.md. */
+        @Override
+        public List<String> aliases() {
+            return List.of("info");
         }
 
         @Override
         public String description() {
-            return "Show cache size and contents";
+            return "Show action-cache size and utilization";
         }
 
         @Override
@@ -206,274 +248,45 @@ public final class CacheCommand extends GroupCommand {
             return List.of(cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
-        private static final String[] HEADERS = {"Metric", "File Count", "Storage Size"};
-
         @Override
         public int run(Invocation in) throws IOException {
             Path root = resolveCacheRoot(in.value("cache-dir").map(Path::of).orElse(null));
-            Path absRoot = root.toAbsolutePath().normalize();
-            boolean isolated = !absRoot.equals(JkDirs.cache().toAbsolutePath().normalize());
-            // Explicit --cache-dir: only that tree. Ambient: also consider the artifact store.
-            if (!Files.isDirectory(root) && (isolated || !Files.isDirectory(JkStores.storeRootFor(root)))) {
-                CliOutput.out("Cache directory: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
+            Path actions = root.resolve("actions");
+            if (!Files.isDirectory(root) && !Files.isDirectory(actions)) {
+                CliOutput.out("Action cache: " + cc.jumpkick.cli.PathDisplay.styledRaw(root) + " (not yet created)");
                 return 0;
             }
-            SectionStats s = sectionStats(root);
-            long totalFiles = s.totalFiles();
-            long totalBytes = s.totalBytes();
-
-            // Utilization denominator: the configured LRU ceiling ([cache]
-            // max-size-gb in ~/.jk/config.toml), or the documented 20 GiB default
-            // when unset, so the bar is always meaningful.
+            Stats a = Files.isDirectory(actions) ? statsOf(actions) : new Stats(0, 0);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = (long) cfg.maxSizeGb().orElse(20) * 1024L * 1024L * 1024L;
-
-            // Last-pruned timestamp from the scheduler stamp file.
+            // JkCacheConfig treats 0/negative budgets as unset, so this is always positive.
+            long maxBytes = cfg.actionMaxSizeBytes();
             String lastPruned = lastPrunedLabel(root);
 
-            for (String line : renderInfoTable(
-                    s.cas(),
-                    s.actions(),
-                    s.repos(),
-                    s.runs(),
-                    s.stamps(),
-                    totalFiles,
-                    totalBytes,
-                    maxBytes,
-                    lastPruned)) {
-                CliOutput.out(line);
-            }
+            CommandWedge.envelopeStart();
+            CliOutput.out(CommandWedge.menu("Action Cache Storage"));
+            detail("File Count", Long.toString(a.files));
+            detail("Storage Size", fmtBytes(a.bytes));
+            detail("Utilization", utilizationText(a.bytes, maxBytes));
+            Theme t = Theme.active();
+            detail(
+                    "Last Pruned",
+                    Theme.colorize(lastPruned, "never".equals(lastPruned) ? t.warning() : t.normalGray()));
             return 0;
         }
 
-        private static String lastPrunedLabel(Path root) {
-            Path stamp = root.resolve(cc.jumpkick.task.CachePruneScheduler.LAST_PRUNED_FILE);
-            if (!Files.isRegularFile(stamp)) return "never";
-            try {
-                long millis = Long.parseLong(
-                        Files.readString(stamp, StandardCharsets.UTF_8).trim());
-                long ageMs = System.currentTimeMillis() - millis;
-                long days = ageMs / (24L * 60 * 60 * 1000);
-                if (days == 0) return "today";
-                if (days == 1) return "1 day ago";
-                return days + " days ago";
-            } catch (Exception e) {
-                return "unknown";
-            }
+        /** {@code  • Label:  value} with right-padded labels. */
+        private static void detail(String label, String value) {
+            CliOutput.out(" " + Theme.colorize(Glyphs.bullet(), Theme.active().dim()) + " "
+                    + String.format("%-" + LABEL_FIELD + "s", label + ":") + " " + value);
         }
 
-        private static List<String> renderInfoTable(
-                Stats sha,
-                Stats actions,
-                Stats repos,
-                Stats runs,
-                Stats stamps,
-                long totalFiles,
-                long totalBytes,
-                long maxBytes,
-                String lastPruned) {
-            String[][] rows = {
-                {"CAS Blobs", fmtCount(sha.files), fmtSize(sha.bytes)},
-                {"Action Cache", fmtCount(actions.files), fmtSize(actions.bytes)},
-                {"Worker JARs", fmtCount(repos.files), fmtSize(repos.bytes)},
-                {"Run Logs", fmtCount(runs.files), fmtSize(runs.bytes)},
-                {"Format Stamps", fmtCount(stamps.files), fmtSize(stamps.bytes)},
-            };
-            String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
-
-            int[] w = new int[3];
-            for (int i = 0; i < 3; i++) w[i] = HEADERS[i].length();
-            for (String[] r : rows) for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], r[i].length());
-            for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], total[i].length());
-            int inner = (w[0] + 2) + (w[1] + 2) + (w[2] + 2) + 2;
-
-            List<String> out = new ArrayList<>();
-            out.add(cc.jumpkick.cli.tui.BoxTable.titleBar("Cache Directory Information", inner + 2));
-            out.add(divider("├", "┬", "┤", w));
-            out.add(headerRow(w));
-            out.add(divider("├", "┼", "┤", w));
-            for (String[] r : rows) out.add(metricRow(r, w));
-            out.add(divider("├", "┼", "┤", w));
-            out.add(metricRow(total, w));
-            out.add(divider("├", "┴", "┤", w)); // ┴ closes the columns; utilization spans full width
-            out.add(utilizationRow(totalBytes, maxBytes, inner));
-            out.add(border("╰", "╯", inner));
-            Theme t = Theme.active();
-            out.add("  Last pruned: "
-                    + Theme.colorize(lastPruned, "never".equals(lastPruned) ? t.warning() : t.normalGray()));
-            return out;
-        }
-
-        private static String border(String left, String right, int inner) {
-            return Theme.colorize(
-                    left + "─".repeat(inner) + right, Theme.active().darkGray());
-        }
-
-        private static String divider(String left, String junction, String right, int[] w) {
-            StringBuilder sb = new StringBuilder(left);
-            for (int i = 0; i < w.length; i++) {
-                sb.append("─".repeat(w[i] + 2));
-                sb.append(i == w.length - 1 ? right : junction);
-            }
-            return Theme.colorize(sb.toString(), Theme.active().darkGray());
-        }
-
-        /** Column headers, left-justified, in white. */
-        private static String headerRow(int[] w) {
-            String bar = Theme.colorize("│", Theme.active().darkGray());
-            StringBuilder sb = new StringBuilder(bar);
-            for (int i = 0; i < HEADERS.length; i++) {
-                sb.append(" ")
-                        .append(Theme.colorize(
-                                padRight(HEADERS[i], w[i]), Theme.active().brightWhite()))
-                        .append(" ")
-                        .append(bar);
-            }
-            return sb.toString();
-        }
-
-        /** A metric row: first column right-justified + white, the rest plain + left-justified. */
-        private static String metricRow(String[] r, int[] w) {
-            String bar = Theme.colorize("│", Theme.active().darkGray());
-            return bar
-                    + " "
-                    + Theme.colorize(padLeft(r[0], w[0]), Theme.active().brightWhite())
-                    + " "
-                    + bar
-                    + " "
-                    + padRight(r[1], w[1])
-                    + " "
-                    + bar
-                    + " "
-                    + padRight(r[2], w[2])
-                    + " "
-                    + bar;
-        }
-
-        /** Full-width "Utilization <bar> NN%" row. */
-        private static String utilizationRow(long used, long max, int inner) {
+        /** Compact utilization bar + percent for a bullet line. */
+        static String utilizationText(long used, long max) {
             Theme t = Theme.active();
             int pct = (int) Math.round(cc.jumpkick.cli.tui.ProgressBar.fraction(used, max) * 100);
-            String prefix = " Utilization  ";
-            String suffix = "  " + pct + "% ";
-            int barWidth = Math.max(0, inner - prefix.length() - suffix.length());
             String bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
-                    used,
-                    max,
-                    barWidth,
-                    t.bright(t.planBadgeColor()), // filled ▰ — plan-badge blue
-                    t.darkGray()); // empty  ▱ — bright-black
-            String rail = Theme.colorize("│", t.darkGray());
-            return rail + prefix + bar + suffix + rail;
-        }
-
-        private static String padRight(String s, int w) {
-            return s.length() >= w ? s : s + " ".repeat(w - s.length());
-        }
-
-        private static String padLeft(String s, int w) {
-            return s.length() >= w ? s : " ".repeat(w - s.length()) + s;
-        }
-    }
-
-    public static final class CacheSearchCommand implements CliCommand {
-        @Override
-        public String name() {
-            return "search";
-        }
-
-        @Override
-        public String description() {
-            return "Search locally-cached artifacts by group/artifact substring";
-        }
-
-        @Override
-        public List<Opt> options() {
-            return List.of(
-                    Opt.value("<N>", "Cap the number of coordinates displayed (default: no cap).", "--limit"),
-                    cc.jumpkick.cli.CommonOpts.cacheDir());
-        }
-
-        @Override
-        public List<Param> parameters() {
-            return List.of(Param.of(
-                    "term", Arity.ONE_OR_MORE, "One or more substrings. All must match (in group or artifact)."));
-        }
-
-        @Override
-        public int run(Invocation in) {
-            List<String> terms = in.positionals();
-            Integer limit = in.value("limit").map(Integer::parseInt).orElse(null);
-            Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
-            Path cacheRoot = resolveCacheRoot(cacheDir);
-            List<String> lowerTerms =
-                    terms.stream().map(t -> t.toLowerCase(Locale.ROOT)).toList();
-            List<RepoArtifactStore.Module> hits = RepoArtifactStore.allModules(cacheRoot).stream()
-                    .filter(m -> allMatch(
-                            lowerTerms,
-                            m.group().toLowerCase(Locale.ROOT),
-                            m.artifact().toLowerCase(Locale.ROOT)))
-                    .sorted(Comparator.comparing(RepoArtifactStore.Module::moduleKey))
-                    .toList();
-            if (hits.isEmpty()) {
-                CliOutput.out("No cached coordinates match: " + String.join(" ", terms));
-                return 1;
-            }
-            int total = hits.size();
-            int shown = limit != null && limit > 0 && total > limit ? limit : total;
-            int keyWidth = 0;
-            for (int i = 0; i < shown; i++)
-                keyWidth = Math.max(keyWidth, hits.get(i).moduleKey().length());
-            long versionCount = 0;
-            for (int i = 0; i < shown; i++) {
-                RepoArtifactStore.Module m = hits.get(i);
-                List<String> versions = new ArrayList<>(m.versions());
-                versions.sort((a, b) -> Versions.compare(b, a));
-                versionCount += versions.size();
-                String key = m.moduleKey();
-                String gap = " ".repeat(Math.max(0, keyWidth - key.length()));
-                CliOutput.out(Coords.module(key)
-                        + gap
-                        + "  "
-                        + String.join(
-                                ", ", versions.stream().map(Coords::version).toList()));
-            }
-            if (shown < total) {
-                Theme st = Theme.active();
-                CliOutput.out(Theme.colorize("…", st.darkGray())
-                        + " "
-                        + Theme.colorize("and ", st.normalGray())
-                        + Theme.colorize(String.valueOf(total - shown), st.focused())
-                        + " "
-                        + Theme.colorize("more", st.normalGray())
-                        + " "
-                        + Theme.colorize("(pass --limit " + total + " or refine the search)", st.dim()));
-            }
-            {
-                Theme st = Theme.active();
-                CliOutput.out(Theme.colorize(fmtCount(shown), st.focused())
-                        + " "
-                        + Theme.colorize("coordinate" + (shown == 1 ? "" : "s"), st.settled())
-                        + ", "
-                        + Theme.colorize(fmtCount(versionCount), st.focused())
-                        + " "
-                        + Theme.colorize("version" + (versionCount == 1 ? "" : "s") + " cached", st.settled()));
-            }
-            return 0;
-        }
-
-        private static boolean allMatch(List<String> terms, String... fields) {
-            for (String t : terms) {
-                boolean found = false;
-                for (String f : fields) {
-                    if (f.contains(t)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) return false;
-            }
-            return true;
+                    used, max, 24, t.bright(t.planBadgeColor()), t.darkGray());
+            return bar + "  " + pct + "%";
         }
     }
 
@@ -496,7 +309,6 @@ public final class CacheCommand extends GroupCommand {
         public List<Opt> options() {
             return List.of(
                     Opt.flag("Print what would be invalidated; touch nothing.", "--dry-run"),
-                    Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
                     cc.jumpkick.cli.CommonOpts.cacheDir());
         }
 
@@ -525,11 +337,10 @@ public final class CacheCommand extends GroupCommand {
             }
 
             boolean dryRun = in.isSet("dry-run");
-            boolean assumeYes = in.isSet("yes");
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             Path root = resolveCacheRoot(cacheDir);
 
-            if (!dryRun && !assumeYes && !confirmClear()) {
+            if (!dryRun && !confirmClear()) {
                 CliOutput.out(
                         cc.jumpkick.cli.tui.PipelineWedge.chipLine(Glyphs.CROSS, "Cache", nerdfont, "Clear aborted."));
                 return 1;
@@ -614,14 +425,15 @@ public final class CacheCommand extends GroupCommand {
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
                     Opt.value(
                             "<days>",
-                            "Prune action-cache entries with mtime older than N days. Default: 30.",
+                            "Drop action-cache entries older than N days",
                             "--older-than"),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Mark-and-sweep unreferenced CAS objects after expiring stale records.", "--sweep"),
-                    Opt.value(
-                            "<size>",
-                            "Evict oldest CAS objects to <size> (e.g. 20G, 500M). Implies --sweep.",
-                            "--max-size"),
+                    // Store-side flags moved to `jk repo prune` (JK-1435); kept hidden for
+                    // back-compat — see docs/aliases.md.
+                    Opt.flag("Sweep unreferenced CAS objects after prune", "--sweep")
+                            .hide(),
+                    Opt.value("<size>", "Cap CAS size (e.g. 20G); implies --sweep", "--max-size")
+                            .hide(),
                     Opt.flag("Internal: opportunistic prune.", "--background").hide());
         }
 
@@ -721,22 +533,20 @@ public final class CacheCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Delete the entire cache (asks to confirm)";
+            return "Delete the entire action cache (asks to confirm)";
         }
 
         @Override
         public List<Opt> options() {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
-                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Skip the confirmation prompt.", "-y", "--yes"));
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
         }
 
         @Override
         public int run(Invocation in) throws IOException {
             Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
             boolean dryRun = in.isSet("dry-run");
-            boolean assumeYes = in.isSet("yes");
             GlobalOptions global = GlobalOptions.from(in);
             boolean nerdfont = cc.jumpkick.config.GlobalConfig.nerdfont();
             Path root = resolveCacheRoot(cacheDir);
@@ -744,14 +554,18 @@ public final class CacheCommand extends GroupCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — cache directory does not exist.");
                 return 0;
             }
-            Stats stats = statsOf(root);
+            Stats stats = actionCacheStats(root);
+            if (stats.files == 0) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — the action cache is empty.");
+                return 0;
+            }
             if (dryRun) {
                 cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Cache",
                         "Dry run: would remove " + fmtCount(stats.files) + " files, " + fmtBytes(stats.bytes) + ".");
                 return 0;
             }
-            if (!assumeYes && !confirmPurge(root, stats)) {
+            if (!confirmPurge(root, stats)) {
                 cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
                 CliOutput.out(cc.jumpkick.cli.tui.PipelineWedge.chipLine(
                         cc.jumpkick.cli.tui.Glyphs.CROSS, "Cache", nerdfont, "Purge aborted."));
@@ -782,20 +596,187 @@ public final class CacheCommand extends GroupCommand {
             return pipelineResult.success() ? 0 : 1;
         }
 
-        /** Stern, default-to-no confirmation before wiping the whole cache. */
+        /**
+         * The action-cache footprint the purge will delete: {@code actions/} + {@code format-stamps/}
+         * (mirrors {@code CachePipelines.purgeActionCache}). Store-side trees under the same root
+         * (CAS, repo mirrors, run logs) are excluded — purge keeps them.
+         */
+        static Stats actionCacheStats(Path root) throws IOException {
+            long files = 0;
+            long bytes = 0;
+            for (String tree : new String[] {"actions", "format-stamps"}) {
+                Path dir = root.resolve(tree);
+                if (!Files.isDirectory(dir)) continue;
+                Stats s = statsOf(dir);
+                files += s.files;
+                bytes += s.bytes;
+            }
+            return new Stats(files, bytes);
+        }
+
+        /** Stern, default-to-no confirmation before wiping the action cache. */
         private static boolean confirmPurge(Path root, Stats stats) {
             Theme t = Theme.active();
             String bang = Theme.colorize(Glyphs.BANG, t.warning());
             CliOutput.out();
-            CliOutput.out(bang + " " + Theme.colorize("This permanently deletes the ENTIRE jk cache.", t.errorLabel()));
+            CliOutput.out(bang
+                    + " "
+                    + Theme.colorize("This permanently deletes the ENTIRE action cache.", t.errorLabel()));
             CliOutput.out("  " + root);
             CliOutput.stdout()
                     .printf(
-                            "  %s files, %s — every cached dependency, CAS blob, and the m2 repo mirror.%n",
+                            "  %s files, %s — every action-cache entry (actions/ + format stamps) under this root.%n",
                             fmtCount(stats.files), fmtBytes(stats.bytes));
-            CliOutput.out("  jk will re-download everything on the next build.");
-            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the whole cache?", false)
+            CliOutput.out("  CAS blobs, repo mirrors, and run logs are kept (see jk repo). The next build re-runs work.");
+            return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the action cache?", false)
                     .ask();
         }
+    }
+
+    /**
+     * Hidden post-split redirect stub: {@code jk cache search} forwards to {@code jk repo search}
+     * (see docs/aliases.md). A one-line stderr note points at the canonical command; stdout stays
+     * identical to {@code jk repo search}, so piped scripts keep working.
+     */
+    public static final class CacheSearchRedirect implements CliCommand {
+        private final RepoCommand.RepoSearchCommand target = new RepoCommand.RepoSearchCommand();
+
+        @Override
+        public String name() {
+            return "search";
+        }
+
+        @Override
+        public boolean hidden() {
+            return true;
+        }
+
+        @Override
+        public String description() {
+            return "Moved — use jk repo search";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return target.options();
+        }
+
+        @Override
+        public List<cc.jumpkick.model.command.Param> parameters() {
+            return target.parameters();
+        }
+
+        @Override
+        public int run(Invocation in) throws Exception {
+            CliOutput.err(Theme.colorize(
+                    "note: jk cache search moved to jk repo search", Theme.active().dim()));
+            return target.run(in);
+        }
+    }
+
+    // ---- shared table chrome for jk repo storage -------------------------------------------
+
+    private static final String[] REPO_STORAGE_HEADERS = {"Element", "File Count", "Size"};
+
+    /**
+     * Box table for {@code jk repo storage}: CAS + worker jars + run logs, utilization vs store
+     * {@code max-size-gb}, last-pruned footer.
+     */
+    static List<String> renderRepoStorageTable(
+            Stats cas, Stats repos, Stats runs, long totalFiles, long totalBytes, long maxBytes, String lastPruned) {
+        String[][] rows = {
+            {"CAS Blobs", fmtCount(cas.files), fmtSize(cas.bytes)},
+            {"Worker JARs", fmtCount(repos.files), fmtSize(repos.bytes)},
+            {"Run Logs", fmtCount(runs.files), fmtSize(runs.bytes)},
+        };
+        String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
+
+        int[] w = new int[3];
+        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(REPO_STORAGE_HEADERS[i]);
+        for (String[] r : rows)
+            for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(r[i]));
+        for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(total[i]));
+        int inner = (w[0] + 2) + (w[1] + 2) + (w[2] + 2) + 2;
+
+        List<String> out = new ArrayList<>();
+        out.add(cc.jumpkick.cli.tui.BoxTable.titleBar("Repo Storage", inner + 2));
+        out.add(divider("├", "┬", "┤", w));
+        out.add(headerRow(REPO_STORAGE_HEADERS, w));
+        out.add(divider("├", "┼", "┤", w));
+        for (String[] r : rows) out.add(metricRow(r, w));
+        out.add(divider("├", "┼", "┤", w));
+        out.add(metricRow(total, w));
+        out.add(divider("├", "┴", "┤", w));
+        out.add(utilizationRow(totalBytes, maxBytes, inner));
+        out.add(border("╰", "╯", inner));
+        Theme t = Theme.active();
+        out.add("  Last pruned: "
+                + Theme.colorize(lastPruned, "never".equals(lastPruned) ? t.warning() : t.normalGray()));
+        return out;
+    }
+
+    private static String border(String left, String right, int inner) {
+        return Theme.colorize(left + "─".repeat(inner) + right, Theme.active().darkGray());
+    }
+
+    private static String divider(String left, String junction, String right, int[] w) {
+        StringBuilder sb = new StringBuilder(left);
+        for (int i = 0; i < w.length; i++) {
+            sb.append("─".repeat(w[i] + 2));
+            sb.append(i == w.length - 1 ? right : junction);
+        }
+        return Theme.colorize(sb.toString(), Theme.active().darkGray());
+    }
+
+    private static String headerRow(String[] headers, int[] w) {
+        String bar = Theme.colorize("│", Theme.active().darkGray());
+        StringBuilder sb = new StringBuilder(bar);
+        for (int i = 0; i < headers.length; i++) {
+            sb.append(" ")
+                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers[i], w[i])))
+                    .append(" ")
+                    .append(bar);
+        }
+        return sb.toString();
+    }
+
+    private static String metricRow(String[] r, int[] w) {
+        String bar = Theme.colorize("│", Theme.active().darkGray());
+        return bar
+                + " "
+                + Theme.colorize(padLeft(r[0], w[0]), Theme.active().brightWhite())
+                + " "
+                + bar
+                + " "
+                + padRight(r[1], w[1])
+                + " "
+                + bar
+                + " "
+                + padRight(r[2], w[2])
+                + " "
+                + bar;
+    }
+
+    private static String utilizationRow(long used, long max, int inner) {
+        Theme t = Theme.active();
+        int pct = (int) Math.round(cc.jumpkick.cli.tui.ProgressBar.fraction(used, max) * 100);
+        String prefix = " Utilization  ";
+        String suffix = "  " + pct + "% ";
+        int barWidth = Math.max(0, inner - prefix.length() - suffix.length());
+        String bar = cc.jumpkick.cli.tui.ProgressBar.renderBar(
+                used, max, barWidth, t.bright(t.planBadgeColor()), t.darkGray());
+        String rail = Theme.colorize("│", t.darkGray());
+        return rail + prefix + bar + suffix + rail;
+    }
+
+    /** ANSI-aware pads ({@code BoxTable.visibleWidth}) so colored cells keep the box aligned. */
+    private static String padRight(String s, int w) {
+        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
+        return len >= w ? s : s + " ".repeat(w - len);
+    }
+
+    private static String padLeft(String s, int w) {
+        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
+        return len >= w ? s : " ".repeat(w - len) + s;
     }
 }

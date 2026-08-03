@@ -202,10 +202,17 @@
             <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
           </div>
           <div class="modal-foot">
-            <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
-            <span v-else class="dim small">No jk.toml in this folder</span>
-            <span class="spacer"></span>
-            <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
+            <template v-if="browserMode === 'parent'">
+              <span class="dim small">New project will be created as a child of this folder</span>
+              <span class="spacer"></span>
+              <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
+            </template>
+            <template v-else>
+              <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
+              <span v-else class="dim small">No jk.toml in this folder</span>
+              <span class="spacer"></span>
+              <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
+            </template>
           </div>
         </div>
       </div>
@@ -215,9 +222,11 @@
       <div class="feed-head">
         <h2>Projects</h2>
         <span class="retention">Every workspace jk has built on this machine</span>
+        <span class="spacer"></span>
+        <button type="button" class="new-project" @click="openNewProject()"><jk-icon name="plus"></jk-icon>New project</button>
       </div>
       <p v-if="projectsList.length === 0" class="empty">
-        No projects yet — run a <code>jk build</code> and every workspace you build shows up here with its history.
+        No projects yet — <a href="#" @click.prevent="openNewProject()">create one</a>, or run a <code>jk build</code> and every workspace you build shows up here.
       </p>
 
       <!-- One row per project: {orb} {coords} left · {30-build spark bars + trend} centre · {status
@@ -419,6 +428,66 @@
         <span class="live-label">{{ connection === 'live' ? 'Live' : connection === 'connecting' ? 'Connecting' : connection === 'unauthorized' ? 'Unauthorized' : 'Offline' }}</span>
       </div>
     </footer>
+
+    <!-- New project (JK-1193) -->
+    <div v-if="newProjectOpen" class="modal-bg" @click.self="closeNewProject()">
+      <div class="modal new-project-modal">
+        <div class="modal-head">
+          <span class="lbl">New project</span>
+          <span class="spacer"></span>
+          <button class="icon-btn" @click="closeNewProject()" aria-label="Close" title="Close"><jk-icon name="x"></jk-icon></button>
+        </div>
+        <form class="new-project-form" @submit.prevent="submitNewProject()">
+          <label>
+            <span>Name</span>
+            <input v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off">
+          </label>
+          <label>
+            <span>Group</span>
+            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off">
+          </label>
+          <label>
+            <span>Language</span>
+            <select v-model="newProject.lang">
+              <option value="java">Java</option>
+              <option value="kotlin">Kotlin</option>
+              <option value="groovy">Groovy</option>
+            </select>
+          </label>
+          <label>
+            <span>Layout</span>
+            <select v-model="newProject.layout">
+              <option value="simple">Simple (Mill-like)</option>
+              <option value="traditional">Traditional (Maven-like)</option>
+            </select>
+          </label>
+          <label>
+            <span>Template <span class="dim">(optional short name)</span></span>
+            <input v-model="newProject.template" list="jk-templates" spellcheck="false" placeholder="java-cli">
+            <datalist id="jk-templates">
+              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.description }}</option>
+            </datalist>
+          </label>
+          <label>
+            <span>Parent directory</span>
+            <div class="parent-row">
+              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src">
+              <button type="button" class="browse" @click="openParentBrowser()" title="Browse"><jk-icon name="folder-open"></jk-icon></button>
+            </div>
+          </label>
+          <label class="check">
+            <input type="checkbox" v-model="newProject.executable"> Executable (with main)
+          </label>
+          <p v-if="newProjectError" class="error">{{ newProjectError }}</p>
+          <div class="modal-foot form-actions">
+            <button type="button" class="ghost" @click="closeNewProject()">Cancel</button>
+            <button type="submit" :disabled="newProjectBusy">
+              {{ newProjectBusy ? 'Creating…' : 'Create project' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <!-- Help / About (header ? button) -->
     <div v-if="help" class="modal-bg" @click.self="help = false">

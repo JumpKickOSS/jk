@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import cc.jumpkick.scaffold.Giter8LocalApply;
 
 class Giter8LocalApplyTest {
 

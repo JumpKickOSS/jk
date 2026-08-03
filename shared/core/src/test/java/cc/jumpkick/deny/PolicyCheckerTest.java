@@ -68,7 +68,7 @@ class PolicyCheckerTest {
                 group    = "g"
                 name     = "a"
                 version  = "1"
-                jdk      = 21
+                jdk      = 25
 
                 [deny.sources]
                 deny = ["jcenter.bintray.com"]
@@ -86,7 +86,7 @@ class PolicyCheckerTest {
                         group = "g"
                         name = "a"
                         version = "1"
-                        jdk = 21
+                        jdk = 25
                         [deny.licenses]
                         deny = ["GPL-3.0"]
                         """));
@@ -100,7 +100,7 @@ class PolicyCheckerTest {
                         group = "g"
                         name = "a"
                         version = "1"
-                        jdk = 21
+                        jdk = 25
                         [deny]
                         yanked = "deny"
                         """));
@@ -113,7 +113,7 @@ class PolicyCheckerTest {
                 group    = "g"
                 name     = "a"
                 version  = "1"
-                jdk      = 21
+                jdk      = 25
                 """);
         assertThat(policy.isEmpty()).isTrue();
     }

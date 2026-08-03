@@ -40,7 +40,7 @@ public final class LibrarySearchCommand implements CliCommand {
                 Opt.flag("Group results under a heading per source layer.", "--group-by-layer"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide());
     }
@@ -92,17 +92,18 @@ public final class LibrarySearchCommand implements CliCommand {
         int total = hits.size();
         int shown = limit != null && limit > 0 && total > limit ? limit : total;
         List<Hit> visible = hits.subList(0, shown);
-        int nameWidth = visible.stream().mapToInt(h -> h.name.length()).max().orElse(0);
-        int leaderColumn = nameWidth + 2;
 
-        if (groupByLayer) renderGrouped(catalog, visible, leaderColumn);
-        else for (Hit h : visible) CliOutput.out(row(h, leaderColumn));
+        if (groupByLayer) {
+            renderGrouped(catalog, visible);
+        } else {
+            printTable("Library search", visible);
+        }
         if (shown < total)
             CliOutput.out("… and " + (total - shown) + " more (pass --limit " + total + " or refine the search)");
         return 0;
     }
 
-    private void renderGrouped(LibraryCatalog catalog, List<Hit> visible, int leaderColumn) {
+    private void renderGrouped(LibraryCatalog catalog, List<Hit> visible) {
         boolean firstGroup = true;
         for (String layer : catalog.layerNames()) {
             List<Hit> inLayer =
@@ -110,21 +111,25 @@ public final class LibrarySearchCommand implements CliCommand {
             if (inLayer.isEmpty()) continue;
             if (!firstGroup) CliOutput.out();
             firstGroup = false;
-            CliOutput.out(Theme.colorize(layer, Theme.active().cyan()));
-            for (Hit h : inLayer) CliOutput.out(row(h, leaderColumn));
+            printTable("Library search — " + layer, inLayer);
         }
     }
 
-    private String row(Hit h, int leaderColumn) {
-        String leader = ".".repeat(Math.max(2, leaderColumn - h.name.length()));
-        String line = Coords.shortName(h.name)
-                + Theme.colorize(leader, Theme.active().black())
-                + Coords.module(h.src.module().moduleKey());
-        if (showLayer && !groupByLayer)
-            line += "  "
-                    + Theme.colorize("[" + h.src.layer() + "]", Theme.active().cyan());
-        if (!h.cached.isEmpty()) line += "  (cached: " + String.join(", ", h.cached) + ")";
-        return line;
+    private void printTable(String title, List<Hit> visible) {
+        List<String> headers = new java.util.ArrayList<>(List.of("Name", "Coordinates"));
+        if (showLayer && !groupByLayer) headers.add("Layer");
+        headers.add("Cached");
+        List<List<String>> rows = new java.util.ArrayList<>();
+        for (Hit h : visible) {
+            List<String> cells = new java.util.ArrayList<>(List.of(h.name, h.src.module().moduleKey()));
+            if (showLayer && !groupByLayer) cells.add(h.src.layer());
+            cells.add(String.join(", ", h.cached));
+            rows.add(cells);
+        }
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        for (String line : cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)) {
+            CliOutput.out(line);
+        }
     }
 
     private static boolean allMatch(List<String> terms, String... fields) {

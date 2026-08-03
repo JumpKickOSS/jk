@@ -21,8 +21,8 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
 
                 [application]
                 main = "com.example.Main"
@@ -39,7 +39,7 @@ class GradleExporterTest {
         assertThat(kts).contains("group = \"com.example\"");
         assertThat(kts).contains("version = \"1.2.3\"");
         assertThat(kts).contains("implementation(\"com.google.guava:guava:33.0.0-jre\")");
-        assertThat(kts).contains("languageVersion = JavaLanguageVersion.of(21)");
+        assertThat(kts).contains("languageVersion = JavaLanguageVersion.of(25)");
         assertThat(kts).contains("mainClass = \"com.example.Main\"");
         assertThat(kts).contains("mavenCentral()");
     }
@@ -51,7 +51,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 guava = { group = "com.google.guava", name = "guava", version = "^33.0.0-jre" }
@@ -72,7 +72,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 guava = { group = "com.google.guava", name = "guava", version = "^33.0.0-jre" }
@@ -91,7 +91,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
                 kotlin = "2.3.21"
 
                 [application]
@@ -116,7 +116,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [workspace]
                 modules = ["mod-a", "mod-b"]
@@ -126,7 +126,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
-                java = 21
+                java = 25
                 """);
 
         GradleExporter.Result r = GradleExporter.export(root, Map.of("mod-a", a), Map.of());
@@ -148,7 +148,7 @@ class GradleExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 acme = { git = "https://example.com/acme.git", tag = "v1.0" }

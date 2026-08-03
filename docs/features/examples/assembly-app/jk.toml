@@ -2,7 +2,6 @@
 group = "com.example"
 name = "assembly-app"
 version = "0.0.1"
-jdk = 25
 java = 25
 
 [application]

@@ -1,3 +1,7 @@
+# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
+# immune to ~/.jk/libs.toml and the downloaded registry mirror.
+catalog = "bundled"
+
 [project]
 name        = "jk-kotlin-compiler"
 description = "jk-kotlin-compiler: Kotlin Build Tools API worker (PluginMain)."
@@ -10,13 +14,13 @@ main     = "cc.jumpkick.plugin.process.PluginMain"
 jk-plugin-sdk.workspace = true
 
 [provided-dependencies]
-kotlin-build-tools-api = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "latest" }
+kotlin-build-tools-api  = "latest"
 kotlin-stdlib           = "latest"
 
 [test-dependencies]
 # BTA must be on the test CP: when jk test runs this plugin module, ServiceLoader also sees
 # KotlinCompiler (Plugin SPI) and must load it without ClassNotFoundException.
-kotlin-build-tools-api  = { group = "org.jetbrains.kotlin", name = "kotlin-build-tools-api", version = "latest" }
+kotlin-build-tools-api  = "latest"
 kotlin-stdlib           = "latest"
 assertj-core            = "latest"
 junit-jupiter           = "latest"

@@ -28,7 +28,7 @@ import java.util.Set;
 /**
  * App-install pipeline used by {@code jk tool install} / {@code jk install}: current project, Maven
  * coordinate, or git URL (optional {@code @}/{@code #} ref; {@code gh:owner/repo} shorthands).
- * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.jk/bin}.
+ * Cache-installs into the CAS/m2; applications also get a launcher under {@code ~/.local/bin}.
  */
 public final class InstallCommand {
 
@@ -111,11 +111,13 @@ public final class InstallCommand {
         Files.createDirectories(cache);
         Coordinate coord = Coordinate.of(group, artifact, version);
         // File-install writes directly to repos/local/ (the JAR is already on disk, no project
-        // metadata for a POM, so ~/.m2 write is not appropriate here).
-        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(cache, MavenLayout.artifactPath(coord), filePath);
+        // metadata for a POM, so ~/.m2 write is not appropriate here). Route to the store root
+        // (JK-1445/JK-1450): resolvers read repos/local and the classpath CAS from the store.
+        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(
+                cc.jumpkick.cache.JkStores.storeRootFor(cache), MavenLayout.artifactPath(coord), filePath);
 
         if (!global.outputIsJson()) {
-            CliOutput.out("Installed " + cc.jumpkick.cli.theme.Coords.gav(coord) + " to the local cache");
+            CliOutput.out("Installed " + cc.jumpkick.cli.theme.Coords.gav(coord) + " to the local store");
         }
         return 0;
     }

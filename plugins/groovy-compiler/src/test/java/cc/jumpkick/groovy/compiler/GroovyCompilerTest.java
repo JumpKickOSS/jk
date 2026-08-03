@@ -35,7 +35,7 @@ class GroovyCompilerTest {
         Path out = dir.resolve("classes");
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out))
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .source(src));
 
         assertThat(run.exit).as("diagnostics: %s", run.protocol).isZero();
@@ -68,7 +68,7 @@ class GroovyCompilerTest {
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out, "workdir", work))
                 .extra("stubsOut", stubs)
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .source(g)
                 .source(j)
                 .source(jUser));
@@ -101,7 +101,7 @@ class GroovyCompilerTest {
         Path out = dir.resolve("classes");
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out, "workdir", dir.resolve("work")))
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .configList("javaSourceRoots", List.of(javaRoot.toAbsolutePath().toString()))
                 .source(g));
 
@@ -120,7 +120,7 @@ class GroovyCompilerTest {
         Path out = dir.resolve("classes");
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out))
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .source(src)
                 .arg("--parameters"));
         assertThat(run.exit).as("diagnostics: %s", run.protocol).isZero();
@@ -144,7 +144,7 @@ class GroovyCompilerTest {
                 """);
         Path out = dir.resolve("classes");
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out))
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .source(src));
         assertThat(run.exit).isZero();
 
@@ -165,7 +165,7 @@ class GroovyCompilerTest {
         Path out = dir.resolve("classes");
 
         Run run = compile(dir, sw -> sw.layout(Map.of("classesDir", out))
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .source(src));
 
         assertThat(run.exit).isEqualTo(1);

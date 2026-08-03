@@ -145,7 +145,7 @@ class EffortWeightsStepEtaTest {
 
     @Test
     void cold_run_tests_weight_is_ballpark_not_empty_probe() {
-        // Use empty calibration so host ~/.jk priors do not affect product baseline math.
+        // Use empty calibration so host product layout priors do not affect product baseline math.
         Calibration.installForTest(Calibration.absentForTest());
         try {
             int w = EffortWeights.coldWorkWeight("run-tests", 100, 1);

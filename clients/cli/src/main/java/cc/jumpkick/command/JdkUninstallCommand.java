@@ -73,10 +73,9 @@ public final class JdkUninstallCommand implements CliCommand {
 
     @Override
     public java.util.List<Opt> options() {
-        return java.util.List.of(
-                Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
-                Opt.value("<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
-                        .hide());
+        return java.util.List.of(Opt.value(
+                        "<dir>", "Override the JDK install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
+                .hide());
     }
 
     @Override

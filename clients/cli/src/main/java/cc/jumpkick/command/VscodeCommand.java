@@ -26,7 +26,7 @@ public final class VscodeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Generate VS Code project files (alias of `jk ide --vscode`)";
+        return "Generate VS Code project files + .bsp/ (jk ide --vscode)";
     }
 
     @Override

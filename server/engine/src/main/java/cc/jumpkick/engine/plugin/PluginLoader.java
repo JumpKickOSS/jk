@@ -56,7 +56,7 @@ public final class PluginLoader {
      *
      * <p>The test runner also uses it to hand a suite a sandboxed {@code JK_HOME}without
      * that, a forked test JVM inherits the engine's environment and reads the developer's real
-     * {@code ~/.jk}.
+     * {@code JK_HOME} / platform product layout.
      */
     public static int run(
             Path javaExe,

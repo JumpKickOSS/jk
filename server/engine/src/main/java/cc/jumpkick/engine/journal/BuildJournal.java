@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 /**
  * Best-effort build history under
- * {@code ~/.jk/state/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
+ * {@code ~/.local/state/jk/builds/projects/&lt;key&gt;/runs/&lt;build-number&gt;/} with
  * {@code record.json}, {@code details.jsonl}, {@code metrics.toml}, and optional snapshots.
  *
  * <p>Directory name is the project build number (e.g. {@code 27}). {@link BuildRecord#id()} is a
@@ -124,7 +124,7 @@ public final class BuildJournal {
                     deleteTreeQuietly(target);
                 }
                 move(tmp, target);
-                if (!record.running()) MetricsHarvest.get().request();
+                if (!record.running() && !record.synthetic()) MetricsHarvest.get().request();
                 return dirName;
             } catch (IOException e) {
                 deleteTreeQuietly(tmp);
@@ -199,11 +199,29 @@ public final class BuildJournal {
                 }
             }
             deleteTreeQuietly(tmp);
-            MetricsHarvest.get().request();
+            // Synthetic optimize/calibrate fixtures must not train host ETA aggregates.
+            if (!toWrite.synthetic()) {
+                MetricsHarvest.get().request();
+            }
             return true;
         } catch (IOException | RuntimeException e) {
             deleteTreeQuietly(tmp);
             return false;
+        }
+    }
+
+    /**
+     * Drop an entire project home (all runs + identity) after a synthetic optimize/calibrate pass
+     * so temp fixture paths never appear in history or the web UI.
+     */
+    public void purgeProject(String coord, String projectDir) {
+        try {
+            Path projectPath = Path.of(projectDir == null || projectDir.isBlank() ? "." : projectDir);
+            String c = coord == null || coord.isBlank() ? "unknown:unknown" : coord;
+            Path home = ProjectBuilds.projectHome(buildsRoot, c, projectPath);
+            if (Files.isDirectory(home)) deleteTreeQuietly(home);
+        } catch (RuntimeException ignored) {
+            // best-effort
         }
     }
 
@@ -357,7 +375,10 @@ public final class BuildJournal {
     public List<BuildRecord> list() {
         List<BuildRecord> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
-            readRecord(dir).ifPresent(out::add);
+            readRecord(dir).ifPresent(r -> {
+                // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
+                if (!r.synthetic()) out.add(r);
+            });
         }
         // Newest first by startedAt / finishedAt
         out.sort(Comparator.comparingLong((BuildRecord r) -> r.finishedAt() > 0 ? r.finishedAt() : r.startedAt())

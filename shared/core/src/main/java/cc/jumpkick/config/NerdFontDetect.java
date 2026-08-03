@@ -6,7 +6,7 @@ import java.util.function.Function;
 
 /**
  * Best-effort Nerd Font / PUA-glyph capability probe. Intended for <strong>install-time
- * / setup-command</strong> use — write the result to {@code ~/.jk/config.toml}, do not call on every
+ * / setup-command</strong> use — write the result to {@code ~/.config/jk/config.toml}, do not call on every
  * build. Env {@code JK_NERDFONT} still overrides at runtime.
  */
 public final class NerdFontDetect {

@@ -11,8 +11,33 @@ Giter8 does **not** replace the wizard for “hello app” cases. Plugin-declare
 remains the built-in path for Spring / Grails / Quarkus flags. The **`quarkus`** short name
 is an alternate G8 shape of the same single-module app (not a multi-module workspace).
 
-Complex multi-module dogfood lives in **jk-examples** (e.g. `java/quarkus-petshop`), not in
-first-party G8 yet.
+### Official templates repo
+
+First-party Giter8 content lives in **[jkbuild/jk-templates](https://github.com/jkbuild/jk-templates)**
+(overridable via config). Layout: monorepo with nested `*.g8` directories (or `templates/*.g8`).
+
+In-tree `templates/*.g8` and classpath `giter8/*` are **dogfood / offline bootstrap** only.
+
+### Third-party sources (`~/.config/jk/config.toml`)
+
+```toml
+[templates]
+# optional; default is https://github.com/jkbuild/jk-templates
+official = "https://github.com/jkbuild/jk-templates"
+
+[templates.sources]
+acme = "https://github.com/acme/jk-g8"
+corp = { url = "https://git.example/corp/jk-templates.git", rev = "main" }
+```
+
+Short names are looked up in each source (nested `name.g8` / `templates/name.g8`) after local
+paths and before the official monorepo. One-shot CLI sources:
+
+```bash
+jk new --template my-starter --template-source https://github.com/acme/jk-g8
+```
+
+Complex multi-module dogfood also lives in **[jk-examples](https://github.com/jkbuild/jk-examples)** (e.g. `spring-boot/petshop`, `kotlin/ktor-petshop`).
 
 ## CLI surface
 
@@ -29,9 +54,9 @@ jk new --template <ref> --param key=value   # non-interactive props (repeatable)
 | Order | Form | Status |
 |------:|------|--------|
 | 1 | **Local path** — directory or `…/template.g8` with `src/main/g8/` (or G8 root layout) | **Shipped** (JK-1182) |
-| 2 | **Short name** — catalog entry (`java-cli`, `quarkus`, …) | **Shipped** locally (JK-1183/1188) |
-| 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | Deferred (JK-1203) |
-| 4 | **Full git/HTTPS URI** — optional `#branch` / `@tag` | Deferred (JK-1203) |
+| 2 | **Short name** — `$JK_TEMPLATES`, `~/.local/share/jk/templates`, walk-up dogfood, **config sources**, **official [jk-templates](https://github.com/jkbuild/jk-templates)**, classpath | **Shipped** (JK-1380; requires `git` for remote) |
+| 3 | **GitHub shorthand** — `owner/repo` or `owner/repo.g8` | **Shipped** (JK-1203; requires `git`) |
+| 4 | **Full git/HTTPS URI** — optional `#branch` or `@tag` | **Shipped** (JK-1203; requires `git`) |
 
 Invalid refs fail before any files are written.
 
@@ -40,20 +65,23 @@ Invalid refs fail before any files are written.
 When `<ref>` is a known short name (not a path):
 
 1. `$JK_TEMPLATES/<name>.g8`
-2. `~/.jk/templates/<name>.g8`
+2. `~/.local/share/jk/templates/<name>.g8`
 3. Walk up from cwd for `templates/<name>.g8` (monorepo dogfood)
 4. Classpath bundle shipped in the CLI (`giter8/<name>/…`)
 
 | Name | Intent |
 |------|--------|
 | `java-cli` | Simple Java 25 executable (Mill SIMPLE layout) |
-| `kotlin-cli` | Catalog entry reserved; template may land with JK-1183 |
+| `kotlin-cli` | Simple Kotlin executable (Mill SIMPLE layout) |
 | `quarkus` | Quarkus 3.x REST app (`[quarkus]` plugin, plain `Application` main, `@QuarkusTest`) |
 
 ```bash
 jk new --template quarkus my-api
 jk new --template java-cli my-tool
+jk new --template kotlin-cli my-kt
 jk new --template /path/to/local.g8 other
+jk new --template owner/cool-g8 my-app          # GitHub shorthand (JK-1203)
+jk new --template https://github.com/org/t.g8.git#main
 ```
 
 ## Props
@@ -69,7 +97,7 @@ jk new --template /path/to/local.g8 other
 | Constraint | Shipped today | Longer-term design |
 |------------|---------------|--------------------|
 | Native Graal CLI stays thin | **Pure-Java** `$key$` apply on the client (`Giter8LocalApply`) — no full Giter8 library | Optional engine-hosted worker for full Giter8 |
-| Template apply | Local path + catalog short name + classpath bundle | Git clone into `~/.jk/cache/templates/` (JK-1203) |
+| Template apply | Local + short name (official monorepo + `[templates.sources]` + `--template-source`) + git URI | Full Giter8 conditionals/includes |
 | Conditionals / includes | Not supported | If/when full Giter8 worker lands |
 
 Monorepo sources: `templates/<name>.g8/` (dogfood) and

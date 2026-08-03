@@ -1,0 +1,12 @@
+[project]
+name = "kotlin-train"
+group = "cc.jumpkick.optimize"
+version = "0.0.1"
+java = "25"
+kotlin = "2.4.10"
+layout = "simple"
+
+[dependencies]
+
+[test-dependencies]
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }

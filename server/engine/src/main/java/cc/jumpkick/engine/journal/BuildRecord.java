@@ -109,6 +109,17 @@ public record BuildRecord(
                 io);
     }
 
+    /**
+     * True when this run was started by install/optimize/calibrate fixtures and must not appear in
+     * {@code jk history} or the web activity feed ({@code trigger} is {@code optimize},
+     * {@code calibrate}, or {@code synthetic}).
+     */
+    public boolean synthetic() {
+        if (trigger == null || trigger.isBlank()) return false;
+        String t = trigger.trim().toLowerCase(java.util.Locale.ROOT);
+        return "optimize".equals(t) || "calibrate".equals(t) || "synthetic".equals(t);
+    }
+
     /** In-flight stub at admission. */
     public static BuildRecord running(
             long buildNumber, String kind, String dir, String coord, long startedAt, String jkVersion, String trigger) {

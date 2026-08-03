@@ -103,7 +103,7 @@ class InstallCommandTest {
         assertThat(bin.resolve("lib-only")).doesNotExist(); // no launcher
         // m2install defaults to false: repos/local/ is primary — the real jar lands there —
         // and ~/.m2 is untouched since this project didn't opt in.
-        assertThat(cache.resolve("repos/local/com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
+        assertThat(cc.jumpkick.cache.JkStores.resolve(cache, "repos").resolve("local").resolve("com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
                 .exists();
         assertThat(m2.resolve("repository/com/example/lib-only/0.1.0/lib-only-0.1.0.jar"))
                 .doesNotExist();

@@ -51,6 +51,9 @@ public final class DoctorCommand implements CliCommand {
 
         int healthy = 0, pruned = 0, verified = 0;
         Theme t = Theme.active();
+        // Wedge header + checklist rows (JK-1375).
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        CliOutput.out(cc.jumpkick.cli.tui.CommandWedge.menu("Doctor"));
         for (BuildTool tool : BuildTool.values()) {
             for (InstalledTool installed : listIncludingBrokenLinks(root, tool)) {
                 Path home = installed.home();

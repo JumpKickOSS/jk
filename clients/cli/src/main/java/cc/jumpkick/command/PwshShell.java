@@ -50,8 +50,21 @@ public final class PwshShell implements Shell {
     }
 
     @Override
-    public String activationLine(String jkExe) {
-        return "(& '" + pwshEscape(jkExe) + "' activate pwsh) | Out-String | Invoke-Expression";
+    public String activationLine(String jkCommand) {
+        return "(jk activate pwsh) | Out-String | Invoke-Expression";
+    }
+
+    @Override
+    public String pathEnsureSnippet(String binDir) {
+        return "$__jk_bin = '" + pwshEscape(binDir) + "'\n"
+                + "if ($env:PATH -notlike \"*$__jk_bin*\") { $env:PATH = \"$__jk_bin$([IO.Path]::PathSeparator)$env:PATH\" }\n"
+                + "Remove-Variable __jk_bin -ErrorAction SilentlyContinue\n";
+    }
+
+    @Override
+    public String completionWiring(String dataDir) {
+        String file = dataDir + "/completions/pwsh/jk.ps1";
+        return "if (Test-Path -LiteralPath '" + pwshEscape(file) + "') { . '" + pwshEscape(file) + "' }\n";
     }
 
     /**

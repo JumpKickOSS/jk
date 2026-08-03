@@ -20,8 +20,8 @@ class JkBuildParserTest {
             group    = "com.example"
             name     = "widget"
             version  = "1.0.0"
-            jdk      = 21
-            java     = 21
+            jdk      = 25
+            java     = 25
             """;
 
     @Test
@@ -63,8 +63,8 @@ class JkBuildParserTest {
         assertThat(parsed.project().group()).isEqualTo("com.example");
         assertThat(parsed.project().name()).isEqualTo("widget");
         assertThat(parsed.project().version()).isEqualTo("1.0.0");
-        assertThat(parsed.project().jdk()).isEqualTo("21");
-        assertThat(parsed.project().java()).isEqualTo(21);
+        assertThat(parsed.project().jdk()).isEqualTo("25");
+        assertThat(parsed.project().java()).isEqualTo(25);
         assertThat(parsed.project().isKotlin()).isFalse();
         assertThat(parsed.project().isGroovy()).isFalse();
         assertThat(parsed.mainClass()).isNull();
@@ -83,7 +83,7 @@ class JkBuildParserTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = 21
+                jdk      = 25
                 groovy   = "=5.0.4"
                 """);
         assertThat(parsed.project().isGroovy()).isTrue();
@@ -95,14 +95,14 @@ class JkBuildParserTest {
 
     @Test
     void bare_groovy_version_floats_like_a_dependency() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 21", "groovy   = \"5.0.4\""));
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "groovy   = \"5.0.4\""));
         assertThat(parsed.project().isGroovy()).isTrue();
         assertThat(parsed.project().groovy()).isInstanceOf(VersionSelector.Caret.class);
     }
 
     @Test
     void blank_groovy_version_means_not_a_groovy_project() {
-        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 21", "groovy   = \"\""));
+        JkBuild parsed = JkBuildParser.parse(PROJECT.replace("java     = 25", "groovy   = \"\""));
         assertThat(parsed.project().isGroovy()).isFalse();
         assertThat(parsed.project().groovy()).isNull();
         assertThat(parsed.project().languageName()).isEqualTo("java");
@@ -263,7 +263,7 @@ class JkBuildParserTest {
                 name     = "widget"
                 version  = "1.0.0"
                 jdk      = 8
-                java     = 17
+                java     = 25
                 """))
                 .isInstanceOf(JkBuildParseException.class)
                 .hasMessageContaining("project.jdk = 8");
@@ -451,8 +451,8 @@ class JkBuildParserTest {
                 group   = "com.example"
                 name    = "mod"
                 version.workspace = true
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """);
         assertThat(dotted.project().inheritsVersionFromWorkspace()).isTrue();
         assertThat(dotted.project().version()).isEqualTo(JkBuild.VERSION_FROM_WORKSPACE);
@@ -463,8 +463,8 @@ class JkBuildParserTest {
                 group   = "com.example"
                 name    = "mod"
                 version = { workspace = true }
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """);
         assertThat(inline.project().inheritsVersionFromWorkspace()).isTrue();
     }
@@ -1235,6 +1235,27 @@ class JkBuildParserTest {
     private static final LibraryCatalog TEST_CATALOG = LibraryCatalog.of(Map.of(
             "jackson-databind", new LibraryCatalog.Module("tools.jackson.core", "jackson-databind"),
             "picocli", new LibraryCatalog.Module("info.picocli", "picocli")));
+
+    @Test
+    void catalog_bundled_pin_ignores_shadowing_layers() {
+        // A user/downloaded layer entry shadowing "groovy" must not repoint a manifest that pins
+        // catalog = "bundled" (JK-1443: jk's own manifests use this).
+        LibraryCatalog shadowing = LibraryCatalog.of(Map.of(
+                "groovy", new LibraryCatalog.Module("evil.example", "groovy")));
+        JkBuild parsed = JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT + """
+                [dependencies]
+                groovy = "latest"
+                """, shadowing);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.module()).startsWith("org.apache.groovy:");
+    }
+
+    @Test
+    void catalog_key_rejects_unknown_values() {
+        assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"wild\"\n" + PROJECT))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("bundled");
+    }
 
     @Test
     void shorthand_relative_path_is_a_path_source() {

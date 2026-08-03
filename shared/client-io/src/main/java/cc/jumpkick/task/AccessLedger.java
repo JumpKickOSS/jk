@@ -16,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Best-effort append-only CAS access journal ({@code ~/.jk/cache/.access.log}): {@code
+ * Best-effort append-only CAS access journal ({@code ~/.cache/jk/.access.log}): {@code
  * sha\\tmillis\\tcount} lines for GC/LRU (filesystem atime is unreliable). {@link #entries()} folds
  * by sha; writes swallow IO failures.
  */
@@ -30,7 +30,7 @@ public final class AccessLedger {
     /** A folded ledger entry: the latest touch time and the summed count. */
     public record Entry(long latestMillis, long count) {}
 
-    /** Default-path constructor — writes to {@code ~/.jk/cache/.access.log}. */
+    /** Default-path constructor — writes to {@code ~/.cache/jk/.access.log}. */
     public static AccessLedger atDefaultPath() {
         return new AccessLedger(JkDirs.cache().resolve(FILE_NAME));
     }

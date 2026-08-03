@@ -1,7 +1,28 @@
 # User guide
 
-jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** (JDK 17+).
+jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** — projects
+can target JDK 17 or newer.
 This guide covers the commands and files you touch every day.
+
+## Newest versions by default
+
+JumpKick is biased toward the **latest stable** libraries and language level. The CLI
+**requires JDK 25+** to run (and will install it). You already have a modern JDK — use
+**`java = N`** for bytecode/language, not extra runtime pins.
+
+| Field | Role |
+|-------|------|
+| **`java = 25`** | Default language + bytecode (host LTS) |
+| **`java = 21` / `17`** | Older language/bytecode on the **same** JDK 25 (`--release`) — no `jdk = 21` |
+| **`java = 26+`** | May install a newer toolchain |
+| **`jdk = "…"`** | Rare: force a specific install (vendor / exact major). Avoid in examples |
+
+Prefer newest libraries (`jk update` within ranges). Do not teach `jdk = 17` / `jdk = 21`.
+
+```bash
+jk outdated    # read-only: newer versions within your ranges
+jk update      # re-lock to those versions (commit the new lock)
+```
 
 ## Install
 
@@ -11,28 +32,71 @@ curl -fsSL https://jumpkick.build/install.sh | bash
 jk --help
 ```
 
-Developer builds from this repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
+The installer puts `jk` and `jkx` on your PATH under `~/.local/bin` (Windows:
+`%USERPROFILE%\.local\bin`). Product data, cache, and state use platform-native
+locations (XDG on Linux/macOS; Windows Known Folders). Developer builds from this
+repo: see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-State and cache live under `~/.jk/` (`JK_HOME` relocates the whole tree).
+### On-disk layout
+
+| Role | Linux / macOS | Windows |
+|------|---------------|---------|
+| **bin** (PATH) | `~/.local/bin` | `%USERPROFILE%\.local\bin` |
+| **data** (versions, store/CAS) | `~/.local/share/jk` | `%LOCALAPPDATA%\jk\data` |
+| **cache** (action cache) | `~/.cache/jk` | `%LOCALAPPDATA%\jk\cache` |
+| **state** (engine socket, builds history) | `~/.local/state/jk` | `%LOCALAPPDATA%\jk\state` |
+| **config** | `~/.config/jk/config.toml` | `%APPDATA%\jk\config.toml` |
+| **managed JDKs** | Linux: `~/.jdks` · macOS: `~/Library/Java/JavaVirtualMachines` | `%USERPROFILE%\.jdks` |
+
+Store (network-fetched CAS) lives under **data** (`…/store`). Side-by-side client +
+engine installs live under **data** (`…/versions/<v>/`). Managed JDKs use the
+**IntelliJ shared root** so the IDE and JumpKick share runtimes; discovery still
+picks up SDKMAN, mise, Homebrew, `JAVA_HOME`, and system installs before
+downloading.
 
 | Env / flag | Effect |
 |------------|--------|
-| `JK_HOME` | Root of jk’s on-disk tree (default `~/.jk`): cache, state, engine socket, bin, lib, jdks |
-| `JK_CACHE_DIR` | Download / action cache only (CAS: `repos/`, `sha256/`, `metadata/`). Default `$JK_HOME/cache` |
+| `JK_HOME` | Optional **single-tree umbrella** for product dirs (config, cache, store, state, data, bin, versions). Hermetic tests and cold CI roots. Does **not** move the default JDK root. |
+| `JK_CACHE_DIR` | Action / local CPU cache. Default: platform cache dir above. |
+| `JK_STORE_DIR` | CAS / network-expensive store. Default: `<data>/store` (or `$JK_HOME/store`). |
+| `JK_STATE_DIR` | Engine sockets, build history. Default: platform state dir. |
+| `JK_DATA_DIR` | Versions + default store parent. Default: platform data dir. |
+| `JK_BIN_DIR` / `JK_INSTALL_DIR` | PATH install directory for `jk` / `jkx`. Default: platform bin. |
+| `JK_CONFIG_FILE` | Absolute path to `config.toml`. |
+| `JK_JDKS_DIR` | Managed JDK **write** root. Default: IntelliJ shared root. Set with `JK_HOME` for hermetic JDK isolation. |
 | `JK_AOT_TRAIN=off` | Skip AOT **train-on-miss** (engine sidecar + plugin workers); still **use** existing `.aot` caches. Default on for live engines; CI / short-lived builds usually set `off`. Also `-Djk.aot.train=off`. |
 | `JK_WORKER_AOT=off` | Plugin workers only: no AOT map **and** no train (`-Djk.worker.aot=off`). Control arm for benches. |
 | `JK_CANCEL_GRACE_MS` | Shared cancel window for **all** forked workers (default **500 ms** total, then force). Not per-worker. Max env clamp 5000. Cancel never hangs. |
 | `--cache-dir <dir>` | Same as `JK_CACHE_DIR` for one command; **passed to the resident engine** on the wire |
 
-Cold resolve tests without wiping your real cache:
+XDG variables (`XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CONFIG_HOME`,
+`XDG_BIN_HOME`) are honored on Linux and macOS when `JK_HOME` is unset. Role-specific
+`JK_*_DIR` always wins.
+
+Cold resolve tests without wiping your real store:
 
 ```bash
 COLD=$(mktemp -d /tmp/jk-cold-XXXX)
 jk lock --cache-dir "$COLD"          # or: JK_CACHE_DIR="$COLD" jk lock
-# inspect: ls "$COLD/repos" "$COLD/sha256"
 ```
 
-The engine process is still keyed by `JK_HOME` / state; only the CAS path is isolated.
+The engine process is keyed by state directory + store; isolating only the action
+cache leaves CAS reuse intact.
+
+### `jk env` — where values come from
+
+Build-visible environment is layered (lowest → highest): workspace `.env`, module `.env`, then
+the real process environment (your shell). The shell always wins over files.
+
+```bash
+jk env                 # .env keys + JK_* from the process
+jk env -v              # also show file values shadowed by the shell
+jk env --all           # every process env key (noisy)
+jk env --output json   # machine-readable
+```
+
+Values that came from a `.env` file are treated as secrets: shown as `***` and labeled
+`secret`. Use this when `FOO=x jk build` does not match what you put in `.env`.
 
 ### CI: what to cache between jobs
 
@@ -42,13 +106,14 @@ jk’s correctness does **not** depend on local caches — a cold machine with a
 
 | Path | What it holds | Safe to restore in CI? |
 |------|----------------|------------------------|
-| `~/.jk/cache` (or `$JK_CACHE_DIR`) | Content-addressed artifacts, action cache | **Yes** — primary win for warm builds |
-| `~/.jk/jdks` | Managed JDKs | Yes if jobs share the same pin / OS |
+| Platform **cache** (`~/.cache/jk` or `$JK_CACHE_DIR`) | Action cache | **Yes** |
+| Platform **store** (`~/.local/share/jk/store` or `$JK_STORE_DIR`) | CAS / downloaded artifacts | **Yes** — primary warm-build win |
+| Shared **JDKs** (`~/.jdks` / macOS Library JVMs or `$JK_JDKS_DIR`) | Managed JDKs | Yes if jobs share the same pin / OS |
 | `target/.jk/` (per project) | Project-local engine state, including **preflight memos** (`dirty-memo.txt`, `graph-memo.txt`, `shape-memo.txt` under `target/.jk/preflight/`) | **Yes** with the project workspace |
-| `~/.jk/state/builds/projects/.../runs/` | Run history + `details.jsonl` transcripts | Optional for CI speed; useful for agents |
+| Platform **state** builds runs | Run history + `details.jsonl` transcripts | Optional for CI speed; useful for agents |
 | `jk-lock.toml` | Resolved coords | **Commit** this (not a cache) |
 
-**Do not cache** engine sockets / live process state under `~/.jk/state` across machines.
+**Do not cache** engine sockets / live process state under the state directory across machines.
 
 Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates the CAS restore:
 
@@ -56,7 +121,8 @@ Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates th
 - uses: actions/cache@v4
   with:
     path: |
-      ~/.jk/cache
+      ~/.cache/jk
+      ~/.local/share/jk/store
       **/target/.jk
     key: jk-${{ runner.os }}-${{ hashFiles('jk-lock.toml') }}
     restore-keys: |
@@ -65,6 +131,52 @@ Example (GitHub Actions) — key on OS + lock hash so a lock bump invalidates th
 
 Also set `JK_AOT_TRAIN=off` on short-lived CI engines (see table above). After restoring
 cache, a normal `jk build` should hit action cache for unchanged modules.
+
+### Managing local storage
+
+| Command | Scope |
+|---------|--------|
+| **`jk cache storage`** | Action cache only (`actions/` under the cache dir): file count, size, utilization |
+| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe **action-cache entries** (`actions/` + format stamps). CAS blobs, repo mirrors, and run logs survive all three |
+| **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
+| **`jk repo prune`** | Sweep unreferenced CAS blobs + expired run logs; `--max-size <size>` LRU-evicts down to a budget |
+| **`jk repo search`** | Offline search of locally mirrored coordinates |
+| **`jk repo login` / `logout`** | Artifact-repository credentials |
+| **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
+
+```bash
+jk self purge                     # all targets (default); confirms first
+jk self purge -y                  # skip confirmation
+jk self purge --cache --state -y  # stackable targets
+jk self purge --store --config
+```
+
+| Flag | Deletes | Keeps |
+|------|---------|-------|
+| `--all` | Every target below (default when none named) | — |
+| `--cache` | Action cache (`~/.cache/jk`) | — |
+| `--store` | CAS blobs, repo mirrors, store catalogs (`jdks.json`, `libs.global.toml`), shell completions, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins), forge/repo credentials, live JDK pointer symlinks |
+| `--state` | Engine sockets, AOT, builds, scratch tmp (`~/.local/state/jk`) | — |
+| `--config` | User config (`~/.config/jk`; under `JK_HOME`, only `config.toml`) | — |
+
+Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install. Never logs you out: forge and repo credentials survive every target (`jk repo logout` removes them). Purged shell completions come back with `jk activate`.
+
+Utilization bars:
+
+| Report | Cap (config) | Default |
+|--------|--------------|---------|
+| `jk cache storage` | `[cache] action-max-size-mb` / `JK_ACTION_MAX_SIZE_MB` | **1024** (1 GiB) |
+| `jk repo storage` | `[cache] max-size-gb` / `JK_MAX_SIZE_GB` | **20** GiB when unset |
+
+```toml
+# ~/.config/jk/config.toml
+[cache]
+action-max-size-mb = 1024   # action-cache utilization denominator
+max-size-gb = 20            # store / CAS prune budget + repo utilization
+```
+
+`0` (or a negative value) for either size — file key or env var — means **unset**: the default
+above applies. Both storage reports use the same rule.
 
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
@@ -83,7 +195,7 @@ A minimal manifest:
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
-jdk     = 25
+java    = 25
 
 [dependencies]
 jackson = "2.18.2"   # caret by default: ^2.18.2
@@ -160,7 +272,7 @@ not the host’s 64.
 |---|---|
 | CLI | `-j` / `--jobs` (wins) |
 | Env | `JK_JOBS` (or `JK_ENGINE_JOBS`) |
-| Machine TOML | `~/.jk/config.toml` → `[engine] jobs = N` |
+| Machine TOML | `~/.config/jk/config.toml` → `[engine] jobs = N` |
 
 There is no separate `--parallel` / `--no-parallel` (removed; use `-j` / `-j1`).
 
@@ -517,7 +629,7 @@ export JK_OUTPUT=json        # same for any command that uses PipelineConsole
   version churn). See [machine-output.md](machine-output.md) for the event table and how it aligns
   with web SSE and **MCP** (`POST /mcp`; `jk engine status` prints **MCP**).
 - Session log (same JSONL shape, live append) lands in the project run dir under
-  `~/.jk/state/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
+  `~/.local/state/jk/builds/projects/<key>/runs/<id>/details.jsonl` (jid + ETA included)
   (below). Deep timings: `target/jk-chrome-profile.json`.
 
 ### CLI UX (human-first)
@@ -529,7 +641,7 @@ BSP, the engine wire, or (later) MCP — not scrape prose. Opt out of rich chrom
 surface: [machine-output.md](machine-output.md).
 
 ```bash
-# Detect Nerd Font support once; writes ~/.jk/config.toml [global].nerdfont
+# Detect Nerd Font support once; writes ~/.config/jk/config.toml [global].nerdfont
 jk self setup-terminal
 jk self setup-terminal --nerd      # force on
 jk self setup-terminal --no-nerd   # force off
@@ -537,11 +649,11 @@ jk self setup-terminal --no-nerd   # force off
 
 Install runs `setup-terminal` best-effort after a local dist materialize.
 
-Global CLI prefs live in the **`[config]`** table of `~/.jk/config.toml` and/or project
+Global CLI prefs live in the **`[config]`** table of `~/.config/jk/config.toml` and/or project
 `jk.toml` (CLI flags and `JK_*` env win). Precedence: **flag > env > project > machine**.
 
 ```toml
-# ~/.jk/config.toml or project jk.toml
+# ~/.config/jk/config.toml or project jk.toml
 [config]
 color = "auto"          # auto | always | never   (also JK_COLOR / NO_COLOR)
 offline = false
@@ -574,7 +686,7 @@ elapsed time is ≥ 1 minute; `always`/`true` always notifies; `never`/`false` n
 `--output json`/`jsonl`) into the project run directory:
 
 ```text
-~/.jk/state/builds/projects/<key>/runs/<build-number>/details.jsonl
+~/.local/state/jk/builds/projects/<key>/runs/<build-number>/details.jsonl
 ```
 
 Alongside `record.json` and `metrics.toml` for that run (directory name is the project build
@@ -705,12 +817,6 @@ jk explain --graph mermaid > build.mmd
 jk explain --graph mermaid --modules 'libs/*' --graph-out filtered.mmd
 jk explain --graph dot --modules 'libs/*' --graph-out filtered.dot
 
-# Host calibration for cold ETAs (JK-1180)
-jk engine calibrate                   # host probes (network on); skip if already measured
-jk engine calibrate --force           # re-run + retime cold engine start
-jk engine calibrate --offline         # probes only; no Jupiter fetch / resolve HTTP
-
-
 # Pipeline tasks (Mill resolve-lite)
 jk tasks                         # list first-party steps
 jk show package-jar              # primary jar path for this module
@@ -764,10 +870,15 @@ Sample: `docs/features/examples/line-count-build/`. Prefer plugins for heavy/reu
 ### IDE / BSP
 
 ```bash
-jk bsp install               # write .bsp/jk.json
+jk ide                       # .idea + .vscode + .bsp/jk.json (IDE-ready)
+jk ide --idea                # IntelliJ only + .bsp/
+jk ide --vscode              # VS Code only + .bsp/
+jk bsp install               # .bsp/jk.json only
 # IDE launches: jk bsp serve  (stdio BSP — no engine jars in the IDE process)
-jk ide                       # offline .idea / .vscode files (export path)
 ```
+
+`jk ide` / `jk idea` / `jk vscode` always refresh `.bsp/jk.json` so Metals and JetBrains BSP
+can discover JumpKick without a separate `bsp install` step.
 
 **Multi-suite tests (JK-1139–1142 / JK-1198):** `jk ide` registers **every discovered test suite**
 (`test/src/`, `integration/src/`, `src/test/…`, `src/integration/…`, …) as IDE **test** source roots
@@ -885,7 +996,7 @@ name = "core"
 # group, version, java, jdk, … come from the workspace root
 ```
 
-Explicit overrides still work (`version = "2.0.0"`, `java = 21`, or `version.workspace = true`).
+Explicit overrides still work (`version = "2.0.0"`, `java = 17`, or `version.workspace = true`).
 The root must keep concrete values for fields members inherit. Inheritance is resolved when the
 workspace loads members (lock, build, tree, publish). The **resolved** values are frozen into
 `jk-lock.toml` as `[[module]]` rows, so a re-lock is required after changing root or member
@@ -963,9 +1074,24 @@ The lock pins the resolved git SHA. Tag moves fail loudly until `jk update`.
 jk jdk install temurin-25
 jk jdk pin temurin-25          # writes .jdk-version
 jk jdk list
-eval "$(jk activate bash)"     # directory-aware JAVA_HOME (bash/zsh/fish/pwsh)
+jk activate --yes              # PATH + hooks + completions in your shell rc
 jk shell                       # subshell with project JDK
 ```
+
+**Shell integration** (`jk activate` / installer) writes a marker block to your rc:
+
+```text
+# >>> jk installer >>>
+# PATH ← platform bin (~/.local/bin) so real jk / jkx resolve
+eval "$(command jk activate zsh)"   # bash/zsh; fish: command jk activate fish | source
+# completions under ~/.local/share/jk/completions/…
+# <<< jk installer <<<
+```
+
+- **PATH** — real `jk` / `jkx` on the platform bin dir (no shell function wrapper).
+- **Hooks** — `jk hook-env` updates `JAVA_HOME` / `PATH` when you cd (SDKMAN-like).
+- **Completions** — bash, zsh, fish, pwsh (`jk completion` refreshes files under data).
+- **`jk deactivate`** — prints how to drop session env (new shell) or remove the marker block.
 
 jk discovers existing installs (IntelliJ, SDKMAN, mise, asdf, Homebrew, system, …)
 and can install from the JetBrains JDK feed. Supported project floor: **JDK 17+**.
@@ -994,7 +1120,7 @@ Single-file scripts (JBang-compatible headers): `jk tool run script.java` / `jkx
 
 ```bash
 jk auth login                  # GitHub / GitLab / Gitea / Bitbucket
-# repositories in jk.toml or ~/.jk/config.toml — credentials via env / keychain / settings.xml
+# repositories in jk.toml or ~/.config/jk/config.toml — credentials via env / keychain / settings.xml
 ```
 
 **Built-in remotes** (when you declare none): **JumpKick official repo → Maven Central → Google
@@ -1065,7 +1191,8 @@ Details: [architecture.md](architecture.md#the-engine).
 | `.jdk-version` | Optional pin (`temurin-21`) |
 | `target/` | Build outputs (gitignored) |
 | `.jk/` | Generated project state (gitignored) |
-| `~/.jk/` | Global cache, JDKs, engine, tools |
+| `~/.local/share/jk`, `~/.cache/jk`, `~/.local/state/jk`, `~/.config/jk` | Product data, store, cache, state, config (see Install) |
+| `~/.jdks` (macOS: Library JVMs) | Shared managed JDKs |
 
 ## Status
 

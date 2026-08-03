@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 /**
- * Best-effort machine build history (engine/project/step tiers) at {@code ~/.jk/state/builds/metrics.json}.
+ * Best-effort machine build history (engine/project/step tiers) at {@code ~/.local/state/jk/builds/metrics.json}.
  * Outcome buckets stay separate so estimators only learn from {@link Entry#ok}; {@link #record} is
  * locked atomic replace.
  */
@@ -578,7 +578,7 @@ public final class BuildMetrics {
     }
 
     private static OptionalLong tomlLong(Path userConfig, String key) {
-        // The [metrics] table of the user-global ~/.jk/config.toml; missing/malformed → empty.
+        // The [metrics] table of the user-global ~/.config/jk/config.toml; missing/malformed → empty.
         Optional<Long> v = TomlValues.parse(userConfig)
                 .map(toml -> toml.getTable("metrics"))
                 .flatMap(t -> TomlValues.optLong(t, key));

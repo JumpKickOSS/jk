@@ -33,9 +33,9 @@ public final class ExportBomCommand implements CliCommand {
         return List.of(
                 Opt.value(
                         "<main|test|all>",
-                        "Which lock scopes to freeze (default main = export/main/runtime/provided/dev).",
+                        "Lock scopes to freeze (default: main)",
                         "--scope"),
-                Opt.value("<path>", "Output path relative to the project (default target/<name>-bom.pom).", "--out"),
+                Opt.value("<path>", "Output path (default target/*-bom.pom)", "--out"),
                 Opt.flag("Overwrite an existing file.", "--overwrite"));
     }
 

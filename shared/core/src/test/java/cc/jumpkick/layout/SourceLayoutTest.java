@@ -56,7 +56,7 @@ class SourceLayoutTest {
     void explicit_simple_wins_even_with_maven_dirs(@TempDir Path tmp) throws Exception {
         Files.createDirectories(tmp.resolve("src/main/resources"));
         JkBuild.Project project = JkBuild.Project.builder("t", "app", "1")
-                .jdkMajor(21)
+                .jdkMajor(25)
                 .java(21)
                 .layout(JkBuild.Layout.SIMPLE)
                 .build();
@@ -65,7 +65,7 @@ class SourceLayoutTest {
 
     private static JkBuild.Project autoProject() {
         return JkBuild.Project.builder("t", "app", "1")
-                .jdkMajor(21)
+                .jdkMajor(25)
                 .java(21)
                 .layout(JkBuild.Layout.AUTO)
                 .build();

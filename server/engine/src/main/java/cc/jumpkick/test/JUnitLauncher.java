@@ -54,7 +54,7 @@ public final class JUnitLauncher {
      * Extra environment for the test JVM. Used to isolate nested-engine suites ({@code jk-cli}) so
      * {@code EngineTestExtension} cannot force-stop the host engine that is running {@code jk test}, and
      * to hand a suite a sandboxed {@code JK_HOME}without one a forked test JVM inherits the
-     * engine's environment and runs against the developer's real {@code ~/.jk}, reading the real library
+     * engine's environment and runs against the developer's real {@code JK_HOME} / platform product layout, reading the real library
      * catalog and able to write the real local m2.
      */
     private Map<String, String> testEnv = Map.of();

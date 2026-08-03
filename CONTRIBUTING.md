@@ -31,6 +31,10 @@ foojay resolver on first use.
 ./install.sh build/dist/jk                      # optional local install
 ```
 
+### Black-box examples (sibling repo)
+
+End-to-end scenarios and early-adopter samples live in **[jkbuild/jk-examples](https://github.com/jkbuild/jk-examples)** (checkout next to this repo as `../jk-examples`). After product changes to lock/resolve/packaging/plugins/workspaces, reinstall local jk and run the relevant scenarios there (`jk lock && jk build && jk test`). They are the out-of-tree acceptance surface, not a replacement for `./gradlew test`.
+
 `dist` builds the slim GraalVM native `jk` client and the engine fat jar
 (`lib/jk-engine-<version>.jar`). The engine runs as a normal JVM app on a
 jk-managed JDK — never as a native image. `nativeCompile` needs a GraalVM-capable
@@ -44,6 +48,12 @@ full suite.
 Long-form dogfood and the `jk-jk` worktree: **[docs/self-host.md](docs/self-host.md)**.
 Bootstrap helper: `./scripts/bootstrap-from-gradle.sh`.
 
+jk's own manifests pin **`catalog = "bundled"`** (top-level key, JK-1443): catalog short names
+(`groovy = "latest"`, …) resolve only against the catalog bundled into this build, never
+`~/.jk/libs.toml` or the downloaded registry mirror — so a machine-local catalog entry can't
+silently repoint self-host dependencies at re-lock. Keep the key when adding module manifests
+that use short names; user projects default to the normal layered resolution.
+
 The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `shared/`,
 `server/`, `clients/`, and all first-party `plugins/*`). `clients/web` is a resources module;
 `server/engine` packages as an **assembly** jar (fat) including the web SPA. Workers package as
@@ -52,10 +62,10 @@ The repo is a jk **workspace** (root `jk.toml` + per-module manifests under `sha
 #### A) Native client bootstrap (CI default; needs GraalVM)
 
 ```bash
-# 1) Produce a local JumpKick + side-load worker jars into ~/.jk/cache
+# 1) Produce a local JumpKick + side-load worker jars into ~/.cache/jk
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/versions/0.10.1/bin:$PATH"   # or your install layout
+export PATH="$HOME/.local/bin:$PATH"   # install.sh default; or versions/<v>/bin
 
 # 2) Lock + compile/package + curated tests + ship layout (no Gradle for javac)
 jk lock
@@ -68,12 +78,14 @@ jk release --skip-tests
 #### B) Thin JVM client + engine jar (no Graal; dogfood without native-image)
 
 ```bash
-# 1) Slim client installDist + server-only engine fat jar + worker jars
-./gradlew :cli:installDist :engine:shadowJar installLocal --no-daemon
-CLIENT_BIN="$PWD/clients/cli/build/install/jk/bin/jk"
-ENGINE_JAR=$(ls "$PWD/server/engine/build/libs/jk-engine-"*.jar | head -1)
-"$CLIENT_BIN" self materialize "$CLIENT_BIN" "$ENGINE_JAR"
+# 1) Slim client + workers + engine materialize + daemon bounce (JK-1194)
+./gradlew :cli:installDist installLocal --no-daemon
+# Root installLocal side-loads every plugin worker, then :engine:installLocal
+# (shadowJar → jk self materialize → engine stop/start).
 export PATH="$PWD/clients/cli/build/install/jk/bin:$PATH"
+
+# Engine-only refresh after an engine code change:
+# ./gradlew :cli:installDist :engine:installLocal --no-daemon
 
 # 2) Same dogfood as (A); --skip-native stages the bootstrap client (no Graal)
 jk lock
@@ -84,13 +96,13 @@ jk release --skip-tests --skip-native
 ```
 
 The client never embeds the engine (ticket-1020). Spawning uses
-`~/.jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
+`~/.local/share/jk/versions/<v>/lib/jk-engine.jar` or `JK_ENGINE_EXE`.
 
 | Still Gradle | Why |
 |---|---|
 | `./gradlew test` (unit tier) / `integrationTest` / `checkAll` | CI source of truth for the test suite (Linux; unit on every push/PR, integration on `main` pushes + heavy-path PRs) — see [docs/perf/test-suite-tiers.md](docs/perf/test-suite-tiers.md) |
 | `./gradlew dist` / `nativeCompile` | Prefer `jk release` for dogfood ship layout; Gradle still for native CI matrix |
-| `./gradlew installLocal` | Worker jars into `~/.jk/cache/repos/local/` — or `jk plugin install-local` after `jk build` |
+| `./gradlew installLocal` | Workers + **engine materialize/bounce** (JK-1194); or `jk plugin install-local` after `jk build` for workers only |
 
 Dogfood ship layout (after bootstrap `jk` on PATH; Graal for native CLI):
 

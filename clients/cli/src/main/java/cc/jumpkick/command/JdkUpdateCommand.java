@@ -37,7 +37,7 @@ import java.util.Optional;
  * {@code jk jdk update [spec]} (alias {@code upgrade}) — refresh jk-managed JDKs to the latest
  * point release of their own family and major.
  *
- * <p>Only installs jk owns (under {@code ~/.jk/jdks}, source {@code "jk"}) are touched; SDKMAN /
+ * <p>Only installs jk owns (under {@code the managed JDK root}, source {@code "jk"}) are touched; SDKMAN /
  * IntelliJ / system / {@code $JAVA_HOME} JDKs are left alone. With no spec every managed JDK is
  * considered; a spec narrows the set with the usual flexible matcher ({@code 25} = major 25 of any
  * vendor, {@code temurin} = all Temurin, {@code temurin-25} = Temurin 25).
@@ -68,7 +68,6 @@ public final class JdkUpdateCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Skip the confirmation prompt.", "-y", "--yes"),
                 Opt.value("<dir>", "Override the install root. Default: the jk JDK directory.", "--jdks-dir")
                         .hide(),
                 Opt.value("<url>", "Override the JetBrains JDK feed URL (for tests).", "--feed-url")
@@ -266,7 +265,11 @@ public final class JdkUpdateCommand implements CliCommand {
             installed = installer.install(entry, bytes -> pb.update(bytes, total));
             pb.finish();
         }
-        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed.identifier(), "install");
+        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath()
+                .touch(
+                        installed.home(),
+                        entry.version(),
+                        cc.jumpkick.jdk.JdkVendor.displayNameFromFeed(entry.vendor(), entry.product()));
         return installed;
     }
 

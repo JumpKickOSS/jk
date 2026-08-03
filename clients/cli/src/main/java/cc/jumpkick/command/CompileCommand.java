@@ -41,7 +41,7 @@ public final class CompileCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>();
-        opts.add(Opt.value("<name>", "Apply a build profile. Default: auto (ci on CI).", "--profile"));
+        opts.add(Opt.value("<name>", "Build profile (default auto)", "--profile"));
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
         opts.addAll(VariantSelection.options());

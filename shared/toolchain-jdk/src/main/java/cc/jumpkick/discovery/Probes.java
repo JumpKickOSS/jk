@@ -20,8 +20,8 @@ public final class Probes {
     public static List<LocalToolProbe> defaultChain() {
         List<LocalToolProbe> chain = new ArrayList<>();
         chain.add(new EnvVarProbe());
-        chain.add(new JkProbe()); // ~/.jk/jdks — jk's own installs
-        chain.add(new IntellijProbe()); // ~/.jdks or ~/Library/Java/JavaVirtualMachines
+        chain.add(new JkProbe()); // jk-owned installs under the shared JDK root
+        chain.add(new IntellijProbe()); // shared IntelliJ root (~/.jdks / macOS Library JVMs)
         chain.add(new GradleProbe()); // ~/.gradle/jdks — Gradle toolchain auto-provisioned
         chain.add(new SdkmanProbe());
         chain.add(new JbangProbe());

@@ -6,7 +6,7 @@ import java.nio.file.Path;
 import java.util.function.Function;
 
 /**
- * Machine-scoped {@code [m2]} policy from {@code ~/.jk/config.toml}.
+ * Machine-scoped {@code [m2]} policy from {@code ~/.config/jk/config.toml}.
  *
  * <p>Before spending bandwidth on an artifact, jk can {@code stat} the Maven local repository for the
  * same coordinate. A hit still has to be confirmed against a checksum fetched from the repository the

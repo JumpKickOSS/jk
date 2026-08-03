@@ -65,14 +65,14 @@ class UpdateCommandTest {
 
     @Test
     void update_offline_resolves_from_journal(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.update", "leaf", "1.0");
+        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
         // Warm cache + journal online.
         run("new", tempDir.toString());
-        run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
+        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
         assertThat(run(
                         "update",
                         "-C",
@@ -90,14 +90,14 @@ class UpdateCommandTest {
         assertThat(exit).isEqualTo(0);
 
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
-        assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo:leaf");
+        assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo.update:leaf");
     }
 
     @Test
     void update_rewrites_lockfile_after_dep_added(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.update", "leaf", "1.0");
+        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         // Initial state: no deps.
         run("new", tempDir.toString());
@@ -113,7 +113,7 @@ class UpdateCommandTest {
         assertThat(DefaultTestDepsFixture.projectCoords(initial)).isEmpty();
 
         // Add a dep, then update.
-        run("add", "com.foo:leaf:1.0", "-C", tempDir.toString());
+        run("add", "com.foo.update:leaf:1.0", "-C", tempDir.toString());
         int exit = run(
                 "update",
                 "-C",
@@ -125,7 +125,7 @@ class UpdateCommandTest {
         assertThat(exit).isEqualTo(0);
 
         Lockfile updated = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
-        assertThat(DefaultTestDepsFixture.projectCoords(updated)).containsExactly("com.foo:leaf");
+        assertThat(DefaultTestDepsFixture.projectCoords(updated)).containsExactly("com.foo.update:leaf");
     }
 
     @Test
@@ -143,9 +143,9 @@ class UpdateCommandTest {
 
     @Test
     void update_from_module_dir_locks_module_only(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0");
-        registerPom("com.foo", "leaf", "1.0", pom("com.foo", "leaf", "1.0", ""));
-        registerJar("com.foo", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.update", "leaf", "1.0");
+        registerPom("com.foo.update", "leaf", "1.0", pom("com.foo.update", "leaf", "1.0", ""));
+        registerJar("com.foo.update", "leaf", "1.0", "leaf".getBytes(StandardCharsets.UTF_8));
 
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
@@ -165,7 +165,7 @@ class UpdateCommandTest {
 
                 [dependencies]
                 libb = { group = "com.acme", name = "libb", version = "0.1.0" }
-                leaf = { group = "com.foo",  name = "leaf", version = "1.0" }
+                leaf = { group = "com.foo.update",  name = "leaf", version = "1.0" }
                 """);
         Path libb = Files.createDirectories(tempDir.resolve("libb"));
         Files.writeString(libb.resolve("jk.toml"), """
@@ -189,7 +189,7 @@ class UpdateCommandTest {
         assertThat(Files.exists(tempDir.resolve("jk-lock.toml"))).isTrue();
         assertThat(Files.exists(app.resolve("jk-lock.toml"))).isFalse();
         Lockfile lock = LockfileReader.read(tempDir.resolve("jk-lock.toml"));
-        assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo:leaf");
+        assertThat(DefaultTestDepsFixture.projectCoords(lock)).containsExactly("com.foo.update:leaf");
     }
 
     // --- helpers -----------------------------------------------------------

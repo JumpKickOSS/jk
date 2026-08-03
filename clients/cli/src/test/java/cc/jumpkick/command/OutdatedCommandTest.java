@@ -70,16 +70,16 @@ class OutdatedCommandTest {
 
     @Test
     void reports_compatible_at_selector_ceiling_and_latest_beyond(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "1.1", "2.0");
-        registerPom("com.foo", "leaf", "1.1", pom("com.foo", "leaf", "1.1"));
-        registerJar("com.foo", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
-        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         assertThat(lock(tempDir, cache)).isEqualTo(0);
 
         String json = json(tempDir, cache);
-        assertThat(json).contains("\"dependency\":\"com.foo:leaf\"");
+        assertThat(json).contains("\"dependency\":\"com.foo.outdated:leaf\"");
         assertThat(json).contains("\"current\":\"1.1\"");
         assertThat(json).contains("\"compatible\":\"1.1\"");
         assertThat(json).contains("\"latest\":\"2.0\"");
@@ -88,33 +88,33 @@ class OutdatedCommandTest {
     @Test
     void exclude_up_to_date_hides_current_but_keeps_behind(@TempDir Path tempDir) throws Exception {
         // upToDate: only 1.0 exists. behind: 1.0 pinned but 2.0 exists.
-        registerMetadata("com.foo", "upToDate", "1.0");
-        registerPom("com.foo", "upToDate", "1.0", pom("com.foo", "upToDate", "1.0"));
-        registerJar("com.foo", "upToDate", "1.0", "a".getBytes(StandardCharsets.UTF_8));
-        registerMetadata("com.foo", "behind", "1.0", "2.0");
-        registerPom("com.foo", "behind", "1.0", pom("com.foo", "behind", "1.0"));
-        registerJar("com.foo", "behind", "1.0", "b".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.outdated", "upToDate", "1.0");
+        registerPom("com.foo.outdated", "upToDate", "1.0", pom("com.foo.outdated", "upToDate", "1.0"));
+        registerJar("com.foo.outdated", "upToDate", "1.0", "a".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.outdated", "behind", "1.0", "2.0");
+        registerPom("com.foo.outdated", "behind", "1.0", pom("com.foo.outdated", "behind", "1.0"));
+        registerJar("com.foo.outdated", "behind", "1.0", "b".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
 
         writeProject(
                 tempDir,
-                "upToDate = { group = \"com.foo\", name = \"upToDate\", version = \"=1.0\" }\n"
-                        + "        behind = { group = \"com.foo\", name = \"behind\", version = \"=1.0\" }");
+                "upToDate = { group = \"com.foo.outdated\", name = \"upToDate\", version = \"=1.0\" }\n"
+                        + "        behind = { group = \"com.foo.outdated\", name = \"behind\", version = \"=1.0\" }");
         assertThat(lock(tempDir, cache)).isEqualTo(0);
 
         String all = json(tempDir, cache);
-        assertThat(all).contains("com.foo:upToDate").contains("com.foo:behind");
+        assertThat(all).contains("com.foo.outdated:upToDate").contains("com.foo.outdated:behind");
 
         String filtered = jsonArgs(tempDir, cache, "--exclude-up-to-date");
-        assertThat(filtered).contains("com.foo:behind");
-        assertThat(filtered).doesNotContain("com.foo:upToDate");
+        assertThat(filtered).contains("com.foo.outdated:behind");
+        assertThat(filtered).doesNotContain("com.foo.outdated:upToDate");
     }
 
     @Test
     void show_tip_adds_column_with_prerelease(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "1.1", "2.0-alpha1");
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0-alpha1");
         Path cache = tempDir.resolve("cache");
-        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         // No lock needed: latest/tip come from metadata regardless of current.
 
         String plain = table(tempDir, cache); // no --show-tip
@@ -141,8 +141,8 @@ class OutdatedCommandTest {
 
     @Test
     void workspace_cascade_tags_each_row_with_its_module(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "2.0");
-        registerMetadata("com.foo", "core", "3.0", "3.1");
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
+        registerMetadata("com.foo.outdated", "core", "3.0", "3.1");
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
                 group = "com.acme"
@@ -160,7 +160,7 @@ class OutdatedCommandTest {
                 version = "0.1.0"
 
                 [dependencies]
-                leaf = { group = "com.foo", name = "leaf", version = "^1.0" }
+                leaf = { group = "com.foo.outdated", name = "leaf", version = "^1.0" }
                 """);
         Path lib = Files.createDirectories(tempDir.resolve("lib"));
         Files.writeString(lib.resolve("jk.toml"), """
@@ -170,12 +170,12 @@ class OutdatedCommandTest {
                 version = "0.1.0"
 
                 [dependencies]
-                core = { group = "com.foo", name = "core", version = "^3.0" }
+                core = { group = "com.foo.outdated", name = "core", version = "^3.0" }
                 """);
 
         String json = json(tempDir, tempDir.resolve("cache"));
-        assertThat(json).contains("\"module\":\"com.acme:app\"").contains("\"dependency\":\"com.foo:leaf\"");
-        assertThat(json).contains("\"module\":\"com.acme:lib\"").contains("\"dependency\":\"com.foo:core\"");
+        assertThat(json).contains("\"module\":\"com.acme:app\"").contains("\"dependency\":\"com.foo.outdated:leaf\"");
+        assertThat(json).contains("\"module\":\"com.acme:lib\"").contains("\"dependency\":\"com.foo.outdated:core\"");
 
         // The Module column shows in the human table for a workspace.
         assertThat(table(tempDir, tempDir.resolve("cache"))).contains("Module");
@@ -183,16 +183,16 @@ class OutdatedCommandTest {
 
     @Test
     void human_table_lists_dependency_and_versions(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "1.1", "2.0");
-        registerPom("com.foo", "leaf", "1.1", pom("com.foo", "leaf", "1.1"));
-        registerJar("com.foo", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "1.1", "2.0");
+        registerPom("com.foo.outdated", "leaf", "1.1", pom("com.foo.outdated", "leaf", "1.1"));
+        registerJar("com.foo.outdated", "leaf", "1.1", "leaf".getBytes(StandardCharsets.UTF_8));
         Path cache = tempDir.resolve("cache");
-        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
         assertThat(lock(tempDir, cache)).isEqualTo(0);
 
         String out = table(tempDir, cache);
         assertThat(out).contains("Dependency", "Compatible", "Latest");
-        assertThat(out).contains("com.foo:leaf");
+        assertThat(out).contains("com.foo.outdated:leaf");
         assertThat(out).contains("2.0");
         // : footer points at graph inspection + intentional update
         assertThat(out).contains("jk why").contains("jk tree").contains("jk update");
@@ -200,9 +200,9 @@ class OutdatedCommandTest {
 
     @Test
     void offline_flag_prints_cache_only_note(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "2.0");
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
-        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
 
         String out = table(tempDir, cache, "--offline");
         assertThat(out).containsIgnoringCase("offline");
@@ -211,9 +211,9 @@ class OutdatedCommandTest {
 
     @Test
     void json_array_schema_fields_are_stable(@TempDir Path tempDir) throws Exception {
-        registerMetadata("com.foo", "leaf", "1.0", "2.0");
+        registerMetadata("com.foo.outdated", "leaf", "1.0", "2.0");
         Path cache = tempDir.resolve("cache");
-        writeProject(tempDir, "leaf = { group = \"com.foo\", name = \"leaf\", version = \"^1.0\" }");
+        writeProject(tempDir, "leaf = { group = \"com.foo.outdated\", name = \"leaf\", version = \"^1.0\" }");
 
         String json = json(tempDir, cache).trim();
         assertThat(json).startsWith("[").endsWith("]");

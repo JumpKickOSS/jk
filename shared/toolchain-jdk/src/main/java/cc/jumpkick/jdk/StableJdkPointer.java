@@ -29,7 +29,7 @@ public final class StableJdkPointer {
         this.jdksRoot = Objects.requireNonNull(jdksRoot, "jdksRoot");
     }
 
-    /** Pointer rooted at jk's default JDK directory ({@code ~/.jk/jdks}). */
+    /** Pointer rooted at jk's default managed JDK directory. */
     public static StableJdkPointer atDefaultRoot() {
         return new StableJdkPointer(JkDirs.jdks());
     }

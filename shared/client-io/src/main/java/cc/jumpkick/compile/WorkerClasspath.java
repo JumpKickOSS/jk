@@ -134,7 +134,7 @@ public final class WorkerClasspath {
             // Don't walk forever — monorepos are shallow
             if (dir.getNameCount() < 2) break;
         }
-        // Installed: ~/.jk/store/repos/{local,jumpkick}/cc/jumpkick/jk-plugin-sdk/<ver>/*.jar
+        // Installed: ~/.local/share/jk/store/repos/{local,jumpkick}/cc/jumpkick/jk-plugin-sdk/<ver>/*.jar
         // (side-loaded installs land in repos/local; official fetches in repos/jumpkick).
         for (String repoName : List.of("local", "jumpkick")) {
             Path storeRepo = JkDirs.store().resolve("repos").resolve(repoName).resolve("cc/jumpkick");

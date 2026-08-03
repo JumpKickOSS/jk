@@ -67,7 +67,7 @@ public final class JdkInstallCommand implements CliCommand {
     @Override
     public java.util.List<Opt> options() {
         return java.util.List.of(
-                Opt.flag("After install, mark this JDK as the system-wide default.", "-d", "--make-default"),
+                Opt.flag("Mark this JDK as the system-wide default", "-d", "--make-default"),
                 Opt.flag("In the interactive wizard, list every vendor from the JetBrains feed.", "--show-all")
                         .hide(),
                 Opt.value("<dir>", "Override the install root. Default: the IntelliJ JDK directory.", "--jdks-dir")
@@ -258,7 +258,7 @@ public final class JdkInstallCommand implements CliCommand {
                     InstalledJdk installed = ctx.require(INSTALLED);
                     ctx.label("set " + installed.identifier() + " as default");
                     GlobalDefaultJdk.current().set(installed);
-                    cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed.identifier(), "default-set");
+                    cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed);
                     CliOutput.out();
                     CliOutput.out(Theme.colorize("➜", Theme.active().brightGreen())
                             + " "

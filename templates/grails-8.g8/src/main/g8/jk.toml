@@ -1,0 +1,29 @@
+[project]
+name     = "$name$"
+group    = "$organization$"
+version  = "0.1.0"
+jdk      = "$jdk$"
+groovy   = "$groovy$"
+layout   = "traditional"
+
+[application]
+main       = "$package$.Application"
+
+[grails]
+version = "$grails$"
+
+# grails-bom manages every version below. url-mappings/databinding carry plugin
+# descriptors the web chain depends on (absent ⇒ every route 404s); Grails apps
+# declare their own servlet container, logging provider, and connection pool.
+[dependencies]
+grails-core            = { group = "org.apache.grails", name = "grails-core" }
+grails-web-boot        = { group = "org.apache.grails", name = "grails-web-boot" }
+grails-url-mappings    = { group = "org.apache.grails", name = "grails-url-mappings" }
+grails-databinding     = { group = "org.apache.grails", name = "grails-databinding" }
+grails-rest-transforms = { group = "org.apache.grails", name = "grails-rest-transforms" }
+grails-data-hibernate7 = { group = "org.apache.grails", name = "grails-data-hibernate7" }
+grails-logging         = { group = "org.apache.grails", name = "grails-logging" }
+starter-tomcat         = { group = "org.springframework.boot", name = "spring-boot-starter-tomcat" }
+logback-classic        = { group = "ch.qos.logback", name = "logback-classic" }
+h2                     = { group = "com.h2database", name = "h2" }
+hikaricp               = { group = "com.zaxxer", name = "HikariCP" }

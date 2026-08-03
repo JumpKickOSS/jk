@@ -47,7 +47,7 @@ class BuildPlanForecastCleanPackageTest {
         deleteTree(classes);
 
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
-                        .jdkMajor(21)
+                        .jdkMajor(25)
                         .java(21)
                         .layout(JkBuild.Layout.SIMPLE)
                         .build())
@@ -118,7 +118,7 @@ class BuildPlanForecastCleanPackageTest {
         deleteTree(classes);
 
         JkBuild project = JkBuild.builder(JkBuild.Project.builder("g", "lib", "1.0")
-                        .jdkMajor(21)
+                        .jdkMajor(25)
                         .java(21)
                         .layout(JkBuild.Layout.SIMPLE)
                         .build())

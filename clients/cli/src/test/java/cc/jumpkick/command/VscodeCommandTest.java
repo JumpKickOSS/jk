@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * End-to-end coverage for {@code jk vscode} — the Eclipse project metadata + {@code .vscode/}
  * settings the redhat.java language server consumes. Uses {@code --jdks-dir}/{@code --cache-dir}
- * overrides so nothing touches the developer's real {@code ~/.jk}.
+ * overrides so nothing touches the developer's real {@code JK_HOME} / platform product layout.
  */
 @Tag("integration")
 class VscodeCommandTest {

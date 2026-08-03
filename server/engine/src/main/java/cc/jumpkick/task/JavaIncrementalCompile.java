@@ -215,7 +215,20 @@ public final class JavaIncrementalCompile {
         // and first builds never trigger the worker lookup (which would fail on a
         // jk build that didn't bundle the worker). A null resolution (no worker
         // available) falls back to the plain subprocess-javac path.
-        Path workerJar = (ap != null && flags.sourceGenAps()) ? ap.workerJar().get() : null;
+        //
+        // jk optimize sets -Djk.java.forceWorker=true (or JK_JAVA_FORCE_WORKER=1) so the
+        // ToolProvider worker runs and PluginAot can train java-compiler-*.aot even when
+        // the project has no source-generating annotation processors.
+        boolean forceWorker = Boolean.getBoolean("jk.java.forceWorker")
+                || "1".equals(System.getenv("JK_JAVA_FORCE_WORKER"));
+        Path workerJar = null;
+        if (ap != null && (flags.sourceGenAps() || forceWorker)) {
+            try {
+                workerJar = ap.workerJar().get();
+            } catch (RuntimeException ignored) {
+                workerJar = null;
+            }
+        }
         boolean useWorker = workerJar != null;
         Compiler compiler = useWorker
                 ? workerCompiler(workerJar, ap.generatedSourceDir(), request.javaHome(), request.processorPath())

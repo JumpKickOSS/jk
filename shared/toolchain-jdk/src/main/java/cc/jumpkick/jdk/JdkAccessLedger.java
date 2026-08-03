@@ -1,38 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.jdk;
 
+import cc.jumpkick.discovery.ProbeSupport;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.JkDirs;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
- * Append-only JDK usage journal at {@code $JK_JDKS_DIR/.access.log}
- * ({@code <epoch-millis>\t<event>\t<jdkIdentifier>}). Events:
+ * One-line-per-JDK access ledger at {@code $JK_JDKS_DIR/.jk-access.log} (default {@code
+ * ~/.jdks/.jk-access.log}). Pipe-separated fields:
  *
- * <ul>
- *   <li>{@code resolve} — JDK was resolved for a project build / run / test (the "used" signal).
- *   <li>{@code install} — JDK was just installed via {@code jk jdk install}.
- *   <li>{@code default-set} — JDK was promoted to system default.
- *   <li>{@code pin} — JDK was pinned via {@code jk jdk pin}.
- * </ul>
+ * <pre>
+ * timestampInMillis|accessCount|version|vendor|javaHome
+ * </pre>
  *
- * <p>Best-effort: every method swallows IO errors. A missed event just means slightly worse usage
- * signal; nothing breaks.
+ * <p>Each {@link #touch} reads the file, upserts the row for that {@code javaHome} (bumps {@code
+ * accessCount}, refreshes timestamp / version / vendor), and rewrites the whole file. Line count
+ * equals the number of distinct JDKs ever touched — it does not grow a history.
+ *
+ * <p>The load/upsert/rewrite cycle runs under an exclusive lock on a sibling {@code .lock} file
+ * (CLI and engine both touch concurrently; an unlocked rewrite would drop the loser's row), plus a
+ * per-file JVM mutex ({@link FileChannel#lock()} throws {@code OverlappingFileLockException} on
+ * same-JVM overlap). The lock file is deliberately never deleted — removing a held lock file would
+ * let a third process lock a fresh inode and race the current holder.
+ *
+ * <p>Rows key by the {@code toRealPath()} of {@code javaHome} (symlinked pointers and real homes
+ * share one row); the vendor column always carries {@link JdkVendor#displayName()} form. A
+ * pre-6878cdb2 {@code .access.log} TSV journal found next to the ledger is folded in (rows whose
+ * identifier still names an installed directory) and removed on first touch.
+ *
+ * <p>Best-effort: IO failures are swallowed. A missed touch only weakens MRU / usage signal.
  */
 public final class JdkAccessLedger {
 
     /** Default file name inside the jdks directory. */
-    public static final String FILE_NAME = ".access.log";
+    public static final String FILE_NAME = ".jk-access.log";
 
-    private static final long COMPACT_THRESHOLD_BYTES = 1L * 1024 * 1024; // 1 MiB
+    /** Pre-rewrite journal file name (TSV, identifier-keyed); folded + removed on first touch. */
+    static final String OLD_FILE_NAME = ".access.log";
+
+    private static final char SEP = '|';
+
+    private static final Pattern VERSION_SUFFIX = Pattern.compile(".*?-(\\d[\\d.]*)$");
+
+    /** One mutex per ledger path — file locks are JVM-wide, so threads must serialize first. */
+    private static final ConcurrentHashMap<String, Object> JVM_LOCKS = new ConcurrentHashMap<>();
 
     private final Path file;
 
@@ -45,90 +71,229 @@ public final class JdkAccessLedger {
     }
 
     public JdkAccessLedger(Path file) {
-        this.file = file;
+        this.file = Objects.requireNonNull(file, "file");
+    }
+
+    /** Path to the ledger file (tests / diagnostics). */
+    public Path file() {
+        return file;
     }
 
     /**
-     * Record that {@code identifier} was just accessed with {@code event}. Single-line append; no
-     * exceptions leak.
+     * Record that {@code javaHome} was accessed. Upserts by absolute normalized home path. Empty /
+     * null home is ignored.
      */
-    public void touch(String identifier, String event) {
-        if (identifier == null || identifier.isBlank()) return;
-        if (event == null || event.isBlank()) return;
+    public void touch(Path javaHome, String version, String vendor) {
+        if (javaHome == null) return;
+        String homeKey = normalizeHome(javaHome);
+        if (homeKey.isEmpty()) return;
+        String ver = version == null ? "" : version;
+        String ven = vendor == null ? "" : vendor;
         try {
-            if (file.getParent() != null) Files.createDirectories(file.getParent());
-            String line = System.currentTimeMillis() + "\t" + event + "\t" + identifier + "\n";
-            Files.writeString(file, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            withExclusiveLock(() -> {
+                Map<String, Entry> rows = load();
+                foldOldJournal(rows);
+                Entry prev = rows.get(homeKey);
+                int count = prev == null ? 1 : prev.accessCount() + 1;
+                rows.put(
+                        homeKey,
+                        new Entry(System.currentTimeMillis(), count, ver, ven, Path.of(homeKey)));
+                writeAll(rows);
+            });
         } catch (IOException ignored) {
             // Best-effort.
         }
     }
 
-    /** Per-identifier latest access record across all events. */
-    public Map<String, Entry> latestByIdentifier() throws IOException {
-        Map<String, Entry> out = new HashMap<>();
-        if (!Files.isRegularFile(file)) return out;
-        for (String line : Files.readString(file, StandardCharsets.UTF_8).split("\n")) {
-            if (line.isEmpty()) continue;
-            String[] parts = line.split("\t", 3);
-            if (parts.length != 3) continue;
-            long millis;
-            try {
-                millis = Long.parseLong(parts[0]);
-            } catch (NumberFormatException ignored) {
-                continue;
-            }
-            String event = parts[1];
-            String id = parts[2].trim();
-            Entry prev = out.get(id);
-            if (prev == null || prev.millis < millis) {
-                int count = prev == null ? 1 : prev.count + 1;
-                out.put(id, new Entry(id, event, millis, count));
-            } else {
-                out.put(id, new Entry(id, prev.event, prev.millis, prev.count + 1));
-            }
-        }
-        return out;
+    /** Touch from a discovery hit (home / version / vendor already known). */
+    public void touch(JdkHit hit) {
+        if (hit == null) return;
+        String vendor = hit.vendor() == null ? "" : hit.vendor().displayName();
+        touch(hit.home(), hit.version(), vendor);
     }
 
     /**
-     * Rewrite as one line per identifier (latest event + millis + total count). Idempotent; no-op
-     * below 1 MiB.
+     * Touch an installed JDK. Prefer {@link #touch(Path, String, String)} or {@link #touch(JdkHit)}
+     * when version/vendor are already in hand; this path re-reads {@code release} via {@link
+     * ProbeSupport#discoverJdk}.
      */
-    public long compactIfLarge() throws IOException {
-        if (!Files.isRegularFile(file)) return 0;
-        if (Files.size(file) < COMPACT_THRESHOLD_BYTES) return Files.size(file);
-        Map<String, Entry> latest = latestByIdentifier();
-        // Stable ordering for diff-ability.
-        Map<String, Entry> sorted = new LinkedHashMap<>();
-        latest.entrySet().stream()
-                .sorted(Map.Entry.comparingByKey())
-                .forEach(e -> sorted.put(e.getKey(), e.getValue()));
-        StringBuilder sb = new StringBuilder();
-        for (Entry e : sorted.values()) {
-            // Compaction loses fine-grained per-touch history (intentional);
-            // the rollup is what wizards consume.
-            sb.append(e.millis)
-                    .append('\t')
-                    .append(e.event)
-                    .append('\t')
-                    .append(e.identifier)
-                    .append('\n');
-        }
-        AtomicWrites.replace(file, sb.toString());
-        return Files.size(file);
+    public void touch(InstalledJdk jdk) {
+        if (jdk == null || jdk.home() == null) return;
+        ProbeSupport.discoverJdk(jdk.home(), "jk")
+                .ifPresentOrElse(this::touch, () -> touch(jdk.home(), "", ""));
     }
 
-    /** Ordered "most-recently-used first" view, useful for wizards. */
-    public java.util.List<Entry> mostRecentFirst() throws IOException {
-        return latestByIdentifier().values().stream()
-                .sorted(Comparator.comparingLong((Entry e) -> e.millis).reversed())
+    /** All rows keyed by absolute javaHome string (iteration order = file order). */
+    public Map<String, Entry> byJavaHome() throws IOException {
+        return load();
+    }
+
+    /** Rows ordered most-recently-used first (highest timestamp first). */
+    public List<Entry> mostRecentFirst() throws IOException {
+        return load().values().stream()
+                .sorted(Comparator.comparingLong(Entry::timestampMillis).reversed())
                 .toList();
     }
 
     /**
-     * One row in the rolled-up view. {@code count} is the number of times this identifier appears
-     * anywhere in the journal; {@code event} + {@code millis} are the latest occurrence.
+     * Run {@code body} holding both the per-file JVM mutex and an exclusive {@link FileLock} on the
+     * sibling {@code <ledger>.lock} file. The lock file is created if absent and intentionally left
+     * on disk afterwards: deleting a lock file another process still holds would let a third
+     * process lock a brand-new inode and bypass the mutual exclusion.
      */
-    public record Entry(String identifier, String event, long millis, int count) {}
+    private void withExclusiveLock(IoRunnable body) throws IOException {
+        Path lockFile = file.resolveSibling(file.getFileName() + ".lock");
+        Object jvmLock =
+                JVM_LOCKS.computeIfAbsent(
+                        lockFile.toAbsolutePath().normalize().toString(), k -> new Object());
+        synchronized (jvmLock) {
+            if (lockFile.getParent() != null) Files.createDirectories(lockFile.getParent());
+            try (FileChannel channel =
+                            FileChannel.open(
+                                    lockFile,
+                                    StandardOpenOption.CREATE,
+                                    StandardOpenOption.WRITE);
+                    FileLock lock = channel.lock()) {
+                body.run();
+            }
+        }
+    }
+
+    /**
+     * Fold the pre-rewrite {@code .access.log} TSV journal ({@code millis\tevent\tidentifier}) into
+     * {@code rows}, then delete it. Best-effort: only identifiers that still name a directory next
+     * to the ledger (the jdks dir) become rows — version parsed from the identifier's trailing
+     * {@code -<digits>} suffix when present, vendor left blank (the next real touch refreshes
+     * both). Rows already present win. Called under {@link #withExclusiveLock}.
+     */
+    private void foldOldJournal(Map<String, Entry> rows) {
+        Path old = file.resolveSibling(OLD_FILE_NAME);
+        if (!Files.isRegularFile(old)) return;
+        try {
+            Map<String, long[]> byIdentifier = new LinkedHashMap<>(); // id -> {latestMillis, count}
+            for (String line : Files.readString(old, StandardCharsets.UTF_8).split("\n")) {
+                String[] parts = line.split("\t", 3);
+                if (parts.length != 3 || parts[2].isBlank()) continue;
+                long millis;
+                try {
+                    millis = Long.parseLong(parts[0].trim());
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+                byIdentifier.merge(
+                        parts[2].trim(),
+                        new long[] {millis, 1},
+                        (a, b) -> new long[] {Math.max(a[0], b[0]), a[1] + 1});
+            }
+            for (Map.Entry<String, long[]> e : byIdentifier.entrySet()) {
+                Path home = file.resolveSibling(e.getKey());
+                if (!Files.isDirectory(home)) continue;
+                String homeKey = normalizeHome(home);
+                if (homeKey.isEmpty() || rows.containsKey(homeKey)) continue;
+                var m = VERSION_SUFFIX.matcher(e.getKey());
+                String version = m.matches() ? m.group(1) : "";
+                rows.put(
+                        homeKey,
+                        new Entry(e.getValue()[0], (int) e.getValue()[1], version, "", Path.of(homeKey)));
+            }
+            Files.deleteIfExists(old);
+        } catch (IOException ignored) {
+            // Best-effort; the orphan is retried on the next touch.
+        }
+    }
+
+    private Map<String, Entry> load() throws IOException {
+        Map<String, Entry> out = new LinkedHashMap<>();
+        if (!Files.isRegularFile(file)) return out;
+        String body = Files.readString(file, StandardCharsets.UTF_8);
+        for (String line : body.split("\n")) {
+            if (line.isEmpty() || line.charAt(0) == '#') continue;
+            Entry e = parseLine(line);
+            if (e != null) out.put(normalizeHome(e.javaHome()), e);
+        }
+        return out;
+    }
+
+    private void writeAll(Map<String, Entry> rows) throws IOException {
+        // Stable order by javaHome for readable diffs.
+        List<Entry> ordered = new ArrayList<>(rows.values());
+        ordered.sort(Comparator.comparing(e -> normalizeHome(e.javaHome())));
+        StringBuilder sb = new StringBuilder();
+        for (Entry e : ordered) {
+            sb.append(e.timestampMillis())
+                    .append(SEP)
+                    .append(e.accessCount())
+                    .append(SEP)
+                    .append(sanitizeField(e.version()))
+                    .append(SEP)
+                    .append(sanitizeField(e.vendor()))
+                    .append(SEP)
+                    .append(normalizeHome(e.javaHome()))
+                    .append('\n');
+        }
+        if (file.getParent() != null) Files.createDirectories(file.getParent());
+        AtomicWrites.replace(file, sb.toString());
+    }
+
+    /**
+     * Parse {@code millis|count|version|vendor|javaHome}. Uses a split limit of 5 so {@code
+     * javaHome} may contain {@code |} (unlikely) without losing the tail.
+     */
+    static Entry parseLine(String line) {
+        if (line == null || line.isEmpty()) return null;
+        String[] parts = line.split("\\|", 5);
+        if (parts.length < 5) return null;
+        long millis;
+        int count;
+        try {
+            millis = Long.parseLong(parts[0].trim());
+            count = Integer.parseInt(parts[1].trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        String version = parts[2];
+        String vendor = parts[3];
+        String home = parts[4].trim();
+        if (home.isEmpty()) return null;
+        return new Entry(millis, count, version, vendor, Path.of(home));
+    }
+
+    /**
+     * Canonical row key: {@code toRealPath()} when the home resolves (collapses jk's own
+     * {@code <vendor>-<major>} symlink pointers onto the real install), else the absolute
+     * normalized path. Every key — touch, load, write — goes through here, so a symlinked home and
+     * its target share one row.
+     */
+    private static String normalizeHome(Path javaHome) {
+        if (javaHome == null) return "";
+        try {
+            return javaHome.toRealPath().toString();
+        } catch (IOException e) {
+            return javaHome.toAbsolutePath().normalize().toString();
+        }
+    }
+
+    /** Drop {@code |} so a field cannot shift columns; other chars pass through. */
+    private static String sanitizeField(String s) {
+        if (s == null || s.isEmpty()) return "";
+        return s.indexOf(SEP) < 0 ? s : s.replace(SEP, '/');
+    }
+
+    /** {@link Runnable} that may throw {@link IOException}; used by {@link #withExclusiveLock}. */
+    @FunctionalInterface
+    private interface IoRunnable {
+        void run() throws IOException;
+    }
+
+    /**
+     * One ledger row. {@code accessCount} is total touches for this {@code javaHome}; {@code
+     * timestampMillis} is the latest touch.
+     */
+    public record Entry(long timestampMillis, int accessCount, String version, String vendor, Path javaHome) {
+        public Entry {
+            version = version == null ? "" : version;
+            vendor = vendor == null ? "" : vendor;
+            Objects.requireNonNull(javaHome, "javaHome");
+        }
+    }
 }

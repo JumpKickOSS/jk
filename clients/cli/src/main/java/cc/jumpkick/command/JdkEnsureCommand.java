@@ -219,7 +219,11 @@ public final class JdkEnsureCommand implements CliCommand {
             pb.finish();
         }
         // Journal the install for the JDK-usage stats, same as `jk jdk install`.
-        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed.identifier(), "install");
+        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath()
+                .touch(
+                        installed.home(),
+                        entry.version(),
+                        cc.jumpkick.jdk.JdkVendor.displayNameFromFeed(entry.vendor(), entry.product()));
         return installed;
     }
 

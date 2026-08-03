@@ -43,7 +43,7 @@ public final class JshellCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Open jshell with this module's compile classpath (after build unless --no-build)";
+        return "jshell on this module's compile classpath";
     }
 
     @Override
@@ -52,7 +52,7 @@ public final class JshellCommand implements CliCommand {
                 Opt.flag("Skip build; use existing classes + lock classpath only.", "--no-build"),
                 Opt.value(
                                 "<dir>",
-                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.jk/cache).",
+                                "Override the download/action cache (CAS). Default: $JK_CACHE_DIR or $JK_HOME/cache (~/.cache/jk).",
                                 "--cache-dir")
                         .hide(),
                 Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")

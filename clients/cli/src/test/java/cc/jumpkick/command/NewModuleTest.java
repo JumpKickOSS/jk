@@ -27,8 +27,8 @@ class NewModuleTest {
             group    = "com.acme"
             name     = "root"
             version  = "0.1.0"
-            jdk      = 17
-            java     = 17
+            jdk      = 25
+            java     = 25
             """;
 
     @Test
@@ -47,7 +47,7 @@ class NewModuleTest {
         JkBuild m = JkBuildParser.parse(module.resolve("jk.toml"));
         assertThat(m.project().group()).isEqualTo("com.acme");
         assertThat(m.project().name()).isEqualTo("widget");
-        assertThat(m.project().javaRelease()).isEqualTo(17);
+        assertThat(m.project().javaRelease()).isEqualTo(25);
 
         // The plain parent was promoted to a workspace root with the module.
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));
@@ -59,6 +59,7 @@ class NewModuleTest {
     void module_inherits_a_divergent_java_release_from_the_parent(@TempDir Path tempDir) throws IOException {
         // Parent runs JDK 25 but targets release 17 — the module must inherit
         // both, even though the wizard never exposes the release choice.
+        // (Explicit older `java = 17` is intentional: prove inheritance of a floor, not defaults.)
         Files.writeString(tempDir.resolve("jk.toml"), """
                 [project]
                 group    = "com.acme"

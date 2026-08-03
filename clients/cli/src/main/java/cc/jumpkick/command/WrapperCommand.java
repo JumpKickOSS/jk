@@ -33,7 +33,7 @@ public final class WrapperCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Write ./jk + jk.bat so this project builds with its pinned jk anywhere";
+        return "Write ./jk + jk.bat for pinned-jk builds";
     }
 
     @Override
@@ -49,7 +49,7 @@ public final class WrapperCommand implements CliCommand {
         return List.of(cc.jumpkick.model.command.Param.of(
                 "version",
                 cc.jumpkick.model.command.Arity.ZERO_OR_ONE,
-                "Springboard: materialize <x.y.z|latest> and let IT write the wrapper."));
+                "Materialize <x.y.z|latest>, then write wrapper"));
     }
 
     @Override

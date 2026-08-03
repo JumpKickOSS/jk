@@ -46,6 +46,13 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | `library ls`         | `library list`      |
 | `jdk upgrade`        | `jdk update`        |
 | `export pom`         | `export maven`      |
+| `cache info`         | `cache storage`     |
+| `cache search`       | `repo search`       |
+
+`cache info` and `cache search` are pre-split spellings (`jk cache info` / `jk cache search`
+existed in every release before the cache/repo split). `cache info` is a plain alias of
+`cache storage`; `cache search` is a hidden stub that forwards to `jk repo search` — identical
+stdout, plus a one-line `note: … moved to jk repo search` on stderr.
 
 ## Hidden option aliases
 
@@ -53,3 +60,21 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | -------------- | ------------ |
 | `--rebuild`    | `-r/--redo`  |
 | `--directory`  | `--dir`      |
+
+## Hidden back-compat options
+
+Still functional, but gone from `--help`; the canonical home moved in the cache/repo split.
+
+| Hidden surface                          | Canonical                  |
+| --------------------------------------- | -------------------------- |
+| `cache prune --sweep`                   | `repo prune`               |
+| `cache prune --max-size <size>`         | `repo prune --max-size`    |
+
+## Hidden global options
+
+Accepted anywhere on the line — before the command, between a group and its subcommand, or
+after — but absent from every `--help` screen.
+
+| Option        | Effect                                               |
+| ------------- | ---------------------------------------------------- |
+| `-y`, `--yes` | Answer yes to confirmation prompts (`jk self purge`, `jk activate`, …) |

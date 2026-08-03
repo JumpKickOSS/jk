@@ -17,7 +17,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 /**
- * Durable per-project build history under {@code ~/.jk/state/builds/projects/<key>/}.
+ * Durable per-project build history under {@code ~/.local/state/jk/builds/projects/<key>/}.
  *
  * <pre>
  *   host-metrics.toml

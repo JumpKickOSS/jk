@@ -102,7 +102,7 @@ class ImportCommandTest {
                 group = "com.example"
                 version = "1.0.0"
 
-                java { sourceCompatibility = JavaVersion.VERSION_21 }
+                java { sourceCompatibility = JavaVersion.VERSION_25 }
 
                 dependencies {
                     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
@@ -115,7 +115,7 @@ class ImportCommandTest {
 
         String jkBuild = Files.readString(tempDir.resolve("jk.toml"));
         assertThat(jkBuild).contains("group    = \"com.example\"");
-        assertThat(jkBuild).contains("jdk      = \"21\"");
+        assertThat(jkBuild).contains("jdk      = \"25\"");
         assertThat(jkBuild).contains("[dependencies]");
         // Prefer unique library-catalog short name (jackson2-databind) when reverse-map hits.
         assertThat(jkBuild).contains("group = \"com.fasterxml.jackson.core\"");

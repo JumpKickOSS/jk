@@ -164,6 +164,7 @@ class JdkResolutionTest {
         String version = dirName.substring(dirName.indexOf('-') + 1);
         Files.writeString(
                 home.resolve("release"), "JAVA_VERSION=\"" + version + "\"\nIMPLEMENTOR=\"Eclipse Adoptium\"\n");
+        JdkOwnership.mark(home);
         return home.toRealPath();
     }
 

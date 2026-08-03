@@ -51,8 +51,8 @@ public final class OutdatedCommand implements CliCommand {
     @Override
     public List<Opt> options() {
         return List.of(
-                Opt.flag("Add a Tip column for the non-stable frontier (prerelease / git HEAD).", "--show-tip"),
-                Opt.flag("Hide dependencies already on the newest compatible version.", "--exclude-up-to-date"),
+                Opt.flag("Show Tip column (prerelease / git HEAD)", "--show-tip"),
+                Opt.flag("Hide deps already on newest compatible", "--exclude-up-to-date"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
@@ -272,7 +272,7 @@ public final class OutdatedCommand implements CliCommand {
         var sb = new StringBuilder(bar);
         for (int i = 0; i < headers.size(); i++) {
             sb.append(" ")
-                    .append(padRight(headers.get(i), widths[i]))
+                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers.get(i), widths[i])))
                     .append(" ")
                     .append(bar);
         }

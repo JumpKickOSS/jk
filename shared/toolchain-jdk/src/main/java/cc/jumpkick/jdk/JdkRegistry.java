@@ -414,9 +414,10 @@ public final class JdkRegistry {
     }
 
     /**
-     * Delete the install named {@code identifier}, but only when it lives under {@link #jdksRoot()} —
-     * externally-managed JDKs (SDKMAN, mise, system packages, …) are read-only from {@code jk}'s
-     * perspective and yield {@code false}.
+     * Delete the install named {@code identifier}, but only when it lives under {@link #jdksRoot()}
+     * <em>and</em> carries a jk ownership marker. Alien installs that share the IntelliJ JDK root
+     * (and every other probe source) are read-only from {@code jk}'s perspective and yield
+     * {@code false}. Use {@link #purge} when the user has explicitly qualified a non-owned copy.
      */
     public boolean remove(String identifier) throws IOException {
         Optional<InstalledJdk> match = find(identifier);
@@ -425,12 +426,13 @@ public final class JdkRegistry {
         Path installDir = IntellijJdkDir.installDirOf(home);
         // `installDir` is canonical (ProbeSupport.discoverJdk applies
         // toRealPath()). `jdksRoot` may be a symlink path — e.g. macOS
-        // /var/folders/... → /private/var/folders/..., or a user's
-        // ~/.jk/jdks if their HOME is itself symlinked. Canonicalise it
+        // /var/folders/... → /private/var/folders/.... Canonicalise it
         // when it exists so the containment check actually works.
         Path canonicalRoot = Files.exists(jdksRoot) ? jdksRoot.toRealPath() : jdksRoot;
         if (!installDir.startsWith(canonicalRoot)) {
-            // Not jk-managed; refuse to touch it.
+            return false;
+        }
+        if (!JdkOwnership.isJkOwned(installDir)) {
             return false;
         }
         deleteRecursively(installDir);

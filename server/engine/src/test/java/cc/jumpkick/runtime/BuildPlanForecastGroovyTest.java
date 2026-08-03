@@ -27,8 +27,8 @@ class BuildPlanForecastGroovyTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a"]
@@ -39,7 +39,7 @@ class BuildPlanForecastGroovyTest {
                 group = "t"
                 name = "a"
                 version = "0.1.0"
-                jdk = 21
+                jdk = 25
                 groovy = "5.0.4"
                 layout = "simple"
                 """);

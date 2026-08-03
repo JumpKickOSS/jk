@@ -26,7 +26,7 @@ import java.util.stream.Stream;
  * jk's own tree, never {@code ~/.m2}. Fetched artifacts are <em>materialized</em> from the CAS via
  * {@link #materialize}: a <strong>hard link</strong> to the CAS blob when the filesystem allows it
  * (same bytes, one inode), else a copy. The store root is fully jk-owned ({@code JK_STORE_DIR} /
- * {@code ~/.jk/store}); writers must use temp + atomic replace, never in-place truncation of a
+ * {@code ~/.local/share/jk/store}); writers must use temp + atomic replace, never in-place truncation of a
  * hard-linked path. (Separately, a project may opt into also mirroring artifacts to {@code ~/.m2}
  * for Maven/Gradle interop — see {@code project.m2install} — but that mirror is not this store and
  * is never hard-linked from the CAS by default.)
@@ -236,7 +236,7 @@ public final class RepoArtifactStore {
 
     /**
      * Every {@code group:artifact} tracked by this store, with the versions held for each. Powers
-     * offline cache search ({@code jk cache search}, {@code jk library search --offline}). Empty
+     * offline cache search ({@code jk repo search}, {@code jk library search --offline}). Empty
      * for {@link #NONE} or a cold store. Versions are in directory-listing order — callers wanting
      * newest-first should sort.
      */
@@ -295,7 +295,7 @@ public final class RepoArtifactStore {
 
     /**
      * Every {@code group:artifact} cached under any named repo in {@code cacheRoot}, merged by
-     * module key — the repo-agnostic view {@code jk cache search} and {@code jk library search
+     * module key — the repo-agnostic view {@code jk repo search} and {@code jk library search
      * --offline} want, since neither is scoped to one particular declared repository.
      */
     public static List<Module> allModules(Path cacheRoot) {
@@ -446,12 +446,21 @@ public final class RepoArtifactStore {
      * {@code jk install <file.jar>} mode (a local, content-addressed write, like {@code
      * Cas.putByLink} — no network).
      */
-    public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        Path target = cacheDir.resolve("repos/local/" + relativePath);
+    public static void writeToLocalStore(Path artifactRoot, String relativePath, Path source) throws IOException {
+        // The caller picks the root deliberately (JK-1445): the engine install pipeline passes the
+        // store (where resolvers read since the cache/store split); plugin install-local may pass
+        // an isolated --cache-dir root on purpose.
+        Path target = artifactRoot.resolve("repos/local/" + relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
         Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         AtomicWrites.moveInto(tmp, target);
-        Files.writeString(Path.of(target + ".sha256"), Hashing.sha256Hex(target));
+        String hex = Hashing.sha256Hex(target);
+        Files.writeString(Path.of(target + ".sha256"), hex);
+        // Ingest into the sibling CAS too (JK-1450): the compile classpath is materialized from
+        // sha256/<hex> for every locked artifact — local sources included — so a repos/local file
+        // without its blob locks fine and then silently vanishes from javac's classpath. Linking
+        // jk's own immutable repos/local entry mirrors materialize()'s CAS→repos link.
+        new cc.jumpkick.cache.Cas(artifactRoot).linkFile(target, hex);
     }
 }

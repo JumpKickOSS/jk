@@ -30,7 +30,7 @@ You need a working `jk` binary before the worktree can build itself.
 # In …/oss/jk (needs Graal for native dist; or use the thin path in CONTRIBUTING)
 ./gradlew dist installLocal
 ./install.sh build/dist/jk
-export PATH="$HOME/.jk/bin:$PATH"   # or versions/<v>/bin
+export PATH="$HOME/.local/bin:$PATH"   # or data versions/<v>/bin
 jk engine status
 ```
 
@@ -103,10 +103,10 @@ jk plugin install-local
 
 For each PluginMain worker:
 
-1. Thin jar → `~/.jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
+1. Thin jar → `~/.local/share/jk/store/repos/local/cc/jumpkick/jk-<name>/<ver>/` (Maven layout;
    same as Gradle `installLocal`).
 2. Runtime deps → `.classpath` sidecar next to the jar (JK-1347).
-3. Worker + deps hard-linked into `~/.jk/store/lib/jk-<name>/` (same
+3. Worker + deps hard-linked into `~/.local/share/jk/store/lib/jk-<name>/` (same
    `JK_LIB_DIR` tree as `jk tool install` / `jk install` apps — default
    `$JK_STORE_DIR/lib`). Launch uses those short paths in `ps` (JK-1348). A
    normal CAS/`repos/` sweep that unlinks repo materializations leaves these

@@ -214,22 +214,27 @@ public final class InstallPipelines {
     /** Write a sidecar-only entry in {@code repos/local/} pointing to an artifact in {@code ~/.m2}. */
     private static void writeLocalIndexSidecar(Path cacheDir, String relativePath, String sha256) {
         try {
-            Path sidecar = cacheDir.resolve("repos/local/" + relativePath + ".sha256");
+            Path sidecar = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath + ".sha256");
             Files.createDirectories(sidecar.getParent());
             if (!Files.exists(sidecar)) Files.writeString(sidecar, sha256);
         } catch (IOException ignored) {
         }
     }
 
-    /** See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared local-install write. */
+    /**
+     * See {@link cc.jumpkick.repo.RepoArtifactStore#writeToLocalStore} — the one shared
+     * local-install write, routed to the store root (JK-1445): the resolver reads
+     * {@code repos/local/} from the store since the cache/store split, so writing to the raw
+     * cache root strands the artifact.
+     */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(cacheDir, relativePath, source);
+        cc.jumpkick.repo.RepoArtifactStore.writeToLocalStore(JkStores.storeRootFor(cacheDir), relativePath, source);
     }
 
     /** Write byte content directly into {@code repos/local/} as a full-store entry. */
     private static void writeContentToLocalStore(Path cacheDir, String relativePath, byte[] content)
             throws IOException {
-        Path target = cacheDir.resolve("repos/local/" + relativePath);
+        Path target = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath);
         AtomicWrites.replace(target, content);
         Files.writeString(Path.of(target + ".sha256"), Hashing.sha256Hex(content));
     }

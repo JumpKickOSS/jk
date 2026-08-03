@@ -74,13 +74,14 @@ the CLI seeds the clock as `elapsed + remaining` so preflight/lock time is not d
 
 Cold machine with zero step history: bootstrap `Calibration.ensure` (multi-method JUnit Platform
 when online) then price dirty steps as **product baseline × host scale × cold bias**. Uncalibrated
-hosts use scale=1 (baselines alone). Successful builds refine continuous `learned-*` rates and
-per-module step walls for the next estimate.
+hosts use scale=1 (baselines alone). Successful builds refine continuous rates and per-module
+step walls for the next estimate. The engine self-heals missing host probe calibration on idle
+(see [install-optimize.md](../install-optimize.md)).
 
 ## Learning layout (JK-1377)
 
 ```
-~/.jk/state/builds/
+~/.local/state/jk/builds/
   host-metrics.toml              # probe [calibration] + harvested [mean] host rates
   projects/<hash(coord+\0+path)>/
     identity.toml
@@ -96,11 +97,11 @@ per-module step walls for the next estimate.
 |---|---|---|
 | Per-run `metrics.toml` | Successful step/module/workspace walls (+ host rate samples) | Written on journal complete |
 | `project-metrics.toml` | Trimmed means + last-success ladder | Serial `MetricsHarvest` after each finish |
-| `host-metrics.toml` | Host-wide rates + bootstrap probe | Harvest `[mean]` + `Calibration` `[calibration]` |
+| `host-metrics.toml` | Host-wide rates + bootstrap probe | Harvest `[mean]` + `Calibration` `[calibration]` (engine self-heal) |
 | Retention | 50 runs/project, 90 days | Harvest reaper (plus history disk budget) |
 
 **No sample rings** on aggregate files. **No** `timings.toml` / `metrics.json` / `run-numbers.json` /
-`calibration.toml` (wipe `~/.jk` is fine).
+`calibration.toml` (clearing the state dir is fine).
 
 **Cancelled builds must not train ETA.** Ctrl-C / `BUILD_CANCEL` / mid-job EOF / job deadline stamps
 the request accumulator as user-cancelled immediately (even if the runner is force-killed before a
@@ -131,7 +132,7 @@ job concurrency and a thin contention margin. Baselines/schedule are provisional
 monorepo); re-fit when multi-project OSS ports exist.
 
 **Continuous learning** folds successful-build absolute walls into trimmed-mean rings; those win
-over baselines when present. Stored in `~/.jk/state/builds/` next to step timings and metrics
+over baselines when present. Stored in `~/.local/state/jk/builds/` next to step timings and metrics
 (survives `jk clean` and cache GC):
 
 | Field | What it stands for |
@@ -145,13 +146,13 @@ over baselines when present. Stored in `~/.jk/state/builds/` next to step timing
 | `resolve-ms` | HTTP GET of a tiny Central artifact (network RTT scale only — **not** a full PubGrub lock) |
 | `probe-test-*-ms` / `probe-compile-per-source-ms` | Diagnostic residuals only (not absolute cold ETA) |
 | `learned-*` sample rings | Continuous host rates from real builds (trimmed mean) |
-| `engine-cold-start-ms` | Client-timed cold engine spawn (`jk engine calibrate`) |
+| `engine-cold-start-ms` | Cold engine spawn (optional; otherwise probe baselines) |
 | `ms-per-weight` | Diagnostic host anchor (not the primary ETA scale) |
 
 **Lock ETA is size-aware, not a single whole-lock average.** Bootstrap calibration does **not** run
 PubGrub or lock a real project — only a micro HTTP probe (`resolve-ms`) for network scale. Real lock
 learning is continuous: every successful `jk lock` / auto-freshen / conservative re-lock records
-atomized rates into `~/.jk/state/builds/lock-timings.toml`. Estimate:
+atomized rates into `~/.local/state/jk/builds/lock-timings.toml`. Estimate:
 
 ```
 overhead + packages × graph_per_package + packages × materialize_per_package
@@ -163,8 +164,8 @@ merged package count (one lock), not `modules × deps`. Remote jar misses additi
 `FetchTimings` (absolute download walls).
 
 **Triggers:** `Calibration.ensure` at the start of every explain/build ETA assembly (no-op when a
-current measured file exists), or explicit `jk engine calibrate [--force]`. Network is **on by
-default**; opt out with global **`--offline`**.
+current measured file exists). The engine also ensures calibration on first idle / 12 h when
+missing for this jk version + host JDK. Network probes are **on by default** for that self-heal.
 
 ## Hierarchical lookup (effort prediction)
 

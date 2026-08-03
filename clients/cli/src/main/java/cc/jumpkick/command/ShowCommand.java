@@ -26,7 +26,7 @@ public final class ShowCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Print primary output path for a pipeline step (e.g. package-jar)";
+        return "Print primary output path for a pipeline step";
     }
 
     @Override

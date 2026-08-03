@@ -15,7 +15,7 @@
 #
 # Env:
 # JK_VERSION default: from JkVersion.java
-# JK_CACHE_DIR default: ~/.jk/cache
+# JK_CACHE_DIR default: ~/.cache/jk
 # JK_MAVEN_BUCKET default: jkbuild-releases
 # JK_MAVEN_PREFIX default: repo
 # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE SA key for CI

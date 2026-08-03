@@ -2,8 +2,6 @@
 package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
-import cc.jumpkick.cli.theme.Coords;
-import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.library.LibraryCatalog;
 import cc.jumpkick.model.command.CliCommand;
 import cc.jumpkick.model.command.Invocation;
@@ -54,53 +52,57 @@ public final class LibraryListCommand implements CliCommand {
             CliOutput.out("(no libraries registered)");
             return 0;
         }
-        int nameWidth = names.stream().mapToInt(String::length).max().orElse(0);
-        int leaderColumn = nameWidth + 2;
-        return groupByLayer ? listGrouped(catalog, names, leaderColumn) : listFlat(catalog, names, leaderColumn);
+        return groupByLayer ? listGrouped(catalog, names) : listFlat(catalog, names);
     }
 
-    private int listFlat(LibraryCatalog catalog, Set<String> names, int leaderColumn) {
-        int shown = 0;
+    private int listFlat(LibraryCatalog catalog, Set<String> names) {
+        List<List<String>> rows = new ArrayList<>();
         for (String name : names) {
             var src = catalog.source(name).orElseThrow();
             if (layerFilter != null && !src.layer().equals(layerFilter)) continue;
-            shown++;
-            CliOutput.out(row(name, src, leaderColumn));
+            rows.add(row(name, src));
         }
-        if (shown == 0 && layerFilter != null) CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
+        if (rows.isEmpty() && layerFilter != null) {
+            CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
+            return 0;
+        }
+        printTable(layerFilter == null ? "Libraries" : "Libraries — " + layerFilter, rows);
         return 0;
     }
 
-    private int listGrouped(LibraryCatalog catalog, Set<String> names, int leaderColumn) {
+    private int listGrouped(LibraryCatalog catalog, Set<String> names) {
         boolean firstGroup = true;
         int shown = 0;
         for (String layer : catalog.layerNames()) {
             if (layerFilter != null && !layer.equals(layerFilter)) continue;
-            List<String> inLayer = new ArrayList<>();
+            List<List<String>> rows = new ArrayList<>();
             for (String name : names) {
-                if (catalog.source(name).orElseThrow().layer().equals(layer)) inLayer.add(name);
+                if (catalog.source(name).orElseThrow().layer().equals(layer)) {
+                    rows.add(row(name, catalog.source(name).orElseThrow()));
+                }
             }
-            if (inLayer.isEmpty()) continue;
+            if (rows.isEmpty()) continue;
             if (!firstGroup) CliOutput.out();
             firstGroup = false;
-            CliOutput.out(Theme.colorize(layer, Theme.active().cyan()));
-            for (String name : inLayer) {
-                shown++;
-                CliOutput.out(row(name, catalog.source(name).orElseThrow(), leaderColumn));
-            }
+            shown += rows.size();
+            printTable("Libraries — " + layer, rows);
         }
         if (shown == 0 && layerFilter != null) CliOutput.out("(no libraries in layer `" + layerFilter + "`)");
         return 0;
     }
 
-    private String row(String name, LibraryCatalog.Source src, int leaderColumn) {
-        String leader = ".".repeat(Math.max(2, leaderColumn - name.length()));
-        String line = Coords.shortName(name)
-                + Theme.colorize(leader, Theme.active().black())
-                + Coords.module(src.module().moduleKey());
-        if (showLayer && !groupByLayer)
-            line += "  "
-                    + Theme.colorize("[" + src.layer() + "]", Theme.active().cyan());
-        return line;
+    private void printTable(String title, List<List<String>> rows) {
+        List<String> headers = new ArrayList<>(List.of("Name", "Coordinates"));
+        if (showLayer && !groupByLayer) headers.add("Layer");
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        for (String line : cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)) {
+            CliOutput.out(line);
+        }
+    }
+
+    private List<String> row(String name, LibraryCatalog.Source src) {
+        List<String> cells = new ArrayList<>(List.of(name, src.module().moduleKey()));
+        if (showLayer && !groupByLayer) cells.add(src.layer());
+        return cells;
     }
 }

@@ -1,3 +1,7 @@
+# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
+# immune to ~/.jk/libs.toml and the downloaded registry mirror.
+catalog = "bundled"
+
 [project]
 name     = "jk-cli"
 description = "jk command-line client: verb dispatch, rendering, the thin kernel slice (Stage 5)."
@@ -14,12 +18,12 @@ jk-client-io.workspace = true
 jk-toolchain-jdk.workspace = true
 jk-engine-api.workspace = true
 jk-plugin-sdk.workspace = true
-jline-terminal-ffm = { group = "org.jline",   name = "jline-terminal-ffm", version = "latest" }
+jline-terminal-ffm      = "latest"
 
 # ProcessProperties for argv[0] `jkx` dispatch (Argv0) — compile-time only; the
 # native-image builder provides the implementation and JVM mode never loads it.
 [provided-dependencies]
-graalvm-nativeimage = { group = "org.graalvm.sdk", name = "nativeimage", version = "latest" }
+graalvm-nativeimage     = "latest"
 
 [test-dependencies]
 # Mirrors Gradle testImplementation(project(":engine")) — unit tests that touch TestSupport /

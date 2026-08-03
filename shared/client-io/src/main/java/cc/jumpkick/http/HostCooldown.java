@@ -72,7 +72,7 @@ public final class HostCooldown {
      * <p>{@code jk.http.cooldown.dir} redirects it, following the same precedent as {@code jk.m2.local}.
      * Tests need it: the store is keyed by host, every in-process HTTP test serves from {@code 127.0.0.1},
      * and without a seam one test's simulated 429 would cool down loopback for every other test — and
-     * write that record into the developer's real {@code ~/.jk} (the failure mode again).
+     * write that record into the developer's real {@code JK_HOME} / platform product layout (the failure mode again).
      */
     public static HostCooldown standard() {
         String override = System.getProperty("jk.http.cooldown.dir");

@@ -38,7 +38,7 @@ class GrailsBuildE2eTest {
                 name    = "gnotes"
                 group   = "com.example"
                 version = "1.0.0"
-                jdk     = 21
+                jdk     = 25
                 groovy  = "5.0.7" # grails scaffold pin (GRAILS_GROOVY_VERSION) — overrides the M4 bom
                 layout  = "simple"
 

@@ -22,8 +22,8 @@ class JkBuildEditorTest {
             group    = "com.example"
             name     = "widget"
             version  = "0.1.0"
-            jdk      = 21
-            java     = 21
+            jdk      = 25
+            java     = 25
             """;
 
     @Test
@@ -281,8 +281,8 @@ class JkBuildEditorTest {
                 group    = "com.example"
                 name     = "widget"
                 version  = "0.1.0"
-                jdk      = 21
-                java     = 21
+                jdk      = 25
+                java     = 25
 
                 # User comment above deps.
                 [dependencies]

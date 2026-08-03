@@ -48,4 +48,16 @@ final class PluginLaunch {
     static List<String> javaCommand(Path workerJar, Path spec) {
         return javaCommand(workerJar, List.of(), spec);
     }
+
+    /**
+     * As {@link #javaCommand(Path, Path)}, naming the intended plugin by protocol prefix. Needed
+     * when the worker lib dir carries a sibling plugin jar as a plain dependency (grails ships the
+     * spring-boot plugin for Boot packaging) and ServiceLoader would otherwise see two plugins.
+     */
+    static List<String> javaCommand(Path workerJar, Path spec, String protocolPrefix) {
+        List<String> extra = protocolPrefix == null || protocolPrefix.isBlank()
+                ? List.of()
+                : List.of("-Djk.plugin.prefix=" + protocolPrefix);
+        return javaCommand(workerJar, extra, spec);
+    }
 }

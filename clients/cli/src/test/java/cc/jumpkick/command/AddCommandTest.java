@@ -217,11 +217,11 @@ class AddCommandTest {
                 modules = ["app"]
                 """);
 
-        int exit = Jk.execute("add", "com.foo:bar:1.2.3", "-C", tmp.toString());
+        int exit = Jk.execute("add", "com.foo.add:bar:1.2.3", "-C", tmp.toString());
         assertThat(exit).isEqualTo(0);
 
         String toml = Files.readString(tmp.resolve("jk.toml"));
-        assertThat(toml).contains("bar = { group = \"com.foo\", version = \"=1.2.3\" }");
+        assertThat(toml).contains("bar = { group = \"com.foo.add\", version = \"=1.2.3\" }");
         // Coord add must not touch the modules list.
         JkBuild root = JkBuildParser.parse(tmp.resolve("jk.toml"));
         assertThat(root.workspace().modules()).containsExactly("app");

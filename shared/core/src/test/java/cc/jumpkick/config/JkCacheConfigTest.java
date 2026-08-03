@@ -26,6 +26,7 @@ class JkCacheConfigTest {
                 max-size-gb         = 25
                 prune-interval-days = 14
                 record-ttl-days     = 45
+                action-max-size-mb  = 512
                 """);
 
         JkCacheConfig c = JkCacheConfig.fromToml(toml);
@@ -33,6 +34,9 @@ class JkCacheConfigTest {
         assertThat(c.maxSizeGb()).hasValue(25);
         assertThat(c.pruneIntervalDays()).isEqualTo(14);
         assertThat(c.recordTtlDays()).isEqualTo(45);
+        assertThat(c.actionMaxSizeMb()).isEqualTo(512);
+        assertThat(c.actionMaxSizeBytes()).isEqualTo(512L * 1024 * 1024);
+        assertThat(c.storeMaxSizeBytes()).isEqualTo(25L * 1024 * 1024 * 1024);
     }
 
     @Test
@@ -48,6 +52,8 @@ class JkCacheConfigTest {
         assertThat(c.maxSizeGb()).isEmpty();
         assertThat(c.pruneIntervalDays()).isEqualTo(JkCacheConfig.DEFAULTS.pruneIntervalDays());
         assertThat(c.recordTtlDays()).isEqualTo(JkCacheConfig.DEFAULTS.recordTtlDays());
+        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
+        assertThat(c.storeMaxSizeBytes()).isEqualTo(20L * 1024 * 1024 * 1024);
     }
 
     @Test
@@ -74,13 +80,43 @@ class JkCacheConfigTest {
                 "JK_AUTO_PRUNE", "false",
                 "JK_MAX_SIZE_GB", "100",
                 "JK_PRUNE_INTERVAL_DAYS", "1",
-                "JK_RECORD_TTL_DAYS", "7");
+                "JK_RECORD_TTL_DAYS", "7",
+                "JK_ACTION_MAX_SIZE_MB", "256");
 
         JkCacheConfig c = JkCacheConfig.resolve(toml, env::get);
         assertThat(c.autoPrune()).isFalse(); // env wins over file
         assertThat(c.maxSizeGb()).hasValue(100);
         assertThat(c.pruneIntervalDays()).isEqualTo(1);
         assertThat(c.recordTtlDays()).isEqualTo(7);
+        assertThat(c.actionMaxSizeMb()).isEqualTo(256);
+    }
+
+    @Test
+    void zero_size_budgets_mean_unset(@TempDir Path tempDir) throws IOException {
+        // JK-1441: 0 = unset for BOTH size keys — the documented defaults apply, on both surfaces.
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, """
+                [cache]
+                max-size-gb        = 0
+                action-max-size-mb = 0
+                """);
+
+        JkCacheConfig c = JkCacheConfig.fromToml(toml);
+        assertThat(c.maxSizeGb()).isEmpty();
+        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
+        assertThat(c.storeMaxSizeBytes()).isEqualTo(20L * 1024 * 1024 * 1024);
+        assertThat(c.actionMaxSizeBytes()).isEqualTo(1024L * 1024 * 1024);
+    }
+
+    @Test
+    void zero_size_env_vars_fall_through_to_file_then_defaults(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[cache]\nmax-size-gb = 25\n");
+
+        var env = Map.of("JK_MAX_SIZE_GB", "0", "JK_ACTION_MAX_SIZE_MB", "0");
+        JkCacheConfig c = JkCacheConfig.resolve(toml, env::get);
+        assertThat(c.maxSizeGb()).hasValue(25); // 0 in env = unset, file value survives
+        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
     }
 
     @Test

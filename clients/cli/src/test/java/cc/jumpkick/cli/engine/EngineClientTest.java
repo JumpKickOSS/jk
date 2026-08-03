@@ -255,12 +255,12 @@ class EngineClientTest {
 
     /**
      * The spawn path's artifact resolution: JK_ENGINE_EXE override, then the side-by-side layout
-     * ({@code ~/.jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK.
+     * ({@code ~/.local/share/jk/versions/<v>/lib/jk-engine.jar}). No client-binary FALLBACK.
      */
     @Test
     void engine_artifact_resolution_prefers_override_then_versions_layout() throws IOException {
         Path dir = shortTempDir();
-        // Isolated store: the machine-global ~/.jk/versions must not leak into this contract.
+        // Isolated store: the machine-global ~/.local/share/jk/versions must not leak into this contract.
         cc.jumpkick.cache.VersionStore store = new cc.jumpkick.cache.VersionStore(dir.resolve("versions"));
 
         // no override, nothing materialized: empty (caller must materialize or set JK_ENGINE_EXE)

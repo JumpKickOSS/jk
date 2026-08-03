@@ -18,11 +18,13 @@ import cc.jumpkick.command.CacheCommand;
 import cc.jumpkick.command.CancelCommand;
 import cc.jumpkick.command.CleanCommand;
 import cc.jumpkick.command.CompileCommand;
+import cc.jumpkick.command.CompletionCommand;
 import cc.jumpkick.command.DeactivateCommand;
 import cc.jumpkick.command.DenyCommand;
 import cc.jumpkick.command.DevCommand;
 import cc.jumpkick.command.DoctorCommand;
 import cc.jumpkick.command.EngineCommand;
+import cc.jumpkick.command.EnvCommand;
 import cc.jumpkick.command.ExplainCommand;
 import cc.jumpkick.command.ExportCommand;
 import cc.jumpkick.command.FormatCommand;
@@ -41,6 +43,7 @@ import cc.jumpkick.command.LockCommand;
 import cc.jumpkick.command.MvnCommand;
 import cc.jumpkick.command.NativeCommand;
 import cc.jumpkick.command.NewCommand;
+
 import cc.jumpkick.command.OutdatedCommand;
 import cc.jumpkick.command.PluginCommand;
 import cc.jumpkick.command.PublishCommand;
@@ -110,6 +113,7 @@ public final class CommandDispatch {
             new DeactivateCommand(),
             new ShellCommand(),
             new HookEnvCommand(),
+            new EnvCommand(),
             new LockCommand(),
             new SyncCommand(),
             new AddCommand(),
@@ -151,6 +155,7 @@ public final class CommandDispatch {
             new MvnCommand(),
             new GradleCommand(),
             new ActivateCommand(),
+            new CompletionCommand(),
             new NewCommand(),
             new InitCommand());
 
@@ -199,7 +204,23 @@ public final class CommandDispatch {
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help
         }
-        return dispatch(cmd, "jk " + cmd.name(), all.subList(commandAt + 1, all.size()), ansiEnabled());
+        return dispatch(cmd, "jk " + cmd.name(), carryGlobals(all, commandAt), ansiEnabled());
+    }
+
+    /**
+     * Args for the resolved command: the tokens after it, with any global flags that appeared
+     * <em>before</em> it carried along so the leaf parse still sees them ({@code jk -y self purge}
+     * must reach {@code Confirm.setAssumeYes} exactly like {@code jk self purge -y}). A literal
+     * {@code --} separator is not carried — it only marked the command boundary.
+     */
+    private static List<String> carryGlobals(List<String> args, int commandAt) {
+        if (commandAt == 0) return args.subList(1, args.size());
+        List<String> carried = new ArrayList<>();
+        for (String a : args.subList(0, commandAt)) {
+            if (!a.equals("--")) carried.add(a);
+        }
+        carried.addAll(args.subList(commandAt + 1, args.size()));
+        return carried;
     }
 
     /**
@@ -251,7 +272,7 @@ public final class CommandDispatch {
                 printUnknownSubcommand(cmd, qualified, subName, ansi);
                 return 2;
             }
-            return dispatch(sub, qualified + " " + sub.name(), rest.subList(subAt + 1, rest.size()), ansi);
+            return dispatch(sub, qualified + " " + sub.name(), carryGlobals(rest, subAt), ansi);
         }
 
         // --help wins over parse validation (e.g. a missing required argument),
@@ -274,7 +295,13 @@ public final class CommandDispatch {
         try {
             // One leading chrome blank per leaf command (prep spinner + settle share it).
             cc.jumpkick.cli.tui.CommandWedge.resetEnvelope();
-            return cmd.run(in);
+            // Hidden global -y/--yes: skip Confirm prompts for this leaf command only.
+            cc.jumpkick.cli.tui.Confirm.setAssumeYes(in.isSet("yes"));
+            try {
+                return cmd.run(in);
+            } finally {
+                cc.jumpkick.cli.tui.Confirm.clearAssumeYes();
+            }
         } catch (PluginJarNotFoundException e) {
             closeActiveLiveRegion();
             printWorkerJarError(e, ansi);

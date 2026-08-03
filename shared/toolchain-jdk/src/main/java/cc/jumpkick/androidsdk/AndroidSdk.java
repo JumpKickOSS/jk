@@ -10,7 +10,7 @@ import java.util.function.Function;
 
 /**
  * Android SDK root: reuse {@code ANDROID_HOME}/{@code ANDROID_SDK_ROOT}/Studio defaults, else
- * {@code ~/.jk/android-sdk}. Foreign roots are symlinked under {@code ~/.jk} for a stable path.
+ * {@code ~/.jk/android-sdk}. Foreign roots are symlinked under {@code JK_HOME} / platform product layout for a stable path.
  */
 public final class AndroidSdk {
 

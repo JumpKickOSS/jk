@@ -72,6 +72,20 @@ public final class BspCommand implements CliCommand {
             CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("BSP", "no jk.toml in " + projectDir));
             return Exit.CONFIG;
         }
+        Path out = writeConnectionFile(projectDir);
+        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + out);
+        CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
+        return 0;
+    }
+
+    /**
+     * Write {@code .bsp/jk.json} so BSP clients (Metals, IntelliJ Scala plugin, …) can spawn
+     * {@code jk bsp serve} on stdio. Idempotent. Used by {@code jk bsp install} and {@code jk ide}
+     * (including {@code idea}/{@code vscode} aliases).
+     *
+     * @return path of the connection file written
+     */
+    public static Path writeConnectionFile(Path projectDir) throws Exception {
         Path bspDir = projectDir.resolve(".bsp");
         Files.createDirectories(bspDir);
         // Prefer the jk on PATH; IDE will spawn: jk bsp serve
@@ -87,9 +101,7 @@ public final class BspCommand implements CliCommand {
                 """.formatted(escapeJson(cc.jumpkick.cli.Jk.VERSION), escapeJson(argv0));
         Path out = bspDir.resolve("jk.json");
         AtomicWrites.replace(out, json);
-        cc.jumpkick.cli.tui.CommandWedge.printOk("BSP", "Wrote " + out);
-        CliOutput.out("Open this project in an IDE with BSP support (IntelliJ via Scala plugin / Metals).");
-        return 0;
+        return out;
     }
 
     private static int serve(Path projectDir, GlobalOptions global) throws Exception {

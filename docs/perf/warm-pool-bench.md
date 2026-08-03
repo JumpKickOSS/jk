@@ -106,7 +106,7 @@ Worktree prototype of arm **C** on **Temurin 25**, measure against **A**:
 jk jdk default temurin-25
 jk jdk pin temurin-25 -C /path/to/project
 
-# Train then measure (after caches exist under ~/.jk/state/aot/javac-*)
+# Train then measure (after caches exist under ~/.local/state/jk/aot/javac-*)
 RUNS=7 ./scripts/aot-vs-fork-bench.sh /path/to/project
 # or forced:
 for i in 1..7; do jk build --skip-tests --redo --jdk temurin-25; done  # AOT on

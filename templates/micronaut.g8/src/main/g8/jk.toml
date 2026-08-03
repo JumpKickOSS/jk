@@ -1,0 +1,28 @@
+[project]
+group   = "$organization$"
+name    = "$name$"
+version = "0.1.0"
+jdk     = $jdk$
+java    = $jdk$
+layout  = "simple"
+
+[application]
+main = "$package$.Application"
+
+# The Micronaut platform BOM pins every io.micronaut artifact below.
+[platform-dependencies]
+micronaut-platform = { group = "io.micronaut.platform", name = "micronaut-platform", version = "=$micronaut$" }
+
+[dependencies]
+micronaut-http-server-netty = { group = "io.micronaut", name = "micronaut-http-server-netty" }
+micronaut-jackson-databind  = { group = "io.micronaut", name = "micronaut-jackson-databind" }
+logback                     = { group = "ch.qos.logback", name = "logback-classic" }
+
+# Micronaut DI is compile-time: the annotation processor generates bean definitions.
+[processor-dependencies]
+micronaut-inject-java = { group = "io.micronaut", name = "micronaut-inject-java" }
+
+[test-dependencies]
+micronaut-test-junit5 = { group = "io.micronaut.test", name = "micronaut-test-junit5" }
+micronaut-http-client = { group = "io.micronaut", name = "micronaut-http-client" }
+junit-jupiter         = { group = "org.junit.jupiter", name = "junit-jupiter", version = "=5.11.4" }

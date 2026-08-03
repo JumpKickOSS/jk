@@ -38,7 +38,7 @@ class ProtobufPluginTest {
                 name    = "pbdemo"
                 group   = "com.example"
                 version = "1.0.0"
-                java    = 17
+                java    = 25
                 layout  = "simple"
 
                 [protobuf]
@@ -133,7 +133,7 @@ class ProtobufPluginTest {
                 name    = "pbkt"
                 group   = "com.example"
                 version = "1.0.0"
-                java    = 17
+                java    = 25
                 kotlin  = "^2.4.0"
                 layout  = "simple"
 

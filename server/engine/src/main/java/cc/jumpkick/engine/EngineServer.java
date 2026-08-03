@@ -202,6 +202,17 @@ public final class EngineServer implements AutoCloseable {
     private final java.util.concurrent.atomic.AtomicReference<Path> pendingPruneCache =
             new java.util.concurrent.atomic.AtomicReference<>();
 
+    /**
+     * Queued host warmup (worker AOT + calibration) for the idle boundary. {@code null} = none;
+     * otherwise force-AOT flag. Self-heal on first start and every 12 h feed/GC tick.
+     */
+    private final java.util.concurrent.atomic.AtomicReference<Boolean> pendingWarmupForce =
+            new java.util.concurrent.atomic.AtomicReference<>();
+
+    /** Serializes idle-boundary warmup (never overlap two passes). */
+    private final java.util.concurrent.atomic.AtomicBoolean warmupRunning =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
     private volatile boolean shuttingDown;
     // Graceful-drain pre-state: the listener stays open and quick commands (hello/ping/status) keep
     // answering, but new jobs are refused and the engine exits cleanly once in-flight jobs finish.
@@ -235,6 +246,9 @@ public final class EngineServer implements AutoCloseable {
      * mode.
      */
     private StoreFeedRefresh storeFeedRefresh;
+
+    /** One-minute chore loop (config mtime + wall-clock 12 h maintenance). */
+    private EngineMaintenance engineMaintenance;
 
     public EngineServer(EnginePaths.Paths paths, JkEngineConfig config, String version, Consumer<String> log) {
         this(paths, config, null, version, cc.jumpkick.model.BuildIdentity.buildId(), log);
@@ -384,9 +398,14 @@ public final class EngineServer implements AutoCloseable {
         if (abandoned > 0) {
             log.accept("jk engine: abandoned " + abandoned + " stale in-flight journal entries");
         }
-        // Non-blocking: first tick immediately (feeds if stale + queue cache GC), then every 12 h.
-        storeFeedRefresh = new StoreFeedRefresh(log, this::enqueueScheduledCacheGc);
-        storeFeedRefresh.start();
+        // Store feeds are revalidated by HostWarmup / EngineMaintenance (not a 12 h process sleep).
+        storeFeedRefresh = new StoreFeedRefresh(log, null);
+        // 1-minute loop: config.toml mtime reload + wall-clock 12 h maintenance (feeds, templates,
+        // GC, AOT/cal). Laptop suspend-safe — due work runs on the next minute tick after resume.
+        engineMaintenance = new EngineMaintenance(log, storeFeedRefresh, this::enqueueScheduledCacheGc);
+        engineMaintenance.start();
+        // First-start self-heal: feeds → templates → AOT/cal on the idle worker (does not block accept).
+        scheduleHostWarmupIfNeeded(false);
         startDisplacementWatchdog();
         acceptLoop();
         cleanup();
@@ -657,6 +676,7 @@ public final class EngineServer implements AutoCloseable {
                     }
                     case EngineProtocol.PING -> send(writer, EngineProtocol.pong());
                     case EngineProtocol.CALIBRATE_REQUEST -> handleCalibrateRequest(line, writer);
+                    case EngineProtocol.OPTIMIZE_REQUEST -> handleOptimizeRequest(line, writer);
                     case EngineProtocol.STATUS -> {
                         cc.jumpkick.engine.http.StatusSnapshot s = statusSnapshot();
                         send(
@@ -928,9 +948,16 @@ public final class EngineServer implements AutoCloseable {
         String eventDir = journalDir(requestLine);
         long eventStartMillis = clockMillis.getAsLong();
         boolean rebuildRun = Jsonl.bool(requestLine, "rebuild", false) || Jsonl.bool(requestLine, "force", false);
+        // How the build was started: default "cli"; optimize/calibrate mark synthetic history.
+        String trigger = Jsonl.str(requestLine, "trigger");
+        if (trigger == null || trigger.isBlank()) trigger = "cli";
         // exclusive fingerprint + start-time build number for journaled kinds.
         AdmitResult admit = admitJob(
-                eventRequestId, eventKind, eventDir, BuildJobFingerprint.ofRequest(eventKind, requestLine), "cli");
+                eventRequestId,
+                eventKind,
+                eventDir,
+                BuildJobFingerprint.ofRequest(eventKind, requestLine),
+                trigger);
         if (admit.rejected() != null) {
             try {
                 InFlightBuilds.Hold h = admit.rejected();
@@ -947,7 +974,7 @@ public final class EngineServer implements AutoCloseable {
                 eventRequestId,
                 eventKind,
                 eventDir,
-                "cli",
+                trigger,
                 Jsonl.bool(requestLine, "noTimeline", false),
                 rebuildRun,
                 admit.buildNumber(),
@@ -1822,17 +1849,12 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * After the last in-flight pipeline finishes: drain queued cache prune and enforce journal/metrics
-     * retention (safe — nothing is reading the cache), then full GC toward idle heap only if still
-     * idle. GC is last so prune/journal/metrics temporary garbage is included; a re-check avoids
-     * pausing a concurrent job that started during the chores.
+     * After the last in-flight pipeline finishes: all idle housekeeping, with {@link System#gc()}
+     * strictly last (after prune, journal/metrics retention, metrics harvest, and any host warmup).
      */
     private void maybeIdleBoundary() {
         if (activePipelines.decrementAndGet() != 0) return;
-        drainPendingPrune();
-        pruneJournal();
-        pruneMetrics();
-        maybeIdleGc();
+        runIdleHousekeeping();
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
         if (draining) {
@@ -1844,11 +1866,40 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Full GC only when no pipeline is in flight. Used at the idle boundary (after chores) and after
-     * non-pipeline cache maintenance, which deliberately does not join {@link #activePipelines}.
+     * Full GC only when no pipeline is in flight and no idle housekeeping is still running.
+     * Prefer {@link #runIdleHousekeeping} so GC trails the whole workset.
      */
     private void maybeIdleGc() {
-        if (activePipelines.get() == 0) {
+        if (activePipelines.get() != 0 || warmupRunning.get()) return;
+        System.gc();
+    }
+
+    /**
+     * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last for the workset.
+     * Prune/journal/harvest run here; when warmup is needed a daemon does warmup + the trailing GC
+     * instead (so the build connection is not blocked for multi-minute AOT train).
+     */
+    private void runIdleHousekeeping() {
+        if (shuttingDown) return;
+        if (activePipelines.get() != 0) return;
+        drainPendingPrune();
+        pruneJournal();
+        pruneMetrics();
+        // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+        try {
+            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+        } catch (RuntimeException ignored) {
+        }
+        if (activePipelines.get() != 0) return;
+
+        if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
+            // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
+            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            kickPendingWarmup(/* trailGc */ true);
+            return;
+        }
+        // Trailing heap GC after the entire idle workset (prune, harvest).
+        if (activePipelines.get() == 0 && !warmupRunning.get()) {
             System.gc();
         }
     }
@@ -1929,12 +1980,18 @@ public final class EngineServer implements AutoCloseable {
     private void enqueueScheduledCacheGc() {
         if (shuttingDown) return;
         var config = cc.jumpkick.config.JkCacheConfig.resolve();
-        if (!config.autoPrune()) return;
-        Path cache = cc.jumpkick.util.JkDirs.cache();
-        // compareAndSet: already queued → leave the existing entry alone (never double-queue).
-        pendingPruneCache.compareAndSet(null, cache);
+        if (config.autoPrune()) {
+            Path cache = cc.jumpkick.util.JkDirs.cache();
+            // compareAndSet: already queued → leave the existing entry alone (never double-queue).
+            pendingPruneCache.compareAndSet(null, cache);
+        }
+        // Full 12 h workset when idle: prune + harvest wait + warmup, System.gc() last.
+        // If a pipeline is running, only queue; maybeIdleBoundary drains on finish.
         if (activePipelines.get() == 0) {
-            drainPendingPrune();
+            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            runIdleHousekeeping();
+        } else {
+            scheduleHostWarmupIfNeeded(false);
         }
     }
 
@@ -2702,7 +2759,7 @@ public final class EngineServer implements AutoCloseable {
      * events, ending in a {@link EngineProtocol#LOCK_FINISH} terminal. Per-package resolution
      * streams as {@link EngineProtocol#LOCK_PACKAGE} (plain structured text; the client formats and
      * colorizes). Forge tokens for git-source materialization resolve exactly as in the CLI — the
-     * same {@code ~/.jk} token store and environment, which this engine process inherits from its
+     * same {@code JK_HOME} / platform product layout token store and environment, which this engine process inherits from its
      * spawner.
      */
     private void runLock(String requestLine, Session.CancelToken cancelToken, BufferedWriter writer) {
@@ -3372,7 +3429,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Decode a {@link EngineProtocol#CACHE_PRUNE_REQUEST} and run its maintenance op ({@code prune}
-     * / {@code purge} / {@code gc}) as an idle-boundary job: take {@link #cacheGate}'s write side
+     * / {@code purge} / {@code sweep} / {@code gc}) as an idle-boundary job: take {@link #cacheGate}'s write side
      * (emitting {@link EngineProtocol#PRUNE_WAIT} first when pipelines are in flight, so the client
      * isn't staring at silence) and the cross-process {@code.prune.lock}, then stream the shared
      * {@link cc.jumpkick.runtime.CachePipelines} pipeline — {@link EngineProtocol#TEST_REQUEST}'s wire shape
@@ -3402,6 +3459,9 @@ public final class EngineServer implements AutoCloseable {
                         cc.jumpkick.run.Pipeline pipeline =
                                 switch (op) {
                                     case "purge" -> cc.jumpkick.runtime.CachePipelines.purgePipeline(cache);
+                                    case "sweep" ->
+                                        cc.jumpkick.runtime.CachePipelines.sweepPipeline(
+                                                cache, dryRun, Jsonl.str(requestLine, "maxSize"));
                                     case "gc" -> cc.jumpkick.runtime.CachePipelines.gcPipeline(cache);
                                     case "clear" ->
                                         cc.jumpkick.runtime.CachePipelines.clearPipeline(
@@ -4205,6 +4265,15 @@ public final class EngineServer implements AutoCloseable {
                     dir.resolve("target").resolve("reports").resolve("test-results.md"),
                     cc.jumpkick.lock.LockPaths.lockFile(dir),
                     a.diagnosticsText());
+            // Synthetic optimize/calibrate: do not leave a durable project home (JK-1390).
+            if (record.synthetic()) {
+                String jid = a.journalId();
+                if (jid != null && !jid.isBlank()) {
+                    journal.delete(jid);
+                }
+                journal.purgeProject(record.coord(), record.dir());
+                return;
+            }
             String jid = a.journalId();
             if (jid != null && !jid.isBlank()) {
                 // Complete the in-flight stub (same history id / build number) —.
@@ -4281,6 +4350,92 @@ public final class EngineServer implements AutoCloseable {
             if (!dir.isEmpty()) dir = shape.dirKey(Path.of(dir));
         }
         return new BuildMetrics.Outcome(kind, dir, r.coord(), r.success(), r.cancelled(), r.millis(), steps);
+    }
+
+    /**
+     * Legacy wire path (no public CLI): queue host warmup. Prefer engine self-heal on start / 12 h.
+     */
+    private void handleOptimizeRequest(String requestLine, BufferedWriter writer) {
+        try {
+            boolean force = Jsonl.bool(requestLine, "force", false);
+            boolean scheduled = scheduleHostWarmupIfNeeded(force);
+            sendQuiet(
+                    writer,
+                    scheduled
+                            ? EngineProtocol.optimizeAck(
+                                    true, "", "scheduled", "scheduled: host warmup on idle worker")
+                            : EngineProtocol.optimizeAck(
+                                    true, "", "", "nothing to do: worker AOT and calibration are current"));
+        } catch (RuntimeException e) {
+            sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * If worker AOT or host calibration is missing (or {@code force}), queue idle-boundary warmup.
+     * Returns whether a warmup pass was actually queued.
+     */
+    private boolean scheduleHostWarmupIfNeeded(boolean force) {
+        if (shuttingDown || draining) return false;
+        if (!force && !HostWarmup.needsWork()) return false;
+        pendingWarmupForce.updateAndGet(prev -> {
+            if (prev == null) return force;
+            return prev || force;
+        });
+        if (activePipelines.get() == 0) {
+            kickPendingWarmup(/* trailGc */ true);
+        }
+        return true;
+    }
+
+    /**
+     * Drain queued host warmup on a daemon thread when no pipeline is in flight. When {@code
+     * trailGc} is true, {@link System#gc()} runs only after warmup (and any nested chores) finish —
+     * never mid-workset.
+     */
+    private void kickPendingWarmup(boolean trailGc) {
+        if (shuttingDown || draining) return;
+        if (activePipelines.get() != 0) return;
+        Boolean force = pendingWarmupForce.getAndSet(null);
+        if (force == null) return;
+        if (!warmupRunning.compareAndSet(false, true)) {
+            pendingWarmupForce.updateAndGet(prev -> prev == null ? force : (prev || force));
+            return;
+        }
+        Thread t = new Thread(
+                () -> {
+                    try {
+                        if (activePipelines.get() != 0) {
+                            pendingWarmupForce.updateAndGet(
+                                    prev -> prev == null ? force : (prev || force));
+                            return;
+                        }
+                        // Re-drain prune that may have been queued while we waited to start.
+                        drainPendingPrune();
+                        try {
+                            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+                        } catch (RuntimeException ignored) {
+                        }
+                        HostWarmup.runIdle(force, log);
+                    } catch (RuntimeException e) {
+                        log.accept("jk engine: idle host warmup failed: " + e.getMessage());
+                    } finally {
+                        // Trailing GC while still holding warmupRunning: a concurrent kick
+                        // cannot start a fresh pass mid-GC (it re-queues and is drained below).
+                        boolean more = pendingWarmupForce.get() != null;
+                        if (trailGc && !more && activePipelines.get() == 0) {
+                            System.gc();
+                        }
+                        warmupRunning.set(false);
+                        // Anything queued while we ran (or during the GC) gets its own pass.
+                        if (pendingWarmupForce.get() != null && activePipelines.get() == 0) {
+                            kickPendingWarmup(trailGc);
+                        }
+                    }
+                },
+                "jk-idle-warmup");
+        t.setDaemon(true);
+        t.start();
     }
 
     /**
@@ -4393,7 +4548,10 @@ public final class EngineServer implements AutoCloseable {
     /** {@code history-list-request} → one flat {@code history-entry} per entry, then {@code history-done}. */
     private void handleHistoryList(String requestLine, BufferedWriter writer) throws IOException {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
-        java.util.List<BuildRecord> records = journal.list();
+        // Skip optimize/calibrate synthetic fixtures (JK-1390).
+        java.util.List<BuildRecord> records = journal.list().stream()
+                .filter(r -> r != null && !r.synthetic())
+                .toList();
         int n = Math.min(records.size(), limit);
         for (int i = 0; i < n; i++) {
             BuildRecord r = records.get(i);
@@ -5446,6 +5604,10 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private void cleanup() {
+        if (engineMaintenance != null) {
+            engineMaintenance.close();
+            engineMaintenance = null;
+        }
         if (storeFeedRefresh != null) {
             storeFeedRefresh.close();
             storeFeedRefresh = null;

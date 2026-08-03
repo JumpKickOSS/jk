@@ -3,7 +3,7 @@
 **Audience:** JumpKick maintainers and agents.  
 **Purpose:** Where [Mill](https://mill-build.org) is stronger today, what that implies for product direction, and which Mill ideas are worth stealing vs deliberately not matching.  
 **Mill version reviewed:** 1.1.7 docs + main-branch source at `../mill` (com-lihaoyi/mill).  
-**JumpKick status:** pre-1.0 alpha (`0.10.1`).  
+**JumpKick status:** pre-1.0 alpha (`0.11.0`).  
 **As of:** 2026-07-20 — reconciled after tickets 1023–1055 / 1035–1048 dogfood. Live board: kanartist `JK-NNNN`.
 
 > **Shipped since first draft (do not re-litigate as gaps):** `jk watch` / `dev` (1025), chrome
@@ -165,7 +165,7 @@ JumpKick:
 **Improvement to capture**
 
 - Default to aggressive parallel module builds when memory budget allows; publish the decision in `jk explain`.  
-- Always write a **trace file** (`~/.jk/...` or project `out/`) loadable in `chrome://tracing` or Perfetto.  
+- Always write a **trace file** (under platform state, or project `out/`) loadable in `chrome://tracing` or Perfetto.  
 - Sandbox guarantees for plugin workers comparable to Mill’s `Task.dest` purity story (document + enforce).
 
 ---
@@ -181,6 +181,7 @@ JumpKick deliberately **forks** java-compiler / kotlin-compiler workers (isolati
 | bare `javac` | Short-lived `javac` process; **no** worker AOT (not trained/mapped) |
 | java-compiler worker | Short-lived `java … PluginMain`; maps `java-compiler-*.aot` via `-XX:AOTCache=…` when present |
 | kotlinc worker | Short-lived plugin JVM; maps `kotlinc-<jdk+gc+classpath>.aot` via `-XX:AOTCache=…` |
+| Human index | `state/aot/aot.toml` — JDK, GC, classpath, flags for each opaque `*.aot` hash |
 | Miss path | Background train on first miss (`AOTCacheOutput`); next compile maps the cache — never blocks the user compile |
 | Kill switch | `-Djk.worker.aot=off` / `JK_WORKER_AOT=off` |
 | Engine itself | Separate engine `.aot` training path (same family of idea) |

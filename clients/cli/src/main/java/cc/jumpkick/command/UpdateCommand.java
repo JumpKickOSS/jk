@@ -52,21 +52,10 @@ public final class UpdateCommand implements CliCommand {
                 Opt.value("<a,b,...>", "Activate listed features beyond defaults.", "--features")
                         .splitOn(","),
                 Opt.flag("Don't activate the project's defaults.", "--no-default-features"),
-                Opt.value(
-                                "[<name>]",
-                                "Re-resolve one git dependency by its declared name, or every git"
-                                        + " dependency when no name is given — leaving every other"
-                                        + " dependency's locked version untouched.",
-                                "--git")
-                        .withFallback("*"),
+                Opt.value("[<name>]", "Re-resolve git dep(s) by name", "--git").withFallback("*"),
                 Opt.value("<url>", "Override declared repos with a single URL.", "--repo-url")
                         .hide(),
-                Opt.value(
-                        "<enforced|floor>",
-                        "Platform BOM policy for this re-resolve only (default: project"
-                                + " [resolve] platform, else enforced). floor = BOM pins are lower"
-                                + " bounds.",
-                        "--platform"),
+                Opt.value("<enforced|floor>", "BOM policy: enforced or floor (lower bounds)", "--platform"),
                 cc.jumpkick.cli.CommonOpts.cacheDir());
     }
 

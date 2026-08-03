@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package cc.jumpkick.command;
 
+import cc.jumpkick.config.JkTemplatesConfig;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -10,35 +11,50 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
+import cc.jumpkick.scaffold.Giter8LocalApply;
 
 /**
- * First-party Giter8 short-name catalog.
+ * Giter8 short-name catalog and resolution (JK-1182 / JK-1380).
  *
- * <p>Resolution order for a short name (e.g. {@code quarkus}, {@code java-cli}):
+ * <p>Resolution order for a short name (e.g. {@code java-cli}):
  *
  * <ol>
- * <li>{@code $JK_TEMPLATES/&lt;name&gt;.g8} when the env var is set
- * <li>{@code ~/.jk/templates/&lt;name&gt;.g8}
- * <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
- * <li>Classpath resource tree {@code giter8/&lt;name&gt;/} bundled in the CLI jar
+ *   <li>{@code $JK_TEMPLATES/&lt;name&gt;.g8} when the env var is set
+ *   <li>{@code ~/.jk/templates/&lt;name&gt;.g8}
+ *   <li>Walk up from cwd looking for {@code templates/&lt;name&gt;.g8} (dev checkout dogfood)
+ *   <li>Configured third-party git sources ({@code [templates.sources]} in config.toml, plus any
+ *       CLI {@code --template-source} extras)
+ *   <li>Official monorepo {@code jkbuild/jk-templates} (overridable via {@code [templates]
+ *       official})
+ *   <li>Classpath resource tree {@code giter8/&lt;name&gt;/} bundled in the CLI jar
  * </ol>
  *
- * <p>Git/HTTPS remotes remain.
+ * <p>Explicit git/HTTPS / {@code owner/repo} refs use {@link Giter8Git#fetch} directly (not this
+ * class).
  */
 public final class Giter8Catalog {
 
-    /** Short name → human intent (docs / help). */
+    /** Built-in short names for help text (not an exclusive allow-list for resolution). */
     private static final Map<String, String> DESCRIPTIONS = new LinkedHashMap<>();
 
     static {
         DESCRIPTIONS.put("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)");
-        DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable");
+        DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
         DESCRIPTIONS.put("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)");
+        DESCRIPTIONS.put("java-cli-native", "Interactive Java CLI with JLine (jk native ready)");
+        DESCRIPTIONS.put("spring-boot-webmvc", "Spring Boot WebMVC + JPA/H2 + Actuator");
+        DESCRIPTIONS.put("spring-boot-webmvc-kotlin", "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator");
+        DESCRIPTIONS.put("ktor-3", "Ktor 3 service with Koin DI and Exposed/H2");
+        DESCRIPTIONS.put("spring-boot-mcp", "Spring Boot MCP server (Spring AI, @Tool over SSE)");
+        DESCRIPTIONS.put("grails-8", "Grails 8 REST app (GORM, H2, Groovy 5)");
+        DESCRIPTIONS.put("micronaut", "Micronaut HTTP service (compile-time DI, Netty)");
     }
 
     private Giter8Catalog() {}
@@ -52,32 +68,49 @@ public final class Giter8Catalog {
     }
 
     /**
-     * Resolve a template ref to a local directory containing {@code default.properties} /
-     * {@code src/main/g8}. Returns empty when the ref is not a known short name or cannot be found.
-     *
-     * @param ref short name or (already failed) path stem
-     * @param cwd current working directory (for upward {@code templates/} search)
-     * @param extractRoot parent for classpath extraction (temp dir managed by caller)
+     * Resolve a short name using user config ({@link JkTemplatesConfig#resolve()}) and no extra CLI
+     * sources.
      */
     public static Optional<Path> resolveShortName(String ref, Path cwd, Path extractRoot) throws IOException {
-        if (!isShortName(ref) || !DESCRIPTIONS.containsKey(ref)) {
-            return Optional.empty();
-        }
-        String dirName = ref + ".g8";
+        return resolveShortName(ref, cwd, extractRoot, JkTemplatesConfig.resolve(), List.of());
+    }
 
+    /**
+     * Resolve a short name with explicit config + optional one-shot CLI sources (git URLs / {@code
+     * owner/repo}).
+     *
+     * @param extraSources git refs tried before the official monorepo (after config sources)
+     */
+    public static Optional<Path> resolveShortName(
+            String ref,
+            Path cwd,
+            Path extractRoot,
+            JkTemplatesConfig config,
+            List<String> extraSources)
+            throws IOException {
+        if (!isShortName(ref)) return Optional.empty();
+        String dirName = ref + ".g8";
+        Path cache = Giter8Git.defaultCacheRoot();
+        JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
+        List<String> extras = extraSources == null ? List.of() : extraSources;
+
+        // 1) $JK_TEMPLATES
         String env = System.getenv("JK_TEMPLATES");
         if (env != null && !env.isBlank()) {
             Path p = Path.of(env).resolve(dirName);
             if (isTemplateRoot(p)) return Optional.of(p.toAbsolutePath().normalize());
+            Path bare = Path.of(env).resolve(ref);
+            if (isTemplateRoot(bare)) return Optional.of(bare.toAbsolutePath().normalize());
         }
 
+        // 2) ~/.jk/templates/
         Path homeTemplates = Path.of(System.getProperty("user.home"), ".jk", "templates", dirName);
         if (isTemplateRoot(homeTemplates)) {
             return Optional.of(homeTemplates.toAbsolutePath().normalize());
         }
 
-        // Walk up from cwd (and its parents) for monorepo dogfood: …/jk/templates/<name>.g8
-        Path walk = cwd.toAbsolutePath().normalize();
+        // 3) Walk-up monorepo dogfood
+        Path walk = cwd == null ? null : cwd.toAbsolutePath().normalize();
         for (int i = 0; i < 8 && walk != null; i++) {
             Path candidate = walk.resolve("templates").resolve(dirName);
             if (isTemplateRoot(candidate)) {
@@ -86,10 +119,71 @@ public final class Giter8Catalog {
             walk = walk.getParent();
         }
 
-        Optional<Path> fromCp = extractClasspathTemplate(ref, extractRoot.resolve(dirName));
-        if (fromCp.isPresent()) return fromCp;
+        // 4) Configured third-party sources
+        for (JkTemplatesConfig.Source src : cfg.sources()) {
+            Optional<Path> hit = resolveFromGitSource(src.gitRef(), ref, cache);
+            if (hit.isPresent()) return hit;
+        }
+
+        // 5) CLI one-shot sources (before official so users can override)
+        for (String src : extras) {
+            if (src == null || src.isBlank()) continue;
+            Optional<Path> hit = resolveFromGitSource(src.strip(), ref, cache);
+            if (hit.isPresent()) return hit;
+        }
+
+        // 6) Official monorepo
+        Optional<Path> official = resolveFromGitSource(cfg.officialUrl(), ref, cache);
+        if (official.isPresent()) return official;
+
+        // 7) Classpath bootstrap
+        if (extractRoot != null) {
+            Optional<Path> fromCp = extractClasspathTemplate(ref, extractRoot.resolve(dirName));
+            if (fromCp.isPresent()) return fromCp;
+        }
 
         return Optional.empty();
+    }
+
+    /**
+     * Clone (or reuse) a git source and find {@code shortName} inside it. Returns empty when git
+     * fails or the name is absent (does not throw for missing name — caller may try next source).
+     */
+    static Optional<Path> resolveFromGitSource(String gitRef, String shortName, Path cacheRoot) {
+        try {
+            Path clone = Giter8Git.ensureClone(gitRef, cacheRoot);
+            Optional<Path> nested = Giter8Git.findNamedTemplate(clone, shortName);
+            if (nested.isPresent()) return nested;
+            // Single-template repo: only match when the short name fits the template / URL.
+            if (isTemplateRoot(clone) && singleTemplateMatches(clone, gitRef, shortName)) {
+                return Optional.of(clone.toAbsolutePath().normalize());
+            }
+            return Optional.empty();
+        } catch (IOException e) {
+            // Offline / missing git / private 404 — try next source.
+            return Optional.empty();
+        }
+    }
+
+    /** True when a single-template clone is the intended target for {@code shortName}. */
+    static boolean singleTemplateMatches(Path clone, String gitRef, String shortName) {
+        Optional<String> propName = Giter8LocalApply.defaultName(clone);
+        if (propName.isPresent() && shortName.equalsIgnoreCase(propName.get())) return true;
+        String ref = gitRef == null ? "" : gitRef.toLowerCase(java.util.Locale.ROOT);
+        String sn = shortName.toLowerCase(java.util.Locale.ROOT);
+        return ref.contains("/" + sn) || ref.contains("/" + sn + ".g8") || ref.contains("/" + sn + ".git");
+    }
+
+    /** Human-readable list of known short names + configured source names for error messages. */
+    public static String helpKnown(JkTemplatesConfig config) {
+        List<String> parts = new ArrayList<>();
+        parts.add("built-in: " + String.join(", ", DESCRIPTIONS.keySet()));
+        parts.add("official: " + (config == null ? JkTemplatesConfig.DEFAULT_OFFICIAL : config.officialUrl()));
+        if (config != null && !config.sources().isEmpty()) {
+            List<String> names = config.sources().stream().map(JkTemplatesConfig.Source::name).toList();
+            parts.add("config sources: " + String.join(", ", names));
+        }
+        return String.join("; ", parts);
     }
 
     static boolean isTemplateRoot(Path p) {

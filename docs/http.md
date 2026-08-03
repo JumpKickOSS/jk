@@ -8,7 +8,7 @@ client code without being recorded anywhere.
 ## On by default
 
 `[http]` is **enabled by default** — loopback bind, token-gated mutations. It is not opt-in. Turn it
-off with `[http] enabled = false` in `~/.jk/config.toml` or `JK_HTTP_ENABLED=false`; a malformed
+off with `[http] enabled = false` in `~/.config/jk/config.toml` or `JK_HTTP_ENABLED=false`; a malformed
 config yields empty and fails closed (no server).
 
 `[mcp] enabled = false` disables only the MCP surface, never the server. Machine-scoped, not

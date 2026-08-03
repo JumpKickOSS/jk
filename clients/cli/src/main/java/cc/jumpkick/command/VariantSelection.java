@@ -24,11 +24,8 @@ final class VariantSelection {
 
     static List<Opt> options() {
         return List.of(
-                Opt.flag("Build the release build type (shorthand for --variant build-type=release).", "--release"),
-                Opt.value(
-                                "<dim>=<value>",
-                                "Select a variant value (repeatable; bare <value> when one dimension).",
-                                "--variant")
+                Opt.flag("Use release build type", "--release"),
+                Opt.value("<dim>=<value>", "Select a variant value (repeatable)", "--variant")
                         .repeat());
     }
 

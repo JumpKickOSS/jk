@@ -14,21 +14,14 @@ import java.nio.file.Path;
  * sharing those is safe by construction because a sha either matches the content asked for or it does
  * not.
  *
- * <h2>Why this is a function of the cache root rather than a constant</h2>
+ * <h2>Resolution rule</h2>
  *
- * Resolving the store statically everywhere would make every test that passes its own temporary cache
- * directory start writing into the developer's real {@code ~/.jk/store}. So the ambient cache root gets
- * redirected to the store, and an explicitly-supplied one is left exactly where it is:
- *
- * <ul>
- * <li>the ambient cache — including a {@code JK_CACHE_DIR} override, which is the case this exists
- * for — resolves to the shared store
- * <li>any other path, i.e. one a caller chose rather than inherited, stays put and keeps today's
- * isolation
- * </ul>
- *
- * {@code JK_HOME} moves the cache and the store together, so it remains the way to get a genuinely cold
- * start.
+ * The cache root handed in is ignored: every caller gets the engine's own store ({@code JK_STORE_DIR}
+ * / {@code JK_HOME} are the only knobs). A supplied-path-stays-isolated rule was tried and measured
+ * failing — the engine daemon does not inherit the client's environment, so a client-resolved
+ * {@code JK_CACHE_DIR} never matched the engine's idea of ambient and every request kept a private
+ * store. {@code JK_HOME} moves cache and store together, so it remains the way to get a genuinely
+ * cold start.
  */
 public final class JkStores {
 
@@ -59,7 +52,7 @@ public final class JkStores {
      * they matched, so that a caller supplying its own directory kept full isolation. That cannot work
      * across the client/engine boundary and was measured failing: the client resolves {@code
      * JK_CACHE_DIR} to a concrete path and sends it, but the engine is a daemon that does not inherit
-     * the client's environment, so its idea of "ambient" is {@code ~/.jk/cache} and the supplied path
+     * the client's environment, so its idea of "ambient" is {@code ~/.cache/jk} and the supplied path
      * never matches. Every request looked caller-supplied and the store stayed isolated — precisely the
      * behaviour the split exists to remove.
      *

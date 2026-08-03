@@ -112,7 +112,7 @@ public final class JdkDefaultCommand implements CliCommand {
     private static void applyDefault(JdkHit hit, GlobalDefaultJdk defaults, PrintStream out) throws IOException {
         String identifier = JdkRegistry.identifierFor(hit.home());
         defaults.set(new InstalledJdk(identifier, hit.home()));
-        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(identifier, "default-set");
+        cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(hit);
         String name = Theme.colorize(renderDisplayName(hit), Theme.active().focused());
         String message = "Default JDK set to " + name + ": " + JdkRender.coord(hit.source(), identifier);
         CommandWedge.envelopeStart(out);

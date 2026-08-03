@@ -71,6 +71,27 @@ public final class MetricsHarvest {
         t.start();
     }
 
+    /** True while a harvest pass (or coalesced re-run) is in flight. */
+    public boolean busy() {
+        return running.get() || rerun.get();
+    }
+
+    /**
+     * Block until harvest is idle or {@code timeoutMs} elapses. Used so idle-boundary {@code
+     * System.gc()} trails harvest allocations.
+     */
+    public void awaitIdle(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
+        while (busy() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
     private void loop() {
         try {
             do {
@@ -203,8 +224,9 @@ public final class MetricsHarvest {
     private static void writeHostMetrics(Path file, Map<String, List<Double>> samples) throws IOException {
         StringBuilder sb = new StringBuilder();
         sb.append("# host-metrics — derived by MetricsHarvest (scalars only)\n");
-        // Preserve bootstrap/probe/lock/fetch sections written by Calibration / other writers
+        // Preserve bootstrap/probe/lock/fetch/calibration + language buckets (jk optimize).
         String preserved = "";
+        String byLanguage = "";
         if (Files.isRegularFile(file)) {
             try {
                 String existing = Files.readString(file, StandardCharsets.UTF_8);
@@ -217,6 +239,20 @@ public final class MetricsHarvest {
                         if (!block.isBlank()) preserved += "\n" + block.strip() + "\n";
                     }
                 }
+                // Keep [mean.by_language.*] tables (JK-1389) — not harvested from runs.
+                StringBuilder lang = new StringBuilder();
+                boolean inLang = false;
+                for (String line : existing.split("\n", -1)) {
+                    String t = line.trim();
+                    if (t.startsWith("[mean.by_language.")) {
+                        inLang = true;
+                        lang.append(line).append('\n');
+                    } else if (inLang) {
+                        if (t.startsWith("[")) inLang = false;
+                        else lang.append(line).append('\n');
+                    }
+                }
+                if (!lang.isEmpty()) byLanguage = "\n" + lang;
             } catch (IOException ignored) {
             }
         }
@@ -226,6 +262,7 @@ public final class MetricsHarvest {
                 .append(fmt(trimmedMean(e.getValue())))
                 .append('\n'));
         if (!preserved.isBlank()) sb.append(preserved);
+        if (!byLanguage.isBlank()) sb.append(byLanguage);
         Files.createDirectories(file.getParent());
         AtomicWrites.replace(file, sb.toString());
     }

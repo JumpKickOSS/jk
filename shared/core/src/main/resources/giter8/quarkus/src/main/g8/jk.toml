@@ -1,0 +1,22 @@
+[project]
+group   = "$organization$"
+name    = "$name$"
+version = "0.1.0"
+jdk     = $jdk$
+java    = $jdk$
+layout  = "simple"
+
+[application]
+main = "$package$.Application"
+
+[quarkus]
+version = "$quarkus_version$"
+
+[dependencies]
+quarkus-rest = { group = "io.quarkus", name = "quarkus-rest" }
+quarkus-arc  = { group = "io.quarkus", name = "quarkus-arc" }
+
+# Stay on [test-dependencies] only — MAIN/DEV must not pull maven-embedder.
+[test-dependencies]
+quarkus-junit5 = { group = "io.quarkus", name = "quarkus-junit5" }
+rest-assured   = { group = "io.rest-assured", name = "rest-assured" }

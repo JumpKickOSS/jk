@@ -19,10 +19,6 @@ public final class EngineMain {
      * appends leaves them harmlessly inert here — better an unsized engine than a dead one.
      */
     public static void main(String[] args) {
-        // Relocate the fetched-artifact set out of cache/ if this is the first run since the split
-        // . A directory rename, so ~1.6 GB moves in milliseconds; never throws, and anything
-        // left behind is still found via StoreMigration.resolveForRead.
-        cc.jumpkick.util.StoreMigration.migrateIfNeeded();
         // --job: one-shot child — serve exactly one request over stdio, then exit.
         if (args.length > 0 && "--job".equals(args[0])) {
             System.exit(runJob());
@@ -94,26 +90,95 @@ public final class EngineMain {
      * --aot-training}, with {@code -XX:AOTCacheOutput} so the recording assembles at its clean
      * exit. {@code -XX:+UseSerialGC} matches the serving spawn line (EngineClient.spawn) — the
      * assembled cache must be recorded under the same GC it will later be mapped under.
+     *
+     * <p>The trainer assembles to a <em>temp sibling</em>, promoted to the final path only on a
+     * clean exit ({@link #promoteTrainedCache}). The watchdog kills an overrunning trainer with
+     * {@link Runtime#halt}, so writing {@code -XX:AOTCacheOutput} straight to the final path could
+     * leave a partial/zero-byte file there — which the client would then map forever (JK-1430).
      */
     private static Process spawnAotTrainer(String aotOut) {
         try {
+            java.nio.file.Path finalPath = java.nio.file.Path.of(aotOut);
+            java.nio.file.Path tmp = trainerTmpPath(finalPath);
+            cleanStaleTrainerTmps(finalPath);
             String javaExe = ProcessHandle.current().info().command().orElseGet(() -> java.nio.file.Path.of(
                             System.getProperty("java.home"), "bin", "java")
                     .toString());
-            ProcessBuilder pb = new ProcessBuilder(
-                    javaExe,
-                    "-XX:+UseSerialGC",
-                    "-XX:AOTCacheOutput=" + aotOut,
-                    "-cp",
-                    System.getProperty("java.class.path"),
-                    EngineMain.class.getName(),
-                    "--aot-training");
+            ProcessBuilder pb =
+                    new ProcessBuilder(aotTrainerCommand(javaExe, System.getProperty("java.class.path"), tmp));
             pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
             pb.redirectError(ProcessBuilder.Redirect.INHERIT);
-            return pb.start();
+            Process p = pb.start();
+            p.onExit().thenAccept(proc -> promoteTrainedCache(tmp, finalPath, proc.exitValue()));
+            return p;
         } catch (java.io.IOException e) {
             System.err.println("jk engine: could not spawn the AOT training sidecar: " + e.getMessage());
             return null;
+        }
+    }
+
+    /** The trainer's private assembly target: a same-directory sibling, atomically movable. */
+    static java.nio.file.Path trainerTmpPath(java.nio.file.Path finalPath) {
+        return finalPath.resolveSibling(
+                finalPath.getFileName() + ".tmp-" + ProcessHandle.current().pid());
+    }
+
+    /** The sidecar command line; {@code tmpOut} — never the final cache path — receives the cache. */
+    static java.util.List<String> aotTrainerCommand(String javaExe, String classpath, java.nio.file.Path tmpOut) {
+        // --enable-native-access must match the serving spawn line (EngineClient.spawn): JEP 514
+        // rejects mapping when dump-time and runtime property sets differ (JK-1399).
+        return java.util.List.of(
+                javaExe,
+                "-XX:+UseSerialGC",
+                "-XX:AOTCacheOutput=" + tmpOut,
+                "--enable-native-access=ALL-UNNAMED",
+                "-cp",
+                classpath,
+                EngineMain.class.getName(),
+                "--aot-training");
+    }
+
+    /**
+     * Publish a finished recording: a clean exit with a non-empty assembly is atomically moved to
+     * the final path; anything else (nonzero exit, watchdog halt, empty file) is discarded — the
+     * final path either holds a complete cache or nothing.
+     */
+    static void promoteTrainedCache(java.nio.file.Path tmp, java.nio.file.Path finalPath, int exit) {
+        try {
+            if (exit == 0
+                    && java.nio.file.Files.isRegularFile(tmp)
+                    && java.nio.file.Files.size(tmp) > 0) {
+                cc.jumpkick.util.AtomicWrites.moveInto(tmp, finalPath);
+                return;
+            }
+        } catch (java.io.IOException e) {
+            System.err.println("jk engine: could not publish the AOT cache: " + e.getMessage());
+        }
+        deleteQuietly(tmp);
+        deleteQuietly(tmp.resolveSibling(tmp.getFileName() + ".config")); // interrupted recording
+    }
+
+    /**
+     * Drop temp assemblies a dead engine left behind for this cache stem. Safe: the engine spawns
+     * a trainer only after winning its election, so no live sibling shares the stem.
+     */
+    private static void cleanStaleTrainerTmps(java.nio.file.Path finalPath) {
+        java.nio.file.Path dir = finalPath.getParent();
+        if (dir == null) return;
+        String prefix = finalPath.getFileName() + ".tmp-";
+        try (var entries = java.nio.file.Files.newDirectoryStream(
+                dir, p -> p.getFileName().toString().startsWith(prefix))) {
+            for (java.nio.file.Path p : entries) deleteQuietly(p);
+        } catch (java.io.IOException ignored) {
+            // best-effort — a leftover tmp costs disk, not correctness
+        }
+    }
+
+    private static void deleteQuietly(java.nio.file.Path p) {
+        try {
+            java.nio.file.Files.deleteIfExists(p);
+        } catch (java.io.IOException ignored) {
+            // best-effort
         }
     }
 

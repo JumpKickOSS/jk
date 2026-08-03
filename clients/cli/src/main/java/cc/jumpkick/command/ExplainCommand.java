@@ -51,31 +51,27 @@ public final class ExplainCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Forecast rebuilds (cache hit/miss per step) — use instead of build scans for \"why rebuild?\"";
+        return "Forecast rebuilds (cache hit/miss per step)";
     }
 
     @Override
     public List<Opt> options() {
         var opts = new java.util.ArrayList<Opt>();
-        opts.add(Opt.flag("Build the plan instead of printing it (`jk build`).", "--run"));
+        opts.add(Opt.flag("Build the plan instead of printing it", "--run"));
         opts.addAll(cc.jumpkick.cli.ParallelTestsOpts.options());
         // The plan-affecting options `jk build` accepts — forecasting `jk build <flags>`
         // means feeding the same inputs to the shared estimate (and, with --run, to build).
         // Module concurrency: global -j/--jobs.
-        opts.add(Opt.value("<name>", "Forecast with a build profile applied. Default: auto (ci on CI).", "--profile"));
-        opts.add(Opt.value(
-                "<N>", "Forecast with N test-runner JVMs per module (within -j). Default 1.", "-w", "--workers"));
+        opts.add(Opt.value("<name>", "Forecast with a build profile", "--profile"));
+        opts.add(Opt.value("<N>", "Forecast with N test JVMs per module", "-w", "--workers"));
         opts.add(cc.jumpkick.cli.CommonOpts.skipTests());
         // -r/--redo is a global flag (same as `jk build --redo`); see GlobalOptions.
         opts.add(Opt.value("<dir>", "Override the JDK install root.", "--jdks-dir")
                 .hide());
         opts.add(cc.jumpkick.cli.CommonOpts.cacheDir());
         opts.addAll(cc.jumpkick.cli.CommonOpts.moduleSelection());
-        opts.add(Opt.value(
-                "<fmt>",
-                "Emit a machine graph instead of the rebuild forecast. Supported: dot | mermaid (module DAG).",
-                "--graph"));
-        opts.add(Opt.value("<file>", "With --graph, write the graph to this file instead of stdout.", "--graph-out"));
+        opts.add(Opt.value("<fmt>", "Emit module DAG as dot or mermaid", "--graph"));
+        opts.add(Opt.value("<file>", "Write --graph output to this file", "--graph-out"));
         return opts;
     }
 

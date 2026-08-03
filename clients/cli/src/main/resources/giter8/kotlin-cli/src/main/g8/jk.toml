@@ -1,0 +1,9 @@
+[project]
+group   = "$organization$"
+name    = "$name$"
+version = "0.1.0"
+jdk     = $jdk$
+kotlin  = "2.2.0"
+
+[application]
+main = "$package$.MainKt"

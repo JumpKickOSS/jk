@@ -26,8 +26,8 @@ class PreflightThinManifestTest {
                 group = "com.example"
                 name = "ws"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["member"]

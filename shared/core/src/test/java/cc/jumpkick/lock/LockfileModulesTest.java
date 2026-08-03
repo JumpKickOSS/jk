@@ -59,7 +59,7 @@ class LockfileModulesTest {
                 group   = "com.example"
                 name    = "solo"
                 version = "1.0.0"
-                java    = 21
+                java    = 25
                 """);
 
         Lockfile stamped = LockfileModules.stamp(Lockfile.empty("0.1.0"), tmp);
@@ -67,7 +67,7 @@ class LockfileModulesTest {
             assertThat(m.path()).isEqualTo(".");
             assertThat(m.name()).isEqualTo("solo");
             assertThat(m.version()).isEqualTo("1.0.0");
-            assertThat(m.java()).isEqualTo(21);
+            assertThat(m.java()).isEqualTo(25);
         });
     }
 }

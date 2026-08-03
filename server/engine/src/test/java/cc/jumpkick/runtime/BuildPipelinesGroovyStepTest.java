@@ -74,7 +74,7 @@ class BuildPipelinesGroovyStepTest {
 
     @Test
     void explicit_java_ignores_groovy_sources(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=21\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=25\n");
         Files.createDirectories(dir.resolve("src/main/groovy"));
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-groovy");
     }

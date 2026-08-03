@@ -25,6 +25,9 @@ Incremental strategy (Java ABI vs Zinc): [incremental-zinc-decision.md](incremen
 
 **Decision: DEFER warm pool**; **keep PluginAot for `java …` workers**. See [warm-pool-bench.md](warm-pool-bench.md).
 
+Resident bare-`javac` pool to chase Mill’s dirty wall: **no** (JK-1416 — ~80 ms not worth
+RSS). See [warm-javac-pool-decision.md](warm-javac-pool-decision.md).
+
 | Process | AOT | Temurin note |
 |---------|-----|----------------|
 | Bare `javac` | **off** (no train/map) | was noise vs AOT |

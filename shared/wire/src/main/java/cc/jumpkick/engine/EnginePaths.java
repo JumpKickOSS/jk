@@ -7,7 +7,7 @@ import cc.jumpkick.util.JkDirs;
 import java.nio.file.Path;
 
 /**
- * Resolves the on-disk identity of the engine for a given {@code ~/.jk} state directory: a short key
+ * Resolves the on-disk identity of the engine for a given state directory: a short key
  * derived from the resolved, absolute state-dir path, and the socket/lock/pid/log files under it.
  *
  * <p>Keying off the state dir (rather than a fixed machine-wide name) means a different {@code

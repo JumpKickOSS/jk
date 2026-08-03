@@ -198,7 +198,8 @@ class StoreFeedRefreshTest {
                 })) {
             refresh.tickQuietly(); // must not throw
         }
-        assertThat(logs).anyMatch(s -> s.contains("scheduled cache GC enqueue skipped"));
+        // afterTick failures are swallowed quietly (no retries, no log spam)
+        assertThat(logs).isEmpty();
     }
 
     @Test
@@ -228,6 +229,7 @@ class StoreFeedRefreshTest {
             refresh.tickQuietly();
         }
         assertThat(libs).doesNotExist();
-        assertThat(logs).isNotEmpty();
+        // Network failures are fail-fast and quiet (no retries).
+        assertThat(logs).isEmpty();
     }
 }

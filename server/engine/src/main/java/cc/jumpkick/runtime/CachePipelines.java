@@ -22,9 +22,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Cache-maintenance pipelines for {@code jk cache prune}, {@code jk cache purge}, and {@code jk
- * clean --cache}. Mutate caches pipelines may read concurrently — the engine runs them only at
- * idle boundaries.
+ * Cache-maintenance pipelines for {@code jk cache prune}, {@code jk cache purge}, {@code jk repo
+ * prune}, and {@code jk clean --cache}. Mutate caches pipelines may read concurrently — the engine
+ * runs them only at idle boundaries.
  */
 public final class CachePipelines {
 
@@ -44,7 +44,7 @@ public final class CachePipelines {
 
     /**
      * Prune pipeline for the cache at {@code root}: expire stale entries, GC sidecar files, optional
-     * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code ~/.jk/tmp} only for the default
+     * CAS sweep + LRU eviction. {@code includeJkTmp} sweeps {@code state/tmp} only for the default
      * cache dir.
      */
     public static Pipeline prunePipeline(
@@ -153,15 +153,99 @@ public final class CachePipelines {
         return Pipeline.builder("cache-prune").addStep(pruneStep).build();
     }
 
-    /** Build the purge pipeline: delete everything under {@code root} (the root dir itself survives). */
+    /**
+     * Build the purge pipeline: delete the action cache under {@code root} ({@code actions/} +
+     * {@code format-stamps/}). Store-side trees that may share the root in an explicit
+     * {@code --cache-dir} layout ({@code sha256/}, {@code repos/}, {@code runs/}) are kept —
+     * {@code jk repo prune} reclaims those.
+     */
     public static Pipeline purgePipeline(Path root) {
         Step purgeStep = Step.builder("purge")
                 .execute(ctx -> {
                     ctx.label("Purging cache…");
-                    deleteContents(root);
+                    purgeActionCache(root);
                 })
                 .build();
         return Pipeline.builder("cache-purge").addStep(purgeStep).build();
+    }
+
+    /** Delete the action-cache trees under {@code root}: {@code actions/} and {@code format-stamps/}. */
+    public static void purgeActionCache(Path root) throws IOException {
+        for (String tree : new String[] {"actions", "format-stamps"}) {
+            Path dir = root.resolve(tree);
+            if (Files.isDirectory(dir)) deleteContents(dir);
+        }
+    }
+
+    /**
+     * Build the store-sweep pipeline ({@code jk repo prune}): CAS temp-file cleanup, run-log TTL GC,
+     * unreferenced-blob sweep, and (with {@code maxSize}) LRU eviction down to the budget.
+     */
+    public static Pipeline sweepPipeline(Path root, boolean dryRun, String maxSize) {
+        Step sweepStep = Step.builder("sweep")
+                .ticks(1)
+                .execute(ctx -> {
+                    ctx.label("Sweeping store…");
+                    SweepReport report = sweepStore(root, dryRun, maxSize);
+                    ctx.put(FILES, report.files());
+                    ctx.put(BYTES, report.bytes());
+                    ctx.put(REACHABLE_EVICTED, report.reachableEvicted());
+                    ctx.progress(1);
+                })
+                .build();
+        return Pipeline.builder("repo-prune").addStep(sweepStep).build();
+    }
+
+    /** Totals for one store sweep ({@link #sweepStore}). */
+    public record SweepReport(long files, long bytes, long reachableEvicted) {}
+
+    /**
+     * Store-side reclamation for the cache at {@code root}: leftover CAS {@code .put-} temp files,
+     * expired run logs, unreferenced CAS blobs, and (when {@code maxSize} is set) reachable-blob LRU
+     * eviction down to the budget.
+     */
+    public static SweepReport sweepStore(Path root, boolean dryRun, String maxSize) throws IOException {
+        long totalFiles = 0;
+        long totalBytes = 0;
+        long reachableEvicted = 0;
+
+        Path shaDir = cc.jumpkick.cache.JkStores.resolve(root, "sha256");
+        if (Files.isDirectory(shaDir)) {
+            for (Path file : tempFiles(shaDir)) {
+                long sz = Files.size(file);
+                if (!dryRun) Files.deleteIfExists(file);
+                totalFiles++;
+                totalBytes += sz;
+            }
+        }
+
+        var runLogReport = cc.jumpkick.task.RunLogGc.sweep(root, cc.jumpkick.task.RunLogGc.DEFAULT_TTL, dryRun);
+        totalFiles += runLogReport.deleted();
+        totalBytes += runLogReport.freedBytes();
+
+        // Blobs live in the store; reachability roots (actions/, tools/) stay with the cache.
+        cc.jumpkick.cache.Cas cas = cc.jumpkick.cache.JkStores.cas(root);
+        Path toolsDir = cc.jumpkick.cache.JkStores.resolve(root, "tools");
+        var liveRefs = cc.jumpkick.task.CacheRoots.collect(cas, root.resolve("actions"), toolsDir);
+        var sweepReport = cc.jumpkick.task.CasSweep.sweep(cas, liveRefs, dryRun);
+        totalFiles += sweepReport.deleted();
+        totalBytes += sweepReport.freedBytes();
+
+        long budgetBytes = maxSize != null ? cc.jumpkick.task.LruEvictor.parseSize(maxSize) : -1L;
+        if (budgetBytes > 0) {
+            var ledger = cc.jumpkick.task.AccessLedger.atDefaultPath();
+            var evictReport = cc.jumpkick.task.LruEvictor.evictDownTo(cas, budgetBytes, liveRefs, ledger, dryRun);
+            totalFiles += evictReport.deleted();
+            totalBytes += evictReport.freedBytes();
+            reachableEvicted = evictReport.reachableEvicted();
+            if (!dryRun) {
+                try {
+                    ledger.compactIfLarge();
+                } catch (IOException ignored) {
+                }
+            }
+        }
+        return new SweepReport(totalFiles, totalBytes, reachableEvicted);
     }
 
     /** Build the GC pipeline ({@code jk clean --cache}): purge CAS blobs idle 90+ days via {@link CacheGc}. */

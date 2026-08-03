@@ -33,8 +33,8 @@ class IdeSuiteRunConfigTest {
                 group = "t"
                 name = "mod"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 layout = "simple"
                 """);
         Path runDir = tmp.resolve(".idea/runConfigurations");
@@ -60,8 +60,8 @@ class IdeSuiteRunConfigTest {
                 group = "t"
                 name = "m"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 layout = "simple"
                 """);
         IdeModule im = new IdeModule(

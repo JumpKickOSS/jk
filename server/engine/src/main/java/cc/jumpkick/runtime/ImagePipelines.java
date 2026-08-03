@@ -261,7 +261,7 @@ public final class ImagePipelines {
      *
      * <ol>
      *   <li>Parse project-local {@code [image]} from {@code jk.toml}.
-     *   <li>Parse user-global {@code [image]} from {@code ~/.jk/config.toml} (if present).
+     *   <li>Parse user-global {@code [image]} from {@code ~/.config/jk/config.toml} (if present).
      *   <li>Merge: project values win over global values.
      *   <li>Substitute {@code {java-major-version}} in {@code image.base} with the project's JDK
      *       major (falling back to 21 when undeclared).
@@ -272,7 +272,7 @@ public final class ImagePipelines {
             Path jkBuild, JkBuild project, String registry, String tag, String dockerExecutableArg) throws IOException {
         ImageConfigParser.ImageConfigData data = ImageConfigParser.parse(jkBuild);
 
-        // Merge user-global [image] from ~/.jk/config.toml underneath the project layer.
+        // Merge user-global [image] from ~/.config/jk/config.toml underneath the project layer.
         Path globalConfig = JkDirs.userConfigFile();
         if (Files.isRegularFile(globalConfig)) {
             try {

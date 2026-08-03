@@ -2302,7 +2302,7 @@ public final class BuildPipelines {
                     // Nested-engine suites (jk-cli): isolate JK_STATE_DIR so EngineTestExtension
                     // cannot kill the host engine running this test step. Sandboxed JK_HOME/JK_M2_LOCAL
                     // plus this module's [test] env — without it a forked test JVM inherits the
-                    // engine's environment and runs against the developer's real ~/.jk.
+                    // engine's environment and runs against the developer's real product layout.
                     // Nested-engine isolation layers on top and wins on any key both set.
                     Map<String, String> testEnv = new java.util.LinkedHashMap<>(
                             TestEnv.forModule(projectUnderTest, in.dir(), ctx.require(LAYOUT)));
@@ -2883,17 +2883,14 @@ public final class BuildPipelines {
         ClasspathResolver resolver = new ClasspathResolver(cas);
         String startClass = resolvedMain(project, in.dir(), classes);
 
-        // Coordinate-named runtime entries + the SBOM components they imply.
-        record Entry(String fileName, Path jar, boolean snapshot, Path container) {}
-        List<Entry> entries = new ArrayList<>();
+        // Coordinate-named runtime entries: lock artifacts + workspace sibling jars — the SAME
+        // set steps see via In.runtimeEntries(). Packaging from the lock alone drops sibling
+        // module jars and ships a Boot/assembly artifact that cannot start (JK-1415).
+        List<PluginBuild.ProdEntry> entries =
+                PluginBuild.productionEntries(in.dir(), in.cache(), in.lockFile(), project);
         List<CycloneDxSbom.Component> sbomComponents = new ArrayList<>();
         for (ClasspathResolver.Entry entry : resolver.entriesFor(lock, ClasspathResolver.RUNTIME)) {
             Lockfile.Artifact a = entry.artifact();
-            entries.add(new Entry(
-                    a.moduleArtifact() + "-" + a.version() + (entry.container() != null ? ".aar" : ".jar"),
-                    entry.jar(),
-                    a.version().contains("SNAPSHOT"),
-                    entry.container()));
             sbomComponents.add(
                     new CycloneDxSbom.Component(a.moduleGroup(), a.moduleArtifact(), a.version(), a.checksumHex()));
         }
@@ -2907,7 +2904,7 @@ public final class BuildPipelines {
         // Action key from the declared inputs + facts — any config, classes, dependency-set,
         // step-output, extra-artifact, or manifest change re-packages; nothing else does.
         List<Path> entryJars = new ArrayList<>(entries.size());
-        for (Entry e : entries) {
+        for (PluginBuild.ProdEntry e : entries) {
             if (e.jar() != null) entryJars.add(e.jar());
         }
         List<String> tokens = new ArrayList<>();
@@ -2918,7 +2915,7 @@ public final class BuildPipelines {
                     tokens.add("libs:" + cc.jumpkick.task.ClasspathFingerprint.of(entryJars));
                     // Container content (an AAR's res/assets/jni) is packaged input too — an
                     // assets-only AAR bump must re-package even though no classes jar changed.
-                    for (Entry e : entries) {
+                    for (PluginBuild.ProdEntry e : entries) {
                         if (e.container() != null) {
                             tokens.add("container:" + e.fileName() + ":"
                                     + cc.jumpkick.task.ClasspathFingerprint.entry(e.container()));
@@ -2984,7 +2981,7 @@ public final class BuildPipelines {
                 .layout(classes, in.dir(), layout.moduleTargetDir().resolve("plugin"))
                 .javaHome(ctx.require(JAVA_HOME))
                 .artifact(jarPath);
-        for (Entry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
+        for (PluginBuild.ProdEntry e : entries) spec.entry(e.fileName(), e.jar(), e.snapshot(), e.container());
         for (var e : extras.entrySet()) spec.extra(e.getKey(), e.getValue());
         for (var e : secrets.entrySet()) spec.secret(e.getKey(), e.getValue());
         spec.extra("sbom", sbomFile);
@@ -4275,8 +4272,8 @@ public final class BuildPipelines {
 
     /**
      * Isolated {@code JK_HOME} + short {@code JK_STATE_DIR} under {@code /tmp} (UDS path length) for
-     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real {@code
-     * JK_CACHE_DIR} / {@code ~/.jk/cache} so install-local workers remain visible.
+     * nested-engine CLI tests. Keeps the host engine's socket alone; CAS stays on the real host
+     * cache so install-local workers remain visible.
      */
     static Map<String, String> nestedEngineTestEnv(Path moduleDir) throws IOException {
         Path jkHome = moduleDir.resolve("target").resolve("test-jk-home");
@@ -4287,6 +4284,7 @@ public final class BuildPipelines {
         Files.createDirectories(stateDir);
         Map<String, String> env = new LinkedHashMap<>();
         env.put("JK_HOME", jkHome.toAbsolutePath().toString());
+        env.put("JK_JDKS_DIR", jkHome.resolve("jdks").toAbsolutePath().toString());
         env.put("JK_STATE_DIR", stateDir.toAbsolutePath().toString());
         // Prefer the host CAS so plugins/deps materialize once; VersionStore still uses JK_HOME.
         Path hostCache = cc.jumpkick.util.JkDirs.cache();

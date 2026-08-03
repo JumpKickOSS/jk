@@ -28,7 +28,7 @@ class VariantApplyTest {
                 name    = "app"
                 group   = "com.example"
                 version = "1.0.0"
-                java    = 17
+                java    = 25
 
                 [android]
                 namespace   = "com.example.app"

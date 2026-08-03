@@ -10,7 +10,7 @@ import java.util.Optional;
 
 /**
  * Ordered TOML config file layers, lowest precedence first: user-global
- * {@code ~/.jk/config.toml} ({@link JkDirs#userConfigFile()}), then project {@code jk.toml}
+ * {@code ~/.config/jk/config.toml} ({@link JkDirs#userConfigFile()}), then project {@code jk.toml}
  * (nearest ancestor) or an explicit {@code --config-file}. No system/{@code ~/.config} layer.
  * Env and CLI flags sit above files and are applied by loaders, not modeled here.
  */
@@ -49,7 +49,7 @@ public final class ConfigSources {
         return new ConfigSources(out);
     }
 
-    /** The user-global config file, {@code ~/.jk/config.toml}. */
+    /** The user-global config file, {@code ~/.config/jk/config.toml}. */
     public static Path userConfig() {
         return JkDirs.userConfigFile();
     }

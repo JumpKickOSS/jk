@@ -37,10 +37,10 @@ class LanguageRuntimeInjectTest {
 
     @Test
     void explicit_java_release_disables_inference_like_the_lanes(@TempDir Path dir) throws IOException {
-        // Mirrors BuildPipelines: java = 21 declared → groovy sources are ignored, no lane,
+        // Mirrors BuildPipelines: java = 25 declared → groovy sources are ignored, no lane,
         // so no runtime inject either.
         Files.createDirectories(dir.resolve("src/main/groovy"));
-        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=21\n");
+        JkBuild p = project("[project]\ngroup=\"g\"\nname=\"n\"\nversion=\"1\"\njava=25\n");
         LinkedHashMap<String, Dependency> deps = new LinkedHashMap<>();
         LockOrchestrator.injectLanguageRuntimes(p, dir, java.util.Map.of(), deps);
         assertThat(deps).isEmpty();

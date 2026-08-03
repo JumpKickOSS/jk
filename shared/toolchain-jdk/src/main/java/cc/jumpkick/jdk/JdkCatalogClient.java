@@ -24,7 +24,7 @@ import java.util.Objects;
 
 /**
  * Client for the JetBrains JDK feed ({@value #DEFAULT_FEED_URL}). Fetches the JSON catalog, caches
- * it on disk under {@code ~/.jk/store/jdks.json} with a 12 h TTL, revalidates with conditional GET,
+ * it on disk under {@code ~/.local/share/jk/store/jdks.json} with a 12 h TTL, revalidates with conditional GET,
  * and falls back to the cached copy when offline.
  *
  * <p>The feed is the same source IntelliJ uses, so any JDK jk downloads lands in IntelliJ's
@@ -72,7 +72,7 @@ public final class JdkCatalogClient {
         return this;
     }
 
-    /** Default cache location: {@code $JK_STORE_DIR/jdks.json} (default {@code ~/.jk/store/jdks.json}). */
+    /** Default cache location: {@code $JK_STORE_DIR/jdks.json} (default {@code ~/.local/share/jk/store/jdks.json}). */
     public static Path defaultCachePath() {
         return JkDirs.store().resolve("jdks.json");
     }

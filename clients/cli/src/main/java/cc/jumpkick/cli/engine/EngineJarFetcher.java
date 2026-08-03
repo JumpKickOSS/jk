@@ -10,7 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Fetches the matching engine fat jar into {@code ~/.jk/versions/<v>/} when spawn finds none
+ * Fetches the matching engine fat jar into {@code ~/.local/share/jk/versions/<v>/} when spawn finds none
  * (built into {@link EngineClient}, no separate fetch command). Verifies {@code SHA256SUMS} and
  * materializes atomically so a torn download is never launchable.
  */
@@ -47,7 +47,7 @@ final class EngineJarFetcher {
                         .orElse(null));
     }
 
-    /** Root-injected variant — the testable seam; production uses the live {@code ~/.jk} roots. */
+    /** Root-injected variant — the testable seam; production uses the live {@code JK_HOME} / platform product layout roots. */
     static Path fetch(
             URI releasesBase,
             String version,

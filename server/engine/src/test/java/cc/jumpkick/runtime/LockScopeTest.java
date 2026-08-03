@@ -21,8 +21,8 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core", "app"]
@@ -33,8 +33,8 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 gson = { group = "com.google.code.gson", name = "gson", version = "2.11.0" }
@@ -45,8 +45,8 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 core = { group = "com.example", name = "core", version = "1.0.0" }
@@ -90,8 +90,8 @@ class LockScopeTest {
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         var scope = LockPipelines.lockScope(tmp);
