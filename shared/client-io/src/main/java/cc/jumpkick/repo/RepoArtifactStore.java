@@ -455,6 +455,12 @@ public final class RepoArtifactStore {
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
         Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         AtomicWrites.moveInto(tmp, target);
-        Files.writeString(Path.of(target + ".sha256"), Hashing.sha256Hex(target));
+        String hex = Hashing.sha256Hex(target);
+        Files.writeString(Path.of(target + ".sha256"), hex);
+        // Ingest into the sibling CAS too (JK-1450): the compile classpath is materialized from
+        // sha256/<hex> for every locked artifact — local sources included — so a repos/local file
+        // without its blob locks fine and then silently vanishes from javac's classpath. Linking
+        // jk's own immutable repos/local entry mirrors materialize()'s CAS→repos link.
+        new cc.jumpkick.cache.Cas(artifactRoot).linkFile(target, hex);
     }
 }

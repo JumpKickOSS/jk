@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Exercises the full pipeline: init -> add -> lock -> tree / why / sync. */
+@cc.jumpkick.cli.engine.IsolatedStore
 @Tag("integration")
 class ReadSideIntegrationTest {
 
@@ -102,13 +103,14 @@ class ReadSideIntegrationTest {
         String sync = captureStdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", cache.toString()));
         assertThat(sync).contains("up-to-date");
 
-        // jk sync on a fresh cache should fetch.
+        // jk sync with a fresh ACTION cache must NOT re-fetch: since the cache/store split the
+        // artifacts live in the store, and not re-downloading on cache isolation is the split's
+        // whole point (root + leaf + the two defaulted JUnit coords stay up-to-date).
         Path freshCache = tempDir.resolve("fresh-cache");
         Files.createDirectories(freshCache);
         String resync =
                 captureStdout(() -> run("sync", "-C", tempDir.toString(), "--cache-dir", freshCache.toString()));
-        // root + leaf + the two defaulted JUnit coords.
-        assertThat(resync).contains("4 fetched");
+        assertThat(resync).contains("4 up-to-date");
     }
 
     @Test

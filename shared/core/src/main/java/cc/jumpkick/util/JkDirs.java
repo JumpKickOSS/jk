@@ -55,10 +55,19 @@ public final class JkDirs {
         this.osName = osName != null ? osName : "";
     }
 
-    /** Live resolver bound to {@link System#getenv} and system properties. */
+    /**
+     * Live resolver bound to {@link System#getenv} and system properties. A {@code jk.env.<NAME>}
+     * system property wins over the real environment variable — the in-process test seam for
+     * per-test layout isolation (env vars are fixed at JVM start; properties are not). The engine
+     * spawner forwards {@code jk.env.*} properties to child engines so a spawned engine sees the
+     * same layout as the client that asked for it.
+     */
     public static JkDirs current() {
         return new JkDirs(
-                System::getenv,
+                name -> {
+                    String prop = System.getProperty("jk.env." + name);
+                    return prop != null ? prop : System.getenv(name);
+                },
                 System.getProperty("user.home"),
                 System.getProperty("os.name", ""));
     }

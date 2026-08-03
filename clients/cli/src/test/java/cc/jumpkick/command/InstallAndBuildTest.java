@@ -26,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
  * locally-installed JARs are usable as compile-time dependencies and that incremental compilation
  * behaves correctly against them.
  */
+@cc.jumpkick.cli.engine.IsolatedStore
 @Tag("integration")
 class InstallAndBuildTest {
 

@@ -2139,13 +2139,16 @@ public final class EngineClient {
                 }
                 // Forward plugin-jar location overrides (e.g. -Djk.test.runner.jar=… from Gradle
                 // tests) into the engine JVM — PluginJar.locate reads System.getProperty there.
-                // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train.
+                // Also forward AOT switches so nested engines honor JK_AOT_TRAIN / jk.aot.train,
+                // and jk.env.* layout overlays (JkDirs test seam) so a spawned engine resolves the
+                // same store/state the client did (JK-1450).
                 for (var e : System.getProperties().entrySet()) {
                     String key = String.valueOf(e.getKey());
                     if (!key.startsWith("jk.")) continue;
                     boolean jarOverride = key.endsWith(".jar");
                     boolean aotSwitch = key.equals("jk.aot.train") || key.equals("jk.worker.aot");
-                    if (!jarOverride && !aotSwitch) continue;
+                    boolean envOverlay = key.startsWith("jk.env.");
+                    if (!jarOverride && !aotSwitch && !envOverlay) continue;
                     String val = String.valueOf(e.getValue());
                     if (val == null || val.isBlank()) continue;
                     command.add("-D" + key + "=" + val);

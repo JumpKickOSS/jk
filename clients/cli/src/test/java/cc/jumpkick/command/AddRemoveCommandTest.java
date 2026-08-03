@@ -74,7 +74,7 @@ class AddRemoveCommandTest {
     @Test
     void add_then_remove_by_name(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        run("add", "com.foo:bar:1.0", "-C", tempDir.toString());
+        run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         int exit = run("remove", "bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
@@ -85,8 +85,8 @@ class AddRemoveCommandTest {
     @Test
     void remove_accepts_coord_form_as_migration_aid(@TempDir Path tempDir) throws Exception {
         run("new", tempDir.toString());
-        run("add", "com.foo:bar:1.0", "-C", tempDir.toString());
-        int exit = run("remove", "com.foo:bar", "-C", tempDir.toString());
+        run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
+        int exit = run("remove", "com.foo.addrm:bar", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(0);
 
         JkBuild parsed = JkBuildParser.parse(tempDir.resolve("jk.toml"));
@@ -104,7 +104,7 @@ class AddRemoveCommandTest {
 
     @Test
     void add_without_build_jk_fails(@TempDir Path tempDir) {
-        int exit = run("add", "com.foo:bar:1.0", "-C", tempDir.toString());
+        int exit = run("add", "com.foo.addrm:bar:1.0", "-C", tempDir.toString());
         assertThat(exit).isEqualTo(2);
     }
 
