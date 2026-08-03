@@ -83,17 +83,18 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
-    private static void runGit(List<String> args, int timeoutSec) throws IOException {
-        ProcessBuilder pb = new ProcessBuilder(args);
-        pb.redirectErrorStream(true);
+    static void runGit(List<String> args, int timeoutSec) throws IOException {
+        // Discard output at the OS level; reading the pipe inline would block past the
+        // timeout on a stalled fetch (the single maintenance thread must never hang).
+        ProcessBuilder pb = new ProcessBuilder(args)
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                .redirectError(ProcessBuilder.Redirect.DISCARD);
+        pb.environment().put("GIT_TERMINAL_PROMPT", "0");
         Process proc;
         try {
             proc = pb.start();
         } catch (IOException e) {
             throw new IOException("git not on PATH", e);
-        }
-        try (var in = proc.getInputStream()) {
-            in.readAllBytes(); // discard
         }
         try {
             if (!proc.waitFor(timeoutSec, TimeUnit.SECONDS)) {
