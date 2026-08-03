@@ -54,6 +54,15 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | `--rebuild`    | `-r/--redo`  |
 | `--directory`  | `--dir`      |
 
+## Hidden back-compat options
+
+Still functional, but gone from `--help`; the canonical home moved in the cache/repo split.
+
+| Hidden surface                          | Canonical                  |
+| --------------------------------------- | -------------------------- |
+| `cache prune --sweep`                   | `repo prune`               |
+| `cache prune --max-size <size>`         | `repo prune --max-size`    |
+
 ## Hidden global options
 
 Accepted anywhere on the line — before the command, between a group and its subcommand, or

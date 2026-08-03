@@ -417,8 +417,12 @@ public final class CacheCommand extends GroupCommand {
                             "Drop action-cache entries older than N days",
                             "--older-than"),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.flag("Sweep unreferenced CAS objects after prune", "--sweep"),
-                    Opt.value("<size>", "Cap CAS size (e.g. 20G); implies --sweep", "--max-size"),
+                    // Store-side flags moved to `jk repo prune` (JK-1435); kept hidden for
+                    // back-compat — see docs/aliases.md.
+                    Opt.flag("Sweep unreferenced CAS objects after prune", "--sweep")
+                            .hide(),
+                    Opt.value("<size>", "Cap CAS size (e.g. 20G); implies --sweep", "--max-size")
+                            .hide(),
                     Opt.flag("Internal: opportunistic prune.", "--background").hide());
         }
 
@@ -539,7 +543,11 @@ public final class CacheCommand extends GroupCommand {
                 cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — cache directory does not exist.");
                 return 0;
             }
-            Stats stats = statsOf(root);
+            Stats stats = actionCacheStats(root);
+            if (stats.files == 0) {
+                cc.jumpkick.cli.tui.CommandWedge.printOk("Cache", "Nothing to purge — the action cache is empty.");
+                return 0;
+            }
             if (dryRun) {
                 cc.jumpkick.cli.tui.CommandWedge.printOk(
                         "Cache",
@@ -577,7 +585,25 @@ public final class CacheCommand extends GroupCommand {
             return pipelineResult.success() ? 0 : 1;
         }
 
-        /** Stern, default-to-no confirmation before wiping the action-cache root. */
+        /**
+         * The action-cache footprint the purge will delete: {@code actions/} + {@code format-stamps/}
+         * (mirrors {@code CachePipelines.purgeActionCache}). Store-side trees under the same root
+         * (CAS, repo mirrors, run logs) are excluded — purge keeps them.
+         */
+        static Stats actionCacheStats(Path root) throws IOException {
+            long files = 0;
+            long bytes = 0;
+            for (String tree : new String[] {"actions", "format-stamps"}) {
+                Path dir = root.resolve(tree);
+                if (!Files.isDirectory(dir)) continue;
+                Stats s = statsOf(dir);
+                files += s.files;
+                bytes += s.bytes;
+            }
+            return new Stats(files, bytes);
+        }
+
+        /** Stern, default-to-no confirmation before wiping the action cache. */
         private static boolean confirmPurge(Path root, Stats stats) {
             Theme t = Theme.active();
             String bang = Theme.colorize(Glyphs.BANG, t.warning());
@@ -588,9 +614,9 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out("  " + root);
             CliOutput.stdout()
                     .printf(
-                            "  %s files, %s — every action-cache entry under this root.%n",
+                            "  %s files, %s — every action-cache entry (actions/ + format stamps) under this root.%n",
                             fmtCount(stats.files), fmtBytes(stats.bytes));
-            CliOutput.out("  CAS blobs and repo mirrors are kept (see jk repo). The next build re-runs work.");
+            CliOutput.out("  CAS blobs, repo mirrors, and run logs are kept (see jk repo). The next build re-runs work.");
             return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the action cache?", false)
                     .ask();
         }

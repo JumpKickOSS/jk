@@ -1490,8 +1490,9 @@ public final class EngineClient {
 
     /**
      * Everything an engine-hosted cache maintenance op needs ({@code op} = {@code prune}/{@code
-     * purge}/{@code gc} — {@code jk cache prune}/{@code purge}, {@code jk clean --cache}). {@code
-     * maxSize} may be {@code null}; the non-prune ops ignore the prune-only fields.
+     * purge}/{@code sweep}/{@code gc} — {@code jk cache prune}/{@code purge}, {@code jk repo
+     * prune}, {@code jk clean --cache}). {@code maxSize} may be {@code null}; ops ignore the
+     * fields they don't use.
      */
     public record CacheMaintRequest(
             String op,

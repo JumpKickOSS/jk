@@ -3429,7 +3429,7 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * Decode a {@link EngineProtocol#CACHE_PRUNE_REQUEST} and run its maintenance op ({@code prune}
-     * / {@code purge} / {@code gc}) as an idle-boundary job: take {@link #cacheGate}'s write side
+     * / {@code purge} / {@code sweep} / {@code gc}) as an idle-boundary job: take {@link #cacheGate}'s write side
      * (emitting {@link EngineProtocol#PRUNE_WAIT} first when pipelines are in flight, so the client
      * isn't staring at silence) and the cross-process {@code.prune.lock}, then stream the shared
      * {@link cc.jumpkick.runtime.CachePipelines} pipeline — {@link EngineProtocol#TEST_REQUEST}'s wire shape
@@ -3459,6 +3459,9 @@ public final class EngineServer implements AutoCloseable {
                         cc.jumpkick.run.Pipeline pipeline =
                                 switch (op) {
                                     case "purge" -> cc.jumpkick.runtime.CachePipelines.purgePipeline(cache);
+                                    case "sweep" ->
+                                        cc.jumpkick.runtime.CachePipelines.sweepPipeline(
+                                                cache, dryRun, Jsonl.str(requestLine, "maxSize"));
                                     case "gc" -> cc.jumpkick.runtime.CachePipelines.gcPipeline(cache);
                                     case "clear" ->
                                         cc.jumpkick.runtime.CachePipelines.clearPipeline(

@@ -90,51 +90,59 @@ class CacheCommandTest {
     }
 
     @Test
-    void purge_with_yes_wipes_contents_but_keeps_root(@TempDir Path tempDir) throws Exception {
+    void purge_wipes_action_cache_but_keeps_store_side_trees(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
+        // Explicit --cache-dir layout: CAS, repo mirrors, and run logs share the root. The confirm
+        // says they are kept — purge must only delete actions/ + format-stamps/ (JK-1435).
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
+        writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
         writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
+        writeBlob(cache.resolve("format-stamps/ab/stamp1"), new byte[128]);
 
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
 
         assertThat(stdout).contains("Purged 2 files");
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
+        assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar")))
+                .isTrue();
+        assertThat(Files.exists(cache.resolve("runs/build-1.jsonl"))).isTrue();
         assertThat(Files.exists(cache)).isTrue();
-        try (var stream = Files.list(cache)) {
-            assertThat(stream).isEmpty();
-        }
     }
 
     @Test
     void purge_aborts_when_not_confirmed(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = withStdin("n\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("aborted");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 
     @Test
     void purge_proceeds_on_yes_at_the_prompt(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = withStdin("y\n", () -> capture(() -> run("cache", "purge", "--cache-dir", cache.toString())));
 
         assertThat(stdout).contains("Purged 1 files");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
     }
 
     @Test
     void purge_dry_run_reports_without_deleting_or_prompting(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[4096]);
 
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--dry-run"));
 
         assertThat(stdout).contains("Dry run: would remove");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 
     @Test
@@ -142,6 +150,30 @@ class CacheCommandTest {
         Path cache = tempDir.resolve("cache");
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
         assertThat(stdout).contains("Nothing to purge");
+    }
+
+    @Test
+    void purge_with_only_store_side_content_is_a_noop(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        // Store-side only — nothing action-cache to purge; no prompt, nothing deleted.
+        writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
+
+        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString()));
+
+        assertThat(stdout).contains("Nothing to purge");
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+    }
+
+    @Test
+    void repo_prune_dry_run_sweeps_the_store_side(@TempDir Path tempDir) throws Exception {
+        Path cache = tempDir.resolve("cache");
+        writeBlob(cache.resolve("actions/keys/task1"), new byte[1024]);
+
+        String stdout = capture(() -> run("repo", "prune", "--cache-dir", cache.toString(), "--dry-run"));
+
+        // op "sweep" round-trips the engine; dry run must not touch the action cache.
+        assertThat(stdout).contains("Dry run");
+        assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isTrue();
     }
 
     @Test

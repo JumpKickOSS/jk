@@ -136,8 +136,9 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | Command | Scope |
 |---------|--------|
 | **`jk cache storage`** | Action cache only (`actions/` under the cache dir): file count, size, utilization |
-| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe the action-cache root |
+| **`jk cache clear` / `prune` / `purge`** | Invalidate, expire, or wipe **action-cache entries** (`actions/` + format stamps). CAS blobs, repo mirrors, and run logs survive all three |
 | **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
+| **`jk repo prune`** | Sweep unreferenced CAS blobs + expired run logs; `--max-size <size>` LRU-evicts down to a budget |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
 | **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |

@@ -42,8 +42,93 @@ public final class RepoCommand extends GroupCommand {
         return List.of(
                 new RepoStorageCommand(),
                 new RepoSearchCommand(),
+                new RepoPruneCommand(),
                 new RepoLoginCommand(),
                 new RepoLogoutCommand());
+    }
+
+    /**
+     * {@code jk repo prune} — store-side reclamation: sweep unreferenced CAS blobs, drop leftover
+     * CAS temp files, expire old run logs, and (with {@code --max-size}) LRU-evict down to a
+     * budget. Engine-hosted at an idle boundary, like {@code jk cache prune}.
+     */
+    public static final class RepoPruneCommand implements CliCommand {
+        @Override
+        public String name() {
+            return "prune";
+        }
+
+        @Override
+        public String description() {
+            return "Sweep unreferenced CAS blobs and expired run logs";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return List.of(
+                    cc.jumpkick.cli.CommonOpts.cacheDir(),
+                    Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
+                    Opt.value("<size>", "Cap CAS size (e.g. 20G); evicts least-recently-used blobs", "--max-size"));
+        }
+
+        @Override
+        public int run(Invocation in) {
+            Path cacheDir = in.value("cache-dir").map(Path::of).orElse(null);
+            boolean dryRun = in.isSet("dry-run");
+            String maxSize = in.value("max-size").orElse(null);
+            cc.jumpkick.cli.GlobalOptions global = cc.jumpkick.cli.GlobalOptions.from(in);
+            Path root = CacheCommand.resolveCacheRoot(cacheDir);
+
+            // Counts settle from the terminal pipeline-finish before the console listener renders.
+            var summary = new cc.jumpkick.cli.engine.EngineClient.CacheMaintSummary[1];
+            cc.jumpkick.cli.run.ConsoleSpec spec = sweepSpec(
+                    dryRun,
+                    () -> summary[0] != null ? summary[0].files() : 0L,
+                    () -> summary[0] != null ? summary[0].bytes() : 0L);
+            cc.jumpkick.cli.run.PipelineConsole.Mode mode = cc.jumpkick.cli.run.PipelineConsole.modeFor(global);
+            cc.jumpkick.run.PipelineResult result;
+            try {
+                // olderThanDays = MAX_VALUE: a pre-"sweep" engine falls back to its prune pipeline;
+                // the huge cutoff keeps action entries untouched while sweep=true still runs the GC.
+                result = cc.jumpkick.cli.engine.EngineClient.runCacheMaintenance(
+                        cc.jumpkick.engine.EnginePaths.current(),
+                        new cc.jumpkick.cli.engine.EngineClient.CacheMaintRequest(
+                                "sweep", root, Integer.MAX_VALUE, dryRun, true, maxSize, false),
+                        steps -> cc.jumpkick.cli.run.PipelineConsole.chooseConsoleListener(steps, mode, spec, "Repo"),
+                        CacheCommand::printWait,
+                        summary);
+            } catch (IOException e) {
+                CliOutput.err(cc.jumpkick.cli.tui.CommandWedge.fail("Repo", e.getMessage()));
+                return cc.jumpkick.model.command.Exit.SOFTWARE;
+            }
+            if (summary[0] != null) {
+                CacheCommand.CachePruneCommand.warnReachableEvicted(summary[0].reachableEvicted());
+            }
+            return result.success() ? 0 : 1;
+        }
+
+        /** The Repo chip spec; counts are read lazily, at result-line render time. */
+        static cc.jumpkick.cli.run.ConsoleSpec sweepSpec(
+                boolean dryRun, java.util.function.LongSupplier files, java.util.function.LongSupplier bytes) {
+            return new cc.jumpkick.cli.run.ConsoleSpec(
+                    "Repo",
+                    r -> {
+                        long f = Math.max(0, files.getAsLong());
+                        long b = Math.max(0, bytes.getAsLong());
+                        if (dryRun) {
+                            if (f == 0) return "Dry run: nothing to sweep.";
+                            return "Dry run: would remove "
+                                    + f + " " + (f == 1 ? "file" : "files")
+                                    + ", " + CacheCommand.fmtBytes(b) + " reclaimable.";
+                        }
+                        if (f == 0) return "Finished sweeping store. Nothing to clean up.";
+                        return "Finished sweeping store. "
+                                + f + " " + (f == 1 ? "file" : "files")
+                                + " removed, " + CacheCommand.fmtBytes(b) + " reclaimed.";
+                    },
+                    r -> "Failed to sweep the store.",
+                    true);
+        }
     }
 
     /**
