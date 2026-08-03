@@ -129,15 +129,15 @@ jk self purge --cache --state -y  # stackable targets
 jk self purge --store --config
 ```
 
-| Flag | Deletes |
-|------|---------|
-| `--all` | Every target below (default when none named) |
-| `--cache` | Action cache (`~/.cache/jk`) |
-| `--store` | Store/CAS, versions, lib (`~/.local/share/jk`) |
-| `--state` | Engine sockets, AOT, builds (`~/.local/state/jk`) |
-| `--config` | User config (`~/.config/jk`) |
+| Flag | Deletes | Keeps |
+|------|---------|-------|
+| `--all` | Every target below (default when none named) | — |
+| `--cache` | Action cache (`~/.cache/jk`) | — |
+| `--store` | CAS blobs, repo mirrors, **old** `versions/*` | **Active** `versions/<this-jk>/`, **`store/lib/`** (latest plugins) |
+| `--state` | Engine sockets, AOT, builds (`~/.local/state/jk`) | — |
+| `--config` | User config (`~/.config/jk`) | — |
 
-Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH.
+Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH. Does **not** remove managed JDKs or the running client’s engine install.
 
 Utilization bars:
 

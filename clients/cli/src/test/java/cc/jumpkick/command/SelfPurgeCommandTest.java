@@ -23,20 +23,59 @@ import org.junit.jupiter.api.Test;
 class SelfPurgeCommandTest {
 
     @Test
-    void wipeRoots_never_includes_bin_or_jdks_or_anything_under_them() {
+    void wipeRoots_never_includes_bin_jdks_active_version_or_store_lib() throws Exception {
         JkDirs dirs = JkDirs.current();
-        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs);
         Path bin = dirs.binDirectory().toAbsolutePath().normalize();
         Path jdks = dirs.jdksDir().toAbsolutePath().normalize();
+        Path active = dirs.versionsDir().resolve(Jk.VERSION).toAbsolutePath().normalize();
+        Path lib = dirs.libDir().toAbsolutePath().normalize();
+        Files.createDirectories(active);
+        Files.createDirectories(lib.resolve("jk-java-compiler"));
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs);
         for (Path r : roots) {
             Path abs = r.toAbsolutePath().normalize();
             assertThat(abs).isNotEqualTo(bin);
             assertThat(abs).isNotEqualTo(jdks);
+            assertThat(abs).isNotEqualTo(active);
+            assertThat(abs).isNotEqualTo(lib);
             assertThat(abs.startsWith(bin)).isFalse();
             assertThat(abs.startsWith(jdks)).isFalse();
-            assertThat(bin.startsWith(abs) && !bin.equals(abs)).isFalse();
-            assertThat(jdks.startsWith(abs) && !jdks.equals(abs)).isFalse();
+            assertThat(abs.startsWith(active)).isFalse();
+            assertThat(abs.startsWith(lib)).isFalse();
         }
+    }
+
+    @Test
+    void store_deletes_old_versions_and_cas_but_keeps_active_and_lib() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path versions = dirs.versionsDir();
+        Path active = versions.resolve(Jk.VERSION);
+        Path old = versions.resolve("0.9.0");
+        Path cas = dirs.storeDir().resolve("sha256");
+        Path lib = dirs.libDir().resolve("jk-java-compiler");
+        Files.createDirectories(active.resolve("lib"));
+        Files.writeString(active.resolve("manifest.toml"), "version = \"" + Jk.VERSION + "\"\n");
+        Files.createDirectories(old);
+        Files.writeString(old.resolve("manifest.toml"), "version = \"0.9.0\"\n");
+        Files.createDirectories(cas.resolve("ab"));
+        Files.writeString(cas.resolve("ab/blob"), "cas");
+        Files.createDirectories(lib);
+        Files.writeString(lib.resolve("plugin.jar"), "plugin");
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        assertThat(roots).anyMatch(p -> p.endsWith("0.9.0") || p.toString().endsWith("0.9.0"));
+        assertThat(roots).anyMatch(p -> p.endsWith("sha256") || p.toString().contains("sha256"));
+        assertThat(roots).noneMatch(p -> p.equals(active.toAbsolutePath().normalize()));
+        assertThat(roots).noneMatch(p -> p.equals(lib.toAbsolutePath().normalize())
+                || p.startsWith(dirs.libDir().toAbsolutePath().normalize()));
+
+        int exit = capture(() -> Jk.execute("self", "purge", "--store", "-y"));
+        assertThat(exit).isZero();
+        assertThat(old).doesNotExist();
+        assertThat(cas.resolve("ab/blob")).doesNotExist();
+        assertThat(active.resolve("manifest.toml")).exists();
+        assertThat(lib.resolve("plugin.jar")).exists();
     }
 
     @Test
@@ -44,16 +83,6 @@ class SelfPurgeCommandTest {
         JkDirs dirs = JkDirs.current();
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.CACHE));
         assertThat(roots).containsExactly(dirs.cacheDir().toAbsolutePath().normalize());
-    }
-
-    @Test
-    void store_and_state_stack() {
-        JkDirs dirs = JkDirs.current();
-        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE, Target.STATE));
-        Path data = dirs.dataDir().toAbsolutePath().normalize();
-        Path state = dirs.stateDir().toAbsolutePath().normalize();
-        assertThat(roots).contains(data, state);
-        assertThat(roots).doesNotContain(dirs.cacheDir().toAbsolutePath().normalize());
     }
 
     @Test
@@ -72,29 +101,12 @@ class SelfPurgeCommandTest {
         Path foreign = bin.resolve("uv");
         Files.writeString(foreign, "foreign-tool");
 
-        int exit = capture(() -> Jk.execute("self", "purge", "-y"));
+        int exit = capture(() -> Jk.execute("self", "purge", "--cache", "--state", "-y"));
         assertThat(exit).isZero();
         assertThat(Files.exists(cache.resolve("actions/marker"))).isFalse();
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
         assertThat(Files.exists(foreign)).isTrue();
-    }
-
-    @Test
-    void purge_cache_only_leaves_state() throws Exception {
-        JkDirs dirs = JkDirs.current();
-        Path cache = dirs.cacheDir();
-        Path state = dirs.stateDir();
-        Files.createDirectories(cache.resolve("actions"));
-        Files.writeString(cache.resolve("actions/marker"), "x");
-        Files.createDirectories(state.resolve("aot"));
-        Files.writeString(state.resolve("aot/marker"), "keep");
-
-        int exit = capture(() -> Jk.execute("self", "purge", "--cache", "-y"));
-        assertThat(exit).isZero();
-        assertThat(Files.exists(cache.resolve("actions/marker"))).isFalse();
-        assertThat(Files.exists(state.resolve("aot/marker"))).isTrue();
-        Files.deleteIfExists(state.resolve("aot/marker"));
     }
 
     @Test
@@ -105,7 +117,7 @@ class SelfPurgeCommandTest {
         Path marker = cache.resolve("dry-run-keep");
         Files.writeString(marker, "keep");
 
-        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--dry-run", "-y")).isZero());
+        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--cache", "--dry-run", "-y")).isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
         assertThat(TestAnsi.strip(out)).contains("Path to Delete").contains("What");
         assertThat(marker).exists();

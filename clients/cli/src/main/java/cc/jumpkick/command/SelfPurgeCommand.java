@@ -3,6 +3,7 @@ package cc.jumpkick.command;
 
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
+import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.BoxTable;
@@ -16,6 +17,7 @@ import cc.jumpkick.model.command.Opt;
 import cc.jumpkick.util.JkDirs;
 import cc.jumpkick.util.PathUtil;
 import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,14 +28,15 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk self purge} — wipe JumpKick-owned product data while leaving PATH install binaries and
- * managed JDKs untouched.
+ * {@code jk self purge} — wipe JumpKick product data while leaving the PATH install binaries,
+ * managed JDKs, the <strong>active engine version</strong>, and <strong>latest plugin workers</strong>
+ * ({@code store/lib/}) intact.
  *
  * <p>Targets (stackable; default {@code --all}):
  *
  * <ul>
  *   <li>{@code --cache} — action cache
- *   <li>{@code --store} — store/CAS, versions, lib (data dir)
+ *   <li>{@code --store} — CAS, repo mirrors, old {@code versions/*} (keeps active version + {@code store/lib})
  *   <li>{@code --state} — engine sockets, AOT, builds
  *   <li>{@code --config} — user config
  *   <li>{@code --all} — every target above (default when none are named)
@@ -46,7 +49,7 @@ public final class SelfPurgeCommand implements CliCommand {
     /** Selectable purge scopes. */
     enum Target {
         CACHE("Action cache"),
-        STORE("Store/CAS, versions, lib"),
+        STORE("CAS, repos, old engines"),
         STATE("Engine sockets, AOT, builds"),
         CONFIG("User config");
 
@@ -67,7 +70,7 @@ public final class SelfPurgeCommand implements CliCommand {
 
     @Override
     public String description() {
-        return "Wipe all data/state (keeps jk/jkx and JDKs)";
+        return "Wipe data/state (keeps active engine, plugins, PATH, JDKs)";
     }
 
     @Override
@@ -76,7 +79,7 @@ public final class SelfPurgeCommand implements CliCommand {
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                 Opt.flag("Purge every target (default when none named).", "--all"),
                 Opt.flag("Purge the action cache only.", "--cache"),
-                Opt.flag("Purge store/CAS, versions, and lib.", "--store"),
+                Opt.flag("Purge CAS/repos and old engines (keeps active + plugins).", "--store"),
                 Opt.flag("Purge engine state, AOT caches, and builds.", "--state"),
                 Opt.flag("Purge user config.", "--config"));
     }
@@ -89,15 +92,13 @@ public final class SelfPurgeCommand implements CliCommand {
         JkDirs dirs = JkDirs.current();
 
         List<PurgeRow> rows = plan(dirs, selected);
-        // Only show/delete paths that exist (or always show plan paths for empty dirs? mock shows
-        // standard paths — show planned roots even if missing, but only delete existing).
         List<PurgeRow> existing = rows.stream().filter(r -> Files.exists(r.path())).toList();
         if (existing.isEmpty()) {
             CommandWedge.printOk("Self", "Nothing to purge — selected JumpKick data not found.");
             return Exit.SUCCESS;
         }
 
-        if (!confirm(existing)) {
+        if (!confirm(existing, dirs, selected)) {
             CommandWedge.printFail("Self", "Purge aborted.");
             return 1;
         }
@@ -138,11 +139,13 @@ public final class SelfPurgeCommand implements CliCommand {
         } else {
             CommandWedge.printOk(
                     "Self",
-                    "Purged JumpKick data ("
+                    "Purged "
                             + removed
                             + " path"
                             + (removed == 1 ? "" : "s")
-                            + "). PATH binaries and JDKs untouched.");
+                            + ". Kept: active engine "
+                            + Jk.VERSION
+                            + ", store/lib plugins, PATH, JDKs.");
         }
         return Exit.SUCCESS;
     }
@@ -164,67 +167,122 @@ public final class SelfPurgeCommand implements CliCommand {
     }
 
     /**
-     * Build ordered purge rows for the selected targets. Never includes bin or JDK roots.
-     * Package-private for tests.
+     * Build ordered purge rows for the selected targets. Never includes bin, JDKs, the active
+     * {@code versions/<Jk.VERSION>/} tree, or {@code store/lib/} (latest plugin workers).
      */
     static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Path bin = abs(dirs.binDirectory());
         Path jdks = abs(dirs.jdksDir());
-        // Preserve insertion order of targets as CACHE, STORE, STATE, CONFIG.
         Map<Path, PurgeRow> byPath = new LinkedHashMap<>();
+
         if (selected.contains(Target.CACHE)) {
-            addRow(byPath, abs(dirs.cacheDir()), Target.CACHE, bin, jdks);
+            addRow(byPath, abs(dirs.cacheDir()), "Action cache", Target.CACHE, bin, jdks);
         }
+
         if (selected.contains(Target.STORE)) {
-            // dataDir = share/jk (store + versions + lib). If store is relocated outside data,
-            // include it separately.
-            Path data = abs(dirs.dataDir());
-            Path store = abs(dirs.storeDir());
-            Path versions = abs(dirs.versionsDir());
-            addRow(byPath, data, Target.STORE, bin, jdks);
-            if (store != null && data != null && !store.equals(data) && !isAncestor(data, store)) {
-                addRow(byPath, store, Target.STORE, bin, jdks);
-            }
-            if (versions != null
-                    && data != null
-                    && !versions.equals(data)
-                    && !isAncestor(data, versions)
-                    && (store == null || !isAncestor(store, versions))) {
-                addRow(byPath, versions, Target.STORE, bin, jdks);
-            }
+            planStore(dirs, byPath, bin, jdks);
         }
+
         if (selected.contains(Target.STATE)) {
-            addRow(byPath, abs(dirs.stateDir()), Target.STATE, bin, jdks);
-            // builds/tmp live under state by default; if relocated outside, include them.
+            addRow(byPath, abs(dirs.stateDir()), Target.STATE.what, Target.STATE, bin, jdks);
             Path state = abs(dirs.stateDir());
             Path builds = abs(dirs.buildsDir());
             Path tmp = abs(dirs.tmpDir());
             if (builds != null && state != null && !isAncestor(state, builds) && !builds.equals(state)) {
-                addRow(byPath, builds, Target.STATE, bin, jdks);
+                addRow(byPath, builds, "Build history", Target.STATE, bin, jdks);
             }
             if (tmp != null && state != null && !isAncestor(state, tmp) && !tmp.equals(state)) {
-                addRow(byPath, tmp, Target.STATE, bin, jdks);
+                addRow(byPath, tmp, "Scratch tmp", Target.STATE, bin, jdks);
             }
         }
+
         if (selected.contains(Target.CONFIG)) {
-            Path configFile = abs(dirs.userConfigFilePath());
-            Path configDir = abs(dirs.configDir());
-            if (configDir != null
-                    && (configDir.equals(bin)
-                            || configDir.equals(jdks)
-                            || isAncestor(configDir, bin)
-                            || isAncestor(configDir, jdks))) {
-                // JK_HOME umbrella: only the config file, never the parent tree.
-                if (configFile != null && isSafe(configFile, bin, jdks)) {
-                    byPath.putIfAbsent(configFile, new PurgeRow(configFile, Target.CONFIG.what, Target.CONFIG));
+            planConfig(dirs, byPath, bin, jdks);
+        }
+
+        return new ArrayList<>(byPath.values());
+    }
+
+    /**
+     * Store purge is surgical: wipe CAS + mirrors + non-active engine versions; keep {@code
+     * versions/<active>/} and {@code store/lib/} (latest workers).
+     */
+    private static void planStore(JkDirs dirs, Map<Path, PurgeRow> byPath, Path bin, Path jdks) {
+        String active = Jk.VERSION;
+        Path versions = abs(dirs.versionsDir());
+        if (versions != null && Files.isDirectory(versions)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(versions)) {
+                for (Path p : stream) {
+                    String name = p.getFileName().toString();
+                    if (name.startsWith(".")) {
+                        // stale .0.10.1.lock etc. — safe to drop
+                        if (Files.isRegularFile(p)) {
+                            addRow(byPath, p, "Version lock/marker", Target.STORE, bin, jdks);
+                        }
+                        continue;
+                    }
+                    if (!Files.isDirectory(p)) continue;
+                    if (name.equals(active)) continue; // keep active engine + client materialization
+                    addRow(byPath, p, "Old engine version " + name, Target.STORE, bin, jdks);
                 }
-            } else if (configDir != null && isSafe(configDir, bin, jdks)) {
-                byPath.putIfAbsent(configDir, new PurgeRow(configDir, Target.CONFIG.what, Target.CONFIG));
-            } else if (configFile != null && isSafe(configFile, bin, jdks)) {
+            } catch (IOException ignored) {
+            }
+        }
+
+        Path store = abs(dirs.storeDir());
+        if (store != null && Files.isDirectory(store)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(store)) {
+                for (Path p : stream) {
+                    String name = p.getFileName().toString();
+                    // Latest plugin/tool workers — do not remove (jk would need reinstallLocal).
+                    if ("lib".equals(name)) continue;
+                    // Feed catalogs re-download on idle warmup; drop them with store purge.
+                    String what =
+                            switch (name) {
+                                case "sha256" -> "CAS blobs";
+                                case "repos" -> "Repo mirrors";
+                                case "jdks.json" -> "JDK catalog cache";
+                                case "libs.global.toml" -> "Library registry cache";
+                                default -> "Store: " + name;
+                            };
+                    addRow(byPath, p, what, Target.STORE, bin, jdks);
+                }
+            } catch (IOException ignored) {
+            }
+        }
+
+        // Other data-dir siblings (e.g. completions), but never versions/store handled above, never
+        // the data dir root itself (would wipe kept subtrees).
+        Path data = abs(dirs.dataDir());
+        if (data != null && Files.isDirectory(data)) {
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(data)) {
+                for (Path p : stream) {
+                    String name = p.getFileName().toString();
+                    if ("versions".equals(name) || "store".equals(name)) continue;
+                    if (name.startsWith(".")) continue;
+                    addRow(byPath, p, "Data: " + name, Target.STORE, bin, jdks);
+                }
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    private static void planConfig(JkDirs dirs, Map<Path, PurgeRow> byPath, Path bin, Path jdks) {
+        Path configFile = abs(dirs.userConfigFilePath());
+        Path configDir = abs(dirs.configDir());
+        if (configDir != null
+                && (configDir.equals(bin)
+                        || configDir.equals(jdks)
+                        || isAncestor(configDir, bin)
+                        || isAncestor(configDir, jdks))) {
+            if (configFile != null && isSafe(configFile, bin, jdks)) {
                 byPath.putIfAbsent(configFile, new PurgeRow(configFile, Target.CONFIG.what, Target.CONFIG));
             }
+        } else if (configDir != null && isSafe(configDir, bin, jdks)) {
+            byPath.putIfAbsent(configDir, new PurgeRow(configDir, Target.CONFIG.what, Target.CONFIG));
+        } else if (configFile != null && isSafe(configFile, bin, jdks)) {
+            byPath.putIfAbsent(configFile, new PurgeRow(configFile, Target.CONFIG.what, Target.CONFIG));
         }
-        return new ArrayList<>(byPath.values());
     }
 
     /** Absolute paths selected for deletion (for tests). */
@@ -236,12 +294,20 @@ public final class SelfPurgeCommand implements CliCommand {
         return plan(dirs, selected).stream().map(PurgeRow::path).toList();
     }
 
-    private static void addRow(Map<Path, PurgeRow> byPath, Path path, Target target, Path bin, Path jdks) {
+    private static void addRow(
+            Map<Path, PurgeRow> byPath, Path path, String what, Target target, Path bin, Path jdks) {
         if (path == null || !isSafe(path, bin, jdks)) return;
-        byPath.putIfAbsent(path, new PurgeRow(path, target.what, target));
+        // Extra guard: never schedule active version dir or store/lib.
+        Path versions = abs(JkDirs.versions());
+        Path activeVer = versions != null ? versions.resolve(Jk.VERSION).toAbsolutePath().normalize() : null;
+        Path lib = abs(JkDirs.lib());
+        Path norm = path.toAbsolutePath().normalize();
+        if (activeVer != null && (norm.equals(activeVer) || isAncestor(activeVer, norm))) return;
+        if (lib != null && (norm.equals(lib) || isAncestor(lib, norm))) return;
+        byPath.putIfAbsent(norm, new PurgeRow(norm, what, target));
     }
 
-    private static boolean confirm(List<PurgeRow> rows) {
+    private static boolean confirm(List<PurgeRow> rows, JkDirs dirs, Set<Target> selected) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
@@ -251,6 +317,13 @@ public final class SelfPurgeCommand implements CliCommand {
         for (String line : BoxTable.renderWarning("JumpKick Data Purge", headers, tableRows)) {
             CliOutput.out(line);
         }
+        if (selected.contains(Target.STORE)) {
+            CliOutput.out("  Kept:  active engine versions/"
+                    + Jk.VERSION
+                    + "  and  store/lib/ (latest plugins)");
+        }
+        CliOutput.out("  Kept:  " + displayPath(dirs.binDirectory()) + "  (PATH binaries)");
+        CliOutput.out("  Kept:  " + displayPath(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
@@ -266,7 +339,6 @@ public final class SelfPurgeCommand implements CliCommand {
             String h = Path.of(home).toAbsolutePath().normalize().toString();
             if (abs.equals(h)) return "~";
             if (abs.startsWith(h + "/")) return "~" + abs.substring(h.length());
-            // Windows-style home
             if (abs.regionMatches(true, 0, h, 0, h.length())
                     && abs.length() > h.length()
                     && (abs.charAt(h.length()) == '\\' || abs.charAt(h.length()) == '/')) {
