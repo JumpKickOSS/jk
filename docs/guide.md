@@ -174,6 +174,9 @@ action-max-size-mb = 1024   # action-cache utilization denominator
 max-size-gb = 20            # store / CAS prune budget + repo utilization
 ```
 
+`0` (or a negative value) for either size — file key or env var — means **unset**: the default
+above applies. Both storage reports use the same rule.
+
 Preflight dirty memo fingerprints use **source content hashes** by default (CI-safe). Opt into
 faster path/size/mtime fingerprints with `JK_PREFLIGHT_MEMO_MTIME=1` if needed.
 

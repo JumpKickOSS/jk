@@ -140,8 +140,12 @@ public final class BoxTable {
         return s == null ? "" : s;
     }
 
-    /** Visible column width, ignoring CSI/OSC sequences so colored cells pad correctly. */
-    static int visibleWidth(String s) {
+    /**
+     * Visible column width, ignoring CSI/OSC sequences so colored cells pad correctly. Public so
+     * custom tables that share this chrome (e.g. {@code jk repo storage}'s spanning utilization
+     * footer) pad with the same rule instead of raw {@code String.length()}.
+     */
+    public static int visibleWidth(String s) {
         if (s == null || s.isEmpty()) return 0;
         return org.jline.utils.AttributedString.stripAnsi(s).length();
     }

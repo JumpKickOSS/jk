@@ -220,8 +220,12 @@ public final class CacheCommand extends GroupCommand {
      * {@code [cache] action-max-size-mb}, last pruned).
      */
     public static final class CacheStorageCommand implements CliCommand {
-        /** Widest label ({@code Storage Size}); values line up past it. */
-        private static final int LABEL_FIELD = 12;
+        /**
+         * Widest label (<code>Storage Size</code>) <em>plus its colon</em> — the format is applied
+         * to {@code label + ":"}, so the field must count the colon or the widest row's value
+         * lands one column right of the rest (JK-1441).
+         */
+        private static final int LABEL_FIELD = "Storage Size".length() + 1;
 
         @Override
         public String name() {
@@ -254,8 +258,8 @@ public final class CacheCommand extends GroupCommand {
             }
             Stats a = Files.isDirectory(actions) ? statsOf(actions) : new Stats(0, 0);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
+            // JkCacheConfig treats 0/negative budgets as unset, so this is always positive.
             long maxBytes = cfg.actionMaxSizeBytes();
-            if (maxBytes <= 0) maxBytes = 1024L * 1024L * 1024L; // never divide by zero
             String lastPruned = lastPrunedLabel(root);
 
             CommandWedge.envelopeStart();
@@ -688,9 +692,10 @@ public final class CacheCommand extends GroupCommand {
         String[] total = {"Total", fmtCount(totalFiles), fmtSize(totalBytes)};
 
         int[] w = new int[3];
-        for (int i = 0; i < 3; i++) w[i] = REPO_STORAGE_HEADERS[i].length();
-        for (String[] r : rows) for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], r[i].length());
-        for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], total[i].length());
+        for (int i = 0; i < 3; i++) w[i] = cc.jumpkick.cli.tui.BoxTable.visibleWidth(REPO_STORAGE_HEADERS[i]);
+        for (String[] r : rows)
+            for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(r[i]));
+        for (int i = 0; i < 3; i++) w[i] = Math.max(w[i], cc.jumpkick.cli.tui.BoxTable.visibleWidth(total[i]));
         int inner = (w[0] + 2) + (w[1] + 2) + (w[2] + 2) + 2;
 
         List<String> out = new ArrayList<>();
@@ -764,11 +769,14 @@ public final class CacheCommand extends GroupCommand {
         return rail + prefix + bar + suffix + rail;
     }
 
+    /** ANSI-aware pads ({@code BoxTable.visibleWidth}) so colored cells keep the box aligned. */
     private static String padRight(String s, int w) {
-        return s.length() >= w ? s : s + " ".repeat(w - s.length());
+        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
+        return len >= w ? s : s + " ".repeat(w - len);
     }
 
     private static String padLeft(String s, int w) {
-        return s.length() >= w ? s : " ".repeat(w - s.length()) + s;
+        int len = cc.jumpkick.cli.tui.BoxTable.visibleWidth(s);
+        return len >= w ? s : " ".repeat(w - len) + s;
     }
 }

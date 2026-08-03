@@ -92,6 +92,34 @@ class JkCacheConfigTest {
     }
 
     @Test
+    void zero_size_budgets_mean_unset(@TempDir Path tempDir) throws IOException {
+        // JK-1441: 0 = unset for BOTH size keys — the documented defaults apply, on both surfaces.
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, """
+                [cache]
+                max-size-gb        = 0
+                action-max-size-mb = 0
+                """);
+
+        JkCacheConfig c = JkCacheConfig.fromToml(toml);
+        assertThat(c.maxSizeGb()).isEmpty();
+        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
+        assertThat(c.storeMaxSizeBytes()).isEqualTo(20L * 1024 * 1024 * 1024);
+        assertThat(c.actionMaxSizeBytes()).isEqualTo(1024L * 1024 * 1024);
+    }
+
+    @Test
+    void zero_size_env_vars_fall_through_to_file_then_defaults(@TempDir Path tempDir) throws IOException {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[cache]\nmax-size-gb = 25\n");
+
+        var env = Map.of("JK_MAX_SIZE_GB", "0", "JK_ACTION_MAX_SIZE_MB", "0");
+        JkCacheConfig c = JkCacheConfig.resolve(toml, env::get);
+        assertThat(c.maxSizeGb()).hasValue(25); // 0 in env = unset, file value survives
+        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
+    }
+
+    @Test
     void env_falls_through_to_file_then_defaults(@TempDir Path tempDir) throws IOException {
         Path toml = tempDir.resolve("config.toml");
         Files.writeString(toml, "[cache]\nmax-size-gb = 25\n");
