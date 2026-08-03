@@ -181,6 +181,7 @@ JumpKick deliberately **forks** java-compiler / kotlin-compiler workers (isolati
 | bare `javac` | Short-lived `javac` process; **no** worker AOT (not trained/mapped) |
 | java-compiler worker | Short-lived `java … PluginMain`; maps `java-compiler-*.aot` via `-XX:AOTCache=…` when present |
 | kotlinc worker | Short-lived plugin JVM; maps `kotlinc-<jdk+gc+classpath>.aot` via `-XX:AOTCache=…` |
+| Human index | `state/aot/aot.toml` — JDK, GC, classpath, flags for each opaque `*.aot` hash |
 | Miss path | Background train on first miss (`AOTCacheOutput`); next compile maps the cache — never blocks the user compile |
 | Kill switch | `-Djk.worker.aot=off` / `JK_WORKER_AOT=off` |
 | Engine itself | Separate engine `.aot` training path (same family of idea) |

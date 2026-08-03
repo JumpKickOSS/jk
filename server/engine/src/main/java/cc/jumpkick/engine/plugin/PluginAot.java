@@ -2,6 +2,7 @@
 package cc.jumpkick.engine.plugin;
 
 import cc.jumpkick.jdk.JdkVendor;
+import cc.jumpkick.util.AotManifest;
 import cc.jumpkick.util.AtomicWrites;
 import cc.jumpkick.util.Hashing;
 import cc.jumpkick.util.JkDirs;
@@ -85,16 +86,21 @@ public final class PluginAot {
         try {
             JdkId id = jdkId(javaHome);
             if (id == null) return List.of();
-            String gc = effectiveGc(JvmOptions.batchFlags(1)); // must match javaCommand / PluginLoader
+            List<String> batch = JvmOptions.batchFlags(1);
+            String gc = effectiveGc(batch); // must match javaCommand / PluginLoader
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
-            Path cache = dir().resolve(prefix + "-" + key(id, gc, workerClasspath) + ".aot");
+            String cacheKey = key(id, gc, workerClasspath);
+            Path cache = dir().resolve(prefix + "-" + cacheKey + ".aot");
+            CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
             if (usableCache(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
+                recordReady(cache, meta, /* touchLastUsed */ true);
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
             deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
             if (eligible(id) && trainingEnabled() && !Files.exists(noaotMarker(cache))) {
-                trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
+                trainAsync(
+                        prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer, meta);
             }
         } catch (RuntimeException e) {
             // AOT is an accelerator, never a dependency — never fail the build.
@@ -171,8 +177,12 @@ public final class PluginAot {
         try {
             JdkId id = jdkId(javaHome);
             if (id == null || !eligible(id)) return false;
-            Path cache = cachePath(tool, javaHome, workerClasspath);
-            if (cache == null) return false;
+            List<String> batch = JvmOptions.batchFlags(1);
+            String gc = effectiveGc(batch);
+            String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
+            String cacheKey = key(id, gc, workerClasspath);
+            Path cache = dir().resolve(prefix + "-" + cacheKey + ".aot");
+            CacheMeta meta = new CacheMeta(prefix, cacheKey, id, gc, workerClasspath, batch);
             if (force) {
                 try {
                     Files.deleteIfExists(cache);
@@ -181,13 +191,14 @@ public final class PluginAot {
                 }
             } else if (usableCache(cache)) {
                 touch(cache);
+                recordReady(cache, meta, true);
                 return true;
             } else {
                 deleteIfEmpty(cache); // truncated leftover: retrain below
             }
             if (!trainingEnabled() || Files.exists(noaotMarker(cache))) return false;
-            String what = (tool == null ? "plugin" : tool) + " worker (" + id.vendor() + " " + id.version() + ")";
-            trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs));
+            String what = prefix + " worker (" + id.vendor() + " " + id.version() + ")";
+            trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs), meta);
             return usableCache(cache);
         } catch (RuntimeException e) {
             return false;
@@ -291,6 +302,14 @@ public final class PluginAot {
 
     // ---- training -------------------------------------------------------------------------
 
+    /** Inputs that identify a worker cache key — recorded in {@link AotManifest}. */
+    record CacheMeta(
+            String tool, String key, JdkId id, String gc, String classpath, List<String> jvmFlags) {
+        CacheMeta {
+            jvmFlags = jvmFlags == null ? List.of() : List.copyOf(jvmFlags);
+        }
+    }
+
     /**
      * Kick off one background training run for {@code cache}, claim-guarded twice over: an in-JVM
      * set (this engine) and a sibling {@code .training} claim file (other processes; stale claims
@@ -300,6 +319,10 @@ public final class PluginAot {
      * both outcomes get an engine-log line.
      */
     static void trainAsync(String what, Path cache, TrainerCommand trainer) {
+        trainAsync(what, cache, trainer, null);
+    }
+
+    static void trainAsync(String what, Path cache, TrainerCommand trainer, CacheMeta meta) {
         if (trainer == null || !TRAINING.add(cache)) return;
         Path claim = cache.resolveSibling(cache.getFileName() + ".training");
         try {
@@ -312,13 +335,14 @@ public final class PluginAot {
             TRAINING.remove(cache);
             return;
         }
-        Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer), "jk-worker-aot-train");
+        Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer, meta), "jk-worker-aot-train");
         t.setDaemon(true);
         t.start();
     }
 
     /** Synchronous train for {@link #ensureTrained} (install optimize). */
-    private static void trainBlocking(String what, Path cache, TrainerCommand trainer, long timeoutMs) {
+    private static void trainBlocking(
+            String what, Path cache, TrainerCommand trainer, long timeoutMs, CacheMeta meta) {
         if (trainer == null || !TRAINING.add(cache)) {
             // Another train in flight — wait for the cache file.
             waitForCache(cache, timeoutMs);
@@ -336,7 +360,7 @@ public final class PluginAot {
             TRAINING.remove(cache);
             return;
         }
-        Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer), "jk-worker-aot-train-sync");
+        Thread t = new Thread(() -> runTrainer(what, cache, claim, trainer, meta), "jk-worker-aot-train-sync");
         t.start();
         try {
             t.join(timeoutMs);
@@ -367,7 +391,8 @@ public final class PluginAot {
         }
     }
 
-    private static void runTrainer(String what, Path cache, Path claim, TrainerCommand trainer) {
+    private static void runTrainer(
+            String what, Path cache, Path claim, TrainerCommand trainer, CacheMeta meta) {
         Path scratch = null;
         Path tmp = cache.resolveSibling(
                 cache.getFileName() + ".tmp-" + ProcessHandle.current().pid());
@@ -382,16 +407,18 @@ public final class PluginAot {
             System.err.println("jk engine: AOT-training " + what + " in the background (pid " + p.pid() + ")");
             if (!p.waitFor(TRAINING_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
                 p.destroyForcibly();
-                markNoAot(cache); // don't re-attempt on every subsequent compile
+                markNoAot(cache, meta); // don't re-attempt on every subsequent compile
                 System.err.println("jk engine: AOT training for " + what + " overran; killed");
                 return;
             }
             if (p.exitValue() == 0 && Files.exists(tmp)) {
                 AtomicWrites.moveInto(tmp, cache);
+                if (meta != null) recordReady(cache, meta, false);
+                else recordReadyBare(cache);
                 sweepTool(cache);
                 System.err.println("jk engine: AOT cache ready for " + what + " (" + cache.getFileName() + ")");
             } else {
-                markNoAot(cache); // sticky per key — a JDK/Kotlin/GC bump mints a new key and retries
+                markNoAot(cache, meta); // sticky per key — a JDK/Kotlin/GC bump mints a new key and retries
                 System.err.println(
                         "jk engine: AOT training for " + what + " produced no cache (exit " + p.exitValue() + ")");
             }
@@ -438,10 +465,12 @@ public final class PluginAot {
             return; // opportunistic: a leftover cache costs disk, not correctness
         }
         primaries.sort(java.util.Comparator.comparingLong(PluginAot::mtime).reversed());
+        List<String> removed = new ArrayList<>();
         for (int i = 0; i < primaries.size(); i++) {
             Path p = primaries.get(i);
             if (p.equals(cache)) continue; // the cache that just landed always survives
             if (i >= KEEP_PER_TOOL || now - mtime(p) > UNUSED_TTL_MILLIS) {
+                removed.add(p.getFileName().toString());
                 deleteQuietly(p);
                 deleteQuietly(noaotMarker(p));
                 deleteQuietly(p.resolveSibling(p.getFileName() + ".config"));
@@ -451,7 +480,17 @@ public final class PluginAot {
             Path primary = m.resolveSibling(m.getFileName()
                     .toString()
                     .substring(0, m.getFileName().toString().length() - ".noaot".length()));
-            if (!Files.exists(primary) && now - mtime(m) > UNUSED_TTL_MILLIS) deleteQuietly(m);
+            if (!Files.exists(primary) && now - mtime(m) > UNUSED_TTL_MILLIS) {
+                removed.add(primary.getFileName().toString());
+                deleteQuietly(m);
+            }
+        }
+        if (!removed.isEmpty()) {
+            Path aotDir = cache.getParent();
+            if (aotDir != null) {
+                AotManifest.remove(aotDir, removed);
+                AotManifest.reconcile(aotDir);
+            }
         }
     }
 
@@ -477,11 +516,75 @@ public final class PluginAot {
     }
 
     private static void markNoAot(Path cache) {
+        markNoAot(cache, null);
+    }
+
+    private static void markNoAot(Path cache, CacheMeta meta) {
         try {
             Files.createFile(noaotMarker(cache));
         } catch (IOException ignored) {
             // best-effort; worst case the next compile retries training
         }
+        recordNoAot(cache, meta);
+    }
+
+    // ---- aot.toml -------------------------------------------------------------------------
+
+    private static void recordReady(Path cache, CacheMeta meta, boolean touchLastUsed) {
+        if (cache == null || meta == null) return;
+        Path aotDir = cache.getParent();
+        if (aotDir == null) return;
+        String now = AotManifest.nowIso();
+        AotManifest.Entry.Builder b = AotManifest.Entry.builder(cache.getFileName().toString())
+                .tool(meta.tool())
+                .key(meta.key())
+                .status("ready")
+                .sizeBytes(AotManifest.sizeOf(cache))
+                .jdkHome(meta.id().home().toString())
+                .jdkVendor(meta.id().vendor().name())
+                .jdkVersion(meta.id().version())
+                .gc(meta.gc())
+                .classpathString(meta.classpath())
+                .jvmFlags(meta.jvmFlags());
+        if (touchLastUsed) b.lastUsed(now);
+        else b.created(now).lastUsed(now);
+        AotManifest.upsert(aotDir, b.build());
+    }
+
+    private static void recordReadyBare(Path cache) {
+        if (cache == null) return;
+        Path aotDir = cache.getParent();
+        if (aotDir == null) return;
+        String name = cache.getFileName().toString();
+        String now = AotManifest.nowIso();
+        AotManifest.Entry.Builder b = AotManifest.Entry.builder(name)
+                .status("ready")
+                .sizeBytes(AotManifest.sizeOf(cache))
+                .created(now)
+                .lastUsed(now);
+        AotManifest.fillToolKey(b, name);
+        AotManifest.upsert(aotDir, b.build());
+    }
+
+    private static void recordNoAot(Path cache, CacheMeta meta) {
+        if (cache == null) return;
+        Path aotDir = cache.getParent();
+        if (aotDir == null) return;
+        String name = cache.getFileName().toString();
+        AotManifest.Entry.Builder b = AotManifest.Entry.builder(name).status("noaot");
+        if (meta != null) {
+            b.tool(meta.tool())
+                    .key(meta.key())
+                    .jdkHome(meta.id().home().toString())
+                    .jdkVendor(meta.id().vendor().name())
+                    .jdkVersion(meta.id().version())
+                    .gc(meta.gc())
+                    .classpathString(meta.classpath())
+                    .jvmFlags(meta.jvmFlags());
+        } else {
+            AotManifest.fillToolKey(b, name);
+        }
+        AotManifest.upsert(aotDir, b.build());
     }
 
     // ---- small helpers ----------------------------------------------------------------------

@@ -92,15 +92,26 @@ public final class VersionStore {
      */
     private static void deleteEngineAotFiles(Path aotDir, String v) {
         String prefix = "engine-" + v + "-";
+        List<String> removed = new ArrayList<>();
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
             for (Path p : entries) {
                 String name = p.getFileName().toString();
                 if (name.startsWith(prefix) && name.substring(prefix.length()).matches("[0-9a-f]{16}\\..*")) {
+                    if (name.endsWith(".aot")) removed.add(name);
+                    else if (name.endsWith(".noaot") && name.length() > ".noaot".length()) {
+                        // engine uses engine-<ver>-<key>.noaot (no ".aot" in the stem)
+                        String stem = name.substring(0, name.length() - ".noaot".length());
+                        removed.add(stem.endsWith(".aot") ? stem : stem + ".aot");
+                    }
                     Files.deleteIfExists(p);
                 }
             }
         } catch (IOException ignored) {
             // best-effort maintenance
+        }
+        if (!removed.isEmpty()) {
+            cc.jumpkick.util.AotManifest.remove(aotDir, removed);
+            cc.jumpkick.util.AotManifest.reconcile(aotDir);
         }
     }
 

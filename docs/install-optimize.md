@@ -39,10 +39,19 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 |----------|--------|
 | **java-compiler-*.aot** | ToolProvider javac worker (HotSpot 25+) |
 | **kotlinc-*.aot** | Kotlin compiler plugin worker (latest shipping plugin classpath) |
+| **engine-`<jk-version>`-*.aot** | Resident engine JAR (sidecar train; same GC / native-access as serve) |
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 
 **Not** pre-trained: Groovy (and older language versions) — train-on-miss on first real use.
 **Not** trained: test-runner AOT (suite classpath includes project classes; caches are not reusable).
+
+### `aot.toml` (human index)
+
+Cache file names are content hashes (`tool` + JDK home/vendor/version + GC + classpath for workers;
+engine jar identity + JDK for the engine). Open **`~/.local/state/jk/aot/aot.toml`** (or
+`$JK_STATE_DIR/aot/aot.toml`) for a readable table of each file: tool, key, status (`ready` /
+`pending` / `noaot`), size, JDK, GC, classpath, JVM flags, and timestamps. Written on train / use /
+sweep; safe to delete (regenerated next train).
 
 Work runs on a **daemon idle thread** when `activePipelines == 0` so client builds are not blocked.
 Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics

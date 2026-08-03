@@ -1970,22 +1970,81 @@ public final class EngineClient {
         // intermediate, and any ".noaot" marker. The "<16-hex>." shape check keeps a version
         // whose name extends ours ("0.10.0" vs "0.10.1") out of the blast radius.
         String versionPrefix = "engine-" + version + "-";
+        List<String> swept = new ArrayList<>();
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
             for (Path p : entries) {
                 String name = p.getFileName().toString();
                 if (name.startsWith(versionPrefix)
                         && !name.startsWith(stem)
                         && name.substring(versionPrefix.length()).matches("[0-9a-f]{16}\\..*")) {
+                    // Map sidecar names back to the primary .aot file key for aot.toml.
+                    if (name.endsWith(".aot")) swept.add(name);
+                    else if (name.endsWith(".noaot") && name.length() > ".noaot".length()) {
+                        String primary = name.substring(0, name.length() - ".noaot".length()) + ".aot";
+                        swept.add(primary);
+                    }
                     Files.deleteIfExists(p);
                 }
             }
         } catch (IOException ignored) {
             // Cleanup is opportunistic; a leftover cache costs disk, not correctness.
         }
+        if (!swept.isEmpty()) {
+            cc.jumpkick.util.AotManifest.remove(aotDir, swept);
+            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+        }
+        recordEngineAotManifest(cache, engineJar, jdk, version, hash);
         // Pre-1.0 migration: the cache used to live in <engine-state>/<version>/ — retire that
         // dir so nobody plays hide-and-seek with stale copies. Remove once 1.0 ships.
         deleteRecursivelyQuietly(paths.dir().resolve(version));
         return cache;
+    }
+
+    /**
+     * Best-effort {@code aot.toml} row for the engine cache key (even before the file exists, so a
+     * pending train is still documented). Updates size/status when the cache or {@code .noaot}
+     * marker is present.
+     */
+    private static void recordEngineAotManifest(
+            Path cache, Path engineJar, EngineJdk jdk, String version, String hash) {
+        if (cache == null) return;
+        Path aotDir = cache.getParent();
+        if (aotDir == null) return;
+        try {
+            String name = cache.getFileName().toString();
+            boolean ready = Files.isRegularFile(cache) && Files.size(cache) > 0;
+            boolean noaot = Files.exists(noAotMarkerPath(cache));
+            String status = ready ? "ready" : (noaot ? "noaot" : "pending");
+            var b = cc.jumpkick.util.AotManifest.Entry.builder(name)
+                    .tool("engine")
+                    .key(hash)
+                    .jkVersion(version)
+                    .status(status)
+                    .jvmFlags(List.of(
+                            "-XX:+UseSerialGC",
+                            "--enable-native-access=ALL-UNNAMED"));
+            if (ready) {
+                b.sizeBytes(Files.size(cache)).lastUsed(cc.jumpkick.util.AotManifest.nowIso());
+            }
+            if (jdk != null) {
+                b.jdkHome(jdk.home().toString())
+                        .jdkVendor(jdk.vendor().name())
+                        .jdkVersion(jdk.version())
+                        .gc("serial");
+            }
+            if (engineJar != null) {
+                b.engineJar(engineJar.getFileName().toString());
+                try {
+                    b.engineJarSize(Files.size(engineJar))
+                            .engineJarMtimeMs(Files.getLastModifiedTime(engineJar).toMillis());
+                } catch (IOException ignored) {
+                    // identity without size/mtime still documents the name
+                }
+            }
+            cc.jumpkick.util.AotManifest.upsert(aotDir, b.build());
+        } catch (Exception ignored) {
+            // never fail engine start for a human index
+        }
     }
 
     private static void deleteRecursivelyQuietly(Path root) {
