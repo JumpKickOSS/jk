@@ -47,19 +47,25 @@ with `jk engine aot`.
 **Not** AOT-cached at all: **Groovy** workers (no cache integration yet) and test-runner AOT
 (suite classpath includes project classes; caches are not reusable).
 
-### Engine AOT on upgrade / displace (JK-1452)
+### AOT on upgrade / displace (JK-1452)
 
-Engine caches are version-keyed (`engine-0.11.0-….aot`) but live in the **shared**
-`state/aot/` directory (not under `versions/<v>/`). When a new jk becomes primary:
+Engine and worker caches both live under the **shared** `state/aot/` directory (not under
+`versions/<v>/`). When a new jk becomes primary (materialize, engine endpoint claim, client
+ensure):
 
-1. **Reap** — all `engine-<other-version>-*` files are deleted (materialize, engine endpoint
-   claim, and client ensure). Worker caches are left alone.
-2. **Displaced engine** — a generation whose endpoint pointer no longer names it kills its
-   engine AOT training sidecar so it cannot re-publish old caches while draining. Voluntary
-   `jk engine stop` while still primary may still finish an in-flight train.
+1. **Engine** — delete every `engine-<other-version>-*` file.
+2. **Workers** (`java-compiler-*`, `kotlinc-*`, …) — delete caches whose `aot.toml` classpath
+   is unusable for this product line: any path missing on disk, **or** any first-party
+   `jk-*-<version>.jar` whose version is not the live product version (so
+   `…/jk-java-compiler-0.10.1.jar` caches die when 0.11.0 is primary even if the jar path
+   still exists briefly mid-install).
+3. **Displaced engine** — a generation whose endpoint pointer no longer names it kills its
+   engine AOT training sidecar so it cannot re-publish old engine caches while draining.
+   Voluntary `jk engine stop` while still primary may still finish an in-flight train.
 
-Version trees under `versions/*` still follow normal retention / `jk self purge`; only the
-shared engine AOT blobs are reaped immediately on upgrade.
+Version trees under `versions/*` still follow normal retention / `jk self purge`. Worker
+caches for other toolchains (different JDKs, etc.) with live first-party jars at the current
+product version are kept.
 
 ### `aot.toml` (human index)
 

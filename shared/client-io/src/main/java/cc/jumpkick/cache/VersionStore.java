@@ -98,12 +98,18 @@ public final class VersionStore {
             Pattern.compile("^engine-(.+)-([0-9a-f]{16})(\\..+)$");
 
     /**
-     * Delete every {@code engine-<v>-*} artifact under {@code aotDir} whose {@code v} is not
-     * {@code keepVersion}. Call when a generation becomes primary (materialize / takeover / ensure)
-     * so superseded multi‑MB engine caches free disk without waiting for version-tree prune.
+     * Free AOT disk for a generation that just became primary ({@code keepVersion}):
      *
-     * <p>Best-effort; never throws. Worker caches ({@code java-compiler-*}, {@code kotlinc-*}) are
-     * left alone. Empty or missing {@code aotDir} is a no-op.
+     * <ul>
+     *   <li><b>Engine</b> — delete every {@code engine-<v>-*} whose {@code v} ≠ keep
+     *   <li><b>Workers</b> — delete {@code java-compiler-*}/{@code kotlinc-*}/… caches whose
+     *       recorded classpath is unusable for this product line: any path missing on disk, or
+     *       any first-party {@code jk-*-&lt;other-version&gt;.jar} (e.g. after upgrade the lib
+     *       dir only holds {@code jk-java-compiler-0.11.0.jar} but {@code …-0.10.1.aot} remains)
+     * </ul>
+     *
+     * <p>Call from materialize / endpoint claim / ensure. Best-effort; never throws. Empty or
+     * missing {@code aotDir} is a no-op.
      *
      * @return number of primary {@code .aot} keys removed (manifest rows)
      */
@@ -126,11 +132,63 @@ public final class VersionStore {
         } catch (IOException ignored) {
             // best-effort maintenance
         }
+        // Worker caches: content-keyed, but classpath records first-party worker jars that move
+        // on every product version. A surviving 0.10.1 java-compiler-*.aot is pure dead weight.
+        for (cc.jumpkick.util.AotManifest.Entry e : cc.jumpkick.util.AotManifest.load(aotDir)) {
+            if (e == null || e.file() == null) continue;
+            if (e.file().startsWith("engine-") || "engine".equals(e.tool())) continue;
+            if ("pending".equals(e.status())) continue; // train still running — leave alone
+            if (!workerClasspathStale(e.classpath(), keepVersion)) continue;
+            String primary = e.file().endsWith(".aot") ? e.file() : e.file() + ".aot";
+            removedKeys.add(primary);
+            deleteWorkerAotArtifacts(aotDir, primary);
+        }
         if (!removedKeys.isEmpty()) {
             cc.jumpkick.util.AotManifest.remove(aotDir, List.copyOf(removedKeys));
             cc.jumpkick.util.AotManifest.reconcile(aotDir);
         }
         return removedKeys.size();
+    }
+
+    /**
+     * True when a worker cache cannot map for the live product version: a classpath entry is
+     * gone, or names a first-party {@code jk-*-&lt;v&gt;.jar} with {@code v ≠ keepVersion}.
+     */
+    static boolean workerClasspathStale(List<String> classpath, String keepVersion) {
+        if (classpath == null || classpath.isEmpty()) return false;
+        for (String cp : classpath) {
+            if (cp == null || cp.isBlank()) continue;
+            Path p;
+            try {
+                p = Path.of(cp);
+            } catch (RuntimeException e) {
+                return true; // unparseable path — treat as dead
+            }
+            if (!Files.isRegularFile(p)) return true;
+            String name = p.getFileName().toString();
+            // First-party workers/plugins: jk-java-compiler-0.10.1.jar, jk-kotlin-compiler-….
+            // plugin-sdk-0.1.0.jar is not product-versioned; leave it.
+            if (!name.startsWith("jk-") || !name.endsWith(".jar")) continue;
+            String jarVer = cc.jumpkick.compile.WorkerLib.jarVersion(name);
+            if (jarVer != null && !jarVer.equals(keepVersion)) return true;
+        }
+        return false;
+    }
+
+    /** Delete a worker primary {@code <tool>-<key>.aot} plus sticky markers / config sidecars. */
+    private static void deleteWorkerAotArtifacts(Path aotDir, String primaryAot) {
+        if (primaryAot == null || primaryAot.isBlank()) return;
+        try {
+            Files.deleteIfExists(aotDir.resolve(primaryAot));
+            Files.deleteIfExists(aotDir.resolve(primaryAot + ".noaot")); // workers: foo.aot.noaot
+            Files.deleteIfExists(aotDir.resolve(primaryAot + ".config"));
+            if (primaryAot.endsWith(".aot")) {
+                String stem = primaryAot.substring(0, primaryAot.length() - ".aot".length());
+                Files.deleteIfExists(aotDir.resolve(stem + ".noaot"));
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
     }
 
     /**

@@ -186,4 +186,82 @@ class VersionStoreTest {
         assertThat(VersionStore.deleteSupersededEngineAot(null, "0.11.0")).isZero();
         assertThat(VersionStore.deleteSupersededEngineAot(home, "")).isZero();
     }
+
+    /** Worker AOT is content-keyed but classpath pins versioned first-party jars — reap on upgrade. */
+    @Test
+    void delete_superseded_reaps_worker_aot_for_old_first_party_jars(@TempDir Path home) throws Exception {
+        Path aot = Files.createDirectories(home.resolve("aot"));
+        Path lib = Files.createDirectories(home.resolve("store/lib/jk-java-compiler"));
+        Path liveJar = Files.writeString(lib.resolve("jk-java-compiler-0.11.0.jar"), "live-worker");
+        Path sdk = Files.writeString(lib.resolve("plugin-sdk-0.1.0.jar"), "sdk");
+        // Old jar path from a prior install — file gone, but AOT + manifest remain.
+        Path missingOld = home.resolve("store/lib/jk-java-compiler/jk-java-compiler-0.10.1.jar");
+
+        Path liveCache = Files.writeString(aot.resolve("java-compiler-aaaaaaaaaaaaaaaa.aot"), "live-aot");
+        Path staleCache = Files.writeString(aot.resolve("java-compiler-bbbbbbbbbbbbbbbb.aot"), "stale-aot");
+        Path engineKeep = Files.writeString(aot.resolve("engine-0.11.0-cccccccccccccccc.aot"), "eng");
+
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("java-compiler-aaaaaaaaaaaaaaaa.aot")
+                        .tool("java-compiler")
+                        .status("ready")
+                        .classpath(List.of(liveJar.toString(), sdk.toString()))
+                        .build());
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("java-compiler-bbbbbbbbbbbbbbbb.aot")
+                        .tool("java-compiler")
+                        .status("ready")
+                        .classpath(List.of(missingOld.toString(), sdk.toString()))
+                        .build());
+
+        int removed = VersionStore.deleteSupersededEngineAot(aot, "0.11.0");
+
+        assertThat(removed).isEqualTo(1);
+        assertThat(liveCache).exists();
+        assertThat(staleCache).doesNotExist();
+        assertThat(engineKeep).exists();
+        assertThat(cc.jumpkick.util.AotManifest.load(aot).stream()
+                        .map(cc.jumpkick.util.AotManifest.Entry::file)
+                        .toList())
+                .contains("java-compiler-aaaaaaaaaaaaaaaa.aot")
+                .doesNotContain("java-compiler-bbbbbbbbbbbbbbbb.aot");
+    }
+
+    @Test
+    void delete_superseded_reaps_worker_aot_when_jar_version_mismatches_even_if_file_exists(
+            @TempDir Path home) throws Exception {
+        Path aot = Files.createDirectories(home.resolve("aot"));
+        Path lib = Files.createDirectories(home.resolve("lib"));
+        // Both jars on disk (unusual but possible mid-installLocal) — still drop non-keep version.
+        Path oldJar = Files.writeString(lib.resolve("jk-java-compiler-0.10.1.jar"), "old");
+        Path newJar = Files.writeString(lib.resolve("jk-java-compiler-0.11.0.jar"), "new");
+        Path stale = Files.writeString(aot.resolve("java-compiler-dddddddddddddddd.aot"), "x");
+        Path keep = Files.writeString(aot.resolve("java-compiler-eeeeeeeeeeeeeeee.aot"), "y");
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("java-compiler-dddddddddddddddd.aot")
+                        .tool("java-compiler")
+                        .classpath(List.of(oldJar.toString()))
+                        .build());
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("java-compiler-eeeeeeeeeeeeeeee.aot")
+                        .tool("java-compiler")
+                        .classpath(List.of(newJar.toString()))
+                        .build());
+
+        assertThat(VersionStore.deleteSupersededEngineAot(aot, "0.11.0")).isEqualTo(1);
+        assertThat(stale).doesNotExist();
+        assertThat(keep).exists();
+    }
+
+    @Test
+    void worker_classpath_stale_detects_missing_and_version_mismatch() {
+        assertThat(VersionStore.workerClasspathStale(List.of(), "0.11.0")).isFalse();
+        assertThat(VersionStore.workerClasspathStale(
+                        List.of("/no/such/jk-java-compiler-0.11.0.jar"), "0.11.0"))
+                .isTrue();
+    }
 }
