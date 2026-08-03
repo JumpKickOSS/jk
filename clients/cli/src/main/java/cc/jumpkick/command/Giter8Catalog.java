@@ -53,6 +53,7 @@ public final class Giter8Catalog {
         DESCRIPTIONS.put("spring-boot-webmvc-kotlin", "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator");
         DESCRIPTIONS.put("ktor-3", "Ktor 3 service with Koin DI and Exposed/H2");
         DESCRIPTIONS.put("spring-boot-mcp", "Spring Boot MCP server (Spring AI, @Tool over SSE)");
+        DESCRIPTIONS.put("grails-8", "Grails 8 REST app (GORM, H2, Groovy 5)");
     }
 
     private Giter8Catalog() {}
