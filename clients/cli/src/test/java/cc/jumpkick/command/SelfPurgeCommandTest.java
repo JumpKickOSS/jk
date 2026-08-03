@@ -8,6 +8,7 @@ import cc.jumpkick.cli.TestAnsi;
 import cc.jumpkick.command.SelfPurgeCommand.Target;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -122,6 +123,84 @@ class SelfPurgeCommandTest {
         assertThat(TestAnsi.strip(out)).contains("Path to Delete").contains("What");
         assertThat(marker).exists();
         Files.deleteIfExists(marker);
+    }
+
+    @Test
+    void config_under_jk_home_targets_only_config_file_even_with_outside_bin() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-cfg");
+        Path home = root.resolve("home");
+        Path outsideBin = root.resolve("outside-bin");
+        Files.createDirectories(home.resolve("versions"));
+        Files.createDirectories(outsideBin);
+        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_BIN_DIR", outsideBin.toString()),
+                root.resolve("userhome").toString());
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.CONFIG));
+        Path homeAbs = home.toAbsolutePath().normalize();
+        assertThat(roots).containsExactly(homeAbs.resolve("config.toml"));
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs));
+    }
+
+    @Test
+    void guard_refuses_rows_that_contain_active_version_or_lib() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-anc");
+        Path home = root.resolve("home");
+        Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
+        Files.createDirectories(home.resolve("store").resolve("lib"));
+        // JK_STATE_DIR mis-pointed at the umbrella root: state purge must not take the whole tree.
+        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_STATE_DIR", home.toString()),
+                root.resolve("userhome").toString());
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STATE));
+        Path homeAbs = home.toAbsolutePath().normalize();
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs));
+        assertThat(roots).noneMatch(p -> homeAbs.resolve("versions").startsWith(p));
+    }
+
+    @Test
+    void guards_resolve_from_injected_dirs_not_process_environment() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-seam");
+        Path home = root.resolve("home");
+        Files.createDirectories(home.resolve("store").resolve("lib"));
+        Files.createDirectories(home.resolve("store").resolve("sha256"));
+        Files.createDirectories(home.resolve("versions").resolve(Jk.VERSION));
+        Files.createDirectories(home.resolve("versions").resolve("0.0.1"));
+        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString()), root.resolve("userhome").toString());
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path homeAbs = home.toAbsolutePath().normalize();
+        assertThat(roots).contains(homeAbs.resolve("versions").resolve("0.0.1"));
+        assertThat(roots).contains(homeAbs.resolve("store").resolve("sha256"));
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs.resolve("store").resolve("lib")));
+        assertThat(roots).noneMatch(p -> p.equals(homeAbs.resolve("versions").resolve(Jk.VERSION)));
+    }
+
+    @Test
+    void symlinked_bin_dir_is_protected_via_realpath() throws Exception {
+        Path root = Files.createTempDirectory("jk-purge-link");
+        Path home = root.resolve("home");
+        Path realBin = home.resolve("data").resolve("bin");
+        Path linkBin = root.resolve("linked-bin");
+        Files.createDirectories(realBin);
+        Files.writeString(realBin.resolve("jk"), "#!/bin/sh\n");
+        try {
+            Files.createSymbolicLink(linkBin, realBin);
+        } catch (UnsupportedOperationException | IOException e) {
+            return; // filesystem without symlink support — nothing to verify here
+        }
+        // PATH bin is the symlink; its target lives inside the purged data tree.
+        JkDirs dirs = JkDirs.of(env("JK_HOME", home.toString(), "JK_BIN_DIR", linkBin.toString()),
+                root.resolve("userhome").toString());
+
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE));
+        Path realBinAbs = realBin.toAbsolutePath().normalize();
+        assertThat(roots).noneMatch(p -> p.equals(realBinAbs) || realBinAbs.startsWith(p));
+    }
+
+    private static java.util.function.Function<String, String> env(String... kv) {
+        java.util.Map<String, String> map = new java.util.HashMap<>();
+        for (int i = 0; i < kv.length; i += 2) map.put(kv[i], kv[i + 1]);
+        return map::get;
     }
 
     @Test
