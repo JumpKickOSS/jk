@@ -54,12 +54,12 @@ public final class BoxTable {
             int fill = Math.max(1, totalWidth - head.length() - 1);
             return head + "-".repeat(fill) + "+";
         }
-        // Warning: white on amber; otherwise blue pipeline chip.
+        // Warning: black (#000) on amber — white-on-yellow fails contrast; otherwise blue chip.
         org.jline.utils.AttributedStyle chipStyle;
         cc.jumpkick.cli.theme.Rgb capColor;
         if (warning) {
             capColor = cc.jumpkick.cli.theme.JkDarkTheme.NORMAL_YELLOW;
-            chipStyle = t.withBackground(t.brightWhite(), capColor);
+            chipStyle = t.withBackground(t.bright(0, 0, 0), capColor);
         } else {
             chipStyle = t.pipelineChip();
             capColor = t.planBadgeColor();
