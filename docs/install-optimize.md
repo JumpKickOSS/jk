@@ -49,23 +49,20 @@ with `jk engine aot`.
 
 ### AOT on upgrade / displace (JK-1452)
 
-Engine and worker caches both live under the **shared** `state/aot/` directory (not under
-`versions/<v>/`). When a new jk becomes primary (materialize, engine endpoint claim, client
-ensure):
+All JEP 514 caches live under the **shared** `state/aot/` directory (not under
+`versions/<v>/`). Policy when a **new** engine becomes primary:
 
-1. **Engine** — delete every `engine-<other-version>-*` file.
-2. **Workers** (`java-compiler-*`, `kotlinc-*`, …) — delete caches whose `aot.toml` classpath
-   is unusable for this product line: any path missing on disk, **or** any first-party
-   `jk-*-<version>.jar` whose version is not the live product version (so
-   `…/jk-java-compiler-0.10.1.jar` caches die when 0.11.0 is primary even if the jar path
-   still exists briefly mid-install).
-3. **Displaced engine** — a generation whose endpoint pointer no longer names it kills its
-   engine AOT training sidecar so it cannot re-publish old engine caches while draining.
-   Voluntary `jk engine stop` while still primary may still finish an in-flight train.
+1. **Wipe** — delete every `*.aot` (and markers / config sidecars / `aot.toml`) in that
+   directory. Equivalent to a clean `state/aot` for the new generation. Triggered on
+   endpoint claim and on `jk self materialize` — **not** on every ensure of an already-live
+   same-version engine.
+2. **Displaced engines** — kill any engine AOT training sidecar **and** suppress all further
+   AOT training in that process (workers included), so they cannot recreate missing caches
+   while draining.
+3. **New primary** — trains a fresh engine AOT; plugin workers train on miss going forward.
 
-Version trees under `versions/*` still follow normal retention / `jk self purge`. Worker
-caches for other toolchains (different JDKs, etc.) with live first-party jars at the current
-product version are kept.
+Old caches are almost never useful after a product upgrade; this keeps disk from accumulating
+multi‑tens of MiB of dead engine + worker AOT.
 
 ### `aot.toml` (human index)
 

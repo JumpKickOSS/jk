@@ -382,13 +382,13 @@ public final class EngineServer implements AutoCloseable {
         EnginePaths.writeEndpoint(paths, active.socket());
         releaseStartupLock();
 
-        // JK-1452: free superseded engine AOT before we train ours — displace path is the
-        // moment disk from engine-0.x.* should go back. Worker caches are not version-scoped.
+        // JK-1452: wipe the entire shared AOT dir (engine + workers) before we train ours.
+        // Displaced peers suppress training so they cannot refill it while draining.
         try {
-            int reaped = cc.jumpkick.cache.VersionStore.deleteSupersededEngineAot(
-                    cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
-            if (reaped > 0) {
-                log.accept("jk engine: retired " + reaped + " superseded engine AOT cache(s)");
+            int wiped = cc.jumpkick.cache.VersionStore.wipeAotDirectory(
+                    cc.jumpkick.util.JkDirs.state().resolve("aot"));
+            if (wiped > 0) {
+                log.accept("jk engine: wiped " + wiped + " prior AOT cache(s) (fresh train for " + version + ")");
             }
         } catch (RuntimeException ignored) {
             // best-effort
@@ -5579,10 +5579,12 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Kill a live engine AOT sidecar and clear the spawner so a lame-duck process cannot retrain
-     * after displace (JK-1452). Idempotent.
+     * Kill a live engine AOT sidecar, clear the spawner, and suppress <em>all</em> AOT training
+     * (workers included) so a lame-duck process cannot refill {@code state/aot} after the primary
+     * wipe (JK-1452). Idempotent.
      */
     private void stopAotTrainerQuietly() {
+        cc.jumpkick.util.AotSettings.suppressTraining();
         aotTrainerSpawner = null;
         Process p = aotTrainer;
         aotTrainer = null;

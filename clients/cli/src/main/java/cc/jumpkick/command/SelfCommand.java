@@ -137,8 +137,8 @@ public final class SelfCommand extends GroupCommand {
             }
             VersionStore.Materialized m = VersionStore.current()
                     .materializeFromFiles(cc.jumpkick.cli.Jk.VERSION, JkStores.cas(JkDirs.cache()), engineJar, client);
-            // JK-1452: install lands a new version before the engine is started — free old engine AOT now.
-            VersionStore.deleteSupersededEngineAot(JkDirs.state().resolve("aot"), cc.jumpkick.cli.Jk.VERSION);
+            // JK-1452: install lands a new version before the engine is started — wipe shared AOT now.
+            VersionStore.wipeAotDirectory(JkDirs.state().resolve("aot"));
             Path distLib = distLibFor(client);
             if (distLib != null) {
                 // Dev dogfood (JK-1412): the client is a Gradle start script whose classpath is

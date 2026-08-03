@@ -11,12 +11,8 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Side-by-side materialized jk versions under {@code ~/.local/share/jk/versions/<v>/} (client, engine jar,
@@ -90,105 +86,61 @@ public final class VersionStore {
     }
 
     /**
-     * Engine AOT file names: {@code engine-<jk-version>-<16hex>.…}. Version may contain hyphens
-     * ({@code 0.11.0-SNAPSHOT}); the 16-hex key is always the last dash-separated segment before
-     * the first extension.
-     */
-    private static final Pattern ENGINE_AOT_NAME =
-            Pattern.compile("^engine-(.+)-([0-9a-f]{16})(\\..+)$");
-
-    /**
-     * Free AOT disk for a generation that just became primary ({@code keepVersion}):
+     * Wipe the shared AOT directory when a generation becomes primary (JK-1452): equivalent to
+     * {@code rm state/aot/*.{aot,noaot,config,…}} plus dropping {@code aot.toml}. Displaced
+     * engines must not retrain ({@link cc.jumpkick.util.AotSettings#suppressTraining()}); the new
+     * primary then trains a fresh engine cache and workers train on demand.
      *
-     * <ul>
-     *   <li><b>Engine</b> — delete every {@code engine-<v>-*} whose {@code v} ≠ keep
-     *   <li><b>Workers</b> — delete {@code java-compiler-*}/{@code kotlinc-*}/… caches whose
-     *       recorded classpath is unusable for this product line: any path missing on disk, or
-     *       any first-party {@code jk-*-&lt;other-version&gt;.jar} (e.g. after upgrade the lib
-     *       dir only holds {@code jk-java-compiler-0.11.0.jar} but {@code …-0.10.1.aot} remains)
-     * </ul>
+     * <p>{@code keepVersion} documents the caller (who is primary); the wipe is unfiltered.
+     * Best-effort; never throws. Call only from primary claim / install materialize — not on every
+     * ensure of an already-live same-version engine.
      *
-     * <p>Call from materialize / endpoint claim / ensure. Best-effort; never throws. Empty or
-     * missing {@code aotDir} is a no-op.
-     *
-     * @return number of primary {@code .aot} keys removed (manifest rows)
+     * @return number of primary {@code *.aot} cache files removed
      */
     public static int deleteSupersededEngineAot(Path aotDir, String keepVersion) {
-        if (aotDir == null || keepVersion == null || keepVersion.isBlank()) return 0;
-        if (!Files.isDirectory(aotDir)) return 0;
-        Set<String> removedKeys = new LinkedHashSet<>();
-        try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
-            for (Path p : entries) {
-                String name = p.getFileName().toString();
-                Matcher m = ENGINE_AOT_NAME.matcher(name);
-                if (!m.matches()) continue;
-                String v = m.group(1);
-                if (keepVersion.equals(v)) continue;
-                String key = m.group(2);
-                // Manifest keys the primary .aot name even when only a .noaot marker remains.
-                removedKeys.add("engine-" + v + "-" + key + ".aot");
-                Files.deleteIfExists(p);
-            }
-        } catch (IOException ignored) {
-            // best-effort maintenance
-        }
-        // Worker caches: content-keyed, but classpath records first-party worker jars that move
-        // on every product version. A surviving 0.10.1 java-compiler-*.aot is pure dead weight.
-        for (cc.jumpkick.util.AotManifest.Entry e : cc.jumpkick.util.AotManifest.load(aotDir)) {
-            if (e == null || e.file() == null) continue;
-            if (e.file().startsWith("engine-") || "engine".equals(e.tool())) continue;
-            if ("pending".equals(e.status())) continue; // train still running — leave alone
-            if (!workerClasspathStale(e.classpath(), keepVersion)) continue;
-            String primary = e.file().endsWith(".aot") ? e.file() : e.file() + ".aot";
-            removedKeys.add(primary);
-            deleteWorkerAotArtifacts(aotDir, primary);
-        }
-        if (!removedKeys.isEmpty()) {
-            cc.jumpkick.util.AotManifest.remove(aotDir, List.copyOf(removedKeys));
-            cc.jumpkick.util.AotManifest.reconcile(aotDir);
-        }
-        return removedKeys.size();
+        return wipeAotDirectory(aotDir);
     }
 
     /**
-     * True when a worker cache cannot map for the live product version: a classpath entry is
-     * gone, or names a first-party {@code jk-*-&lt;v&gt;.jar} with {@code v ≠ keepVersion}.
+     * Delete every AOT artifact under {@code aotDir} and remove {@code aot.toml}. Leaves the
+     * directory and any {@code *.lock} files.
+     *
+     * @return number of primary {@code *.aot} cache files removed (names ending in {@code .aot}
+     *     only — not {@code .aot.noaot} / {@code .aot.config})
      */
-    static boolean workerClasspathStale(List<String> classpath, String keepVersion) {
-        if (classpath == null || classpath.isEmpty()) return false;
-        for (String cp : classpath) {
-            if (cp == null || cp.isBlank()) continue;
-            Path p;
-            try {
-                p = Path.of(cp);
-            } catch (RuntimeException e) {
-                return true; // unparseable path — treat as dead
-            }
-            if (!Files.isRegularFile(p)) return true;
-            String name = p.getFileName().toString();
-            // First-party workers/plugins: jk-java-compiler-0.10.1.jar, jk-kotlin-compiler-….
-            // plugin-sdk-0.1.0.jar is not product-versioned; leave it.
-            if (!name.startsWith("jk-") || !name.endsWith(".jar")) continue;
-            String jarVer = cc.jumpkick.compile.WorkerLib.jarVersion(name);
-            if (jarVer != null && !jarVer.equals(keepVersion)) return true;
-        }
-        return false;
-    }
-
-    /** Delete a worker primary {@code <tool>-<key>.aot} plus sticky markers / config sidecars. */
-    private static void deleteWorkerAotArtifacts(Path aotDir, String primaryAot) {
-        if (primaryAot == null || primaryAot.isBlank()) return;
-        try {
-            Files.deleteIfExists(aotDir.resolve(primaryAot));
-            Files.deleteIfExists(aotDir.resolve(primaryAot + ".noaot")); // workers: foo.aot.noaot
-            Files.deleteIfExists(aotDir.resolve(primaryAot + ".config"));
-            if (primaryAot.endsWith(".aot")) {
-                String stem = primaryAot.substring(0, primaryAot.length() - ".aot".length());
-                Files.deleteIfExists(aotDir.resolve(stem + ".noaot"));
+    public static int wipeAotDirectory(Path aotDir) {
+        if (aotDir == null || !Files.isDirectory(aotDir)) return 0;
+        int aotFiles = 0;
+        try (var stream = Files.list(aotDir)) {
+            for (Path p : stream.toList()) {
+                String name = p.getFileName().toString();
+                if (name.endsWith(".lock")) continue; // may be held by a concurrent writer
+                if (name.equals(cc.jumpkick.util.AotManifest.FILE_NAME)) {
+                    Files.deleteIfExists(p);
+                    continue;
+                }
+                if (!isAotArtifactName(name)) continue;
+                if (isPrimaryAotCacheName(name)) aotFiles++;
+                Files.deleteIfExists(p);
             }
         } catch (IOException ignored) {
             // best-effort
         }
+        return aotFiles;
+    }
+
+    /** Primary cache: {@code tool-key.aot} — not {@code foo.aot.noaot} or {@code foo.aot.config}. */
+    static boolean isPrimaryAotCacheName(String name) {
+        return name != null && name.endsWith(".aot") && name.length() > 4 && !name.contains(".aot.");
+    }
+
+    static boolean isAotArtifactName(String name) {
+        if (name == null || name.isBlank()) return false;
+        return name.endsWith(".aot")
+                || name.endsWith(".noaot")
+                || name.endsWith(".config")
+                || name.endsWith(".training")
+                || name.contains(".tmp-");
     }
 
     /**

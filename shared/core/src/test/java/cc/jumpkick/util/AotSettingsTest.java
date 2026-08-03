@@ -12,6 +12,7 @@ class AotSettingsTest {
     void clear() {
         System.clearProperty("jk.aot.train");
         System.clearProperty("jk.worker.aot");
+        AotSettings.clearTrainingSuppressionForTests();
     }
 
     @Test
@@ -26,6 +27,17 @@ class AotSettingsTest {
         assertThat(AotSettings.trainingEnabled()).isFalse();
         System.setProperty("jk.aot.train", "on");
         assertThat(AotSettings.trainingEnabled()).isTrue();
+    }
+
+    @Test
+    void suppress_training_blocks_all_train_on_miss() {
+        System.setProperty("jk.aot.train", "on");
+        assertThat(AotSettings.trainingEnabled()).isTrue();
+        AotSettings.suppressTraining();
+        assertThat(AotSettings.trainingEnabled()).isFalse();
+        // Worker map kill switch is independent; suppress only blocks train.
+        System.setProperty("jk.worker.aot", "on");
+        assertThat(AotSettings.workerAotEnabled()).isTrue();
     }
 
     @Test

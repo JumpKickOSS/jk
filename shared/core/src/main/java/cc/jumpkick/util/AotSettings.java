@@ -26,20 +26,43 @@ public final class AotSettings {
     private AotSettings() {}
 
     /**
+     * Process-local kill switch for <em>all</em> AOT training (engine sidecar + workers). Set when
+     * this engine is displaced/orphaned so it cannot refill {@code state/aot} after the new primary
+     * wiped the directory (JK-1452). Not an env/property — only the running process flips it.
+     */
+    private static volatile boolean trainingSuppressed;
+
+    /**
      * Whether a train-on-miss may start (engine sidecar or plugin-worker trainer). Default
-     * {@code true}. Off when {@code JK_AOT_TRAIN}/{@code jk.aot.train} is {@code off}/{@code
-     * false}/{@code 0}.
+     * {@code true}. Off when {@link #suppressTraining()} was called, or when {@code
+     * JK_AOT_TRAIN}/{@code jk.aot.train} is {@code off}/{@code false}/{@code 0}.
      */
     public static boolean trainingEnabled() {
+        if (trainingSuppressed) return false;
         return !isOff(propOrEnv("jk.aot.train", "JK_AOT_TRAIN"));
     }
 
     /**
      * Whether plugin-worker AOT may map or train. Default {@code true}. Off when {@code
-     * JK_WORKER_AOT}/{@code jk.worker.aot} is {@code off}/{@code false}/{@code 0}.
+     * JK_WORKER_AOT}/{@code jk.worker.aot} is {@code off}/{@code false}/{@code 0}. Mapping is
+     * still allowed when only {@link #suppressTraining()} is set (displaced engines must not
+     * <em>train</em>; they may map if a file somehow remains).
      */
     public static boolean workerAotEnabled() {
         return !isOff(propOrEnv("jk.worker.aot", "JK_WORKER_AOT"));
+    }
+
+    /**
+     * Permanently (for this process) forbid AOT training. Used by a displaced or orphaned engine
+     * so missing caches after a primary wipe are not recreated while draining (JK-1452).
+     */
+    public static void suppressTraining() {
+        trainingSuppressed = true;
+    }
+
+    /** Test seam: re-enable training after a test process suppressed it. */
+    public static void clearTrainingSuppressionForTests() {
+        trainingSuppressed = false;
     }
 
     private static String propOrEnv(String prop, String env) {
