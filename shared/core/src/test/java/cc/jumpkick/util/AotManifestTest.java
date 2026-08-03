@@ -141,6 +141,50 @@ class AotManifestTest {
         assertThat(AotManifest.load(dir).getFirst().status()).isEqualTo("noaot");
     }
 
+    @Test
+    void list_merges_manifest_with_on_disk_files_without_manifest() throws Exception {
+        Path orphan = Files.writeString(dir.resolve("java-compiler-eeeeeeeeeeeeeeee.aot"), "x".repeat(100));
+        Files.writeString(dir.resolve("kotlinc-ffffffffffffffff.aot.noaot"), "");
+        AotManifest.upsert(
+                dir,
+                AotManifest.Entry.builder("engine-0.10.1-aaaaaaaaaaaaaaaa.aot")
+                        .tool("engine")
+                        .key("aaaaaaaaaaaaaaaa")
+                        .status("pending")
+                        .jdkVersion("25.0.3")
+                        .build());
+        Files.writeString(dir.resolve("engine-0.10.1-aaaaaaaaaaaaaaaa.aot"), "engine-bytes");
+
+        List<AotManifest.Entry> listed = AotManifest.list(dir);
+        assertThat(listed).extracting(AotManifest.Entry::file)
+                .containsExactlyInAnyOrder(
+                        "engine-0.10.1-aaaaaaaaaaaaaaaa.aot",
+                        "java-compiler-eeeeeeeeeeeeeeee.aot",
+                        "kotlinc-ffffffffffffffff.aot");
+
+        AotManifest.Entry engine = listed.stream()
+                .filter(e -> e.file().startsWith("engine-"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(engine.status()).isEqualTo("ready");
+        assertThat(engine.jdkVersion()).isEqualTo("25.0.3");
+        assertThat(engine.sizeBytes()).isEqualTo(Files.size(dir.resolve(engine.file())));
+
+        AotManifest.Entry orphanEntry = listed.stream()
+                .filter(e -> e.file().equals(orphan.getFileName().toString()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(orphanEntry.tool()).isEqualTo("java-compiler");
+        assertThat(orphanEntry.key()).isEqualTo("eeeeeeeeeeeeeeee");
+        assertThat(orphanEntry.status()).isEqualTo("ready");
+
+        AotManifest.Entry noaot = listed.stream()
+                .filter(e -> e.file().startsWith("kotlinc-"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(noaot.status()).isEqualTo("noaot");
+    }
+
     private static String read(Path p) {
         try {
             return Files.readString(p);

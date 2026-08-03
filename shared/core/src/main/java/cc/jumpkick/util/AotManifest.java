@@ -325,6 +325,77 @@ public final class AotManifest {
         }
     }
 
+    /**
+     * Merge {@code aot.toml} with on-disk {@code *.aot} / sticky {@code .noaot} markers so a list
+     * command still works for caches trained before the manifest existed. Never throws; never
+     * writes.
+     */
+    public static List<Entry> list(Path aotDir) {
+        if (aotDir == null || !Files.isDirectory(aotDir)) return List.of();
+        Map<String, Entry> map = new LinkedHashMap<>();
+        try {
+            map.putAll(loadMap(aotDir));
+        } catch (RuntimeException ignored) {
+            // start from empty
+        }
+        try (var stream = Files.list(aotDir)) {
+            for (Path p : stream.toList()) {
+                String name = p.getFileName().toString();
+                if (name.equals(FILE_NAME) || name.endsWith(".lock") || name.contains(".tmp-") || name.endsWith(".training"))
+                    continue;
+                if (name.endsWith(".aot") && Files.isRegularFile(p)) {
+                    Entry prev = map.get(name);
+                    String status = usableSize(p) > 0 ? "ready" : "empty";
+                    Entry.Builder b = (prev != null ? prev.toBuilder() : Entry.builder(name)).status(status);
+                    if (prev == null || blank(prev.tool()) || blank(prev.key())) fillToolKey(b, name);
+                    b.sizeBytes(usableSize(p));
+                    if (prev == null || blank(prev.lastUsed())) {
+                        try {
+                            b.lastUsed(ISO.format(Files.getLastModifiedTime(p).toInstant()));
+                        } catch (IOException ignored) {
+                        }
+                    }
+                    map.put(name, b.build());
+                } else if (name.endsWith(".aot.noaot") && Files.isRegularFile(p)) {
+                    // worker sticky marker: <file>.aot.noaot
+                    String primary = name.substring(0, name.length() - ".noaot".length());
+                    if (!map.containsKey(primary) || "pending".equals(map.get(primary).status())) {
+                        Entry.Builder b = Entry.builder(primary).status("noaot");
+                        fillToolKey(b, primary);
+                        map.put(primary, b.build());
+                    } else if (map.containsKey(primary) && !Files.exists(aotDir.resolve(primary))) {
+                        map.put(primary, map.get(primary).toBuilder().status("noaot").build());
+                    }
+                } else if (name.endsWith(".noaot")
+                        && !name.endsWith(".aot.noaot")
+                        && Files.isRegularFile(p)
+                        && name.startsWith("engine-")) {
+                    // engine sticky: engine-<ver>-<key>.noaot
+                    String stem = name.substring(0, name.length() - ".noaot".length());
+                    String primary = stem.endsWith(".aot") ? stem : stem + ".aot";
+                    if (!map.containsKey(primary) || !Files.exists(aotDir.resolve(primary))) {
+                        Entry.Builder b = Entry.builder(primary).status("noaot");
+                        fillToolKey(b, primary);
+                        map.put(primary, b.build());
+                    }
+                }
+            }
+        } catch (IOException ignored) {
+            // best-effort list
+        }
+        List<Entry> out = new ArrayList<>(map.values());
+        out.sort(Comparator.comparing(Entry::file, String.CASE_INSENSITIVE_ORDER));
+        return out;
+    }
+
+    private static long usableSize(Path p) {
+        try {
+            return Files.isRegularFile(p) ? Files.size(p) : 0L;
+        } catch (IOException e) {
+            return 0L;
+        }
+    }
+
     // ---- internals --------------------------------------------------------------------------
 
     private static Path stemNoaot(Path aotDir, String file) {

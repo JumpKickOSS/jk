@@ -53,6 +53,13 @@ engine jar identity + JDK for the engine). Open **`~/.local/state/jk/aot/aot.tom
 `pending` / `noaot`), size, JDK, GC, classpath, JVM flags, and timestamps. Written on train / use /
 sweep; safe to delete (regenerated next train).
 
+List the same details from the CLI:
+
+```bash
+jk engine aot              # summary table + per-cache details
+jk engine aot -O json      # machine-readable
+```
+
 Work runs on a **daemon idle thread** when `activePipelines == 0` so client builds are not blocked.
 Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics
 retention, metrics harvest, feeds/templates, AOT train, and calibration — so the heap is not
