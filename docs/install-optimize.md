@@ -41,18 +41,20 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 | **engine-`<jk-version>`-*.aot** | Resident engine JAR (sidecar train; same GC / native-access as serve) |
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 
-**Not** pre-trained: **Kotlin**, Groovy, and other language workers — train-on-miss on first real
-use (classpath is project/version-specific; a dedicated bootstrap key would not match production
-forks). List caches with `jk engine aot`.
-**Not** trained: test-runner AOT (suite classpath includes project classes; caches are not reusable).
+**Not** pre-trained: **Kotlin** — trains on miss at the first real Kotlin compile (classpath is
+project/version-specific; a dedicated bootstrap key would not match production forks). List caches
+with `jk engine aot`.
+**Not** AOT-cached at all: **Groovy** workers (no cache integration yet) and test-runner AOT
+(suite classpath includes project classes; caches are not reusable).
 
 ### `aot.toml` (human index)
 
 Cache file names are content hashes (`tool` + JDK home/vendor/version + GC + classpath for workers;
 engine jar identity + JDK for the engine). Open **`~/.local/state/jk/aot/aot.toml`** (or
 `$JK_STATE_DIR/aot/aot.toml`) for a readable table of each file: tool, key, status (`ready` /
-`pending` / `noaot`), size, JDK, GC, classpath, JVM flags, and timestamps. Written on train / use /
-sweep; safe to delete (regenerated next train).
+`pending` / `noaot` / `empty` — a zero-byte cache from an interrupted train), size, JDK, GC,
+classpath, JVM flags, and timestamps. Written on train / use / sweep; safe to delete or hand-edit
+(a corrupt file is regenerated on the next write).
 
 List the same details from the CLI:
 

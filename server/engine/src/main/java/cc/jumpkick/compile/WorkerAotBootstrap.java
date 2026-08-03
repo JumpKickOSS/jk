@@ -5,12 +5,10 @@ import cc.jumpkick.engine.plugin.PluginAot;
 import cc.jumpkick.engine.plugin.PluginJar;
 import cc.jumpkick.jdk.JavaHomes;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * PluginAot training for engine idle self-heal: pre-create {@code java-compiler-*.aot} under the
@@ -59,7 +57,7 @@ public final class WorkerAotBootstrap {
         // Groovy, …). Pre-training a thin worker jar alone fails (no compiler on -cp) or keys a
         // cache no real compile will map.
         skipped.add("kotlinc (train-on-miss on first Kotlin compile)");
-        skipped.add("groovy (train-on-miss on first Groovy compile)");
+        skipped.add("groovy (not AOT-cached; GroovycDriver has no cache integration)");
         // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
         // project would need its own AOT key; caches would not transfer and would thrash disk.
         skipped.add("test-runner (per-project classpath; AOT not reusable — JK-1398)");
@@ -105,29 +103,4 @@ public final class WorkerAotBootstrap {
         }
     }
 
-    /** True when any {@code <tool>-*.aot} file exists under the PluginAot dir (complete caches only). */
-    public static boolean anyToolCache(String tool) {
-        if (tool == null || tool.isBlank()) return false;
-        Path dir = PluginAot.dir();
-        if (!Files.isDirectory(dir)) return false;
-        String prefix = tool + "-";
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, prefix + "*.aot")) {
-            for (Path p : stream) {
-                String name = p.getFileName().toString();
-                if (name.endsWith(".aot") && !name.contains(".tmp-") && PluginAot.usableCache(p)) return true;
-            }
-        } catch (IOException ignored) {
-        }
-        try (Stream<Path> walk = Files.list(dir)) {
-            return walk.anyMatch(p -> {
-                String n = p.getFileName().toString();
-                return n.startsWith(prefix)
-                        && n.endsWith(".aot")
-                        && !n.contains(".tmp-")
-                        && PluginAot.usableCache(p);
-            });
-        } catch (IOException e) {
-            return false;
-        }
-    }
 }

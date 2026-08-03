@@ -46,7 +46,7 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
 
         if (global.outputIsJson()) {
             CliOutput.out(toJson(aotDir, entries));
-            return entries.isEmpty() ? 0 : 0;
+            return 0;
         }
 
         CommandWedge.envelopeStart();
