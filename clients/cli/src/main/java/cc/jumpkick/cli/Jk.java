@@ -14,6 +14,9 @@ public final class Jk {
     /** Alias of {@link cc.jumpkick.model.JkVersion#VERSION} for CLI-side callers. */
     public static final String VERSION = cc.jumpkick.model.JkVersion.VERSION;
 
+    /** Top-line blurb on bare {@code jk} and {@code jk --help}. */
+    static final String HELP_TAGLINE = "JumpKick - The best damn build system for the JVM";
+
     /**
      * Hidden command aliases for ergonomic migration from other build tools. Documented in {@code
      * docs/aliases.md}. Keys are alias names; values are the canonical command path (one or more
@@ -86,12 +89,7 @@ public final class Jk {
             return 0;
         }
         // Bare `jk` (no command, no flags): curated short-help screen.
-        HelpRenderer.printShortHelp(
-                CommandDispatch.commands(),
-                "A fast build tool and package manager for Java & Kotlin",
-                "jk",
-                System.out,
-                ansi);
+        HelpRenderer.printShortHelp(CommandDispatch.commands(), HELP_TAGLINE, "jk", System.out, ansi);
         return 0;
     }
 
@@ -107,9 +105,7 @@ public final class Jk {
                 .toList();
         String nl = System.lineSeparator();
         StringBuilder sb = new StringBuilder();
-        sb.append("A fast build tool and package manager for Java & Kotlin")
-                .append(nl)
-                .append(nl);
+        sb.append(HELP_TAGLINE).append(nl).append(nl);
         // Usage line
         if (ansi) {
             sb.append(HelpRenderer.paint("Usage:", Theme.active().sectionHeading(), true))
