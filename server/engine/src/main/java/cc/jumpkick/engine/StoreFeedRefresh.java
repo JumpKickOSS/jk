@@ -89,14 +89,6 @@ public final class StoreFeedRefresh implements AutoCloseable {
     }
 
     /**
-     * No-op scheduler. {@link EngineMaintenance} calls {@link #tickQuietly()} on the wall-clock 12 h
-     * cadence (checked every minute). Kept for call sites / tests that still invoke {@code start()}.
-     */
-    public void start() {
-        // scheduling lives in EngineMaintenance
-    }
-
-    /**
      * One pass over store feeds only (no afterTick). Used by {@link HostWarmup} before AOT/cal so
      * catalogs are warm without enqueueing GC twice.
      */
@@ -164,7 +156,7 @@ public final class StoreFeedRefresh implements AutoCloseable {
      */
     void refreshJdks() throws IOException, InterruptedException {
         Path cacheFile = jdksFile.get();
-        if (!needsRefresh(cacheFile, INTERVAL) && Files.isRegularFile(cacheFile)) {
+        if (!needsRefresh(cacheFile, INTERVAL)) {
             // Still warm — skip. (JdkCatalogClient would no-op the same way via its TTL.)
             return;
         }
@@ -183,11 +175,6 @@ public final class StoreFeedRefresh implements AutoCloseable {
         if (Files.isRegularFile(file)) {
             Files.setLastModifiedTime(file, FileTime.from(Instant.now()));
         }
-    }
-
-    private static String brief(Throwable t) {
-        String m = t.getMessage();
-        return t.getClass().getSimpleName() + (m == null || m.isBlank() ? "" : ": " + m);
     }
 
     @Override

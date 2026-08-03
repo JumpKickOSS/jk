@@ -1854,7 +1854,7 @@ public final class EngineServer implements AutoCloseable {
      */
     private void maybeIdleBoundary() {
         if (activePipelines.decrementAndGet() != 0) return;
-        runIdleHousekeeping(/* forceWarmup */ false, /* asyncWarmup */ true);
+        runIdleHousekeeping();
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
         if (draining) {
@@ -1875,12 +1875,11 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last when this method
-     * finishes the workset on this thread. When {@code asyncWarmup} is true and warmup is needed,
-     * prune/journal/harvest run here, then a daemon does warmup + trailing GC (so the build
-     * connection is not blocked for multi-minute AOT train).
+     * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last for the workset.
+     * Prune/journal/harvest run here; when warmup is needed a daemon does warmup + the trailing GC
+     * instead (so the build connection is not blocked for multi-minute AOT train).
      */
-    private void runIdleHousekeeping(boolean forceWarmup, boolean asyncWarmup) {
+    private void runIdleHousekeeping() {
         if (shuttingDown) return;
         if (activePipelines.get() != 0) return;
         drainPendingPrune();
@@ -1893,28 +1892,13 @@ public final class EngineServer implements AutoCloseable {
         }
         if (activePipelines.get() != 0) return;
 
-        boolean wantWarmup = forceWarmup || pendingWarmupForce.get() != null || HostWarmup.needsWork();
-        if (wantWarmup && asyncWarmup) {
-            // Ensure a queue entry so kickPendingWarmup has work; trail GC on that thread.
-            pendingWarmupForce.updateAndGet(prev -> {
-                if (forceWarmup) return Boolean.TRUE;
-                if (prev != null) return prev;
-                return Boolean.FALSE;
-            });
+        if (pendingWarmupForce.get() != null || HostWarmup.needsWork()) {
+            // Ensure a queue entry so kickPendingWarmup has work; that thread owns the trailing GC.
+            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
             kickPendingWarmup(/* trailGc */ true);
-            // Do not GC here — warmup thread owns the trailing GC for this workset.
             return;
         }
-        if (wantWarmup) {
-            Boolean force = pendingWarmupForce.getAndSet(null);
-            boolean f = forceWarmup || Boolean.TRUE.equals(force);
-            try {
-                HostWarmup.runIdle(f, log);
-            } catch (RuntimeException e) {
-                log.accept("jk engine: idle host warmup failed: " + e.getMessage());
-            }
-        }
-        // Trailing heap GC after the entire idle workset (prune, harvest, warmup).
+        // Trailing heap GC after the entire idle workset (prune, harvest).
         if (activePipelines.get() == 0 && !warmupRunning.get()) {
             System.gc();
         }
@@ -2005,7 +1989,7 @@ public final class EngineServer implements AutoCloseable {
         // If a pipeline is running, only queue; maybeIdleBoundary drains on finish.
         if (activePipelines.get() == 0) {
             pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
-            runIdleHousekeeping(/* forceWarmup */ false, /* asyncWarmup */ true);
+            runIdleHousekeeping();
         } else {
             scheduleHostWarmupIfNeeded(false);
         }
@@ -4371,11 +4355,14 @@ public final class EngineServer implements AutoCloseable {
     private void handleOptimizeRequest(String requestLine, BufferedWriter writer) {
         try {
             boolean force = Jsonl.bool(requestLine, "force", false);
-            scheduleHostWarmupIfNeeded(force);
+            boolean scheduled = scheduleHostWarmupIfNeeded(force);
             sendQuiet(
                     writer,
-                    EngineProtocol.optimizeAck(
-                            true, "", "scheduled", "scheduled: host warmup on idle worker"));
+                    scheduled
+                            ? EngineProtocol.optimizeAck(
+                                    true, "", "scheduled", "scheduled: host warmup on idle worker")
+                            : EngineProtocol.optimizeAck(
+                                    true, "", "", "nothing to do: worker AOT and calibration are current"));
         } catch (RuntimeException e) {
             sendQuiet(writer, EngineProtocol.optimizeAck(false, "", "", "optimize failed: " + e.getMessage()));
         }
@@ -4383,10 +4370,11 @@ public final class EngineServer implements AutoCloseable {
 
     /**
      * If worker AOT or host calibration is missing (or {@code force}), queue idle-boundary warmup.
+     * Returns whether a warmup pass was actually queued.
      */
-    private void scheduleHostWarmupIfNeeded(boolean force) {
-        if (shuttingDown || draining) return;
-        if (!force && !HostWarmup.needsWork()) return;
+    private boolean scheduleHostWarmupIfNeeded(boolean force) {
+        if (shuttingDown || draining) return false;
+        if (!force && !HostWarmup.needsWork()) return false;
         pendingWarmupForce.updateAndGet(prev -> {
             if (prev == null) return force;
             return prev || force;
@@ -4394,6 +4382,7 @@ public final class EngineServer implements AutoCloseable {
         if (activePipelines.get() == 0) {
             kickPendingWarmup(/* trailGc */ true);
         }
+        return true;
     }
 
     /**
