@@ -20,19 +20,19 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 
 /**
- * {@code jk self purge} — wipe all JumpKick product data (cache, store, state, versions, config)
- * while keeping the PATH binaries ({@code jk}/{@code jkx}) and managed JDKs.
+ * {@code jk self purge} — wipe JumpKick-owned product data (cache, store, state, versions, config)
+ * while leaving PATH install binaries and managed JDKs untouched.
+ *
+ * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}):
+ * neither {@code jk}/{@code jkx} nor any other executables. Only product data roots that JumpKick
+ * owns are deleted.
  *
  * <p>Confirmation required unless the hidden global {@code -y}/{@code --yes} is set.
  */
 public final class SelfPurgeCommand implements CliCommand {
-
-    /** Filenames under the bin dir that survive purge (platform extensions included). */
-    private static final Set<String> KEEP_BIN_NAMES = Set.of("jk", "jkx", "jk.exe", "jkx.exe", "jk.bat", "jkx.bat");
 
     @Override
     public String name() {
@@ -56,14 +56,12 @@ public final class SelfPurgeCommand implements CliCommand {
         JkDirs dirs = JkDirs.current();
 
         List<Path> wipeRoots = wipeRoots(dirs);
-        List<Path> binExtras = binEntriesToRemove(dirs.binDirectory());
-
-        if (wipeRoots.isEmpty() && binExtras.isEmpty()) {
+        if (wipeRoots.isEmpty()) {
             CommandWedge.printOk("Self", "Nothing to purge — no JumpKick data directories found.");
             return Exit.SUCCESS;
         }
 
-        if (!confirm(dirs, wipeRoots, binExtras)) {
+        if (!confirm(dirs, wipeRoots)) {
             CommandWedge.printFail("Self", "Purge aborted.");
             return 1;
         }
@@ -93,20 +91,6 @@ public final class SelfPurgeCommand implements CliCommand {
                 failures.add(root + " (" + e.getMessage() + ")");
             }
         }
-        for (Path p : binExtras) {
-            if (!Files.exists(p)) continue;
-            if (dryRun) {
-                CliOutput.out("  would remove " + p);
-                removed++;
-                continue;
-            }
-            try {
-                Files.deleteIfExists(p);
-                removed++;
-            } catch (IOException e) {
-                failures.add(p + " (" + e.getMessage() + ")");
-            }
-        }
 
         if (!failures.isEmpty()) {
             Theme t = Theme.active();
@@ -123,12 +107,12 @@ public final class SelfPurgeCommand implements CliCommand {
                             + removed
                             + " path"
                             + (removed == 1 ? "" : "s")
-                            + "). Binaries and JDKs kept.");
+                            + "). PATH binaries and JDKs untouched.");
         }
         return Exit.SUCCESS;
     }
 
-    private static boolean confirm(JkDirs dirs, List<Path> wipeRoots, List<Path> binExtras) {
+    private static boolean confirm(JkDirs dirs, List<Path> wipeRoots) {
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
         CliOutput.out();
@@ -136,23 +120,20 @@ public final class SelfPurgeCommand implements CliCommand {
                 + " "
                 + Theme.colorize(
                         "This permanently deletes all JumpKick product data on this machine.", t.errorLabel()));
-        CliOutput.out("  Cache, store/CAS, state, versions, config, and non-jk tools under the bin dir.");
-        CliOutput.out("  Kept:  " + dirs.binDirectory().resolve("jk") + " (+ jkx)");
-        CliOutput.out("  Kept:  managed JDKs under " + dirs.jdksDir());
+        CliOutput.out("  Cache, store/CAS, state, versions, and config only.");
+        CliOutput.out("  Untouched: PATH install dir (" + dirs.binDirectory() + ")");
+        CliOutput.out("  Untouched: managed JDKs under " + dirs.jdksDir());
         CliOutput.out("  Paths:");
         for (Path p : wipeRoots) {
-            if (Files.exists(p)) CliOutput.out("    " + p);
-        }
-        for (Path p : binExtras) {
             if (Files.exists(p)) CliOutput.out("    " + p);
         }
         return Confirm.of(bang + " Purge all JumpKick data?", false).ask();
     }
 
     /**
-     * Product trees to delete entirely. Never includes the bin dir or the JDK install root.
-     * Deduped and sorted longest-first so parents are not deleted before children we also list
-     * (walk-delete handles children either way).
+     * Product trees JumpKick owns and may delete. Never includes the PATH bin directory or the JDK
+     * install root (or anything under them). Deduped so nested paths under a selected root are not
+     * listed twice.
      */
     static List<Path> wipeRoots(JkDirs dirs) {
         Path bin = abs(dirs.binDirectory());
@@ -165,45 +146,37 @@ public final class SelfPurgeCommand implements CliCommand {
         addIfSafe(roots, abs(dirs.versionsDir()), bin, jdks);
         addIfSafe(roots, abs(dirs.tmpDir()), bin, jdks);
         addIfSafe(roots, abs(dirs.buildsDir()), bin, jdks);
-        // Config: whole platform config dir, or just config.toml when configDir == JK_HOME / data.
+        // Config: whole platform config dir (~/.config/jk), or just config.toml when configDir is a
+        // parent of bin/jdks (JK_HOME umbrella) — never wipe that parent wholesale.
         Path configFile = abs(dirs.userConfigFilePath());
         Path configDir = abs(dirs.configDir());
-        if (configDir.equals(bin) || configDir.equals(jdks) || isAncestor(configDir, bin) || isAncestor(configDir, jdks)) {
-            // Never wipe a parent of bin/jdks — only the config file.
+        if (configDir != null
+                && (configDir.equals(bin)
+                        || configDir.equals(jdks)
+                        || isAncestor(configDir, bin)
+                        || isAncestor(configDir, jdks))) {
             if (Files.isRegularFile(configFile)) roots.add(configFile);
-        } else if (Files.isDirectory(configDir)) {
+        } else if (configDir != null && Files.isDirectory(configDir)) {
             addIfSafe(roots, configDir, bin, jdks);
-        } else if (Files.isRegularFile(configFile)) {
+        } else if (configFile != null && Files.isRegularFile(configFile)) {
             roots.add(configFile);
         }
-        // Drop roots that are strictly under another selected root (avoid double-count noise).
+        // Drop roots that are strictly under another selected root.
         List<Path> list = new ArrayList<>(roots);
         list.removeIf(p -> list.stream().anyMatch(o -> !o.equals(p) && isAncestor(o, p)));
         list.sort((a, b) -> Integer.compare(b.getNameCount(), a.getNameCount()));
         return list;
     }
 
-    /** Extra tool launchers under bin (not jk/jkx) — removed individually so PATH binaries remain. */
-    static List<Path> binEntriesToRemove(Path binDir) {
-        List<Path> out = new ArrayList<>();
-        if (binDir == null || !Files.isDirectory(binDir)) return out;
-        try (var stream = Files.list(binDir)) {
-            for (Path p : stream.toList()) {
-                String name = p.getFileName().toString().toLowerCase(Locale.ROOT);
-                if (KEEP_BIN_NAMES.contains(name)) continue;
-                // Only remove entries that look like jk-installed tools (symlinks or plain files).
-                if (Files.isRegularFile(p) || Files.isSymbolicLink(p)) out.add(p);
-            }
-        } catch (IOException ignored) {
-        }
-        return out;
-    }
-
     private static void addIfSafe(Set<Path> roots, Path candidate, Path bin, Path jdks) {
         if (candidate == null) return;
+        // Never the bin/jdks roots themselves.
         if (candidate.equals(bin) || candidate.equals(jdks)) return;
+        // Never a parent of bin/jdks (would wipe shared trees).
         if (isAncestor(candidate, bin) || isAncestor(candidate, jdks)) return;
-        if (isAncestor(bin, candidate) || isAncestor(jdks, candidate)) return;
+        // Never anything under bin/jdks (PATH install dir is off-limits entirely).
+        if (isAncestor(bin, candidate) || isAncestor(jdks, candidate) || candidate.equals(bin) || candidate.equals(jdks))
+            return;
         roots.add(candidate);
     }
 

@@ -21,21 +21,25 @@ import org.junit.jupiter.api.Test;
 class SelfPurgeCommandTest {
 
     @Test
-    void wipeRoots_never_includes_bin_or_jdks() {
+    void wipeRoots_never_includes_bin_or_jdks_or_anything_under_them() {
         JkDirs dirs = JkDirs.current();
         List<Path> roots = SelfPurgeCommand.wipeRoots(dirs);
         Path bin = dirs.binDirectory().toAbsolutePath().normalize();
         Path jdks = dirs.jdksDir().toAbsolutePath().normalize();
         for (Path r : roots) {
-            assertThat(r).isNotEqualTo(bin);
-            assertThat(r).isNotEqualTo(jdks);
-            assertThat(r.startsWith(bin) || bin.startsWith(r)).isFalse();
-            assertThat(r.startsWith(jdks) || jdks.startsWith(r)).isFalse();
+            Path abs = r.toAbsolutePath().normalize();
+            assertThat(abs).isNotEqualTo(bin);
+            assertThat(abs).isNotEqualTo(jdks);
+            // Neither a parent of bin/jdks nor a child under them.
+            assertThat(abs.startsWith(bin)).isFalse();
+            assertThat(abs.startsWith(jdks)).isFalse();
+            assertThat(bin.startsWith(abs) && !bin.equals(abs)).isFalse();
+            assertThat(jdks.startsWith(abs) && !jdks.equals(abs)).isFalse();
         }
     }
 
     @Test
-    void purge_yes_removes_cache_state_and_keeps_jk_binary() throws Exception {
+    void purge_yes_removes_cache_state_and_leaves_bin_alone() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path cache = dirs.cacheDir();
         Path state = dirs.stateDir();
@@ -47,15 +51,15 @@ class SelfPurgeCommandTest {
         Files.createDirectories(bin);
         Path jkBin = bin.resolve("jk");
         if (!Files.exists(jkBin)) Files.writeString(jkBin, "#!/bin/sh\n");
-        Path tool = bin.resolve("some-tool");
-        Files.writeString(tool, "tool");
+        Path foreign = bin.resolve("uv"); // not owned by jk — must survive
+        Files.writeString(foreign, "foreign-tool");
 
         int exit = capture(() -> Jk.execute("self", "purge", "-y"));
         assertThat(exit).isZero();
         assertThat(Files.exists(cache.resolve("actions/marker"))).isFalse();
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
-        assertThat(Files.exists(tool)).isFalse();
+        assertThat(Files.exists(foreign)).isTrue();
     }
 
     @Test
