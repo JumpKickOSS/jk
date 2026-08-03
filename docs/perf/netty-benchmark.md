@@ -112,9 +112,10 @@ win — see `PluginAot` javadoc). The warm/dirty improvement comes from the engi
 in the same batch (engine AOT cache on start, idle-boundary GC discipline, journal/metrics
 paths), not from worker AOT on this benchmark's hot path.
 
-**Remaining gap vs Mill on dirty:** Mill's resident Zinc keeps a warm compiler JVM; jk
-re-forks javac per dirty build. Closing the last ~80 ms needs a resident/warm javac worker
-pool — follow-up filed as JK-1416.
+**Remaining gap vs Mill on dirty (~80 ms):** Mill's resident Zinc keeps a warm compiler JVM;
+jk re-forks bare `javac` per dirty build. **Decision (JK-1416, 2026-08-03): do not close
+this with a warm javac worker pool** — the latency is not worth the extra RSS. See
+[warm-javac-pool-decision.md](warm-javac-pool-decision.md).
 
 ## Earlier / other arms
 
