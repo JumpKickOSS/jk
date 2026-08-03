@@ -47,7 +47,12 @@ final class DefaultTestDepsFixture {
 
     static boolean isDefaultTestDep(String nameOrKey) {
         String ga = toGa(nameOrKey);
-        return JUPITER_GA.equals(ga) || LAUNCHER_GA.equals(ga);
+        // The injected aggregators resolve their full transitive closure into the lock
+        // (scoped test); filter the whole stack, not just the two aggregator GAs.
+        return ga.startsWith("org.junit.")
+                || ga.startsWith("org.opentest4j:")
+                || ga.startsWith("org.apiguardian:")
+                || ga.startsWith("org.jspecify:");
     }
 
     /** Normalize a lock name / package key to {@code group:artifact}. */
