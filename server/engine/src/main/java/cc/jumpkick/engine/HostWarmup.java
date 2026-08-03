@@ -51,7 +51,10 @@ public final class HostWarmup {
         return AotSettings.workerAotEnabled() && AotSettings.trainingEnabled();
     }
 
-    /** True when java-compiler or kotlinc AOT for this host is missing (and host is eligible). */
+    /**
+     * True when the pre-trained java-compiler AOT for this host is missing (and host is eligible).
+     * Kotlin/Groovy and other language workers train on-demand — they are not part of idle warmup.
+     */
     public static boolean needsWorkerAot() {
         if (!AotSettings.workerAotEnabled() || !AotSettings.trainingEnabled()) return false;
         Path host = JavaHomes.runningJavaHome();
@@ -60,16 +63,9 @@ public final class HostWarmup {
         // warmup pass every idle boundary that trainCommonWorkers then skips.
         if (!PluginAot.hostEligible(host)) return false;
         try {
-            if (!workerCachePresent("java-compiler", host, PluginJar.JAVA_COMPILER)) {
-                // Sticky noaot: a permanently failing key must not re-queue warmup every cycle.
-                Path javacCache = cachePath("java-compiler", host, PluginJar.JAVA_COMPILER);
-                if (missingKeyNeedsTrain(javacCache)) return true;
-            }
-            // kotlinc: dedicated key, or any existing kotlinc-*.aot from real compiles
-            if (workerCachePresent("kotlinc", host, PluginJar.KOTLIN_COMPILER)) return false;
-            if (WorkerAotBootstrap.anyToolCache("kotlinc")) return false;
-            // Prior dedicated train failed (noaot) and no sibling cache — don't thrash every start.
-            return missingKeyNeedsTrain(cachePath("kotlinc", host, PluginJar.KOTLIN_COMPILER));
+            if (workerCachePresent("java-compiler", host, PluginJar.JAVA_COMPILER)) return false;
+            // Sticky noaot: a permanently failing key must not re-queue warmup every cycle.
+            return missingKeyNeedsTrain(cachePath("java-compiler", host, PluginJar.JAVA_COMPILER));
         } catch (Exception e) {
             return true;
         }

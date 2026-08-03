@@ -28,7 +28,7 @@ Or env: `JK_AUTO_WARMUP=off`. Worker AOT also respects `JK_AOT_TRAIN=off` / `JK_
 1. **`libs.global.toml`** — conditional GET / ETag (skip if fresh)
 2. **`jdks.json`** — TTL + If-Modified-Since
 3. **Official `jk-templates` shallow clone** — `git fetch --depth 1` / clone (includes future AOT fixtures)
-4. **java-compiler + kotlinc AOT** — only if missing for this host
+4. **java-compiler AOT** — only if missing for this host
 5. **Host calibration** — only if missing/stale for this jk version + JDK
 
 Network errors are **fail-fast and quiet** (no retries). The next minute/12 h cycle or engine restart tries again.
@@ -37,12 +37,13 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 
 | Artifact | Notes |
 |----------|--------|
-| **java-compiler-*.aot** | ToolProvider javac worker (HotSpot 25+) |
-| **kotlinc-*.aot** | Kotlin compiler plugin worker (latest shipping plugin classpath) |
+| **java-compiler-*.aot** | ToolProvider javac worker (HotSpot 25+) — pre-trained on idle |
 | **engine-`<jk-version>`-*.aot** | Resident engine JAR (sidecar train; same GC / native-access as serve) |
 | **host-metrics.toml `[calibration]`** | HardwareProbe multi-probe for cold ETA |
 
-**Not** pre-trained: Groovy (and older language versions) — train-on-miss on first real use.
+**Not** pre-trained: **Kotlin**, Groovy, and other language workers — train-on-miss on first real
+use (classpath is project/version-specific; a dedicated bootstrap key would not match production
+forks). List caches with `jk engine aot`.
 **Not** trained: test-runner AOT (suite classpath includes project classes; caches are not reusable).
 
 ### `aot.toml` (human index)

@@ -507,7 +507,7 @@ public final class EngineProtocol {
         return b.append('}').toString();
     }
 
-    /** {@code jk optimize}: train worker AOT caches (java-compiler, kotlinc). */
+    /** {@code jk optimize}: train worker AOT caches (java-compiler; language workers on-demand). */
     public static String optimizeRequest(boolean force) {
         return "{\"type\":\"" + OPTIMIZE_REQUEST + "\",\"force\":" + force + "}";
     }

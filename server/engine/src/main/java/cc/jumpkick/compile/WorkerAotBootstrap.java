@@ -13,13 +13,14 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * PluginAot training for install {@code jk optimize}: pre-create {@code java-compiler-*.aot} and
- * {@code kotlinc-*.aot} under the engine host HotSpot JVM so first user builds map caches instead
- * of training mid-build. Invoked from the engine idle-boundary worker (not the request thread).
+ * PluginAot training for engine idle self-heal: pre-create {@code java-compiler-*.aot} under the
+ * host HotSpot JVM so first Java builds map a cache instead of training mid-build.
  *
- * <p>Pins training to the shipping <strong>java-compiler</strong> and <strong>kotlinc</strong>
- * plugin classpaths. Groovy and older language versions train on-demand via PluginAot train-on-miss
- * (not pre-trained — smaller install footprint).
+ * <p><strong>Only java-compiler is pre-trained.</strong> Virtually every jk project compiles Java;
+ * the ToolProvider worker classpath is host-stable (no per-project BTA closure). Kotlin, Groovy,
+ * and other language workers train on-demand on first real use — their classpaths are
+ * version-matched to the project and a dedicated bootstrap key would either fail or retrain
+ * forever as projects pin different toolchains.
  */
 public final class WorkerAotBootstrap {
 
@@ -34,14 +35,15 @@ public final class WorkerAotBootstrap {
     }
 
     /**
-     * Train common workers. Best-effort; never throws. {@code timeoutMs} is per-worker train budget.
+     * Train the common (java-compiler) worker. Best-effort; never throws. {@code timeoutMs} is the
+     * train budget.
      */
     public static Result trainCommonWorkers(long timeoutMs) {
         return trainCommonWorkers(timeoutMs, false);
     }
 
     /**
-     * @param force when true, retrain even if a cache already exists ({@code jk optimize --force})
+     * @param force when true, retrain even if a cache already exists
      */
     public static Result trainCommonWorkers(long timeoutMs, boolean force) {
         List<String> trained = new ArrayList<>();
@@ -52,85 +54,54 @@ public final class WorkerAotBootstrap {
             notes.add("no host java.home for AOT train");
             return new Result(trained, skipped, notes);
         }
-        trainOne("java-compiler", host, PluginJar.JAVA_COMPILER, timeoutMs, force, trained, skipped, notes, true);
-        trainOne("kotlinc", host, PluginJar.KOTLIN_COMPILER, timeoutMs, force, trained, skipped, notes, false);
+        trainJavaCompiler(host, timeoutMs, force, trained, skipped, notes);
+        // Language workers: train-on-miss with the real project classpath (Kotlin BTA closure,
+        // Groovy, …). Pre-training a thin worker jar alone fails (no compiler on -cp) or keys a
+        // cache no real compile will map.
+        skipped.add("kotlinc (train-on-miss on first Kotlin compile)");
+        skipped.add("groovy (train-on-miss on first Groovy compile)");
         // test-runner: suite -cp always includes the module's test classes + runtime deps, so every
         // project would need its own AOT key; caches would not transfer and would thrash disk.
-        // -Djk.aot.train=off on suite JVMs avoids pointless train-on-miss. Short-lived suite forks
-        // also discard any JIT warm-up — fixture tests do not leave a warm runner for the next project.
         skipped.add("test-runner (per-project classpath; AOT not reusable — JK-1398)");
         return new Result(trained, skipped, notes);
     }
 
-    private static void trainOne(
-            String tool,
+    private static void trainJavaCompiler(
             Path host,
-            PluginJar jar,
             long timeoutMs,
             boolean force,
             List<String> trained,
             List<String> skipped,
-            List<String> notes,
-            boolean javaCompiler) {
+            List<String> notes) {
         try {
-            Path workerJar = jar.locate();
+            Path workerJar = PluginJar.JAVA_COMPILER.locate();
             String cp = WorkerClasspath.resolve(workerJar);
-            Path cache = PluginAot.cachePath(tool, host, cp);
+            Path cache = PluginAot.cachePath("java-compiler", host, cp);
             if (!force && PluginAot.usableCache(cache)) {
-                trained.add(tool + " (cached)");
+                trained.add("java-compiler (cached)");
                 return;
             }
-            // Force retrain clears a prior failed-train noaot marker; otherwise leave it so
-            // engine self-heal does not thrash a permanently-failing key every start.
             if (force && cache != null) {
                 try {
                     Files.deleteIfExists(PluginAot.noaotMarker(cache));
                 } catch (Exception ignored) {
                 }
             }
-            // kotlinc: if real compiles already produced any kotlinc-*.aot for this host, count as
-            // success even when the dedicated bootstrap key still fails (JK-1397).
-            if (!force && "kotlinc".equals(tool) && anyToolCache("kotlinc")) {
-                trained.add(tool + " (cached)");
-                return;
-            }
-            // Sticky noaot: skip until force or 12h path with force (self-heal uses force=false).
             if (!force && cache != null && Files.exists(PluginAot.noaotMarker(cache))) {
-                if ("kotlinc".equals(tool) && anyToolCache("kotlinc")) {
-                    trained.add(tool + " (cached)");
-                    return;
-                }
-                skipped.add(tool + " (prior train failed; will not retry until force)");
+                skipped.add("java-compiler (prior train failed; will not retry until force)");
                 return;
             }
-            PluginAot.TrainerCommand trainer;
-            if (javaCompiler) {
-                trainer = (aotOut, scratch) -> ForkedJavac.trainerCommandForOptimize(host, cp, aotOut, scratch);
-            } else {
-                trainer = (aotOut, scratch) -> KotlincDriver.trainerCommandForOptimize(host, cp, aotOut, scratch);
-            }
-            boolean ok = PluginAot.ensureTrained(tool, host, cp, trainer, timeoutMs, force);
+            PluginAot.TrainerCommand trainer =
+                    (aotOut, scratch) -> ForkedJavac.trainerCommandForOptimize(host, cp, aotOut, scratch);
+            boolean ok = PluginAot.ensureTrained("java-compiler", host, cp, trainer, timeoutMs, force);
             if (ok) {
-                trained.add(force ? tool + " (retrained)" : tool);
+                trained.add(force ? "java-compiler (retrained)" : "java-compiler");
                 return;
             }
-            // After a failed dedicated train, still accept sibling caches from real compiles.
-            if ("kotlinc".equals(tool) && anyToolCache("kotlinc")) {
-                trained.add(tool + " (cached)");
-                // Clear sticky noaot on the dedicated key so map path can retry later.
-                if (cache != null) {
-                    try {
-                        Files.deleteIfExists(PluginAot.noaotMarker(cache));
-                    } catch (Exception ignored) {
-                    }
-                }
-                notes.add("kotlinc: dedicated bootstrap key missed; using existing kotlinc-*.aot from compiles");
-                return;
-            }
-            skipped.add(tool + " (ineligible host, train disabled, or train failed)");
+            skipped.add("java-compiler (ineligible host, train disabled, or train failed)");
         } catch (Exception e) {
-            skipped.add(tool + " (" + e.getMessage() + ")");
-            notes.add(tool + ": " + e.getMessage());
+            skipped.add("java-compiler (" + e.getMessage() + ")");
+            notes.add("java-compiler: " + e.getMessage());
         }
     }
 
@@ -147,7 +118,6 @@ public final class WorkerAotBootstrap {
             }
         } catch (IOException ignored) {
         }
-        // Fallback walk for odd FS implementations
         try (Stream<Path> walk = Files.list(dir)) {
             return walk.anyMatch(p -> {
                 String n = p.getFileName().toString();

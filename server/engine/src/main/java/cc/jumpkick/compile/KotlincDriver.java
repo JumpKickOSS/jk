@@ -123,7 +123,10 @@ public final class KotlincDriver {
         return trainerCommandForOptimize(hostJavaHome, classpath, aotOutput, scratch, compileClasspath);
     }
 
-    /** Public entry for install {@code jk optimize} / {@link WorkerAotBootstrap}. */
+    /**
+     * Public train-command entry (tests / manual smoke). Production train-on-miss uses {@link
+     * #trainerCommand} with the real project compile classpath via {@link #run}.
+     */
     public static List<String> trainerCommandForOptimize(
             Path hostJavaHome, String classpath, Path aotOutput, Path scratch) throws IOException {
         return trainerCommandForOptimize(hostJavaHome, classpath, aotOutput, scratch, List.of());
