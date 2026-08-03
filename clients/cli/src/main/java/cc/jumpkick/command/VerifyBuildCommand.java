@@ -181,7 +181,7 @@ public final class VerifyBuildCommand implements CliCommand {
             }
         }
         if (mismatches == 0) {
-            if (!global.outputIsJson()) CliOutput.out("Reproducible.");
+            if (!global.outputIsJson()) cc.jumpkick.cli.tui.CommandWedge.printOk("Verify", "Reproducible");
             return 0;
         }
         CliOutput.err("Not reproducible — " + mismatches + " artifact(s) differ.");

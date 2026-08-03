@@ -50,4 +50,59 @@ public final class BoxTable {
         int fill = Math.max(1, totalWidth - wedgeVisible - 1); // -1 for the closing ╮
         return wedge + Theme.colorize("─".repeat(fill) + "╮", t.darkGray());
     }
+
+    /**
+     * Whole table: title bar, header row, data rows, closing border — the standard list-command
+     * look (JK-1375). Column widths fit the widest cell; ANSI rails/dividers are dark gray, no-ANSI
+     * degrades to {@code + - |} ASCII. Rows shorter than {@code headers} are right-padded with
+     * empty cells; longer rows are truncated to the header count.
+     */
+    public static java.util.List<String> render(
+            String title, java.util.List<String> headers, java.util.List<? extends java.util.List<String>> rows) {
+        int cols = headers.size();
+        int[] widths = new int[cols];
+        for (int i = 0; i < cols; i++) widths[i] = cell(headers.get(i)).length();
+        for (var row : rows) {
+            for (int i = 0; i < cols; i++) {
+                widths[i] = Math.max(widths[i], cell(i < row.size() ? row.get(i) : "").length());
+            }
+        }
+        int inner = 0;
+        for (int w : widths) inner += w + 2;
+        inner += cols - 1;
+
+        java.util.List<String> out = new java.util.ArrayList<>();
+        out.add(titleBar(title, inner + 2));
+        out.add(divider("├", "┬", "┤", widths));
+        out.add(row(headers, widths));
+        out.add(divider("├", "┼", "┤", widths));
+        for (var r : rows) out.add(row(r, widths));
+        out.add(divider("╰", "┴", "╯", widths));
+        return out;
+    }
+
+    private static String cell(String s) {
+        return s == null ? "" : s;
+    }
+
+    private static String divider(String left, String junction, String right, int[] widths) {
+        boolean ansi = Theme.active().isAnsi();
+        var sb = new StringBuilder(ansi ? left : "+");
+        for (int i = 0; i < widths.length; i++) {
+            sb.append((ansi ? "─" : "-").repeat(widths[i] + 2));
+            sb.append(i == widths.length - 1 ? (ansi ? right : "+") : (ansi ? junction : "+"));
+        }
+        return ansi ? Theme.colorize(sb.toString(), Theme.active().darkGray()) : sb.toString();
+    }
+
+    private static String row(java.util.List<String> cells, int[] widths) {
+        boolean ansi = Theme.active().isAnsi();
+        String bar = ansi ? Theme.colorize("│", Theme.active().darkGray()) : "|";
+        var sb = new StringBuilder(bar);
+        for (int i = 0; i < widths.length; i++) {
+            String c = cell(i < cells.size() ? cells.get(i) : "");
+            sb.append(' ').append(c).append(" ".repeat(widths[i] - c.length())).append(' ').append(bar);
+        }
+        return sb.toString();
+    }
 }

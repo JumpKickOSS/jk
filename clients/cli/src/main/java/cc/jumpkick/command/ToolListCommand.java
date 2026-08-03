@@ -57,25 +57,24 @@ public final class ToolListCommand implements CliCommand {
             return 0;
         }
         envs.sort(Comparator.comparing(p -> p.getFileName().toString()));
-        Theme t = Theme.active();
+        List<List<String>> rows = new ArrayList<>();
         for (Path envDir : envs) {
             String bin = envDir.getFileName().toString();
             Path envJson = envDir.resolve("env.json");
             String coord = readField(envJson, "primary").orElse("(unknown coord)");
             Path launcher = binDir.resolve(bin);
-            CliOutput.stdout().printf("%-24s %s%n", Theme.colorize(bin, t.cyan()), coord);
             // Provenance: how this tool was installed (kind + the spec the user typed).
             Optional<String> kind = readField(envJson, "kind");
             Optional<String> spec = readField(envJson, "spec");
-            if (kind.isPresent() && spec.isPresent() && !spec.get().equals(coord)) {
-                CliOutput.stdout()
-                        .printf("%-24s %s%n", "", Theme.colorize(kind.get() + " " + spec.get(), t.darkGray()));
-            }
-            if (Files.exists(launcher))
-                CliOutput.stdout()
-                        .printf(
-                                "%-24s %s %s%n",
-                                "", Theme.colorize("→", t.darkGray()), Theme.colorize(launcher.toString(), t.path()));
+            String source = kind.isPresent() && spec.isPresent() && !spec.get().equals(coord)
+                    ? kind.get() + " " + spec.get()
+                    : "";
+            rows.add(List.of(bin, coord, source, Files.exists(launcher) ? launcher.toString() : "(not on PATH)"));
+        }
+        cc.jumpkick.cli.tui.CommandWedge.envelopeStart();
+        for (String line :
+                cc.jumpkick.cli.tui.BoxTable.render("Tools", List.of("Tool", "Coordinates", "Source", "Launcher"), rows)) {
+            CliOutput.out(line);
         }
         return 0;
     }
