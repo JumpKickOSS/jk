@@ -1,3 +1,7 @@
+# Self-host guard (JK-1443): short names resolve from the bundled catalog only,
+# immune to ~/.jk/libs.toml and the downloaded registry mirror.
+catalog = "bundled"
+
 [project]
 name        = "jk-android"
 description = "jk-android: Android packaging plugin worker."

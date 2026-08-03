@@ -161,7 +161,8 @@ public final class JkBuildParser {
         // Workspace roots keep concrete [project] defaults; members may omit fields and inherit.
         boolean workspaceRoot = hasWorkspaceModules(result);
         JkBuild.Project project = parseProject(result, workspaceRoot);
-        LibraryCatalog effective = catalog.withProjectOverrides(parseProjectLibraries(result));
+        LibraryCatalog effective =
+                catalogBase(result, catalog).withProjectOverrides(parseProjectLibraries(result));
         Workspace workspace = parseWorkspace(result, effective);
         JkBuild.Dependencies deps = parseDependencies(result, workspace, effective);
         List<RepositorySpec> repos = parseRepositories(result);
@@ -895,6 +896,27 @@ public final class JkBuildParser {
     }
 
     /** Unknown short-name error, with catalog "did you mean" suggestions when available. */
+    /**
+     * Top-level {@code catalog = "bundled" | "layered"} (default layered). {@code bundled} pins
+     * short-name resolution to the catalog shipped inside this jk build, immune to
+     * {@code ~/.jk/libs.toml} and the downloaded registry mirror — jk's own manifests use it so a
+     * machine-local catalog entry can never repoint self-host dependencies at re-lock. The
+     * manifest's own {@code [libraries]} table still layers on top either way.
+     */
+    private static LibraryCatalog catalogBase(TomlParseResult result, LibraryCatalog fallback) {
+        if (!result.contains("catalog")) return fallback;
+        if (!result.isString("catalog")) {
+            throw new JkBuildParseException("catalog must be a string: \"bundled\" or \"layered\"");
+        }
+        String mode = result.getString("catalog");
+        return switch (mode) {
+            case "bundled" -> LibraryCatalog.bundled();
+            case "layered" -> fallback;
+            default -> throw new JkBuildParseException(
+                    "catalog must be \"bundled\" or \"layered\", got \"" + mode + "\"");
+        };
+    }
+
     private static String unknownLibraryMessage(String displayPath, String name, LibraryCatalog catalog) {
         StringBuilder msg = new StringBuilder(displayPath)
                 .append(" — unknown short name `")

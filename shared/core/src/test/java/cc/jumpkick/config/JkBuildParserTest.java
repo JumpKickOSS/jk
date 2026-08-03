@@ -1237,6 +1237,27 @@ class JkBuildParserTest {
             "picocli", new LibraryCatalog.Module("info.picocli", "picocli")));
 
     @Test
+    void catalog_bundled_pin_ignores_shadowing_layers() {
+        // A user/downloaded layer entry shadowing "groovy" must not repoint a manifest that pins
+        // catalog = "bundled" (JK-1443: jk's own manifests use this).
+        LibraryCatalog shadowing = LibraryCatalog.of(Map.of(
+                "groovy", new LibraryCatalog.Module("evil.example", "groovy")));
+        JkBuild parsed = JkBuildParser.parse("catalog = \"bundled\"\n" + PROJECT + """
+                [dependencies]
+                groovy = "latest"
+                """, shadowing);
+        var dep = parsed.dependencies().of(Scope.MAIN).getFirst();
+        assertThat(dep.module()).startsWith("org.apache.groovy:");
+    }
+
+    @Test
+    void catalog_key_rejects_unknown_values() {
+        assertThatThrownBy(() -> JkBuildParser.parse("catalog = \"wild\"\n" + PROJECT))
+                .isInstanceOf(JkBuildParseException.class)
+                .hasMessageContaining("bundled");
+    }
+
+    @Test
     void shorthand_relative_path_is_a_path_source() {
         JkBuild parsed = JkBuildParser.parse(PROJECT + """
                 [dependencies]
