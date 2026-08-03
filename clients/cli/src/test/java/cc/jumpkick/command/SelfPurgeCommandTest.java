@@ -241,6 +241,22 @@ class SelfPurgeCommandTest {
     }
 
     @Test
+    void dry_run_without_yes_does_not_prompt_and_exits_zero() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Files.createDirectories(cache);
+        Path marker = cache.resolve("dry-run-no-yes-keep");
+        Files.writeString(marker, "keep");
+
+        // No -y and no TTY: a prompt would hit EOF and abort with exit 1.
+        String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--cache", "--dry-run")).isZero());
+        assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
+        assertThat(TestAnsi.strip(out)).doesNotContain("Purge aborted");
+        assertThat(marker).exists();
+        Files.deleteIfExists(marker);
+    }
+
+    @Test
     void displayPath_uses_tilde_under_home() {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path under = home.resolve("cache").resolve("jk");

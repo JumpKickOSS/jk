@@ -119,7 +119,10 @@ public final class SelfPurgeCommand implements CliCommand {
             return Exit.SUCCESS;
         }
 
-        if (!confirm(existing, dirs, selected)) {
+        printPlan(existing, dirs, selected);
+        // Dry run deletes nothing — never gate it behind the destructive prompt (which would
+        // also abort with exit 1 on non-TTY stdin).
+        if (!dryRun && !confirmPrompt()) {
             CommandWedge.printFail("Self", "Purge aborted.");
             return 1;
         }
@@ -356,7 +359,7 @@ public final class SelfPurgeCommand implements CliCommand {
         return true;
     }
 
-    private static boolean confirm(List<PurgeRow> rows, JkDirs dirs, Set<Target> selected) {
+    private static void printPlan(List<PurgeRow> rows, JkDirs dirs, Set<Target> selected) {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
@@ -379,6 +382,9 @@ public final class SelfPurgeCommand implements CliCommand {
         CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
         CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();
+    }
+
+    private static boolean confirmPrompt() {
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
         return Confirm.of(bang + " Purge this JumpKick data?", false).ask();
