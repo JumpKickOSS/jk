@@ -46,7 +46,8 @@ public final class CacheCommand extends GroupCommand {
                 new CacheStorageCommand(),
                 new CacheClearCommand(),
                 new CachePruneCommand(),
-                new CachePurgeCommand());
+                new CachePurgeCommand(),
+                new CacheSearchRedirect());
     }
 
     // --- shared helpers (accessed by Cache*Command classes) ---------------------------
@@ -225,6 +226,12 @@ public final class CacheCommand extends GroupCommand {
         @Override
         public String name() {
             return "storage";
+        }
+
+        /** Hidden pre-split name ({@code jk cache info}) — see docs/aliases.md. */
+        @Override
+        public List<String> aliases() {
+            return List.of("info");
         }
 
         @Override
@@ -619,6 +626,47 @@ public final class CacheCommand extends GroupCommand {
             CliOutput.out("  CAS blobs, repo mirrors, and run logs are kept (see jk repo). The next build re-runs work.");
             return cc.jumpkick.cli.tui.Confirm.of(bang + " Purge the action cache?", false)
                     .ask();
+        }
+    }
+
+    /**
+     * Hidden post-split redirect stub: {@code jk cache search} forwards to {@code jk repo search}
+     * (see docs/aliases.md). A one-line stderr note points at the canonical command; stdout stays
+     * identical to {@code jk repo search}, so piped scripts keep working.
+     */
+    public static final class CacheSearchRedirect implements CliCommand {
+        private final RepoCommand.RepoSearchCommand target = new RepoCommand.RepoSearchCommand();
+
+        @Override
+        public String name() {
+            return "search";
+        }
+
+        @Override
+        public boolean hidden() {
+            return true;
+        }
+
+        @Override
+        public String description() {
+            return "Moved — use jk repo search";
+        }
+
+        @Override
+        public List<Opt> options() {
+            return target.options();
+        }
+
+        @Override
+        public List<cc.jumpkick.model.command.Param> parameters() {
+            return target.parameters();
+        }
+
+        @Override
+        public int run(Invocation in) throws Exception {
+            CliOutput.err(Theme.colorize(
+                    "note: jk cache search moved to jk repo search", Theme.active().dim()));
+            return target.run(in);
         }
     }
 

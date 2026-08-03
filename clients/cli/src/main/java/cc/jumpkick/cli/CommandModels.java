@@ -36,7 +36,7 @@ public final class CommandModels {
         }
         List<SubcommandModel> subs = new ArrayList<>();
         for (CliCommand sub : command.subcommands()) {
-            subs.add(new SubcommandModel(sub.name(), descLines(sub.description()), false));
+            subs.add(new SubcommandModel(sub.name(), descLines(sub.description()), sub.hidden()));
         }
         return new CommandModel(
                 qualifiedName,

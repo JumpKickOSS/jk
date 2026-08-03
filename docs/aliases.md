@@ -46,6 +46,13 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | `library ls`         | `library list`      |
 | `jdk upgrade`        | `jdk update`        |
 | `export pom`         | `export maven`      |
+| `cache info`         | `cache storage`     |
+| `cache search`       | `repo search`       |
+
+`cache info` and `cache search` are pre-split spellings (`jk cache info` / `jk cache search`
+existed in every release before the cache/repo split). `cache info` is a plain alias of
+`cache storage`; `cache search` is a hidden stub that forwards to `jk repo search` — identical
+stdout, plus a one-line `note: … moved to jk repo search` on stderr.
 
 ## Hidden option aliases
 
