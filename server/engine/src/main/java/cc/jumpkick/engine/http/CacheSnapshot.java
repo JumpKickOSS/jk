@@ -40,7 +40,8 @@ public record CacheSnapshot(
 
     /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
-     * exclusive byte accounting as {@code jk cache info}. IO-shaped (a full walk of the CAS), so
+     * exclusive byte accounting as {@code jk cache storage} / {@code jk repo storage}. IO-shaped (a
+     * full walk of the CAS), so
      * callers invoke it per request, never on a hot path. Best-effort: an unreadable section
      * counts as empty.
      */

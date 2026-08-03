@@ -91,6 +91,7 @@ changing the code (and vice versa):
 | `jk history list` | status · Id · Project · Kind · Took · When · Saved · Notes |
 | `jk tasks` | Name · Phase · Description (per module at a workspace root) |
 | `jk jdk list` | (wave 1 — the exemplar) |
+| `jk repo storage` | Element · File Count · Size, plus Total, a spanning utilization row, and a last-pruned footer (hand-rolled on the shared BoxTable chrome) |
 
 Use `cc.jumpkick.cli.tui.BoxTable.render(title, headers, rows)`; it opens the envelope
 via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--no-ansi`.
@@ -102,6 +103,7 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk doctor` | `≡ Doctor` menu chip, then the checklist rows + summary |
 | `jk auth status` | `≡ Auth status` chip, then per-forge status lines |
 | `jk history show` | `≡ Build <id>` chip, then the detail block |
+| `jk cache storage` | `≡ Action Cache Storage` chip, then bullet rows (file count, size, utilization, last pruned) |
 
 ### Hybrid settles (CommandWedge.ok/fail)
 
@@ -114,12 +116,14 @@ via the caller's `CommandWedge.envelopeStart()` and degrades to ASCII under `--n
 | `jk format` (quiet/check) | already wedge-settled (wave 1) |
 | `jk selective prepare` | already wedge-settled |
 | `jk jdk ensure` / `graal` | settles via `JdkRender.available` under the envelope |
+| `jk repo prune` | pipeline console (`Repo` chip); settles with the sweep summary (`Finished sweeping store …`), like `jk cache prune` |
 
 ### Documented exceptions (deliberately plain)
 
 | Command | Why |
 |---------|-----|
 | `jk trust list` | scriptable one-path-per-line contract; agents/paste into shell |
+| `jk repo search` | plain aligned `coordinate  versions` list (formerly `jk cache search`); piped/scripted like `jk trust list` |
 | `jk inspect` / `jk tasks inspect` | scrape-friendly `key: value` blocks for humans and agents |
 | `jk shell` | prints one line then hands the terminal to the spawned shell — no chrome |
 | `jk auth login` | device-flow prompts own the terminal; spinner while waiting, wedge on settle |

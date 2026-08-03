@@ -16,8 +16,8 @@ public final class UsageGroups {
     /**
      * Top-level command groupings for --help. Order within each group is rough lifecycle / workflow
      * order (create → manage → build → distribute → verify), not alphabetical. Any registered
-     * subcommand that doesn't appear here is listed under "Shell integration commands:" — the
-     * leftover bucket today is {@code activate} / {@code deactivate}.
+     * subcommand that doesn't appear here lands in the alphabetical "Other commands:" bucket at the
+     * bottom of the screen — keep these lists current when adding top-level commands.
      */
     public static final List<CommandGroup> COMMAND_GROUPS = List.of(
             new CommandGroup(
@@ -43,7 +43,7 @@ public final class UsageGroups {
                             "audit", "verify")),
             new CommandGroup("Toolchain commands:", List.of("jdk", "tool", "trust", "shell", "activate", "deactivate")),
             new CommandGroup("Interop commands:", List.of("import", "mvn", "gradle", "export", "ide", "bsp")),
-            new CommandGroup("System commands:", List.of("doctor", "cache", "env", "jobs", "engine")));
+            new CommandGroup("System commands:", List.of("doctor", "cache", "repo", "env", "jobs", "engine")));
 
     /**
      * Curated subset of commands shown when the user runs bare {@code jk}. Pipeline: cover the day-to-day

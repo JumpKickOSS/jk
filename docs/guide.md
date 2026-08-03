@@ -1,6 +1,7 @@
 # User guide
 
-jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** (JDK 17+).
+jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** — projects
+can target JDK 17 or newer.
 This guide covers the commands and files you touch every day.
 
 ## Newest versions by default

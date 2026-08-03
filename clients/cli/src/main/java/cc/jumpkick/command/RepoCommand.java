@@ -68,7 +68,7 @@ public final class RepoCommand extends GroupCommand {
             return List.of(
                     cc.jumpkick.cli.CommonOpts.cacheDir(),
                     Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
-                    Opt.value("<size>", "Cap CAS size (e.g. 20G); evicts least-recently-used blobs", "--max-size"));
+                    Opt.value("<size>", "Cap CAS size (e.g. 20G); evict least-recently-used blobs", "--max-size"));
         }
 
         @Override

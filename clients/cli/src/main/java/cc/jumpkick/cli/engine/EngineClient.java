@@ -1977,7 +1977,7 @@ public final class EngineClient {
                                 : jdk.version() + "|" + jdk.vendor().name());
         String hash = cc.jumpkick.util.Hashing.sha256Hex(signature.toString()).substring(0, 16);
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
-        // user (or a future `jk cache info`) finds them all side by side. The engine's file
+        // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
         // version-scoped: VersionStore.prune retires a version's caches with the version, and
         // the sweep below stays within one version so side-by-side installs never thrash
