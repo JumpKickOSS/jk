@@ -21,7 +21,8 @@ import java.util.function.Consumer;
  *   <li>Reload user {@code config.toml} when its mtime changes (best-effort; heap size is not
  *       re-applied to the running JVM).
  *   <li>If wall-clock ≥ 12 h since the last maintenance stamp, run store-feed refresh + templates
- *       freshen + enqueue cache GC + host warmup (AOT/cal).
+ *       freshen + enqueue cache prune / host warmup (AOT/cal). Heap {@code System.gc()} is
+ *       performed only at the end of that workset by the engine (never mid-chore).
  * </ul>
  *
  * <p>Does not sleep 12 h continuously — a suspended laptop still sees a due cycle on the next

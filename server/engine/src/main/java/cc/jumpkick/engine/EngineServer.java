@@ -1849,18 +1849,12 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * After the last in-flight pipeline finishes: drain queued cache prune and enforce journal/metrics
-     * retention (safe — nothing is reading the cache), then full GC toward idle heap only if still
-     * idle. GC is last so prune/journal/metrics temporary garbage is included; a re-check avoids
-     * pausing a concurrent job that started during the chores.
+     * After the last in-flight pipeline finishes: all idle housekeeping, with {@link System#gc()}
+     * strictly last (after prune, journal/metrics retention, metrics harvest, and any host warmup).
      */
     private void maybeIdleBoundary() {
         if (activePipelines.decrementAndGet() != 0) return;
-        drainPendingPrune();
-        pruneJournal();
-        pruneMetrics();
-        kickPendingWarmup();
-        maybeIdleGc();
+        runIdleHousekeeping(/* forceWarmup */ false, /* asyncWarmup */ true);
         // The last in-flight job of a graceful drain just finished — close the listener so run
         // returns and the JVM exits cleanly (assembling the AOT cache), same as a normal stop.
         if (draining) {
@@ -1872,11 +1866,56 @@ public final class EngineServer implements AutoCloseable {
     }
 
     /**
-     * Full GC only when no pipeline is in flight. Used at the idle boundary (after chores) and after
-     * non-pipeline cache maintenance, which deliberately does not join {@link #activePipelines}.
+     * Full GC only when no pipeline is in flight and no idle housekeeping is still running.
+     * Prefer {@link #runIdleHousekeeping} so GC trails the whole workset.
      */
     private void maybeIdleGc() {
-        if (activePipelines.get() == 0) {
+        if (activePipelines.get() != 0 || warmupRunning.get()) return;
+        System.gc();
+    }
+
+    /**
+     * Coordinated idle chores. Order is fixed; {@link System#gc()} is always last when this method
+     * finishes the workset on this thread. When {@code asyncWarmup} is true and warmup is needed,
+     * prune/journal/harvest run here, then a daemon does warmup + trailing GC (so the build
+     * connection is not blocked for multi-minute AOT train).
+     */
+    private void runIdleHousekeeping(boolean forceWarmup, boolean asyncWarmup) {
+        if (shuttingDown) return;
+        if (activePipelines.get() != 0) return;
+        drainPendingPrune();
+        pruneJournal();
+        pruneMetrics();
+        // Wait for coalesced MetricsHarvest so trimmed-mean rewrites finish before heap GC.
+        try {
+            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+        } catch (RuntimeException ignored) {
+        }
+        if (activePipelines.get() != 0) return;
+
+        boolean wantWarmup = forceWarmup || pendingWarmupForce.get() != null || HostWarmup.needsWork();
+        if (wantWarmup && asyncWarmup) {
+            // Ensure a queue entry so kickPendingWarmup has work; trail GC on that thread.
+            pendingWarmupForce.updateAndGet(prev -> {
+                if (forceWarmup) return Boolean.TRUE;
+                if (prev != null) return prev;
+                return Boolean.FALSE;
+            });
+            kickPendingWarmup(/* trailGc */ true);
+            // Do not GC here — warmup thread owns the trailing GC for this workset.
+            return;
+        }
+        if (wantWarmup) {
+            Boolean force = pendingWarmupForce.getAndSet(null);
+            boolean f = forceWarmup || Boolean.TRUE.equals(force);
+            try {
+                HostWarmup.runIdle(f, log);
+            } catch (RuntimeException e) {
+                log.accept("jk engine: idle host warmup failed: " + e.getMessage());
+            }
+        }
+        // Trailing heap GC after the entire idle workset (prune, harvest, warmup).
+        if (activePipelines.get() == 0 && !warmupRunning.get()) {
             System.gc();
         }
     }
@@ -1961,12 +2000,15 @@ public final class EngineServer implements AutoCloseable {
             Path cache = cc.jumpkick.util.JkDirs.cache();
             // compareAndSet: already queued → leave the existing entry alone (never double-queue).
             pendingPruneCache.compareAndSet(null, cache);
-            if (activePipelines.get() == 0) {
-                drainPendingPrune();
-            }
         }
-        // Same 12 h cadence: re-check worker AOT + calibration if missing.
-        scheduleHostWarmupIfNeeded(false);
+        // Full 12 h workset when idle: prune + harvest wait + warmup, System.gc() last.
+        // If a pipeline is running, only queue; maybeIdleBoundary drains on finish.
+        if (activePipelines.get() == 0) {
+            pendingWarmupForce.compareAndSet(null, Boolean.FALSE);
+            runIdleHousekeeping(/* forceWarmup */ false, /* asyncWarmup */ true);
+        } else {
+            scheduleHostWarmupIfNeeded(false);
+        }
     }
 
     /**
@@ -4349,14 +4391,17 @@ public final class EngineServer implements AutoCloseable {
             if (prev == null) return force;
             return prev || force;
         });
-        kickPendingWarmup();
+        if (activePipelines.get() == 0) {
+            kickPendingWarmup(/* trailGc */ true);
+        }
     }
 
     /**
-     * Drain queued host warmup on a daemon thread when no pipeline is in flight (start path, idle
-     * boundary, or 12 h feed/GC tick).
+     * Drain queued host warmup on a daemon thread when no pipeline is in flight. When {@code
+     * trailGc} is true, {@link System#gc()} runs only after warmup (and any nested chores) finish —
+     * never mid-workset.
      */
-    private void kickPendingWarmup() {
+    private void kickPendingWarmup(boolean trailGc) {
         if (shuttingDown || draining) return;
         if (activePipelines.get() != 0) return;
         Boolean force = pendingWarmupForce.getAndSet(null);
@@ -4373,13 +4418,23 @@ public final class EngineServer implements AutoCloseable {
                                     prev -> prev == null ? force : (prev || force));
                             return;
                         }
+                        // Re-drain prune that may have been queued while we waited to start.
+                        drainPendingPrune();
+                        try {
+                            cc.jumpkick.builds.MetricsHarvest.get().awaitIdle(30_000L);
+                        } catch (RuntimeException ignored) {
+                        }
                         HostWarmup.runIdle(force, log);
                     } catch (RuntimeException e) {
                         log.accept("jk engine: idle host warmup failed: " + e.getMessage());
                     } finally {
                         warmupRunning.set(false);
+                        // Trailing GC after the full warmup workset (feeds, templates, AOT, cal).
+                        if (trailGc && activePipelines.get() == 0 && pendingWarmupForce.get() == null) {
+                            System.gc();
+                        }
                         if (pendingWarmupForce.get() != null && activePipelines.get() == 0) {
-                            kickPendingWarmup();
+                            kickPendingWarmup(trailGc);
                         }
                     }
                 },

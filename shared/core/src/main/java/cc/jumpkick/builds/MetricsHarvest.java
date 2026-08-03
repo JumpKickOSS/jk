@@ -71,6 +71,27 @@ public final class MetricsHarvest {
         t.start();
     }
 
+    /** True while a harvest pass (or coalesced re-run) is in flight. */
+    public boolean busy() {
+        return running.get() || rerun.get();
+    }
+
+    /**
+     * Block until harvest is idle or {@code timeoutMs} elapses. Used so idle-boundary {@code
+     * System.gc()} trails harvest allocations.
+     */
+    public void awaitIdle(long timeoutMs) {
+        long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
+        while (busy() && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
     private void loop() {
         try {
             do {

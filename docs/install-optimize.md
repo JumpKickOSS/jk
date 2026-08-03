@@ -45,6 +45,9 @@ Network errors are **fail-fast and quiet** (no retries). The next minute/12 h 
 **Not** trained: test-runner AOT (suite classpath includes project classes; caches are not reusable).
 
 Work runs on a **daemon idle thread** when `activePipelines == 0` so client builds are not blocked.
+Within a maintenance workset, **`System.gc()` is always last** — after prune, journal/metrics
+retention, metrics harvest, feeds/templates, AOT train, and calibration — so the heap is not
+shrunk mid-chore.
 
 ## Engine first start (related)
 
