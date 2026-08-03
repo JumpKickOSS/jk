@@ -39,16 +39,15 @@ public final class EnvCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(
-                Opt.flag("Show file values shadowed by the shell.", "-v", "--verbose"),
-                Opt.flag("Include all process environment keys (not only .env and JK_*).", "--all"));
+        // Shadowed-file values ride the global -v/--verbose (a local flag would collide).
+        return List.of(Opt.flag("Include all process environment keys (not only .env and JK_*).", "--all"));
     }
 
     @Override
     public int run(Invocation in) {
         GlobalOptions global = GlobalOptions.from(in);
         Path dir = global.workingDir().toAbsolutePath().normalize();
-        boolean verbose = in.isSet("verbose") || global.verbose;
+        boolean verbose = global.verbose;
         boolean all = in.isSet("all");
         boolean json = global.outputIsJson();
 
