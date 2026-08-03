@@ -422,8 +422,8 @@ class EngineServerTest {
                     group   = "com.example"
                     name    = "app"
                     version = "1.0.0"
-                    jdk     = 21
-                    java    = 21
+                    jdk     = 25
+                    java    = 25
 
                     [dependencies]
                     leaf = { group = "com.foo", name = "leaf", version = "1.0" }
@@ -638,7 +638,7 @@ class EngineServerTest {
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
-                java    = 21
+                java    = 25
                 """);
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
@@ -702,7 +702,7 @@ class EngineServerTest {
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
-                java    = 21
+                java    = 25
                 """);
         Path src = project.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());

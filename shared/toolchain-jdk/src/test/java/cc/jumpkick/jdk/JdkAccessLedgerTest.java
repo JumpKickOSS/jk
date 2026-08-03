@@ -13,87 +13,106 @@ import org.junit.jupiter.api.io.TempDir;
 class JdkAccessLedgerTest {
 
     @Test
-    void touch_appends_a_journal_line(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve(".access.log");
+    void touch_upserts_one_line_per_java_home(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
+        Path home = tempDir.resolve("temurin-21.0.5").toAbsolutePath().normalize();
         JdkAccessLedger ledger = new JdkAccessLedger(file);
 
-        ledger.touch("temurin-21.0.5", "resolve");
-        ledger.touch("temurin-21.0.5", "resolve");
+        ledger.touch(home, "21.0.5", "Eclipse");
+        ledger.touch(home, "21.0.5", "Eclipse");
 
         String body = Files.readString(file, StandardCharsets.UTF_8);
-        assertThat(body.split("\n")).hasSize(2);
-        assertThat(body).contains("\tresolve\ttemurin-21.0.5");
+        String[] lines = body.split("\n");
+        assertThat(lines).filteredOn(l -> !l.isEmpty()).hasSize(1);
+        JdkAccessLedger.Entry e = JdkAccessLedger.parseLine(lines[0]);
+        assertThat(e).isNotNull();
+        assertThat(e.accessCount()).isEqualTo(2);
+        assertThat(e.version()).isEqualTo("21.0.5");
+        assertThat(e.vendor()).isEqualTo("Eclipse");
+        assertThat(e.javaHome().toAbsolutePath().normalize()).isEqualTo(home);
     }
 
     @Test
-    void latest_by_identifier_aggregates_events(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve(".access.log");
-        // Hand-stitch the journal so we can control the timestamps.
-        Files.writeString(file, """
-                100\tinstall\ttemurin-21.0.5
-                200\tresolve\ttemurin-21.0.5
-                300\tresolve\ttemurin-21.0.5
-                150\tinstall\tcorretto-25.0.3
-                """);
+    void three_jdks_means_three_lines(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
         JdkAccessLedger ledger = new JdkAccessLedger(file);
+        Path a = tempDir.resolve("a").toAbsolutePath().normalize();
+        Path b = tempDir.resolve("b").toAbsolutePath().normalize();
+        Path c = tempDir.resolve("c").toAbsolutePath().normalize();
 
-        var map = ledger.latestByIdentifier();
+        ledger.touch(a, "21.0.5", "Eclipse");
+        ledger.touch(b, "25.0.1", "Amazon");
+        ledger.touch(c, "17.0.13", "Azul");
+        ledger.touch(a, "21.0.5", "Eclipse"); // bump only a
 
-        assertThat(map.get("temurin-21.0.5").millis()).isEqualTo(300L);
-        assertThat(map.get("temurin-21.0.5").event()).isEqualTo("resolve");
-        assertThat(map.get("temurin-21.0.5").count()).isEqualTo(3);
-        assertThat(map.get("corretto-25.0.3").millis()).isEqualTo(150L);
-        assertThat(map.get("corretto-25.0.3").count()).isEqualTo(1);
+        var map = ledger.byJavaHome();
+        assertThat(map).hasSize(3);
+        assertThat(map.get(a.toString()).accessCount()).isEqualTo(2);
+        assertThat(map.get(b.toString()).accessCount()).isEqualTo(1);
+        assertThat(map.get(c.toString()).accessCount()).isEqualTo(1);
+
+        String body = Files.readString(file, StandardCharsets.UTF_8);
+        assertThat(body.lines().filter(l -> !l.isEmpty()).count()).isEqualTo(3);
     }
 
     @Test
-    void most_recent_first_orders_by_latest_event(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve(".access.log");
-        Files.writeString(file, """
-                100\tresolve\told
-                500\tresolve\tnew
-                300\tresolve\tmedium
-                """);
-        JdkAccessLedger ledger = new JdkAccessLedger(file);
+    void most_recent_first_orders_by_timestamp(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
+        Path old = tempDir.resolve("old").toAbsolutePath().normalize();
+        Path mid = tempDir.resolve("mid").toAbsolutePath().normalize();
+        Path neu = tempDir.resolve("new").toAbsolutePath().normalize();
+        Files.writeString(
+                file,
+                """
+                100|1|17.0.1|Eclipse|%s
+                500|2|25.0.1|Amazon|%s
+                300|1|21.0.5|Azul|%s
+                """
+                        .formatted(old, neu, mid),
+                StandardCharsets.UTF_8);
 
-        var ordered = ledger.mostRecentFirst();
-        assertThat(ordered).extracting(JdkAccessLedger.Entry::identifier).containsExactly("new", "medium", "old");
+        var ordered = new JdkAccessLedger(file).mostRecentFirst();
+        assertThat(ordered)
+                .extracting(e -> e.javaHome().getFileName().toString())
+                .containsExactly("new", "mid", "old");
+    }
+
+    @Test
+    void parse_line_accepts_psv(@TempDir Path tempDir) {
+        Path home = tempDir.resolve("home").toAbsolutePath().normalize();
+        String line = "1700000000000|4|21.0.5|Eclipse|" + home;
+        JdkAccessLedger.Entry e = JdkAccessLedger.parseLine(line);
+        assertThat(e).isNotNull();
+        assertThat(e.timestampMillis()).isEqualTo(1_700_000_000_000L);
+        assertThat(e.accessCount()).isEqualTo(4);
+        assertThat(e.version()).isEqualTo("21.0.5");
+        assertThat(e.vendor()).isEqualTo("Eclipse");
+        assertThat(e.javaHome().toAbsolutePath().normalize()).isEqualTo(home);
     }
 
     @Test
     void touch_is_silent_on_io_failure(@TempDir Path tempDir) {
-        // Point at a path inside a regular file → mkdir fails → touch
-        // silently swallows the error. Test asserts the call returns
-        // without throwing.
         Path bogus = tempDir.resolve("notADir").resolve("nested").resolve("file");
         try {
             Files.writeString(tempDir.resolve("notADir"), "blocker");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        new JdkAccessLedger(bogus).touch("foo", "resolve");
+        new JdkAccessLedger(bogus).touch(tempDir.resolve("jdk"), "21", "Eclipse");
         // No assertion — just "didn't throw."
     }
 
     @Test
-    void compact_rewrites_above_threshold(@TempDir Path tempDir) throws IOException {
-        Path file = tempDir.resolve(".access.log");
-        JdkAccessLedger ledger = new JdkAccessLedger(file);
-        // Generate > 1 MiB of duplicate touches against a handful of ids.
-        StringBuilder big = new StringBuilder();
-        for (int i = 0; i < 30_000; i++) {
-            big.append(i).append("\tresolve\ttemurin-21.0.5\n");
-            big.append(i).append("\tresolve\tcorretto-25.0.3\n");
-        }
-        Files.writeString(file, big.toString());
-        assertThat(Files.size(file)).isGreaterThan(1L * 1024 * 1024);
+    void touch_hit_uses_display_vendor(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve(".jk-access.log");
+        Path home = tempDir.resolve("jdk").toAbsolutePath().normalize();
+        JdkHit hit = new JdkHit(home, "25.0.3", JdkVendor.TEMURIN, "jk");
+        new JdkAccessLedger(file).touch(hit);
 
-        long after = ledger.compactIfLarge();
-
-        assertThat(after).isLessThan(1L * 1024 * 1024);
-        // Compacted body has exactly one line per identifier.
-        assertThat(Files.readString(file).split("\n"))
-                .filteredOn(line -> !line.isEmpty())
-                .hasSize(2);
+        JdkAccessLedger.Entry e = new JdkAccessLedger(file).byJavaHome().get(home.toString());
+        assertThat(e).isNotNull();
+        assertThat(e.version()).isEqualTo("25.0.3");
+        assertThat(e.vendor()).isEqualTo(JdkVendor.TEMURIN.displayName());
+        assertThat(e.accessCount()).isEqualTo(1);
     }
 }

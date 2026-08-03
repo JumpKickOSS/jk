@@ -8,6 +8,7 @@ import cc.jumpkick.plugin.Plugin;
 import cc.jumpkick.plugin.PluginManifest;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /** JK-1413: two plugins on one worker classpath must be selectable by protocol prefix. */
@@ -23,6 +24,12 @@ class PluginMainSelectTest {
     private final Plugin grails = new Fake(new PluginManifest("jk-grails", "##JKGR:"));
     private final Plugin boot = new Fake(new PluginManifest("jk-spring-boot", "##JKSB:"));
 
+    /**
+     * Drop engine-supplied selectors too. Under {@code jk test}/{@code jk build} the forked test
+     * JVM may carry {@code -Djk.plugin.prefix}/{@code .class} from the worker launcher; those
+     * would make {@link PluginMain#select} filter against this test's Fake list and return null.
+     */
+    @BeforeEach
     @AfterEach
     void clearProps() {
         System.clearProperty("jk.plugin.prefix");

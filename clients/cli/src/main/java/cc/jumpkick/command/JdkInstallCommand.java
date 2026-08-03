@@ -258,7 +258,7 @@ public final class JdkInstallCommand implements CliCommand {
                     InstalledJdk installed = ctx.require(INSTALLED);
                     ctx.label("set " + installed.identifier() + " as default");
                     GlobalDefaultJdk.current().set(installed);
-                    cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed.identifier(), "default-set");
+                    cc.jumpkick.jdk.JdkAccessLedger.atDefaultPath().touch(installed);
                     CliOutput.out();
                     CliOutput.out(Theme.colorize("➜", Theme.active().brightGreen())
                             + " "

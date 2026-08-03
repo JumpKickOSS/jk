@@ -36,8 +36,8 @@ class BuildGraphTest {
                 group   = "com.example"
                 name    = "app"
                 version = "1.0.0"
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """);
 
         BuildGraph.Result r = resolve(tmp);
@@ -53,8 +53,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core", "app"]
@@ -65,8 +65,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         // app depends on core (sibling), so core builds first.
         Files.createDirectories(tmp.resolve("app"));
@@ -75,8 +75,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 core = { group = "com.example", name = "core", version = "1.0.0" }
@@ -97,8 +97,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core"]
@@ -110,8 +110,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         BuildGraph.Result r = resolve(tmp);
@@ -128,8 +128,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core"]
@@ -144,8 +144,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         BuildGraph.Result r = resolve(tmp);
@@ -161,8 +161,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a", "b"]
@@ -173,8 +173,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "a"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 b = { group = "com.example", name = "b", version = "1.0.0" }
@@ -185,8 +185,8 @@ class BuildGraphTest {
                 group = "com.example"
                 name  = "b"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 a = { group = "com.example", name = "a", version = "1.0.0" }

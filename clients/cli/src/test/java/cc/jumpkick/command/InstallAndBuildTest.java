@@ -60,7 +60,7 @@ class InstallAndBuildTest {
                 group = "com.example"
                 name = "app"
                 version = "0.1.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 greeter = { sha256 = "%s", group = "lib", version = "1.0.0" }
@@ -107,7 +107,7 @@ class InstallAndBuildTest {
                 group = "com.example"
                 name = "proj"
                 version = "0.1.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 mylib = { sha256 = "%s", group = "lib", version = "1.0.0" }
@@ -160,7 +160,7 @@ class InstallAndBuildTest {
                 group = "com.example"
                 name = "proj"
                 version = "0.1.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 util = { sha256 = "%s", group = "lib", version = "1.0.0" }

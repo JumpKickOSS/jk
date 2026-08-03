@@ -272,7 +272,7 @@ public final class OutdatedCommand implements CliCommand {
         var sb = new StringBuilder(bar);
         for (int i = 0; i < headers.size(); i++) {
             sb.append(" ")
-                    .append(padRight(headers.get(i), widths[i]))
+                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers.get(i), widths[i])))
                     .append(" ")
                     .append(bar);
         }

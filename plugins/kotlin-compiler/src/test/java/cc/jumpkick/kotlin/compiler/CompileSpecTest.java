@@ -35,7 +35,7 @@ class CompileSpecTest {
                                 Path.of("/tmp/work"),
                                 "snapshotDir",
                                 Path.of("/tmp/snaps")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .configString("moduleName", "main")
                         .configString("languageVersion", "2.4")
                         .configString("apiVersion", "2.4")
@@ -51,7 +51,7 @@ class CompileSpecTest {
         assertThat(s.workingDir).isEqualTo(new File("/tmp/work"));
         assertThat(s.snapshotDir).isEqualTo(new File("/tmp/snaps"));
         assertThat(s.incremental()).isTrue();
-        assertThat(s.jvmTarget).isEqualTo("21");
+        assertThat(s.jvmTarget).isEqualTo("25");
         assertThat(s.moduleName).isEqualTo("main");
         assertThat(s.languageVersion).isEqualTo("2.4");
         assertThat(s.apiVersion).isEqualTo("2.4");
@@ -68,7 +68,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                         .layout(Map.of("classesDir", Path.of("/tmp/out")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .source(Path.of("/src/A.kt")));
         assertThat(s.incremental()).isFalse();
     }
@@ -80,7 +80,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                         .layout(Map.of("classesDir", Path.of("/tmp/with space/out")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .source(Path.of("/tmp/with space/A.kt")));
         assertThat(s.outputDir).isEqualTo(new File("/tmp/with space/out"));
         assertThat(s.sources).containsExactly(new File("/tmp/with space/A.kt"));
@@ -92,7 +92,7 @@ class CompileSpecTest {
                         dir,
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                                .configString("jvmTarget", "21")
+                                .configString("jvmTarget", "25")
                                 .source(Path.of("/a.kt"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("classesDir");
@@ -102,7 +102,7 @@ class CompileSpecTest {
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                                 .layout(Map.of("classesDir", Path.of("/o")))
-                                .configString("jvmTarget", "21")))
+                                .configString("jvmTarget", "25")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("source");
     }
@@ -114,7 +114,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                         .layout(Map.of("classesDir", Path.of("/o"), "workdir", Path.of("/w")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .configString("moduleName", "main")
                         .configString("languageVersion", "2.4")
                         .source(Path.of("/a.kt"))
@@ -126,7 +126,7 @@ class CompileSpecTest {
         List<String> args = KotlinCompiler.buildArgs(s);
 
         assertThat(args).doesNotContain("-d"); // destination is a builder parameter, never a raw arg
-        assertThat(args).containsSequence("-jvm-target", "21");
+        assertThat(args).containsSequence("-jvm-target", "25");
         assertThat(args).containsSequence("-module-name", "main");
         assertThat(args).containsSequence("-language-version", "2.4");
         assertThat(args).containsSequence("-classpath", "/libs/x.jar");
@@ -142,7 +142,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
                         .layout(Map.of("classesDir", Path.of("/o")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .source(Path.of("/a.kt")));
         assertThat(KotlinCompiler.buildArgs(s)).doesNotContain("-Xuse-fir-ic");
     }

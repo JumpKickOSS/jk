@@ -13,9 +13,9 @@ jk-plugin-sdk.workspace = true
 # Keep in sync with cc.jumpkick.model.ToolDefaults.QUARKUS_PLATFORM_VERSION.
 # Exact pin: bootstrap SPI must match the jars the engine puts on the forked worker CP.
 [provided-dependencies]
-quarkus-bootstrap-core           = { group = "io.quarkus", name = "quarkus-bootstrap-core",           version = "=3.38.0" }
-quarkus-bootstrap-maven-resolver = { group = "io.quarkus", name = "quarkus-bootstrap-maven-resolver", version = "=3.38.0" }
-quarkus-bootstrap-app-model      = { group = "io.quarkus", name = "quarkus-bootstrap-app-model",      version = "=3.38.0" }
+quarkus-bootstrap-core           = "=3.38.0"
+quarkus-bootstrap-maven-resolver = "=3.38.0"
+quarkus-bootstrap-app-model      = "=3.38.0"
 
 # Gradle's jk.java-conventions injects these into every module's test scope; jk.toml has no such
 # implicit convention, so each manifest states them.

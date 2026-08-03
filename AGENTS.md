@@ -17,6 +17,38 @@ Product docs: [README.md](README.md), [docs/guide.md](docs/guide.md), [docs/arch
 - Small mental model: declarative `jk.toml`, no build-script programming language.
 - Adoption path: run existing Maven/Gradle builds; import/export when ready.
 - Client/engine split: thin native client, heavy work in a capped engine process.
+- **Newest stable by default** — examples, scaffolds, and fixtures prefer the **latest stable**
+  of libraries, language features, and platforms unless a test/scenario explicitly needs an
+  older line. Use `jk update` to re-lock within declared ranges; do not freeze mid-LTS
+  library stacks out of habit.
+
+## `java =` vs `jdk =` (toolchain philosophy)
+
+JumpKick **requires JDK 25+ to run** (`jk` installs it if needed). Once `jk` works, the
+user already has a modern JDK. Prefer **language level**, not extra JDK downloads.
+
+| Field | Meaning | Prefer |
+|-------|---------|--------|
+| **`java = N`** | Language + bytecode target (`--release N`) | **Yes** — default 25; 17/21 fine (host JDK 25 cross-compiles) |
+| **`jdk = …`** | Which JDK install to use / provision | **Rare** — only when the user truly needs that runtime |
+
+Rules of thumb:
+
+- **`java = 25`** — default; host LTS, no extra install.
+- **`java = 21` / `17`** — still build with the host JDK 25, emit older bytecode. **Do not**
+  write `jdk = 21` or `jdk = 17` for that; it forces a download of an obsolete runtime.
+- **`java = 26`** (newer than LTS) — may provision e.g. `temurin-26` so the toolchain can
+  compile/run that level.
+- **`jdk = "temurin-…"` / vendor pin** — only when deliberately selecting a specific install
+  (Graal, Corretto, exact major). Not the default teaching path.
+
+**Examples and docs:** use `java = 25` (or omit if inherited). Avoid `jdk = 17` / `jdk = 21`
+almost always; avoid casual `jdk = 25` in samples so users do not learn to pin runtimes.
+Containers / packaging can ship a matching JRE — stop teaching legacy JDK pins.
+
+**Tests:** `jdk = 17` / `21` only in fixtures that **must** exercise provisioning / first-run
+pin behavior (`JdkFloorTest`, `FirstBuildJdkTest`, …). Elsewhere prefer `java = N` alone
+(or `java = 25` + no `jdk` line).
 
 ## Anti-goals
 

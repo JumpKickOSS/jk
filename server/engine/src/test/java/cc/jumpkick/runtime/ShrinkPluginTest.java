@@ -39,7 +39,7 @@ class ShrinkPluginTest {
                 name    = "slim"
                 group   = "com.example"
                 version = "1.0.0"
-                java    = 17
+                java    = 25
                 layout  = "simple"
 
                 [application]

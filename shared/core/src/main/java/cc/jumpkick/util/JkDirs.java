@@ -90,11 +90,6 @@ public final class JkDirs {
         return current().storeDir();
     }
 
-    /** Pre-split location of the fetched set; see {@link #legacyStoreDir()}. */
-    public static Path legacyStore() {
-        return current().legacyStoreDir();
-    }
-
     public static Path state() {
         return current().stateDir();
     }
@@ -179,15 +174,6 @@ public final class JkDirs {
      */
     public Path storeDir() {
         return resolve("JK_STORE_DIR", "store", () -> dataDir().resolve("store"));
-    }
-
-    /**
-     * The pre-split location of the fetched set used as a read-only fallback: same as
-     * {@link #cacheDir()}. Installs that predate the store split may still have blobs under
-     * cache.
-     */
-    public Path legacyStoreDir() {
-        return cacheDir();
     }
 
     public Path stateDir() {

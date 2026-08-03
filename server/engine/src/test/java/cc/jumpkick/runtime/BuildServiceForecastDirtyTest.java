@@ -63,8 +63,8 @@ class BuildServiceForecastDirtyTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a", "b"]
@@ -77,8 +77,8 @@ class BuildServiceForecastDirtyTest {
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
-                    jdk = 21
-                    java = 21
+                    jdk = 25
+                    java = 25
                     """.formatted(m));
         }
 
@@ -103,8 +103,8 @@ class BuildServiceForecastDirtyTest {
                 group = "t"
                 name = "only"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         BuildGraph.Result graph =

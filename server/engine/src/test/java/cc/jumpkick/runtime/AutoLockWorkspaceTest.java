@@ -73,8 +73,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["core", "app"]
@@ -86,8 +86,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "core"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 util = { group = "com.acme", name = "util", version = "1.0.0" }
@@ -98,8 +98,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 extra = { group = "com.acme", name = "extra", version = "1.0.0" }
@@ -148,8 +148,8 @@ class AutoLockWorkspaceTest {
                 group = "com.example"
                 name  = "solo"
                 version = "2.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         // …while the stale on-disk lock still pins 1.0.0 identity. Auto-relock fires exactly

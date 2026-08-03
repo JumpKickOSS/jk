@@ -21,8 +21,8 @@ class CancelCommandScopeTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["app"]
@@ -33,8 +33,8 @@ class CancelCommandScopeTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         assertThat(CancelCommand.cancelScope(ws.resolve("app")))
@@ -48,8 +48,8 @@ class CancelCommandScopeTest {
                 group = "com.example"
                 name  = "solo"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
 
         assertThat(CancelCommand.cancelScope(dir))

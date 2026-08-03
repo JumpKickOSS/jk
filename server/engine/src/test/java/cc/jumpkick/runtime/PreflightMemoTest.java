@@ -201,8 +201,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "a"
                 version = "0.2.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         assertThat(PreflightMemo.tryLoadGraph(tmp)).isEmpty();
     }
@@ -234,8 +234,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a"]
@@ -286,8 +286,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "9.9.9"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         assertThat(PreflightMemo.tryLoadShape(tmp, mod, false)).isEmpty();
     }
@@ -332,16 +332,16 @@ class PreflightMemoTest {
                 group = "t"
                 name = "a"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         Files.writeString(b.resolve("jk.toml"), """
                 [project]
                 group = "t"
                 name = "b"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         var shapeA = new PreflightMemo.PipelineShape(11, 0, List.of());
         var shapeB = new PreflightMemo.PipelineShape(22, 0, List.of());
@@ -438,8 +438,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 layout = "simple"
                 """);
         Files.writeString(dir.resolve("jk-lock.toml"), """
@@ -470,8 +470,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "app"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         Path src = dir.resolve("src/main/java");
         Files.createDirectories(src);
@@ -489,8 +489,8 @@ class PreflightMemoTest {
                 group = "t"
                 name = "ws"
                 version = "0.1.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [workspace]
                 modules = ["a", "b"]
@@ -507,8 +507,8 @@ class PreflightMemoTest {
                     group = "t"
                     name = "%s"
                     version = "0.1.0"
-                    jdk = 21
-                    java = 21
+                    jdk = 25
+                    java = 25
                     """.formatted(m));
             Files.writeString(md.resolve("src/main/java/M.java"), "class M {}\n");
             Files.writeString(md.resolve("jk-lock.toml"), """

@@ -18,7 +18,7 @@ class TomlScanTest {
                 [project]
                 name     = "widget"
                 jdk      = "corretto-25"   # trailing comment
-                java     = 21
+                java     = 25
 
                 [native]
                 always = true
@@ -28,7 +28,7 @@ class TomlScanTest {
                 """);
         TomlScan scan = TomlScan.scan(toml, "project.jdk", "project.java", "native.graal");
         assertThat(scan.get("project.jdk")).isEqualTo("corretto-25");
-        assertThat(scan.getInt("project.java", 0)).isEqualTo(21);
+        assertThat(scan.getInt("project.java", 0)).isEqualTo(25);
         assertThat(scan.get("native.graal")).isNull();
         assertThat(scan.hasSection("native")).isTrue();
         assertThat(scan.hasSection("spring-boot")).isFalse();

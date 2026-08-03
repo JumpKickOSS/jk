@@ -109,7 +109,7 @@ class EffortWeightsTest {
                 group = "t"
                 name = "g"
                 version = "0.1.0"
-                jdk = 21
+                jdk = 25
                 groovy = "5.0.4"
                 layout = "simple"
                 """);

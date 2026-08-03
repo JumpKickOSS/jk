@@ -26,7 +26,7 @@ class BuildPipelinesKotlinStepTest {
 
     @Test
     void explicit_java_only(@TempDir Path dir) throws Exception {
-        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=21\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=25\n");
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-kotlin");
     }
 
@@ -82,7 +82,7 @@ class BuildPipelinesKotlinStepTest {
     @Test
     void explicit_java_ignores_kotlin_sources(@TempDir Path dir) throws Exception {
         // Explicit opt-in wins — stray .kt is not auto-detected when java is declared.
-        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=21\n");
+        writeManifest(dir, "group=\"com.example\"\nname=\"j\"\nversion=\"0.1.0\"\njava=25\n");
         Files.createDirectories(dir.resolve("src/main/kotlin"));
         assertThat(stepNames(dir)).contains("compile-java").doesNotContain("compile-kotlin");
     }

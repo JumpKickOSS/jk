@@ -119,7 +119,7 @@ class PublishablePomTest {
     @Test
     void project_description_is_emitted_when_metadata_omits_it() {
         JkBuild.Project p = JkBuild.Project.builder("com.example", "widget", "1.0.0")
-                .jdkMajor(21)
+                .jdkMajor(25)
                 .java(21)
                 .description("A widget from jk.toml.")
                 .build();
@@ -131,7 +131,7 @@ class PublishablePomTest {
     @Test
     void metadata_description_overrides_project_description() {
         JkBuild.Project p = JkBuild.Project.builder("com.example", "widget", "1.0.0")
-                .jdkMajor(21)
+                .jdkMajor(25)
                 .java(21)
                 .description("from jk.toml")
                 .build();

@@ -124,7 +124,7 @@ public final class GradleImporter {
     private static final Pattern PLATFORM_ACCESSOR =
             Pattern.compile("platform\\s*\\(\\s*(" + CATALOG_ACCESSOR.pattern() + ")\\s*\\)");
 
-    // java { sourceCompatibility = JavaVersion.VERSION_21 }
+    // java { sourceCompatibility = JavaVersion.VERSION_25 }
     private static final Pattern JAVA_VERSION_TOKEN =
             Pattern.compile("JavaVersion\\.VERSION_([0-9_]+)|JavaLanguageVersion\\.of\\(\\s*([0-9]+)\\s*\\)"
                     + "|sourceCompatibility\\s*[=]?\\s*['\"]?([0-9.]+)['\"]?"

@@ -11,7 +11,7 @@ main     = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-apksig        = { group = "com.android.tools.build", name = "apksig", version = "latest" }
+apksig                  = "latest"
 asm                     = "latest"
 
 [test-dependencies]

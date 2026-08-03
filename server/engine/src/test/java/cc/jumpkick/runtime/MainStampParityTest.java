@@ -28,8 +28,8 @@ class MainStampParityTest {
                 group = "com.example"
                 name  = "mixed"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 """);
         return BuildLayout.of(dir, JkBuildParser.parse(dir.resolve("jk.toml")));
     }

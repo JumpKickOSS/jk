@@ -27,6 +27,19 @@ class BoxTableRenderTest {
     }
 
     @Test
+    void header_cells_are_italic_when_ansi() {
+        if (!cc.jumpkick.cli.theme.Theme.active().isAnsi()) return;
+        String cell = BoxTable.headerCell("Name");
+        assertThat(cell).isEqualTo(cc.jumpkick.cli.theme.Theme.colorize(
+                "Name", org.jline.utils.AttributedStyle.DEFAULT.italic()));
+        // Full table: header row (index 2) carries italic; body does not restyle plain cells.
+        List<String> out = BoxTable.render("T", List.of("Name"), List.of(List.of("alpha")));
+        assertThat(out.get(2)).contains(BoxTable.headerCell("Name"));
+        assertThat(out.get(4)).contains("alpha");
+        assertThat(out.get(4)).doesNotContain(BoxTable.headerCell("alpha"));
+    }
+
+    @Test
     void pads_short_rows_and_truncates_long_ones() {
         List<String> out =
                 BoxTable.render("T", List.of("A", "B"), List.of(List.of("only-a"), List.of("x", "y", "ignored")));

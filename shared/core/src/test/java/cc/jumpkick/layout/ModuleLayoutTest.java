@@ -73,8 +73,8 @@ class ModuleLayoutTest {
                 group = "t"
                 name = "app"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 layout = "%s"
                 """.formatted(layout));
     }

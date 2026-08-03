@@ -22,22 +22,22 @@ class JkBuildRendererTest {
     @Test
     void renders_a_minimal_project_block() {
         JkBuild model =
-                new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 21), JkBuild.Dependencies.empty());
+                new JkBuild(new JkBuild.Project("com.example", "widget", "1.0.0", 25), JkBuild.Dependencies.empty());
         String out = JkBuildRenderer.render(model);
         assertThat(out).isEqualTo("""
                 [project]
                 group    = "com.example"
                 name     = "widget"
                 version  = "1.0.0"
-                jdk      = "21"
-                java     = 21
+                jdk      = "25"
+                java     = 25
                 """);
     }
 
     @Test
     void renders_application_and_native_blocks_when_set() {
         JkBuild model = JkBuild.builder(JkBuild.Project.builder("com.example", "widget", "1.0.0")
-                        .jdkMajor(21)
+                        .jdkMajor(25)
                         .kotlin(VersionSelector.parseFloating("=2.3.21"))
                         .build())
                 .application(new JkBuild.Application("com.example.App", true))
@@ -55,8 +55,8 @@ class JkBuildRendererTest {
     void renders_description_when_set() {
         JkBuild model = new JkBuild(
                 JkBuild.Project.builder("com.example", "widget", "1.0.0")
-                        .jdkMajor(21)
-                        .java(21)
+                        .jdkMajor(25)
+                        .java(25)
                         .description("A tiny widget library.")
                         .build(),
                 JkBuild.Dependencies.empty());
@@ -70,8 +70,8 @@ class JkBuildRendererTest {
     @Test
     void m2install_round_trips() {
         JkBuild model = JkBuild.of(JkBuild.Project.builder("com.example", "widget", "1.0.0")
-                .jdkMajor(21)
-                .java(21)
+                .jdkMajor(25)
+                .java(25)
                 .m2install(true)
                 .build());
         String out = JkBuildRenderer.render(model);
@@ -85,8 +85,8 @@ class JkBuildRendererTest {
     void application_presence_alone_drives_is_application() {
         // [application] declared (even without main) → isApplication() true.
         JkBuild withApplication = JkBuild.builder(JkBuild.Project.builder("com.example", "app", "1.0.0")
-                        .jdkMajor(21)
-                        .java(21)
+                        .jdkMajor(25)
+                        .java(25)
                         .build())
                 .application(new JkBuild.Application(null, false))
                 .build();
@@ -95,7 +95,7 @@ class JkBuildRendererTest {
                 .isTrue();
 
         // No [application] at all → isApplication() false, nothing emitted.
-        JkBuild lib = JkBuild.of(new JkBuild.Project("com.example", "lib", "1.0.0", 21));
+        JkBuild lib = JkBuild.of(new JkBuild.Project("com.example", "lib", "1.0.0", 25));
         assertThat(JkBuildRenderer.render(lib)).doesNotContain("[application]");
         assertThat(JkBuildParser.parse(JkBuildRenderer.render(lib)).isApplication())
                 .isFalse();

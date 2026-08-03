@@ -32,7 +32,7 @@ class CompileSpecTest {
                                 "classesDir", Path.of("/tmp/out"),
                                 "workdir", Path.of("/tmp/work")))
                         .extra("stubsOut", Path.of("/tmp/stubs"))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .configList("javaSourceRoots", List.of("/src/java", "/gen/java"))
                         .source(Path.of("/src/A.groovy"))
                         .source(Path.of("/src/B.java"))
@@ -44,7 +44,7 @@ class CompileSpecTest {
         assertThat(s.outputDir).isEqualTo(new File("/tmp/out"));
         assertThat(s.workDir).isEqualTo(new File("/tmp/work"));
         assertThat(s.stubsOut).isEqualTo(new File("/tmp/stubs"));
-        assertThat(s.jvmTarget).isEqualTo("21");
+        assertThat(s.jvmTarget).isEqualTo("25");
         assertThat(s.javaSourceRoots).containsExactly(new File("/src/java"), new File("/gen/java"));
         assertThat(s.sources).containsExactly(new File("/src/A.groovy"), new File("/src/B.java"));
         assertThat(s.classpath).containsExactly(new File("/libs/dep.jar"), new File("/libs/other.jar"));
@@ -61,7 +61,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                         .layout(Map.of("classesDir", Path.of("/tmp/out")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .source(Path.of("/src/A.groovy")));
         assertThat(s.workDir).isNull();
         assertThat(s.stubsOut).isNull();
@@ -76,7 +76,7 @@ class CompileSpecTest {
                 new SpecWriter()
                         .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                         .layout(Map.of("classesDir", Path.of("/tmp/with space/out")))
-                        .configString("jvmTarget", "21")
+                        .configString("jvmTarget", "25")
                         .source(Path.of("/tmp/with space/A.groovy")));
         assertThat(s.outputDir).isEqualTo(new File("/tmp/with space/out"));
         assertThat(s.sources).containsExactly(new File("/tmp/with space/A.groovy"));
@@ -88,7 +88,7 @@ class CompileSpecTest {
                         dir,
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
-                                .configString("jvmTarget", "21")
+                                .configString("jvmTarget", "25")
                                 .source(Path.of("/a.groovy"))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("classesDir");
@@ -107,7 +107,7 @@ class CompileSpecTest {
                         new SpecWriter()
                                 .op(PluginProtocol.OP_COMPILE, null, "jk-groovy-compiler")
                                 .layout(Map.of("classesDir", Path.of("/o")))
-                                .configString("jvmTarget", "21")))
+                                .configString("jvmTarget", "25")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("source");
     }

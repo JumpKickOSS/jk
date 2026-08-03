@@ -24,7 +24,7 @@ class NativeCommandTest {
         Files.writeString(
                 tempDir.resolve("jk.toml"),
                 "[project]\ngroup = \"com.example\"\nname = \"widget\"\nversion = \"0.1.0\"\n"
-                        + "java = 21\nmain = \"example.Hello\"\n");
+                        + "java = 25\nmain = \"example.Hello\"\n");
         Path src = tempDir.resolve("src/main/java/example/Hello.java");
         Files.createDirectories(src.getParent());
         Files.writeString(

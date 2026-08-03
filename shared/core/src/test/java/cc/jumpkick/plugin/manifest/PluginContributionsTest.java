@@ -289,13 +289,13 @@ class PluginContributionsTest {
         var configs = Map.of("ktextra", PluginTableRegistry.validate(manifest, org.tomlj.Toml.parse("")));
 
         JkBuild.Project thin =
-                JkBuild.Project.builder("g", "m", "1.0").jdkMajor(21).java(21).build();
+                JkBuild.Project.builder("g", "m", "1.0").jdkMajor(25).java(21).build();
         assertThat(PluginContributions.platformDependencies(thin, false, configs, List.of(manifest)))
                 .as("no kotlin → condition false")
                 .isEmpty();
 
         JkBuild.Project resolved = JkBuild.Project.builder("g", "m", "1.0")
-                .jdkMajor(21)
+                .jdkMajor(25)
                 .java(21)
                 .kotlin(cc.jumpkick.model.VersionSelector.parse("=2.4.0"))
                 .build();

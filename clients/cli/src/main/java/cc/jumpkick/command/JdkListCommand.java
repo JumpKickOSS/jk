@@ -510,7 +510,7 @@ public final class JdkListCommand implements CliCommand {
         var sb = new StringBuilder(bar);
         for (int i = 0; i < HEADERS.length; i++) {
             sb.append(" ");
-            sb.append(pad(HEADERS[i], widths[i], i == 0));
+            sb.append(cc.jumpkick.cli.tui.BoxTable.headerCell(pad(HEADERS[i], widths[i], i == 0)));
             sb.append(" ");
             sb.append(bar);
         }

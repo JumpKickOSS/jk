@@ -2,7 +2,6 @@
 group = "com.example"
 name = "shrunk-cli"
 version = "0.0.1"
-jdk = 25
 java = 25
 
 [application]

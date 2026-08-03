@@ -3,6 +3,26 @@
 jk is a declarative, lockfile-first build tool for **Java, Kotlin, and Groovy** (JDK 17+).
 This guide covers the commands and files you touch every day.
 
+## Newest versions by default
+
+JumpKick is biased toward the **latest stable** libraries and language level. The CLI
+**requires JDK 25+** to run (and will install it). You already have a modern JDK — use
+**`java = N`** for bytecode/language, not extra runtime pins.
+
+| Field | Role |
+|-------|------|
+| **`java = 25`** | Default language + bytecode (host LTS) |
+| **`java = 21` / `17`** | Older language/bytecode on the **same** JDK 25 (`--release`) — no `jdk = 21` |
+| **`java = 26+`** | May install a newer toolchain |
+| **`jdk = "…"`** | Rare: force a specific install (vendor / exact major). Avoid in examples |
+
+Prefer newest libraries (`jk update` within ranges). Do not teach `jdk = 17` / `jdk = 21`.
+
+```bash
+jk outdated    # read-only: newer versions within your ranges
+jk update      # re-lock to those versions (commit the new lock)
+```
+
 ## Install
 
 ```bash
@@ -170,7 +190,7 @@ A minimal manifest:
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
-jdk     = 25
+java    = 25
 
 [dependencies]
 jackson = "2.18.2"   # caret by default: ^2.18.2
@@ -966,7 +986,7 @@ name = "core"
 # group, version, java, jdk, … come from the workspace root
 ```
 
-Explicit overrides still work (`version = "2.0.0"`, `java = 21`, or `version.workspace = true`).
+Explicit overrides still work (`version = "2.0.0"`, `java = 17`, or `version.workspace = true`).
 The root must keep concrete values for fields members inherit. Inheritance is resolved when the
 workspace loads members (lock, build, tree, publish). The **resolved** values are frozen into
 `jk-lock.toml` as `[[module]]` rows, so a re-lock is required after changing root or member

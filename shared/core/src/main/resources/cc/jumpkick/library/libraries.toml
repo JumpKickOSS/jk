@@ -71,6 +71,7 @@ kotest-runner-junit6         = "io.kotest:kotest-runner-junit6"
 # Logging
 slf4j-api                    = "org.slf4j:slf4j-api"
 slf4j-simple                 = "org.slf4j:slf4j-simple"
+slf4j-nop                    = "org.slf4j:slf4j-nop"
 logback-classic              = "ch.qos.logback:logback-classic"
 
 # Spring Boot starters (load-bearing prefix retained — no abbreviation)
@@ -153,6 +154,19 @@ maven-artifact               = "org.apache.maven:maven-artifact"
 sigstore-java                = "dev.sigstore:sigstore-java"
 cyclonedx-core-java          = "org.cyclonedx:cyclonedx-core-java"
 spdx-java                    = "org.spdx:java-spdx-library"
+spotless-lib                 = "com.diffplug.spotless:spotless-lib"
+openrewrite-java             = "org.openrewrite:rewrite-java"
+openrewrite-java21           = "org.openrewrite:rewrite-java-21"
+apksig                       = "com.android.tools.build:apksig"
+
+# Quarkus bootstrap (plugin workers)
+quarkus-bootstrap-core       = "io.quarkus:quarkus-bootstrap-core"
+quarkus-bootstrap-maven-resolver = "io.quarkus:quarkus-bootstrap-maven-resolver"
+quarkus-bootstrap-app-model  = "io.quarkus:quarkus-bootstrap-app-model"
+
+# Kotlin / Groovy toolchains
+kotlin-build-tools-api       = "org.jetbrains.kotlin:kotlin-build-tools-api"
+groovy                       = "org.apache.groovy:groovy"
 
 # Git
 jgit                         = "org.eclipse.jgit:org.eclipse.jgit"
@@ -165,6 +179,8 @@ bcprov-jdk18on               = "org.bouncycastle:bcprov-jdk18on"
 picocli                      = "info.picocli:picocli"
 picocli-codegen              = "info.picocli:picocli-codegen"
 jline                        = "org.jline:jline"
+jline-terminal-ffm           = "org.jline:jline-terminal-ffm"
+graalvm-nativeimage          = "org.graalvm.sdk:nativeimage"
 
 # Servlet / Jakarta
 jakarta-servlet-api          = "jakarta.servlet:jakarta.servlet-api"

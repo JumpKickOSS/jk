@@ -32,7 +32,7 @@ class VariantSwitchTest {
                 name    = "ktswitch"
                 group   = "com.example"
                 version = "1.0.0"
-                java    = 17
+                java    = 25
                 kotlin  = "^2.4.0"
                 layout  = "simple"
 

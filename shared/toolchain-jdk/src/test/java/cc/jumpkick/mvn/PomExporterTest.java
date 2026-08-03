@@ -21,7 +21,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
-                java = 21
+                java = 25
 
                 [dependencies]
                 guava = { group = "com.google.guava", name = "guava", version = "33.0.0-jre" }
@@ -32,8 +32,25 @@ class PomExporterTest {
         assertThat(xml).contains("<groupId>com.example</groupId>");
         assertThat(xml).contains("<artifactId>app</artifactId>");
         assertThat(xml).contains("<version>1.2.3</version>");
-        assertThat(xml).contains("<maven.compiler.release>21</maven.compiler.release>");
+        assertThat(xml).contains("<maven.compiler.release>25</maven.compiler.release>");
         assertThat(xml).contains("<artifactId>guava</artifactId>");
+    }
+
+    @Test
+    void older_language_levels_17_and_21_still_export() {
+        // Compat: defaults are newest stable, but java=17 / java=21 remain valid floors.
+        for (int release : new int[] {17, 21}) {
+            JkBuild b = parse("""
+                    [project]
+                    group = "com.example"
+                    name  = "app"
+                    version = "1.0.0"
+                    java = %d
+                    """
+                    .formatted(release));
+            assertThat(PomExporter.export(b).xml())
+                    .contains("<maven.compiler.release>" + release + "</maven.compiler.release>");
+        }
     }
 
     @Test
@@ -43,7 +60,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 guava = { group = "com.google.guava", name = "guava", version = "^33.0.0-jre" }
@@ -63,8 +80,8 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
 
                 [application]
                 main = "com.example.Main"
@@ -84,7 +101,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
                 kotlin = "2.3.21"
 
                 [application]
@@ -109,7 +126,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [processor-dependencies]
                 mapstruct-ap = { group = "org.mapstruct", name = "mapstruct-processor", version = "1.6.3" }
@@ -128,7 +145,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [workspace]
                 modules = ["mod-a", "mod-b"]
@@ -148,7 +165,7 @@ class PomExporterTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.0.0"
-                java = 21
+                java = 25
 
                 [dependencies]
                 acme = { git = "https://example.com/acme.git", tag = "v1.0" }

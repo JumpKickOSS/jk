@@ -4,6 +4,7 @@ package cc.jumpkick.command;
 import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.Jk;
+import cc.jumpkick.cli.PathDisplay;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.theme.Theme;
 import cc.jumpkick.cli.tui.BoxTable;
@@ -116,7 +117,7 @@ public final class SelfPurgeCommand implements CliCommand {
         List<String> failures = new ArrayList<>();
         for (PurgeRow row : existing) {
             if (dryRun) {
-                CliOutput.out("  would remove " + row.path());
+                CliOutput.out("  would remove " + pathStyled(row.path()));
                 removed++;
                 continue;
             }
@@ -124,7 +125,7 @@ public final class SelfPurgeCommand implements CliCommand {
                 PathUtil.deleteRecursivelyOrThrow(row.path());
                 removed++;
             } catch (IOException e) {
-                failures.add(row.path() + " (" + e.getMessage() + ")");
+                failures.add(pathStyled(row.path()) + " (" + e.getMessage() + ")");
             }
         }
 
@@ -311,23 +312,32 @@ public final class SelfPurgeCommand implements CliCommand {
         List<String> headers = List.of("Path to Delete", "What");
         List<List<String>> tableRows = new ArrayList<>();
         for (PurgeRow r : rows) {
-            tableRows.add(List.of(displayPath(r.path()), r.what()));
+            tableRows.add(List.of(pathStyled(r.path()), r.what()));
         }
         CommandWedge.envelopeStart();
         for (String line : BoxTable.renderWarning("JumpKick Data Purge", headers, tableRows)) {
             CliOutput.out(line);
         }
         if (selected.contains(Target.STORE)) {
-            CliOutput.out("  Kept:  active engine versions/"
-                    + Jk.VERSION
-                    + "  and  store/lib/ (latest plugins)");
+            Path active = dirs.versionsDir().resolve(Jk.VERSION);
+            Path lib = dirs.libDir();
+            CliOutput.out("  Kept:  "
+                    + pathStyled(active)
+                    + "  and  "
+                    + pathStyled(lib)
+                    + "  (latest plugins)");
         }
-        CliOutput.out("  Kept:  " + displayPath(dirs.binDirectory()) + "  (PATH binaries)");
-        CliOutput.out("  Kept:  " + displayPath(dirs.jdksDir()) + "  (managed JDKs)");
+        CliOutput.out("  Kept:  " + pathStyled(dirs.binDirectory()) + "  (PATH binaries)");
+        CliOutput.out("  Kept:  " + pathStyled(dirs.jdksDir()) + "  (managed JDKs)");
         CliOutput.out();
         Theme t = Theme.active();
         String bang = Theme.colorize(Glyphs.BANG, t.warning());
         return Confirm.of(bang + " Purge this JumpKick data?", false).ask();
+    }
+
+    /** Home-relative display form, painted with the theme path color. */
+    static String pathStyled(Path path) {
+        return PathDisplay.styledRaw(displayPath(path));
     }
 
     /** Prefer {@code ~/…} when under the user home directory. */

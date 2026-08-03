@@ -100,7 +100,7 @@ public final class JdkService {
         l.onExtractStart(label);
         InstalledJdk installed = installer.extractInstalled(entry, archive);
         // Journal the install for the JDK-usage stats that feed future wizards.
-        JdkAccessLedger.atDefaultPath().touch(installed.identifier(), "install");
+        JdkAccessLedger.atDefaultPath().touch(installed.home(), entry.version(), entry.vendor());
         l.onInstalled(installed);
         return installed;
     }

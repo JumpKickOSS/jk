@@ -25,7 +25,7 @@ jk build && jk test
 group   = "com.example"
 name    = "my-app"
 version = "0.1.0"
-jdk     = 25
+java    = 25                 # language + bytecode; jk already requires JDK 25+ to run
 
 [dependencies]
 jackson3-databind = "3.0.0"   # means ^3.0.0 (caret by default)
@@ -47,6 +47,7 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 | You want… | JumpKick gives you… |
 |---|---|
 | **Ergonomics of Cargo / uv** | `jk init` `add` `lock` `build` `test` `tree` `why` — native binary, sub-50 ms cold start |
+| **Always current by design** | Newest stable JDK + libraries in scaffolds; `jk update` re-locks within your ranges |
 | **Maven Central, not a new ecosystem** | Same coordinates, scopes, BOMs, GPG/Sigstore, `~/.m2`-friendly cache |
 | **Reproducible builds by default** | `jk-lock.toml` is law; CI doesn't re-resolve unless you say so |
 | **Correct resolution** | PubGrub; highest-wins without a platform BOM; enforced platform when a BOM is present |
@@ -57,6 +58,29 @@ That's it. No `build.gradle.kts` that is itself a software project. No 200-line 
 
 Coming from **Maven**: think “Cargo-shaped UX on top of Central.”  
 Coming from **Gradle**: think “declarative TOML + real lockfile, without the configuration graph.”
+
+### Stay on the newest versions (core value)
+
+JumpKick is **biased toward the latest stable** of libraries, language features, and
+tooling. `jk` itself **requires JDK 25+** (it will install one if needed), so a modern
+runtime is already on the machine — let JumpKick manage it.
+
+| You write | What happens |
+|-----------|----------------|
+| `java = 25` (default) | Language/bytecode 25 on the host LTS |
+| `java = 21` or `17` | Still use JDK 25; emit older bytecode (`--release`) — **no** old JDK download |
+| `java = 26` (above LTS) | May provision a 26 toolchain |
+| `jdk = "…"` | Only if you **must** pin a specific install (rare) |
+
+Do **not** habitually set `jdk = 17` / `jdk = 21` — that forces obsolete runtime installs.
+Prefer `java = N` for language level. Ship apps in containers with a matching JRE when
+you care about the runtime image.
+
+```bash
+jk outdated     # what moved under your ranges?
+jk update       # re-resolve on purpose; rewrite jk-lock.toml
+jk build        # still fully reproducible from that lock
+```
 
 ---
 
@@ -189,7 +213,7 @@ Or declare a BOM and versionless deps (managed by the platform):
 group = "com.acme"
 name = "payments-api"
 version = "0.1.0"
-jdk = 21
+java = 25
 
 [platform-dependencies]
 boot = { group = "org.springframework.boot", name = "spring-boot-dependencies", version = "3.4.0" }

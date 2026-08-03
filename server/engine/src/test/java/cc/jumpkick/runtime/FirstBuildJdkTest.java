@@ -20,6 +20,9 @@ import org.junit.jupiter.api.io.TempDir;
  * snapshotted in parse-build before the install exists (the old order compiled/tested the
  * first build on the running JVM and self-healed on the second — wrong once is wrong).
  *
+ * <p>Uses {@code jdk = 17} on purpose (provisioning path). Product examples should prefer
+ * {@code java = N} without a {@code jdk =} pin so the host LTS cross-compiles.
+ *
  * <p>An empty {@code jdksDir} override reproduces the first-run shape deterministically.
  * Network test (Maven Central + the JDK feed; the CAS under build/ keeps repeats warm).
  */

@@ -127,8 +127,8 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "good"
                 version = "1.0.0"
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """);
         Path broken = Files.createDirectories(tempDir.resolve("broken"));
         Files.writeString(broken.resolve("jk.toml"), "not [ valid toml ===");
@@ -189,8 +189,8 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "root"
                 version = "1.0.0"
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
 
                 [workspace]
                 modules = ["pinned"]
@@ -229,8 +229,8 @@ class JkBuildWorkspaceTest {
                 group   = "com.example"
                 name    = "lib"
                 version.workspace = true
-                jdk     = 21
-                java    = 21
+                jdk     = 25
+                java    = 25
                 """);
 
         JkBuild root = JkBuildParser.parse(tempDir.resolve("jk.toml"));

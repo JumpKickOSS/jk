@@ -654,7 +654,7 @@ public final class CacheCommand extends GroupCommand {
         StringBuilder sb = new StringBuilder(bar);
         for (int i = 0; i < headers.length; i++) {
             sb.append(" ")
-                    .append(Theme.colorize(padRight(headers[i], w[i]), Theme.active().brightWhite()))
+                    .append(cc.jumpkick.cli.tui.BoxTable.headerCell(padRight(headers[i], w[i])))
                     .append(" ")
                     .append(bar);
         }

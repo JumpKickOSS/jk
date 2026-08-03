@@ -102,7 +102,7 @@ class ImportCommandTest {
                 group = "com.example"
                 version = "1.0.0"
 
-                java { sourceCompatibility = JavaVersion.VERSION_21 }
+                java { sourceCompatibility = JavaVersion.VERSION_25 }
 
                 dependencies {
                     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")

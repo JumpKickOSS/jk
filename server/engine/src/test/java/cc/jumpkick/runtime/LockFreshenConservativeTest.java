@@ -166,8 +166,8 @@ class LockFreshenConservativeTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }
@@ -203,8 +203,8 @@ class LockFreshenConservativeTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
                 kotlin = "2.1.0"
 
                 [dependencies]
@@ -228,8 +228,8 @@ class LockFreshenConservativeTest {
                 group = "com.example"
                 name  = "demo"
                 version = "1.0.0"
-                jdk = 21
-                java = 21
+                jdk = 25
+                java = 25
 
                 [dependencies]
                 lib = { group = "com.foo", name = "lib", version = "^1.0" }

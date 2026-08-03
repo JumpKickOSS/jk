@@ -16,12 +16,22 @@ import cc.jumpkick.config.GlobalConfig;
  * </pre>
  *
  * A blue {@link CommandWedge}-style chip (menu glyph + title) on the left; dark-gray box dashes
- * fill to the right edge and end in {@code ╮}. Column rules and body rows are still drawn by the
- * caller — only the title chrome is shared.
+ * fill to the right edge and end in {@code ╮}. Column headers are italic ({@link #headerCell});
+ * body rows are drawn by the caller or by {@link #render}.
  */
 public final class BoxTable {
 
     private BoxTable() {}
+
+    /**
+     * Style a column-header cell: italic when ANSI is on, plain otherwise. Prefer {@link #render}
+     * (applies this automatically); use for custom tables that build their own header row.
+     */
+    public static String headerCell(String text) {
+        String s = text == null ? "" : text;
+        if (s.isEmpty() || !Theme.active().isAnsi()) return s;
+        return Theme.colorize(s, org.jline.utils.AttributedStyle.DEFAULT.italic());
+    }
 
     /**
      * Title bar for a table whose body rows are {@code totalWidth} visible columns wide (including
@@ -99,10 +109,10 @@ public final class BoxTable {
             boolean rowSeparators) {
         int cols = headers.size();
         int[] widths = new int[cols];
-        for (int i = 0; i < cols; i++) widths[i] = cell(headers.get(i)).length();
+        for (int i = 0; i < cols; i++) widths[i] = visibleWidth(cell(headers.get(i)));
         for (var row : rows) {
             for (int i = 0; i < cols; i++) {
-                widths[i] = Math.max(widths[i], cell(i < row.size() ? row.get(i) : "").length());
+                widths[i] = Math.max(widths[i], visibleWidth(cell(i < row.size() ? row.get(i) : "")));
             }
         }
         int inner = 0;
@@ -112,7 +122,9 @@ public final class BoxTable {
         java.util.List<String> out = new java.util.ArrayList<>();
         out.add(warning ? titleBarWarning(title, inner + 2) : titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", widths));
-        out.add(row(headers, widths));
+        java.util.List<String> styledHeaders = new java.util.ArrayList<>(cols);
+        for (int i = 0; i < cols; i++) styledHeaders.add(headerCell(cell(headers.get(i))));
+        out.add(row(styledHeaders, widths));
         out.add(divider("├", "┼", "┤", widths));
         for (int i = 0; i < rows.size(); i++) {
             out.add(row(rows.get(i), widths));
@@ -126,6 +138,12 @@ public final class BoxTable {
 
     private static String cell(String s) {
         return s == null ? "" : s;
+    }
+
+    /** Visible column width, ignoring CSI/OSC sequences so colored cells pad correctly. */
+    static int visibleWidth(String s) {
+        if (s == null || s.isEmpty()) return 0;
+        return org.jline.utils.AttributedString.stripAnsi(s).length();
     }
 
     private static String divider(String left, String junction, String right, int[] widths) {
@@ -144,7 +162,8 @@ public final class BoxTable {
         var sb = new StringBuilder(bar);
         for (int i = 0; i < widths.length; i++) {
             String c = cell(i < cells.size() ? cells.get(i) : "");
-            sb.append(' ').append(c).append(" ".repeat(widths[i] - c.length())).append(' ').append(bar);
+            int pad = Math.max(0, widths[i] - visibleWidth(c));
+            sb.append(' ').append(c).append(" ".repeat(pad)).append(' ').append(bar);
         }
         return sb.toString();
     }

@@ -26,8 +26,8 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "app"
                 version = "1.2.3"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
 
                 [application]
                 main = "com.example.Main"
@@ -48,7 +48,7 @@ class ExportCommandTest {
         String build = Files.readString(tmp.resolve("build.gradle.kts"));
         assertThat(build).contains("application");
         assertThat(build).contains("mainClass = \"com.example.Main\"");
-        assertThat(build).contains("languageVersion = JavaLanguageVersion.of(21)");
+        assertThat(build).contains("languageVersion = JavaLanguageVersion.of(25)");
         assertThat(build).contains("implementation(\"com.google.guava:guava:33.0.0-jre\")");
         assertThat(Files.readString(tmp.resolve("settings.gradle.kts"))).contains("foojay-resolver-convention");
     }
@@ -109,8 +109,8 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
 
                 [workspace]
                 modules = ["mod-a"]
@@ -122,8 +122,8 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
                 """);
 
         int exit = Jk.execute(new String[] {"export", "maven", "-C", tmp.toString()});
@@ -145,8 +145,8 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "root"
                 version = "1.0.0"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
 
                 [workspace]
                 modules = ["mod-a"]
@@ -158,8 +158,8 @@ class ExportCommandTest {
                 group = "com.example"
                 name  = "mod-a"
                 version = "1.0.0"
-                jdk  = 21
-                java = 21
+                jdk  = 25
+                java = 25
                 """);
 
         int exit = Jk.execute(new String[] {"export", "gradle", "-C", tmp.toString()});

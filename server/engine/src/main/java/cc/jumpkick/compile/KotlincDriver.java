@@ -163,7 +163,7 @@ public final class KotlincDriver {
                 """);
         SpecWriter sw = new SpecWriter()
                 .op(PluginProtocol.OP_COMPILE, null, "jk-kotlin-compiler")
-                .configString("jvmTarget", "21")
+                .configString("jvmTarget", "25")
                 .layout(java.util.Map.of("classesDir", scratch.resolve("out")))
                 .arg("-jdk-home")
                 .arg(hostJavaHome.toAbsolutePath().toString())

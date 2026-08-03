@@ -68,7 +68,7 @@ public final class JdkResolver {
         // Record the "this JDK was used by a project build / run / test"
         // signal. Best-effort; downstream wizards lean on this for
         // most-recently-used ordering and uninstall recommendations.
-        resolved.ifPresent(jdk -> JdkAccessLedger.atDefaultPath().touch(jdk.identifier(), "resolve"));
+        resolved.ifPresent(jdk -> JdkAccessLedger.atDefaultPath().touch(jdk));
         return resolved;
     }
 }

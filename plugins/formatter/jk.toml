@@ -7,11 +7,11 @@ main     = "cc.jumpkick.plugin.process.PluginMain"
 
 [dependencies]
 jk-plugin-sdk.workspace = true
-spotless-lib      = { group = "com.diffplug.spotless", name = "spotless-lib", version = "latest" }
-openrewrite-java  = { group = "org.openrewrite", name = "rewrite-java", version = "latest" }
-openrewrite-java21 = { group = "org.openrewrite", name = "rewrite-java-21", version = "latest" }
+spotless-lib            = "latest"
+openrewrite-java        = "latest"
+openrewrite-java21      = "latest"
 slf4j-api               = "latest"
-slf4j-nop         = { group = "org.slf4j", name = "slf4j-nop", version = "latest" }
+slf4j-nop               = "latest"
 
 [test-dependencies]
 assertj-core            = "latest"
