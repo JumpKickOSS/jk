@@ -32,20 +32,40 @@ public final class BoxTable {
      * then {@code ─…╮}. No-ANSI: {@code = Title ----+}.
      */
     public static String titleBar(String title, int totalWidth) {
+        return titleBar(title, totalWidth, false);
+    }
+
+    /**
+     * Like {@link #titleBar(String, int)} but with a <strong>yellow warning</strong> chip and
+     * {@link Glyphs#BANG} (e.g. destructive confirm tables).
+     */
+    public static String titleBarWarning(String title, int totalWidth) {
+        return titleBar(title, totalWidth, true);
+    }
+
+    private static String titleBar(String title, int totalWidth, boolean warning) {
         String name = title == null ? "" : title;
         Theme t = Theme.active();
         boolean nerdfont = GlobalConfig.nerdfont();
+        String glyph = warning ? Glyphs.BANG : Glyphs.MENU;
+        String plainGlyph = warning ? Glyphs.BANG_PLAIN : Glyphs.MENU_PLAIN;
         if (!t.isAnsi()) {
-            // " = Title >" then dashes to width.
-            String head = PipelineWedge.plainWedge(Glyphs.MENU_PLAIN, name, null) + " ";
+            String head = PipelineWedge.plainWedge(plainGlyph, name, null) + " ";
             int fill = Math.max(1, totalWidth - head.length() - 1);
             return head + "-".repeat(fill) + "+";
         }
-        // Always blue (table chrome), never green — unlike success/play wedges.
-        // Nerd: body + one trail + PUA; ansi: body + two trails (no PUA).
-        String wedge = PipelineWedge.chip(Glyphs.MENU, name, t.pipelineChip(), nerdfont)
-                + PipelineWedge.cap(t.planBadgeColor(), nerdfont);
-        // " ≡ name " + PUA (nerd) or " ≡ name  " (ansi) — both name.length()+5 visible cols
+        // Warning: white on amber; otherwise blue pipeline chip.
+        org.jline.utils.AttributedStyle chipStyle;
+        cc.jumpkick.cli.theme.Rgb capColor;
+        if (warning) {
+            capColor = cc.jumpkick.cli.theme.JkDarkTheme.NORMAL_YELLOW;
+            chipStyle = t.withBackground(t.brightWhite(), capColor);
+        } else {
+            chipStyle = t.pipelineChip();
+            capColor = t.planBadgeColor();
+        }
+        String wedge = PipelineWedge.chip(glyph, name, chipStyle, nerdfont) + PipelineWedge.cap(capColor, nerdfont);
+        // " ≡/‼ name " + PUA (nerd) or " ≡/‼ name  " (ansi) — name.length()+5 visible cols
         int wedgeVisible = name.length() + 5;
         int fill = Math.max(1, totalWidth - wedgeVisible - 1); // -1 for the closing ╮
         return wedge + Theme.colorize("─".repeat(fill) + "╮", t.darkGray());
@@ -59,6 +79,24 @@ public final class BoxTable {
      */
     public static java.util.List<String> render(
             String title, java.util.List<String> headers, java.util.List<? extends java.util.List<String>> rows) {
+        return render(title, headers, rows, false, false);
+    }
+
+    /**
+     * Warning-styled table (yellow ‼ title chip) with a divider between every data row — for
+     * destructive confirmations.
+     */
+    public static java.util.List<String> renderWarning(
+            String title, java.util.List<String> headers, java.util.List<? extends java.util.List<String>> rows) {
+        return render(title, headers, rows, true, true);
+    }
+
+    private static java.util.List<String> render(
+            String title,
+            java.util.List<String> headers,
+            java.util.List<? extends java.util.List<String>> rows,
+            boolean warning,
+            boolean rowSeparators) {
         int cols = headers.size();
         int[] widths = new int[cols];
         for (int i = 0; i < cols; i++) widths[i] = cell(headers.get(i)).length();
@@ -72,11 +110,16 @@ public final class BoxTable {
         inner += cols - 1;
 
         java.util.List<String> out = new java.util.ArrayList<>();
-        out.add(titleBar(title, inner + 2));
+        out.add(warning ? titleBarWarning(title, inner + 2) : titleBar(title, inner + 2));
         out.add(divider("├", "┬", "┤", widths));
         out.add(row(headers, widths));
         out.add(divider("├", "┼", "┤", widths));
-        for (var r : rows) out.add(row(r, widths));
+        for (int i = 0; i < rows.size(); i++) {
+            out.add(row(rows.get(i), widths));
+            if (rowSeparators && i < rows.size() - 1) {
+                out.add(divider("├", "┼", "┤", widths));
+            }
+        }
         out.add(divider("╰", "┴", "╯", widths));
         return out;
     }

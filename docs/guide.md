@@ -120,14 +120,22 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
-| **`jk self purge`** | Wipe **jk-owned** data only (cache, store, state, versions, config). Never touches the PATH bin dir or JDKs. |
-
-To fully reset JumpKick data without removing the installed binary or managed JDKs:
+| **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
 
 ```bash
-jk self purge          # confirms first
-jk self purge -y       # skip confirmation (global assume-yes)
+jk self purge                     # all targets (default); confirms first
+jk self purge -y                  # skip confirmation
+jk self purge --cache --state -y  # stackable targets
+jk self purge --store --config
 ```
+
+| Flag | Deletes |
+|------|---------|
+| `--all` | Every target below (default when none named) |
+| `--cache` | Action cache (`~/.cache/jk`) |
+| `--store` | Store/CAS, versions, lib (`~/.local/share/jk`) |
+| `--state` | Engine sockets, AOT, builds (`~/.local/state/jk`) |
+| `--config` | User config (`~/.config/jk`) |
 
 Does **not** delete anything under `~/.local/bin` (or `JK_BIN_DIR`) — including `jk`, `jkx`, and every other tool on PATH.
 

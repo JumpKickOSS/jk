@@ -5,12 +5,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import cc.jumpkick.cli.Jk;
 import cc.jumpkick.cli.TestAnsi;
+import cc.jumpkick.command.SelfPurgeCommand.Target;
 import cc.jumpkick.util.JkDirs;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -30,12 +32,28 @@ class SelfPurgeCommandTest {
             Path abs = r.toAbsolutePath().normalize();
             assertThat(abs).isNotEqualTo(bin);
             assertThat(abs).isNotEqualTo(jdks);
-            // Neither a parent of bin/jdks nor a child under them.
             assertThat(abs.startsWith(bin)).isFalse();
             assertThat(abs.startsWith(jdks)).isFalse();
             assertThat(bin.startsWith(abs) && !bin.equals(abs)).isFalse();
             assertThat(jdks.startsWith(abs) && !jdks.equals(abs)).isFalse();
         }
+    }
+
+    @Test
+    void cache_only_selects_cache_dir() {
+        JkDirs dirs = JkDirs.current();
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.CACHE));
+        assertThat(roots).containsExactly(dirs.cacheDir().toAbsolutePath().normalize());
+    }
+
+    @Test
+    void store_and_state_stack() {
+        JkDirs dirs = JkDirs.current();
+        List<Path> roots = SelfPurgeCommand.wipeRoots(dirs, EnumSet.of(Target.STORE, Target.STATE));
+        Path data = dirs.dataDir().toAbsolutePath().normalize();
+        Path state = dirs.stateDir().toAbsolutePath().normalize();
+        assertThat(roots).contains(data, state);
+        assertThat(roots).doesNotContain(dirs.cacheDir().toAbsolutePath().normalize());
     }
 
     @Test
@@ -51,7 +69,7 @@ class SelfPurgeCommandTest {
         Files.createDirectories(bin);
         Path jkBin = bin.resolve("jk");
         if (!Files.exists(jkBin)) Files.writeString(jkBin, "#!/bin/sh\n");
-        Path foreign = bin.resolve("uv"); // not owned by jk — must survive
+        Path foreign = bin.resolve("uv");
         Files.writeString(foreign, "foreign-tool");
 
         int exit = capture(() -> Jk.execute("self", "purge", "-y"));
@@ -60,6 +78,23 @@ class SelfPurgeCommandTest {
         assertThat(Files.exists(state.resolve("aot/marker"))).isFalse();
         assertThat(Files.exists(jkBin)).isTrue();
         assertThat(Files.exists(foreign)).isTrue();
+    }
+
+    @Test
+    void purge_cache_only_leaves_state() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Path state = dirs.stateDir();
+        Files.createDirectories(cache.resolve("actions"));
+        Files.writeString(cache.resolve("actions/marker"), "x");
+        Files.createDirectories(state.resolve("aot"));
+        Files.writeString(state.resolve("aot/marker"), "keep");
+
+        int exit = capture(() -> Jk.execute("self", "purge", "--cache", "-y"));
+        assertThat(exit).isZero();
+        assertThat(Files.exists(cache.resolve("actions/marker"))).isFalse();
+        assertThat(Files.exists(state.resolve("aot/marker"))).isTrue();
+        Files.deleteIfExists(state.resolve("aot/marker"));
     }
 
     @Test
@@ -72,8 +107,16 @@ class SelfPurgeCommandTest {
 
         String out = captureStdout(() -> assertThat(Jk.execute("self", "purge", "--dry-run", "-y")).isZero());
         assertThat(TestAnsi.strip(out)).containsIgnoringCase("dry run");
+        assertThat(TestAnsi.strip(out)).contains("Path to Delete").contains("What");
         assertThat(marker).exists();
         Files.deleteIfExists(marker);
+    }
+
+    @Test
+    void displayPath_uses_tilde_under_home() {
+        Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+        Path under = home.resolve("cache").resolve("jk");
+        assertThat(SelfPurgeCommand.displayPath(under)).isEqualTo("~/cache/jk");
     }
 
     private static int capture(java.util.function.IntSupplier body) {

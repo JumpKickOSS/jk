@@ -5,6 +5,7 @@ import cc.jumpkick.cli.CliOutput;
 import cc.jumpkick.cli.GlobalOptions;
 import cc.jumpkick.cli.engine.EngineFleet;
 import cc.jumpkick.cli.theme.Theme;
+import cc.jumpkick.cli.tui.BoxTable;
 import cc.jumpkick.cli.tui.CommandWedge;
 import cc.jumpkick.cli.tui.Confirm;
 import cc.jumpkick.cli.tui.Glyphs;
@@ -18,21 +19,46 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
- * {@code jk self purge} — wipe JumpKick-owned product data (cache, store, state, versions, config)
- * while leaving PATH install binaries and managed JDKs untouched.
+ * {@code jk self purge} — wipe JumpKick-owned product data while leaving PATH install binaries and
+ * managed JDKs untouched.
  *
- * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}):
- * neither {@code jk}/{@code jkx} nor any other executables. Only product data roots that JumpKick
- * owns are deleted.
+ * <p>Targets (stackable; default {@code --all}):
  *
- * <p>Confirmation required unless the hidden global {@code -y}/{@code --yes} is set.
+ * <ul>
+ *   <li>{@code --cache} — action cache
+ *   <li>{@code --store} — store/CAS, versions, lib (data dir)
+ *   <li>{@code --state} — engine sockets, AOT, builds
+ *   <li>{@code --config} — user config
+ *   <li>{@code --all} — every target above (default when none are named)
+ * </ul>
+ *
+ * <p><strong>Never touches the bin directory</strong> ({@code ~/.local/bin} / {@code JK_BIN_DIR}).
  */
 public final class SelfPurgeCommand implements CliCommand {
+
+    /** Selectable purge scopes. */
+    enum Target {
+        CACHE("Action cache"),
+        STORE("Store/CAS, versions, lib"),
+        STATE("Engine sockets, AOT, builds"),
+        CONFIG("User config");
+
+        final String what;
+
+        Target(String what) {
+            this.what = what;
+        }
+    }
+
+    /** One display/delete row for the confirm table. */
+    record PurgeRow(Path path, String what, Target target) {}
 
     @Override
     public String name() {
@@ -46,49 +72,58 @@ public final class SelfPurgeCommand implements CliCommand {
 
     @Override
     public List<Opt> options() {
-        return List.of(Opt.flag("Print what would be removed; touch nothing.", "--dry-run"));
+        return List.of(
+                Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
+                Opt.flag("Purge every target (default when none named).", "--all"),
+                Opt.flag("Purge the action cache only.", "--cache"),
+                Opt.flag("Purge store/CAS, versions, and lib.", "--store"),
+                Opt.flag("Purge engine state, AOT caches, and builds.", "--state"),
+                Opt.flag("Purge user config.", "--config"));
     }
 
     @Override
     public int run(Invocation in) {
-        GlobalOptions.from(in); // install session + Confirm.assumeYes
+        GlobalOptions.from(in);
         boolean dryRun = in.isSet("dry-run");
+        Set<Target> selected = selectedTargets(in);
         JkDirs dirs = JkDirs.current();
 
-        List<Path> wipeRoots = wipeRoots(dirs);
-        if (wipeRoots.isEmpty()) {
-            CommandWedge.printOk("Self", "Nothing to purge — no JumpKick data directories found.");
+        List<PurgeRow> rows = plan(dirs, selected);
+        // Only show/delete paths that exist (or always show plan paths for empty dirs? mock shows
+        // standard paths — show planned roots even if missing, but only delete existing).
+        List<PurgeRow> existing = rows.stream().filter(r -> Files.exists(r.path())).toList();
+        if (existing.isEmpty()) {
+            CommandWedge.printOk("Self", "Nothing to purge — selected JumpKick data not found.");
             return Exit.SUCCESS;
         }
 
-        if (!confirm(dirs, wipeRoots)) {
+        if (!confirm(existing)) {
             CommandWedge.printFail("Self", "Purge aborted.");
             return 1;
         }
 
-        // Engines hold sockets/files under state — stop them before deleting.
-        if (!dryRun) {
+        // Engines hold sockets under state — stop when state (or all) is selected.
+        if (!dryRun && selected.contains(Target.STATE)) {
             try {
                 EngineFleet.stopAll(true);
             } catch (RuntimeException ignored) {
-                // best-effort; delete still proceeds
+                // best-effort
             }
         }
 
         long removed = 0;
         List<String> failures = new ArrayList<>();
-        for (Path root : wipeRoots) {
-            if (!Files.exists(root)) continue;
+        for (PurgeRow row : existing) {
             if (dryRun) {
-                CliOutput.out("  would remove " + root);
+                CliOutput.out("  would remove " + row.path());
                 removed++;
                 continue;
             }
             try {
-                PathUtil.deleteRecursivelyOrThrow(root);
+                PathUtil.deleteRecursivelyOrThrow(row.path());
                 removed++;
             } catch (IOException e) {
-                failures.add(root + " (" + e.getMessage() + ")");
+                failures.add(row.path() + " (" + e.getMessage() + ")");
             }
         }
 
@@ -112,75 +147,143 @@ public final class SelfPurgeCommand implements CliCommand {
         return Exit.SUCCESS;
     }
 
-    private static boolean confirm(JkDirs dirs, List<Path> wipeRoots) {
-        Theme t = Theme.active();
-        String bang = Theme.colorize(Glyphs.BANG, t.warning());
-        CliOutput.out();
-        CliOutput.out(bang
-                + " "
-                + Theme.colorize(
-                        "This permanently deletes all JumpKick product data on this machine.", t.errorLabel()));
-        CliOutput.out("  Cache, store/CAS, state, versions, and config only.");
-        CliOutput.out("  Untouched: PATH install dir (" + dirs.binDirectory() + ")");
-        CliOutput.out("  Untouched: managed JDKs under " + dirs.jdksDir());
-        CliOutput.out("  Paths:");
-        for (Path p : wipeRoots) {
-            if (Files.exists(p)) CliOutput.out("    " + p);
-        }
-        return Confirm.of(bang + " Purge all JumpKick data?", false).ask();
+    /** Parse stackable target flags; default {@code --all} when none named. */
+    static Set<Target> selectedTargets(Invocation in) {
+        boolean cache = in.isSet("cache");
+        boolean store = in.isSet("store");
+        boolean state = in.isSet("state");
+        boolean config = in.isSet("config");
+        boolean all = in.isSet("all") || !(cache || store || state || config);
+        if (all) return EnumSet.allOf(Target.class);
+        EnumSet<Target> set = EnumSet.noneOf(Target.class);
+        if (cache) set.add(Target.CACHE);
+        if (store) set.add(Target.STORE);
+        if (state) set.add(Target.STATE);
+        if (config) set.add(Target.CONFIG);
+        return set;
     }
 
     /**
-     * Product trees JumpKick owns and may delete. Never includes the PATH bin directory or the JDK
-     * install root (or anything under them). Deduped so nested paths under a selected root are not
-     * listed twice.
+     * Build ordered purge rows for the selected targets. Never includes bin or JDK roots.
+     * Package-private for tests.
      */
-    static List<Path> wipeRoots(JkDirs dirs) {
+    static List<PurgeRow> plan(JkDirs dirs, Set<Target> selected) {
         Path bin = abs(dirs.binDirectory());
         Path jdks = abs(dirs.jdksDir());
-        LinkedHashSet<Path> roots = new LinkedHashSet<>();
-        addIfSafe(roots, abs(dirs.cacheDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.storeDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.stateDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.dataDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.versionsDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.tmpDir()), bin, jdks);
-        addIfSafe(roots, abs(dirs.buildsDir()), bin, jdks);
-        // Config: whole platform config dir (~/.config/jk), or just config.toml when configDir is a
-        // parent of bin/jdks (JK_HOME umbrella) — never wipe that parent wholesale.
-        Path configFile = abs(dirs.userConfigFilePath());
-        Path configDir = abs(dirs.configDir());
-        if (configDir != null
-                && (configDir.equals(bin)
-                        || configDir.equals(jdks)
-                        || isAncestor(configDir, bin)
-                        || isAncestor(configDir, jdks))) {
-            if (Files.isRegularFile(configFile)) roots.add(configFile);
-        } else if (configDir != null && Files.isDirectory(configDir)) {
-            addIfSafe(roots, configDir, bin, jdks);
-        } else if (configFile != null && Files.isRegularFile(configFile)) {
-            roots.add(configFile);
+        // Preserve insertion order of targets as CACHE, STORE, STATE, CONFIG.
+        Map<Path, PurgeRow> byPath = new LinkedHashMap<>();
+        if (selected.contains(Target.CACHE)) {
+            addRow(byPath, abs(dirs.cacheDir()), Target.CACHE, bin, jdks);
         }
-        // Drop roots that are strictly under another selected root.
-        List<Path> list = new ArrayList<>(roots);
-        list.removeIf(p -> list.stream().anyMatch(o -> !o.equals(p) && isAncestor(o, p)));
-        list.sort((a, b) -> Integer.compare(b.getNameCount(), a.getNameCount()));
-        return list;
+        if (selected.contains(Target.STORE)) {
+            // dataDir = share/jk (store + versions + lib). If store is relocated outside data,
+            // include it separately.
+            Path data = abs(dirs.dataDir());
+            Path store = abs(dirs.storeDir());
+            Path versions = abs(dirs.versionsDir());
+            addRow(byPath, data, Target.STORE, bin, jdks);
+            if (store != null && data != null && !store.equals(data) && !isAncestor(data, store)) {
+                addRow(byPath, store, Target.STORE, bin, jdks);
+            }
+            if (versions != null
+                    && data != null
+                    && !versions.equals(data)
+                    && !isAncestor(data, versions)
+                    && (store == null || !isAncestor(store, versions))) {
+                addRow(byPath, versions, Target.STORE, bin, jdks);
+            }
+        }
+        if (selected.contains(Target.STATE)) {
+            addRow(byPath, abs(dirs.stateDir()), Target.STATE, bin, jdks);
+            // builds/tmp live under state by default; if relocated outside, include them.
+            Path state = abs(dirs.stateDir());
+            Path builds = abs(dirs.buildsDir());
+            Path tmp = abs(dirs.tmpDir());
+            if (builds != null && state != null && !isAncestor(state, builds) && !builds.equals(state)) {
+                addRow(byPath, builds, Target.STATE, bin, jdks);
+            }
+            if (tmp != null && state != null && !isAncestor(state, tmp) && !tmp.equals(state)) {
+                addRow(byPath, tmp, Target.STATE, bin, jdks);
+            }
+        }
+        if (selected.contains(Target.CONFIG)) {
+            Path configFile = abs(dirs.userConfigFilePath());
+            Path configDir = abs(dirs.configDir());
+            if (configDir != null
+                    && (configDir.equals(bin)
+                            || configDir.equals(jdks)
+                            || isAncestor(configDir, bin)
+                            || isAncestor(configDir, jdks))) {
+                // JK_HOME umbrella: only the config file, never the parent tree.
+                if (configFile != null && isSafe(configFile, bin, jdks)) {
+                    byPath.putIfAbsent(configFile, new PurgeRow(configFile, Target.CONFIG.what, Target.CONFIG));
+                }
+            } else if (configDir != null && isSafe(configDir, bin, jdks)) {
+                byPath.putIfAbsent(configDir, new PurgeRow(configDir, Target.CONFIG.what, Target.CONFIG));
+            } else if (configFile != null && isSafe(configFile, bin, jdks)) {
+                byPath.putIfAbsent(configFile, new PurgeRow(configFile, Target.CONFIG.what, Target.CONFIG));
+            }
+        }
+        return new ArrayList<>(byPath.values());
     }
 
-    private static void addIfSafe(Set<Path> roots, Path candidate, Path bin, Path jdks) {
-        if (candidate == null) return;
-        // Never the bin/jdks roots themselves.
-        if (candidate.equals(bin) || candidate.equals(jdks)) return;
-        // Never a parent of bin/jdks (would wipe shared trees).
-        if (isAncestor(candidate, bin) || isAncestor(candidate, jdks)) return;
-        // Never anything under bin/jdks (PATH install dir is off-limits entirely).
-        if (isAncestor(bin, candidate) || isAncestor(jdks, candidate) || candidate.equals(bin) || candidate.equals(jdks))
-            return;
-        roots.add(candidate);
+    /** Absolute paths selected for deletion (for tests). */
+    static List<Path> wipeRoots(JkDirs dirs) {
+        return plan(dirs, EnumSet.allOf(Target.class)).stream().map(PurgeRow::path).toList();
     }
 
-    /** True when {@code ancestor} is a proper path prefix of {@code child}. */
+    static List<Path> wipeRoots(JkDirs dirs, Set<Target> selected) {
+        return plan(dirs, selected).stream().map(PurgeRow::path).toList();
+    }
+
+    private static void addRow(Map<Path, PurgeRow> byPath, Path path, Target target, Path bin, Path jdks) {
+        if (path == null || !isSafe(path, bin, jdks)) return;
+        byPath.putIfAbsent(path, new PurgeRow(path, target.what, target));
+    }
+
+    private static boolean confirm(List<PurgeRow> rows) {
+        List<String> headers = List.of("Path to Delete", "What");
+        List<List<String>> tableRows = new ArrayList<>();
+        for (PurgeRow r : rows) {
+            tableRows.add(List.of(displayPath(r.path()), r.what()));
+        }
+        CommandWedge.envelopeStart();
+        for (String line : BoxTable.renderWarning("JumpKick Data Purge", headers, tableRows)) {
+            CliOutput.out(line);
+        }
+        CliOutput.out();
+        Theme t = Theme.active();
+        String bang = Theme.colorize(Glyphs.BANG, t.warning());
+        return Confirm.of(bang + " Purge this JumpKick data?", false).ask();
+    }
+
+    /** Prefer {@code ~/…} when under the user home directory. */
+    static String displayPath(Path path) {
+        if (path == null) return "";
+        String abs = path.toAbsolutePath().normalize().toString();
+        String home = System.getProperty("user.home");
+        if (home != null && !home.isBlank()) {
+            String h = Path.of(home).toAbsolutePath().normalize().toString();
+            if (abs.equals(h)) return "~";
+            if (abs.startsWith(h + "/")) return "~" + abs.substring(h.length());
+            // Windows-style home
+            if (abs.regionMatches(true, 0, h, 0, h.length())
+                    && abs.length() > h.length()
+                    && (abs.charAt(h.length()) == '\\' || abs.charAt(h.length()) == '/')) {
+                return "~" + abs.substring(h.length()).replace('\\', '/');
+            }
+        }
+        return abs;
+    }
+
+    private static boolean isSafe(Path candidate, Path bin, Path jdks) {
+        if (candidate == null) return false;
+        if (candidate.equals(bin) || candidate.equals(jdks)) return false;
+        if (isAncestor(candidate, bin) || isAncestor(candidate, jdks)) return false;
+        if (isAncestor(bin, candidate) || isAncestor(jdks, candidate)) return false;
+        return true;
+    }
+
     private static boolean isAncestor(Path ancestor, Path child) {
         if (ancestor == null || child == null) return false;
         Path a = ancestor.normalize();
