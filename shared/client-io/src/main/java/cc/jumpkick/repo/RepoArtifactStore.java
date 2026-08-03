@@ -447,7 +447,9 @@ public final class RepoArtifactStore {
      * Cas.putByLink} — no network).
      */
     public static void writeToLocalStore(Path cacheDir, String relativePath, Path source) throws IOException {
-        Path target = cacheDir.resolve("repos/local/" + relativePath);
+        // Route through the store root (JK-1445): the resolver reads repos/local/ from the store
+        // since the cache/store split; writing to the raw cache root strands the artifact.
+        Path target = cc.jumpkick.cache.JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath);
         Files.createDirectories(target.getParent());
         Path tmp = target.resolveSibling(target.getFileName() + ".part");
         Files.copy(source, tmp, java.nio.file.StandardCopyOption.REPLACE_EXISTING);

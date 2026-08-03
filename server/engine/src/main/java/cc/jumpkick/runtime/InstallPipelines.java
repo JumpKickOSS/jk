@@ -214,7 +214,7 @@ public final class InstallPipelines {
     /** Write a sidecar-only entry in {@code repos/local/} pointing to an artifact in {@code ~/.m2}. */
     private static void writeLocalIndexSidecar(Path cacheDir, String relativePath, String sha256) {
         try {
-            Path sidecar = cacheDir.resolve("repos/local/" + relativePath + ".sha256");
+            Path sidecar = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath + ".sha256");
             Files.createDirectories(sidecar.getParent());
             if (!Files.exists(sidecar)) Files.writeString(sidecar, sha256);
         } catch (IOException ignored) {
@@ -229,7 +229,7 @@ public final class InstallPipelines {
     /** Write byte content directly into {@code repos/local/} as a full-store entry. */
     private static void writeContentToLocalStore(Path cacheDir, String relativePath, byte[] content)
             throws IOException {
-        Path target = cacheDir.resolve("repos/local/" + relativePath);
+        Path target = JkStores.resolve(cacheDir, "repos").resolve("local").resolve(relativePath);
         AtomicWrites.replace(target, content);
         Files.writeString(Path.of(target + ".sha256"), Hashing.sha256Hex(content));
     }
