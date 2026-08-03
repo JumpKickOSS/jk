@@ -76,7 +76,7 @@ public final class WorkerAotBootstrap {
             Path workerJar = jar.locate();
             String cp = WorkerClasspath.resolve(workerJar);
             Path cache = PluginAot.cachePath(tool, host, cp);
-            if (!force && cache != null && Files.exists(cache)) {
+            if (!force && PluginAot.usableCache(cache)) {
                 trained.add(tool + " (cached)");
                 return;
             }
@@ -143,7 +143,7 @@ public final class WorkerAotBootstrap {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, prefix + "*.aot")) {
             for (Path p : stream) {
                 String name = p.getFileName().toString();
-                if (name.endsWith(".aot") && !name.contains(".tmp-") && Files.size(p) > 0) return true;
+                if (name.endsWith(".aot") && !name.contains(".tmp-") && PluginAot.usableCache(p)) return true;
             }
         } catch (IOException ignored) {
         }
@@ -151,7 +151,10 @@ public final class WorkerAotBootstrap {
         try (Stream<Path> walk = Files.list(dir)) {
             return walk.anyMatch(p -> {
                 String n = p.getFileName().toString();
-                return n.startsWith(prefix) && n.endsWith(".aot") && !n.contains(".tmp-");
+                return n.startsWith(prefix)
+                        && n.endsWith(".aot")
+                        && !n.contains(".tmp-")
+                        && PluginAot.usableCache(p);
             });
         } catch (IOException e) {
             return false;

@@ -80,6 +80,18 @@ class PluginAotTest {
         assertThat(PluginAot.hostEligible(tmp.resolve("he-none"))).isFalse();
     }
 
+    @Test
+    void usableCache_requires_a_non_empty_regular_file() throws IOException {
+        Path cache = tmp.resolve("kotlinc-0123456789abcdef.aot");
+        assertThat(PluginAot.usableCache(cache)).isFalse(); // missing
+        Files.createFile(cache);
+        assertThat(PluginAot.usableCache(cache)).isFalse(); // zero-byte truncation leftover
+        Files.writeString(cache, "aot");
+        assertThat(PluginAot.usableCache(cache)).isTrue();
+        assertThat(PluginAot.usableCache(null)).isFalse();
+        assertThat(PluginAot.usableCache(tmp)).isFalse(); // directory
+    }
+
     // ---- training lifecycle -------------------------------------------------------------------
 
     private static void waitUntil(Duration timeout, BooleanSupplier cond) throws InterruptedException {

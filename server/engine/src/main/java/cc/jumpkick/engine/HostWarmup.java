@@ -92,10 +92,7 @@ public final class HostWarmup {
 
     private static boolean workerCachePresent(String tool, Path host, PluginJar jar) {
         try {
-            Path workerJar = jar.locate();
-            String cp = cc.jumpkick.compile.WorkerClasspath.resolve(workerJar);
-            Path cache = PluginAot.cachePath(tool, host, cp);
-            return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
+            return PluginAot.usableCache(cachePath(tool, host, jar));
         } catch (Exception e) {
             return false;
         }

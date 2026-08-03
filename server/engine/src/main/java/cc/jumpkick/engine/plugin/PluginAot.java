@@ -88,10 +88,11 @@ public final class PluginAot {
             String gc = effectiveGc(JvmOptions.batchFlags(1)); // must match javaCommand / PluginLoader
             String prefix = (tool == null || tool.isBlank()) ? "plugin" : tool;
             Path cache = dir().resolve(prefix + "-" + key(id, gc, workerClasspath) + ".aot");
-            if (Files.exists(cache)) {
+            if (usableCache(cache)) {
                 touch(cache); // retention is by last use; the JVM mapping a cache never updates mtime
                 return List.of("-XX:AOTCache=" + cache, "-Xlog:aot=off");
             }
+            deleteIfEmpty(cache); // truncated leftover: treat as missing so it can retrain
             if (eligible(id) && trainingEnabled() && !Files.exists(noaotMarker(cache))) {
                 trainAsync(prefix + " worker (" + id.vendor() + " " + id.version() + ")", cache, trainer);
             }
@@ -178,33 +179,58 @@ public final class PluginAot {
                     Files.deleteIfExists(noaotMarker(cache));
                 } catch (IOException ignored) {
                 }
-            } else if (Files.exists(cache)) {
+            } else if (usableCache(cache)) {
                 touch(cache);
                 return true;
+            } else {
+                deleteIfEmpty(cache); // truncated leftover: retrain below
             }
             if (!trainingEnabled() || Files.exists(noaotMarker(cache))) return false;
             String what = (tool == null ? "plugin" : tool) + " worker (" + id.vendor() + " " + id.version() + ")";
             trainBlocking(what, cache, trainer, Math.max(1_000L, timeoutMs));
-            return Files.exists(cache);
+            return usableCache(cache);
         } catch (RuntimeException e) {
             return false;
         }
     }
 
-    /** Wait until {@code cache} exists or {@code timeoutMs} elapses (async train join). */
+    /** Wait until {@code cache} is usable or {@code timeoutMs} elapses (async train join). */
     public static boolean waitForCache(Path cache, long timeoutMs) {
         if (cache == null) return false;
         long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
         while (System.currentTimeMillis() < deadline) {
-            if (Files.exists(cache)) return true;
+            if (usableCache(cache)) return true;
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return Files.exists(cache);
+                return usableCache(cache);
             }
         }
-        return Files.exists(cache);
+        return usableCache(cache);
+    }
+
+    /**
+     * The one definition of "cache present": a non-empty regular file. Zero-byte leftovers
+     * (disk-full truncation, interrupted copy) count as missing everywhere, or the warmup gate
+     * ({@code HostWarmup.needsWorkerAot}) and the train paths disagree forever.
+     */
+    public static boolean usableCache(Path cache) {
+        try {
+            return cache != null && Files.isRegularFile(cache) && Files.size(cache) > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static void deleteIfEmpty(Path cache) {
+        try {
+            if (cache != null && Files.isRegularFile(cache) && Files.size(cache) == 0) {
+                Files.deleteIfExists(cache);
+            }
+        } catch (IOException ignored) {
+            // best-effort
+        }
     }
 
     // ---- keying ---------------------------------------------------------------------------
