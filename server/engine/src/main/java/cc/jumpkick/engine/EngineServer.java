@@ -382,6 +382,18 @@ public final class EngineServer implements AutoCloseable {
         EnginePaths.writeEndpoint(paths, active.socket());
         releaseStartupLock();
 
+        // JK-1452: free superseded engine AOT before we train ours — displace path is the
+        // moment disk from engine-0.x.* should go back. Worker caches are not version-scoped.
+        try {
+            int reaped = cc.jumpkick.cache.VersionStore.deleteSupersededEngineAot(
+                    cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
+            if (reaped > 0) {
+                log.accept("jk engine: retired " + reaped + " superseded engine AOT cache(s)");
+            }
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+
         connectionExecutor = Executors.newThreadPerTaskExecutor(
                 Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
         planSharedWorkerMemoryOnce();
@@ -539,6 +551,8 @@ public final class EngineServer implements AutoCloseable {
                             if (Files.isRegularFile(ep)
                                     && !mine.equals(Files.readString(ep).trim())) {
                                 log.accept("jk engine: displaced by a newer generation — draining");
+                                // JK-1452: do not finish / re-start engine AOT for a lame-duck generation.
+                                stopAotTrainerQuietly();
                                 synchronized (lifecycleLock) {
                                     if (activePipelines.get() == 0) {
                                         shuttingDown = true;
@@ -552,6 +566,7 @@ public final class EngineServer implements AutoCloseable {
                             }
                             if (!Files.exists(ep) && orphanedAndUnused()) {
                                 log.accept("jk engine: no endpoint names this engine and it is unused — exiting");
+                                stopAotTrainerQuietly();
                                 synchronized (lifecycleLock) {
                                     shuttingDown = true;
                                     closeServerChannelQuietly();
@@ -701,11 +716,18 @@ public final class EngineServer implements AutoCloseable {
                     }
                     case EngineProtocol.SHUTDOWN -> {
                         boolean force = cc.jumpkick.plugin.protocol.Jsonl.bool(line, "force", false);
+                        // Takeover already repointed the endpoint before sending shutdown — kill the
+                        // engine AOT sidecar so it cannot re-publish engine-<old-v>-* (JK-1452).
+                        // Voluntary `jk engine stop` still names us; leave train to finish then.
+                        if (!endpointNamesThisEngine()) {
+                            stopAotTrainerQuietly();
+                        }
                         synchronized (lifecycleLock) {
                             int jobs = activePipelines.get();
                             if (force || jobs == 0) {
                                 // Immediate: no in-flight jobs, or an explicit force — close the listener
-                                // now so run returns and the JVM exits cleanly (AOT still assembles).
+                                // now so run returns and the JVM exits cleanly (AOT still assembles when
+                                // we remain primary).
                                 send(writer, EngineProtocol.bye(jobs, false));
                                 shuttingDown = true;
                                 closeServerChannelQuietly();
@@ -5553,6 +5575,35 @@ public final class EngineServer implements AutoCloseable {
             });
         } catch (RuntimeException e) {
             log.accept("jk engine: AOT training sidecar failed to start: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Kill a live engine AOT sidecar and clear the spawner so a lame-duck process cannot retrain
+     * after displace (JK-1452). Idempotent.
+     */
+    private void stopAotTrainerQuietly() {
+        aotTrainerSpawner = null;
+        Process p = aotTrainer;
+        aotTrainer = null;
+        if (p == null || !p.isAlive()) return;
+        try {
+            p.destroyForcibly();
+            log.accept("jk engine: killed AOT training sidecar (no longer primary, pid " + p.pid() + ")");
+        } catch (RuntimeException ignored) {
+            // best-effort
+        }
+    }
+
+    /** Whether the endpoint pointer still names this generation's socket. */
+    private boolean endpointNamesThisEngine() {
+        if (active == null) return false;
+        try {
+            Path ep = EnginePaths.endpoint(paths);
+            if (!Files.isRegularFile(ep)) return false;
+            return active.socket().getFileName().toString().equals(Files.readString(ep).trim());
+        } catch (IOException e) {
+            return false;
         }
     }
 

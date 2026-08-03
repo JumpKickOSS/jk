@@ -1589,6 +1589,9 @@ public final class EngineClient {
                         "the build engine is shutting down — wait for it to stop, or run `jk engine stop --force`");
             }
             if (clientVersion.equals(hs.version()) && buildIdCurrent(hs, clientVersion)) {
+                // Already primary for this version — free superseded engine AOT (install may have
+                // landed without a respawn; JK-1452).
+                reapSupersededEngineAot(clientVersion);
                 return hs;
             }
             // Version skew (incl. same -SNAPSHOT with different content identity) → TAKEOVER, not
@@ -1694,6 +1697,10 @@ public final class EngineClient {
                         writeNoAotMarker(target.aotCache());
                         logReason(paths, "AOT cache was ignored by the engine JVM; skipping it for this key");
                     }
+                    // New primary (cold start or takeover) — drop other versions' engine AOT (JK-1452).
+                    // The engine also reaps after claiming the endpoint; client-side covers cases
+                    // where the jar was already live without a full EngineServer restart.
+                    reapSupersededEngineAot(clientVersion);
                     return r.handshake();
                 }
                 case TIMED_OUT -> throw notStarted(paths); // alive but never served → genuine hang
@@ -1712,6 +1719,20 @@ public final class EngineClient {
 
     private static IOException notStarted(EnginePaths.Paths paths) {
         return new IOException("could not start the build engine — see " + paths.log() + " for details");
+    }
+
+    /**
+     * Drop {@code engine-<other-v>-*} under {@code state/aot/} so a primary install frees disk for
+     * this version's cache (JK-1452). Best-effort; never throws. Silent on the common path —
+     * ensure runs often; the engine also reaps after claiming the endpoint.
+     */
+    static void reapSupersededEngineAot(String keepVersion) {
+        try {
+            Path aot = cc.jumpkick.util.JkDirs.state().resolve("aot");
+            cc.jumpkick.cache.VersionStore.deleteSupersededEngineAot(aot, keepVersion);
+        } catch (RuntimeException ignored) {
+            // layout / FS blips must not block ensure
+        }
     }
 
     /** How a spawn should treat the AOT cache. */
@@ -1979,9 +2000,10 @@ public final class EngineClient {
         // ONE home for every AOT cache — engine and workers alike live in ~/.local/state/jk/aot/ so a
         // user (or `jk engine aot`) finds them all side by side. The engine's file
         // carries its jk version ("engine-<version>-<key>.aot") because its LIFETIME is
-        // version-scoped: VersionStore.prune retires a version's caches with the version, and
-        // the sweep below stays within one version so side-by-side installs never thrash
-        // each other's caches. Worker caches (kotlinc-/java-compiler-) have no version dimension.
+        // version-scoped: a new primary reaps other versions' engine AOT (JK-1452), and
+        // VersionStore.prune also retires them with the version tree. The sweep below stays
+        // within one version so side-by-side keys for the same version never thrash each other.
+        // Worker caches (kotlinc-/java-compiler-) have no version dimension.
         Path aotDir = cc.jumpkick.util.JkDirs.state().resolve("aot");
         try {
             Files.createDirectories(aotDir);

@@ -11,8 +11,12 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Side-by-side materialized jk versions under {@code ~/.local/share/jk/versions/<v>/} (client, engine jar,
@@ -86,11 +90,56 @@ public final class VersionStore {
     }
 
     /**
+     * Engine AOT file names: {@code engine-<jk-version>-<16hex>.…}. Version may contain hyphens
+     * ({@code 0.11.0-SNAPSHOT}); the 16-hex key is always the last dash-separated segment before
+     * the first extension.
+     */
+    private static final Pattern ENGINE_AOT_NAME =
+            Pattern.compile("^engine-(.+)-([0-9a-f]{16})(\\..+)$");
+
+    /**
+     * Delete every {@code engine-<v>-*} artifact under {@code aotDir} whose {@code v} is not
+     * {@code keepVersion}. Call when a generation becomes primary (materialize / takeover / ensure)
+     * so superseded multi‑MB engine caches free disk without waiting for version-tree prune.
+     *
+     * <p>Best-effort; never throws. Worker caches ({@code java-compiler-*}, {@code kotlinc-*}) are
+     * left alone. Empty or missing {@code aotDir} is a no-op.
+     *
+     * @return number of primary {@code .aot} keys removed (manifest rows)
+     */
+    public static int deleteSupersededEngineAot(Path aotDir, String keepVersion) {
+        if (aotDir == null || keepVersion == null || keepVersion.isBlank()) return 0;
+        if (!Files.isDirectory(aotDir)) return 0;
+        Set<String> removedKeys = new LinkedHashSet<>();
+        try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {
+            for (Path p : entries) {
+                String name = p.getFileName().toString();
+                Matcher m = ENGINE_AOT_NAME.matcher(name);
+                if (!m.matches()) continue;
+                String v = m.group(1);
+                if (keepVersion.equals(v)) continue;
+                String key = m.group(2);
+                // Manifest keys the primary .aot name even when only a .noaot marker remains.
+                removedKeys.add("engine-" + v + "-" + key + ".aot");
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {
+            // best-effort maintenance
+        }
+        if (!removedKeys.isEmpty()) {
+            cc.jumpkick.util.AotManifest.remove(aotDir, List.copyOf(removedKeys));
+            cc.jumpkick.util.AotManifest.reconcile(aotDir);
+        }
+        return removedKeys.size();
+    }
+
+    /**
      * Delete version {@code v}'s engine AOT artifacts ({@code engine-<v>-<16-hex-key>.*}) from the
      * shared {@code state/aot/} dir. The key-shape check keeps a version whose name extends this
      * one ({@code 0.10.0} vs {@code 0.10.1}) out of the blast radius.
      */
-    private static void deleteEngineAotFiles(Path aotDir, String v) {
+    static void deleteEngineAotFiles(Path aotDir, String v) {
+        if (aotDir == null || v == null || v.isBlank() || !Files.isDirectory(aotDir)) return;
         String prefix = "engine-" + v + "-";
         List<String> removed = new ArrayList<>();
         try (var entries = Files.newDirectoryStream(aotDir, "engine-*")) {

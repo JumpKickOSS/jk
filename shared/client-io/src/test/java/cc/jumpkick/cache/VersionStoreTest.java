@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -127,5 +128,62 @@ class VersionStoreTest {
         org.assertj.core.api.Assertions.assertThat(staleMarker).doesNotExist();
         org.assertj.core.api.Assertions.assertThat(lookalike).exists();
         org.assertj.core.api.Assertions.assertThat(workerCache).exists();
+    }
+
+    /** JK-1452: primary version keeps its engine AOT; every other version prefix is reaped. */
+    @Test
+    void delete_superseded_engine_aot_keeps_only_the_live_version(@TempDir Path home) throws Exception {
+        Path aot = Files.createDirectories(home.resolve("aot"));
+        Path keep =
+                Files.writeString(aot.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.aot"), "live");
+        Path keepMarker = Files.writeString(aot.resolve("engine-0.11.0-aaaaaaaaaaaaaaaa.noaot"), "");
+        Path old =
+                Files.writeString(aot.resolve("engine-0.10.1-bbbbbbbbbbbbbbbb.aot"), "old");
+        Path oldMarker =
+                Files.writeString(aot.resolve("engine-0.10.1-bbbbbbbbbbbbbbbb.aot.noaot"), "");
+        Path snapshot =
+                Files.writeString(aot.resolve("engine-0.10.1-SNAPSHOT-cccccccccccccccc.aot"), "snap");
+        // Prefix-adjacent: must not treat 0.10.0 as matching keep 0.10.
+        Path other = Files.writeString(aot.resolve("engine-0.10.0-dddddddddddddddd.aot"), "x");
+        Path worker = Files.writeString(aot.resolve("java-compiler-eeeeeeeeeeeeeeee.aot"), "w");
+
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("engine-0.10.1-bbbbbbbbbbbbbbbb.aot")
+                        .tool("engine")
+                        .jkVersion("0.10.1")
+                        .status("ready")
+                        .build());
+        cc.jumpkick.util.AotManifest.upsert(
+                aot,
+                cc.jumpkick.util.AotManifest.Entry.builder("engine-0.11.0-aaaaaaaaaaaaaaaa.aot")
+                        .tool("engine")
+                        .jkVersion("0.11.0")
+                        .status("ready")
+                        .build());
+
+        int removed = VersionStore.deleteSupersededEngineAot(aot, "0.11.0");
+
+        assertThat(removed).isEqualTo(3); // 0.10.1, 0.10.1-SNAPSHOT, 0.10.0
+        assertThat(keep).exists();
+        assertThat(keepMarker).exists();
+        assertThat(old).doesNotExist();
+        assertThat(oldMarker).doesNotExist();
+        assertThat(snapshot).doesNotExist();
+        assertThat(other).doesNotExist();
+        assertThat(worker).exists();
+
+        List<String> files = cc.jumpkick.util.AotManifest.load(aot).stream()
+                .map(cc.jumpkick.util.AotManifest.Entry::file)
+                .toList();
+        assertThat(files).contains("engine-0.11.0-aaaaaaaaaaaaaaaa.aot");
+        assertThat(files).doesNotContain("engine-0.10.1-bbbbbbbbbbbbbbbb.aot");
+    }
+
+    @Test
+    void delete_superseded_engine_aot_is_noop_when_dir_missing(@TempDir Path home) {
+        assertThat(VersionStore.deleteSupersededEngineAot(home.resolve("nope"), "0.11.0")).isZero();
+        assertThat(VersionStore.deleteSupersededEngineAot(null, "0.11.0")).isZero();
+        assertThat(VersionStore.deleteSupersededEngineAot(home, "")).isZero();
     }
 }
