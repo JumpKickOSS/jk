@@ -17,6 +17,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Human-readable index of files under {@code state/aot/}: {@code aot.toml}. Opaque
@@ -410,10 +413,17 @@ public final class AotManifest {
         return s == null || s.isBlank();
     }
 
+    /** Per-directory JVM locks: {@link FileChannel#lock()} throws on same-JVM overlap. */
+    private static final ConcurrentMap<Path, ReentrantLock> DIR_LOCKS = new ConcurrentHashMap<>();
+
     private static void withLock(Path aotDir, IoRunnable body) {
         try {
             Files.createDirectories(aotDir);
-            Path lockPath = aotDir.resolve(FILE_NAME + ".lock");
+            Path lockPath = aotDir.resolve(FILE_NAME + ".lock").toAbsolutePath().normalize();
+            // Threads first (a second lock() in the same JVM throws OverlappingFileLockException,
+            // which would silently drop that update), then processes via the file lock.
+            ReentrantLock jvmLock = DIR_LOCKS.computeIfAbsent(lockPath, k -> new ReentrantLock());
+            jvmLock.lock();
             try (FileChannel ch = FileChannel.open(
                             lockPath,
                             StandardOpenOption.CREATE,
@@ -422,12 +432,11 @@ public final class AotManifest {
                     FileLock lock = ch.lock()) {
                 body.run();
             } finally {
-                try {
-                    Files.deleteIfExists(lockPath);
-                } catch (IOException ignored) {
-                    // best-effort
-                }
+                jvmLock.unlock();
             }
+            // The 0-byte .lock file intentionally stays on disk. Unlinking it while another
+            // process still holds the flock lets a third process lock a fresh inode at the same
+            // path — two writers inside the critical section at once.
         } catch (Exception ignored) {
             // AOT is an accelerator; a bad manifest must never break builds
         }

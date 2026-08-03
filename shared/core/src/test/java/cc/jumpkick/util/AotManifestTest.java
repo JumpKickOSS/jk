@@ -185,6 +185,42 @@ class AotManifestTest {
         assertThat(noaot.status()).isEqualTo("noaot");
     }
 
+    @Test
+    void concurrent_upserts_from_many_threads_all_land() throws Exception {
+        int n = 16;
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        try {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var done = new java.util.concurrent.CountDownLatch(n);
+            for (int i = 0; i < n; i++) {
+                final int id = i;
+                pool.execute(() -> {
+                    try {
+                        start.await();
+                        AotManifest.upsert(dir, AotManifest.Entry.builder("tool-" + id + ".aot")
+                                .tool("tool-" + id)
+                                .status("ready")
+                                .build());
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+            start.countDown();
+            assertThat(done.await(30, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
+        // Same-JVM overlap used to throw OverlappingFileLockException inside withLock and
+        // silently drop the losing update.
+        assertThat(AotManifest.load(dir)).hasSize(n);
+        // The lock file must survive: unlinking it while a process holds the flock hands a
+        // racing process a fresh inode to lock — two writers at once.
+        assertThat(dir.resolve(AotManifest.FILE_NAME + ".lock")).exists();
+    }
+
     private static String read(Path p) {
         try {
             return Files.readString(p);
