@@ -53,3 +53,12 @@ Exact and prefix-matchable like the primary name, still hidden from help.
 | -------------- | ------------ |
 | `--rebuild`    | `-r/--redo`  |
 | `--directory`  | `--dir`      |
+
+## Hidden global options
+
+Accepted anywhere on the line — before the command, between a group and its subcommand, or
+after — but absent from every `--help` screen.
+
+| Option        | Effect                                               |
+| ------------- | ---------------------------------------------------- |
+| `-y`, `--yes` | Answer yes to confirmation prompts (`jk self purge`, `jk activate`, …) |

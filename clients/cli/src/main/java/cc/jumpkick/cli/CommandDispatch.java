@@ -204,7 +204,23 @@ public final class CommandDispatch {
             if (pluginExit != null) return pluginExit;
             return null; // let the caller show top-level help
         }
-        return dispatch(cmd, "jk " + cmd.name(), all.subList(commandAt + 1, all.size()), ansiEnabled());
+        return dispatch(cmd, "jk " + cmd.name(), carryGlobals(all, commandAt), ansiEnabled());
+    }
+
+    /**
+     * Args for the resolved command: the tokens after it, with any global flags that appeared
+     * <em>before</em> it carried along so the leaf parse still sees them ({@code jk -y self purge}
+     * must reach {@code Confirm.setAssumeYes} exactly like {@code jk self purge -y}). A literal
+     * {@code --} separator is not carried — it only marked the command boundary.
+     */
+    private static List<String> carryGlobals(List<String> args, int commandAt) {
+        if (commandAt == 0) return args.subList(1, args.size());
+        List<String> carried = new ArrayList<>();
+        for (String a : args.subList(0, commandAt)) {
+            if (!a.equals("--")) carried.add(a);
+        }
+        carried.addAll(args.subList(commandAt + 1, args.size()));
+        return carried;
     }
 
     /**
@@ -256,7 +272,7 @@ public final class CommandDispatch {
                 printUnknownSubcommand(cmd, qualified, subName, ansi);
                 return 2;
             }
-            return dispatch(sub, qualified + " " + sub.name(), rest.subList(subAt + 1, rest.size()), ansi);
+            return dispatch(sub, qualified + " " + sub.name(), carryGlobals(rest, subAt), ansi);
         }
 
         // --help wins over parse validation (e.g. a missing required argument),

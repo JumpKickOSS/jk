@@ -241,6 +241,25 @@ class SelfPurgeCommandTest {
     }
 
     @Test
+    void global_yes_works_before_the_command_and_between_group_and_sub() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Files.createDirectories(cache.resolve("actions"));
+        Files.writeString(cache.resolve("actions/pre-yes"), "x");
+
+        // Without -y reaching Confirm, non-TTY stdin would abort with exit 1.
+        int exit = capture(() -> Jk.execute("-y", "self", "purge", "--cache"));
+        assertThat(exit).isZero();
+        assertThat(cache.resolve("actions/pre-yes")).doesNotExist();
+
+        Files.createDirectories(cache.resolve("actions"));
+        Files.writeString(cache.resolve("actions/mid-yes"), "x");
+        exit = capture(() -> Jk.execute("self", "--yes", "purge", "--cache"));
+        assertThat(exit).isZero();
+        assertThat(cache.resolve("actions/mid-yes")).doesNotExist();
+    }
+
+    @Test
     void dry_run_without_yes_does_not_prompt_and_exits_zero() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path cache = dirs.cacheDir();
