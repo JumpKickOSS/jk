@@ -260,6 +260,21 @@ class SelfPurgeCommandTest {
     }
 
     @Test
+    void declining_the_prompt_deletes_nothing_and_exits_one() throws Exception {
+        JkDirs dirs = JkDirs.current();
+        Path cache = dirs.cacheDir();
+        Files.createDirectories(cache);
+        Path marker = cache.resolve("decline-keep");
+        Files.writeString(marker, "keep");
+
+        // No -y, no TTY: the cooked prompt hits EOF, which answers the default (no).
+        int exit = capture(() -> Jk.execute("self", "purge", "--cache"));
+        assertThat(exit).isEqualTo(1);
+        assertThat(marker).exists();
+        Files.deleteIfExists(marker);
+    }
+
+    @Test
     void dry_run_without_yes_does_not_prompt_and_exits_zero() throws Exception {
         JkDirs dirs = JkDirs.current();
         Path cache = dirs.cacheDir();

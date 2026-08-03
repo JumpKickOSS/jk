@@ -447,8 +447,11 @@ public final class AotManifest {
             // The 0-byte .lock file intentionally stays on disk. Unlinking it while another
             // process still holds the flock lets a third process lock a fresh inode at the same
             // path — two writers inside the critical section at once.
-        } catch (Exception ignored) {
-            // AOT is an accelerator; a bad manifest must never break builds
+        } catch (Exception e) {
+            // AOT is an accelerator; a bad manifest must never break builds — but don't lose the
+            // trail entirely when diagnosing why an update vanished.
+            System.getLogger(AotManifest.class.getName())
+                    .log(System.Logger.Level.DEBUG, "aot.toml update skipped", e);
         }
     }
 

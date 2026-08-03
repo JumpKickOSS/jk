@@ -233,14 +233,19 @@ class AotManifestTest {
             var start = new java.util.concurrent.CountDownLatch(1);
             var done = new java.util.concurrent.CountDownLatch(n);
             for (int i = 0; i < n; i++) {
+                AotManifest.upsert(dir, AotManifest.Entry.builder("doomed-" + i + ".aot").build());
+            }
+            for (int i = 0; i < n; i++) {
                 final int id = i;
                 pool.execute(() -> {
                     try {
                         start.await();
+                        // Interleave upserts with removes: both must serialize losslessly.
                         AotManifest.upsert(dir, AotManifest.Entry.builder("tool-" + id + ".aot")
                                 .tool("tool-" + id)
                                 .status("ready")
                                 .build());
+                        AotManifest.remove(dir, "doomed-" + id + ".aot");
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     } finally {
@@ -255,7 +260,9 @@ class AotManifestTest {
         }
         // Same-JVM overlap used to throw OverlappingFileLockException inside withLock and
         // silently drop the losing update.
-        assertThat(AotManifest.load(dir)).hasSize(n);
+        var files = AotManifest.load(dir).stream().map(AotManifest.Entry::file).toList();
+        assertThat(files).hasSize(n);
+        assertThat(files).allMatch(f -> f.startsWith("tool-"));
         // The lock file must survive: unlinking it while a process holds the flock hands a
         // racing process a fresh inode to lock — two writers at once.
         assertThat(dir.resolve(AotManifest.FILE_NAME + ".lock")).exists();
