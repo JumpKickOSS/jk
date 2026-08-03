@@ -49,6 +49,8 @@ public final class Giter8Catalog {
         DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
         DESCRIPTIONS.put("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)");
         DESCRIPTIONS.put("java-cli-native", "Interactive Java CLI with JLine (jk native ready)");
+        DESCRIPTIONS.put("spring-boot-webmvc", "Spring Boot WebMVC + JPA/H2 + Actuator");
+        DESCRIPTIONS.put("spring-boot-webmvc-kotlin", "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator");
     }
 
     private Giter8Catalog() {}
