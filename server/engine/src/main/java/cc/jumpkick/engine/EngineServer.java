@@ -4428,11 +4428,14 @@ public final class EngineServer implements AutoCloseable {
                     } catch (RuntimeException e) {
                         log.accept("jk engine: idle host warmup failed: " + e.getMessage());
                     } finally {
-                        warmupRunning.set(false);
-                        // Trailing GC after the full warmup workset (feeds, templates, AOT, cal).
-                        if (trailGc && activePipelines.get() == 0 && pendingWarmupForce.get() == null) {
+                        // Trailing GC while still holding warmupRunning: a concurrent kick
+                        // cannot start a fresh pass mid-GC (it re-queues and is drained below).
+                        boolean more = pendingWarmupForce.get() != null;
+                        if (trailGc && !more && activePipelines.get() == 0) {
                             System.gc();
                         }
+                        warmupRunning.set(false);
+                        // Anything queued while we ran (or during the GC) gets its own pass.
                         if (pendingWarmupForce.get() != null && activePipelines.get() == 0) {
                             kickPendingWarmup(trailGc);
                         }
