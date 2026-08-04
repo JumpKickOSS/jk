@@ -116,13 +116,15 @@ public final class NewGroupGuess {
     }
 
     /**
-     * Walk from {@code cwd} up to the filesystem root looking for a {@code .gitconfig}; if none, try
-     * {@code ~/.gitconfig}. Return the first {@code user.email} found.
+     * Walk from {@code cwd} up to the filesystem root; at each level prefer the repo-local {@code
+     * .git/config} (what {@code git config user.email} writes) over an in-tree {@code .gitconfig}.
+     * If nothing matched, try {@code ~/.gitconfig}. Return the first {@code user.email} found.
      */
     static Optional<String> readEmail(Path cwd, Path home) {
         for (Path p = cwd; p != null; p = p.getParent()) {
-            var local = p.resolve(".gitconfig");
-            var found = parseEmail(local);
+            var repo = parseEmail(p.resolve(".git").resolve("config"));
+            if (repo.isPresent()) return repo;
+            var found = parseEmail(p.resolve(".gitconfig"));
             if (found.isPresent()) return found;
         }
         if (home != null) {

@@ -67,6 +67,42 @@ class NewGroupGuessTest {
     }
 
     @Test
+    void repo_local_git_config_wins_over_home_gitconfig(@TempDir Path tempDir) throws IOException {
+        // `git config user.email` writes .git/config — a repo-local work identity must beat
+        // the global personal one (JK-1456).
+        var repo = tempDir.resolve("project");
+        var home = tempDir.resolve("home");
+        Files.createDirectories(repo.resolve(".git"));
+        Files.createDirectories(home);
+        Files.writeString(repo.resolve(".git/config"), """
+                [core]
+                    bare = false
+                [user]
+                    email = work@modmed.com
+                """);
+        Files.writeString(home.resolve(".gitconfig"), """
+                [user]
+                    email = personal@gmail.com
+                """);
+        assertThat(NewGroupGuess.guess(repo, home)).isEqualTo("com.modmed");
+    }
+
+    @Test
+    void repo_local_git_config_wins_over_in_tree_gitconfig(@TempDir Path tempDir) throws IOException {
+        var repo = tempDir.resolve("project");
+        Files.createDirectories(repo.resolve(".git"));
+        Files.writeString(repo.resolve(".git/config"), """
+                [user]
+                    email = repo@corp.io
+                """);
+        Files.writeString(repo.resolve(".gitconfig"), """
+                [user]
+                    email = tree@other.org
+                """);
+        assertThat(NewGroupGuess.guess(repo, tempDir.resolve("home"))).isEqualTo("io.corp");
+    }
+
+    @Test
     void walks_up_to_find_gitconfig(@TempDir Path tempDir) throws IOException {
         var nested = tempDir.resolve("a/b/c");
         Files.createDirectories(nested);
