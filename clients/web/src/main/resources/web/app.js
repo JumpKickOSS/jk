@@ -718,20 +718,44 @@ Vue.createApp({
       return Math.min(99, Math.round((100 * weightNumerator(card)) / den));
     },
 
-    // Live ETA countdown for a running card — the same calibrated millis the CLI countdown and
-    // `jk explain` show. remaining = eta − elapsed; overrun flips to '+'. Empty when no estimate
-    // (the elapsed "+Ns" timer already covers count-up). Re-emitted eta events retarget it.
+    // Live ETA dual-clock (CLI parity). Both faces share one whole-second elapsed counter so they
+    // tick on the same paint — flooring remaining-ms and elapsed-ms independently desynced them.
+    // Countdown freezes at "0s" on overrun; count-up is always full elapsed. No seed → count-up only.
+    hasEta(card) {
+      return (
+        this.outcome(card) === 'running' &&
+        card.etaMillis != null &&
+        card.etaMillis > 0 &&
+        card.startedAt != null
+      );
+    },
+    elapsedSeconds(card) {
+      if (card.startedAt == null) return 0;
+      return Math.max(0, Math.floor((this.now - card.startedAt) / 1000));
+    },
+    etaSeconds(card) {
+      return Math.max(0, Math.floor(card.etaMillis / 1000));
+    },
+    etaOverdue(card) {
+      return this.hasEta(card) && this.elapsedSeconds(card) >= this.etaSeconds(card);
+    },
+    etaCountdown(card) {
+      if (!this.hasEta(card)) return '';
+      const rem = this.etaSeconds(card) - this.elapsedSeconds(card);
+      return rem <= 0 ? '0s' : '~' + this.fmtClockSeconds(rem);
+    },
+    // Back-compat alias used by older snapshots/tests: bare countdown string (no "ETA " label).
     eta(card) {
-      if (this.outcome(card) !== 'running') return '';
-      const ms = card.etaMillis;
-      if (ms == null || ms <= 0 || card.startedAt == null) return '';
-      const remaining = ms - (this.now - card.startedAt);
-      return remaining >= 0 ? '~' + this.fmtClock(remaining) : '+' + this.fmtClock(-remaining);
+      return this.etaCountdown(card);
     },
 
     // mm:ss-style clock mirroring the CLI's CommandManager.fmtClock: "42s" / "1m 02s" / "1h 05m 09s".
+    // Whole seconds only (floor) so dual-clock faces share one boundary — not Math.round.
     fmtClock(ms) {
-      const s = Math.max(0, Math.round(ms / 1000));
+      return this.fmtClockSeconds(Math.max(0, Math.floor(ms / 1000)));
+    },
+    fmtClockSeconds(totalSec) {
+      const s = Math.max(0, totalSec | 0);
       if (s < 60) return s + 's';
       const pad = (n) => String(n).padStart(2, '0');
       const m = Math.floor(s / 60);
@@ -1293,7 +1317,8 @@ Vue.createApp({
     },
     elapsed(card) {
       if (card.startedAt == null) return '';
-      return '+' + Math.max(0, Math.floor((this.now - card.startedAt) / 1000)) + 's';
+      // Full run-wide count-up from the same whole-second counter as the countdown.
+      return '+' + this.fmtClockSeconds(this.elapsedSeconds(card));
     },
     ago(card) {
       if (card.finishedAt == null) return '';

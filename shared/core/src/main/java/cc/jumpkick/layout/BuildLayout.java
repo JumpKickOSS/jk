@@ -4,7 +4,9 @@ package cc.jumpkick.layout;
 import cc.jumpkick.config.WorkspaceLocator;
 import cc.jumpkick.model.JkBuild;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.Objects;
 
 /**
@@ -105,20 +107,54 @@ public final class BuildLayout {
 
     /**
      * As {@link #moduleTargetDir} from the two roots alone — the layout decision needs no parsed
-     * project, so callers on parse-free fast paths (preflight memo, share one rule.
+     * project, so callers on parse-free fast paths (preflight memo) share one rule.
+     *
+     * <p>Membership uses {@link #absoluteKey} so symlink aliases ({@code /var} vs
+     * {@code /private/var} on macOS) still count as the same tree. The returned path keeps the
+     * caller's {@code workspaceRoot} form (absolute + normalize) so it matches other paths the
+     * caller already holds.
      */
     public static Path moduleTargetDir(Path workspaceRoot, Path moduleRoot) {
-        Path mod = moduleRoot.toAbsolutePath().normalize();
-        Path ws = workspaceRoot.toAbsolutePath().normalize();
-        if (mod.equals(ws)) {
-            return mod.resolve("target");
+        Path modKey = absoluteKey(moduleRoot);
+        Path wsKey = absoluteKey(workspaceRoot);
+        Path wsOut = workspaceRoot.toAbsolutePath().normalize();
+        if (modKey.equals(wsKey)) {
+            return wsOut.resolve("target");
         }
-        Path rel = ws.relativize(mod);
-        if (rel.getNameCount() == 0 || rel.startsWith("..")) {
+        if (!modKey.startsWith(wsKey)) {
             // Outside the workspace tree — fall back to module-local target/.
-            return mod.resolve("target");
+            return moduleRoot.toAbsolutePath().normalize().resolve("target");
         }
-        return ws.resolve("target").resolve(rel);
+        return wsOut.resolve("target").resolve(wsKey.relativize(modKey));
+    }
+
+    /**
+     * Absolute path with existing symlink parents resolved, so macOS {@code /var} vs
+     * {@code /private/var} (and similar alias pairs) compare equal for prefix checks.
+     */
+    static Path absoluteKey(Path p) {
+        Path abs = p.toAbsolutePath().normalize();
+        try {
+            if (Files.exists(abs)) {
+                return abs.toRealPath();
+            }
+            // Reconstruct under the realpath of the deepest existing ancestor.
+            Path cur = abs;
+            ArrayDeque<String> missing = new ArrayDeque<>();
+            while (cur != null && !Files.exists(cur)) {
+                Path name = cur.getFileName();
+                if (name != null) missing.push(name.toString());
+                cur = cur.getParent();
+            }
+            if (cur == null) return abs;
+            Path real = cur.toRealPath();
+            while (!missing.isEmpty()) {
+                real = real.resolve(missing.pop());
+            }
+            return real.normalize();
+        } catch (IOException e) {
+            return abs;
+        }
     }
 
     /** Root of all per-module build intermediates (same as {@link #moduleTargetDir()}). */

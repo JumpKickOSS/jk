@@ -27,7 +27,7 @@ public final class ShellInstallerBlock {
         String completions = shell.completionWiring(data);
         StringBuilder sb = new StringBuilder();
         sb.append(BEGIN).append('\n');
-        sb.append("# JumpKick: PATH (real jk/jkx), directory env hooks, completions\n");
+        sb.append("# JumpKick: PATH, directory env hooks, completions\n");
         sb.append(shell.pathEnsureSnippet(bin));
         sb.append(hooks).append('\n');
         if (completions != null && !completions.isBlank()) {

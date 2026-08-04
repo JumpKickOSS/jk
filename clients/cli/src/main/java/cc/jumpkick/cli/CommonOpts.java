@@ -21,10 +21,8 @@ public final class CommonOpts {
      * wire so the resident engine uses the same tree.
      */
     public static Opt cacheDir() {
-        return Opt.value(
-                "<dir>",
-                "Override cache-tier directory (action outputs; not the artifact store)",
-                "--cache-dir");
+        // Keep ≤ ~36 chars: build-family help pads the flag column wide (78-col budget).
+        return Opt.value("<dir>", "Override cache-tier root (not store)", "--cache-dir");
     }
 
     /** Hidden variant for internal / rarely-needed commands. */

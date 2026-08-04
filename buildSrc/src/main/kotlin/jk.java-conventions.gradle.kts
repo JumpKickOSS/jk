@@ -33,10 +33,10 @@ dependencies {
 }
 
 // Two-tier tests (suite performance):
-//   ./gradlew test              — unit/fast (exclude integration|slow|bench); target <5 min
+//   ./gradlew test              — unit/fast (exclude integration|slow|bench|network); target <5 min
 //   ./gradlew integrationTest   — engine/e2e/network/worker suites
-// Tag classes with @Tag("integration"), @Tag("slow"), or @Tag("bench").
-val slowTags = listOf("integration", "slow", "bench")
+// Tag classes with @Tag("integration"), @Tag("slow"), @Tag("bench"), or @Tag("network").
+val slowTags = listOf("integration", "slow", "bench", "network")
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
@@ -76,7 +76,7 @@ tasks.withType<Test>().configureEach {
 }
 
 tasks.named<Test>("test") {
-    description = "Unit/fast tests (excludes @Tag integration|slow|bench)"
+    description = "Unit/fast tests (excludes @Tag integration|slow|bench|network)"
     useJUnitPlatform {
         excludeTags(*slowTags.toTypedArray())
     }
