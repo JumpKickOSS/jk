@@ -773,6 +773,36 @@ public final class LockPipelines {
     }
 
     /**
+     * Extra diagnosis for the offline miss above: when the mirror <em>does</em> hold this
+     * coordinate but under different bytes than the lock pins, "isn't cached" is misleading — the
+     * artifact is right there, it simply is not the one the lockfile named. Say so and name the
+     * escape hatch, since `jk sync` alone will not resolve a first-write-wins mirror entry
+     * (JK-1462; see docs/mirror-verification-decision.md).
+     *
+     * @return a clause to append to the message, or "" when the mirror has nothing to say
+     */
+    private static String mirrorMismatchHint(Cas cas, Lockfile.Artifact pkg, String lockedHex) {
+        try {
+            if (pkg.name().indexOf(':') < 0) return "";
+            String repoName = cc.jumpkick.repo.RepoArtifactResolver.repoName(pkg.source());
+            if (!cc.jumpkick.repo.RepoArtifactResolver.isNamedRemote(repoName)) return "";
+            String m2Path = cc.jumpkick.repo.MavenLayout.artifactPath(pkg.coordinate());
+            var store = cc.jumpkick.repo.RepoArtifactStore.forRepoName(cas.root(), repoName);
+            String stored = store.storedSha256(m2Path).orElse(null);
+            if (stored == null || stored.equalsIgnoreCase(lockedHex)) return "";
+            return " (the " + repoName + " mirror holds different bytes for it — sha256 " + shortSha(stored)
+                    + " vs the locked " + shortSha(lockedHex)
+                    + "; `jk repo refresh " + pkg.coordinate() + "` once online drops the stale entry)";
+        } catch (RuntimeException e) {
+            return ""; // diagnosis is a nicety — never let it replace the real error
+        }
+    }
+
+    private static String shortSha(String hex) {
+        return hex == null || hex.length() <= 12 ? String.valueOf(hex) : hex.substring(0, 12);
+    }
+
+    /**
      * Throw if an existing lockfile can't be honored entirely from the local CAS while offline.
      */
     private static void requireOfflineSatisfiable(JkBuild effective, Lockfile lock, Cas cas) {
@@ -808,7 +838,9 @@ public final class LockPipelines {
                         + pkg.name()
                         + ":"
                         + pkg.version()
-                        + " is locked but its artifact isn't cached; run `jk sync` online first");
+                        + " is locked but its artifact isn't cached"
+                        + mirrorMismatchHint(cas, pkg, hex)
+                        + "; run `jk sync` online first");
             }
         }
     }
