@@ -223,11 +223,19 @@ class AndroidSpikeTest {
         assertThat(String.join("\n", status.output())).contains("platforms;android-28: installed");
     }
 
-    /** apksig's verifier from the fetched CAS jar — proves v1+v2 without an emulator. */
+    /**
+     * apksig's verifier — proves v1+v2 without an emulator. apksig rides its own test
+     * configuration: the plugin worker jar is non-transitive (it resolves deps from the store at
+     * run time), so it does not carry apksig's classes (JK-1449).
+     */
     private static boolean verifiedByApksig(Path apk) throws Exception {
-        Path jar = Path.of(System.getProperty("jk.android.plugin.jar"));
-        try (var loader =
-                new java.net.URLClassLoader(new java.net.URL[] {jar.toUri().toURL()})) {
+        String cp = System.getProperty("jk.android.apksig.classpath", "");
+        assertThat(cp).as("jk.android.apksig.classpath system property").isNotBlank();
+        java.util.List<java.net.URL> urls = new java.util.ArrayList<>();
+        for (String part : cp.split(java.io.File.pathSeparator)) {
+            if (!part.isBlank()) urls.add(Path.of(part).toUri().toURL());
+        }
+        try (var loader = new java.net.URLClassLoader(urls.toArray(new java.net.URL[0]))) {
             Class<?> builderClass = loader.loadClass("com.android.apksig.ApkVerifier$Builder");
             Object builder = builderClass.getConstructor(java.io.File.class).newInstance(apk.toFile());
             Object verifier = builderClass.getMethod("build").invoke(builder);

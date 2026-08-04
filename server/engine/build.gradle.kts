@@ -171,6 +171,18 @@ tasks.withType<Test>().configureEach {
     doFirst { systemProperty("jk.android.plugin.jar", testAndroidWorkerJar.singleFile.absolutePath) }
 }
 
+// apksig for the spike test's APK verification. The worker jar is deliberately non-transitive
+// (the plugin resolves its own deps from the store at run time), so the test needs apksig
+// separately rather than loading it out of the plugin jar (JK-1449).
+val testApksig by configurations.creating {
+    isCanBeConsumed = false; isCanBeResolved = true
+}
+dependencies { testApksig("com.android.tools.build:apksig:8.7.3") }
+tasks.withType<Test>().configureEach {
+    dependsOn(testApksig)
+    doFirst { systemProperty("jk.android.apksig.classpath", testApksig.asPath) }
+}
+
 // Pass the protobuf worker jar to tests (the protoc codegen integration test forks it).
 val testProtobufWorkerJar by configurations.creating {
     isCanBeConsumed = false; isCanBeResolved = true; isTransitive = false
