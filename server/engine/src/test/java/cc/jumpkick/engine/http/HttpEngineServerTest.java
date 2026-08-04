@@ -967,11 +967,11 @@ class HttpEngineServerTest {
     void events_stream_delivers_published_frames_in_sse_format() throws Exception {
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
-        events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
         assertThat(nextLine(lines)).isEqualTo(""); // blank line terminating the connected comment
-        assertThat(nextLine(lines)).startsWith("id: ");
-        assertThat(nextLine(lines)).isEqualTo("event: request-start");
-        assertThat(nextLine(lines)).isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
+        // Connect hydrate may publish status/cache before our frame (JK-1495 LiveVitals).
+        events.publish("request-start", JsonOut.object().put("requestId", 1).put("kind", "build"));
+        assertThat(awaitSseEvent(lines, "request-start"))
+                .isEqualTo("data: {\"requestId\":1,\"kind\":\"build\"}");
     }
 
     @Test
@@ -980,7 +980,34 @@ class HttpEngineServerTest {
         var lines = openEvents("");
         assertThat(nextLine(lines)).isEqualTo(": connected");
         assertThat(nextLine(lines)).isEqualTo("");
-        assertThat(nextLine(lines)).isEqualTo(": heartbeat"); // no events published — comment keepalive
+        // Hydrate status/cache frames may precede the first quiet-stream heartbeat.
+        assertThat(awaitSseComment(lines, ": heartbeat")).isEqualTo(": heartbeat");
+    }
+
+    /**
+     * Read SSE lines until {@code event: <type>}, then return the following {@code data:} line.
+     * Skips connect-hydrate vitals and other interleaved frames.
+     */
+    private static String awaitSseEvent(java.util.Iterator<String> lines, String type) throws Exception {
+        String want = "event: " + type;
+        for (int i = 0; i < 200; i++) {
+            String line = nextLine(lines);
+            if (want.equals(line)) {
+                String data = nextLine(lines);
+                assertThat(data).startsWith("data: ");
+                return data;
+            }
+        }
+        throw new AssertionError("did not see event: " + type + " within 200 lines");
+    }
+
+    /** Read until a comment line equals {@code comment} (e.g. {@code : heartbeat}). */
+    private static String awaitSseComment(java.util.Iterator<String> lines, String comment) throws Exception {
+        for (int i = 0; i < 200; i++) {
+            String line = nextLine(lines);
+            if (comment.equals(line)) return line;
+        }
+        throw new AssertionError("did not see " + comment + " within 200 lines");
     }
 
     @Test

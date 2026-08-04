@@ -105,3 +105,37 @@ Aggregate-only reads (`GET /api/status`, `GET /api/cache`) and the activity stre
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.
+
+## Live updates (`GET /api/events`)
+
+One SSE stream serves **build activity** and **chrome vitals**. Additive event names only (no
+protocol version bump). Fan-out is `HttpEvents` (bounded drop-oldest queues); the engine skips
+work when `hasSubscribers()` is false.
+
+| Kind | Events | When published |
+| --- | --- | --- |
+| **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
+| **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
+| **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Connect hydrate may force one frame |
+
+### `event: status`
+
+Core engine/host vitals (same facts as `GET /api/status` heap/load/pipelines fields). Config knobs
+(`httpUrl`, `maxConcurrentRequests`, …) stay REST-only; the SPA merges SSE into the last REST
+hydrate.
+
+### `event: cache` and `GET /api/cache`
+
+Two storage surfaces (CLI parity: `jk cache storage` / `jk repo storage`), not one combined
+“cache used” total:
+
+| Surface | Bytes | Budget field |
+| --- | --- | --- |
+| **Action cache** | `actions/` → `actionCacheBytes` / `actionsBytes` | `actionMaxBytes` (`[cache] action-max-size-mb`) |
+| **Artifact storage** | CAS + worker JAR mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-size-gb`) |
+
+Section counts (`casCount`, `actionsCount`, …) remain for the Status breakdown. `totalBytes` is a
+legacy combined sum; prefer the two surfaces for UI.
+
+REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
+and curl.

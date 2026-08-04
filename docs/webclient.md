@@ -32,9 +32,20 @@ bundler and no npm build step: the shell ships as static resources inside the en
 
 ## Live updates
 
-`api.js` subscribes to the `/api/events` SSE stream; `fold.js` reduces events into the activity
-feed with hard bounds (`MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`) so a long-lived tab
-cannot grow without limit.
+`api.js` opens one `EventSource` on `/api/events` (see [http.md](http.md#live-updates-get-apievents)).
+
+| Path | Handler |
+| --- | --- |
+| Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`) |
+| `status` | Header sysbox (CORES/LOAD/RAM/FREE) + footer Builds Running / Engine Heap |
+| `cache` | Footer **Action Cache** + **Artifact Storage**; Status panels with separate utilization meters |
+
+While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
+REST hydrate runs on load/reconnect; offline falls back to a 5 s status poll and the 30 s metrics
+refresh. Relative “ago” labels use a local 1 s `now` tick only (no network).
+
+Build phase/progress must stay **near-realtime** (inflicted SSE). Host vitals are sampled ~2 s and
+change-gated server-side so unchanged free RAM does not repaint noise.
 
 ## Testing
 
