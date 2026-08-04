@@ -374,14 +374,43 @@ public final class BuildJournal {
 
     public List<BuildRecord> list() {
         List<BuildRecord> out = new ArrayList<>();
+        for (Loaded l : loadAll()) out.add(l.record());
+        return out;
+    }
+
+    /** A record with the JSON text it came from and the directory holding it. */
+    private record Loaded(BuildRecord record, String json, Path dir) {}
+
+    /**
+     * Every non-synthetic record, newest first, read <em>once</em>.
+     *
+     * <p>Callers used to parse the whole journal and then re-read the same {@code record.json}
+     * files as raw text, so a dashboard refresh cost two full passes over every run on disk
+     * (JK-1479). Keeping the source JSON alongside the parsed record makes the second pass free.
+     */
+    private List<Loaded> loadAll() {
+        List<Loaded> out = new ArrayList<>();
         for (Path dir : entryDirs()) {
-            readRecord(dir).ifPresent(r -> {
-                // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
-                if (!r.synthetic()) out.add(r);
-            });
+            Path record = dir.resolve(RECORD);
+            if (!Files.isRegularFile(record)) continue;
+            String json;
+            try {
+                json = Files.readString(record, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                continue;
+            }
+            BuildRecord parsed;
+            try {
+                parsed = Json.read(json);
+            } catch (RuntimeException e) {
+                continue;
+            }
+            // Defense in depth: never surface optimize/calibrate fixtures (JK-1390).
+            if (parsed != null && !parsed.synthetic()) out.add(new Loaded(parsed, json, dir));
         }
         // Newest first by startedAt / finishedAt
-        out.sort(Comparator.comparingLong((BuildRecord r) -> r.finishedAt() > 0 ? r.finishedAt() : r.startedAt())
+        out.sort(Comparator.comparingLong((Loaded l) ->
+                        l.record().finishedAt() > 0 ? l.record().finishedAt() : l.record().startedAt())
                 .reversed());
         return out;
     }
@@ -401,19 +430,24 @@ public final class BuildJournal {
         return Optional.empty();
     }
 
+    /** The newest {@code limit} records as their raw JSON — no second read (see {@link #loadAll}). */
     public List<String> rawRecords(int limit) {
         List<String> out = new ArrayList<>();
-        for (BuildRecord r : list()) {
+        for (Loaded l : loadAll()) {
             if (out.size() >= limit) break;
-            // Prefer path via build number + project
-            Optional<Path> dir = runDir(r.coord(), r.dir(), r.buildNumber());
-            if (dir.isEmpty()) dir = findRunDir(ProjectBuilds.runDirName(r.buildNumber()));
-            if (dir.isEmpty()) continue;
-            Path rec = dir.get().resolve(RECORD);
-            try {
-                if (Files.isRegularFile(rec)) out.add(Files.readString(rec, StandardCharsets.UTF_8));
-            } catch (IOException ignored) {
-            }
+            out.add(l.json());
+        }
+        return out;
+    }
+
+    /** The newest {@code limit} records, parsed — truncated without materialising the rest. */
+    public List<BuildRecord> list(int limit) {
+        if (limit <= 0) return List.of();
+        List<Loaded> all = loadAll();
+        List<BuildRecord> out = new ArrayList<>(Math.min(limit, all.size()));
+        for (Loaded l : all) {
+            if (out.size() >= limit) break;
+            out.add(l.record());
         }
         return out;
     }

@@ -280,11 +280,36 @@ public final class NewProjectOps {
         Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
         Path tmp = Path.of(System.getProperty("java.io.tmpdir")).toAbsolutePath().normalize();
         Path p = parent.toAbsolutePath().normalize();
-        if (p.startsWith(home) || p.equals(home) || p.startsWith(tmp) || p.equals(tmp)) {
+        // normalize() is textual, so a symlink satisfies the allowlist while the writes land
+        // wherever it points — and java.io.tmpdir is world-writable, so an unprivileged local user
+        // can plant one. Compare resolved paths for anything that already exists (JK-1485).
+        if (allowed(realOrSelf(p), realOrSelf(home), realOrSelf(tmp)) && allowed(p, home, tmp)) {
             return;
         }
         throw new IllegalArgumentException(
                 "parentDir must be under $HOME or the system temp directory (got " + p + ")");
+    }
+
+    private static boolean allowed(Path p, Path home, Path tmp) {
+        return p.startsWith(home) || p.equals(home) || p.startsWith(tmp) || p.equals(tmp);
+    }
+
+    /**
+     * {@code path} with symlinks resolved; the nearest existing ancestor's real path when the leaf
+     * does not exist yet (a new project's parent may be created on demand).
+     */
+    private static Path realOrSelf(Path path) {
+        for (Path p = path; p != null; p = p.getParent()) {
+            if (!Files.exists(p)) continue;
+            try {
+                Path real = p.toRealPath();
+                Path rest = p.equals(path) ? null : p.relativize(path);
+                return rest == null ? real : real.resolve(rest).normalize();
+            } catch (IOException e) {
+                return path; // unresolvable — fall back to the lexical form
+            }
+        }
+        return path;
     }
 
     private static NewInputs.Language parseLang(String lang) {

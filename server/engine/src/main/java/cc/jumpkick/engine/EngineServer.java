@@ -4668,10 +4668,9 @@ public final class EngineServer implements AutoCloseable {
     /** {@code history-list-request} → one flat {@code history-entry} per entry, then {@code history-done}. */
     private void handleHistoryList(String requestLine, BufferedWriter writer) throws IOException {
         int limit = Math.max(1, Jsonl.intValue(requestLine, "limit", 200));
-        // Skip optimize/calibrate synthetic fixtures (JK-1390).
-        java.util.List<BuildRecord> records = journal.list().stream()
-                .filter(r -> r != null && !r.synthetic())
-                .toList();
+        // Truncate in the journal (synthetic fixtures are already filtered there, JK-1390) rather
+        // than materialising every record on disk and then dropping most of them (JK-1481).
+        java.util.List<BuildRecord> records = journal.list(limit);
         int n = Math.min(records.size(), limit);
         for (int i = 0; i < n; i++) {
             BuildRecord r = records.get(i);

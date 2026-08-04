@@ -51,6 +51,45 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void symlinked_parent_pointing_outside_the_allowlist_is_refused(@TempDir Path temp) throws Exception {
+        // JK-1485: java.io.tmpdir is world-writable, so another local user can plant a link there;
+        // a lexical check would accept it and the scaffolder would write through it. The target
+        // must be genuinely outside both roots — @TempDir usually lives under /tmp, so it is not.
+        Path outside = Path.of("/etc");
+        Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+        Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                java.nio.file.Files.isDirectory(outside)
+                        && !outside.startsWith(home)
+                        && !outside.startsWith(tmpDir.toAbsolutePath().normalize()),
+                "needs a directory outside $HOME and the temp dir");
+        Path link = tmpDir.resolve("jk-test-escape-" + ProcessHandle.current().pid());
+        try {
+            java.nio.file.Files.createSymbolicLink(link, outside);
+        } catch (UnsupportedOperationException | java.io.IOException unsupported) {
+            return; // no symlink support — nothing to prove
+        }
+        try {
+            assertThatThrownBy(() -> NewProjectOps.assertAllowedParent(link))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("must be under");
+        } finally {
+            java.nio.file.Files.deleteIfExists(link);
+        }
+    }
+
+    @Test
+    void a_real_directory_under_tmp_is_still_allowed(@TempDir Path temp) throws Exception {
+        Path real = java.nio.file.Files.createDirectories(
+                Path.of(System.getProperty("java.io.tmpdir"), "jk-test-ok-" + ProcessHandle.current().pid()));
+        try {
+            NewProjectOps.assertAllowedParent(real); // must not throw
+        } finally {
+            java.nio.file.Files.deleteIfExists(real);
+        }
+    }
+
+    @Test
     void extract_from_jar_reuses_one_tree_and_cleans_up_misses(@TempDir Path temp) throws Exception {
         // JK-1457: one extraction per short name per engine run; a missing prefix leaves no tree.
         Path jar = temp.resolve("templates.jar");
