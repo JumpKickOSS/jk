@@ -85,10 +85,11 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
 
         if (entries.isEmpty()) return 0;
 
-        // Full details per cache
+        // Full details per cache — section header is a green pulse + path-styled name, not a
+        // second CommandWedge (only the summary table uses the wedge title bar).
         for (AotManifest.Entry e : entries) {
             CliOutput.out();
-            CliOutput.out(CommandWedge.menu(e.file()));
+            CliOutput.out(cacheSectionHeader(e.file()));
             detail("Status", nullToDash(e.status()));
             if (e.sizeBytes() != null) detail("Size", CacheCommand.fmtBytes(e.sizeBytes()));
             if (notBlank(e.tool())) detail("Tool", e.tool());
@@ -118,6 +119,14 @@ public final class EngineAotCommand implements cc.jumpkick.model.command.CliComm
             if (notBlank(e.lastUsed())) detail("Last used", e.lastUsed());
         }
         return 0;
+    }
+
+    /** Green ● + bold path-colored filename — detail section title under the summary table. */
+    private static String cacheSectionHeader(String fileName) {
+        Theme t = Theme.active();
+        return Theme.colorize(Glyphs.pulse(), t.success())
+                + " "
+                + Theme.colorize(fileName, t.path().bold());
     }
 
     private static void detail(String label, String value) {
