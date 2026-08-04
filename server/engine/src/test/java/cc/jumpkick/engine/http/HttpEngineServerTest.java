@@ -575,6 +575,19 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void project_defaults_require_the_token_even_on_loopback() throws Exception {
+        // Derived from the owner's git identity + home layout — same class as /api/fs.
+        assertThat(get("/api/projects/defaults").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void project_defaults_return_group_and_parent_dir_with_token() throws Exception {
+        HttpResponse<String> resp = get("/api/projects/defaults", "Authorization", "Bearer " + token());
+        assertThat(resp.statusCode()).isEqualTo(200);
+        assertThat(resp.body()).contains("\"group\":").contains("\"parentDir\":");
+    }
+
+    @Test
     void unknown_api_endpoint_is_404() throws Exception {
         assertThat(get("/api/no-such-thing").statusCode()).isEqualTo(404);
     }

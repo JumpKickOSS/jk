@@ -483,11 +483,13 @@ public final class HttpEngineServer implements AutoCloseable {
     private boolean authorized(HttpExchange exchange) {
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // /api/fs lists the filesystem with the engine owner's permissions, and /api/log can carry
-        // build diagnostics — on a shared machine another local user must not browse either over
-        // loopback, so they are never token-exempt.
+        // /api/fs lists the filesystem with the engine owner's permissions, /api/log can carry
+        // build diagnostics, and /api/projects/defaults derives from the owner's git identity and
+        // home-directory layout — on a shared machine another local user must not read any of them
+        // over loopback, so they are never token-exempt.
         String path = exchange.getRequestURI().getPath();
-        boolean sensitiveRead = path.equals("/api/fs") || path.equals("/api/log");
+        boolean sensitiveRead =
+                path.equals("/api/fs") || path.equals("/api/log") || path.equals("/api/projects/defaults");
         if (read && !readsRequireToken && !sensitiveRead) return true;
         if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         return read

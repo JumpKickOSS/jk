@@ -19,6 +19,11 @@
 Template list is filtered by Language (`jk_languages` / catalog). Catalog is merged with local
 template roots via `Giter8TemplateIndex`.
 
+Modal defaults come from `GET /api/projects/defaults` (`{ group, parentDir }` — group from git
+email like `jk new`, parent from build history / well-known roots). The endpoint derives from the
+engine owner's git identity and home layout, so like `/api/fs` and `/api/log` it requires the
+bearer token even on loopback; a tokenless session falls back to blank/`com.example` defaults.
+
 ## Backend (to implement)
 
 | Piece | Proposal |
