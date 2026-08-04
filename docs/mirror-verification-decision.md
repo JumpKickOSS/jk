@@ -46,9 +46,19 @@ belongs to the operations that already talk to the network:
 - Full content re-hash per hit (~100 MB classpaths) would cost seconds of CPU per warm build for a
   corruption class (jk-owned tree, hard-linked CAS) that the sidecar invariant already bounds.
 
-**Gap to close (follow-up):** callers that use the *unverified* `locate(relPath)` on paths that
-feed a worker classpath (e.g. `PluginJar.locate`, `JkPluginSync`) should migrate to the
-hash-verified overload where a pinned hash exists (JK-1461).
+**Audit of unverified callers (JK-1461, done 2026-08-03).** Every `RepoArtifactStore.locate` call
+on a classpath-feeding path was reviewed:
+
+| Caller | Pin available? | Verdict |
+|---|---|---|
+| `ClasspathResolver.resolveFromRepos` | yes — the lockfile `sha256:` | already uses `locate(path, sha)`; a mismatch is treated as absent, so it falls back to CAS / refetch |
+| `PluginJar.locate` | no | first-party worker jars are named by coordinate; the only recorded hash *is* the sidecar the store itself wrote, so there is nothing independent to check against |
+| `JkPluginSync` | no | same — a presence probe for worker jars, not a dependency resolve |
+
+No caller needs migrating: the pinned path is already verified, and the unpinned ones have no pin
+to verify. Adding a self-consistency re-hash to `PluginJar.locate` was considered and rejected —
+it would hash a multi-megabyte jar on every plugin launch (the hot path) to catch only local
+corruption, which is precisely the per-hit hashing this decision rules out above.
 
 ### 3. Offline semantics
 
@@ -73,8 +83,8 @@ bug). jk documents this and provides an escape hatch:
 
 - **JK-1460** — `jk repo refresh <coordinate>` escape hatch (evict + refetch; docs in
   maven-repo.md).
-- **JK-1461** — audit unverified `RepoArtifactStore.locate(relPath)` callers on classpath-feeding
-  paths; use the hash-verified overload where a lock pin exists.
+- **JK-1461** — ~~audit unverified `RepoArtifactStore.locate(relPath)` callers~~ **done**: see the
+  audit table above; no code change warranted.
 - **JK-1462** — offline mismatch: fail with coordinate + `jk repo refresh` guidance instead of a
   generic miss.
 
