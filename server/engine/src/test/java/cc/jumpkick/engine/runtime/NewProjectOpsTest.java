@@ -51,6 +51,37 @@ class NewProjectOpsTest {
     }
 
     @Test
+    void extract_from_jar_reuses_one_tree_and_cleans_up_misses(@TempDir Path temp) throws Exception {
+        // JK-1457: one extraction per short name per engine run; a missing prefix leaves no tree.
+        Path jar = temp.resolve("templates.jar");
+        try (var out = new java.util.zip.ZipOutputStream(Files.newOutputStream(jar))) {
+            out.putNextEntry(new java.util.zip.ZipEntry("giter8/acme-jar-demo/default.properties"));
+            out.write("name=demo\n".getBytes());
+            out.closeEntry();
+            out.putNextEntry(new java.util.zip.ZipEntry("giter8/acme-jar-demo/src/main/g8/jk.toml"));
+            out.write("name=demo\n".getBytes());
+            out.closeEntry();
+        }
+        java.net.URI jarUri = java.net.URI.create("jar:" + jar.toUri());
+        Path first = NewProjectOps.extractFromJar(jarUri, "giter8/acme-jar-demo", "acme-jar-demo");
+        Path second = NewProjectOps.extractFromJar(jarUri, "giter8/acme-jar-demo", "acme-jar-demo");
+        assertThat(first).isNotNull();
+        assertThat(Files.isRegularFile(first.resolve("default.properties"))).isTrue();
+        assertThat(second).isEqualTo(first); // reused, not re-extracted
+
+        Path tmpDir = Path.of(System.getProperty("java.io.tmpdir"));
+        long before;
+        try (var s = Files.list(tmpDir)) {
+            before = s.filter(p -> p.getFileName().toString().startsWith("jk-g8-acme-jar-miss-")).count();
+        }
+        assertThat(NewProjectOps.extractFromJar(jarUri, "giter8/no-such-prefix", "acme-jar-miss")).isNull();
+        try (var s = Files.list(tmpDir)) {
+            long after = s.filter(p -> p.getFileName().toString().startsWith("jk-g8-acme-jar-miss-")).count();
+            assertThat(after).isEqualTo(before); // miss left no temp tree behind
+        }
+    }
+
+    @Test
     void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
         // Unique short name so the official cache cannot steal the hit.
         Path templates = temp.resolve("templates");

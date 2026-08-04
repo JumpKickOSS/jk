@@ -184,6 +184,13 @@ public final class NewProjectOps {
     }
 
     /**
+     * Extracted classpath templates, one per short name per engine run — the engine is long-lived,
+     * so re-extracting (and leaking) a fresh temp tree per create is not acceptable (JK-1457).
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Path> EXTRACTED =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
      * Unpack {@code classpath:giter8/&lt;shortName&gt;/…} when present (bootstrap java-cli /
      * kotlin-cli / quarkus). Looks up a file marker — jar classloaders often omit directory URLs.
      */
@@ -199,35 +206,64 @@ public final class NewProjectOps {
                 return root != null && isTemplateRoot(root) ? root.toAbsolutePath().normalize() : null;
             }
             if ("jar".equals(marker.getProtocol())) {
-                Path tmp = Files.createTempDirectory("jk-g8-" + shortName + "-");
                 String external = marker.toExternalForm();
                 int bang = external.indexOf('!');
                 if (bang < 0) return null;
-                java.net.URI jarUri = java.net.URI.create(external.substring(0, bang));
-                String rootEntry = prefix + "/";
-                try (var fs = java.nio.file.FileSystems.newFileSystem(jarUri, Map.of())) {
-                    Path root = fs.getPath(rootEntry);
-                    if (!Files.isDirectory(root)) root = fs.getPath("/" + rootEntry);
-                    if (!Files.isDirectory(root)) return null;
-                    try (var walk = Files.walk(root)) {
-                        for (Path p : (Iterable<Path>) walk::iterator) {
-                            Path rel = root.relativize(p);
-                            Path out = tmp.resolve(rel.toString().replace('\\', '/'));
-                            if (Files.isDirectory(p)) {
-                                Files.createDirectories(out);
-                            } else {
-                                Files.createDirectories(out.getParent());
-                                Files.copy(p, out);
-                            }
-                        }
-                    }
-                }
-                return isTemplateRoot(tmp) ? tmp : null;
+                return extractFromJar(java.net.URI.create(external.substring(0, bang)), prefix, shortName);
             }
         } catch (Exception e) {
             throw new IOException("failed to extract classpath template '" + shortName + "': " + e.getMessage(), e);
         }
         return null;
+    }
+
+    /** Jar branch of {@link #extractClasspathTemplate}: extract once, reuse, clean up on failure. */
+    static Path extractFromJar(java.net.URI jarUri, String prefix, String shortName) throws IOException {
+        Path cached = EXTRACTED.get(shortName);
+        if (cached != null && isTemplateRoot(cached)) return cached;
+        Path tmp = Files.createTempDirectory("jk-g8-" + shortName + "-");
+        try {
+            String rootEntry = prefix + "/";
+            try (var fs = java.nio.file.FileSystems.newFileSystem(jarUri, Map.of())) {
+                Path root = fs.getPath(rootEntry);
+                if (!Files.isDirectory(root)) root = fs.getPath("/" + rootEntry);
+                if (!Files.isDirectory(root)) {
+                    deleteTreeQuiet(tmp);
+                    return null;
+                }
+                try (var walk = Files.walk(root)) {
+                    for (Path p : (Iterable<Path>) walk::iterator) {
+                        Path rel = root.relativize(p);
+                        Path out = tmp.resolve(rel.toString().replace('\\', '/'));
+                        if (Files.isDirectory(p)) {
+                            Files.createDirectories(out);
+                        } else {
+                            Files.createDirectories(out.getParent());
+                            Files.copy(p, out);
+                        }
+                    }
+                }
+            }
+            if (!isTemplateRoot(tmp)) {
+                deleteTreeQuiet(tmp);
+                return null;
+            }
+            EXTRACTED.put(shortName, tmp);
+            return tmp;
+        } catch (IOException | RuntimeException e) {
+            deleteTreeQuiet(tmp); // no partial trees left behind
+            throw e;
+        }
+    }
+
+    private static void deleteTreeQuiet(Path root) {
+        try (var walk = Files.walk(root)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (IOException ignored) {
+            // best-effort cleanup
+        }
     }
 
     static boolean isTemplateRoot(Path p) {
