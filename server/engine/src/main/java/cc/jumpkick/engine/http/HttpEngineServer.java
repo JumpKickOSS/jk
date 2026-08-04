@@ -767,22 +767,10 @@ public final class HttpEngineServer implements AutoCloseable {
             sendJson(exchange, 200, cached);
             return;
         }
-        java.nio.file.Path home = java.util.Optional.ofNullable(System.getProperty("user.home"))
-                .map(java.nio.file.Path::of)
-                .orElse(null);
-        // Dogfood: walk a few ancestors of the process cwd for a monorepo templates/ dir.
-        java.util.List<java.nio.file.Path> extras = new java.util.ArrayList<>();
-        java.nio.file.Path walk = java.nio.file.Path.of(".").toAbsolutePath().normalize();
-        for (int i = 0; i < 6 && walk != null; i++) {
-            java.nio.file.Path dogfood = walk.resolve("templates");
-            if (java.nio.file.Files.isDirectory(dogfood)) {
-                extras.add(dogfood);
-                break;
-            }
-            walk = walk.getParent();
-        }
+        // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
+        // template that then resolves differently, or miss one that would resolve.
         var entries = cc.jumpkick.scaffold.Giter8TemplateIndex.build(
-                cc.jumpkick.scaffold.Giter8TemplateIndex.defaultSearchRoots(home, extras));
+                cc.jumpkick.scaffold.Giter8TemplateIndex.searchRoots());
         var arr = new StringBuilder("[");
         boolean first = true;
         for (var e : entries) {
