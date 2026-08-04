@@ -176,11 +176,14 @@ public final class BuildJournal {
             writeRunMetricsToml(tmp, toWrite);
             Files.move(tmp.resolve(RECORD), target.resolve(RECORD), StandardCopyOption.REPLACE_EXISTING);
             if (Files.isRegularFile(tmp.resolve(ProjectBuilds.METRICS))) {
-                Files.move(
-                        tmp.resolve(ProjectBuilds.METRICS),
-                        target.resolve(ProjectBuilds.METRICS),
-                        StandardCopyOption.REPLACE_EXISTING);
+                synchronized (metricsLock(target)) {
+                    Files.move(
+                            tmp.resolve(ProjectBuilds.METRICS),
+                            target.resolve(ProjectBuilds.METRICS),
+                            StandardCopyOption.REPLACE_EXISTING);
+                }
             }
+            METRICS_LOCKS.remove(target.toAbsolutePath().normalize());
             if (snapshot != null) {
                 if (snapshot.testResultsMd() != null && Files.isRegularFile(tmp.resolve(TEST_RESULTS_MD))) {
                     Files.move(
@@ -225,29 +228,45 @@ public final class BuildJournal {
         }
     }
 
+    /**
+     * Serializes every mutation of a run's {@code metrics.toml}: {@link #appendHostSamples} is a
+     * read-modify-write and {@code complete()} moves a freshly written file over the same path, so
+     * without this one of the two silently loses (JK-1491). Keyed by run dir; entries are dropped
+     * once the run is complete.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<Path, Object> METRICS_LOCKS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static Object metricsLock(Path runDir) {
+        return METRICS_LOCKS.computeIfAbsent(runDir.toAbsolutePath().normalize(), k -> new Object());
+    }
+
     public void appendHostSamples(String locator, List<HostSampleLine> samples) {
         if (!validLocator(locator) || samples == null || samples.isEmpty()) return;
         Path run = findRunDir(locator).orElse(null);
         if (run == null) return;
         Path metrics = run.resolve(ProjectBuilds.METRICS);
-        try {
-            StringBuilder sb = new StringBuilder();
-            if (Files.isRegularFile(metrics)) {
-                sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
-                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
-            } else {
-                sb.append("# run metrics\n");
+        synchronized (metricsLock(run)) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                if (Files.isRegularFile(metrics)) {
+                    sb.append(Files.readString(metrics, StandardCharsets.UTF_8));
+                    if (sb.length() > 0 && sb.charAt(sb.length() - 1) != '\n') sb.append('\n');
+                } else {
+                    sb.append("# run metrics\n");
+                }
+                for (HostSampleLine s : samples) {
+                    if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
+                    sb.append("host.")
+                            .append(sanitize(s.key()))
+                            .append(" = ")
+                            .append(Math.round(s.ms()))
+                            .append('\n');
+                }
+                Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
+            } catch (IOException ignored) {
+                // best-effort: host samples are diagnostics, never worth failing a build
             }
-            for (HostSampleLine s : samples) {
-                if (s == null || s.key() == null || s.key().isBlank() || !(s.ms() > 0)) continue;
-                sb.append("host.")
-                        .append(sanitize(s.key()))
-                        .append(" = ")
-                        .append(Math.round(s.ms()))
-                        .append('\n');
-            }
-            Files.writeString(metrics, sb.toString(), StandardCharsets.UTF_8);
-        } catch (IOException ignored) {
         }
     }
 
@@ -501,6 +520,10 @@ public final class BuildJournal {
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
         List<Entry> entries = new ArrayList<>();
         for (Path dir : entryDirs()) {
+            // Never reap a run that has not finished: the idle gate is checked before this call,
+            // so a build admitted in between would otherwise have its `running` stub deleted out
+            // from under it (JK-1491).
+            if (readRecord(dir).map(BuildRecord::running).orElse(false)) continue;
             entries.add(new Entry(dir, entryMillis(dir, nowMillis), sizeOf(dir)));
         }
         int removed = 0;

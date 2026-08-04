@@ -185,6 +185,18 @@ class BuildJournalTest {
      * JK-1471: build numbers are per project, so deleting "8" must not resolve into whichever
      * project home happens to sort first.
      */
+    /** JK-1491: an in-flight run's stub must survive a prune that runs alongside it. */
+    @Test
+    void prune_never_reaps_a_running_entry() {
+        BuildJournal j = new BuildJournal(dir);
+        // Old enough that any age budget would sweep it, but still running.
+        String live = j.begin(BuildRecord.running(1, "build", "/proj", "g:a", 1L, "9.9", "cli"));
+        assertThat(live).isNotNull();
+        BuildJournal.PruneResult r = j.prune(1, 1, 1_700_000_000_000L);
+        assertThat(r.removedEntries()).isZero();
+        assertThat(j.get(live)).isPresent();
+    }
+
     /** JK-1479/JK-1481: the limited views must agree with the full list, just truncated. */
     @Test
     void limited_list_and_raw_records_match_the_full_list() {
