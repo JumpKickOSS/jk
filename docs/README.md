@@ -14,6 +14,7 @@ Public docs for [jk](../README.md) — a modern build tool for Java, Kotlin, and
 | [**Host warmup**](install-optimize.md) | Engine self-heal: worker AOT + host calibration (idle / 12 h) |
 | [**Hosting & CDN**](hosting.md) | Firebase Hosting + GCS releases, DNS for jumpkick.build |
 | [**Maven repo**](maven-repo.md) | Official first-party repo (`/repo/…`); exclusive routing for `cc`/`build.jumpkick` |
+| [**Mirror verification**](mirror-verification-decision.md) | Decision: store-hit checksum policy, first-write-wins, `jk repo refresh` (JK-1451) |
 
 Project planning (not product docs): [kanartist](https://github.com/jkbuild/kanartist) project `jk` (`JK-NNNN`).
 
