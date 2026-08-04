@@ -58,11 +58,16 @@ public final class JkBuildParser {
      * re-parse). Stores the <em>local</em> manifest only — workspace inheritance is applied by
      * {@link #parse(Path)} on top so it always sees a fresh root.
      */
-    // A plain (path, size, mtime) memo: the parse is a pure function of the file's bytes again, so
-    // nothing environment-shaped belongs in this key.
-    private static final Map<CacheKey, JkBuild> PARSE_CACHE = new ConcurrentHashMap<>();
+    // A plain (size, mtime) memo: the parse is a pure function of the file's bytes again, so
+    // nothing environment-shaped belongs in the stamp.
+    //
+    // Keyed by PATH, with the stamp in the value: keying by (path, size, mtime) would make every
+    // save of a jk.toml a NEW key, stranding the superseded JkBuild for the engine's lifetime —
+    // unbounded growth across a long `jk watch` session. One entry per file, replaced in place
+    // (JK-1483).
+    private static final Map<Path, Cached> PARSE_CACHE = new ConcurrentHashMap<>();
 
-    private record CacheKey(Path path, long size, FileTime modified) {}
+    private record Cached(long size, FileTime modified, JkBuild value) {}
 
     /**
      * Parse {@code jk.toml} and resolve workspace inheritance / sibling placeholders for the module
@@ -87,16 +92,16 @@ public final class JkBuildParser {
         } catch (NoSuchFileException e) {
             throw new JkBuildParseException("jk.toml not found: " + file);
         }
-        CacheKey key = new CacheKey(file.toAbsolutePath().normalize(), attrs.size(), attrs.lastModifiedTime());
-        JkBuild cached = PARSE_CACHE.get(key);
-        if (cached != null) {
-            return cached;
+        Path key = file.toAbsolutePath().normalize();
+        Cached cached = PARSE_CACHE.get(key);
+        if (cached != null && cached.size() == attrs.size() && cached.modified().equals(attrs.lastModifiedTime())) {
+            return cached.value();
         }
         JkBuild parsed = parse(
                 Files.readString(file),
                 LibraryCatalog.layered(),
                 file.toAbsolutePath().getParent());
-        PARSE_CACHE.put(key, parsed);
+        PARSE_CACHE.put(key, new Cached(attrs.size(), attrs.lastModifiedTime(), parsed));
         return parsed;
     }
 
@@ -104,9 +109,13 @@ public final class JkBuildParser {
      * Drop memo for {@code file} and re-parse with workspace resolution (e.g. after plugin-manifest
      * materialization).
      */
+    /** Test seam: how many files the parse memo currently holds. */
+    static int parseCacheSizeForTest() {
+        return PARSE_CACHE.size();
+    }
+
     public static JkBuild reparse(Path file) throws IOException {
-        Path key = file.toAbsolutePath().normalize();
-        PARSE_CACHE.keySet().removeIf(k -> k.path().equals(key));
+        PARSE_CACHE.remove(file.toAbsolutePath().normalize());
         return parse(file);
     }
 
@@ -124,8 +133,7 @@ public final class JkBuildParser {
 
     /** Drop memo and re-parse without workspace resolution. */
     public static JkBuild reparseLocal(Path file) throws IOException {
-        Path key = file.toAbsolutePath().normalize();
-        PARSE_CACHE.keySet().removeIf(k -> k.path().equals(key));
+        PARSE_CACHE.remove(file.toAbsolutePath().normalize());
         return parseLocal(file);
     }
 

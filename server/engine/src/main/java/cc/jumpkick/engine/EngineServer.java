@@ -415,8 +415,19 @@ public final class EngineServer implements AutoCloseable {
         EnginePaths.writeEndpoint(paths, active.socket());
         releaseStartupLock();
 
-        // JK-1452: drop other product versions' AOT (engine + workers); keep ours (named
-        // *-<version>-*). Displaced peers suppress training so they cannot refill while draining.
+        connectionExecutor = Executors.newThreadPerTaskExecutor(
+                Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
+        planSharedWorkerMemoryOnce();
+
+        log.accept("jk engine: listening on " + active.socket() + " (pid " + pid + ")");
+
+        // Order matters (JK-1452, JK-1475): tell the predecessor to drain FIRST — that is what
+        // makes it suppress training and kill its trainer sidecar. Wiping before that signal
+        // leaves a window in which its in-flight trainer can atomically rename a fresh cache into
+        // the directory we just swept, which is exactly the refill this was meant to prevent.
+        // Our own trainer starts last, after the sweep, so it never sweeps its own output.
+        drainDisplaced(previousActive);
+        // Drop other product versions' AOT (engine + workers); keep ours (named *-<version>-*).
         try {
             int wiped = cc.jumpkick.cache.VersionStore.wipeAotDirectory(
                     cc.jumpkick.util.JkDirs.state().resolve("aot"), version);
@@ -426,14 +437,7 @@ public final class EngineServer implements AutoCloseable {
         } catch (RuntimeException ignored) {
             // best-effort
         }
-
-        connectionExecutor = Executors.newThreadPerTaskExecutor(
-                Thread.ofVirtual().name("jk-engine-conn-", 0).factory());
-        planSharedWorkerMemoryOnce();
-
-        log.accept("jk engine: listening on " + active.socket() + " (pid " + pid + ")");
         startAotTrainerIfConfigured();
-        drainDisplaced(previousActive);
         // HTTP binds only after the displaced predecessor has been told to drain — it still holds the
         // fixed port until it exits, so binding earlier loses the handoff race with "Address already in
         // use" and (being advisory, never retried for the engine's life) sticks in `jk engine status`.

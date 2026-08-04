@@ -1918,4 +1918,28 @@ class JkBuildParserTest {
         assertThat(platform).hasSize(1);
         assertThat(platform.get(0).version().raw()).isEqualTo("4.0.1");
     }
+
+    /**
+     * JK-1483: the parse memo must hold one entry per file. Keying it by (path, size, mtime) made
+     * every save of a jk.toml strand the previous JkBuild for the process's lifetime.
+     */
+    @Test
+    void parse_memo_replaces_the_entry_for_a_rewritten_file(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp)
+            throws Exception {
+        java.nio.file.Path file = tmp.resolve("jk.toml");
+        java.nio.file.Files.writeString(file, PROJECT);
+        JkBuild first = JkBuildParser.parseLocal(file);
+        assertThat(JkBuildParser.parseLocal(file)).isSameAs(first); // warm hit
+
+        for (int i = 0; i < 20; i++) {
+            java.nio.file.Files.writeString(file, PROJECT + "\n# edit " + i + "\n");
+            // Distinct mtime so the stamp really moves on every rewrite.
+            java.nio.file.Files.setLastModifiedTime(
+                    file, java.nio.file.attribute.FileTime.fromMillis(1_700_000_000_000L + i * 1000L));
+            JkBuildParser.parseLocal(file);
+        }
+        assertThat(JkBuildParser.parseCacheSizeForTest())
+                .as("one entry per file, not one per revision")
+                .isEqualTo(1);
+    }
 }
