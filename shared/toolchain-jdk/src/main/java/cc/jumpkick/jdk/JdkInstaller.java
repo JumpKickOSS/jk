@@ -372,11 +372,9 @@ public final class JdkInstaller {
                 if (isDir) {
                     Files.createDirectories(out);
                 } else if (isLink) {
-                    if (out.getParent() != null) Files.createDirectories(out.getParent());
-                    Files.deleteIfExists(out);
-                    Files.createSymbolicLink(out, Path.of(linkName));
+                    MinimalTar.createSymlinkInside(destDir, out, linkName);
                 } else {
-                    if (out.getParent() != null) Files.createDirectories(out.getParent());
+                    MinimalTar.requireParentInside(destDir, out);
                     Files.copy(data, out);
                     MinimalTar.applyMode(out, mode);
                 }

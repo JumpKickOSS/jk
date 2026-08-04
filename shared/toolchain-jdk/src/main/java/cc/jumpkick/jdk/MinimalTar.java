@@ -133,6 +133,49 @@ public final class MinimalTar {
 
     // ---- helpers ----------------------------------------------------------
 
+    /**
+     * Create the symlink {@code out -> linkName}, refusing targets that leave {@code destDir}.
+     *
+     * <p>An archive is untrusted input, and the usual entry-name check is purely lexical — it does
+     * not stop an entry named {@code lib} that is a symlink to {@code /etc}, followed by an entry
+     * named {@code lib/passwd} whose write then lands outside the destination. Real JDK/tool
+     * archives only ever link <em>within</em> the extracted tree ({@code jre/lib -> ../lib}), so
+     * resolving the target against the link's own parent and requiring containment keeps every
+     * legitimate archive working while closing the escape (JK-1464).
+     */
+    public static void createSymlinkInside(Path destDir, Path out, String linkName) throws IOException {
+        if (linkName == null || linkName.isBlank()) {
+            throw new IOException("tar symlink entry has no target: " + out.getFileName());
+        }
+        Path target = Path.of(linkName);
+        if (target.isAbsolute()) {
+            throw new IOException("tar symlink target is absolute: " + linkName);
+        }
+        Path parent = out.getParent() == null ? destDir : out.getParent();
+        Path resolved = parent.resolve(target).normalize();
+        if (!resolved.startsWith(destDir.normalize())) {
+            throw new IOException("tar symlink escapes destination: " + out.getFileName() + " -> " + linkName);
+        }
+        if (out.getParent() != null) Files.createDirectories(out.getParent());
+        Files.deleteIfExists(out);
+        Files.createSymbolicLink(out, target);
+    }
+
+    /**
+     * Fail when {@code out}'s parent directories resolve (through symlinks) outside {@code
+     * destDir} — the second half of the tar-symlink escape: a link entry planted earlier in the
+     * same archive must not become a write path out of the tree (JK-1464).
+     */
+    public static void requireParentInside(Path destDir, Path out) throws IOException {
+        Path parent = out.getParent();
+        if (parent == null) return;
+        Files.createDirectories(parent);
+        Path realParent = parent.toRealPath();
+        if (!realParent.startsWith(destDir.toRealPath())) {
+            throw new IOException("tar entry writes through a link outside the destination: " + out.getFileName());
+        }
+    }
+
     public static void applyMode(Path file, int mode) {
         try {
             Set<PosixFilePermission> perms = EnumSet.noneOf(PosixFilePermission.class);
