@@ -141,6 +141,7 @@ cache, a normal `jk build` should hit action cache for unchanged modules.
 | **`jk repo storage`** | CAS blobs + worker JAR mirrors + run logs under the store |
 | **`jk repo prune`** | Sweep unreferenced CAS blobs + expired run logs; `--max-size <size>` LRU-evicts down to a budget |
 | **`jk repo search`** | Offline search of locally mirrored coordinates |
+| **`jk repo refresh <coord>`** | Evict a coordinate from the mirror so it re-fetches. The mirror is first-write-wins (Maven Central's immutability contract); this is the escape hatch for an upstream that genuinely republished — see [mirror-verification-decision.md](mirror-verification-decision.md) |
 | **`jk repo login` / `logout`** | Artifact-repository credentials |
 | **`jk self purge`** | Wipe **jk-owned** data only. Never touches the PATH bin dir or JDKs. |
 

@@ -127,4 +127,29 @@ class RepoArtifactStoreTest {
         assertThat(Files.isSameFile(casBlob, artifact)).isTrue();
         assertThat(Files.readString(artifact)).isEqualTo("shared-bytes");
     }
+
+    /** JK-1460: the first-write-wins escape hatch — evict drops both files so the next resolve refetches. */
+    @Test
+    void evict_removes_the_artifact_and_its_sidecar(@TempDir Path dir) throws IOException {
+        Path cache = dir.resolve("cache");
+        Path casBlob = dir.resolve("cas/blob");
+        Files.createDirectories(casBlob.getParent());
+        Files.writeString(casBlob, "artifact-bytes");
+        String sha = "b".repeat(64);
+
+        RepoArtifactStore store = new RepoArtifactStore(cache, "central");
+        String rel = "com/example/lib/1.0.0/lib-1.0.0.jar";
+        store.materialize(rel, casBlob, sha);
+        assertThat(store.contains(rel)).isTrue();
+
+        assertThat(store.evict(rel)).isTrue();
+        assertThat(store.contains(rel)).isFalse();
+        assertThat(cache.resolve("repos/central").resolve(rel)).doesNotExist();
+        assertThat(Path.of(cache.resolve("repos/central").resolve(rel) + ".sha256"))
+                .doesNotExist();
+        // The CAS blob is untouched — evicting a mirror entry must not damage content storage.
+        assertThat(casBlob).exists();
+        // Evicting again is a no-op, not an error.
+        assertThat(store.evict(rel)).isFalse();
+    }
 }

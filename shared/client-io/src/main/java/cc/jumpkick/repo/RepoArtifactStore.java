@@ -409,6 +409,30 @@ public final class RepoArtifactStore {
         return root;
     }
 
+    /**
+     * Drop the mirror entry for {@code relativePath} — artifact and {@code .sha256} sidecar — so the
+     * next resolve re-fetches it.
+     *
+     * <p>The escape hatch for jk's first-write-wins mirror contract: a mirror hit otherwise serves
+     * the bytes first stored for a coordinate forever, which is wrong in the rare case where
+     * upstream really did republish (see {@code docs/mirror-verification-decision.md}, JK-1460).
+     * Removing the sidecar first keeps the "sidecar present ⇒ fully stored" invariant true at every
+     * instant, so a concurrent reader sees a miss rather than a half-evicted entry.
+     *
+     * @return true when anything was removed
+     */
+    public boolean evict(String relativePath) {
+        if (root == null || relativePath == null || relativePath.isBlank()) return false;
+        boolean removed = false;
+        try {
+            removed = Files.deleteIfExists(sidecarPath(relativePath));
+            removed |= Files.deleteIfExists(artifactPath(relativePath));
+        } catch (IOException e) {
+            return removed;
+        }
+        return removed;
+    }
+
     // -------------------------------------------------------------------------
 
     private Path artifactPath(String relativePath) {
