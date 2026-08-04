@@ -43,11 +43,11 @@ class LiveVitalsTest {
 
     @Test
     void presentCache_tracks_action_and_artifact_surfaces_separately() {
-        CacheSnapshot a = new CacheSnapshot(1, 1_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+        CacheSnapshot a = new CacheSnapshot(1, 1_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
         CacheSnapshot actionGrew =
-                new CacheSnapshot(1, 1_000_000, 2, 2_000_000, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+                new CacheSnapshot(1, 1_000_000, 2, 2_000_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
         CacheSnapshot casGrew =
-                new CacheSnapshot(1, 3_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
+                new CacheSnapshot(1, 3_000_000, 2, 100_000, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0);
         assertThat(LiveVitals.PresentCache.of(a)).isNotEqualTo(LiveVitals.PresentCache.of(actionGrew));
         assertThat(LiveVitals.PresentCache.of(a)).isNotEqualTo(LiveVitals.PresentCache.of(casGrew));
     }
@@ -57,7 +57,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.publishStatus(true);
@@ -98,7 +98,7 @@ class LiveVitalsTest {
         HttpEvents hub = new HttpEvents();
         AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
         AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
-                new CacheSnapshot(10, 5_000_000, 2, 100_000, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 0, 0, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
         try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
                 HttpEvents.Subscription sub = hub.subscribe()) {
             live.publishCache(true);
@@ -116,7 +116,7 @@ class LiveVitalsTest {
     @Test
     void cache_json_exposes_dual_surface_fields() {
         CacheSnapshot c =
-                new CacheSnapshot(10, 1000, 5, 50, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
+                new CacheSnapshot(10, 1000, 5, 50, 0, 0, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
         String json = c.toJson().toString();
         assertThat(json)
                 .contains("\"actionCacheBytes\":50")

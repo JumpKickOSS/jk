@@ -210,18 +210,22 @@ and exclusions stay GA-scoped.
 
 1. Expand a verb (`build`, `test`, …) into a DAG of steps with typed inputs/outputs.
 2. Hash inputs (sources, classpath ABI inputs, flags, toolchain, plugin code, …).
-3. **Action cache** hit → restore outputs from the **CAS**; miss → run and store.
+3. **Action cache** hit → restore outputs from the **cache CAS**; miss → run and store.
 4. Compilers and tests run in **forked plugin processes** sized by a shared memory plan.
 
-**Store** (`~/.local/share/jk/store/`, or `JK_STORE_DIR`): CAS blobs under `sha256/…` plus Maven-layout
-views under `repos/<name>/…`. Repo materialization **hard-links** to the CAS blob when the
-filesystem allows (one allocation, no double disk) via portable NIO `Files.createLink` —
-`link(2)` on Linux/macOS, `CreateHardLinkW` on Windows NTFS (no elevation; not a symlink).
-Copy only as a fallback (FAT/exFAT, cross-volume, or providers without hard links). GC unlinks
-**both** the CAS path and matching `repos/` entries so space is reclaimed. Action-cache
-mappings live under `~/.cache/jk/`. CAS **ingest** from build outputs / `~/.m2` is copy (or
-opt-in link for m2) so non-store trees never share identity with a hashed blob; writers inside
-the store must temp + atomic-replace, never truncate a hard-linked path in place.
+**Two-tier CAS** (separate roots, separate budgets):
+
+| Tier | Root | Contents |
+|------|------|----------|
+| **Artifact store** | `~/.local/share/jk/store/` (`JK_STORE_DIR`) | Long-lived blobs under `sha256/…` + Maven-layout views under `repos/<name>/…` (deps, workers, installLocal) |
+| **Cache** | `~/.cache/jk/` (`JK_CACHE_DIR`) | Action index (`actions/`) + rebuildable action payloads under `sha256/…` |
+
+Repo materialization **hard-links** store CAS blobs into `repos/<name>/` when the filesystem
+allows (one allocation) via portable NIO `Files.createLink`. GC unlinks **both** the store CAS
+path and matching `repos/` entries so space is reclaimed. Action payloads never share the
+artifact pool: deleting `~/.cache/jk` drops index and action blobs without touching deps.
+Ingest from build outputs / `~/.m2` is copy (or opt-in link for m2) so non-store trees never
+share identity with a hashed blob; writers inside either CAS must temp + atomic-replace.
 
 ### Action keys and future remote cache (design)
 

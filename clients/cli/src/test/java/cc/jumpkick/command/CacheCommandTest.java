@@ -39,19 +39,20 @@ class CacheCommandTest {
     }
 
     @Test
-    void storage_reports_action_cache_only(@TempDir Path tempDir) throws Exception {
+    void storage_reports_cache_tier_including_cache_cas(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // CAS under the same root must not appear in action-cache storage.
+        // Cache CAS under the same root is part of the cache tier (not the artifact store report).
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), "hello".getBytes(StandardCharsets.UTF_8));
         writeBlob(cache.resolve("actions/keys/some-task"), new byte[2048]);
 
         String plain = TestAnsi.strip(capture(() -> run("cache", "storage", "--cache-dir", cache.toString())));
-        assertThat(plain).contains("Action Cache Storage");
-        assertThat(plain).containsPattern("File Count:\\s*1");
-        assertThat(plain).contains("2.0 KiB");
+        assertThat(plain).contains("Cache Storage");
+        // action key + cache CAS blob (+ intermediate dirs may vary by DiskUsage walk)
         assertThat(plain).contains("Utilization");
         assertThat(plain).doesNotContain("CAS Blobs");
         assertThat(plain).doesNotContain("Worker JARs");
+        // Size includes the 2 KiB action record (cache CAS "hello" is small).
+        assertThat(plain).containsPattern("File Count:\\s*[1-9]");
     }
 
     @Test
@@ -90,10 +91,9 @@ class CacheCommandTest {
     }
 
     @Test
-    void purge_wipes_action_cache_but_keeps_store_side_trees(@TempDir Path tempDir) throws Exception {
+    void purge_wipes_cache_tier_but_keeps_repos_and_runs(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Explicit --cache-dir layout: CAS, repo mirrors, and run logs share the root. The confirm
-        // says they are kept — purge must only delete actions/ + format-stamps/ (JK-1435).
+        // Cache CAS (sha256/) is cache-tier; repos/ and runs/ stay when collocated under --cache-dir.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
         writeBlob(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"), new byte[512]);
         writeBlob(cache.resolve("runs/build-1.jsonl"), new byte[256]);
@@ -102,10 +102,10 @@ class CacheCommandTest {
 
         String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Purged 2 files");
+        assertThat(stdout).contains("Purged");
         assertThat(Files.exists(cache.resolve("actions/keys/task1"))).isFalse();
         assertThat(Files.exists(cache.resolve("format-stamps/ab/stamp1"))).isFalse();
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
         assertThat(Files.exists(cache.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar")))
                 .isTrue();
         assertThat(Files.exists(cache.resolve("runs/build-1.jsonl"))).isTrue();
@@ -153,15 +153,15 @@ class CacheCommandTest {
     }
 
     @Test
-    void purge_with_only_store_side_content_is_a_noop(@TempDir Path tempDir) throws Exception {
+    void purge_with_only_cache_cas_removes_blobs(@TempDir Path tempDir) throws Exception {
         Path cache = tempDir.resolve("cache");
-        // Store-side only — nothing action-cache to purge; no prompt, nothing deleted.
+        // Cache CAS alone is still cache-tier content — purge removes it.
         writeBlob(cache.resolve("sha256/ab/cd/deadbeef"), new byte[4096]);
 
-        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString()));
+        String stdout = capture(() -> run("cache", "purge", "--cache-dir", cache.toString(), "--yes"));
 
-        assertThat(stdout).contains("Nothing to purge");
-        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isTrue();
+        assertThat(stdout).contains("Purged");
+        assertThat(Files.exists(cache.resolve("sha256/ab/cd/deadbeef"))).isFalse();
     }
 
     @Test

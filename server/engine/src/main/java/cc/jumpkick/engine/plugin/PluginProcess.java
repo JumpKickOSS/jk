@@ -56,7 +56,32 @@ public final class PluginProcess {
             Consumer<String> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
-        return converse(command, extraEnv, prefix, (json, convo) -> onProtocol.accept(json), onPassthrough);
+        return run(command, extraEnv, null, prefix, onProtocol, onPassthrough);
+    }
+
+    /**
+     * One-shot (parent only reads): forks, <strong>closes the child's stdin immediately</strong>, then
+     * streams stdout. Closing stdin matters — an open pipe with no writer makes {@code System.in}
+     * {@code readLine()} hang forever, which is exactly how a suite that prompts for confirmation
+     * (e.g. {@code jk self purge} without {@code -y}) deadlocks under {@code jk test}/{@code jk
+     * build}.
+     */
+    public static int run(
+            List<String> command,
+            java.util.Map<String, String> extraEnv,
+            Path workDir,
+            String prefix,
+            Consumer<String> onProtocol,
+            Consumer<String> onPassthrough)
+            throws IOException, InterruptedException {
+        return converse(
+                command,
+                extraEnv,
+                workDir,
+                prefix,
+                (json, convo) -> onProtocol.accept(json),
+                onPassthrough,
+                /* closeStdinImmediately */ true);
     }
 
     /**
@@ -106,13 +131,25 @@ public final class PluginProcess {
             BiConsumer<String, Conversation> onProtocol,
             Consumer<String> onPassthrough)
             throws IOException, InterruptedException {
+        return converse(command, extraEnv, workDir, prefix, onProtocol, onPassthrough, false);
+    }
+
+    private static int converse(
+            List<String> command,
+            java.util.Map<String, String> extraEnv,
+            Path workDir,
+            String prefix,
+            BiConsumer<String, Conversation> onProtocol,
+            Consumer<String> onPassthrough,
+            boolean closeStdinImmediately)
+            throws IOException, InterruptedException {
         ProcessBuilder pb = new ProcessBuilder(command).redirectErrorStream(true);
         if (extraEnv != null && !extraEnv.isEmpty()) pb.environment().putAll(extraEnv);
         if (workDir != null && Files.isDirectory(workDir)) pb.directory(workDir.toFile());
         // Hold a worker slot for the child's whole lifetime so no more than the
         // memory plan's parallelism run at once (open gate when unconfigured).
         try (PluginSlots.Lease lease = PluginSlots.acquire()) {
-            return converse(pb, prefix, onProtocol, onPassthrough);
+            return converse(pb, prefix, onProtocol, onPassthrough, closeStdinImmediately);
         }
     }
 
@@ -120,7 +157,8 @@ public final class PluginProcess {
             ProcessBuilder pb,
             String prefix,
             BiConsumer<String, Conversation> onProtocol,
-            Consumer<String> onPassthrough)
+            Consumer<String> onPassthrough,
+            boolean closeStdinImmediately)
             throws IOException, InterruptedException {
         Process process = pb.start();
         cc.jumpkick.engine.JobWorkers.register(process);
@@ -149,6 +187,11 @@ public final class PluginProcess {
                     }
                 }
             };
+            // One-shot plugins never read stdin; close it so accidental System.in.readLine()
+            // (confirm prompts in suite tests) gets EOF instead of hanging on an open pipe.
+            if (closeStdinImmediately) {
+                convo.closeInput();
+            }
             try {
                 String line;
                 while ((line = reader.readLine()) != null) {

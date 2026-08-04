@@ -54,9 +54,10 @@ public final class JkBuildParser {
     private JkBuildParser() {}
 
     /**
-     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by path + size + mtime (rewrites
-     * re-parse). Stores the <em>local</em> manifest only — workspace inheritance is applied by
-     * {@link #parse(Path)} on top so it always sees a fresh root.
+     * Process-lifetime memo of {@link #parseLocal(Path)}, keyed by absolute path (size + mtime live
+     * in the value so rewrites re-parse and replace the entry). Stores the <em>local</em> manifest
+     * only — workspace inheritance is applied by {@link #parse(Path)} on top so it always sees a
+     * fresh root.
      */
     // A plain (size, mtime) memo: the parse is a pure function of the file's bytes again, so
     // nothing environment-shaped belongs in the stamp.
@@ -105,10 +106,6 @@ public final class JkBuildParser {
         return parsed;
     }
 
-    /**
-     * Drop memo for {@code file} and re-parse with workspace resolution (e.g. after plugin-manifest
-     * materialization).
-     */
     /** Test seam: how many files the parse memo currently holds. */
     static int parseCacheSizeForTest() {
         return PARSE_CACHE.size();

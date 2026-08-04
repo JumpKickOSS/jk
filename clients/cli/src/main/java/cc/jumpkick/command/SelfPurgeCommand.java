@@ -37,8 +37,8 @@ import java.util.Set;
  * <p>Targets (stackable; default {@code --all}):
  *
  * <ul>
- *   <li>{@code --cache} — action cache
- *   <li>{@code --store} — CAS, repo mirrors, store catalogs, shell completions, old
+ *   <li>{@code --cache} — cache tier (action index + cache CAS + format stamps)
+ *   <li>{@code --store} — artifact store CAS, repo mirrors, store catalogs, shell completions, old
  *       {@code versions/*} (keeps active version + {@code store/lib})
  *   <li>{@code --state} — engine sockets, AOT, builds, scratch tmp
  *   <li>{@code --config} — user config
@@ -52,8 +52,8 @@ public final class SelfPurgeCommand implements CliCommand {
 
     /** Selectable purge scopes. */
     enum Target {
-        CACHE("Action cache"),
-        STORE("CAS, repos, old engines"),
+        CACHE("Cache tier"),
+        STORE("Artifact store, old engines"),
         STATE("Engine sockets, AOT, builds"),
         CONFIG("User config");
 
@@ -98,8 +98,8 @@ public final class SelfPurgeCommand implements CliCommand {
         return List.of(
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                 Opt.flag("Purge every target (default when none named).", "--all"),
-                Opt.flag("Purge the action cache only.", "--cache"),
-                Opt.flag("Purge CAS/repos, old engines (keeps active, plugins, logins).", "--store"),
+                Opt.flag("Purge the cache tier only (action outputs).", "--cache"),
+                Opt.flag("Purge artifact store, old engines (keeps active, plugins, logins).", "--store"),
                 Opt.flag("Purge engine state, AOT caches, builds, and tmp.", "--state"),
                 Opt.flag("Purge user config.", "--config"));
     }
@@ -208,7 +208,7 @@ public final class SelfPurgeCommand implements CliCommand {
         Map<Path, PurgeRow> byPath = new LinkedHashMap<>();
 
         if (selected.contains(Target.CACHE)) {
-            addRow(byPath, abs(dirs.cacheDir()), "Action cache", Target.CACHE, guards);
+            addRow(byPath, abs(dirs.cacheDir()), "Cache tier", Target.CACHE, guards);
         }
 
         if (selected.contains(Target.STORE)) {

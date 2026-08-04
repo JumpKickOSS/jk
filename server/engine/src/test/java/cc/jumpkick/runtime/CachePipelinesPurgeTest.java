@@ -10,20 +10,17 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * {@code jk cache purge} boundary (JK-1435): the purge is scoped to the action cache
- * ({@code actions/} + {@code format-stamps/}) and must keep store-side trees that share the root in
- * an explicit {@code --cache-dir} layout ({@code sha256/}, {@code repos/}, {@code runs/}), matching
- * what the confirm prompt claims.
+ * {@code jk cache purge} wipes the cache tier ({@code actions/}, {@code format-stamps/}, cache
+ * {@code sha256/}) and must keep collocated store-ish trees ({@code repos/}, {@code runs/}).
  */
 class CachePipelinesPurgeTest {
 
     @Test
-    void purge_deletes_only_action_cache_trees(@TempDir Path root) throws IOException {
+    void purge_deletes_cache_tier_trees(@TempDir Path root) throws IOException {
         Path actionKey = seed(root.resolve("actions/keys/task1"));
         Path actionTask = seed(root.resolve("actions/tasks/compile-main@abc"));
         Path stamp = seed(root.resolve("format-stamps/ab/stamp1"));
-        // Store-side trees under the same root — the explicit --cache-dir layout.
-        Path casBlob = seed(root.resolve("sha256/ab/cd/deadbeef"));
+        Path cacheBlob = seed(root.resolve("sha256/ab/cd/deadbeef"));
         Path repoJar = seed(root.resolve("repos/central/com/example/lib/1.0/lib-1.0.jar"));
         Path runLog = seed(root.resolve("runs/build-1.jsonl"));
 
@@ -32,20 +29,19 @@ class CachePipelinesPurgeTest {
         assertThat(actionKey).doesNotExist();
         assertThat(actionTask).doesNotExist();
         assertThat(stamp).doesNotExist();
-        assertThat(casBlob).exists();
+        assertThat(cacheBlob).doesNotExist();
         assertThat(repoJar).exists();
         assertThat(runLog).exists();
-        // The root itself survives (empty action-cache dirs may remain).
         assertThat(root).exists();
     }
 
     @Test
-    void purge_with_no_action_cache_is_a_noop(@TempDir Path root) throws IOException {
+    void purge_with_only_cache_cas_clears_blobs(@TempDir Path root) throws IOException {
         Path casBlob = seed(root.resolve("sha256/ab/cd/deadbeef"));
 
         CachePipelines.purgeActionCache(root);
 
-        assertThat(casBlob).exists();
+        assertThat(casBlob).doesNotExist();
     }
 
     @Test

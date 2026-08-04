@@ -326,7 +326,7 @@ Vue.createApp({
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
-    cache: null, // /api/cache + live `cache` SSE: Action Cache + Artifact Storage breakdown
+    cache: null, // /api/cache + live `cache` SSE: cache tier + artifact store breakdown
     engineLog: '', // the /api/log tail, shown on the Status view
     cards: [], // folded activity, newest first
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
@@ -943,7 +943,7 @@ Vue.createApp({
       if (this.view === 'projects' || this.view === 'project') {
         await this.refreshMetrics();
       }
-      // Action Cache + Artifact Storage footer: SSE while live; REST hydrate when offline or empty.
+      // Cache tier + artifact store footer: SSE while live; REST hydrate when offline or empty.
       if (!sseLive || !this.cache) {
         await this.refreshCache();
       }
@@ -951,20 +951,23 @@ Vue.createApp({
 
     // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    /** Action-cache bytes (CLI: jk cache storage). */
+    /** Cache-tier bytes (CLI: jk cache storage) — index + cache CAS + stamps. */
     actionCacheBytes() {
       const c = this.cache;
       if (!c) return null;
-      return c.actionCacheBytes != null ? c.actionCacheBytes : c.actionsBytes;
+      if (c.cacheBytes != null) return c.cacheBytes;
+      if (c.actionCacheBytes != null) return c.actionCacheBytes;
+      return (c.actionsBytes || 0) + (c.cacheCasBytes || 0) + (c.formatStampsBytes || 0);
     },
 
     actionMaxBytes() {
       const c = this.cache;
       if (!c) return null;
+      if (c.cacheMaxBytes != null) return c.cacheMaxBytes;
       return c.actionMaxBytes != null ? c.actionMaxBytes : null;
     },
 
-    /** Artifact store: CAS + worker JARs + run logs (CLI: jk repo storage). */
+    /** Artifact store: store CAS + repos/workers + run logs (CLI: jk repo storage). */
     artifactStorageBytes() {
       const c = this.cache;
       if (!c) return null;

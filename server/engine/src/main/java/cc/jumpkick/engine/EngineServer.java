@@ -1218,9 +1218,9 @@ public final class EngineServer implements AutoCloseable {
             // Idempotent: runner finally usually released already; covers admit-without-run paths.
             inFlightBuilds.release(eventRequestId);
             long elapsedMillis = clockMillis.getAsLong() - eventStartMillis;
-            // cancelToken.cancelled also trips on the benign end-of-request EOF, so a successful
-            // build can look cancelled. Correct it once here for both the dashboard event and the
-            // journal (a build that succeeded was not cancelled).
+            // cancelToken.cancelled also trips on the benign end-of-request EOF, so a finished
+            // build (success or failure) can look cancelled. Correct it once here for both the
+            // dashboard event and the journal.
             boolean cancelled = effectiveCancelled(eventRequestId, cancelToken.cancelled());
             if (!cancelled) lastProgressByRequest.put(eventRequestId, 100.0);
             // Safety netif the runner was abandoned/interrupted without a terminal
@@ -1547,17 +1547,18 @@ public final class EngineServer implements AutoCloseable {
      * <p>{@code cancelToken.cancelled} alone is unreliable — it also trips on the benign
      * end-of-request EOF (client closes the socket the instant it reads the terminal message). For a
      * request with an accumulator we trust an explicit stamp ({@link BuildAccumulator#markUserCancelled}
-     * from BUILD_CANCEL / mid-job EOF / deadline, or {@link PipelineResult#userCancelled}). A clean
-     * success never reports cancelled even if the token later flips (see {@link BuildAccumulator#toRecord}).
-     * No accumulator → raw token.
+     * from BUILD_CANCEL / mid-job EOF / deadline, or {@link PipelineResult#userCancelled}). A runner
+     * that already stamped a terminal outcome (success <em>or</em> failure) is never re-labelled
+     * cancelled by that race — otherwise a failed test run journals as "Cancelled" in the web UI
+     * after the CLI closes the socket. No accumulator → raw token.
      */
     private boolean effectiveCancelled(long requestId, boolean rawCancelled) {
         BuildAccumulator a = accumulators.get(requestId);
         if (a == null) return rawCancelled;
         if (a.wasCancelled()) return true;
         // Token cancelled mid-job but stamp missed (legacy path): still cancel unless the runner
-        // already reported success (EOF-after-finish race).
-        return rawCancelled && !a.succeeded();
+        // already reported a terminal outcome (EOF-after-finish race for success or failure).
+        return rawCancelled && !a.hasOutcome();
     }
 
     /** The request's location for journal/dashboard rows: {@code dir}, else the nearest thing. */
@@ -2144,7 +2145,7 @@ public final class EngineServer implements AutoCloseable {
                         config.recordTtlDays(),
                         false,
                         true,
-                        config.maxSizeGb().map(gb -> gb + "G").orElse(null),
+                        config.maxStoreSizeMb() + "M",
                         false);
                 cc.jumpkick.run.PipelineResult result = pipeline.run();
                 if (result.success()) {
@@ -4898,7 +4899,10 @@ public final class EngineServer implements AutoCloseable {
                             : realPipeline
                                     .get(cc.jumpkick.runtime.BuildPipelines.BUILD_OUTCOME)
                                     .orElse(null);
-                    boolean cancelled = result.userCancelled() || result.cancelled();
+                    // Wire "cancelled" is user/deadline cancel only. PipelineResult.cancelled is also
+                    // set on cooperative fail-fast (remaining steps aborted after a real FAIL) — that
+                    // must not look like the user cancelled the job.
+                    boolean cancelled = result.userCancelled();
                     String finish = testResult == null && buildOutcome == null
                             ? EngineProtocol.pipelineFinish(dir, result.success(), cancelled)
                             : EngineProtocol.withCancelled(
@@ -6035,6 +6039,11 @@ public final class EngineServer implements AutoCloseable {
             return Boolean.TRUE.equals(success);
         }
 
+        /** True when the runner already stamped success or failure via {@link #setOutcome}. */
+        boolean hasOutcome() {
+            return success != null;
+        }
+
         /**
          * Outcome for SSE {@code request-finish} — same default as {@link #toRecord}: explicit
          * stamp when set, else not-failed and not cancelled.
@@ -6047,15 +6056,20 @@ public final class EngineServer implements AutoCloseable {
         /**
          * Genuine user/deadline cancellation — set by {@link #markUserCancelled} when BUILD_CANCEL /
          * mid-job EOF / deadline fires, or by a finished pipeline with
-         * {@link PipelineResult#userCancelled}. Not the racy end-of-request EOF after a clean success
-         * (that is filtered in {@link #toRecord}).
+         * {@link PipelineResult#userCancelled}. Not the racy end-of-request EOF after a terminal
+         * outcome (that is ignored in {@link #markUserCancelled} / {@link #toRecord}).
          */
         boolean wasCancelled() {
             return userCancelled;
         }
 
-        /** Stamp cancel immediately so a force-killed runner still journals as cancelled, not success. */
+        /**
+         * Stamp cancel immediately so a force-killed runner still journals as cancelled, not success.
+         * No-op once {@link #setOutcome} has run — the client often closes the socket the instant it
+         * reads the terminal message, and that EOF must not re-label a finished failure as cancelled.
+         */
         void markUserCancelled() {
+            if (success != null) return;
             userCancelled = true;
         }
 
@@ -6223,11 +6237,11 @@ public final class EngineServer implements AutoCloseable {
                 CacheBenefit.Result benefit) {
             boolean ok = success != null ? success : (!anyFailure && !cancelled);
             int exit = success != null ? exitCode : (ok ? 0 : 1);
-            // A build that reported success was not cancelled: cancelToken.cancelled also fires on
-            // the benign end-of-request EOF (the client closes the socket the instant it reads the
-            // terminal message, which can land just before the runner marks itself done), so trust
-            // the outcome over that flag and never label a successful run "cancelled".
-            boolean cancelledEffective = cancelled && !ok;
+            // cancelToken / late markUserCancelled also trip on the benign end-of-request EOF (the
+            // client closes the socket as soon as it reads the terminal). Trust a stamped outcome:
+            // success is never cancelled; an explicit failure is cancelled only when the user/deadline
+            // stamp was set (not merely cancelled=true from cooperative fail-fast / EOF race).
+            boolean cancelledEffective = resolveCancelledFlag(success, userCancelled, cancelled);
             // Each workspace module carries its own step chain (keyed by its dir); a single-pipeline
             // build has no module rows, so its steps live in the record's top-level list (the ""
             // bucket). This is exactly the two shapes the dashboard renders (per-module vs compact).
@@ -6277,5 +6291,21 @@ public final class EngineServer implements AutoCloseable {
         private static boolean notBlank(String s) {
             return s != null && !s.isBlank();
         }
+    }
+
+    /**
+     * Journal / SSE cancel bit from a stamped runner outcome + cancel flags.
+     *
+     * <ul>
+     *   <li>Stamped success → never cancelled (EOF-after-finish race).
+     *   <li>Stamped failure → cancelled only when the user/deadline stamp is set.
+     *   <li>No outcome yet (force-killed mid-job) → honour the cancel hint.
+     * </ul>
+     */
+    static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
+        if (Boolean.TRUE.equals(successStamp)) return false;
+        if (userCancelled) return true;
+        if (successStamp != null) return false; // explicit failure — not a cancel
+        return cancelHint;
     }
 }

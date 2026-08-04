@@ -2,6 +2,7 @@
 package cc.jumpkick.runtime;
 
 import cc.jumpkick.cache.Cas;
+import cc.jumpkick.cache.JkStores;
 import cc.jumpkick.compile.CompileRequest;
 import cc.jumpkick.compile.CompileResult;
 import cc.jumpkick.model.BuildIdentity;
@@ -373,7 +374,9 @@ public final class TestSupport {
                 .javaHome(javaHome)
                 .processorPath(processorPath)
                 .build();
-        ActionCache actionCache = new ActionCache(cas, cacheRoot.resolve("actions"));
+        // Action payloads live in the cache CAS; callers may pass the artifact CAS for classpath.
+        ActionCache actionCache =
+                new ActionCache(JkStores.cacheCas(cacheRoot), cacheRoot.resolve("actions"));
         boolean useCache = !cc.jumpkick.config.SessionContext.current().config().rebuildOr(false);
         java.nio.file.Path stateDir =
                 cacheRoot.resolve("actions").resolve("incremental-java").resolve(cacheTaskId);
@@ -392,7 +395,14 @@ public final class TestSupport {
         }
         ctx.label(taskId + ": " + sources.size() + " sources");
         cc.jumpkick.task.JavaIncrementalCompile.Result r = cc.jumpkick.task.JavaIncrementalCompile.run(
-                cacheTaskId, request, BuildIdentity.cacheKeyVersion(), useCache, cas, actionCache, stateDir, ap);
+                cacheTaskId,
+                request,
+                BuildIdentity.cacheKeyVersion(),
+                useCache,
+                actionCache.cas(),
+                actionCache,
+                stateDir,
+                ap);
         // Surface javac diagnostics by severity — errors fail, warnings (e.g.
         // deprecation/unchecked) are shown but don't. Mirrors the main-compile
         // step so test sources report warnings the same way.

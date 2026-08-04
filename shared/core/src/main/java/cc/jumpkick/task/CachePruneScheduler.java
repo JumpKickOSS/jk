@@ -52,8 +52,9 @@ public final class CachePruneScheduler {
     }
 
     /**
-     * Build the equivalent of {@code jk cache prune --background --sweep [--max-size <N>G]} command
-     * line. Returned verbatim so the spawn site can audit / log it.
+     * Build the equivalent of {@code jk cache prune --background --sweep --max-size <N>M} command
+     * line (store-tier budget from {@link JkCacheConfig#maxStoreSizeMb}). Returned verbatim so the
+     * spawn site can audit / log it.
      */
     static List<String> commandFor(JkCacheConfig config, Path cacheRoot, String jkExe) {
         List<String> cmd = new java.util.ArrayList<>();
@@ -66,10 +67,8 @@ public final class CachePruneScheduler {
         cmd.add(cacheRoot.toAbsolutePath().toString());
         cmd.add("--older-than");
         cmd.add(Integer.toString(config.recordTtlDays()));
-        config.maxSizeGb().ifPresent(gb -> {
-            cmd.add("--max-size");
-            cmd.add(gb + "G");
-        });
+        cmd.add("--max-size");
+        cmd.add(config.maxStoreSizeMb() + "M");
         return cmd;
     }
 

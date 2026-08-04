@@ -131,11 +131,13 @@ Two storage surfaces (CLI parity: `jk cache storage` / `jk repo storage`), not o
 
 | Surface | Bytes | Budget field |
 | --- | --- | --- |
-| **Action cache** | `actions/` → `actionCacheBytes` / `actionsBytes` | `actionMaxBytes` (`[cache] action-max-size-mb`) |
-| **Artifact storage** | CAS + worker JAR mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-size-gb`) |
+| **Cache tier** | action index + cache CAS + format stamps → `cacheBytes` / `actionCacheBytes` | `cacheMaxBytes` / `actionMaxBytes` (`[cache] max-cache-size-mb`, default 1 GiB) |
+| **Artifact store** | store CAS + `repos/` mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-store-size-mb`, default 4 GiB) |
 
-**Live SSE (thin):** `{ "thin": true, actionCacheBytes, actionMaxBytes, artifactStorageBytes,
-maxBytes, lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
+Full REST also exposes `actionsCount`/`actionsBytes` (index), `cacheCasCount`/`cacheCasBytes`
+(cache CAS), and store section fields. **Live SSE (thin):** `{ "thin": true, cacheBytes,
+cacheMaxBytes, actionCacheBytes, actionMaxBytes, artifactStorageBytes, maxBytes,
+lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
 
 **REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. `totalBytes`
 is a legacy combined sum; prefer the two surfaces for UI.

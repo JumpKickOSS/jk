@@ -22,8 +22,9 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * {@code jk repo} — local CAS / Maven mirrors, offline coordinate search, and artifact-repository
- * credentials ({@code ~/.jk/repo-credentials/}). Distinct from {@code jk cache} (action cache only).
+ * {@code jk repo} — artifact store (store CAS + Maven-layout {@code repos/} mirrors), offline
+ * coordinate search, and repository credentials. Distinct from {@code jk cache} (cache tier:
+ * rebuildable action outputs under {@code JK_CACHE_DIR}).
  */
 public final class RepoCommand extends GroupCommand {
 
@@ -34,7 +35,7 @@ public final class RepoCommand extends GroupCommand {
 
     @Override
     public String description() {
-        return "Manage artifact repos, local CAS, and credentials";
+        return "Manage the artifact store (deps CAS, repos, credentials)";
     }
 
     @Override
@@ -216,7 +217,8 @@ public final class RepoCommand extends GroupCommand {
     }
 
     /**
-     * {@code jk repo storage} — CAS blobs, worker JAR mirrors, and run logs (not the action cache).
+     * {@code jk repo storage} — artifact store: store CAS + {@code repos/} mirrors + run logs (not
+     * the cache tier).
      */
     public static final class RepoStorageCommand implements CliCommand {
         @Override
@@ -226,7 +228,7 @@ public final class RepoCommand extends GroupCommand {
 
         @Override
         public String description() {
-            return "Show local CAS / repo mirror size and utilization";
+            return "Show artifact-store size and utilization";
         }
 
         @Override
@@ -247,7 +249,7 @@ public final class RepoCommand extends GroupCommand {
             }
             CacheCommand.SectionStats s = CacheCommand.sectionStats(cacheRoot);
             var cfg = cc.jumpkick.config.JkCacheConfig.resolve();
-            long maxBytes = cfg.storeMaxSizeBytes();
+            long maxBytes = cfg.maxStoreSizeBytes();
             // Last-pruned stamp still lives under the cache root (prune job).
             String lastPruned = CacheCommand.lastPrunedLabel(cacheRoot);
             for (String line : CacheCommand.renderRepoStorageTable(

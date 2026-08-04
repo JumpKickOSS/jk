@@ -38,7 +38,7 @@ bundler and no npm build step: the shell ships as static resources inside the en
 | --- | --- |
 | Build activity | `fold.js` → activity cards (hard bounds: `MAX_CARDS`, `MAX_OUTPUT_LINES`, `MAX_DIAGNOSTICS`) |
 | `status` | Header sysbox (CORES/LOAD/RAM/FREE) + footer Builds Running / Engine Heap |
-| `cache` | Footer **Action Cache** + **Artifact Storage** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
+| `cache` | Footer **Cache** + **Store** (thin dual-surface frames); Status panels load full breakdown via REST on view entry |
 
 While the stream is **live**, the SPA does **not** poll `/api/status` or `/api/cache` on a timer.
 REST hydrate runs on load/reconnect. **Offline** status fallback uses stepped backoff (5 s → 30 s

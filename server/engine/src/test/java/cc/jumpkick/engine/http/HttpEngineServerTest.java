@@ -63,7 +63,7 @@ class HttpEngineServerTest {
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
     private static final CacheSnapshot EMPTY_CACHE =
-            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -535,13 +535,15 @@ class HttpEngineServerTest {
                 5_000_000,
                 40,
                 200_000,
+                0,
+                0,
                 3,
                 30_000_000,
                 7,
                 9_000,
                 2,
                 100,
-                21_474_836_480L,
+                4_294_967_296L,
                 1_073_741_824L,
                 1_700_000_000_000L);
         HttpResponse<String> resp = get("/api/cache");
@@ -554,10 +556,10 @@ class HttpEngineServerTest {
                 .contains("\"workerJarsBytes\":30000000")
                 .contains("\"totalCount\":152")
                 .contains("\"totalBytes\":35209100")
-                .contains("\"actionCacheBytes\":200000")
-                .contains("\"actionMaxBytes\":1073741824")
+                .contains("\"actionCacheBytes\":200100")
+                .contains("\"actionMaxBytes\":1073741824") // max-cache-size-mb default 1024
                 .contains("\"artifactStorageBytes\":35009000")
-                .contains("\"maxBytes\":21474836480")
+                .contains("\"maxBytes\":4294967296")
                 .contains("\"lastPrunedMillis\":1700000000000");
     }
 

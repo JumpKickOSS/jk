@@ -3,7 +3,6 @@ package cc.jumpkick.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -13,129 +12,120 @@ import org.junit.jupiter.api.io.TempDir;
 class JkCacheConfigTest {
 
     @Test
-    void missing_file_yields_defaults() throws IOException {
+    void missing_file_is_defaults() {
         assertThat(JkCacheConfig.fromToml(Path.of("/no/such/file"))).isEqualTo(JkCacheConfig.DEFAULTS);
     }
 
     @Test
-    void parses_full_cache_table(@TempDir Path tempDir) throws IOException {
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, """
+    void parses_size_knobs(@TempDir Path tempDir) throws Exception {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(
+                toml,
+                """
                 [cache]
-                auto-prune          = true
-                max-size-gb         = 25
-                prune-interval-days = 14
-                record-ttl-days     = 45
-                action-max-size-mb  = 512
+                max-store-size-mb   = 8192
+                prune-interval-days = 3
+                record-ttl-days     = 14
+                max-cache-size-mb   = 512
                 """);
-
         JkCacheConfig c = JkCacheConfig.fromToml(toml);
-        assertThat(c.autoPrune()).isTrue();
-        assertThat(c.maxSizeGb()).hasValue(25);
-        assertThat(c.pruneIntervalDays()).isEqualTo(14);
-        assertThat(c.recordTtlDays()).isEqualTo(45);
-        assertThat(c.actionMaxSizeMb()).isEqualTo(512);
-        assertThat(c.actionMaxSizeBytes()).isEqualTo(512L * 1024 * 1024);
-        assertThat(c.storeMaxSizeBytes()).isEqualTo(25L * 1024 * 1024 * 1024);
+        assertThat(c.maxStoreSizeMb()).isEqualTo(8192);
+        assertThat(c.pruneIntervalDays()).isEqualTo(3);
+        assertThat(c.recordTtlDays()).isEqualTo(14);
+        assertThat(c.maxCacheSizeMb()).isEqualTo(512);
+        assertThat(c.maxCacheSizeBytes()).isEqualTo(512L * 1024 * 1024);
+        assertThat(c.maxStoreSizeBytes()).isEqualTo(8192L * 1024 * 1024);
     }
 
     @Test
-    void missing_keys_fall_back_to_defaults(@TempDir Path tempDir) throws IOException {
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, """
-                [cache]
-                auto-prune = true
-                """);
-
+    void partial_table_keeps_other_defaults(@TempDir Path tempDir) throws Exception {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(toml, "[cache]\nauto-prune = false\n");
         JkCacheConfig c = JkCacheConfig.fromToml(toml);
-        assertThat(c.autoPrune()).isTrue();
-        assertThat(c.maxSizeGb()).isEmpty();
+        assertThat(c.autoPrune()).isFalse();
+        assertThat(c.maxStoreSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_STORE_SIZE_MB);
         assertThat(c.pruneIntervalDays()).isEqualTo(JkCacheConfig.DEFAULTS.pruneIntervalDays());
         assertThat(c.recordTtlDays()).isEqualTo(JkCacheConfig.DEFAULTS.recordTtlDays());
-        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
-        assertThat(c.storeMaxSizeBytes()).isEqualTo(20L * 1024 * 1024 * 1024);
+        assertThat(c.maxCacheSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_CACHE_SIZE_MB);
+        assertThat(c.maxStoreSizeBytes()).isEqualTo(4096L * 1024 * 1024);
     }
 
     @Test
-    void table_absent_yields_defaults(@TempDir Path tempDir) throws IOException {
-        Path toml = tempDir.resolve("jk.toml");
-        Files.writeString(toml, """
-                [project]
-                group = "x"
+    void malformed_values_fall_back_to_defaults(@TempDir Path tempDir) throws Exception {
+        Path toml = tempDir.resolve("config.toml");
+        Files.writeString(
+                toml,
+                """
+                [cache]
+                max-store-size-mb = not-a-number
+                max-cache-size-mb = nope
                 """);
         assertThat(JkCacheConfig.fromToml(toml)).isEqualTo(JkCacheConfig.DEFAULTS);
     }
 
     @Test
-    void env_vars_override_user_config(@TempDir Path tempDir) throws IOException {
+    void env_overrides_file(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, """
+        Files.writeString(
+                toml,
+                """
                 [cache]
-                auto-prune          = true
-                max-size-gb         = 25
-                prune-interval-days = 14
-                record-ttl-days     = 45
+                max-store-size-mb   = 8192
+                max-cache-size-mb   = 512
+                prune-interval-days = 3
                 """);
         var env = Map.of(
-                "JK_AUTO_PRUNE", "false",
-                "JK_MAX_SIZE_GB", "100",
+                "JK_MAX_STORE_SIZE_MB", "100",
                 "JK_PRUNE_INTERVAL_DAYS", "1",
-                "JK_RECORD_TTL_DAYS", "7",
-                "JK_ACTION_MAX_SIZE_MB", "256");
-
+                "JK_RECORD_TTL_DAYS", "2",
+                "JK_MAX_CACHE_SIZE_MB", "256");
         JkCacheConfig c = JkCacheConfig.resolve(toml, env::get);
-        assertThat(c.autoPrune()).isFalse(); // env wins over file
-        assertThat(c.maxSizeGb()).hasValue(100);
+        assertThat(c.maxStoreSizeMb()).isEqualTo(100);
         assertThat(c.pruneIntervalDays()).isEqualTo(1);
-        assertThat(c.recordTtlDays()).isEqualTo(7);
-        assertThat(c.actionMaxSizeMb()).isEqualTo(256);
+        assertThat(c.recordTtlDays()).isEqualTo(2);
+        assertThat(c.maxCacheSizeMb()).isEqualTo(256);
     }
 
     @Test
-    void zero_size_budgets_mean_unset(@TempDir Path tempDir) throws IOException {
-        // JK-1441: 0 = unset for BOTH size keys — the documented defaults apply, on both surfaces.
+    void zero_size_means_unset_default(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, """
+        Files.writeString(
+                toml,
+                """
                 [cache]
-                max-size-gb        = 0
-                action-max-size-mb = 0
+                max-store-size-mb  = 0
+                max-cache-size-mb  = 0
                 """);
-
         JkCacheConfig c = JkCacheConfig.fromToml(toml);
-        assertThat(c.maxSizeGb()).isEmpty();
-        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
-        assertThat(c.storeMaxSizeBytes()).isEqualTo(20L * 1024 * 1024 * 1024);
-        assertThat(c.actionMaxSizeBytes()).isEqualTo(1024L * 1024 * 1024);
+        assertThat(c.maxStoreSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_STORE_SIZE_MB);
+        assertThat(c.maxCacheSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_CACHE_SIZE_MB);
+        assertThat(c.maxStoreSizeBytes()).isEqualTo(4096L * 1024 * 1024);
+        assertThat(c.maxCacheSizeBytes()).isEqualTo(1024L * 1024 * 1024);
     }
 
     @Test
-    void zero_size_env_vars_fall_through_to_file_then_defaults(@TempDir Path tempDir) throws IOException {
+    void env_zero_does_not_override_file(@TempDir Path tempDir) throws Exception {
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, "[cache]\nmax-size-gb = 25\n");
-
-        var env = Map.of("JK_MAX_SIZE_GB", "0", "JK_ACTION_MAX_SIZE_MB", "0");
+        Files.writeString(toml, "[cache]\nmax-store-size-mb = 8192\n");
+        var env = Map.of("JK_MAX_STORE_SIZE_MB", "0", "JK_MAX_CACHE_SIZE_MB", "0");
         JkCacheConfig c = JkCacheConfig.resolve(toml, env::get);
-        assertThat(c.maxSizeGb()).hasValue(25); // 0 in env = unset, file value survives
-        assertThat(c.actionMaxSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_ACTION_MAX_SIZE_MB);
+        assertThat(c.maxStoreSizeMb()).isEqualTo(8192);
+        assertThat(c.maxCacheSizeMb()).isEqualTo(JkCacheConfig.DEFAULT_MAX_CACHE_SIZE_MB);
     }
 
     @Test
-    void env_falls_through_to_file_then_defaults(@TempDir Path tempDir) throws IOException {
+    void env_only_without_file(@TempDir Path tempDir) {
+        JkCacheConfig c2 =
+                JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_STORE_SIZE_MB", "50")::get);
+        assertThat(c2.maxStoreSizeMb()).isEqualTo(50);
+
         Path toml = tempDir.resolve("config.toml");
-        Files.writeString(toml, "[cache]\nmax-size-gb = 25\n");
-
-        // No env set: file value for max-size, defaults for the rest.
-        JkCacheConfig c = JkCacheConfig.resolve(toml, name -> null);
-        assertThat(c.maxSizeGb()).hasValue(25);
-        assertThat(c.autoPrune()).isEqualTo(JkCacheConfig.DEFAULTS.autoPrune());
-        assertThat(c.pruneIntervalDays()).isEqualTo(JkCacheConfig.DEFAULTS.pruneIntervalDays());
-
-        // env can supply max-size even when the file omits it entirely.
-        JkCacheConfig c2 = JkCacheConfig.resolve(tempDir.resolve("none.toml"), Map.of("JK_MAX_SIZE_GB", "50")::get);
-        assertThat(c2.maxSizeGb()).hasValue(50);
-
-        // Garbage env value is ignored — falls through to the file/default.
-        JkCacheConfig c3 = JkCacheConfig.resolve(toml, Map.of("JK_MAX_SIZE_GB", "huge")::get);
-        assertThat(c3.maxSizeGb()).hasValue(25);
+        try {
+            Files.writeString(toml, "[cache]\nmax-store-size-mb = 8192\n");
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        JkCacheConfig c3 = JkCacheConfig.resolve(toml, Map.of("JK_MAX_STORE_SIZE_MB", "huge")::get);
+        assertThat(c3.maxStoreSizeMb()).isEqualTo(8192);
     }
 }
