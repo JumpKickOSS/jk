@@ -56,4 +56,4 @@ test-plugin-jars = [
 # Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
 # stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
 [test]
-default-exclude-tags = ["integration", "slow", "bench"]
+default-exclude-tags = ["integration", "slow", "bench", "network"]

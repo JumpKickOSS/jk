@@ -103,11 +103,20 @@
                   @click="triggerBuild(card.dir)" aria-label="Rebuild" title="Build this directory again"><jk-icon name="refresh"></jk-icon></button>
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
-          <span v-if="outcome(card) === 'running' && eta(card)" class="eta" title="estimated time remaining">{{ eta(card) }}</span>
+          <!-- Dual clock (CLI parity): italic/dim "ETA" + blue ~remaining (freezes dim at 0s on
+               overrun). Count-up sits next to it; dim while remaining > 0, yellow after. -->
+          <span v-if="outcome(card) === 'running' && hasEta(card)" class="eta" title="estimated time remaining">
+            <span class="eta-label">ETA</span>
+            <span class="eta-cd" :class="{ zero: etaOverdue(card) }">{{ etaCountdown(card) }}</span>
+          </span>
           <!-- Duration; when the run moved bytes, hover or keyboard focus reveals the I/O
                breakdown (remote = network, local = build cache) as `label  N ↑ / N ↓`.
                No traffic → no tip. tabindex + aria-label keep it keyboard/SR reachable. -->
-          <span class="millis" :class="{ 'has-io': ioLines(card).length }"
+          <span class="millis" :class="{
+                  'has-io': ioLines(card).length,
+                  'elapsed-dim': outcome(card) === 'running' && hasEta(card) && !etaOverdue(card),
+                  'elapsed-warn': outcome(card) === 'running' && (!hasEta(card) || etaOverdue(card))
+                }"
                 :tabindex="ioLines(card).length ? 0 : null"
                 :aria-label="ioLines(card).length ? ioSummary(card) : null">
             {{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}

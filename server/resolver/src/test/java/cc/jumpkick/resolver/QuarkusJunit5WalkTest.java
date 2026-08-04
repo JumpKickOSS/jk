@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 class QuarkusJunit5WalkTest {
     @Test
     void walk_with_highest(@TempDir Path tmp) throws Exception {
-        Cas cas = new Cas(Path.of(System.getProperty("user.home"), ".jk/cache"));
+        Cas cas = new Cas(QuarkusLockPerfTest.developerStore());
         RepoGroup repos =
                 RepoGroup.of(new MavenRepo("central", URI.create("https://repo1.maven.org/maven2/"), new Http(), cas));
         EffectivePomBuilder b = new EffectivePomBuilder(repos);

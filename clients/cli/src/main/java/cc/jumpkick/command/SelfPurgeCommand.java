@@ -99,7 +99,7 @@ public final class SelfPurgeCommand implements CliCommand {
                 Opt.flag("Print what would be removed; touch nothing.", "--dry-run"),
                 Opt.flag("Purge every target (default when none named).", "--all"),
                 Opt.flag("Purge the cache tier only (action outputs).", "--cache"),
-                Opt.flag("Purge artifact store, old engines (keeps active, plugins, logins).", "--store"),
+                Opt.flag("Purge store + old engines (keeps plugins, logins).", "--store"),
                 Opt.flag("Purge engine state, AOT caches, builds, and tmp.", "--state"),
                 Opt.flag("Purge user config.", "--config"));
     }

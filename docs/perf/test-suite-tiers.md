@@ -8,7 +8,7 @@ into the default `test` task with no timeouts.)
 
 | Command | Includes | Excludes |
 |---------|----------|----------|
-| `./gradlew test` | Untagged unit tests | `@Tag("integration")`, `slow`, `bench` |
+| `./gradlew test` | Untagged unit tests | `@Tag("integration")`, `slow`, `bench`, `network` |
 | `./gradlew integrationTest` | `integration` + `slow` | `bench` |
 | `./gradlew checkAll` | unit + integration | `bench` |
 

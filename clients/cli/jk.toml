@@ -59,4 +59,4 @@ workers = 1
 # these tags — the integration/slow/bench suites are long-running, network- and SDK-dependent, and
 # Gradle gives them separate tasks. Self-host ran them unconditionally, so `jk build` was enforcing a
 # stricter contract than CI ever has. Override per-run with `--exclude-tag` / `--include-tag`.
-default-exclude-tags = ["integration", "slow", "bench"]
+default-exclude-tags = ["integration", "slow", "bench", "network"]

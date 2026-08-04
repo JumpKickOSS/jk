@@ -61,6 +61,8 @@ public final class Giter8LocalApply {
         }
 
         Files.createDirectories(dest);
+        // Resolve writes against the realpath of dest so macOS /var vs /private/var (and other
+        // alias pairs) cannot make a safe relative path look like an escape under startsWith.
         Path destReal = dest.toRealPath();
         int[] count = {0};
         Files.walkFileTree(contentRoot, new SimpleFileVisitor<>() {
@@ -78,7 +80,9 @@ public final class Giter8LocalApply {
                 String rel = contentRoot.relativize(file).toString().replace('\\', '/');
                 // Path tokens: package-like props use '/' (Giter8 packaged format approximation).
                 String renderedRel = substitute(rel, props, true);
-                Path out = dest.resolve(renderedRel).normalize();
+                // Always anchor under destReal (not the pre-realpath dest) so lexical startsWith
+                // and the on-disk path share one prefix.
+                Path out = destReal.resolve(renderedRel).normalize();
                 // The rendered name carries template-controlled property values, so it can spell
                 // `../..` or an absolute path — every write must stay under dest (JK-1463).
                 requireInside(destReal, out, renderedRel);
