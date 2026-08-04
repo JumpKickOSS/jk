@@ -75,15 +75,19 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /**
      * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
-     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history*} carry
-     * build diagnostics with source excerpts and absolute paths; {@code /api/project} is a
-     * path-existence oracle; {@code /api/metrics} emits every project dir and coordinate ever
-     * built; {@code /api/projects/defaults} derives from the owner's git identity and home layout.
+     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history/artifact}
+     * carry full on-disk diagnostics; {@code /api/project} is a path-existence oracle; {@code
+     * /api/metrics} emits every project dir and coordinate ever built; {@code
+     * /api/projects/defaults} derives from the owner's git identity and home layout.
+     *
+     * <p>{@code GET /api/history} (the journal <em>list</em>) is intentionally <strong>not</strong>
+     * here: the activity stream is already open on loopback so a tokenless dashboard can show live
+     * builds, and a hard-refresh must rehydrate that same journal rather than flash "No activity
+     * yet". Artifacts stay gated.
      */
     private static final java.util.Set<String> SENSITIVE_READS = java.util.Set.of(
             "/api/fs",
             "/api/log",
-            "/api/history",
             "/api/history/artifact",
             "/api/project",
             "/api/metrics",
@@ -542,10 +546,11 @@ public final class HttpEngineServer implements AutoCloseable {
     private boolean authorized(HttpExchange exchange) {
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // Reads that disclose the engine owner's filesystem, identity, or source-bearing output are
+        // Reads that disclose the engine owner's filesystem, identity, or full on-disk artifacts are
         // never token-exempt: on a shared machine another local user must not have them for free
         // over loopback (JK-1305, JK-1453, JK-1466). Aggregate-only reads (/api/status,
-        // /api/cache) and the activity stream stay open so a tokenless dashboard still works.
+        // /api/cache), the activity stream, and the journal list (/api/history) stay open so a
+        // tokenless loopback dashboard can rehydrate past builds after refresh.
         String path = exchange.getRequestURI().getPath();
         boolean sensitiveRead = SENSITIVE_READS.contains(path);
         if (read && !readsRequireToken && !sensitiveRead) return true;

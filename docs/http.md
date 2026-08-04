@@ -89,19 +89,21 @@ carry the token — `EventSource` cannot send headers, so streams pass it as an 
 parameter, and the SPA bootstraps from a `#t=` fragment.
 
 **Sensitive reads need the token even on loopback**, because on a shared machine another local
-account must not have the engine owner's filesystem and build history for free:
+account must not have the engine owner's filesystem and identity for free:
 
 | Endpoint | Why |
 |---|---|
 | `GET /api/fs` | lists the filesystem with the owner's permissions |
-| `GET /api/log` | build diagnostics |
-| `GET /api/history`, `GET /api/history/artifact` | diagnostics with source excerpts and absolute paths |
+| `GET /api/log` | engine log tail |
+| `GET /api/history/artifact` | full on-disk diagnostics / lock snapshots |
 | `GET /api/project` | path-existence oracle |
 | `GET /api/metrics` | every project dir and coordinate ever built |
 | `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
 
-Aggregate-only reads (`GET /api/status`, `GET /api/cache`) and the activity stream
-(`GET /api/events`) stay open on loopback, so a tokenless dashboard still shows live builds.
+Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
+(`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
+tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
+**artifacts** remain token-gated.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.

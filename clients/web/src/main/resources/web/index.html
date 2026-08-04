@@ -78,7 +78,11 @@
       </div>
       <p v-if="buildError" class="error">{{ buildError }}</p>
 
-      <p v-if="cards.length === 0" class="empty">
+      <p v-if="cards.length === 0 && connection === 'unauthorized'" class="empty">
+        Authorize this tab with the tokenized URL from <code>jk engine status</code> (or
+        <code>jk web</code>) to load build history.
+      </p>
+      <p v-else-if="cards.length === 0" class="empty">
         No activity yet — run a <code>jk build</code> (or any hosted command) and it appears here live.
       </p>
 

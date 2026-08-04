@@ -393,6 +393,11 @@ Vue.createApp({
             this.refresh(); // resync after an engine restart
             this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
             this.loadProjectHistory();
+          } else if (this.cards.length === 0) {
+            // First open / hard-refresh: mount also loads history; re-try once the stream is live
+            // in case the earlier GET raced a cold engine or a missing token that is now present.
+            this.loadHistory();
+            this.loadProjectHistory();
           }
         } else if (state === 'offline') {
           this.scheduleOfflineStatusFallback();
@@ -1038,13 +1043,19 @@ Vue.createApp({
     },
 
     // Backfill the feed from the persisted journal (/api/history), reconciled with live cards.
+    // Always reassign `this.cards` so a bulk seed after a hard-refresh repaints (Vue tracks the
+    // array identity as well as mutations).
     async loadHistory() {
-      try {
-        const records = await get('/api/history');
-        seedFromHistory(this.cards, records);
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
-      }
+      return this.fetchOnce('history', async () => {
+        try {
+          const records = await get('/api/history');
+          const next = this.cards.slice();
+          seedFromHistory(next, records);
+          this.cards = next;
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
     },
 
     // Delete a finished run from history (engine + disk), then drop its card locally.

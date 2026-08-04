@@ -18,10 +18,11 @@ the doc the shell's source files cite.
 ## Auth
 
 Token bootstrap rides the URL fragment: `jk engine status` prints a dashboard link ending in
-`#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and scrubs the fragment from
-the address bar (fragments never leave the browser). Every `/api` call then sends
-`Authorization: Bearer <token>`. Auth tiers (read-only vs token-gated mutations) are defined in
-[http.md](http.md).
+`#t=<token>`; on load `api.js` stashes the token in `sessionStorage` and `localStorage` and scrubs
+the fragment from the address bar (fragments never leave the browser). Later tabs/refreshes reuse
+the stored token. Every `/api` call then sends `Authorization: Bearer <token>` when present. On
+loopback the journal list (`GET /api/history`) is open without a token so a hard-refresh still
+rehydrates Activity; mutations and sensitive reads stay token-gated (see [http.md](http.md)).
 
 ## Dependencies: CDN, pinned, integrity-locked
 

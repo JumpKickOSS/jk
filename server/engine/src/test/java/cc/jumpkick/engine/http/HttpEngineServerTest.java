@@ -486,9 +486,10 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void api_history_and_project_require_the_token_even_on_loopback() throws Exception {
-        // Diagnostics carry source excerpts and absolute paths; /api/project is a path oracle.
-        assertThat(get("/api/history").statusCode()).isEqualTo(401);
+    void api_history_list_is_open_on_loopback_but_artifacts_and_project_need_token() throws Exception {
+        // Journal list rehydrates the Activity feed after refresh (same openness as /api/events).
+        // Full artifacts and path-oracle GETs stay token-gated even on loopback.
+        assertThat(get("/api/history").statusCode()).isEqualTo(200);
         assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
                 .isEqualTo(401);
         assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
