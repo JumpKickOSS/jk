@@ -4321,21 +4321,41 @@ public final class EngineServer implements AutoCloseable {
      */
     private static String gitCommit(String dir) {
         if (dir == null || dir.isEmpty()) return null;
+        Process p = null;
         try {
-            Process p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
-                    .redirectErrorStream(false)
+            // stderr is discarded at the OS level and stdout drained on a side thread, so the 1s
+            // cap actually holds. Reading stdout to EOF inline deadlocks on a repo where git is
+            // chatty enough to fill its stderr pipe (dubious-ownership, many warnings): git can't
+            // exit, stdout never sees EOF, and the waitFor below is never reached — on the journal
+            // teardown path that hangs the whole request (JK-1473).
+            p = new ProcessBuilder("git", "-C", dir, "rev-parse", "--short", "HEAD")
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
                     .start();
-            String out;
-            try (var in = p.getInputStream()) {
-                out = new String(in.readAllBytes(), StandardCharsets.UTF_8).trim();
-            }
+            Process proc = p;
+            StringBuilder sb = new StringBuilder();
+            Thread drainer = new Thread(
+                    () -> {
+                        try (var in = proc.getInputStream()) {
+                            sb.append(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+                        } catch (IOException ignored) {
+                            // killed mid-read — no stamp
+                        }
+                    },
+                    "jk-git-commit-probe");
+            drainer.setDaemon(true);
+            drainer.start();
             if (!p.waitFor(1, java.util.concurrent.TimeUnit.SECONDS)) {
                 p.destroyForcibly();
                 return null;
             }
+            drainer.join(200);
+            String out = sb.toString().trim();
             return p.exitValue() == 0 && !out.isEmpty() ? out : null;
         } catch (IOException | InterruptedException | RuntimeException e) {
-            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+                if (p != null) p.destroyForcibly();
+            }
             return null;
         }
     }
