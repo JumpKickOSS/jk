@@ -109,7 +109,8 @@ public final class LiveVitals implements AutoCloseable {
 
     /**
      * Force-publish current cache/storage snapshot (connect hydrate or post-build). Change-gated on
-     * dual-surface MiB totals unless {@code force}.
+     * dual-surface MiB totals unless {@code force}. Live frames use the <strong>thin</strong>
+     * dual-surface payload (JK-1502); full section breakdown stays on {@code GET /api/cache}.
      */
     public void publishCache(boolean force) {
         if (!force && !events.hasSubscribers()) return;
@@ -122,7 +123,7 @@ public final class LiveVitals implements AutoCloseable {
                 if (present.equals(prev)) return;
             }
             lastCache.set(present);
-            events.publish("cache", c.toJson());
+            events.publish("cache", c.toThinJson());
         } catch (RuntimeException ignored) {
             // disk walk failures are best-effort
         }

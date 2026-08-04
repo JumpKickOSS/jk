@@ -1231,6 +1231,12 @@ public final class EngineServer implements AutoCloseable {
                 // their client loop only ends on pipeline-finish.
                 sendQuiet(writer, cancelledTerminalLine(workspaceStream, eventDir));
             }
+            // success: same default as BuildAccumulator.toRecord — HTTP jobs always sent it; CLI
+            // socket jobs used to omit it and force the SPA to derive from module rows (JK-1499).
+            BuildAccumulator finishAcc = accumulators.get(eventRequestId);
+            boolean success = finishAcc != null
+                    ? finishAcc.effectiveSuccess(cancelled)
+                    : !cancelled;
             publishEvent(
                     "request-finish",
                     withProgress(
@@ -1242,6 +1248,7 @@ public final class EngineServer implements AutoCloseable {
                                             .put("jid", eventRequestId)
                                             .put("kind", eventKind)
                                             .put("dir", eventDir)
+                                            .put("success", success)
                                             .put("cancelled", cancelled)
                                             .put("millis", elapsedMillis),
                                     eventRequestId),
@@ -1562,7 +1569,13 @@ public final class EngineServer implements AutoCloseable {
         return "";
     }
 
-    /** Publish to the dashboard event hub — free (one subscriber check) when no dashboard is open. */
+    /**
+     * Publish an <strong>inflicted</strong> build/activity frame to the dashboard SSE hub (JK-1499).
+     * Call only when the engine already mutated user-visible state — never batch build progress on
+     * the sampled vitals timer ({@link cc.jumpkick.engine.http.LiveVitals}). No-op without
+     * subscribers. Sampled chrome ({@code status}/{@code cache}) is separate: change-gated and
+     * nudged only on request start/finish so Builds Running / storage totals stay timely.
+     */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
         if (httpEvents != null && httpEvents.hasSubscribers()) httpEvents.publish(type, payload);
         // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
@@ -6020,6 +6033,15 @@ public final class EngineServer implements AutoCloseable {
         /** True only when the runner explicitly reported success (not merely "no failure seen yet"). */
         boolean succeeded() {
             return Boolean.TRUE.equals(success);
+        }
+
+        /**
+         * Outcome for SSE {@code request-finish} — same default as {@link #toRecord}: explicit
+         * stamp when set, else not-failed and not cancelled.
+         */
+        boolean effectiveSuccess(boolean cancelled) {
+            if (cancelled) return false;
+            return success != null ? success : !anyFailure;
         }
 
         /**

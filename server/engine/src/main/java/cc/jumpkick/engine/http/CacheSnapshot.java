@@ -134,7 +134,7 @@ public record CacheSnapshot(
         }
     }
 
-    /** JSON object for REST and SSE — same field names for both. */
+    /** Full JSON for REST {@code GET /api/cache} and connect-hydrate when the Status panel needs sections. */
     public JsonOut toJson() {
         return JsonOut.object()
                 .put("casCount", casCount)
@@ -153,6 +153,20 @@ public record CacheSnapshot(
                 .put("actionCacheBytes", actionCacheBytes())
                 .put("actionMaxBytes", actionMaxBytes)
                 .put("artifactStorageCount", artifactStorageCount())
+                .put("artifactStorageBytes", artifactStorageBytes())
+                .put("maxBytes", maxBytes)
+                .put("lastPrunedMillis", lastPrunedMillis);
+    }
+
+    /**
+     * Thin live payload for footer chrome (JK-1502): dual surfaces + budgets only. Section
+     * breakdown stays on REST / full {@link #toJson()}.
+     */
+    public JsonOut toThinJson() {
+        return JsonOut.object()
+                .put("thin", true)
+                .put("actionCacheBytes", actionCacheBytes())
+                .put("actionMaxBytes", actionMaxBytes)
                 .put("artifactStorageBytes", artifactStorageBytes())
                 .put("maxBytes", maxBytes)
                 .put("lastPrunedMillis", lastPrunedMillis);

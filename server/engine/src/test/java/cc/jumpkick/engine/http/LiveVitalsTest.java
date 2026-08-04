@@ -94,6 +94,26 @@ class LiveVitalsTest {
     }
 
     @Test
+    void publishCache_sends_thin_dual_surface_payload() throws Exception {
+        HttpEvents hub = new HttpEvents();
+        AtomicReference<StatusSnapshot> status = new AtomicReference<>(snap(1024L * 1024 * 1024, 0.2));
+        AtomicReference<CacheSnapshot> cache = new AtomicReference<>(
+                new CacheSnapshot(10, 5_000_000, 2, 100_000, 1, 2_000_000, 0, 0, 0, 0, 20L << 30, 1L << 30, 0));
+        try (LiveVitals live = new LiveVitals(hub, status::get, cache::get);
+                HttpEvents.Subscription sub = hub.subscribe()) {
+            live.publishCache(true);
+            // One SSE frame is a single multi-line string (id/event/data/blank).
+            String frame = sub.next(500);
+            assertThat(frame)
+                    .isNotNull()
+                    .contains("event: cache")
+                    .contains("\"thin\":true")
+                    .contains("actionCacheBytes")
+                    .doesNotContain("casCount");
+        }
+    }
+
+    @Test
     void cache_json_exposes_dual_surface_fields() {
         CacheSnapshot c =
                 new CacheSnapshot(10, 1000, 5, 50, 2, 200, 1, 30, 0, 0, 20L << 30, 1L << 30, 99);
@@ -104,6 +124,12 @@ class LiveVitalsTest {
                 .contains("\"actionMaxBytes\":")
                 .contains("\"maxBytes\":");
         assertThat(c.artifactStorageBytes()).isEqualTo(1000 + 200 + 30);
+        String thin = c.toThinJson().toString();
+        assertThat(thin)
+                .contains("\"thin\":true")
+                .contains("\"actionCacheBytes\":50")
+                .contains("\"artifactStorageBytes\":1230")
+                .doesNotContain("casCount");
     }
 
     private static StatusSnapshot snap(long freeBytes, double load) {

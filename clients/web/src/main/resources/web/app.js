@@ -349,6 +349,10 @@ Vue.createApp({
     },
     templates: [],
     now: Date.now(), // 1s tick driving elapsed counters and "ago" stamps
+    // JK-1500: single-flight keys → in-flight Promise; offline status poll backoff (ms).
+    _inflight: Object.create(null),
+    _offlineStatusBackoffMs: 5_000,
+    _offlineStatusTimer: null,
   }),
 
   mounted() {
@@ -360,7 +364,7 @@ Vue.createApp({
           return;
         }
         if (event.type === 'cache') {
-          this.cache = event.data;
+          this.applyCacheEvent(event.data);
           return;
         }
         foldEvent(this.cards, { ...event, at: Date.now() });
@@ -372,16 +376,26 @@ Vue.createApp({
           this._reconcileTimer = setTimeout(() => {
             this.loadHistory();
             this.loadProjectHistory();
+            // Metrics are view-scoped (JK-1503); refresh them only where they paint.
+            if (this.view === 'status' || this.view === 'projects' || this.view === 'project') {
+              this.refreshMetrics();
+            }
           }, 500);
         }
       },
       (state) => {
         const wasOffline = this.connection === 'offline';
         if (this.connection !== 'unauthorized' || state === 'live') this.connection = state;
-        if (state === 'live' && wasOffline) {
-          this.refresh(); // resync after an engine restart
-          this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
-          this.loadProjectHistory();
+        if (state === 'live') {
+          this._offlineStatusBackoffMs = 5_000;
+          this.clearOfflineStatusFallback();
+          if (wasOffline) {
+            this.refresh(); // resync after an engine restart
+            this.loadHistory(); // re-seed persisted runs (dedupe keeps this idempotent)
+            this.loadProjectHistory();
+          }
+        } else if (state === 'offline') {
+          this.scheduleOfflineStatusFallback();
         }
       },
     );
@@ -390,13 +404,13 @@ Vue.createApp({
     this.loadProjectHistory(); // so the Projects tab is populated the moment it's opened
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
+    // JK-1500: pause offline REST polling while the tab is hidden; keep SSE open (orphan engine).
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.clearOfflineStatusFallback();
+      else if (this.connection !== 'live') this.scheduleOfflineStatusFallback();
+    });
     if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
-    // Fallback REST when SSE is down; while live, status/cache arrive on the stream (JK-1495/1496).
-    setInterval(() => {
-      if (this.connection === 'live') return;
-      this.refreshStatus();
-    }, 5_000);
-    setInterval(() => this.refresh({ status: false }), 30_000); // metrics (+ cache/status if offline)
+    // Local clock only — no network (relative "ago" labels).
     setInterval(() => (this.now = Date.now()), 1_000);
   },
 
@@ -591,8 +605,11 @@ Vue.createApp({
     setView(view) {
       this.view = view;
       history.replaceState(null, '', '#' + view);
-      if (view === 'status') this.refresh();
-      if (view === 'projects') this.loadProjectHistory();
+      if (view === 'status') this.refresh(); // full cache + metrics + log
+      if (view === 'projects') {
+        this.loadProjectHistory();
+        this.refreshMetrics(); // JK-1503: view-scoped, not a global timer
+      }
     },
 
     // ---- the Projects tab (grouped /api/history + live running overlay) ----
@@ -660,7 +677,10 @@ Vue.createApp({
       this.view = r.view;
       this.selectedProjectDir = r.dir;
       if (r.view === 'project' && r.dir) this.loadProjectMeta(r.dir);
-      if (r.view === 'projects') this.loadProjectHistory();
+      if (r.view === 'projects') {
+        this.loadProjectHistory();
+        this.refreshMetrics();
+      }
       if (r.view === 'status') this.refresh();
     },
 
@@ -795,6 +815,48 @@ Vue.createApp({
       return this.shortDir(m.dir);
     },
 
+    // ---- JK-1500 live-refresh coordinator ------------------------------------
+
+    /**
+     * At most one in-flight REST call per key. Concurrent callers share the same Promise so
+     * double refresh / reconnect cannot stack GETs for the same path.
+     */
+    fetchOnce(key, fn) {
+      const inflight = this._inflight;
+      if (inflight[key]) return inflight[key];
+      const p = Promise.resolve()
+        .then(fn)
+        .finally(() => {
+          if (inflight[key] === p) delete inflight[key];
+        });
+      inflight[key] = p;
+      return p;
+    },
+
+    clearOfflineStatusFallback() {
+      if (this._offlineStatusTimer != null) {
+        clearTimeout(this._offlineStatusTimer);
+        this._offlineStatusTimer = null;
+      }
+    },
+
+    /**
+     * Offline-only status poll with stepped backoff (5s → … → 30s). No-op while SSE is live or
+     * the document is hidden (keep EventSource open; do not REST-hammer a background tab).
+     */
+    scheduleOfflineStatusFallback() {
+      this.clearOfflineStatusFallback();
+      if (document.hidden || this.connection === 'live') return;
+      const delay = this._offlineStatusBackoffMs || 5_000;
+      this._offlineStatusTimer = setTimeout(async () => {
+        this._offlineStatusTimer = null;
+        if (document.hidden || this.connection === 'live') return;
+        await this.refreshStatus();
+        this._offlineStatusBackoffMs = Math.min(30_000, Math.round((this._offlineStatusBackoffMs || 5_000) * 1.5));
+        this.scheduleOfflineStatusFallback();
+      }, delay);
+    },
+
     // Merge a live `status` SSE frame into this.status. Frames carry core vitals only (not httpUrl
     // / config knobs from GET /api/status) — keep REST fields when present.
     applyStatusEvent(data) {
@@ -803,26 +865,56 @@ Vue.createApp({
       if (this.connection === 'unauthorized') this.connection = 'live';
     },
 
-    // REST hydrate / offline fallback for header sysbox + footer heap / builds-running.
-    async refreshStatus() {
-      try {
-        this.status = await get('/api/status');
-        if (this.connection === 'unauthorized') this.connection = 'live';
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+    // Thin live `cache` frames (JK-1502) merge into the last full REST snapshot; full frames replace.
+    applyCacheEvent(data) {
+      if (!data || typeof data !== 'object') return;
+      if (data.thin) {
+        const prev = this.cache || {};
+        this.cache = { ...prev, ...data };
+      } else {
+        this.cache = data;
       }
     },
 
-    async refresh(opts) {
-      // While SSE is live, status/cache are pushed (change-gated). Still hydrate status on
-      // full refresh (opts.status !== false) so reconnect/first paint get httpUrl etc.
-      // Offline: always pull. JK-1459: 30s tick passes {status:false} to avoid double status GET
-      // when the fallback 5s timer also fires.
-      const sseLive = this.connection === 'live';
-      if (!opts || opts.status !== false) await this.refreshStatus();
-      // Separate try: the log tail is a sensitive read (token-required even on loopback,
-      // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
-      if (this.view === 'status') {
+    // REST hydrate / offline fallback for header sysbox + footer heap / builds-running.
+    async refreshStatus() {
+      return this.fetchOnce('status', async () => {
+        try {
+          this.status = await get('/api/status');
+          if (this.connection === 'unauthorized') this.connection = 'live';
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    /** Full cache breakdown for Status panels (REST). Footer uses thin SSE while live. */
+    async refreshCache() {
+      return this.fetchOnce('cache', async () => {
+        try {
+          this.cache = await get('/api/cache');
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    /**
+     * Running build aggregates — view-scoped (JK-1503), not a global chrome poll. Call when
+     * opening Status/Projects or after a finished build while those views are visible.
+     */
+    async refreshMetrics() {
+      return this.fetchOnce('metrics', async () => {
+        try {
+          this.metrics = await get('/api/metrics');
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
+    async refreshLog() {
+      return this.fetchOnce('log', async () => {
         try {
           this.engineLog = await getText('/api/log?lines=100');
         } catch (e) {
@@ -830,22 +922,30 @@ Vue.createApp({
             this.engineLog = '(engine log requires the tokened dashboard URL — reopen via `jk web`)';
           }
         }
+      });
+    },
+
+    /**
+     * Hydrate REST surfaces for the current view. Status always pulls full cache + metrics + log;
+     * Projects pulls metrics; Activity only needs status/cache hydrate when offline or first paint.
+     */
+    async refresh(opts) {
+      const sseLive = this.connection === 'live';
+      const wantStatus = !opts || opts.status !== false;
+      if (wantStatus) await this.refreshStatus();
+
+      if (this.view === 'status') {
+        await this.refreshLog();
+        await this.refreshMetrics();
+        await this.refreshCache(); // full breakdown for dual Status panels
+        return;
       }
-      // Separate try: a metrics hiccup must not blank the status vitals.
-      try {
-        this.metrics = await get('/api/metrics');
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+      if (this.view === 'projects' || this.view === 'project') {
+        await this.refreshMetrics();
       }
-      // Action Cache + Artifact Storage: SSE while live. REST on hydrate/reconnect (status
-      // not false) and whenever offline; skip on the 30s tick while live to avoid disk walks.
-      const skipCacheRest = sseLive && opts && opts.status === false;
-      if (!skipCacheRest) {
-        try {
-          this.cache = await get('/api/cache');
-        } catch (e) {
-          if (e.status === 401) this.connection = 'unauthorized';
-        }
+      // Action Cache + Artifact Storage footer: SSE while live; REST hydrate when offline or empty.
+      if (!sseLive || !this.cache) {
+        await this.refreshCache();
       }
     },
 

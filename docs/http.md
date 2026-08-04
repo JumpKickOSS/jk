@@ -116,7 +116,7 @@ work when `hasSubscribers()` is false.
 | --- | --- | --- |
 | **Inflicted** (realtime) | `request-start` / `plan` / `module-*` / `step-*` / `pipeline-progress` / `workspace-progress` / `eta` / `output` / `diagnostic` / `*-finish` / `request-finish` | As the pipeline mutates state — never batched on a timer |
 | **Sampled** (change-gated) | `status` | ~every 2 s while any client is subscribed, **and** only when presentation-quantized vitals change (CPU ~1 pp, RAM/heap ~1 MiB, counters exact). Also forced on stream connect and nudged on request start/finish |
-| **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Connect hydrate may force one frame |
+| **Sampled** (change-gated, IO) | `cache` | Slow tick (~30 s) while subscribed, plus after request finish; **not** on the 2 s status sampler. Live frames are **thin** (dual surface totals + budgets, `"thin": true`); full section breakdown is REST-only |
 
 ### `event: status`
 
@@ -134,8 +134,30 @@ Two storage surfaces (CLI parity: `jk cache storage` / `jk repo storage`), not o
 | **Action cache** | `actions/` → `actionCacheBytes` / `actionsBytes` | `actionMaxBytes` (`[cache] action-max-size-mb`) |
 | **Artifact storage** | CAS + worker JAR mirrors + run logs → `artifactStorageBytes` | `maxBytes` (`[cache] max-size-gb`) |
 
-Section counts (`casCount`, `actionsCount`, …) remain for the Status breakdown. `totalBytes` is a
-legacy combined sum; prefer the two surfaces for UI.
+**Live SSE (thin):** `{ "thin": true, actionCacheBytes, actionMaxBytes, artifactStorageBytes,
+maxBytes, lastPrunedMillis }` — enough for the footer; change-gated on MiB quanta.
+
+**REST (full):** section counts (`casCount`, `actionsCount`, …) for the Status panels. `totalBytes`
+is a legacy combined sum; prefer the two surfaces for UI.
 
 REST `GET /api/status` and `GET /api/cache` remain for hydrate, offline fallback, CLI/MCP tools,
-and curl.
+and curl. Metrics (`GET /api/metrics`) stay **REST-only / view-scoped** — not on the vitals SSE bus.
+
+### Build SSE publish map (JK-1499)
+
+Inflicted publishers live on `EngineServer` (socket listener + HTTP job listeners). Every dashboard
+fold type has a site; progress is coalesced only by the intentional ≥0.1% / TTY-frame filter on
+`workspace-progress` (same as the TUI), never by `LiveVitals`.
+
+| Event | Publisher (typical) | Notes |
+| --- | --- | --- |
+| `request-start` | `publishRequestStart` | CLI admit + HTTP workspace/lock |
+| `plan` | `publishPlan` | Total weight for bar denominator |
+| `module-start` / `module-finish` | workspace listener | Per-module rows |
+| `step-start` / `step-finish` | pipeline listener | Phase-tagged steps |
+| `pipeline-progress` | pipeline ticks | Single-module / per-module detail |
+| `workspace-progress` | `emitWorkspaceProgress` | Aggregate %; peak-hold + 0.1% / frame filter |
+| `eta` | `publishEta` | Seed + re-projections |
+| `output` / `diagnostic` | step output / failures | Bounded diagnostics |
+| `pipeline-finish` | pipeline end | Module-level success |
+| `request-finish` | request finally | Always includes `success` + `cancelled` (CLI + HTTP) |
