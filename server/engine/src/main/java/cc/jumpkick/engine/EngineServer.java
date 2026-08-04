@@ -370,7 +370,11 @@ public final class EngineServer implements AutoCloseable {
             serverChannel.bind(new java.net.InetSocketAddress(java.net.InetAddress.getLoopbackAddress(), 0));
             int port = ((java.net.InetSocketAddress) serverChannel.getLocalAddress()).getPort();
             expectedToken = EngineTransport.newToken();
-            Files.writeString(active.token(), expectedToken);
+            // This token gates every engine RPC — i.e. arbitrary code execution as the engine
+            // owner. It must be owner-only, like the HTTP bearer token, not left to the ambient
+            // umask on a shared machine (JK-1467).
+            cc.jumpkick.util.OwnerOnlyFiles.write(
+                    active.token().getParent(), active.token(), expectedToken);
             Files.writeString(active.socket(), Integer.toString(port));
         } else {
             serverChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);

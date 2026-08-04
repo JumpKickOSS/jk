@@ -463,7 +463,22 @@ class HttpEngineServerTest {
     }
 
     @Test
-    void api_metrics_reports_aggregate_rows_without_a_token_on_loopback() throws Exception {
+    void api_metrics_requires_the_token_even_on_loopback() throws Exception {
+        // Rows carry every project dir and coordinate ever built — same class as /api/fs (JK-1466).
+        assertThat(get("/api/metrics").statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_history_and_project_require_the_token_even_on_loopback() throws Exception {
+        // Diagnostics carry source excerpts and absolute paths; /api/project is a path oracle.
+        assertThat(get("/api/history").statusCode()).isEqualTo(401);
+        assertThat(get("/api/history/artifact?id=1&name=diagnostics.txt").statusCode())
+                .isEqualTo(401);
+        assertThat(get("/api/project?dir=" + stateDir).statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void api_metrics_reports_aggregate_rows_with_the_token() throws Exception {
         var ok = new cc.jumpkick.runtime.BuildMetrics.Stats(3, 6000, 1000, 3000);
         var empty = cc.jumpkick.runtime.BuildMetrics.Stats.EMPTY;
         metricsRows.add(new cc.jumpkick.runtime.BuildMetrics.Entry("build", "", null, null, ok, empty, empty, 5L));
@@ -471,7 +486,7 @@ class HttpEngineServerTest {
         metricsRows.add(
                 new cc.jumpkick.runtime.BuildMetrics.Entry(null, "/other", null, "compile-java", ok, empty, empty, 5L));
 
-        HttpResponse<String> resp = get("/api/metrics");
+        HttpResponse<String> resp = get("/api/metrics", "Authorization", "Bearer " + token());
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
         assertThat(resp.body())
@@ -483,14 +498,16 @@ class HttpEngineServerTest {
                 .contains("\"coord\":\"g:n\"");
 
         // ?dir= keeps the global tiers but drops other projects' rows.
-        String filtered = get("/api/metrics?dir=/p").body();
+        String filtered =
+                get("/api/metrics?dir=/p", "Authorization", "Bearer " + token()).body();
         assertThat(filtered).contains("\"scope\":\"global\"").contains("\"dir\":\"/p\"");
         assertThat(filtered).doesNotContain("/other");
     }
 
     @Test
     void api_metrics_is_an_empty_array_when_nothing_has_been_recorded() throws Exception {
-        assertThat(get("/api/metrics").body()).isEqualTo("[]");
+        assertThat(get("/api/metrics", "Authorization", "Bearer " + token()).body())
+                .isEqualTo("[]");
     }
 
     @Test

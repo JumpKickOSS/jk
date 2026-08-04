@@ -75,6 +75,22 @@ public final class HttpEngineServer implements AutoCloseable {
     // GET /api/templates response cache — building the index walks every template root (with a
     // deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk (JK-1455).
     // One immutable holder, not two volatiles: a reader must never pair old JSON with a new stamp.
+    /**
+     * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
+     * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history*} carry
+     * build diagnostics with source excerpts and absolute paths; {@code /api/project} is a
+     * path-existence oracle; {@code /api/metrics} emits every project dir and coordinate ever
+     * built; {@code /api/projects/defaults} derives from the owner's git identity and home layout.
+     */
+    private static final java.util.Set<String> SENSITIVE_READS = java.util.Set.of(
+            "/api/fs",
+            "/api/log",
+            "/api/history",
+            "/api/history/artifact",
+            "/api/project",
+            "/api/metrics",
+            "/api/projects/defaults");
+
     private record TemplatesCache(String json, long atNanos) {}
 
     private volatile TemplatesCache templatesCache;
@@ -491,13 +507,12 @@ public final class HttpEngineServer implements AutoCloseable {
     private boolean authorized(HttpExchange exchange) {
         String method = exchange.getRequestMethod();
         boolean read = method.equals("GET") || method.equals("HEAD");
-        // /api/fs lists the filesystem with the engine owner's permissions, /api/log can carry
-        // build diagnostics, and /api/projects/defaults derives from the owner's git identity and
-        // home-directory layout — on a shared machine another local user must not read any of them
-        // over loopback, so they are never token-exempt.
+        // Reads that disclose the engine owner's filesystem, identity, or source-bearing output are
+        // never token-exempt: on a shared machine another local user must not have them for free
+        // over loopback (JK-1305, JK-1453, JK-1466). Aggregate-only reads (/api/status,
+        // /api/cache) and the activity stream stay open so a tokenless dashboard still works.
         String path = exchange.getRequestURI().getPath();
-        boolean sensitiveRead =
-                path.equals("/api/fs") || path.equals("/api/log") || path.equals("/api/projects/defaults");
+        boolean sensitiveRead = SENSITIVE_READS.contains(path);
         if (read && !readsRequireToken && !sensitiveRead) return true;
         if (tokenValid(bearerToken(exchange.getRequestHeaders().getFirst("Authorization")))) return true;
         return read
