@@ -41,9 +41,8 @@ public final class InFlightBuilds {
      * is the existing holder.
      */
     public Optional<Hold> tryAcquire(Hold candidate) {
-        if (candidate == null
-                || candidate.fingerprint() == null
-                || candidate.fingerprint().isEmpty()) {
+        if (candidate == null) return Optional.empty(); // nothing to track (JK-1492)
+        if (candidate.fingerprint() == null || candidate.fingerprint().isEmpty()) {
             // Non-exclusive path: track by request only for list/running UI if needed.
             byRequestId.put(candidate.requestId(), candidate);
             return Optional.empty();

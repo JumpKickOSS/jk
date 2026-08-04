@@ -173,6 +173,22 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void a_symlink_under_web_root_is_not_served() throws Exception {
+        // Static content is deliberately never token-gated, so a link planted in web-root (builds
+        // may write there) must not become an unauthenticated read of anything outside it (JK-1487).
+        Path secret = stateDir.resolve("outside-secret.txt");
+        Files.writeString(secret, "TOP SECRET");
+        try {
+            Files.createSymbolicLink(webRoot.resolve("leak.txt"), secret);
+        } catch (UnsupportedOperationException | java.io.IOException unsupported) {
+            return; // filesystem without symlink support — nothing to prove here
+        }
+        HttpResponse<String> resp = get("/leak.txt");
+        assertThat(resp.statusCode()).isNotEqualTo(200);
+        assertThat(resp.body()).doesNotContain("TOP SECRET");
+    }
+
+    @Test
     void serves_disk_content_with_revalidation_headers() throws Exception {
         HttpResponse<String> resp = get("/hello.txt");
         assertThat(resp.statusCode()).isEqualTo(200);

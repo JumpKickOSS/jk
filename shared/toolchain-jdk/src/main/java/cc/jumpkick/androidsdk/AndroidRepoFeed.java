@@ -63,6 +63,12 @@ public final class AndroidRepoFeed {
         try {
             DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
             dbf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+            // Reject a DOCTYPE outright rather than merely declining to fetch external entities —
+            // same posture as PomParser / MavenMetadata / PomImporter, since this feed is remote,
+            // attacker-influenceable XML (JK-1486).
+            dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+            dbf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            dbf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
             dbf.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
             dbf.setExpandEntityReferences(false);
             Document doc = dbf.newDocumentBuilder().parse(new ByteArrayInputStream(xml));
