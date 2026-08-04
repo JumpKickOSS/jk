@@ -74,8 +74,10 @@ public final class HttpEngineServer implements AutoCloseable {
 
     // GET /api/templates response cache — building the index walks every template root (with a
     // deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk (JK-1455).
-    private volatile String templatesJson;
-    private volatile long templatesJsonAtNanos;
+    // One immutable holder, not two volatiles: a reader must never pair old JSON with a new stamp.
+    private record TemplatesCache(String json, long atNanos) {}
+
+    private volatile TemplatesCache templatesCache;
     private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
@@ -762,9 +764,9 @@ public final class HttpEngineServer implements AutoCloseable {
      * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
      */
     private void handleTemplates(HttpExchange exchange) throws IOException {
-        String cached = templatesJson;
-        if (cached != null && System.nanoTime() - templatesJsonAtNanos < TEMPLATES_TTL_NANOS) {
-            sendJson(exchange, 200, cached);
+        TemplatesCache cached = templatesCache;
+        if (cached != null && System.nanoTime() - cached.atNanos() < TEMPLATES_TTL_NANOS) {
+            sendJson(exchange, 200, cached.json());
             return;
         }
         // Same roots the short-name resolver uses (JK-1458) — the picker must never list a
@@ -785,8 +787,7 @@ public final class HttpEngineServer implements AutoCloseable {
         }
         arr.append(']');
         String json = arr.toString();
-        templatesJson = json;
-        templatesJsonAtNanos = System.nanoTime();
+        templatesCache = new TemplatesCache(json, System.nanoTime());
         sendJson(exchange, 200, json);
     }
 
