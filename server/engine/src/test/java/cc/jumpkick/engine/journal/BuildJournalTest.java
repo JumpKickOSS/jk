@@ -180,4 +180,32 @@ class BuildJournalTest {
         List<Long> numbers = j.list().stream().map(BuildRecord::buildNumber).toList();
         assertThat(numbers).contains(Long.parseLong(newest)).doesNotContain(Long.parseLong(oldest));
     }
+
+    /**
+     * JK-1471: build numbers are per project, so deleting "8" must not resolve into whichever
+     * project home happens to sort first.
+     */
+    @Test
+    void scoped_delete_does_not_touch_another_projects_run_of_the_same_number() {
+        BuildJournal j = new BuildJournal(dir);
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
+        j.begin(BuildRecord.running(8, "build", "/projB", "g:b", 1_700_000_000_000L, "9.9", "cli"));
+        assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+        assertThat(j.runDir("g:b", "/projB", 8)).isPresent();
+
+        assertThat(j.delete("8", "g:b", "/projB")).isTrue();
+
+        assertThat(j.runDir("g:b", "/projB", 8)).as("target removed").isEmpty();
+        assertThat(j.runDir("g:a", "/projA", 8))
+                .as("the other project's run of the same number survives")
+                .isPresent();
+    }
+
+    @Test
+    void scoped_delete_of_a_number_absent_from_that_project_is_a_no_op() {
+        BuildJournal j = new BuildJournal(dir);
+        j.begin(BuildRecord.running(8, "build", "/projA", "g:a", 1_700_000_000_000L, "9.9", "cli"));
+        assertThat(j.delete("8", "g:b", "/projB")).isFalse();
+        assertThat(j.runDir("g:a", "/projA", 8)).isPresent();
+    }
 }

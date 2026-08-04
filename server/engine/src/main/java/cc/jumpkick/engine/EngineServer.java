@@ -1270,7 +1270,9 @@ public final class EngineServer implements AutoCloseable {
         if (exclusive && !fp.isEmpty()) {
             var raced = inFlightBuilds.tryAcquire(candidate);
             if (raced.isPresent()) {
-                if (journalId != null) journal.delete(journalId);
+                // Scoped: journalId is this project's build number, which another project may
+                // also use (JK-1471).
+                if (journalId != null) journal.delete(journalId, coord, dir);
                 return AdmitResult.reject(raced.get());
             }
         } else {
@@ -4295,7 +4297,7 @@ public final class EngineServer implements AutoCloseable {
             if (record.synthetic()) {
                 String jid = a.journalId();
                 if (jid != null && !jid.isBlank()) {
-                    journal.delete(jid);
+                    journal.delete(jid, record.coord(), record.dir());
                 }
                 journal.purgeProject(record.coord(), record.dir());
                 return;

@@ -434,6 +434,36 @@ public final class BuildJournal {
         return true;
     }
 
+    /**
+     * Delete a run, resolving the locator <em>within one project</em>.
+     *
+     * <p>Build numbers are allocated per project, so a bare number like {@code "8"} names a
+     * different run in every project home; the unscoped {@link #delete(String)} resolves it by
+     * scanning project homes in sorted order and taking the first hit, which can wipe an unrelated
+     * project's history. Callers that know the project (they just wrote the record) must use this
+     * (JK-1471). Falls back to the unscoped lookup only when the project is unknown or the number
+     * does not exist under it — e.g. a history id rather than a build number.
+     */
+    public boolean delete(String idOrLocator, String coord, String dir) {
+        if (idOrLocator != null && !idOrLocator.isBlank() && ProjectBuilds.validRunDirName(idOrLocator)) {
+            try {
+                long n = Long.parseLong(idOrLocator);
+                Optional<Path> scoped = runDir(coord, dir, n);
+                if (scoped.isPresent()) {
+                    if (!Files.isDirectory(scoped.get())) return false;
+                    deleteTreeQuietly(scoped.get());
+                    return true;
+                }
+                // A per-project number that does not exist under this project is not ours to
+                // resolve globally — another project's run of the same number is not the target.
+                return false;
+            } catch (NumberFormatException ignored) {
+                // not a build number — fall through to the id lookup
+            }
+        }
+        return delete(idOrLocator);
+    }
+
     public PruneResult prune(long maxAgeMillis, long maxDiskBytes, long nowMillis) {
         List<Entry> entries = new ArrayList<>();
         for (Path dir : entryDirs()) {
