@@ -22,13 +22,29 @@ import java.util.function.Consumer;
  */
 public final class OfficialTemplatesFreshen {
 
+    /**
+     * Last freshen attempt (success or failure) per cache key. Short-name resolution calls
+     * {@link #refreshQuiet} from the engine's request path (JK-1454): without this guard an offline
+     * host would re-run a 60–120 s git attempt on every retry of a missing template.
+     */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Long> LAST_ATTEMPT_NANOS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    static final long ATTEMPT_TTL_NANOS = TimeUnit.MINUTES.toNanos(10);
+
     private OfficialTemplatesFreshen() {}
 
-    /** Best-effort freshen; never throws. Network / missing git → silent skip. */
+    /**
+     * Best-effort freshen; never throws. Network / missing git → silent skip. Attempts are rate
+     * limited to one per cache key per {@link #ATTEMPT_TTL_NANOS} (success <em>or</em> failure);
+     * the 12 h maintenance cycle and engine-start warmup are unaffected by a 10 min TTL.
+     */
     public static void refreshQuiet(Consumer<String> log) {
         if (log == null) log = s -> {};
         try {
-            refresh(JkTemplatesConfig.resolve(), log);
+            JkTemplatesConfig cfg = JkTemplatesConfig.resolve();
+            if (!markAttempt(parse(officialRef(cfg)).cacheKey(), System.nanoTime())) return;
+            refresh(cfg, log);
         } catch (Throwable t) {
             // Quiet: one short line only when something unexpected is worth a breadcrumb.
             String m = t.getMessage();
@@ -38,10 +54,30 @@ public final class OfficialTemplatesFreshen {
         }
     }
 
-    static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
+    /** True when the caller won the attempt slot (none in the last TTL); atomically records it. */
+    static boolean markAttempt(String cacheKey, long nowNanos) {
+        boolean[] won = {false};
+        LAST_ATTEMPT_NANOS.compute(cacheKey, (k, last) -> {
+            if (last != null && nowNanos - last < ATTEMPT_TTL_NANOS) return last;
+            won[0] = true;
+            return nowNanos;
+        });
+        return won[0];
+    }
+
+    static void resetAttemptGuardForTests() {
+        LAST_ATTEMPT_NANOS.clear();
+    }
+
+    static String officialRef(JkTemplatesConfig config) {
         JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
         String ref = cfg.officialUrl();
-        if (ref == null || ref.isBlank()) ref = JkTemplatesConfig.DEFAULT_OFFICIAL;
+        return ref == null || ref.isBlank() ? JkTemplatesConfig.DEFAULT_OFFICIAL : ref;
+    }
+
+    static void refresh(JkTemplatesConfig config, Consumer<String> log) throws IOException {
+        JkTemplatesConfig cfg = config == null ? JkTemplatesConfig.defaults() : config;
+        String ref = officialRef(cfg);
         Path cacheRoot = primaryCacheRoot();
         Files.createDirectories(cacheRoot);
         Parsed p = parse(ref);
