@@ -14,9 +14,10 @@ import org.jline.utils.NonBlockingReader;
 /**
  * A single-line yes/no confirmation, styled like {@link Wizard} and driven by a single keystroke
  * (no Enter required): {@code y}/{@code n}, with Enter taking the default and Ctrl-C / Esc
- * declining. On an interactive terminal it briefly enters raw mode (mirroring the Wizard's terminal
- * lifecycle); on a non-TTY it falls back to a cooked {@code readLine()} so piped / CI input keeps
- * working.
+ * declining. On an interactive ANSI terminal it briefly enters raw mode (mirroring the Wizard's
+ * terminal lifecycle); on a non-TTY — or when ANSI is off ({@code --no-ansi}, {@code TERM=dumb}) —
+ * it falls back to a cooked {@code readLine()} so piped / CI / plain-terminal input keeps working
+ * (JK-1420).
  *
  * <p>Renders {@code <question> [Y/n]} (default-yes) or {@code <question> [y/N]} (default-no) with
  * the brackets and slash dimmed. Once answered, the {@code [Y/n]} hint is overwritten in place with
@@ -70,12 +71,13 @@ public final class Confirm {
     }
 
     /**
-     * Ask, opening and closing our own terminal. On a non-interactive stdin, reads a cooked line
+     * Ask, opening and closing our own terminal. On a non-interactive stdin — or an interactive
+     * terminal with ANSI off ({@code --no-ansi}, {@code TERM=dumb}, …) — reads a cooked line
      * instead (EOF → {@code false}).
      */
     public boolean ask() {
         if (assumeYes()) return true;
-        if (!isInteractiveTerminal()) {
+        if (!rawEligible(isInteractiveTerminal(), Theme.active().isAnsi())) {
             return cookedFallback();
         }
         try (Terminal terminal = Wizard.openTerminal()) {
@@ -96,6 +98,10 @@ public final class Confirm {
      */
     public boolean ask(Terminal terminal) {
         if (assumeYes()) return true;
+        // No-ANSI: the raw-mode keystroke UX and in-place settle assume escape sequences the mode
+        // just said we don't have — read a cooked line instead, even inside a wizard's terminal
+        // lifecycle (JK-1420).
+        if (!Theme.active().isAnsi()) return cookedFallback();
         // Render the prompt to stderr, not stdout: a y/n the user can't see (because stdout is piped
         // to `less` / a file) would be an invisible block. stderr is the terminal's own channel by
         // convention (git/apt/ssh prompt there too). Use the terminal only to capture the single
@@ -141,22 +147,43 @@ public final class Confirm {
         };
     }
 
-    /** Cooked read for non-TTY stdin — preserves the prior {@code readLine()} semantics. */
+    /**
+     * Raw single-keystroke intercept needs both a promptable human <em>and</em> ANSI capability —
+     * the keystroke UX and the in-place settle assume escape sequences, so plain / {@code
+     * --no-ansi} terminals get cooked line input instead (JK-1420).
+     */
+    static boolean rawEligible(boolean canPrompt, boolean ansi) {
+        return canPrompt && ansi;
+    }
+
+    /**
+     * Cooked read — non-TTY stdin (piped / CI) and interactive-but-no-ANSI terminals. Reads a full
+     * line ({@code y}/{@code yes}/{@code n}/{@code no}/empty = default), then settles the answer as
+     * plain text on its own line (no CSI; colorize no-ops when color is off).
+     */
     private boolean cookedFallback() {
         // Prompt to stderr (see ask(Terminal)) so it stays visible when stdout is redirected.
         var err = cc.jumpkick.cli.CliOutput.stderr();
         err.print(promptText());
         err.flush();
+        boolean result;
         try {
             BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
             String line = reader.readLine();
-            if (line == null) return false; // EOF / non-interactive → decline
-            String t = line.trim();
-            if (t.isEmpty()) return defaultYes;
-            return t.equalsIgnoreCase("y") || t.equalsIgnoreCase("yes");
+            if (line == null) {
+                result = false; // EOF / non-interactive → decline
+            } else {
+                String t = line.trim();
+                result = t.isEmpty() ? defaultYes : t.equalsIgnoreCase("y") || t.equalsIgnoreCase("yes");
+            }
         } catch (IOException e) {
-            return false;
+            result = false;
         }
+        err.println(Theme.colorize(
+                result ? "Yes" : "No",
+                result ? Theme.active().success() : Theme.active().error()));
+        err.flush();
+        return result;
     }
 
     private String promptText() {

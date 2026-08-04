@@ -60,6 +60,32 @@ class ConfirmTest {
         assertThat(out.toString(StandardCharsets.UTF_8)).doesNotContain("Proceed?");
     }
 
+    @Test
+    void raw_mode_needs_both_a_promptable_human_and_ansi() {
+        // JK-1420: --no-ansi (or TERM=dumb etc.) must take the cooked line-input path even when a
+        // human is on a TTY — raw keystroke intercept and the CSI settle assume ANSI capability.
+        assertThat(Confirm.rawEligible(true, true)).isTrue();
+        assertThat(Confirm.rawEligible(true, false)).isFalse();
+        assertThat(Confirm.rawEligible(false, true)).isFalse();
+        assertThat(Confirm.rawEligible(false, false)).isFalse();
+    }
+
+    @Test
+    void cooked_path_settles_a_plain_answer_on_stderr() {
+        InputStream savedIn = System.in;
+        PrintStream savedErr = System.err;
+        var err = new ByteArrayOutputStream();
+        try {
+            System.setIn(new ByteArrayInputStream("y\n".getBytes(StandardCharsets.UTF_8)));
+            System.setErr(new PrintStream(err, true, StandardCharsets.UTF_8));
+            Confirm.of("Proceed?", false).ask();
+        } finally {
+            System.setIn(savedIn);
+            System.setErr(savedErr);
+        }
+        assertThat(err.toString(StandardCharsets.UTF_8)).contains("Yes");
+    }
+
     private static boolean askWith(String input, boolean defaultYes) {
         InputStream savedIn = System.in;
         try {
