@@ -53,11 +53,27 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
     private ScheduledFuture<?> scheduled;
     private final AtomicBoolean closed = new AtomicBoolean();
 
+    /**
+     * Timer only — every pipeline in the engine shares this one thread, so it must never perform a
+     * wire write. {@link #emitPendingLocked} calls the delegate, which is a socket send under the
+     * connection's write monitor: a client that stops draining its socket (SIGSTOP'd, wedged
+     * terminal) would park this thread and every other build's coalesced progress would go silent
+     * until it emitted a structural event. The scheduled task therefore only hands the flush to
+     * {@link #FLUSHERS} (JK-1477).
+     */
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "jk-wire-progress");
         t.setDaemon(true);
         return t;
     });
+
+    /**
+     * Where a timed flush actually runs: one virtual thread per flush, so blocking in a wire write
+     * costs no platform thread and isolates pipelines from each other. Per-listener ordering is
+     * still guaranteed by {@link #lock}.
+     */
+    private static final java.util.concurrent.ExecutorService FLUSHERS =
+            Executors.newThreadPerTaskExecutor(Thread.ofVirtual().name("jk-wire-flush-", 0).factory());
 
     public CoalescingPipelineListener(PipelineListener delegate) {
         this(delegate, cadenceFromEnv());
@@ -228,7 +244,7 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
             // Start the human window; first sample lands at cadence (or on structural flush).
             lastFlushNanos = now;
             if (scheduled == null || scheduled.isDone()) {
-                scheduled = SCHEDULER.schedule(this::flushSafe, cadenceMs, TimeUnit.MILLISECONDS);
+                scheduled = SCHEDULER.schedule(this::dispatchFlush, cadenceMs, TimeUnit.MILLISECONDS);
             }
             return;
         }
@@ -239,13 +255,23 @@ public final class CoalescingPipelineListener implements PipelineListener, AutoC
             return;
         }
         if (scheduled != null && !scheduled.isDone()) return;
-        scheduled = SCHEDULER.schedule(this::flushSafe, cadenceMs - elapsedMs, TimeUnit.MILLISECONDS);
+        scheduled = SCHEDULER.schedule(this::dispatchFlush, cadenceMs - elapsedMs, TimeUnit.MILLISECONDS);
     }
 
     private void cancelScheduledLocked() {
         if (scheduled != null) {
             scheduled.cancel(false);
             scheduled = null;
+        }
+    }
+
+    /** Timer callback: never flushes inline — see {@link #SCHEDULER}. */
+    private void dispatchFlush() {
+        if (closed.get()) return;
+        try {
+            FLUSHERS.execute(this::flushSafe);
+        } catch (java.util.concurrent.RejectedExecutionException shuttingDown) {
+            // engine going down — dropping a coalesced progress frame is fine
         }
     }
 

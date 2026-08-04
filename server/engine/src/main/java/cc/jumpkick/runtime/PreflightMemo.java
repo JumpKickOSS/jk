@@ -601,8 +601,17 @@ public final class PreflightMemo {
                                 feed(md, Long.toString(attrs.size()));
                                 feed(md, Long.toString(attrs.lastModifiedTime().toMillis()));
                             } else {
-                                try {
-                                    md.update(Files.readAllBytes(file));
+                                // Stream, don't slurp: this is the DEFAULT path (mtime mode is
+                                // opt-in), it runs over every file under the module including
+                                // resources, and the engine's heap budget is 256 MB SerialGC — a
+                                // single large resource was a transient allocation of its full
+                                // size (JK-1482).
+                                try (var in = Files.newInputStream(file)) {
+                                    byte[] buf = HASH_BUFFER.get();
+                                    int n;
+                                    while ((n = in.read(buf)) > 0) {
+                                        md.update(buf, 0, n);
+                                    }
                                     md.update((byte) 0);
                                 } catch (IOException e) {
                                     feed(md, "unreadable");
@@ -623,6 +632,9 @@ public final class PreflightMemo {
             return "err-" + System.nanoTime();
         }
     }
+
+    /** Reused per hashing thread so streaming a tree does not allocate a buffer per file. */
+    private static final ThreadLocal<byte[]> HASH_BUFFER = ThreadLocal.withInitial(() -> new byte[64 * 1024]);
 
     static String fingerprintMode() {
         return useMtimeMode() ? "mtime" : "content";
