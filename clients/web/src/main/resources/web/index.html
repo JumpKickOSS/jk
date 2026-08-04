@@ -100,9 +100,12 @@
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
           <span v-if="outcome(card) === 'running' && eta(card)" class="eta" title="estimated time remaining">{{ eta(card) }}</span>
-          <!-- Duration; when the run moved bytes, hover reveals the I/O breakdown (remote =
-               network, local = build cache) as `label  N ↑ / N ↓`. No traffic → no tip. -->
-          <span class="millis" :class="{ 'has-io': ioLines(card).length }">
+          <!-- Duration; when the run moved bytes, hover or keyboard focus reveals the I/O
+               breakdown (remote = network, local = build cache) as `label  N ↑ / N ↓`.
+               No traffic → no tip. tabindex + aria-label keep it keyboard/SR reachable. -->
+          <span class="millis" :class="{ 'has-io': ioLines(card).length }"
+                :tabindex="ioLines(card).length ? 0 : null"
+                :aria-label="ioLines(card).length ? ioSummary(card) : null">
             {{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}
             <span v-if="ioLines(card).length" class="io" role="tooltip">
               <span v-for="l in ioLines(card)" :key="l.scope" class="io-row">

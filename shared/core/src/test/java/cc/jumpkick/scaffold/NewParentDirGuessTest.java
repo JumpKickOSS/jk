@@ -53,6 +53,18 @@ class NewParentDirGuessTest {
     }
 
     @Test
+    void git_worktree_file_markers_count_as_repos(@TempDir Path temp) throws Exception {
+        // Linked worktrees mark the repo with a `.git` file, not a directory (JK-1459).
+        Path home = temp.resolve("home");
+        Path trees = home.resolve("worktrees");
+        Files.createDirectories(trees.resolve("wt1"));
+        Files.createDirectories(trees.resolve("wt2"));
+        Files.writeString(trees.resolve("wt1/.git"), "gitdir: /elsewhere/repo/.git/worktrees/wt1\n");
+        Files.writeString(trees.resolve("wt2/.git"), "gitdir: /elsewhere/repo/.git/worktrees/wt2\n");
+        assertThat(NewParentDirGuess.guess(home, List.of())).isEqualTo(trees.toAbsolutePath().normalize());
+    }
+
+    @Test
     void longest_common_prefix() {
         Path a = Path.of("/home/u/src/a");
         Path b = Path.of("/home/u/src/b");

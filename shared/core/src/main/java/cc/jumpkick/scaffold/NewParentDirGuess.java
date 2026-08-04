@@ -108,9 +108,10 @@ public final class NewParentDirGuess {
         if (!Files.isDirectory(common)) return null;
         // Don't suggest "/" or drive roots as a parent for new projects.
         if (common.getParent() == null) return null;
-        // Prefer something under home that's more specific than home itself.
+        // Prefer something under home that's more specific than home itself: when every project
+        // sits directly under home, reject the history answer so the caller falls through to the
+        // well-known-roots / git-cluster heuristics.
         if (homeAbs != null && common.equals(homeAbs)) {
-            // All projects lived directly under home — still better than a random scan; fall through.
             return null;
         }
         return common;
@@ -156,7 +157,8 @@ public final class NewParentDirGuess {
     private static void scanGit(Path home, Path dir, int depth, List<Path> out, int[] visits) {
         if (depth > GIT_SCAN_MAX_DEPTH || visits[0] >= GIT_SCAN_MAX_VISITS) return;
         visits[0]++;
-        if (depth > 0 && Files.isDirectory(dir.resolve(".git"))) {
+        // Linked worktrees and submodules mark the repo with a `.git` *file*, not a directory.
+        if (depth > 0 && Files.exists(dir.resolve(".git"))) {
             Path parent = dir.getParent();
             if (parent != null && parent.startsWith(home) && !parent.equals(home)) {
                 out.add(parent);

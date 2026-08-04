@@ -384,7 +384,7 @@ Vue.createApp({
     if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
     // Header sysbox (LOAD / FREE) needs host vitals often; full refresh also pulls metrics/cache/log.
     setInterval(() => this.refreshStatus(), 5_000);
-    setInterval(() => this.refresh(), 30_000); // metrics/cache/log; SSE remains the activity signal
+    setInterval(() => this.refresh({ status: false }), 30_000); // metrics/cache/log; SSE remains the activity signal
     setInterval(() => (this.now = Date.now()), 1_000);
   },
 
@@ -793,8 +793,10 @@ Vue.createApp({
       }
     },
 
-    async refresh() {
-      await this.refreshStatus();
+    async refresh(opts) {
+      // The 5s timer owns the status poll; its 30s tick passes {status:false} so a 30s
+      // boundary doesn't fire two /api/status requests back-to-back (JK-1459).
+      if (!opts || opts.status !== false) await this.refreshStatus();
       // Separate try: the log tail is a sensitive read (token-required even on loopback,
       // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
       if (this.view === 'status') {
@@ -1147,6 +1149,12 @@ Vue.createApp({
     // rows and the size formatting are pure functions in fold.js so they're covered headlessly.
     ioLines(card) {
       return ioLines(card);
+    },
+    // Screen-reader text for the I/O breakdown; the visual tooltip is CSS hover/focus (JK-1459).
+    ioSummary(card) {
+      return this.ioLines(card)
+        .map((l) => `${l.label}: ${fmtBytes(l.up)} up, ${fmtBytes(l.down)} down`)
+        .join('; ');
     },
     bytes(n) {
       return fmtBytes(n);
