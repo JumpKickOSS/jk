@@ -72,9 +72,6 @@ public final class HttpEngineServer implements AutoCloseable {
     private volatile HttpServer server;
     private volatile ExecutorService executor;
 
-    // GET /api/templates response cache — building the index walks every template root (with a
-    // deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk (JK-1455).
-    // One immutable holder, not two volatiles: a reader must never pair old JSON with a new stamp.
     /**
      * GET paths that require the bearer token even on loopback. {@code /api/fs} lists the
      * filesystem with the owner's permissions; {@code /api/log} and {@code /api/history*} carry
@@ -91,6 +88,12 @@ public final class HttpEngineServer implements AutoCloseable {
             "/api/metrics",
             "/api/projects/defaults");
 
+    /**
+     * {@code GET /api/templates} response cache — building the index walks every template root
+     * (with a deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk
+     * (JK-1455). One immutable holder rather than two volatiles: a reader must never pair the old
+     * JSON with the new timestamp and serve stale rows for a full TTL.
+     */
     private record TemplatesCache(String json, long atNanos) {}
 
     private volatile TemplatesCache templatesCache;
@@ -290,38 +293,51 @@ public final class HttpEngineServer implements AutoCloseable {
 
     /** Every request funnels through here: gates first, then dispatch. */
     private void handle(HttpExchange exchange) throws IOException {
+        // The catch sits INSIDE the try-with-resources: a resource is closed before the catch of
+        // the same statement runs, so a 500 written outside would always go to a closed exchange
+        // and be swallowed — every handler bug read as a silent connection drop (JK-1476).
         try (exchange) {
-            if (!HostCheck.allowed(
-                    exchange.getRequestHeaders().getFirst("Host"),
-                    server.getAddress().getPort())) {
-                sendText(exchange, 421, "unrecognized Host header\n");
-                return;
-            }
-            boolean sse = isEventStreamRequest(exchange);
-            boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
-            Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
-            if (!gate.tryAcquire()) {
-                exchange.getResponseHeaders().set("Retry-After", "1");
-                sendText(
-                        exchange,
-                        503,
-                        !sse
-                                ? "engine busy\n"
-                                : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
-                return;
-            }
             try {
-                dispatch(exchange);
-            } finally {
-                gate.release();
-            }
-        } catch (RuntimeException e) {
-            // A handler bug must not kill the virtual thread silently mid-response; best-effort 500.
-            log.accept("jk engine: http handler error: " + e);
-            try {
-                sendText(exchange, 500, "internal error\n");
-            } catch (Exception ignored) {
-                // response already started (IllegalStateException) or client gone — nothing more to do
+                // Snapshot: stop()/stopNow() nulls `server` while exchanges are still in flight
+                // (the displacement handoff does exactly that), and dereferencing it here would
+                // NPE instead of closing cleanly.
+                HttpServer current = server;
+                if (current == null) {
+                    sendText(exchange, 503, "engine is shutting down\n");
+                    return;
+                }
+                if (!HostCheck.allowed(
+                        exchange.getRequestHeaders().getFirst("Host"),
+                        current.getAddress().getPort())) {
+                    sendText(exchange, 421, "unrecognized Host header\n");
+                    return;
+                }
+                boolean sse = isEventStreamRequest(exchange);
+                boolean mcpSurface = isMcpPath(exchange.getRequestURI().getPath());
+                Semaphore gate = sse ? (mcpSurface ? mcpSse : webSse) : admission;
+                if (!gate.tryAcquire()) {
+                    exchange.getResponseHeaders().set("Retry-After", "1");
+                    sendText(
+                            exchange,
+                            503,
+                            !sse
+                                    ? "engine busy\n"
+                                    : mcpSurface ? "too many MCP event streams\n" : "too many event streams\n");
+                    return;
+                }
+                try {
+                    dispatch(exchange);
+                } finally {
+                    gate.release();
+                }
+            } catch (RuntimeException e) {
+                // A handler bug must not kill the virtual thread silently mid-response.
+                log.accept("jk engine: http handler error: " + e);
+                try {
+                    sendText(exchange, 500, "internal error\n");
+                } catch (Exception ignored) {
+                    // response already started (IllegalStateException) or client gone
+                }
             }
         }
     }

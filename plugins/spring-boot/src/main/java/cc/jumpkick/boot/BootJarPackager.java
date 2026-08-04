@@ -231,10 +231,12 @@ public final class BootJarPackager {
 
     private static void writeEntryStreaming(JarOutputStream jos, String name, InputStream in, long epochSeconds)
             throws IOException {
-        JarEntry entry = new JarEntry(name);
-        entry.setTimeLocal(LocalDateTime.ofEpochSecond(epochSeconds, 0, ZoneOffset.UTC));
-        jos.putNextEntry(entry);
+        // Take ownership of `in` before anything that can throw: it is already open at the call
+        // site, so a duplicate-entry putNextEntry would otherwise leak the descriptor (JK-1489).
         try (in) {
+            JarEntry entry = new JarEntry(name);
+            entry.setTimeLocal(LocalDateTime.ofEpochSecond(epochSeconds, 0, ZoneOffset.UTC));
+            jos.putNextEntry(entry);
             in.transferTo(jos);
         }
         jos.closeEntry();

@@ -48,8 +48,11 @@ final class DeterministicJar {
     /** Write an entry by draining {@code in} (closed here) — constant memory for large entries. */
     static void writeEntryStreaming(JarOutputStream jos, String name, InputStream in, long epochSeconds)
             throws IOException {
-        jos.putNextEntry(entry(name, epochSeconds));
+        // `in` is evaluated at the call site, so it is already open on entry: take ownership
+        // first, or a throwing putNextEntry (duplicate entry name) leaks the caller's file
+        // descriptor — it never reaches the try below (JK-1489).
         try (in) {
+            jos.putNextEntry(entry(name, epochSeconds));
             in.transferTo(jos);
         }
         jos.closeEntry();

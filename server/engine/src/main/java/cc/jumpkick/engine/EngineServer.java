@@ -5194,7 +5194,10 @@ public final class EngineServer implements AutoCloseable {
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
-        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).start(() -> {
+        // Unstarted: registration below must complete before the body can reach its finally and
+        // remove the very keys we are about to insert, which would leak a dead Thread under this
+        // id forever and make a cancel arriving in that window a no-op (JK-1478).
+        Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).unstarted(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
@@ -5240,6 +5243,7 @@ public final class EngineServer implements AutoCloseable {
         });
         runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
+        t.start();
         return eventRequestId;
     }
 
@@ -5277,7 +5281,8 @@ public final class EngineServer implements AutoCloseable {
         registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock", false);
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
-        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).start(() -> {
+        // Unstarted — see the note in startHttpWorkspace (JK-1478).
+        Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).unstarted(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
             JobWorkers.open(eventRequestId);
@@ -5321,6 +5326,7 @@ public final class EngineServer implements AutoCloseable {
         });
         runnerRef.set(t);
         httpJobThreads.put(eventRequestId, t);
+        t.start();
         return eventRequestId;
     }
 
