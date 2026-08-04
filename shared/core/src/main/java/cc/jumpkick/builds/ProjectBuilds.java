@@ -265,8 +265,15 @@ public final class ProjectBuilds {
         for (Path home : listProjectHomes(buildsRoot)) {
             all.addAll(listRuns(home));
         }
-        all.sort(Comparator.comparingLong(ProjectBuilds::mtimeOf).reversed());
-        return all;
+        // Decorate-sort-undecorate: mtimeOf is a stat(2), and a comparator key extractor is
+        // re-evaluated O(n log n) times — ~44k syscalls for 2000 runs instead of 2000 (JK-1480).
+        record Stamped(Path path, long mtime) {}
+        List<Stamped> stamped = new ArrayList<>(all.size());
+        for (Path p : all) stamped.add(new Stamped(p, mtimeOf(p)));
+        stamped.sort(Comparator.comparingLong(Stamped::mtime).reversed());
+        List<Path> sorted = new ArrayList<>(stamped.size());
+        for (Stamped s : stamped) sorted.add(s.path());
+        return sorted;
     }
 
     private static long mtimeOf(Path p) {

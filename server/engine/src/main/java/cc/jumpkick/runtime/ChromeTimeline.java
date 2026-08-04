@@ -33,7 +33,12 @@ public final class ChromeTimeline {
     static final String DEFAULT_REL = "target/jk-chrome-profile.json";
 
     private final Path file;
-    private final List<Event> events = new CopyOnWriteArrayList<>();
+    /**
+     * Appends dominate (one per step) and reads happen only at {@link #flush}, so a synchronized
+     * ArrayList beats {@code CopyOnWriteArrayList}, whose per-add full-array copy makes recording
+     * O(n²) — a 50-module × 10-step build costs ~125k element copies (JK-1484).
+     */
+    private final List<Event> events = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
     private final Map<String, Integer> tids = new ConcurrentHashMap<>();
     private final AtomicInteger nextTid = new AtomicInteger(1);
 
@@ -101,7 +106,12 @@ public final class ChromeTimeline {
     /** Best-effort write; never throws. */
     public Optional<Path> flush() {
         try {
-            List<Event> snapshot = new ArrayList<>(events);
+            // A synchronizedList's copy constructor iterates without the lock — hold it here or a
+            // step completing mid-flush throws ConcurrentModificationException.
+            List<Event> snapshot;
+            synchronized (events) {
+                snapshot = new ArrayList<>(events);
+            }
             long origin = snapshot.stream().mapToLong(e -> e.startNanos).min().orElse(0L);
             StringBuilder sb = new StringBuilder(256 + snapshot.size() * 96);
             sb.append("[\n");

@@ -1596,8 +1596,29 @@ public final class EngineServer implements AutoCloseable {
                 .put("localDownBytes", t.localDown());
     }
 
+    /**
+     * Requests whose progress state has been torn down.
+     *
+     * <p>A job the engine gave up on ("still running after deadline+grace — abandoned") keeps
+     * emitting: its module listener calls back into {@link #progressTracker} and
+     * {@code emitWorkspaceProgress} <em>after</em> {@link #clearProgress} ran, and those are
+     * {@code computeIfAbsent}/{@code put} sites — so every abandoned job used to strand five
+     * permanent map entries in a process that runs for days, and two threads could even hold
+     * different emit locks for one request. Marking the id retired makes those late writes
+     * no-ops (JK-1474).
+     *
+     * <p>Bounded: request ids come from a monotonic counter, so ids far below the newest can no
+     * longer be live and are pruned on each teardown.
+     */
+    private final java.util.concurrent.ConcurrentHashMap<Long, Boolean> retiredRequests =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** How far below the newest request id a retired marker is still worth keeping. */
+    private static final long RETIRED_WINDOW = 1024L;
+
     private void clearProgress(long requestId) {
         if (requestId <= 0) return;
+        retiredRequests.put(requestId, Boolean.TRUE);
         lastProgressByRequest.remove(requestId);
         lastProgressDenByRequest.remove(requestId);
         progressTrackers.remove(requestId);
@@ -1605,9 +1626,21 @@ public final class EngineServer implements AutoCloseable {
         progressWeights.remove(requestId);
         progressEmitState.remove(requestId);
         progressEmitLocks.remove(requestId);
+        long cutoff = requestIds.get() - RETIRED_WINDOW;
+        if (cutoff > 0) retiredRequests.keySet().removeIf(id -> id < cutoff);
     }
 
+    /** True once {@link #clearProgress} has retired this request — late emits must not re-register. */
+    private boolean progressRetired(long requestId) {
+        return retiredRequests.containsKey(requestId);
+    }
+
+    /**
+     * For a retired request, a detached tracker that is never stored: callers keep a non-null
+     * object to update (no null checks at eight call sites) and the update goes nowhere.
+     */
     private cc.jumpkick.runtime.WorkspaceProgressTracker progressTracker(long requestId) {
+        if (progressRetired(requestId)) return new cc.jumpkick.runtime.WorkspaceProgressTracker();
         return progressTrackers.computeIfAbsent(requestId, id -> new cc.jumpkick.runtime.WorkspaceProgressTracker());
     }
 
@@ -1643,6 +1676,9 @@ public final class EngineServer implements AutoCloseable {
      */
     private void emitWorkspaceProgress(long requestId, java.io.BufferedWriter writer, boolean force) {
         if (requestId <= 0) return;
+        // A straggler from an abandoned job must not re-register the maps teardown just cleared,
+        // nor take a fresh emit lock that no longer serializes against anything (JK-1474).
+        if (progressRetired(requestId)) return;
         Object lock = progressEmitLocks.computeIfAbsent(requestId, id -> new Object());
         synchronized (lock) {
             cc.jumpkick.runtime.WorkspaceProgressTracker tracker = progressTrackers.get(requestId);
