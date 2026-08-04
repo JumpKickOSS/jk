@@ -46,7 +46,9 @@ public final class OfficialTemplatesFreshen {
         Files.createDirectories(cacheRoot);
         Parsed p = parse(ref);
         Path dest = cacheRoot.resolve(p.cacheKey());
-        if (!Files.isDirectory(dest) || isEmptyDir(dest)) {
+        // Incomplete clones (e.g. only a .git dir left from a failed private-repo attempt) must be
+        // wiped and re-cloned — fetch/reset cannot recover them.
+        if (!Files.isDirectory(dest) || isEmptyDir(dest) || !looksLikeTemplateMonorepo(dest)) {
             if (Files.exists(dest)) deleteRecursively(dest);
             Files.createDirectories(dest.getParent());
             runGit(p.cloneArgs(dest), 120);
@@ -54,20 +56,48 @@ public final class OfficialTemplatesFreshen {
             return;
         }
         // Existing shallow clone: cheap fetch + hard reset (no merge noise).
-        List<String> fetch = new ArrayList<>();
-        fetch.add("git");
-        fetch.add("-C");
-        fetch.add(dest.toString());
-        fetch.add("fetch");
-        fetch.add("--depth");
-        fetch.add("1");
-        fetch.add("origin");
-        if (p.rev() != null && !p.rev().isBlank()) {
-            fetch.add(p.rev());
+        try {
+            List<String> fetch = new ArrayList<>();
+            fetch.add("git");
+            fetch.add("-C");
+            fetch.add(dest.toString());
+            fetch.add("fetch");
+            fetch.add("--depth");
+            fetch.add("1");
+            fetch.add("origin");
+            if (p.rev() != null && !p.rev().isBlank()) {
+                fetch.add(p.rev());
+            }
+            runGit(fetch, 60);
+            List<String> reset = List.of("git", "-C", dest.toString(), "reset", "--hard", "FETCH_HEAD");
+            runGit(reset, 30);
+        } catch (IOException fetchFailed) {
+            // Corrupt / auth-skewed cache: delete and clone clean.
+            deleteRecursively(dest);
+            Files.createDirectories(dest.getParent());
+            runGit(p.cloneArgs(dest), 120);
+            log.accept("jk engine: re-cloned official templates (" + dest.getFileName() + ")");
         }
-        runGit(fetch, 60);
-        List<String> reset = List.of("git", "-C", dest.toString(), "reset", "--hard", "FETCH_HEAD");
-        runGit(reset, 30);
+    }
+
+    /**
+     * True when {@code dest} looks like a usable templates monorepo (has at least one {@code *.g8}
+     * tree or a nested {@code templates/} dir). A bare {@code .git} from a failed clone is not.
+     */
+    static boolean looksLikeTemplateMonorepo(Path dest) {
+        if (dest == null || !Files.isDirectory(dest)) return false;
+        try (var stream = Files.list(dest)) {
+            return stream.anyMatch(p -> {
+                String n = p.getFileName().toString();
+                if (n.startsWith(".")) return false;
+                if (n.endsWith(".g8") && Files.isDirectory(p)) return true;
+                if (n.equals("templates") && Files.isDirectory(p)) return true;
+                // Single-template or flat monorepo clone with default.properties at root
+                return Files.isRegularFile(p.resolve("default.properties"));
+            });
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     /** Prefer legacy {@code ~/.jk/cache/templates} (CLI Giter8Git), else XDG cache. */

@@ -9,9 +9,15 @@
 ## UX
 
 1. Dashboard empty state / “New project”
-2. Fields: name, group, language, layout (simple/traditional), optional template short name or git URI
-3. Parent directory picker (engine-local filesystem roots only)
-4. Progress: scaffold → optional `jk lock` → open project
+2. Fields: name, group, language, optional template short name
+3. **Layout (simple/traditional) + Executable** only when Template is “None” (blank scaffold).
+   A selected Giter8 template owns its tree (`jk_layout`); the layout control is hidden and a
+   read-only “Template layout: …” note is shown instead. See [giter8-templates.md](giter8-templates.md).
+4. Parent directory picker (engine-local filesystem roots only)
+5. Progress: scaffold → optional `jk lock` → open project
+
+Template list is filtered by Language (`jk_languages` / catalog). Catalog is merged with local
+template roots via `Giter8TemplateIndex`.
 
 ## Backend (to implement)
 

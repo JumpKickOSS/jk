@@ -140,6 +140,7 @@ public final class HttpEngineServer implements AutoCloseable {
         api.register("GET", "/api/cache", this::handleCache);
         api.register("GET", "/api/project", this::handleProject);
         api.register("POST", "/api/projects", this::handleNewProject);
+        api.register("GET", "/api/projects/defaults", this::handleProjectDefaults);
         api.register("GET", "/api/templates", this::handleTemplates);
     }
 
@@ -532,6 +533,8 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("aotTrainingPid", s.aotTrainingPid())
                 .put("cores", s.cores())
                 .put("totalMemoryBytes", s.totalMemoryBytes())
+                .put("freeMemoryBytes", s.freeMemoryBytes())
+                .put("systemCpuLoad", s.systemCpuLoad())
                 .put("httpUrl", url())
                 // url already ends with /; avoid //mcp in status/mcpUrl. Null when MCP is off.
                 .put("mcpUrl", config.mcp().enabled() && url() != null ? url().replaceAll("/+$", "") + "/mcp" : null)
@@ -714,21 +717,69 @@ public final class HttpEngineServer implements AutoCloseable {
         }
     }
 
-    /** {@code GET /api/templates} — short-name catalog for the new-project picker. */
+    /**
+     * {@code GET /api/projects/defaults} — educated guesses for the New project modal (group from
+     * git email like {@code jk new}, parent dir from history / well-known roots / git clusters).
+     */
+    private void handleProjectDefaults(HttpExchange exchange) throws IOException {
+        String group = cc.jumpkick.scaffold.NewGroupGuess.guess();
+        java.util.List<java.nio.file.Path> historyDirs = new java.util.ArrayList<>();
+        try {
+            for (var rec : journal.list()) {
+                if (rec != null && rec.dir() != null && !rec.dir().isBlank()) {
+                    historyDirs.add(java.nio.file.Path.of(rec.dir()));
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // journal empty / unreadable — parent guess still works without it
+        }
+        java.nio.file.Path parent = cc.jumpkick.scaffold.NewParentDirGuess.guess(
+                java.util.Optional.ofNullable(System.getProperty("user.home"))
+                        .map(java.nio.file.Path::of)
+                        .orElse(null),
+                historyDirs);
+        sendJson(
+                exchange,
+                200,
+                JsonOut.object()
+                        .put("group", group)
+                        .put("parentDir", parent.toString())
+                        .toString());
+    }
+
+    /**
+     * {@code GET /api/templates} — short-name catalog for the new-project picker. Each row is
+     * {@code {id, description, languages:[…], layout:"simple"|"traditional"|"custom"}}. Official
+     * catalog rows are merged with on-disk {@code jk_languages}/{@code jk_layout} from local
+     * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
+     */
     private void handleTemplates(HttpExchange exchange) throws IOException {
-        var desc = new java.util.LinkedHashMap<String, String>();
-        desc.put("java-cli", "Simple Java executable (Mill SIMPLE layout)");
-        desc.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
-        desc.put("quarkus", "Quarkus REST application ([quarkus] plugin)");
-        // Flat list for the SPA: [{id, description}, ...]
+        java.nio.file.Path home = java.util.Optional.ofNullable(System.getProperty("user.home"))
+                .map(java.nio.file.Path::of)
+                .orElse(null);
+        // Dogfood: walk a few ancestors of the process cwd for a monorepo templates/ dir.
+        java.util.List<java.nio.file.Path> extras = new java.util.ArrayList<>();
+        java.nio.file.Path walk = java.nio.file.Path.of(".").toAbsolutePath().normalize();
+        for (int i = 0; i < 6 && walk != null; i++) {
+            java.nio.file.Path dogfood = walk.resolve("templates");
+            if (java.nio.file.Files.isDirectory(dogfood)) {
+                extras.add(dogfood);
+                break;
+            }
+            walk = walk.getParent();
+        }
+        var entries = cc.jumpkick.scaffold.Giter8TemplateIndex.build(
+                cc.jumpkick.scaffold.Giter8TemplateIndex.defaultSearchRoots(home, extras));
         var arr = new StringBuilder("[");
         boolean first = true;
-        for (var e : desc.entrySet()) {
+        for (var e : entries) {
             if (!first) arr.append(',');
             first = false;
             arr.append(JsonOut.object()
-                    .put("id", e.getKey())
-                    .put("description", e.getValue())
+                    .put("id", e.id())
+                    .put("description", e.description())
+                    .putStrings("languages", e.languages())
+                    .put("layout", e.layout())
                     .toString());
         }
         arr.append(']');

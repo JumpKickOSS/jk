@@ -1,8 +1,8 @@
 version = 1
 generated-by = "jk 0.11.0"
 resolution-algorithm = "pubgrub-v1"
-jk = { version = "0.11.0", sha256 = "73f522049bdb39406e3170869adfd9e01b9a6a70758433d5f658d362af2c9dc5" }
-manifests-sha256 = "c11b727ae6b6bd75948680b8933434416f2d7d9e917a2005e78bd8a6d7812f95"
+jk = { version = "0.11.0", sha256 = "2600969eca2e89eb084189ddf562be878525e3f8cd35683cb1b31f08f6493639" }
+manifests-sha256 = "b77d5e796c12e988f728e337be20867d0cd8cef9ca36bc2fd53ef8265b29091a"
 
 [[artifact]]
 name     = "aopalliance:aopalliance:jar:"

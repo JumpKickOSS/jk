@@ -29,8 +29,23 @@ import org.junit.jupiter.api.io.TempDir;
 @Tag("integration")
 class HttpEngineServerTest {
 
-    private static final StatusSnapshot SNAPSHOT =
-            new StatusSnapshot("9.9.9-test", 42, 1_000, 1, 0, 1_000, 2_000, 3_000, -1, -1, 8, 16_000_000_000L);
+    private static final StatusSnapshot SNAPSHOT = new StatusSnapshot(
+            "9.9.9-test",
+            42,
+            1_000,
+            1,
+            0,
+            1_000,
+            2_000,
+            3_000,
+            -1,
+            -1,
+            8,
+            16_000_000_000L,
+            8_000_000_000L,
+            0.18,
+            1,
+            0);
 
     @TempDir
     Path webRoot;
@@ -357,6 +372,10 @@ class HttpEngineServerTest {
                 .contains("\"pid\":42")
                 .contains("\"heapMaxBytes\":3000")
                 .contains("\"rssBytes\":-1")
+                .contains("\"cores\":8")
+                .contains("\"totalMemoryBytes\":16000000000")
+                .contains("\"freeMemoryBytes\":8000000000")
+                .contains("\"systemCpuLoad\":0.18")
                 .contains("\"httpUrl\":\"" + baseUrl + "\"");
     }
 

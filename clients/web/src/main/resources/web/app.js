@@ -340,7 +340,7 @@ Vue.createApp({
     newProjectError: null,
     newProject: {
       name: '',
-      group: 'com.example',
+      group: '',
       lang: 'java',
       layout: 'simple',
       template: '',
@@ -382,11 +382,24 @@ Vue.createApp({
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
     if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
-    setInterval(() => this.refresh(), 30_000); // slow fallback; SSE is the primary signal
+    // Header sysbox (LOAD / FREE) needs host vitals often; full refresh also pulls metrics/cache/log.
+    setInterval(() => this.refreshStatus(), 5_000);
+    setInterval(() => this.refresh(), 30_000); // metrics/cache/log; SSE remains the activity signal
     setInterval(() => (this.now = Date.now()), 1_000);
   },
 
   computed: {
+    // Template short names compatible with the New-project Language field. Entries without a
+    // languages list are treated as universal (legacy / fallback payloads).
+    templatesForLang() {
+      const lang = (this.newProject?.lang || 'java').toLowerCase();
+      return (this.templates || []).filter((t) => {
+        const langs = t.languages;
+        if (!Array.isArray(langs) || langs.length === 0) return true;
+        return langs.some((l) => String(l).toLowerCase() === lang);
+      });
+    },
+
     // Group the journal into per-project rows for the Projects tab. A computed (not a method) so it
     // recomputes only when projectHistory or the live cards change — never on the 1s clock tick, so
     // the ECharts canvases don't re-render every second. Key = coord when the project has one, else
@@ -770,13 +783,18 @@ Vue.createApp({
       return this.shortDir(m.dir);
     },
 
-    async refresh() {
+    // Lightweight poll for the header sysbox (CORES/LOAD/RAM/FREE) and footer vitals — every 5s.
+    async refreshStatus() {
       try {
         this.status = await get('/api/status');
         if (this.connection === 'unauthorized') this.connection = 'live';
       } catch (e) {
         if (e.status === 401) this.connection = 'unauthorized';
       }
+    },
+
+    async refresh() {
+      await this.refreshStatus();
       // Separate try: the log tail is a sensitive read (token-required even on loopback,
       // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
       if (this.view === 'status') {
@@ -902,12 +920,16 @@ Vue.createApp({
         this.browser = await get('/api/fs' + (dir ? '?dir=' + encodeURIComponent(dir) : ''));
       } catch (e) {
         if (e.status === 401) {
-          this.buildError = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
+          const msg = 'Unauthorized — open the tokenized URL printed by `jk engine status`';
+          this.buildError = msg;
+          if (this.browserMode === 'parent') this.newProjectError = msg;
           this.browser = null;
         } else if (this.browser) {
           // an unreadable subdir: stay where we are
         } else {
-          this.buildError = 'Could not list that directory';
+          const msg = 'Could not list that directory';
+          this.buildError = msg;
+          if (this.browserMode === 'parent') this.newProjectError = msg;
         }
       }
     },
@@ -932,8 +954,17 @@ Vue.createApp({
       this.newProjectOpen = true;
       this.newProjectError = null;
       this.newProjectBusy = false;
-      if (!this.newProject.parentDir) {
-        // Prefer $HOME from a fresh fs listing
+      // Defaults (group from git email like `jk new`, parent from history / well-known roots)
+      // and the short-name catalog — load in parallel so the modal fills quickly.
+      const [defaults, templates] = await Promise.all([
+        get('/api/projects/defaults').catch(() => null),
+        get('/api/templates').catch(() => null),
+      ]);
+      if (defaults) {
+        if (defaults.group && !this.newProject.group) this.newProject.group = defaults.group;
+        if (defaults.parentDir && !this.newProject.parentDir) this.newProject.parentDir = defaults.parentDir;
+      } else if (!this.newProject.parentDir) {
+        // Last-resort parent: $HOME from a bare fs listing (same as before defaults existed).
         try {
           const fs = await get('/api/fs');
           this.newProject.parentDir = fs.dir || '';
@@ -941,14 +972,39 @@ Vue.createApp({
           /* leave blank */
         }
       }
-      try {
-        this.templates = await get('/api/templates');
-      } catch (_) {
-        this.templates = [
-          { id: 'java-cli', description: 'Simple Java executable' },
-          { id: 'kotlin-cli', description: 'Simple Kotlin executable' },
-        ];
-      }
+      if (!this.newProject.group) this.newProject.group = 'com.example';
+      this.templates = Array.isArray(templates) && templates.length
+        ? templates
+        : [
+            { id: 'java-cli', description: 'Simple Java 25 executable (Mill SIMPLE layout)', languages: ['java'], layout: 'simple' },
+            { id: 'kotlin-cli', description: 'Simple Kotlin executable (Mill SIMPLE layout)', languages: ['kotlin'], layout: 'simple' },
+            { id: 'spring-boot-webmvc', description: 'Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['java'], layout: 'traditional' },
+            { id: 'spring-boot-webmvc-kotlin', description: 'Kotlin Spring Boot 4.1 WebMVC + JPA/H2 + Actuator', languages: ['kotlin'], layout: 'traditional' },
+            { id: 'ktor-3', description: 'Ktor 3 service with Koin DI and Exposed/H2', languages: ['kotlin'], layout: 'simple' },
+            { id: 'quarkus', description: 'Quarkus 3.x REST application ([quarkus] plugin)', languages: ['java'], layout: 'simple' },
+            { id: 'grails-8', description: 'Grails 8 REST app (GORM, H2, Groovy 5)', languages: ['groovy'], layout: 'custom' },
+          ];
+      this.onNewProjectLangChange(); // drop a leftover template that no longer matches Language
+      // Focus Name so the user can type the app name immediately; @focus selects any existing value.
+      this.$nextTick(() => {
+        const el = this.$refs.nameInput;
+        if (el && typeof el.focus === 'function') el.focus();
+      });
+    },
+
+    // Language drives the template short-name list; clear a selection that is no longer offered.
+    onNewProjectLangChange() {
+      const id = this.newProject.template;
+      if (!id) return;
+      const ok = this.templatesForLang.some((t) => t.id === id);
+      if (!ok) this.newProject.template = '';
+    },
+
+    selectedTemplateLayout() {
+      const id = this.newProject.template;
+      if (!id) return '';
+      const t = (this.templates || []).find((x) => x.id === id);
+      return (t && t.layout) || 'simple';
     },
 
     closeNewProject() {
@@ -960,15 +1016,17 @@ Vue.createApp({
     async submitNewProject() {
       this.newProjectError = null;
       this.newProjectBusy = true;
+      const hasTemplate = !!(this.newProject.template && this.newProject.template.trim());
       const body = {
         name: this.newProject.name.trim(),
         group: this.newProject.group.trim() || 'com.example',
         lang: this.newProject.lang,
-        layout: this.newProject.layout,
+        // Layout + executable only affect the blank scaffolder; omit noise when a template applies.
+        layout: hasTemplate ? 'simple' : this.newProject.layout,
         parentDir: this.newProject.parentDir.trim(),
-        executable: !!this.newProject.executable,
+        executable: hasTemplate ? false : !!this.newProject.executable,
       };
-      if (this.newProject.template && this.newProject.template.trim()) {
+      if (hasTemplate) {
         body.template = this.newProject.template.trim();
       }
       try {
@@ -977,6 +1035,7 @@ Vue.createApp({
         this.closeNewProject();
         this.newProject.name = '';
         this.newProject.template = '';
+        // Keep group + parentDir so the next create is one field away from a sibling project.
         if (path) {
           this.openProject(path);
           await this.triggerBuild(path);
@@ -1024,9 +1083,16 @@ Vue.createApp({
     mib(bytes) {
       return bytes < 0 ? '—' : Math.round(bytes / 1048576) + ' MiB';
     },
-    // System RAM reads naturally in GiB (total physical memory the engine's OS reports).
+    // System RAM reads naturally in GiB (total / free physical memory the engine's OS reports).
     gib(bytes) {
       return bytes == null || bytes < 0 ? '—' : (bytes / 1073741824).toFixed(1) + ' GiB';
+    },
+    // Header sysbox LOAD: whole-host CPU utilisation from /api/status systemCpuLoad ∈ [0,1].
+    // The bean returns -1 until the first sample; show an em-dash rather than "0%".
+    loadPercent() {
+      const load = this.status?.systemCpuLoad;
+      if (load == null || load < 0) return '—';
+      return Math.min(100, Math.round(load * 100)) + '%';
     },
     // Header version pill: "v0.10.0" — the build-metadata suffix (-SNAPSHOT) is dropped for the chip.
     versionPill() {

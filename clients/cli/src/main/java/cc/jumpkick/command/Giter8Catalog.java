@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -41,26 +40,11 @@ import cc.jumpkick.scaffold.Giter8LocalApply;
  */
 public final class Giter8Catalog {
 
-    /** Built-in short names for help text (not an exclusive allow-list for resolution). */
-    private static final Map<String, String> DESCRIPTIONS = new LinkedHashMap<>();
-
-    static {
-        DESCRIPTIONS.put("java-cli", "Simple Java 25 executable (Mill SIMPLE layout)");
-        DESCRIPTIONS.put("kotlin-cli", "Simple Kotlin executable (Mill SIMPLE layout)");
-        DESCRIPTIONS.put("quarkus", "Quarkus 3.x REST application ([quarkus] plugin)");
-        DESCRIPTIONS.put("java-cli-native", "Interactive Java CLI with JLine (jk native ready)");
-        DESCRIPTIONS.put("spring-boot-webmvc", "Spring Boot WebMVC + JPA/H2 + Actuator");
-        DESCRIPTIONS.put("spring-boot-webmvc-kotlin", "Kotlin Spring Boot WebMVC + JPA/H2 + Actuator");
-        DESCRIPTIONS.put("ktor-3", "Ktor 3 service with Koin DI and Exposed/H2");
-        DESCRIPTIONS.put("spring-boot-mcp", "Spring Boot MCP server (Spring AI, @Tool over SSE)");
-        DESCRIPTIONS.put("grails-8", "Grails 8 REST app (GORM, H2, Groovy 5)");
-        DESCRIPTIONS.put("micronaut", "Micronaut HTTP service (compile-time DI, Netty)");
-    }
-
     private Giter8Catalog() {}
 
+    /** Built-in short names for help text (not an exclusive allow-list for resolution). */
     public static Map<String, String> descriptions() {
-        return Map.copyOf(DESCRIPTIONS);
+        return cc.jumpkick.scaffold.Giter8ShortNames.descriptions();
     }
 
     public static boolean isShortName(String ref) {
@@ -177,7 +161,7 @@ public final class Giter8Catalog {
     /** Human-readable list of known short names + configured source names for error messages. */
     public static String helpKnown(JkTemplatesConfig config) {
         List<String> parts = new ArrayList<>();
-        parts.add("built-in: " + String.join(", ", DESCRIPTIONS.keySet()));
+        parts.add("built-in: " + String.join(", ", descriptions().keySet()));
         parts.add("official: " + (config == null ? JkTemplatesConfig.DEFAULT_OFFICIAL : config.officialUrl()));
         if (config != null && !config.sources().isEmpty()) {
             List<String> names = config.sources().stream().map(JkTemplatesConfig.Source::name).toList();

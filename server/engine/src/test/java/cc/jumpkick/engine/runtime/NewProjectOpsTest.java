@@ -49,4 +49,20 @@ class NewProjectOpsTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HOME");
     }
+
+    @Test
+    void resolve_template_finds_dogfood_short_name(@TempDir Path temp) throws Exception {
+        // Unique short name so the official cache cannot steal the hit.
+        Path templates = temp.resolve("templates");
+        Path g8 = templates.resolve("acme-demo.g8");
+        Files.createDirectories(g8.resolve("src/main/g8"));
+        Files.writeString(
+                g8.resolve("default.properties"),
+                "name=demo\njk_languages=java\njk_layout=traditional\n");
+        Files.writeString(g8.resolve("src/main/g8/jk.toml"), "name=demo\n");
+        Path parent = temp.resolve("apps");
+        Files.createDirectories(parent);
+        Path resolved = NewProjectOps.resolveTemplate("acme-demo", parent);
+        assertThat(resolved).isEqualTo(g8.toAbsolutePath().normalize());
+    }
 }

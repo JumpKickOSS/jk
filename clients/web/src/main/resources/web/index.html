@@ -38,9 +38,15 @@
 
       <span class="hdiv"></span>
 
-      <div class="sysbox" title="Engine host resources">
-        <div class="sysrow"><span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span></div>
-        <div class="sysrow"><span class="sk">RAM</span><span class="sv">{{ status ? gib(status.totalMemoryBytes) : '—' }}</span></div>
+      <div class="sysbox" title="Engine host resources (refreshed every 5s)">
+        <div class="sysrow">
+          <span class="sk">CORES</span><span class="sv">{{ status ? status.cores : '—' }}</span>
+          <span class="sk">LOAD</span><span class="sv">{{ loadPercent() }}</span>
+        </div>
+        <div class="sysrow">
+          <span class="sk">RAM</span><span class="sv">{{ status ? gib(status.totalMemoryBytes) : '—' }}</span>
+          <span class="sk">FREE</span><span class="sv">{{ status ? gib(status.freeMemoryBytes) : '—' }}</span>
+        </div>
       </div>
 
       <span class="spacer"></span>
@@ -94,23 +100,20 @@
           <button v-if="outcome(card) !== 'running' && card.historyId" class="rebuild icon danger"
                   @click="deleteCard(card)" aria-label="Delete" title="Delete this run from history"><jk-icon name="trash"></jk-icon></button>
           <span v-if="outcome(card) === 'running' && eta(card)" class="eta" title="estimated time remaining">{{ eta(card) }}</span>
-          <span class="millis">{{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}</span>
-          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
-        </div>
-
-        <!-- Bytes the run moved, right-aligned under the elapsed/ago pair: one row per scope
-             ("remote data" = network, "local data" = build cache), read as `label  N ↑ / N ↓` — each
-             arrow trails the number it belongs to. Rows with no traffic are dropped, so an offline
-             warm build shows only "local data" and a no-op run shows nothing. -->
-        <div v-if="ioLines(card).length" class="io">
-          <span v-for="l in ioLines(card)" :key="l.scope" class="io-row" :title="l.scope === 'remote'
-                ? 'network: ' + bytes(l.up) + ' uploaded / ' + bytes(l.down) + ' downloaded'
-                : 'build cache: ' + bytes(l.up) + ' stored / ' + bytes(l.down) + ' restored'">
-            <span class="io-scope">{{ l.label }}</span>
-            <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
-            <span class="io-sep">/</span>
-            <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+          <!-- Duration; when the run moved bytes, hover reveals the I/O breakdown (remote =
+               network, local = build cache) as `label  N ↑ / N ↓`. No traffic → no tip. -->
+          <span class="millis" :class="{ 'has-io': ioLines(card).length }">
+            {{ outcome(card) === 'running' ? elapsed(card) : duration(card.millis) }}
+            <span v-if="ioLines(card).length" class="io" role="tooltip">
+              <span v-for="l in ioLines(card)" :key="l.scope" class="io-row">
+                <span class="io-scope">{{ l.label }}</span>
+                <span class="io-n">{{ bytes(l.up) }}</span><jk-icon name="arrow-up"></jk-icon>
+                <span class="io-sep">/</span>
+                <span class="io-n">{{ bytes(l.down) }}</span><jk-icon name="arrow-down"></jk-icon>
+              </span>
+            </span>
           </span>
+          <span v-if="outcome(card) !== 'running'" class="ago">{{ ago(card) }}</span>
         </div>
 
         <div v-if="outcome(card) === 'running'" class="cardbar" role="progressbar">
@@ -185,37 +188,6 @@
         </div>
 
       </article>
-      <div v-if="browser" class="modal-bg" @click.self="closeBrowser()">
-        <div class="modal">
-          <div class="modal-head">
-            <span class="lbl">choose a workspace</span>
-            <span class="spacer"></span>
-            <button class="rebuild" @click="closeBrowser()">Close</button>
-          </div>
-          <div class="modal-path">{{ browser.dir }}</div>
-          <div class="modal-list">
-            <div v-if="browser.parent" class="fs-entry up" @click="browseTo(browser.parent)"><span class="fs-arrow"><jk-icon name="arrow-up"></jk-icon></span> ..</div>
-            <div v-for="d in browser.dirs" :key="d" class="fs-entry" @click="browseTo(joinPath(browser.dir, d))">
-              <span class="fs-arrow"><jk-icon name="folder"></jk-icon></span> {{ d }}
-            </div>
-            <div v-if="browser.dirs.length === 0" class="fs-entry none">No subfolders</div>
-            <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
-          </div>
-          <div class="modal-foot">
-            <template v-if="browserMode === 'parent'">
-              <span class="dim small">New project will be created as a child of this folder</span>
-              <span class="spacer"></span>
-              <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
-            </template>
-            <template v-else>
-              <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
-              <span v-else class="dim small">No jk.toml in this folder</span>
-              <span class="spacer"></span>
-              <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
-            </template>
-          </div>
-        </div>
-      </div>
     </main>
 
     <main v-if="view === 'projects'">
@@ -429,6 +401,40 @@
       </div>
     </footer>
 
+    <!-- Workspace / parent-dir picker — hoisted out of the Activity main so Projects (and New
+         project) can open it too. browserMode selects the footer's Use action. -->
+    <div v-if="browser" class="modal-bg browser-modal-bg" @click.self="closeBrowser()">
+      <div class="modal">
+        <div class="modal-head">
+          <span class="lbl">{{ browserMode === 'parent' ? 'choose a parent directory' : 'choose a workspace' }}</span>
+          <span class="spacer"></span>
+          <button class="rebuild" @click="closeBrowser()">Close</button>
+        </div>
+        <div class="modal-path">{{ browser.dir }}</div>
+        <div class="modal-list">
+          <div v-if="browser.parent" class="fs-entry up" @click="browseTo(browser.parent)"><span class="fs-arrow"><jk-icon name="arrow-up"></jk-icon></span> ..</div>
+          <div v-for="d in browser.dirs" :key="d" class="fs-entry" @click="browseTo(joinPath(browser.dir, d))">
+            <span class="fs-arrow"><jk-icon name="folder"></jk-icon></span> {{ d }}
+          </div>
+          <div v-if="browser.dirs.length === 0" class="fs-entry none">No subfolders</div>
+          <div v-if="browser.truncated" class="fs-entry none">… list truncated</div>
+        </div>
+        <div class="modal-foot">
+          <template v-if="browserMode === 'parent'">
+            <span class="dim small">New project will be created as a child of this folder</span>
+            <span class="spacer"></span>
+            <button class="use-folder" @click="chooseBrowsed()">Use as parent</button>
+          </template>
+          <template v-else>
+            <span v-if="browser.hasJkToml" class="jk-found"><jk-icon name="check"></jk-icon>jk.toml found</span>
+            <span v-else class="dim small">No jk.toml in this folder</span>
+            <span class="spacer"></span>
+            <button class="use-folder" :disabled="!browser.hasJkToml" @click="chooseBrowsed()">Use this folder</button>
+          </template>
+        </div>
+      </div>
+    </div>
+
     <!-- New project (JK-1193) -->
     <div v-if="newProjectOpen" class="modal-bg" @click.self="closeNewProject()">
       <div class="modal new-project-modal">
@@ -440,48 +446,61 @@
         <form class="new-project-form" @submit.prevent="submitNewProject()">
           <label>
             <span>Name</span>
-            <input v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off">
+            <input ref="nameInput" v-model="newProject.name" required spellcheck="false" placeholder="my-app" autocomplete="off"
+                   @focus="$event.target.select()">
           </label>
           <label>
             <span>Group</span>
-            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off">
+            <input v-model="newProject.group" spellcheck="false" placeholder="com.example" autocomplete="off"
+                   @focus="$event.target.select()">
           </label>
           <label>
             <span>Language</span>
-            <select v-model="newProject.lang">
+            <select v-model="newProject.lang" @change="onNewProjectLangChange()">
               <option value="java">Java</option>
               <option value="kotlin">Kotlin</option>
               <option value="groovy">Groovy</option>
             </select>
           </label>
           <label>
+            <span>Template <span class="dim">(optional · {{ newProject.lang }})</span></span>
+            <select v-model="newProject.template">
+              <option value="">None — blank project from language / layout</option>
+              <option v-for="t in templatesForLang" :key="t.id" :value="t.id">{{ t.id }} — {{ t.description }}</option>
+            </select>
+          </label>
+          <!-- Layout + executable only apply to the blank scaffolder. A Giter8 template ships a
+               fixed tree (simple / traditional / custom) — the apply path does not reshape it. -->
+          <label v-if="!newProject.template">
             <span>Layout</span>
             <select v-model="newProject.layout">
               <option value="simple">Simple (Mill-like)</option>
               <option value="traditional">Traditional (Maven-like)</option>
             </select>
           </label>
-          <label>
-            <span>Template <span class="dim">(optional short name)</span></span>
-            <input v-model="newProject.template" list="jk-templates" spellcheck="false" placeholder="java-cli">
-            <datalist id="jk-templates">
-              <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.description }}</option>
-            </datalist>
-          </label>
+          <p v-else class="template-meta dim small">
+            Template layout: <b>{{ selectedTemplateLayout() }}</b>
+            <span v-if="selectedTemplateLayout() === 'custom'"> (framework tree — not simple/traditional)</span>
+          </p>
           <label>
             <span>Parent directory</span>
             <div class="parent-row">
-              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src">
-              <button type="button" class="browse" @click="openParentBrowser()" title="Browse"><jk-icon name="folder-open"></jk-icon></button>
+              <input v-model="newProject.parentDir" required spellcheck="false" placeholder="/home/you/src"
+                     @focus="$event.target.select()">
+              <button type="button" class="browse" @click="openParentBrowser()" aria-label="Browse for a parent directory"
+                      title="Browse for a parent directory"><jk-icon name="folder-open"></jk-icon></button>
             </div>
           </label>
-          <label class="check">
-            <input type="checkbox" v-model="newProject.executable"> Executable (with main)
+          <label v-if="!newProject.template" class="check">
+            <input type="checkbox" v-model="newProject.executable">
+            <span class="check-box" aria-hidden="true"></span>
+            <span>Executable (with main)</span>
           </label>
           <p v-if="newProjectError" class="error">{{ newProjectError }}</p>
           <div class="modal-foot form-actions">
             <button type="button" class="ghost" @click="closeNewProject()">Cancel</button>
-            <button type="submit" :disabled="newProjectBusy">
+            <button type="submit" class="primary" :disabled="newProjectBusy">
+              <jk-icon name="plus"></jk-icon>
               {{ newProjectBusy ? 'Creating…' : 'Create project' }}
             </button>
           </div>
@@ -505,7 +524,9 @@
           <dt>Engine URL</dt><dd class="mono">{{ status ? status.httpUrl : '—' }}</dd>
           <dt>PID</dt><dd class="mono">{{ status ? status.pid : '—' }}</dd>
           <dt>Cores</dt><dd class="mono">{{ status ? status.cores : '—' }}</dd>
+          <dt>Load</dt><dd class="mono">{{ loadPercent() }}</dd>
           <dt>System RAM</dt><dd class="mono">{{ status ? gib(status.totalMemoryBytes) : '—' }}</dd>
+          <dt>Free RAM</dt><dd class="mono">{{ status ? gib(status.freeMemoryBytes) : '—' }}</dd>
           <dt>Dashboard docs</dt><dd class="mono">docs/webclient.md</dd>
         </dl>
         <div class="modal-foot">
