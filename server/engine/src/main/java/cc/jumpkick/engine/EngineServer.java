@@ -115,6 +115,35 @@ public final class EngineServer implements AutoCloseable {
         peakActivePipelines.accumulateAndGet(n, Math::max);
     }
 
+    /**
+     * Atomically decide "not shutting down" <em>and</em> join the active-pipeline count, under
+     * {@link #lifecycleLock}.
+     *
+     * <p>Checking {@code draining} and incrementing separately is a real race: displacement and
+     * {@code jk engine stop} both decide under this lock, so a job that passed the check but had
+     * not yet incremented is invisible to them — they see zero pipelines, set {@code shuttingDown},
+     * close the listener, and the JVM exits mid-build. Claiming the slot inside the same lock the
+     * deciders use closes that window (JK-1470).
+     *
+     * @return false when the engine is draining or already shutting down (caller must refuse)
+     */
+    private boolean tryStartPipeline() {
+        synchronized (lifecycleLock) {
+            if (draining || shuttingDown) return false;
+            notePipelineStarted();
+            return true;
+        }
+    }
+
+    /**
+     * Return a slot claimed by {@link #tryStartPipeline} when the job never actually ran (admission
+     * rejected). Deliberately not {@code notePipelineFinished}: no work happened, so this must not
+     * trigger the idle-housekeeping that a real pipeline completion does.
+     */
+    private void abandonPipelineSlot() {
+        activePipelines.decrementAndGet();
+    }
+
     /** Dashboard SSE fan-out; non-null only when {@link #httpConfig} is set. */
     private final cc.jumpkick.engine.http.HttpEvents httpEvents;
 
@@ -952,7 +981,13 @@ public final class EngineServer implements AutoCloseable {
         // Refuse new jobs while draining (a graceful shutdown is finishing in-flight work). The client
         // normally can't even get here — its handshake sees `draining` and fails first — but guard the
         // server too so a raced/last-moment request is rejected instead of prolonging the drain.
-        if (draining) {
+        // A pipeline claims its slot in the same breath, so shutdown can never observe zero
+        // pipelines for a job that is about to start (JK-1470).
+        boolean claimedPipelineSlot = false;
+        if (pipeline) {
+            claimedPipelineSlot = tryStartPipeline();
+        }
+        if (pipeline ? !claimedPipelineSlot : draining) {
             try {
                 send(
                         writer,
@@ -993,6 +1028,7 @@ public final class EngineServer implements AutoCloseable {
             } catch (IOException ignored) {
                 // client gone
             }
+            if (claimedPipelineSlot) abandonPipelineSlot(); // nothing ran — give the slot back
             return;
         }
         publishRequestStart(eventRequestId, eventKind, eventDir, admit.buildNumber());
@@ -1005,7 +1041,7 @@ public final class EngineServer implements AutoCloseable {
                 rebuildRun,
                 admit.buildNumber(),
                 admit.journalId());
-        if (pipeline) notePipelineStarted();
+        // The slot was already claimed above, atomically with the shutdown check.
         Thread heartbeatThread = null;
         java.util.concurrent.atomic.AtomicReference<Thread> runnerRef =
                 new java.util.concurrent.atomic.AtomicReference<>();
@@ -5115,9 +5151,23 @@ public final class EngineServer implements AutoCloseable {
      * GET /mcp} event-stream).
      */
     private long triggerHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
-        if (draining) {
+        // Claim the pipeline slot atomically with the shutdown check, so displacement/stop can
+        // never see zero pipelines for a job that is about to start (JK-1470). Any failure before
+        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
+        if (!tryStartPipeline()) {
             throw new IllegalStateException("engine is shutting down");
         }
+        boolean started = false;
+        try {
+            long id = startHttpWorkspace(dirStr, kind, skipTests, testOnly);
+            started = true;
+            return id;
+        } finally {
+            if (!started) abandonPipelineSlot();
+        }
+    }
+
+    private long startHttpWorkspace(String dirStr, String kind, boolean skipTests, boolean testOnly) {
         Path entryDir = Path.of(dirStr);
         if (!entryDir.isAbsolute()) {
             throw new IllegalArgumentException("dir must be an absolute path");
@@ -5144,7 +5194,6 @@ public final class EngineServer implements AutoCloseable {
         publishRequestStart(eventRequestId, kind, entryDir.toString(), admit.buildNumber());
         registerAccumulator(
                 eventRequestId, kind, entryDir.toString(), "web", false, false, admit.buildNumber(), admit.journalId());
-        notePipelineStarted();
         Thread t = Thread.ofVirtual().name("jk-engine-http-" + kind + "-", 0).start(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
@@ -5195,9 +5244,23 @@ public final class EngineServer implements AutoCloseable {
     }
 
     private long triggerHttpLock(String dirStr) {
-        if (draining) {
+        // Claim the pipeline slot atomically with the shutdown check, so displacement/stop can
+        // never see zero pipelines for a job that is about to start (JK-1470). Any failure before
+        // the runner thread is started gives the slot back — a leaked slot would stall shutdown.
+        if (!tryStartPipeline()) {
             throw new IllegalStateException("engine is shutting down");
         }
+        boolean started = false;
+        try {
+            long id = startHttpLock(dirStr);
+            started = true;
+            return id;
+        } finally {
+            if (!started) abandonPipelineSlot();
+        }
+    }
+
+    private long startHttpLock(String dirStr) {
         Path entryDir = Path.of(dirStr);
         if (!entryDir.isAbsolute()) {
             throw new IllegalArgumentException("dir must be an absolute path");
@@ -5214,7 +5277,6 @@ public final class EngineServer implements AutoCloseable {
         registerLiveJob(eventRequestId, cancelToken, runnerRef, null, null, entryDir.toString(), "lock", false);
         publishRequestStart(eventRequestId, "lock", entryDir.toString());
         registerAccumulator(eventRequestId, "lock", entryDir.toString(), "web");
-        notePipelineStarted();
         Thread t = Thread.ofVirtual().name("jk-engine-http-lock-", 0).start(() -> {
             cacheGate.readLock().lock();
             currentEventRequestId.set(eventRequestId);
