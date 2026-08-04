@@ -48,6 +48,30 @@ final class ShrunkJarPackager {
 
     private ShrunkJarPackager() {}
 
+    /** Alias every extensionless jar as {@code .jar} under {@code work} (R8 judges by extension). */
+    private static List<Path> jarSuffixed(Path work, List<Path> jars) throws java.io.IOException {
+        List<Path> out = new ArrayList<>(jars.size());
+        Path dir = null;
+        int i = 0;
+        for (Path jar : jars) {
+            String name = jar.getFileName().toString();
+            if (name.endsWith(".jar") || name.endsWith(".zip")) {
+                out.add(jar);
+            } else {
+                if (dir == null) dir = Files.createDirectories(work.resolve("rt-jars"));
+                Path alias = dir.resolve("rt-" + i + "-" + name + ".jar");
+                try {
+                    Files.createLink(alias, jar);
+                } catch (java.io.IOException | UnsupportedOperationException e) {
+                    Files.copy(jar, alias);
+                }
+                out.add(alias);
+            }
+            i++;
+        }
+        return out;
+    }
+
     static void produce(PackageIo io) throws Exception {
         String mainClass = io.project().mainClass();
         if (mainClass != null && mainClass.isBlank()) mainClass = null;
@@ -63,6 +87,9 @@ final class ShrunkJarPackager {
             for (PackageIo.RuntimeEntry entry : io.runtimeEntries()) {
                 if (entry.jar() != null) program.add(entry.jar());
             }
+            // R8 judges program inputs by extension; store-materialized runtime jars are
+            // extensionless CAS blobs — alias them as .jar before they reach the tool (JK-1449).
+            program = jarSuffixed(work, program);
 
             boolean obfuscate = io.config().bool("obfuscate", false);
             Path rules = work.resolve("keep.pro");

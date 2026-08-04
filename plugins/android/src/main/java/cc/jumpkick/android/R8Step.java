@@ -28,7 +28,7 @@ final class R8Step {
 
     static void run(StepExec exec) throws Exception {
         Path r8 = exec.requireExtra("r8");
-        Path platformJar = jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
+        Path platformJar = JarInputs.jarNamed(exec, exec.requireExtra("android-jar"), "android-platform.jar");
         Path dexOut = exec.outputDir("dex");
         Path mappingOut = exec.outputDir("mapping");
         long minSdk = exec.config().intValue("min-sdk", 0);
@@ -41,6 +41,8 @@ final class R8Step {
         for (var entry : exec.runtimeEntries()) {
             if (entry.jar() != null) runtimeJars.add(entry.jar());
         }
+        // Program inputs are judged by extension too — alias extensionless CAS blobs (JK-1449).
+        runtimeJars = JarInputs.jarSuffixed(exec, runtimeJars);
 
         // Keep-rule collection, baseline → aapt2 → consumer rules → the app's own files.
         List<Path> rules = new ArrayList<>();
@@ -93,15 +95,4 @@ final class R8Step {
         }
     }
 
-    /** A {@code .jar}-suffixed alias of {@code source} under the step's scratch (d8/r8 judge by extension). */
-    private static Path jarNamed(StepExec exec, Path source, String name) throws IOException {
-        Path alias = Files.createDirectories(exec.scratch().resolve("tools")).resolve(name);
-        Files.deleteIfExists(alias);
-        try {
-            Files.createLink(alias, source);
-        } catch (IOException | UnsupportedOperationException e) {
-            Files.copy(source, alias);
-        }
-        return alias;
-    }
 }
