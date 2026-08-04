@@ -49,23 +49,34 @@ public final class Giter8TemplateIndex {
         for (Giter8ShortNames.Entry e : Giter8ShortNames.entries()) {
             byId.put(e.id(), e);
         }
+        java.util.Set<String> overlaid = new java.util.HashSet<>();
         if (roots != null) {
             for (Path root : roots) {
                 if (root == null) continue;
-                scanRoot(root.toAbsolutePath().normalize(), byId);
+                scanRoot(root.toAbsolutePath().normalize(), byId, overlaid);
             }
         }
-        // Second pass: for catalog ids still missing disk overlay, try root/id.g8 and root/id
-        if (roots != null) {
-            for (Giter8ShortNames.Entry e : List.copyOf(byId.values())) {
-                if (roots.isEmpty()) break;
-                Path found = findTemplateDir(roots, e.id());
+        // Second pass: only ids pass 1 did NOT overlay get the (expensive) deep probe — the DFS
+        // walks every root to depth 5, so re-probing already-merged ids is pure rework (JK-1455).
+        if (roots != null && !roots.isEmpty()) {
+            for (String id : idsNeedingProbe(byId.values(), overlaid)) {
+                Path found = findTemplateDir(roots, id);
                 if (found != null) {
-                    byId.put(e.id(), mergeFromDisk(e, found));
+                    byId.put(id, mergeFromDisk(byId.get(id), found));
                 }
             }
         }
         return List.copyOf(byId.values());
+    }
+
+    /** Ids still catalog-only after pass 1 — the only ones worth a pass-2 deep probe. */
+    static List<String> idsNeedingProbe(
+            java.util.Collection<Giter8ShortNames.Entry> entries, java.util.Set<String> overlaid) {
+        List<String> out = new ArrayList<>();
+        for (Giter8ShortNames.Entry e : entries) {
+            if (!overlaid.contains(e.id())) out.add(e.id());
+        }
+        return out;
     }
 
     /**
@@ -94,7 +105,7 @@ public final class Giter8TemplateIndex {
         return roots;
     }
 
-    static void scanRoot(Path root, Map<String, Giter8ShortNames.Entry> byId) {
+    static void scanRoot(Path root, Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid) {
         if (!Files.isDirectory(root)) return;
         // Direct children: name.g8 or bare short-name template roots
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(root)) {
@@ -104,12 +115,12 @@ public final class Giter8TemplateIndex {
                 if (fileName.startsWith(".")) continue;
                 if (isTemplateRoot(child)) {
                     String id = shortNameOf(fileName);
-                    if (id != null) mergeInto(byId, id, child);
+                    if (id != null) mergeInto(byId, overlaid, id, child);
                     continue;
                 }
                 // Official monorepo clone: one level of nested *.g8
                 if (fileName.contains("jk-templates") || fileName.contains("github.com")) {
-                    scanNestedG8(child, byId, 0);
+                    scanNestedG8(child, byId, overlaid, 0);
                 }
             }
         } catch (IOException ignored) {
@@ -117,7 +128,8 @@ public final class Giter8TemplateIndex {
         }
     }
 
-    private static void scanNestedG8(Path dir, Map<String, Giter8ShortNames.Entry> byId, int depth) {
+    private static void scanNestedG8(
+            Path dir, Map<String, Giter8ShortNames.Entry> byId, java.util.Set<String> overlaid, int depth) {
         if (depth > 4 || !Files.isDirectory(dir)) return;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
             for (Path child : stream) {
@@ -125,9 +137,9 @@ public final class Giter8TemplateIndex {
                 String name = child.getFileName().toString();
                 if (name.startsWith(".")) continue;
                 if (name.endsWith(".g8") && isTemplateRoot(child)) {
-                    mergeInto(byId, shortNameOf(name), child);
+                    mergeInto(byId, overlaid, shortNameOf(name), child);
                 } else if (depth < 4) {
-                    scanNestedG8(child, byId, depth + 1);
+                    scanNestedG8(child, byId, overlaid, depth + 1);
                 }
             }
         } catch (IOException ignored) {
@@ -135,11 +147,16 @@ public final class Giter8TemplateIndex {
         }
     }
 
-    private static void mergeInto(Map<String, Giter8ShortNames.Entry> byId, String id, Path templateRoot) {
+    private static void mergeInto(
+            Map<String, Giter8ShortNames.Entry> byId,
+            java.util.Set<String> overlaid,
+            String id,
+            Path templateRoot) {
         if (id == null || id.isBlank()) return;
         Giter8ShortNames.Entry base = byId.getOrDefault(
                 id, new Giter8ShortNames.Entry(id, id, List.of(), Giter8ShortNames.LAYOUT_SIMPLE));
         byId.put(id, mergeFromDisk(base, templateRoot));
+        overlaid.add(id);
     }
 
     /** Overlay languages/layout/description from {@code default.properties} (+ layout inference). */

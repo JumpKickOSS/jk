@@ -93,6 +93,21 @@ class Giter8TemplateIndexTest {
     }
 
     @Test
+    void pass_two_probe_skips_ids_already_overlaid_in_pass_one(@TempDir Path temp) throws Exception {
+        // JK-1455: the pass-2 deep DFS must only run for ids pass 1 did not overlay.
+        Path g8 = temp.resolve("ktor-3.g8");
+        Files.createDirectories(g8);
+        Files.writeString(g8.resolve("default.properties"), "jk_languages=kotlin\njk_layout=simple\n");
+        var byId = new java.util.LinkedHashMap<String, Giter8ShortNames.Entry>();
+        for (var e : Giter8ShortNames.entries()) byId.put(e.id(), e);
+        var overlaid = new java.util.HashSet<String>();
+        Giter8TemplateIndex.scanRoot(temp, byId, overlaid);
+        assertThat(overlaid).containsExactly("ktor-3");
+        var probe = Giter8TemplateIndex.idsNeedingProbe(byId.values(), overlaid);
+        assertThat(probe).doesNotContain("ktor-3").contains("java-cli", "quarkus");
+    }
+
+    @Test
     void resolve_short_name_finds_dogfood_templates_dir(@TempDir Path temp) throws Exception {
         // Monorepo shape: <root>/templates/<name>.g8 and parent dir under <root>/…
         Path g8 = temp.resolve("templates").resolve("spring-boot-webmvc.g8");

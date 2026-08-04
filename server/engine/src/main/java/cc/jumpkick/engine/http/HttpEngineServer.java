@@ -71,6 +71,12 @@ public final class HttpEngineServer implements AutoCloseable {
 
     private volatile HttpServer server;
     private volatile ExecutorService executor;
+
+    // GET /api/templates response cache — building the index walks every template root (with a
+    // deep DFS for catalog-only ids), so repeated modal opens must not rescan the disk (JK-1455).
+    private volatile String templatesJson;
+    private volatile long templatesJsonAtNanos;
+    private static final long TEMPLATES_TTL_NANOS = java.util.concurrent.TimeUnit.SECONDS.toNanos(30);
     private byte[] token;
     private long heartbeatMillis = DEFAULT_HEARTBEAT_MILLIS;
 
@@ -756,6 +762,11 @@ public final class HttpEngineServer implements AutoCloseable {
      * template roots (see {@link cc.jumpkick.scaffold.Giter8TemplateIndex}).
      */
     private void handleTemplates(HttpExchange exchange) throws IOException {
+        String cached = templatesJson;
+        if (cached != null && System.nanoTime() - templatesJsonAtNanos < TEMPLATES_TTL_NANOS) {
+            sendJson(exchange, 200, cached);
+            return;
+        }
         java.nio.file.Path home = java.util.Optional.ofNullable(System.getProperty("user.home"))
                 .map(java.nio.file.Path::of)
                 .orElse(null);
@@ -785,7 +796,10 @@ public final class HttpEngineServer implements AutoCloseable {
                     .toString());
         }
         arr.append(']');
-        sendJson(exchange, 200, arr.toString());
+        String json = arr.toString();
+        templatesJson = json;
+        templatesJsonAtNanos = System.nanoTime();
+        sendJson(exchange, 200, json);
     }
 
     /** {@code POST /api/build} — acknowledge with a request id; progress streams on {@code /api/events}. */
