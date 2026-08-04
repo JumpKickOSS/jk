@@ -3,18 +3,22 @@ package cc.jumpkick.engine.http;
 
 import cc.jumpkick.cache.DiskUsage;
 import cc.jumpkick.cache.JkStores;
+import cc.jumpkick.config.JkCacheConfig;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * The cache-directory breakdown {@code GET /api/cache} reports — the same sections {@code jk cache
- * info} renders (CAS blobs, action cache, worker jars, run logs, format stamps), so the dashboard
- * and the CLI can never drift apart. {@code maxBytes} is the configured LRU ceiling ({@code [cache]
- * max-size-gb}, default 20 GiB) so the utilization meter always has a denominator;
- * {@code lastPrunedMillis} is {@code 0} when the cache has never been pruned.
+ * Storage breakdown for {@code GET /api/cache} and live {@code cache} SSE — the same two surfaces
+ * the CLI splits as {@code jk cache storage} (action cache) and {@code jk repo storage} (artifact
+ * store: CAS + worker JAR mirrors + run logs).
  *
- * <p>Byte sizes are <em>exclusive</em> across sections (CAS before repos) so hard-linked
- * {@code repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
+ * <p>{@code maxBytes} is the <strong>artifact store</strong> budget ({@code [cache] max-size-gb},
+ * default 20 GiB). {@code actionMaxBytes} is the <strong>action cache</strong> budget ({@code
+ * [cache] action-max-size-mb}, default 1 GiB). {@code lastPrunedMillis} is {@code 0} when never
+ * pruned.
+ *
+ * <p>Byte sizes are <em>exclusive</em> across sections (CAS before repos) so hard-linked {@code
+ * repos/} views do not double-count CAS blob allocations — same accounting as the CLI.
  */
 public record CacheSnapshot(
         long casCount,
@@ -28,22 +32,48 @@ public record CacheSnapshot(
         long formatStampsCount,
         long formatStampsBytes,
         long maxBytes,
+        long actionMaxBytes,
         long lastPrunedMillis) {
 
+    /** All section file counts (debug / legacy combined total). */
     public long totalCount() {
         return casCount + actionsCount + workerJarsCount + runLogsCount + formatStampsCount;
     }
 
+    /** All section bytes (debug / legacy combined total — prefer the two surfaces below). */
     public long totalBytes() {
         return casBytes + actionsBytes + workerJarsBytes + runLogsBytes + formatStampsBytes;
     }
 
     /**
+     * Action-cache footprint matching {@code jk cache storage} — {@code actions/} only (format
+     * stamps are listed separately in the Status panel).
+     */
+    public long actionCacheBytes() {
+        return actionsBytes;
+    }
+
+    public long actionCacheCount() {
+        return actionsCount;
+    }
+
+    /**
+     * Artifact / store footprint matching {@code jk repo storage}: CAS + worker JAR mirrors + run
+     * logs.
+     */
+    public long artifactStorageBytes() {
+        return casBytes + workerJarsBytes + runLogsBytes;
+    }
+
+    public long artifactStorageCount() {
+        return casCount + workerJarsCount + runLogsCount;
+    }
+
+    /**
      * Walk store + cache sections and snapshot their sizes — identical dirs and hardlink-aware
      * exclusive byte accounting as {@code jk cache storage} / {@code jk repo storage}. IO-shaped (a
-     * full walk of the CAS), so
-     * callers invoke it per request, never on a hot path. Best-effort: an unreadable section
-     * counts as empty.
+     * full walk of the CAS), so callers invoke it per request or on a slow live tick, never on the
+     * ~2s host-vitals sampler. Best-effort: an unreadable section counts as empty.
      */
     public static CacheSnapshot capture(Path cacheRoot) {
         // sha256/ and repos/ live under the store; actions/runs/stamps under the cache root.
@@ -65,7 +95,9 @@ public record CacheSnapshot(
                 new DiskUsage.Stats(0, 0)
             };
         }
-        long maxBytes = configuredMaxBytes();
+        JkCacheConfig cfg = resolveConfig();
+        long storeMax = cfg.storeMaxSizeBytes();
+        long actionMax = cfg.actionMaxSizeBytes();
         long lastPruned = readLastPrunedMillis(cacheRoot);
         return new CacheSnapshot(
                 parts[0].files(),
@@ -78,19 +110,17 @@ public record CacheSnapshot(
                 parts[3].bytes(),
                 parts[4].files(),
                 parts[4].bytes(),
-                maxBytes,
+                storeMax,
+                actionMax,
                 lastPruned);
     }
 
-    /** The configured LRU ceiling, or the documented 20 GiB default when unset/unreadable. */
-    private static long configuredMaxBytes() {
-        int gb = 20;
+    private static JkCacheConfig resolveConfig() {
         try {
-            gb = cc.jumpkick.config.JkCacheConfig.resolve().maxSizeGb().orElse(20);
-        } catch (Exception ignored) {
-            // keep the default
+            return JkCacheConfig.resolve();
+        } catch (Exception e) {
+            return JkCacheConfig.DEFAULTS;
         }
-        return gb * 1024L * 1024L * 1024L;
     }
 
     /** The prune scheduler's stamp, or {@code 0} when the cache has never been pruned. */
@@ -102,5 +132,29 @@ public record CacheSnapshot(
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    /** JSON object for REST and SSE — same field names for both. */
+    public JsonOut toJson() {
+        return JsonOut.object()
+                .put("casCount", casCount)
+                .put("casBytes", casBytes)
+                .put("actionsCount", actionsCount)
+                .put("actionsBytes", actionsBytes)
+                .put("workerJarsCount", workerJarsCount)
+                .put("workerJarsBytes", workerJarsBytes)
+                .put("runLogsCount", runLogsCount)
+                .put("runLogsBytes", runLogsBytes)
+                .put("formatStampsCount", formatStampsCount)
+                .put("formatStampsBytes", formatStampsBytes)
+                .put("totalCount", totalCount())
+                .put("totalBytes", totalBytes())
+                .put("actionCacheCount", actionCacheCount())
+                .put("actionCacheBytes", actionCacheBytes())
+                .put("actionMaxBytes", actionMaxBytes)
+                .put("artifactStorageCount", artifactStorageCount())
+                .put("artifactStorageBytes", artifactStorageBytes())
+                .put("maxBytes", maxBytes)
+                .put("lastPrunedMillis", lastPrunedMillis);
     }
 }

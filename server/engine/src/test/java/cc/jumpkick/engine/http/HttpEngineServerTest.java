@@ -62,7 +62,8 @@ class HttpEngineServerTest {
     private final java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry> metricsRows = new java.util.ArrayList<>();
 
     /** The snapshot served by {@code GET /api/cache} — tests reassign the field directly. */
-    private static final CacheSnapshot EMPTY_CACHE = new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    private static final CacheSnapshot EMPTY_CACHE =
+            new CacheSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     private CacheSnapshot cacheSnapshot = EMPTY_CACHE;
     private HttpEngineServer server;
@@ -528,8 +529,21 @@ class HttpEngineServerTest {
 
     @Test
     void api_cache_reports_the_cache_breakdown_without_a_token_on_loopback() throws Exception {
+        // maxBytes = store/artifact budget; actionMaxBytes = action-cache budget (CLI parity).
         cacheSnapshot = new CacheSnapshot(
-                100, 5_000_000, 40, 200_000, 3, 30_000_000, 7, 9_000, 2, 100, 21_474_836_480L, 1_700_000_000_000L);
+                100,
+                5_000_000,
+                40,
+                200_000,
+                3,
+                30_000_000,
+                7,
+                9_000,
+                2,
+                100,
+                21_474_836_480L,
+                1_073_741_824L,
+                1_700_000_000_000L);
         HttpResponse<String> resp = get("/api/cache");
         assertThat(resp.statusCode()).isEqualTo(200);
         assertThat(resp.headers().firstValue("Content-Type")).contains("application/json; charset=utf-8");
@@ -540,6 +554,9 @@ class HttpEngineServerTest {
                 .contains("\"workerJarsBytes\":30000000")
                 .contains("\"totalCount\":152")
                 .contains("\"totalBytes\":35209100")
+                .contains("\"actionCacheBytes\":200000")
+                .contains("\"actionMaxBytes\":1073741824")
+                .contains("\"artifactStorageBytes\":35009000")
                 .contains("\"maxBytes\":21474836480")
                 .contains("\"lastPrunedMillis\":1700000000000");
     }

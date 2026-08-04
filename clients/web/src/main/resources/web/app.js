@@ -326,7 +326,7 @@ Vue.createApp({
     connection: 'connecting', // 'connecting' | 'live' | 'offline' | 'unauthorized'
     status: null, // the /api/status payload
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
-    cache: null, // the /api/cache payload (cache breakdown), shown on the Status view
+    cache: null, // /api/cache + live `cache` SSE: Action Cache + Artifact Storage breakdown
     engineLog: '', // the /api/log tail, shown on the Status view
     cards: [], // folded activity, newest first
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
@@ -354,6 +354,15 @@ Vue.createApp({
   mounted() {
     events(
       (event) => {
+        // Live chrome vitals (JK-1495+): change-gated on the server; apply without folding cards.
+        if (event.type === 'status') {
+          this.applyStatusEvent(event.data);
+          return;
+        }
+        if (event.type === 'cache') {
+          this.cache = event.data;
+          return;
+        }
         foldEvent(this.cards, { ...event, at: Date.now() });
         // The build number + journal record are written just after request-finish (writeJournal),
         // so re-pull history a beat later: it reconciles the live card (tagging its #number) and
@@ -382,9 +391,12 @@ Vue.createApp({
     // Back/forward and any hash change re-derive the route (openProject sets the hash, which lands here).
     window.addEventListener('hashchange', () => this.applyRoute());
     if (this.view === 'project' && this.selectedProjectDir) this.loadProjectMeta(this.selectedProjectDir);
-    // Header sysbox (LOAD / FREE) needs host vitals often; full refresh also pulls metrics/cache/log.
-    setInterval(() => this.refreshStatus(), 5_000);
-    setInterval(() => this.refresh({ status: false }), 30_000); // metrics/cache/log; SSE remains the activity signal
+    // Fallback REST when SSE is down; while live, status/cache arrive on the stream (JK-1495/1496).
+    setInterval(() => {
+      if (this.connection === 'live') return;
+      this.refreshStatus();
+    }, 5_000);
+    setInterval(() => this.refresh({ status: false }), 30_000); // metrics (+ cache/status if offline)
     setInterval(() => (this.now = Date.now()), 1_000);
   },
 
@@ -783,7 +795,15 @@ Vue.createApp({
       return this.shortDir(m.dir);
     },
 
-    // Lightweight poll for the header sysbox (CORES/LOAD/RAM/FREE) and footer vitals — every 5s.
+    // Merge a live `status` SSE frame into this.status. Frames carry core vitals only (not httpUrl
+    // / config knobs from GET /api/status) — keep REST fields when present.
+    applyStatusEvent(data) {
+      if (!data || typeof data !== 'object') return;
+      this.status = this.status ? { ...this.status, ...data } : { ...data };
+      if (this.connection === 'unauthorized') this.connection = 'live';
+    },
+
+    // REST hydrate / offline fallback for header sysbox + footer heap / builds-running.
     async refreshStatus() {
       try {
         this.status = await get('/api/status');
@@ -794,8 +814,11 @@ Vue.createApp({
     },
 
     async refresh(opts) {
-      // The 5s timer owns the status poll; its 30s tick passes {status:false} so a 30s
-      // boundary doesn't fire two /api/status requests back-to-back (JK-1459).
+      // While SSE is live, status/cache are pushed (change-gated). Still hydrate status on
+      // full refresh (opts.status !== false) so reconnect/first paint get httpUrl etc.
+      // Offline: always pull. JK-1459: 30s tick passes {status:false} to avoid double status GET
+      // when the fallback 5s timer also fires.
+      const sseLive = this.connection === 'live';
       if (!opts || opts.status !== false) await this.refreshStatus();
       // Separate try: the log tail is a sensitive read (token-required even on loopback,
       // JK-1305) — a tokenless session keeps the Status vitals and just loses the tail.
@@ -814,21 +837,58 @@ Vue.createApp({
       } catch (e) {
         if (e.status === 401) this.connection = 'unauthorized';
       }
-      // Cache breakdown: needed by the always-on footer (Cache Used), so pull it on every refresh
-      // rather than only on the Status view. Still only on the 30s refresh cadence, not the 1s tick.
-      try {
-        this.cache = await get('/api/cache');
-      } catch (e) {
-        if (e.status === 401) this.connection = 'unauthorized';
+      // Action Cache + Artifact Storage: SSE while live. REST on hydrate/reconnect (status
+      // not false) and whenever offline; skip on the 30s tick while live to avoid disk walks.
+      const skipCacheRest = sseLive && opts && opts.status === false;
+      if (!skipCacheRest) {
+        try {
+          this.cache = await get('/api/cache');
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
       }
     },
 
-    // ---- the Status view's Cache panel (/api/cache) ----
+    // ---- Status view storage panels (/api/cache + live `cache` SSE) ----
 
-    cacheUtilizationPercent() {
+    /** Action-cache bytes (CLI: jk cache storage). */
+    actionCacheBytes() {
       const c = this.cache;
-      if (!c || c.maxBytes <= 0) return 0;
-      return Math.min(100, Math.round((100 * c.totalBytes) / c.maxBytes));
+      if (!c) return null;
+      return c.actionCacheBytes != null ? c.actionCacheBytes : c.actionsBytes;
+    },
+
+    actionMaxBytes() {
+      const c = this.cache;
+      if (!c) return null;
+      return c.actionMaxBytes != null ? c.actionMaxBytes : null;
+    },
+
+    /** Artifact store: CAS + worker JARs + run logs (CLI: jk repo storage). */
+    artifactStorageBytes() {
+      const c = this.cache;
+      if (!c) return null;
+      if (c.artifactStorageBytes != null) return c.artifactStorageBytes;
+      return (c.casBytes || 0) + (c.workerJarsBytes || 0) + (c.runLogsBytes || 0);
+    },
+
+    actionCacheUtilizationPercent() {
+      const used = this.actionCacheBytes();
+      const max = this.actionMaxBytes();
+      if (used == null || !max || max <= 0) return 0;
+      return Math.min(100, Math.round((100 * used) / max));
+    },
+
+    artifactStorageUtilizationPercent() {
+      const c = this.cache;
+      const used = this.artifactStorageBytes();
+      if (!c || used == null || !c.maxBytes || c.maxBytes <= 0) return 0;
+      return Math.min(100, Math.round((100 * used) / c.maxBytes));
+    },
+
+    /** @deprecated combined meter — prefer action / artifact helpers */
+    cacheUtilizationPercent() {
+      return this.artifactStorageUtilizationPercent();
     },
 
     prunedAgo() {

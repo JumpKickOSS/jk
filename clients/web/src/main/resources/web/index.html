@@ -361,21 +361,35 @@
             </dl>
           </div>
           <div class="panel">
-            <div class="panel-head"><span class="lbl">cache</span><span class="spacer"></span>
-              <span v-if="cache" class="mono dim">{{ mib(cache.totalBytes) }} of {{ mib(cache.maxBytes) }} · pruned {{ prunedAgo() }}</span></div>
+            <div class="panel-head"><span class="lbl">action cache</span><span class="spacer"></span>
+              <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
             <template v-if="cache">
-              <span class="meter">
-                <span class="meter-fill used" :style="{ width: cacheUtilizationPercent() + '%' }"></span>
+              <span class="meter" title="vs [cache] action-max-size-mb">
+                <span class="meter-fill used" :style="{ width: actionCacheUtilizationPercent() + '%' }"></span>
+              </span>
+              <dl>
+                <dt>actions</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
+                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
+              </dl>
+              <p class="dim small" style="margin:8px 0 0">Build results under the platform cache dir. <span class="mono">jk cache storage</span></p>
+            </template>
+            <div v-else class="dim small">Action cache loading…</div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="lbl">artifact storage</span><span class="spacer"></span>
+              <span v-if="cache" class="mono dim">{{ mib(artifactStorageBytes()) }} of {{ mib(cache.maxBytes) }}</span></div>
+            <template v-if="cache">
+              <span class="meter" title="vs [cache] max-size-gb (store / CAS budget)">
+                <span class="meter-fill used" :style="{ width: artifactStorageUtilizationPercent() + '%' }"></span>
               </span>
               <dl>
                 <dt>CAS blobs</dt><dd>{{ count(cache.casCount) }} · {{ mib(cache.casBytes) }}</dd>
-                <dt>action cache</dt><dd>{{ count(cache.actionsCount) }} · {{ mib(cache.actionsBytes) }}</dd>
                 <dt>worker JARs</dt><dd>{{ count(cache.workerJarsCount) }} · {{ mib(cache.workerJarsBytes) }}</dd>
                 <dt>run logs</dt><dd>{{ count(cache.runLogsCount) }} · {{ mib(cache.runLogsBytes) }}</dd>
-                <dt>format stamps</dt><dd>{{ count(cache.formatStampsCount) }} · {{ mib(cache.formatStampsBytes) }}</dd>
               </dl>
+              <p class="dim small" style="margin:8px 0 0">Downloaded artifacts under the store. <span class="mono">jk repo storage</span></p>
             </template>
-            <div v-else class="dim small">Cache breakdown loading…</div>
+            <div v-else class="dim small">Artifact storage loading…</div>
           </div>
         </div>
 
@@ -393,7 +407,9 @@
       <div class="sb-left">
         <span class="sb-item"><jk-icon name="activity"></jk-icon>Builds Running&nbsp;<b>{{ buildsRunning() }}</b></span>
         <span class="sb-div"></span>
-        <span class="sb-item"><jk-icon name="database"></jk-icon>Cache Used&nbsp;<b>{{ cache ? mib(cache.totalBytes) : '—' }}</b></span>
+        <span class="sb-item" title="Action cache (build results) — jk cache storage"><jk-icon name="database"></jk-icon>Action Cache&nbsp;<b>{{ actionCacheBytes() != null ? mib(actionCacheBytes()) : '—' }}</b></span>
+        <span class="sb-div"></span>
+        <span class="sb-item" title="Artifact storage (CAS + mirrors + run logs) — jk repo storage"><jk-icon name="database"></jk-icon>Artifact Storage&nbsp;<b>{{ artifactStorageBytes() != null ? mib(artifactStorageBytes()) : '—' }}</b></span>
         <span class="sb-div"></span>
         <span class="sb-item"><jk-icon name="cpu"></jk-icon>Engine Heap&nbsp;<b>{{ status ? mib(status.heapCommittedBytes) : '—' }}</b></span>
       </div>

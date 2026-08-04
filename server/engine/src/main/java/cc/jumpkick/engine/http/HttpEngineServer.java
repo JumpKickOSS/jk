@@ -64,6 +64,7 @@ public final class HttpEngineServer implements AutoCloseable {
     private final cc.jumpkick.engine.journal.BuildJournal journal;
     private final Supplier<java.util.List<cc.jumpkick.runtime.BuildMetrics.Entry>> metrics;
     private final Supplier<CacheSnapshot> cache;
+    private final LiveVitals liveVitals;
     private final ApiRouter api = new ApiRouter();
     private final Consumer<String> log;
     private final McpHandler mcp;
@@ -147,6 +148,7 @@ public final class HttpEngineServer implements AutoCloseable {
         this.journal = journal;
         this.metrics = metrics;
         this.cache = cache;
+        this.liveVitals = new LiveVitals(events, status, cache);
         this.log = log != null ? log : s -> {};
         this.engineVersion = version;
         this.progressTokens = new ProgressTokenRegistry();
@@ -277,6 +279,22 @@ public final class HttpEngineServer implements AutoCloseable {
         stop(STOP_GRACE_SECONDS);
     }
 
+    /**
+     * Change-gated {@code status} SSE after pipeline count may have moved (request start/finish).
+     * No-op without subscribers.
+     */
+    public void notifyLiveStatus() {
+        liveVitals.publishStatus(false);
+    }
+
+    /**
+     * Change-gated {@code cache} SSE after store/action-cache may have grown (request finish, prune).
+     * IO-shaped — only call off the hot step path.
+     */
+    public void notifyLiveCache() {
+        liveVitals.publishCache(false);
+    }
+
     /** Stop the server (once) and interrupt its executor; nulling both makes any repeat call a no-op. */
     private void stop(int graceSeconds) {
         if (server != null) {
@@ -289,6 +307,7 @@ public final class HttpEngineServer implements AutoCloseable {
             executor.shutdownNow();
             executor = null;
         }
+        liveVitals.close();
     }
 
     /** Every request funnels through here: gates first, then dispatch. */
@@ -646,7 +665,13 @@ public final class HttpEngineServer implements AutoCloseable {
         exchange.getResponseHeaders().set("Cache-Control", "no-store");
         exchange.sendResponseHeaders(200, 0);
         var out = exchange.getResponseBody();
-        try (HttpEvents.Subscription subscription = events.subscribe()) {
+        HttpEvents.Subscription subscription = events.subscribe();
+        liveVitals.onSubscriberJoined();
+        // Connect hydrate: push current vitals onto the bus (change-gate skipped) so the tab does
+        // not wait for the first 2s / 30s sampler tick. Build activity remains inflicted-only.
+        liveVitals.publishStatus(true);
+        liveVitals.publishCache(true);
+        try {
             out.write(": connected\n\n".getBytes(StandardCharsets.UTF_8));
             out.flush();
             while (true) {
@@ -658,6 +683,9 @@ public final class HttpEngineServer implements AutoCloseable {
             Thread.currentThread().interrupt(); // server shutting down
         } catch (IOException e) {
             // The client closed the tab — routine stream end, not an error.
+        } finally {
+            subscription.close();
+            liveVitals.onSubscriberLeft();
         }
     }
 
@@ -959,24 +987,7 @@ public final class HttpEngineServer implements AutoCloseable {
      * IO-shaped (a walk of the cache sections), so it is computed per request, never cached.
      */
     private void handleCache(HttpExchange exchange) throws IOException {
-        CacheSnapshot c = cache.get();
-        String body = JsonOut.object()
-                .put("casCount", c.casCount())
-                .put("casBytes", c.casBytes())
-                .put("actionsCount", c.actionsCount())
-                .put("actionsBytes", c.actionsBytes())
-                .put("workerJarsCount", c.workerJarsCount())
-                .put("workerJarsBytes", c.workerJarsBytes())
-                .put("runLogsCount", c.runLogsCount())
-                .put("runLogsBytes", c.runLogsBytes())
-                .put("formatStampsCount", c.formatStampsCount())
-                .put("formatStampsBytes", c.formatStampsBytes())
-                .put("totalCount", c.totalCount())
-                .put("totalBytes", c.totalBytes())
-                .put("maxBytes", c.maxBytes())
-                .put("lastPrunedMillis", c.lastPrunedMillis())
-                .toString();
-        sendJson(exchange, 200, body);
+        sendJson(exchange, 200, cache.get().toJson().toString());
     }
 
     /**

@@ -47,7 +47,7 @@
   --header-bd: #1c2833;
   --run-line: #5ab0ff;              /* running step-node border — brighter than --run on --runc fill */
   --run-fg: #d6ecff;                /* running step-node text */
-  --on-warn: #1d2026;               /* dark text that stays legible on the amber (--warn) fills */
+  --on-fill: #1d2026;               /* near-black text on bright success/err/warn fills (not on deep --runc) */
   --prog-a: #4d8bff;                /* neon progress gradient: electric blue … */
   --prog-b: #c04dff;                /* … → neon violet */
   --modal-scrim: rgba(4, 8, 11, 0.66);
@@ -404,9 +404,9 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
   white-space: nowrap;
 }
 
-.badge.success { background: var(--okc); }
-.badge.failed { background: var(--err); }
-.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-warn); }
+.badge.success { background: var(--okc); color: var(--on-fill); }
+.badge.failed { background: var(--err); color: var(--on-fill); }
+.badge.cancelled, .badge.finished { background: var(--warn); color: var(--on-fill); }
 
 .coord { font-size: 12.5px; font-weight: 500; }
 .coord .cg { color: var(--cg); }
@@ -689,8 +689,8 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 
 /* right group: the outcome pill (#buildNumber) and the reliability readout */
 .proj-stats { display: flex; align-items: center; gap: 16px; flex: 0 0 auto; }
-.badge.running { background: var(--runc); }
-.badge.issue { background: var(--warn); color: var(--on-warn); }
+.badge.running { background: var(--runc); } /* deep blue: keep default white badge text */
+.badge.issue { background: var(--warn); color: var(--on-fill); }
 
 .reliability {
   display: flex;
@@ -786,7 +786,7 @@ table.stats.history td.ok { color: var(--ok); }
 .kpi { font: 700 17px/1.2 var(--mono); color: var(--bright); overflow-wrap: anywhere; }
 .kpi.ok { color: var(--ok); }
 
-.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
 @media (max-width: 860px) { .panels { grid-template-columns: 1fr; } }
 
 .panel {

@@ -62,7 +62,10 @@ export async function del(path) {
   return resp.json().catch(() => ({}));
 }
 
-/** The engine event types the dashboard folds (EventSource needs a listener per named event). */
+/**
+ * Engine event types the dashboard listens for (EventSource needs a listener per named event).
+ * Build activity is folded by fold.js; `status` / `cache` update chrome vitals (JK-1495+).
+ */
 const EVENT_TYPES = [
   'request-start',
   'plan',
@@ -77,6 +80,8 @@ const EVENT_TYPES = [
   'pipeline-finish',
   'module-finish',
   'request-finish',
+  'status',
+  'cache',
 ];
 
 /**

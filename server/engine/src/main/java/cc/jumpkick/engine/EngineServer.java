@@ -1565,6 +1565,13 @@ public final class EngineServer implements AutoCloseable {
     /** Publish to the dashboard event hub — free (one subscriber check) when no dashboard is open. */
     private void publishEvent(String type, cc.jumpkick.engine.http.JsonOut payload) {
         if (httpEvents != null && httpEvents.hasSubscribers()) httpEvents.publish(type, payload);
+        // Sampled chrome (status/cache SSE) is change-gated; nudge it when jobs start/finish so
+        // Builds Running and storage totals do not wait for the next timer tick (JK-1495/1497).
+        HttpEngineServer http = httpServer;
+        if (http != null && ("request-start".equals(type) || "request-finish".equals(type))) {
+            http.notifyLiveStatus();
+            if ("request-finish".equals(type)) http.notifyLiveCache();
+        }
     }
 
     /**
