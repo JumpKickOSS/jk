@@ -275,9 +275,30 @@ const BuildBars = {
   },
 };
 
-/** A finished record's outcome for the Projects tab: cancelled ▸ success ▸ failed (records are terminal). */
+/**
+ * A finished record's outcome for the Projects tab.
+ * FAIL steps / error diagnostics beat a cancel bit (same rule as fold.outcomeOf).
+ */
 function recordOutcome(r) {
-  return r.cancelled ? 'cancelled' : r.success ? 'success' : 'failed';
+  if (recordHasFailStep(r) || recordHasErrorDiag(r)) return 'failed';
+  if (r.cancelled) return 'cancelled';
+  return r.success ? 'success' : 'failed';
+}
+
+function recordHasFailStep(r) {
+  const bad = (st) => {
+    const u = String(st || '').toUpperCase();
+    return u === 'FAIL' || u === 'FAILED';
+  };
+  for (const s of r.steps || []) if (bad(s.status)) return true;
+  for (const m of r.modules || []) {
+    for (const s of m.steps || []) if (bad(s.status)) return true;
+  }
+  return false;
+}
+
+function recordHasErrorDiag(r) {
+  return (r.diagnostics || []).some((d) => d && d.severity === 'error');
 }
 
 /**
@@ -328,6 +349,8 @@ Vue.createApp({
     metrics: null, // the /api/metrics payload (running build aggregates), shown on the Status view
     cache: null, // /api/cache + live `cache` SSE: cache tier + artifact store breakdown
     engineLog: '', // the /api/log tail, shown on the Status view
+    configPath: null, // absolute path of the machine config.toml
+    configRows: [], // EffectiveUserConfig rows: {key, default, value, overridden}
     cards: [], // folded activity, newest first
     projectHistory: [], // raw /api/history records (up to 200), grouped into the Projects tab
     buildDir: '',
@@ -676,6 +699,12 @@ Vue.createApp({
       location.hash = '#project/' + encodeURIComponent(dir);
     },
 
+    /** Activity card badge / coord → project detail (routed by dir). */
+    openProjectFromCard(card) {
+      if (!card || !card.dir) return;
+      this.openProject(card.dir);
+    },
+
     // Re-derive view + selected project from the hash, loading whatever that route needs.
     applyRoute() {
       const r = routeFromHash();
@@ -954,6 +983,19 @@ Vue.createApp({
       });
     },
 
+    /** Effective machine config.toml (key / default / override) for the Status Configuration panel. */
+    async refreshConfig() {
+      return this.fetchOnce('config', async () => {
+        try {
+          const payload = await get('/api/config');
+          this.configPath = payload.path || null;
+          this.configRows = Array.isArray(payload.rows) ? payload.rows : [];
+        } catch (e) {
+          if (e.status === 401) this.connection = 'unauthorized';
+        }
+      });
+    },
+
     /**
      * Hydrate REST surfaces for the current view. Status always pulls full cache + metrics + log;
      * Projects pulls metrics; Activity only needs status/cache hydrate when offline or first paint.
@@ -965,6 +1007,7 @@ Vue.createApp({
 
       if (this.view === 'status') {
         await this.refreshLog();
+        await this.refreshConfig();
         await this.refreshMetrics();
         await this.refreshCache(); // full breakdown for dual Status panels
         return;

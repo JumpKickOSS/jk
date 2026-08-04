@@ -6065,11 +6065,13 @@ public final class EngineServer implements AutoCloseable {
 
         /**
          * Stamp cancel immediately so a force-killed runner still journals as cancelled, not success.
-         * No-op once {@link #setOutcome} has run — the client often closes the socket the instant it
-         * reads the terminal message, and that EOF must not re-label a finished failure as cancelled.
+         * No-op once an outcome is known: either {@link #setOutcome} already ran, or a module/pipeline
+         * already reported failure ({@code anyFailure}). The client often closes the socket the
+         * instant it reads a terminal failure, and that EOF must not re-label a test/compile failure
+         * as cancelled.
          */
         void markUserCancelled() {
-            if (success != null) return;
+            if (success != null || anyFailure) return;
             userCancelled = true;
         }
 
@@ -6298,14 +6300,15 @@ public final class EngineServer implements AutoCloseable {
      *
      * <ul>
      *   <li>Stamped success → never cancelled (EOF-after-finish race).
-     *   <li>Stamped failure → cancelled only when the user/deadline stamp is set.
+     *   <li>Stamped failure → cancelled only when the user/deadline stamp was set (not cooperative
+     *       fail-fast or post-finish EOF).
      *   <li>No outcome yet (force-killed mid-job) → honour the cancel hint.
      * </ul>
      */
     static boolean resolveCancelledFlag(Boolean successStamp, boolean userCancelled, boolean cancelHint) {
         if (Boolean.TRUE.equals(successStamp)) return false;
         if (userCancelled) return true;
-        if (successStamp != null) return false; // explicit failure — not a cancel
+        if (successStamp != null) return false; // explicit failure without a user-cancel stamp
         return cancelHint;
     }
 }

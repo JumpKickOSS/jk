@@ -353,23 +353,41 @@ function historyDiags(diags, dir) {
 function historyModules(rec) {
   const toSteps = (ps) => (ps || []).map((p) => ({ name: p.name || '?', state: stepState(p.status), phase: p.phase || '' }));
   if ((rec.modules || []).length > 0) {
-    return rec.modules.map((m) => ({
-      dir: m.dir || '',
-      coord: m.coord || null,
-      state: m.success ? 'success' : 'failed',
-      millis: m.millis ?? null,
-      steps: toSteps(m.steps),
-      diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
-    }));
+    return rec.modules.map((m) => {
+      const steps = toSteps(m.steps);
+      return {
+        dir: m.dir || '',
+        coord: m.coord || null,
+        // FAIL beats cancel; cancel-only modules (user kill mid-flight) stay cancelled.
+        state: m.success
+          ? 'success'
+          : steps.some((s) => s.state === 'failed')
+            ? 'failed'
+            : rec.cancelled || steps.some((s) => s.state === 'cancelled')
+              ? 'cancelled'
+              : 'failed',
+        millis: m.millis ?? null,
+        steps,
+        diagnostics: historyDiags(rec.diagnostics, m.dir || ''),
+      };
+    });
   }
   // Single-project: no modules, steps at top level. Its diagnostics live in the "" bucket, so take
   // every error the record carries (there is only one module to own them).
+  const steps = toSteps(rec.steps);
   return [{
     dir: rec.dir || '',
     coord: rec.coord || null,
-    state: rec.cancelled ? 'cancelled' : rec.success === false ? 'failed' : 'success',
+    // FAIL steps beat a cancel bit (journal/EOF races used to stamp cancelled on test failures).
+    state: steps.some((s) => s.state === 'failed')
+      ? 'failed'
+      : rec.cancelled
+        ? 'cancelled'
+        : rec.success === false
+          ? 'failed'
+          : 'success',
     millis: rec.millis ?? null,
-    steps: toSteps(rec.steps),
+    steps,
     diagnostics: (rec.diagnostics || [])
       .filter((d) => d.severity !== 'warning')
       .map((d) => ({
@@ -382,17 +400,32 @@ function historyModules(rec) {
   }];
 }
 
+/** True when any step actually failed (FAIL) — not merely cancelled mid-flight. */
+function hasFailedStep(card) {
+  for (const m of card.modules || []) {
+    for (const s of m.steps || []) {
+      if (s.state === 'failed') return true;
+    }
+  }
+  return false;
+}
+
 /**
  * A finished card's outcome badge: the engine's explicit success when it sent one (HTTP-triggered
  * builds do), else derived from module rows (socket requests encode their outcome in wire
  * messages, not events): any failed module → failed; all finished and some succeeded → success.
+ *
+ * <p>FAIL steps / failed modules take priority over {@code cancelled}. Cooperative fail-fast and
+ * post-finish socket EOF can leave {@code cancelled=true} on a run that actually finished with
+ * test/compile failures — those must read as failed, not cancelled.
  */
 export function outcomeOf(card) {
   if (card.state === 'running') return 'running';
-  if (card.cancelled) return 'cancelled';
+  // FAIL steps / failed modules first — a cancel bit alone must not mask a real test failure.
+  if (hasFailedStep(card) || (card.modules || []).some((m) => m.state === 'failed')) return 'failed';
+  if (card.cancelled || (card.modules || []).some((m) => m.state === 'cancelled')) return 'cancelled';
   if (card.success === true) return 'success';
   if (card.success === false) return 'failed';
-  if (card.modules.some((m) => m.state === 'failed')) return 'failed';
   // success + checked are both green outcomes (JK-1296: pure cache re-entry is "checked")
   if (
     card.modules.length > 0

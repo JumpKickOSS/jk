@@ -100,10 +100,16 @@ account must not have the engine owner's filesystem and identity for free:
 | `GET /api/metrics` | every project dir and coordinate ever built |
 | `GET /api/projects/defaults` | derives from the owner's git identity and home layout |
 
-Aggregate-only reads (`GET /api/status`, `GET /api/cache`), the activity stream
+Aggregate-only reads (`GET /api/status`, `GET /api/cache`, `GET /api/config`), the activity stream
 (`GET /api/events`), and the **journal list** (`GET /api/history`) stay open on loopback so a
 tokenless dashboard can show live builds **and** rehydrate them after a hard refresh. History
 **artifacts** remain token-gated.
+
+### `GET /api/config`
+
+Effective machine `~/.config/jk/config.toml` (plus env) as `{ path, rows: [{ key, default, value,
+overridden }] }` for the Status Configuration panel — every known scalar key with its default and
+whether the effective value differs.
 
 The token file persists across restarts precisely so an open tab survives an upgrade or crash
 respawn. `jk engine rotate-token` is the explicit way to invalidate it.

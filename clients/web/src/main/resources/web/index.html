@@ -89,8 +89,18 @@
       <article v-for="(card, i) in cards" :key="card.id" class="card rise-in" :class="outcome(card)" :style="{ animationDelay: riseDelay(i) }">
         <div class="card-head">
           <span v-if="outcome(card) === 'running'" class="spin"></span>
-          <span v-else class="badge" :class="outcome(card)"><jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}</span>
-          <span class="coord">
+          <span v-else class="badge to-project" :class="outcome(card)"
+                role="link" tabindex="0"
+                title="Open this project"
+                @click="openProjectFromCard(card)"
+                @keydown.enter.prevent="openProjectFromCard(card)">
+            <jk-icon :name="stateIcon(outcome(card))"></jk-icon>{{ activityBadge(card) }}
+          </span>
+          <span class="coord to-project"
+                role="link" tabindex="0"
+                title="Open this project"
+                @click="openProjectFromCard(card)"
+                @keydown.enter.prevent="openProjectFromCard(card)">
             <template v-if="coordParts(card).group"><span class="cg">{{ coordParts(card).group }}</span><span class="csep">:</span></template>
             <span class="cn">{{ coordParts(card).name }}</span>
           </span>
@@ -329,10 +339,7 @@
           </div>
         </div>
 
-        <!-- Running build stats (docs/metrics.md): the engine's persistent aggregates, folded at
-             every build/test finish. Tiles roll up the machine-wide invocation tiers; the table is
-             the per-step tier (a plugin verb runs as its own step, so this is also the
-             per-worker/per-plugin view). -->
+        <!-- Running build stats (docs/metrics.md): KPI tiles here; the steps table is last. -->
         <template v-if="metrics && metrics.length">
           <div class="tiles">
             <div class="tile"><span class="lbl">builds recorded</span><span class="kpi">{{ metricsTotals().runs }}</span></div>
@@ -342,37 +349,11 @@
             </div>
             <div class="tile"><span class="lbl">time building</span><span class="kpi">{{ duration(metricsTotals().totalMillis) }}</span></div>
           </div>
-          <div class="panels">
-            <div class="panel wide">
-              <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
-              <table class="stats">
-                <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
-                <tbody>
-                  <tr v-for="r in metricsSteps()" :key="r.step">
-                    <td class="mono">{{ r.step }}</td>
-                    <td>{{ r.okCount }}</td>
-                    <td>{{ duration(r.okAvgMillis) }}</td>
-                    <td>{{ duration(r.okMinMillis) }}</td>
-                    <td>{{ duration(r.okMaxMillis) }}</td>
-                    <td>{{ duration(r.okTotalMillis) }}</td>
-                    <td :class="{ err: r.failCount > 0 }">{{ r.failCount > 0 ? r.failCount : '' }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
         </template>
         <p v-else class="dim small">No build metrics yet — run a build and the stats appear here.</p>
 
+        <!-- Cache tier + artifact store share a row. -->
         <div class="panels">
-          <div class="panel">
-            <div class="panel-head"><span class="lbl">configuration</span><span class="spacer"></span><span class="mono dim">~/.jk/config.toml</span></div>
-            <dl>
-              <dt>max-concurrent-requests</dt><dd>{{ status.maxConcurrentRequests }}</dd>
-              <dt>web-root</dt><dd class="mono">{{ status.webRoot }}</dd>
-              <dt>url</dt><dd class="mono accent">{{ status.httpUrl }}</dd>
-            </dl>
-          </div>
           <div class="panel">
             <div class="panel-head"><span class="lbl">cache tier</span><span class="spacer"></span>
               <span v-if="cache" class="mono dim">{{ mib(actionCacheBytes()) }} of {{ actionMaxBytes() != null ? mib(actionMaxBytes()) : '—' }} · pruned {{ prunedAgo() }}</span></div>
@@ -404,6 +385,57 @@
               <p class="dim small" style="margin:8px 0 0">Long-lived deps under the artifact store. <span class="mono">jk repo storage</span></p>
             </template>
             <div v-else class="dim small">Artifact store loading…</div>
+          </div>
+        </div>
+
+        <!-- Effective config.toml: key · default · override. Scrolls when long (like engine log). -->
+        <div class="panels">
+          <div class="panel wide">
+            <div class="panel-head">
+              <span class="lbl">configuration</span>
+              <span class="spacer"></span>
+              <span class="mono dim">{{ configPath || '~/.config/jk/config.toml' }}</span>
+            </div>
+            <div v-if="configRows && configRows.length" class="config-scroll">
+              <table class="stats config-table">
+                <thead>
+                  <tr>
+                    <th class="left">Key</th>
+                    <th class="left">Default</th>
+                    <th class="left">Override</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in configRows" :key="r.key" :class="{ overridden: r.overridden }">
+                    <td class="mono left">{{ r.key }}</td>
+                    <td class="mono left dim">{{ r.default }}</td>
+                    <td class="mono left" :class="{ accent: r.overridden }">{{ r.overridden ? r.value : '' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else class="dim small">Configuration loading…</div>
+          </div>
+        </div>
+
+        <!-- Steps table; engine log is always the final row. -->
+        <div v-if="metrics && metrics.length" class="panels">
+          <div class="panel wide">
+            <div class="panel-head"><span class="lbl">steps (by total time)</span><span class="spacer"></span><span class="mono dim">state/builds/metrics.json</span></div>
+            <table class="stats">
+              <thead><tr><th>Step</th><th>Runs</th><th>Avg</th><th>Min</th><th>Max</th><th>Total</th><th>Failed</th></tr></thead>
+              <tbody>
+                <tr v-for="r in metricsSteps()" :key="r.step">
+                  <td class="mono">{{ r.step }}</td>
+                  <td>{{ r.okCount }}</td>
+                  <td>{{ duration(r.okAvgMillis) }}</td>
+                  <td>{{ duration(r.okMinMillis) }}</td>
+                  <td>{{ duration(r.okMaxMillis) }}</td>
+                  <td>{{ duration(r.okTotalMillis) }}</td>
+                  <td :class="{ err: r.failCount > 0 }">{{ r.failCount > 0 ? r.failCount : '' }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 

@@ -161,6 +161,7 @@ public final class HttpEngineServer implements AutoCloseable {
                 ? new McpHandler(status, jobs, this::projectMap, () -> journal.rawRecords(200), version, progressTokens)
                 : null;
         api.register("GET", "/api/status", this::handleStatus);
+        api.register("GET", "/api/config", this::handleConfig);
         api.register("GET", "/api/events", this::handleEvents);
         api.register("GET", "/api/log", this::handleLog);
         api.register("GET", "/api/fs", this::handleFs);
@@ -610,6 +611,27 @@ public final class HttpEngineServer implements AutoCloseable {
                 .put("webRoot", webRoot.toString())
                 .toString();
         sendJson(exchange, 200, body);
+    }
+
+    /**
+     * {@code GET /api/config} — effective machine {@code config.toml} as key / default / effective
+     * rows for the Status Configuration panel. Same openness as {@code GET /api/status} (loopback
+     * without token; token required when bound beyond loopback).
+     */
+    private void handleConfig(HttpExchange exchange) throws IOException {
+        java.util.List<java.util.Map<String, Object>> rows = new java.util.ArrayList<>();
+        for (cc.jumpkick.config.EffectiveUserConfig.Row r : cc.jumpkick.config.EffectiveUserConfig.rows()) {
+            java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("key", r.key());
+            m.put("default", r.defaultValue());
+            m.put("value", r.effectiveValue());
+            m.put("overridden", r.overridden());
+            rows.add(m);
+        }
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("path", cc.jumpkick.config.EffectiveUserConfig.configPath().toString());
+        body.put("rows", rows);
+        sendJson(exchange, 200, cc.jumpkick.plugin.protocol.MiniJson.write(body));
     }
 
     /**

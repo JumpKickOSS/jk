@@ -82,7 +82,32 @@
  * selected text stays readable without the white flash. */
 ::selection { background: rgba(var(--bright-rgb), 0.2); }
 
-* { box-sizing: border-box; }
+/* Scrollbars match the dark mission-control chrome (page + nested panes: log, config, modals).
+ * Firefox: scrollbar-color / scrollbar-width. Chromium/WebKit: ::-webkit-scrollbar*. */
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--s3) var(--s1);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--s1);
+  border-radius: var(--r-sm);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--s3);
+  border: 2px solid var(--s1);
+  border-radius: var(--r-sm);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--bd);
+}
+*::-webkit-scrollbar-corner {
+  background: var(--s1);
+}
 
 body {
   margin: 0;
@@ -412,6 +437,16 @@ main { max-width: 66rem; margin: 0 auto; padding: 18px 20px 3rem; }
 .coord .cg { color: var(--cg); }
 .coord .cn { color: var(--cn); font-size: 16px; }
 .coord .csep { color: var(--tx); }
+
+/* Activity feed: outcome badge + coordinates open the project detail page. */
+.to-project { cursor: pointer; }
+.to-project:hover { filter: brightness(1.12); }
+.to-project:focus-visible {
+  outline: 2px solid rgba(var(--cn-rgb), 0.55);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+.badge.to-project:focus-visible { border-radius: var(--r-sm); }
 
 .kind { color: var(--mu); font-size: 12px; }
 .summary { color: var(--mu); font-size: 12px; }
@@ -840,6 +875,33 @@ table.stats.history td.ok { color: var(--ok); }
 
 /* The Cache panel's utilization meter sits above its breakdown list. */
 .panel .meter + dl { margin-top: 11px; }
+
+/* Configuration table: scroll like the engine log when the effective config is long.
+ * Header row sticks to the top of the scroll pane so Key / Default / Override stay in view. */
+.config-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0;
+  border: 1px solid var(--bd2);
+  border-radius: var(--r-md);
+  background: var(--console-bg);
+  padding: 0 10px 6px;
+}
+table.stats.config-table { font-size: 12px; }
+table.stats.config-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--console-bg);
+  /* Match tbody border-top so rows don't show through the sticky edge */
+  box-shadow: 0 1px 0 var(--bd2);
+  padding-top: 8px;
+}
+table.stats.config-table th.left,
+table.stats.config-table td.left { text-align: left; padding-left: 0; padding-right: 14px; }
+table.stats.config-table th:last-child,
+table.stats.config-table td:last-child { padding-right: 0; }
+table.stats.config-table tr.overridden td:last-child { color: var(--cn); font-weight: 500; }
 
 /* ---- the Status view's build-stats table (running aggregates) ---- */
 table.stats { width: 100%; border-collapse: collapse; font-size: 12.5px; }
