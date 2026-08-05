@@ -486,6 +486,15 @@ class HttpEngineServerTest {
     }
 
     @Test
+    void api_config_requires_the_token_even_on_loopback() throws Exception {
+        // Payload names the owner's config path and verbatim values (templates.official can embed
+        // credentials) — same class as /api/projects/defaults (JK-1524).
+        assertThat(get("/api/config").statusCode()).isEqualTo(401);
+        assertThat(get("/api/config", "Authorization", "Bearer " + token()).statusCode())
+                .isEqualTo(200);
+    }
+
+    @Test
     void api_history_list_is_open_on_loopback_but_artifacts_and_project_need_token() throws Exception {
         // Journal list rehydrates the Activity feed after refresh (same openness as /api/events).
         // Full artifacts and path-oracle GETs stay token-gated even on loopback.

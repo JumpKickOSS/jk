@@ -134,7 +134,10 @@ public final class HttpEngineServer implements AutoCloseable {
             "/api/history/artifact",
             "/api/project",
             "/api/metrics",
-            "/api/projects/defaults");
+            "/api/projects/defaults",
+            // Returns the config file path (home layout) and verbatim effective values —
+            // templates.official may carry a credential-embedded URL (JK-1524).
+            "/api/config");
 
     /**
      * {@code GET /api/templates} response cache — building the index walks every template root
